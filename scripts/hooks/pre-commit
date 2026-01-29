@@ -326,5 +326,66 @@ if [ -n "$MANIFEST_FILES" ]; then
     fi
 fi
 
+# =============================================================================
+# MARKDOWN LINK VALIDATION - Catch dead links before CI (DocGuard railguard)
+# =============================================================================
+
+MD_FILES=$(echo "$STAGED_FILES" | grep -E '\.md$' || true)
+if [ -n "$MD_FILES" ]; then
+    echo -e "\n${BLUE}🔗 Checking markdown links in staged docs...${NC}"
+
+    DEAD_LINKS=0
+    DEAD_LINK_DETAILS=""
+
+    for file in $MD_FILES; do
+        if [ ! -f "$file" ]; then
+            continue
+        fi
+
+        # Extract markdown-style links [text](url) — skip code blocks
+        IN_CODE_BLOCK=0
+        LINE_NUM=0
+        while IFS= read -r line; do
+            LINE_NUM=$((LINE_NUM + 1))
+
+            # Toggle code block state on ``` boundaries
+            if echo "$line" | grep -qE '^```'; then
+                IN_CODE_BLOCK=$((1 - IN_CODE_BLOCK))
+                continue
+            fi
+
+            # Skip lines inside fenced code blocks
+            if [ $IN_CODE_BLOCK -eq 1 ]; then
+                continue
+            fi
+
+            # Extract URLs from markdown links and bare https:// URLs
+            URLS=$(echo "$line" | grep -oE 'https?://[^\s\)>\]"'\'']+' | sed "s/[.,;:!?\`'\"]*$//" || true)
+            for url in $URLS; do
+                # Skip known-ok patterns
+                if echo "$url" | grep -qE '(localhost|127\.0\.0\.1|\.svc\.cluster\.local|example\.com|placeholder)'; then
+                    continue
+                fi
+
+                # Quick HTTP check (2s timeout, HEAD request)
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 -L -I "$url" 2>/dev/null || echo "000")
+                if [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "000" ]; then
+                    DEAD_LINKS=1
+                    DEAD_LINK_DETAILS="$DEAD_LINK_DETAILS\n  ${RED}❌ $file:$LINE_NUM - $url (HTTP $HTTP_CODE)${NC}"
+                fi
+            done
+        done < "$file"
+    done
+
+    if [ $DEAD_LINKS -eq 1 ]; then
+        echo -e "${RED}Dead links found:${NC}$DEAD_LINK_DETAILS"
+        echo -e "\n${YELLOW}Fix dead links before committing. DocGuard CI will also fail on these.${NC}"
+        echo -e "${YELLOW}Use 'git commit --no-verify' to bypass if links are temporarily down.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Markdown link check passed${NC}"
+fi
+
 echo -e "\n${GREEN}✅ All pre-commit validations passed${NC}"
 exit 0

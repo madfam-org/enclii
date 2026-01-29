@@ -451,8 +451,8 @@ curl -X POST https://auth.enclii.dev/v1/clients \
     "client_id": "enclii-web-ui",
     "client_name": "Enclii Web Dashboard",
     "redirect_uris": [
-      "https://app.enclii.dev/callback",
-      "https://dashboard.enclii.dev/callback",
+      "${APP_URL}/callback",
+      "${DASHBOARD_URL}/callback",
       "http://localhost:3000/callback"
     ],
     "grant_types": ["authorization_code", "refresh_token"],
@@ -498,7 +498,7 @@ Update Switchyard UI to use Janua OAuth:
 export const authConfig = {
   authority: 'https://auth.enclii.dev',
   client_id: 'enclii-web-ui',
-  redirect_uri: 'https://app.enclii.dev/callback',
+  redirect_uri: '${APP_URL}/callback',
   scope: 'openid profile email',
   response_type: 'code',
 }
