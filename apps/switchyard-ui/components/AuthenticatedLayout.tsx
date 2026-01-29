@@ -148,7 +148,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                 )}
               </div>
               {/* Desktop Navigation - Hidden on mobile/tablet */}
-              <div className="hidden lg:flex ml-6 items-baseline space-x-1 xl:space-x-4">
+              <div className="hidden lg:flex ml-6 items-baseline space-x-1 xl:space-x-4 flex-shrink-0 relative z-10">
                 {/* Primary nav items - always visible at lg+ */}
                 {primaryNav.map((item) => (
                   <NavLink key={item.name} item={item} pathname={pathname} />

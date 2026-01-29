@@ -68,6 +68,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [refreshTimer, setRefreshTimer] = useState<NodeJS.Timeout | null>(null);
   const isRefreshingRef = useRef(false); // Prevent concurrent refresh attempts
   const refreshTokensRef = useRef<() => Promise<boolean>>(null!); // Stable ref for token refresh
+  const isInitializingRef = useRef(true); // Prevent auth-expired handler during init
 
   const clearAuthError = useCallback(() => {
     setAuthError(null);
@@ -104,28 +105,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // ==========================================================================
 
   useEffect(() => {
-    // Load stored auth state on mount
-    const storedTokens = storage.getTokens();
-    const storedUser = storage.getUser();
+    const initAuth = async () => {
+      try {
+        const storedTokens = storage.getTokens();
+        const storedUser = storage.getUser();
 
-    if (storedTokens && storedUser) {
-      if (!isTokenExpired(storedTokens.expiresAt)) {
-        setTokens(storedTokens);
-        setUser(storedUser);
-        scheduleTokenRefresh(storedTokens.expiresAt);
-      } else if (storedTokens.refreshToken) {
-        // Token expired but we have refresh token - try to refresh
-        refreshTokens().catch((err) => {
-          console.error('Token refresh failed during initialization:', err);
-          setAuthError('Session expired. Please log in again.');
-          storage.clear();
-        });
-      } else {
-        storage.clear();
+        if (storedTokens && storedUser) {
+          // Check if token is truly expired (past actual expiry, ignoring buffer)
+          const isActuallyExpired = Date.now() >= storedTokens.expiresAt;
+          const isInBufferZone = isTokenExpired(storedTokens.expiresAt) && !isActuallyExpired;
+
+          if (!isTokenExpired(storedTokens.expiresAt) || isInBufferZone) {
+            // Token still valid (or within 5-min buffer — API will accept it)
+            setTokens(storedTokens);
+            setUser(storedUser);
+            scheduleTokenRefresh(storedTokens.expiresAt);
+          } else if (storedTokens.refreshToken) {
+            // Token truly expired — attempt refresh
+            const refreshed = await refreshTokens();
+            if (!refreshed) {
+              setAuthError('Session expired. Please log in again.');
+              // Don't clear storage here — let the user see the error and re-login
+            }
+          } else {
+            storage.clear();
+          }
+        }
+      } finally {
+        setIsLoading(false);
+        isInitializingRef.current = false;
       }
-    }
+    };
 
-    setIsLoading(false);
+    initAuth();
   }, []);
 
   // Cleanup timer on unmount
@@ -142,9 +154,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (AUTH_MODE !== "oidc") return;
 
     const handleAuthExpired = async () => {
+      // Skip during initialization to prevent double-jeopardy logout on reload
+      if (isInitializingRef.current) return;
+
       const refreshed = await refreshTokensRef.current?.();
       if (!refreshed) {
-        logout();
+        const stored = storage.getTokens();
+        if (!stored || stored.expiresAt < Date.now()) {
+          logout();
+        }
+        // Token still valid → transient 401, don't logout
       }
     };
 
@@ -432,13 +451,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isRefreshingRef.current = true;
 
     try {
-      // In OIDC mode, token refresh via /v1/auth/refresh is not supported
-      // We need to use silent authentication instead
-      if (AUTH_MODE === "oidc") {
-        return await refreshTokensViaOIDC();
-      }
-
-      // Local mode: use the refresh token endpoint
+      // Both local and OIDC modes use the refresh token endpoint
       const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
         method: "POST",
         headers: {
@@ -457,9 +470,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const newTokenInfo: TokenInfo = {
         accessToken: data.access_token,
-        refreshToken: currentTokens.refreshToken,
-        expiresAt: new Date(data.expires_at).getTime(),
+        refreshToken: data.refresh_token || currentTokens.refreshToken,
+        expiresAt: data.expires_at
+          ? new Date(data.expires_at).getTime()
+          : currentTokens.expiresAt,
         tokenType: data.token_type || "Bearer",
+        idpToken: data.idp_token || currentTokens.idpToken,
+        idpTokenExpiresAt: data.idp_token_expires_at
+          ? new Date(data.idp_token_expires_at).getTime()
+          : currentTokens.idpTokenExpiresAt,
       };
 
       setTokens(newTokenInfo);
@@ -469,7 +488,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return true;
     } catch (error) {
       console.error("Token refresh failed:", error);
-      await logout();
+      // During initialization, don't logout — let the init effect show an error instead
+      if (!isInitializingRef.current) {
+        await logout();
+      }
       return false;
     } finally {
       isRefreshingRef.current = false;
@@ -481,138 +503,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     refreshTokensRef.current = refreshTokens;
   });
-
-  /**
-   * OIDC silent token refresh via hidden iframe
-   * Uses prompt=none to check if SSO session is still valid
-   */
-  const refreshTokensViaOIDC = async (): Promise<boolean> => {
-    return new Promise(async (resolve) => {
-      try {
-        // Step 1: Get silent auth URL from backend
-        const controller = new AbortController();
-        const fetchTimeout = setTimeout(() => controller.abort(), 3000);
-
-        let response: Response;
-        try {
-          response = await fetch(`${API_BASE_URL}/v1/auth/silent-check`, {
-            method: "GET",
-            credentials: "include",
-            signal: controller.signal,
-          });
-        } catch (fetchError) {
-          clearTimeout(fetchTimeout);
-          console.debug("Silent auth refresh failed - API may be unavailable");
-          // Don't logout - let user continue until next 401
-          resolve(false);
-          return;
-        }
-        clearTimeout(fetchTimeout);
-
-        if (!response.ok) {
-          console.debug("Silent auth refresh endpoint not available");
-          // Don't logout - session may still be valid
-          resolve(false);
-          return;
-        }
-
-        const { auth_url } = await response.json();
-
-        // Step 2: Create hidden iframe for silent auth
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.style.width = "0";
-        iframe.style.height = "0";
-        iframe.style.border = "none";
-        iframe.style.position = "absolute";
-        iframe.style.left = "-9999px";
-        document.body.appendChild(iframe);
-
-        let cleanup: () => void;
-        let timeoutId: NodeJS.Timeout;
-
-        // Step 3: Set up message listener
-        const messageHandler = async (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) {
-            return;
-          }
-
-          const data = event.data;
-          if (data?.type !== "silent-auth-result") {
-            return;
-          }
-
-          cleanup();
-
-          if (data.success && data.access_token) {
-            // Silent auth succeeded - store new tokens
-            const newTokenInfo: TokenInfo = {
-              accessToken: data.access_token,
-              refreshToken: data.refresh_token || "",
-              expiresAt: data.expires_at || Date.now() + 3600000,
-              tokenType: data.token_type || "Bearer",
-              idpToken: data.idp_token,
-              idpTokenExpiresAt: data.idp_token_expires_at,
-            };
-
-            setTokens(newTokenInfo);
-            storage.setTokens(newTokenInfo);
-
-            // Re-fetch user profile if needed
-            if (newTokenInfo.accessToken) {
-              try {
-                const userResponse = await fetch(`${API_BASE_URL}/v1/auth/me`, {
-                  headers: {
-                    Authorization: `Bearer ${newTokenInfo.accessToken}`,
-                  },
-                });
-                if (userResponse.ok) {
-                  const userData = await userResponse.json();
-                  setUser(userData);
-                  storage.setUser(userData);
-                }
-              } catch {
-                // Keep existing user data
-              }
-            }
-
-            scheduleTokenRefresh(newTokenInfo.expiresAt);
-            console.debug("OIDC silent token refresh successful");
-            resolve(true);
-          } else {
-            // Silent auth failed (login_required, interaction_required, etc.)
-            // This is expected if SSO session expired
-            console.debug("OIDC session expired - user will need to re-login");
-            // Don't immediately logout - let user see the page until next API call fails
-            resolve(false);
-          }
-        };
-
-        cleanup = () => {
-          window.removeEventListener("message", messageHandler);
-          clearTimeout(timeoutId);
-          if (iframe.parentNode) {
-            document.body.removeChild(iframe);
-          }
-        };
-
-        window.addEventListener("message", messageHandler);
-
-        // Step 4: Timeout after 5 seconds
-        timeoutId = setTimeout(() => {
-          cleanup();
-          console.debug("OIDC silent refresh timed out");
-          resolve(false);
-        }, 5000);
-
-        // Step 5: Navigate iframe to auth URL
-        iframe.src = auth_url;
-      } catch (error) {
-        console.error("OIDC silent refresh error:", error);
-        resolve(false);
-      }
-    });
-  };
 
   const getAccessToken = (): string | null => {
     const currentTokens = tokens || storage.getTokens();

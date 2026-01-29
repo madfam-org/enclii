@@ -312,7 +312,7 @@ export function ProjectCard({ project, className, onDelete }: ProjectCardProps) 
             <div className="flex items-center gap-1.5">
               <Circle className="h-3 w-3 fill-current text-status-success" />
               <span>
-                {activeServices}/{project.services.length} services
+                {activeServices}/{project.services.length} service{project.services.length !== 1 ? 's' : ''}
               </span>
             </div>
             {project.usage && (

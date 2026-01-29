@@ -69,9 +69,9 @@ export default function ProjectDetailPage() {
       const projectData = await apiGet<Project>(`/v1/projects/${slug}`);
       setProject(projectData);
 
-      // Fetch services
+      // Fetch services using the canonical slug from the API response
       const servicesData = await apiGet<{ services: Service[] }>(
-        `/v1/projects/${slug}/services`
+        `/v1/projects/${projectData.slug}/services`
       );
       setServices(servicesData.services || []);
 
@@ -104,7 +104,7 @@ export default function ProjectDetailPage() {
     e.preventDefault();
 
     try {
-      await apiPost(`/v1/projects/${slug}/services`, newService);
+      await apiPost(`/v1/projects/${project?.slug || slug}/services`, newService);
 
       setNewService({ name: '', git_repo: '', build_config: {} });
       setShowCreateServiceForm(false);

@@ -31,11 +31,17 @@ export const storage = {
   setTokens(tokens: TokenInfo): void {
     if (typeof window === "undefined") return;
     localStorage.setItem("enclii_tokens", JSON.stringify(tokens));
+    // Sync cookie for middleware.ts (SSR reads cookie, not localStorage)
+    const maxAge = Math.floor((tokens.expiresAt - Date.now()) / 1000);
+    if (maxAge > 0) {
+      document.cookie = `enclii_auth=${tokens.accessToken}; path=/; secure; samesite=lax; max-age=${maxAge}`;
+    }
   },
 
   clearTokens(): void {
     if (typeof window === "undefined") return;
     localStorage.removeItem("enclii_tokens");
+    document.cookie = 'enclii_auth=; path=/; secure; samesite=lax; max-age=0';
   },
 
   getUser(): User | null {

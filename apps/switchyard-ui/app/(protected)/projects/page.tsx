@@ -242,7 +242,7 @@ export default function ProjectsPage() {
                     <div className="flex-shrink-0 ml-4">
                       <div className="text-right">
                         <div className="text-sm font-medium text-gray-900">
-                          {services[project.id]?.length || 0} services
+                          {services[project.id]?.length || 0} service{(services[project.id]?.length || 0) !== 1 ? 's' : ''}
                         </div>
                         <div className="flex space-x-1 mt-1">
                           {services[project.id]?.slice(0, 3).map((service) => (

@@ -3,18 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSilentAuth } from "@/hooks/useSilentAuth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginWithOIDC, isAuthenticated, isLoading, authMode, storeTokensFromRedirect } = useAuth();
-  const { isChecking: isSilentAuthChecking, hasValidSession, tokens: silentAuthTokens } = useSilentAuth();
+  const { login, loginWithOIDC, isAuthenticated, isLoading, authMode } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isProcessingSilentAuth, setIsProcessingSilentAuth] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -22,34 +19,6 @@ export default function LoginPage() {
       router.push("/");
     }
   }, [isAuthenticated, isLoading, router]);
-
-  // Handle successful silent auth - store tokens and redirect
-  useEffect(() => {
-    if (hasValidSession && silentAuthTokens && !isProcessingSilentAuth) {
-      setIsProcessingSilentAuth(true);
-
-      // Convert silent auth tokens to the format expected by storeTokensFromRedirect
-      const tokens = {
-        accessToken: silentAuthTokens.access_token!,
-        refreshToken: silentAuthTokens.refresh_token!,
-        expiresAt: new Date(silentAuthTokens.expires_at! * 1000),
-        tokenType: silentAuthTokens.token_type || 'Bearer',
-        idpToken: silentAuthTokens.idp_token,
-        idpTokenExpiresAt: silentAuthTokens.idp_token_expires_at
-          ? new Date(silentAuthTokens.idp_token_expires_at * 1000)
-          : undefined,
-      };
-
-      storeTokensFromRedirect(tokens)
-        .then(() => {
-          router.push("/");
-        })
-        .catch((err) => {
-          console.error("Failed to store silent auth tokens:", err);
-          setIsProcessingSilentAuth(false);
-        });
-    }
-  }, [hasValidSession, silentAuthTokens, storeTokensFromRedirect, router, isProcessingSilentAuth]);
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,20 +39,12 @@ export default function LoginPage() {
     loginWithOIDC();
   };
 
-  // Determine if we're in a loading state
-  // NOTE: We no longer block on isSilentAuthChecking - show login form immediately
-  // while silent auth runs in background. If successful, useEffect handles redirect.
-  const showLoading = isLoading || isProcessingSilentAuth;
-
-  // Show loading only for initial auth check or when processing silent auth redirect
-  if (showLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enclii-blue mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">
-            {isProcessingSilentAuth ? "Signing you in..." : "Loading..."}
-          </p>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
@@ -133,13 +94,6 @@ export default function LoginPage() {
         {/* OIDC Login (Primary for production) */}
         {authMode === "oidc" ? (
           <div className="space-y-6">
-            {/* Subtle indicator while silent auth checks for existing session */}
-            {isSilentAuthChecking && (
-              <div className="text-center text-xs text-muted-foreground animate-pulse">
-                Checking for existing session...
-              </div>
-            )}
-
             <button
               onClick={handleOIDCLogin}
               className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-enclii-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue transition-colors"

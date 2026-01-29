@@ -249,7 +249,7 @@ function ProjectNode({
             </span>
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-            <span>{project.services.length} services</span>
+            <span>{project.services.length} service{project.services.length !== 1 ? 's' : ''}</span>
             <span>•</span>
             <span className="font-mono">{project.slug}</span>
           </div>
