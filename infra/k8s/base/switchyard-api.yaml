@@ -59,6 +59,12 @@ spec:
                 secretKeyRef:
                   name: jwt-secrets
                   key: jwt-secret
+            - name: ENCLII_JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: jwt-private-key
+                  optional: true
             - name: ENCLII_OIDC_ISSUER
               value: "http://localhost:5556"
             - name: OTEL_EXPORTER_JAEGER_ENDPOINT

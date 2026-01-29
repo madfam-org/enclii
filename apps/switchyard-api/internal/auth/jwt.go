@@ -99,9 +99,9 @@ type User struct {
 }
 
 func NewJWTManager(tokenDuration, refreshDuration time.Duration, repos *db.Repositories, cache SessionRevoker) (*JWTManager, error) {
-	privateKey, err := generateRSAKey()
+	privateKey, err := loadOrGenerateRSAKey()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
+		return nil, fmt.Errorf("failed to load/generate RSA key: %w", err)
 	}
 
 	return &JWTManager{
@@ -158,7 +158,36 @@ func NewJWTManagerWithExternalJWKS(
 	return manager, nil
 }
 
-func generateRSAKey() (*rsa.PrivateKey, error) {
+// loadOrGenerateRSAKey loads an RSA private key from ENCLII_JWT_PRIVATE_KEY env var,
+// or generates a new ephemeral one if not set. A persistent key is REQUIRED for
+// multi-replica deployments so all pods validate tokens with the same key.
+func loadOrGenerateRSAKey() (*rsa.PrivateKey, error) {
+	if keyPEM := os.Getenv("ENCLII_JWT_PRIVATE_KEY"); keyPEM != "" {
+		block, _ := pem.Decode([]byte(keyPEM))
+		if block == nil {
+			return nil, fmt.Errorf("ENCLII_JWT_PRIVATE_KEY: failed to decode PEM block")
+		}
+
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			// Try PKCS1 format as fallback
+			rsaKey, err2 := x509.ParsePKCS1PrivateKey(block.Bytes)
+			if err2 != nil {
+				return nil, fmt.Errorf("ENCLII_JWT_PRIVATE_KEY: failed to parse key (PKCS8: %v, PKCS1: %v)", err, err2)
+			}
+			logrus.Info("JWT signing key loaded from ENCLII_JWT_PRIVATE_KEY (PKCS1)")
+			return rsaKey, nil
+		}
+
+		rsaKey, ok := key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("ENCLII_JWT_PRIVATE_KEY: key is not RSA")
+		}
+		logrus.Info("JWT signing key loaded from ENCLII_JWT_PRIVATE_KEY (PKCS8)")
+		return rsaKey, nil
+	}
+
+	logrus.Warn("ENCLII_JWT_PRIVATE_KEY not set — generating ephemeral RSA key (tokens will NOT survive pod restarts or work across replicas)")
 	return rsa.GenerateKey(rand.Reader, 2048)
 }
 

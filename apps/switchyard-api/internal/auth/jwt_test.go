@@ -2,6 +2,10 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +36,31 @@ func TestNewJWTManager(t *testing.T) {
 
 		if manager.publicKey == nil {
 			t.Error("NewJWTManager() did not set public key")
+		}
+	})
+
+	t.Run("loads key from ENCLII_JWT_PRIVATE_KEY env", func(t *testing.T) {
+		// Generate a test key in PEM format
+		testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatalf("failed to generate test key: %v", err)
+		}
+		keyBytes, err := x509.MarshalPKCS8PrivateKey(testKey)
+		if err != nil {
+			t.Fatalf("failed to marshal key: %v", err)
+		}
+		pemBlock := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes})
+
+		t.Setenv("ENCLII_JWT_PRIVATE_KEY", string(pemBlock))
+
+		manager, err := NewJWTManager(15*time.Minute, 7*24*time.Hour, nil, nil)
+		if err != nil {
+			t.Fatalf("NewJWTManager() failed with env key: %v", err)
+		}
+
+		// Verify the loaded key matches by comparing public key modulus
+		if manager.publicKey.N.Cmp(testKey.PublicKey.N) != 0 {
+			t.Error("loaded key does not match the provided key")
 		}
 	})
 
