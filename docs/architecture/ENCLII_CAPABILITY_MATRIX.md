@@ -740,8 +740,8 @@ kubectl wait --for=condition=ready pod -l app=switchyard-api --timeout=300s
 
 **Phase 3: Verification**
 ```bash
-curl https://api.enclii.io/health
-curl https://app.enclii.io/
+curl https://api.enclii.dev/health
+curl https://app.enclii.dev/
 # Verify all services running
 ```
 

@@ -153,7 +153,7 @@ This document describes how Enclii deploys **itself** using its own platform, an
 ┌─────────────────────────────────────────────────────────────────┐
 │  Public Internet                                                │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │  enclii.io   │  │ app.enclii.io│  │auth.enclii.io│         │
+│  │  enclii.dev   │  │ app.enclii.dev│  │auth.enclii.dev│         │
 │  │ (Landing)    │  │   (Web UI)   │  │   (Janua)   │         │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘         │
 │         │                 │                  │                  │
@@ -172,21 +172,21 @@ This document describes how Enclii deploys **itself** using its own platform, an
 │  │  Namespace: enclii-platform                              │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
 │  │  │  Switchyard API (3 replicas)                    │    │  │
-│  │  │  └─> api.enclii.io                              │    │  │
+│  │  │  └─> api.enclii.dev                              │    │  │
 │  │  │  └─> Built from: github.com/madfam-org/enclii   │    │  │
 │  │  │  └─> Deployed via: enclii deploy                │    │  │
 │  │  └─────────────────────────────────────────────────┘    │  │
 │  │                                                           │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
 │  │  │  Switchyard UI (2 replicas)                     │    │  │
-│  │  │  └─> app.enclii.io                              │    │  │
+│  │  │  └─> app.enclii.dev                              │    │  │
 │  │  │  └─> Built from: github.com/madfam-org/enclii   │    │  │
 │  │  │  └─> Deployed via: enclii deploy                │    │  │
 │  │  └─────────────────────────────────────────────────┘    │  │
 │  │                                                           │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
 │  │  │  Janua (3 replicas)                            │    │  │
-│  │  │  └─> auth.enclii.io                             │    │  │
+│  │  │  └─> auth.enclii.dev                             │    │  │
 │  │  │  └─> Built from: github.com/madfam-org/janua   │    │  │
 │  │  │  └─> Deployed via: enclii deploy                │    │  │
 │  │  │  └─> Authenticates: Enclii itself!              │    │  │
@@ -194,19 +194,19 @@ This document describes how Enclii deploys **itself** using its own platform, an
 │  │                                                           │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
 │  │  │  Landing Page (2 replicas)                      │    │  │
-│  │  │  └─> enclii.io                                  │    │  │
+│  │  │  └─> enclii.dev                                  │    │  │
 │  │  │  └─> Deployed via: enclii deploy                │    │  │
 │  │  └─────────────────────────────────────────────────┘    │  │
 │  │                                                           │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
 │  │  │  Docs Site (2 replicas)                         │    │  │
-│  │  │  └─> docs.enclii.io                             │    │  │
+│  │  │  └─> docs.enclii.dev                             │    │  │
 │  │  │  └─> Deployed via: enclii deploy                │    │  │
 │  │  └─────────────────────────────────────────────────┘    │  │
 │  │                                                           │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
 │  │  │  Status Page (2 replicas)                       │    │  │
-│  │  │  └─> status.enclii.io                           │    │  │
+│  │  │  └─> status.enclii.dev                           │    │  │
 │  │  │  └─> Deployed via: enclii deploy                │    │  │
 │  │  └─────────────────────────────────────────────────┘    │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -234,21 +234,21 @@ This document describes how Enclii deploys **itself** using its own platform, an
 ### Authentication Flow
 
 ```
-User visits app.enclii.io
+User visits app.enclii.dev
     │
-    ├─> Redirected to auth.enclii.io (Janua)
+    ├─> Redirected to auth.enclii.dev (Janua)
     │       │
     │       ├─> User logs in (password or SSO)
     │       │
     │       └─> Janua issues ID token (RS256 JWT)
     │
-    ├─> Redirect back to app.enclii.io/callback
+    ├─> Redirect back to app.enclii.dev/callback
     │       │
     │       ├─> Exchange code for tokens
     │       │
     │       └─> Store tokens in browser
     │
-    ├─> User makes API request to api.enclii.io
+    ├─> User makes API request to api.enclii.dev
     │       │
     │       ├─> Include ID token in Authorization header
     │       │
@@ -399,7 +399,7 @@ kubectl apply -k infra/k8s/production
 kubectl wait --for=condition=ready pod -l app=switchyard-api -n enclii-platform --timeout=300s
 
 # Verify
-curl https://api.enclii.io/health
+curl https://api.enclii.dev/health
 # {"status": "ok"}
 ```
 
@@ -432,7 +432,7 @@ kubectl apply -f ../enclii/dogfooding/janua.yaml
 kubectl wait --for=condition=ready pod -l app=janua -n enclii-platform --timeout=300s
 
 # Verify
-curl https://auth.enclii.io/health
+curl https://auth.enclii.dev/health
 # {"status": "ok"}
 ```
 
@@ -444,15 +444,15 @@ Create OAuth clients in Janua for Enclii:
 
 ```bash
 # Create Enclii Web UI client (public)
-curl -X POST https://auth.enclii.io/v1/clients \
+curl -X POST https://auth.enclii.dev/v1/clients \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
   -d '{
     "client_id": "enclii-web-ui",
     "client_name": "Enclii Web Dashboard",
     "redirect_uris": [
-      "https://app.enclii.io/callback",
-      "https://dashboard.enclii.io/callback",
+      "https://app.enclii.dev/callback",
+      "https://dashboard.enclii.dev/callback",
       "http://localhost:3000/callback"
     ],
     "grant_types": ["authorization_code", "refresh_token"],
@@ -463,7 +463,7 @@ curl -X POST https://auth.enclii.io/v1/clients \
   }'
 
 # Create Enclii API client (confidential)
-curl -X POST https://auth.enclii.io/v1/clients \
+curl -X POST https://auth.enclii.dev/v1/clients \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
   -d '{
@@ -485,7 +485,7 @@ Update Switchyard API to validate Janua tokens:
 
 ```bash
 # apps/switchyard-api/main.go
-jwksProvider, _ := auth.NewJWKSProvider("https://auth.enclii.io/.well-known/jwks.json")
+jwksProvider, _ := auth.NewJWKSProvider("https://auth.enclii.dev/.well-known/jwks.json")
 jwtManager := auth.NewJWTManager(jwksProvider)
 
 r.Use(jwtManager.AuthMiddleware())
@@ -496,9 +496,9 @@ Update Switchyard UI to use Janua OAuth:
 ```bash
 # apps/switchyard-ui/lib/auth-config.ts
 export const authConfig = {
-  authority: 'https://auth.enclii.io',
+  authority: 'https://auth.enclii.dev',
   client_id: 'enclii-web-ui',
-  redirect_uri: 'https://app.enclii.io/callback',
+  redirect_uri: 'https://app.enclii.dev/callback',
   scope: 'openid profile email',
   response_type: 'code',
 }
@@ -604,13 +604,13 @@ Customers can **verify** our claims:
 
 ```bash
 # Customer checks our public API
-curl https://api.enclii.io/health
+curl https://api.enclii.dev/health
 
 # Customer checks Janua JWKS endpoint
-curl https://auth.enclii.io/.well-known/jwks.json
+curl https://auth.enclii.dev/.well-known/jwks.json
 
 # Customer checks status page
-curl https://status.enclii.io
+curl https://status.enclii.dev
 # Shows real uptime data for Enclii services
 ```
 
@@ -692,11 +692,11 @@ spec:
 **Fix:**
 ```bash
 # Check JWKS cache age
-curl https://api.enclii.io/debug/jwks/cache
+curl https://api.enclii.dev/debug/jwks/cache
 # {"last_refresh": "2025-11-20T10:30:00Z", "next_refresh": "2025-11-20T10:45:00Z"}
 
 # Force JWKS refresh
-curl -X POST https://api.enclii.io/debug/jwks/refresh \
+curl -X POST https://api.enclii.dev/debug/jwks/refresh \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Check clock skew

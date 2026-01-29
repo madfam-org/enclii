@@ -275,8 +275,8 @@ kubectl wait --for=condition=ready pod -l app=switchyard-api
 
 ### Phase 3: Verify
 ```bash
-curl https://api.enclii.io/health
-curl https://app.enclii.io/
+curl https://api.enclii.dev/health
+curl https://app.enclii.dev/
 ```
 
 ---

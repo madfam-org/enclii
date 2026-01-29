@@ -671,26 +671,3 @@ This section defines the operating protocol for AI agents (Claude Code, GitHub C
 | Configuration | Manual review required |
 
 ---
-# Build test 1768185875
-# Build trigger 1768186219
-# Final test 1768186424
-# Build trigger 1768187061
-# Build test 1768188102
-# Build trigger 1768433105
-# Build trigger 1768433846
-# Build test 1768433903
-# Build trigger 1768437150
-# Build trigger 1768514418
-# Build trigger 1768515213
-# Build test 1768517224
-# Build test 1768517287
-# Build trigger 1768518422
-# Build trigger 1768519762
-# Build trigger 1768519849
-# Build trigger 1768522159
-# Build trigger 1768769031
-# Build trigger 1768798535
-# Build trigger 1768815370
-# Build trigger 1768815613
-# Fallback to GitHub-hosted runners 1768819160
-# CI trigger with fixed runners 1768851875
