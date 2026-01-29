@@ -38,6 +38,7 @@ import {
   isTokenExpired,
   parseErrorResponse,
 } from "./auth-storage";
+import { setAuthInitComplete } from "@/lib/api";
 
 // =============================================================================
 // CONFIGURATION
@@ -134,6 +135,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } finally {
         setIsLoading(false);
         isInitializingRef.current = false;
+        setAuthInitComplete(true);
       }
     };
 
@@ -161,7 +163,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (!refreshed) {
         const stored = storage.getTokens();
         if (!stored || stored.expiresAt < Date.now()) {
-          logout();
+          logout({ skipServerRevocation: true });
         }
         // Token still valid → transient 401, don't logout
       }
@@ -398,11 +400,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // COMMON METHODS
   // ==========================================================================
 
-  const logout = async (): Promise<void> => {
+  const logout = async (options?: { skipServerRevocation?: boolean }): Promise<void> => {
     let logoutUrl: string | null = null;
 
     try {
-      if (tokens?.accessToken) {
+      // Only call server-side logout (which revokes the session in Redis)
+      // for intentional user logouts — NOT for 401 cascade / forced logouts.
+      if (tokens?.accessToken && !options?.skipServerRevocation) {
         const response = await apiRequest("/v1/auth/logout", {
           method: "POST",
         }).catch(() => null);
@@ -490,7 +494,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error("Token refresh failed:", error);
       // During initialization, don't logout — let the init effect show an error instead
       if (!isInitializingRef.current) {
-        await logout();
+        await logout({ skipServerRevocation: true });
       }
       return false;
     } finally {

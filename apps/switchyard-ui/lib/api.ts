@@ -17,6 +17,13 @@ let csrfToken: string | null = null;
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
+// Auth initialization gate: prevents 401 handling from firing before AuthContext completes init.
+// AuthContext sets this to true after initialization finishes.
+let _authInitComplete = false;
+export function setAuthInitComplete(ready: boolean) {
+  _authInitComplete = ready;
+}
+
 /**
  * Attempt to refresh the access token using the refresh token
  * Prevents concurrent refresh attempts by returning shared promise
@@ -26,9 +33,13 @@ async function attemptTokenRefresh(): Promise<boolean> {
     return false;
   }
 
-  // In OIDC mode, delegate refresh to AuthContext via custom event
+  // In OIDC mode, delegate refresh to AuthContext via custom event.
+  // But only if AuthContext has finished initializing — otherwise the
+  // init effect will handle token restoration itself.
   if (AUTH_MODE === "oidc") {
-    window.dispatchEvent(new CustomEvent("enclii:auth-expired"));
+    if (_authInitComplete) {
+      window.dispatchEvent(new CustomEvent("enclii:auth-expired"));
+    }
     return false;
   }
 
@@ -227,8 +238,9 @@ export async function apiRequest<T = any>(
           localStorage.removeItem("enclii_user");
         }
       } else {
-        // OIDC: notify AuthContext to attempt silent refresh
-        if (typeof window !== "undefined") {
+        // OIDC: notify AuthContext to attempt silent refresh.
+        // Only fire if auth init is complete — during init, AuthContext handles its own restoration.
+        if (typeof window !== "undefined" && _authInitComplete) {
           window.dispatchEvent(new CustomEvent("enclii:auth-expired"));
         }
       }
