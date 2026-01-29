@@ -98,6 +98,7 @@ playwright-report/
 playwright/.cache/
 test-results/
 .playwright/
+.playwright-mcp/
 
 # Serena MCP
 .serena/
