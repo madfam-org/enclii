@@ -43,7 +43,7 @@ images:
   digest: sha256:dc3de5c2d4f9399f82e6483db04f5dfd6b20ccbd9661b86d000042b64f9704db
 - name: ghcr.io/madfam-org/enclii/switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  digest: sha256:64afd054dca0241747d58b73b38ac7b45244618ba7e2ead4e971a40ab036e6f3
+  digest: sha256:a3bdd778759c1205ffd94e21940ce3d7b245124217cb479e6eb59bbb6c35f661
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 
