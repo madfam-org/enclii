@@ -143,8 +143,8 @@ spec:
           emptyDir: {}
         - name: var-run-volume
           emptyDir: {}
-      # TEMPORARY: Pod security context removed until new image deployment
       securityContext:
+        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
 ---
