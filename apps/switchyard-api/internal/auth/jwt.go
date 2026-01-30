@@ -187,6 +187,12 @@ func loadOrGenerateRSAKey() (*rsa.PrivateKey, error) {
 		return rsaKey, nil
 	}
 
+	// In production, ephemeral keys cause cross-replica 401s
+	if env := os.Getenv("ENCLII_ENV"); env == "production" {
+		return nil, fmt.Errorf("ENCLII_JWT_PRIVATE_KEY is required in production (env=%s); "+
+			"run scripts/generate-jwt-secrets.sh to create the shared signing key", env)
+	}
+
 	logrus.Warn("ENCLII_JWT_PRIVATE_KEY not set — generating ephemeral RSA key (tokens will NOT survive pod restarts or work across replicas)")
 	return rsa.GenerateKey(rand.Reader, 2048)
 }
