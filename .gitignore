@@ -102,3 +102,6 @@ test-results/
 
 # Serena MCP
 .serena/
+
+# Audit screenshots
+audit-*.png
