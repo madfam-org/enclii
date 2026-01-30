@@ -40,7 +40,7 @@ images:
   newTag: "76fc3dae6d902b3230934b6f1f8ca17302fc8b66"
 - name: ghcr.io/madfam-org/enclii/switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-  digest: sha256:dc3de5c2d4f9399f82e6483db04f5dfd6b20ccbd9661b86d000042b64f9704db
+  digest: sha256:f8f7d64b0014099a041d0ae3b001811358be03e24a82246a380ae8b467708694
 - name: ghcr.io/madfam-org/enclii/switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
   digest: sha256:a3bdd778759c1205ffd94e21940ce3d7b245124217cb479e6eb59bbb6c35f661
