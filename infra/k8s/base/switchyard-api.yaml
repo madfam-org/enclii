@@ -129,7 +129,10 @@ spec:
           #     drop:
           #       - ALL
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
             capabilities:
               drop:
                 - ALL
