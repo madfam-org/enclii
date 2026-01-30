@@ -104,4 +104,4 @@ test-results/
 .serena/
 
 # Audit screenshots
-audit-*.png
+screenshots/
