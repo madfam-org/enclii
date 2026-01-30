@@ -38,7 +38,6 @@ import {
   isTokenExpired,
   parseErrorResponse,
 } from "./auth-storage";
-import { setAuthInitComplete } from "@/lib/api";
 
 // =============================================================================
 // CONFIGURATION
@@ -69,7 +68,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [refreshTimer, setRefreshTimer] = useState<NodeJS.Timeout | null>(null);
   const isRefreshingRef = useRef(false); // Prevent concurrent refresh attempts
   const refreshTokensRef = useRef<() => Promise<boolean>>(null!); // Stable ref for token refresh
-  const isInitializingRef = useRef(true); // Prevent auth-expired handler during init
+  const isInitializingRef = useRef(true); // Prevent logout during init
+  const refreshFailCountRef = useRef(0); // Track consecutive refresh failures
 
   const clearAuthError = useCallback(() => {
     setAuthError(null);
@@ -135,7 +135,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } finally {
         setIsLoading(false);
         isInitializingRef.current = false;
-        setAuthInitComplete(true);
       }
     };
 
@@ -150,28 +149,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     };
   }, [refreshTimer]);
-
-  // Listen for auth-expired events from lib/api.ts (OIDC mode)
-  useEffect(() => {
-    if (AUTH_MODE !== "oidc") return;
-
-    const handleAuthExpired = async () => {
-      // Skip during initialization to prevent double-jeopardy logout on reload
-      if (isInitializingRef.current) return;
-
-      const refreshed = await refreshTokensRef.current?.();
-      if (!refreshed) {
-        const stored = storage.getTokens();
-        if (!stored || stored.expiresAt < Date.now()) {
-          logout({ skipServerRevocation: true });
-        }
-        // Token still valid → transient 401, don't logout
-      }
-    };
-
-    window.addEventListener("enclii:auth-expired", handleAuthExpired);
-    return () => window.removeEventListener("enclii:auth-expired", handleAuthExpired);
-  }, []);
 
   // ==========================================================================
   // API HELPERS
@@ -488,13 +465,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setTokens(newTokenInfo);
       storage.setTokens(newTokenInfo);
       scheduleTokenRefresh(newTokenInfo.expiresAt);
+      refreshFailCountRef.current = 0;
 
       return true;
     } catch (error) {
       console.error("Token refresh failed:", error);
-      // During initialization, don't logout — let the init effect show an error instead
-      if (!isInitializingRef.current) {
-        await logout({ skipServerRevocation: true });
+      refreshFailCountRef.current += 1;
+      // After 3 consecutive failures, surface an error so the UI can show
+      // "Session expired" — but never auto-logout / auto-redirect.
+      if (refreshFailCountRef.current >= 3) {
+        setAuthError("Session expired. Please log in again.");
       }
       return false;
     } finally {
