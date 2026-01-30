@@ -38,6 +38,9 @@ spec:
           value: "false"
         - name: ENCLII_MAX_REQUEST_SIZE
           value: "10MB"
+        # CORS - Allow cross-origin requests from web UI and admin dashboard
+        - name: ENCLII_ALLOWED_ORIGINS
+          value: "https://app.enclii.dev,https://admin.enclii.dev"
         # SSO Configuration - Janua Integration (Full OIDC mode)
         # Web UI uses OIDC login flow, CLI uses PKCE direct auth
         - name: ENCLII_AUTH_MODE
