@@ -63,7 +63,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: jwt-secrets
-                  key: jwt-private-key
+                  key: private-key
                   optional: false
             - name: ENCLII_OIDC_ISSUER
               value: "http://localhost:5556"
