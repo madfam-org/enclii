@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Notification {
   id: string;
@@ -136,6 +137,7 @@ function formatTimestamp(date: Date): string {
 }
 
 export function NotificationBell() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -182,14 +184,16 @@ export function NotificationBell() {
     }
   }, [readIds]);
 
-  // Initial fetch and polling
+  // Initial fetch and polling — only after auth is ready
   useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
+
     fetchNotifications();
 
     // Poll every 30 seconds for updates
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, authLoading, isAuthenticated]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

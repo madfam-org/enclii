@@ -82,13 +82,13 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
     // Content Security Policy - restricts resource loading
     "Content-Security-Policy": [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Next.js requires unsafe-eval in dev
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com", // Next.js requires unsafe-eval in dev
       "style-src 'self' 'unsafe-inline'", // Tailwind requires unsafe-inline
       "img-src 'self' data: https:",
       "font-src 'self' data:",
       // API endpoints: localhost for dev, api.enclii.dev for production
       // Janua SSO configured via NEXT_PUBLIC_JANUA_URL (default: api.janua.dev)
-      `connect-src 'self' http://localhost:4200 https://api.enclii.dev ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://api.janua.dev'}`,
+      `connect-src 'self' http://localhost:4200 https://api.enclii.dev ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://api.janua.dev'} https://static.cloudflareinsights.com`,
       `frame-src 'self' ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://auth.madfam.io'}`,
       "frame-ancestors 'none'",
     ].join("; "),

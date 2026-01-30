@@ -231,20 +231,43 @@ export async function apiRequest<T = any>(
       }
 
       // Token refresh failed or retry still returned 401
-      if (AUTH_MODE !== "oidc") {
-        // Local auth: clear tokens so user is prompted to log in
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("enclii_tokens");
-          localStorage.removeItem("enclii_user");
-        }
-      } else {
-        // OIDC: notify AuthContext to attempt silent refresh.
-        // Only fire if auth init is complete — during init, AuthContext handles its own restoration.
-        if (typeof window !== "undefined" && _authInitComplete) {
-          window.dispatchEvent(new CustomEvent("enclii:auth-expired"));
+      // Check if the stored token is actually expired before triggering logout.
+      // A 401 with a non-expired token is transient (e.g., race condition during
+      // auth callback); only escalate when the token is genuinely expired or missing.
+      let tokenActuallyExpired = true;
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("enclii_tokens");
+          if (stored) {
+            const t = JSON.parse(stored);
+            if (t.expiresAt && t.expiresAt > Date.now()) {
+              tokenActuallyExpired = false;
+            }
+          }
+        } catch {
+          // parse error → treat as expired
         }
       }
-      throw new Error("Authentication required. Please log in again.");
+
+      if (tokenActuallyExpired) {
+        if (AUTH_MODE !== "oidc") {
+          // Local auth: clear tokens so user is prompted to log in
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("enclii_tokens");
+            localStorage.removeItem("enclii_user");
+          }
+        } else {
+          // OIDC: notify AuthContext to attempt silent refresh.
+          // Only fire if auth init is complete — during init, AuthContext handles its own restoration.
+          if (typeof window !== "undefined" && _authInitComplete) {
+            window.dispatchEvent(new CustomEvent("enclii:auth-expired"));
+          }
+        }
+        throw new Error("Authentication required. Please log in again.");
+      }
+
+      // Token not expired — transient 401, don't trigger logout cascade
+      throw new Error("Request unauthorized. Retrying may resolve this.");
     }
 
     if (response.status === 403) {

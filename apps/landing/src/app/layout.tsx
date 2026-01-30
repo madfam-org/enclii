@@ -18,6 +18,7 @@ export const metadata: Metadata = {
     title: 'Enclii - Deploy Without the Bill Shock',
     description: 'Railway-style PaaS at 95% less cost.',
   },
+  icons: { icon: '/favicon.ico' },
 }
 
 export default function RootLayout({
