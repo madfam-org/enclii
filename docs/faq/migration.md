@@ -351,5 +351,6 @@ jobs:
 
 - **Railway Guide**: [Railway Migration Guide](/docs/guides/RAILWAY_MIGRATION_GUIDE)
 - **Vercel Guide**: [Vercel Migration Guide](/docs/guides/VERCEL_MIGRATION_GUIDE)
+- **Heroku Guide**: [Heroku Migration Guide](/docs/guides/HEROKU_MIGRATION_GUIDE)
 - **Database Operations**: [Database Operations Guide](/docs/guides/database-operations)
 - **Getting Started**: [Quickstart](/docs/getting-started/QUICKSTART)

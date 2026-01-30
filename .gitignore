@@ -2,6 +2,8 @@
 bin/
 dist/
 build/
+/api
+/worker
 
 # Dependencies
 node_modules/

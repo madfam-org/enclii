@@ -1,7 +1,7 @@
 # Railway to Enclii Migration Guide
 
-**Version**: 1.0
-**Last Updated**: 2025-11-20
+**Version**: 1.1
+**Last Updated**: 2026-01-30
 **Estimated Migration Time**: 2-4 hours per service
 
 ---
@@ -70,8 +70,8 @@ enclii env create staging
 
 | Railway Setup | Recommended Enclii Approach | Migration Complexity |
 |--------------|----------------------------|---------------------|
-| **Railway Postgres** | AWS RDS / GCP CloudSQL | 🟡 Medium (requires dump/restore) |
-| **Railway Redis** | AWS ElastiCache / GCP Memorystore | 🟢 Low (minimal data migration) |
+| **Railway Postgres** | Enclii in-cluster PostgreSQL (or AWS RDS / GCP CloudSQL) | 🟡 Medium (requires dump/restore) |
+| **Railway Redis** | Enclii in-cluster Redis (or AWS ElastiCache / GCP Memorystore) | 🟢 Low (minimal data migration) |
 | **Railway MongoDB** | MongoDB Atlas | 🟡 Medium (requires dump/restore) |
 | **No database** | N/A | 🟢 Low |
 

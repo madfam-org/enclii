@@ -65,6 +65,7 @@ User guides for common tasks and migrations.
 - [Dogfooding Guide](./guides/DOGFOODING_GUIDE.md) - Running Enclii on Enclii (self-hosting)
 - [Railway Migration Guide](./guides/RAILWAY_MIGRATION_GUIDE.md) - Migrating from Railway
 - [Vercel Migration Guide](./guides/VERCEL_MIGRATION_GUIDE.md) - Migrating from Vercel
+- [Heroku Migration Guide](./guides/HEROKU_MIGRATION_GUIDE.md) - Migrating from Heroku
 - [Testing Guide](./guides/TESTING_GUIDE.md) - Writing and running tests
 - [Database Operations](./guides/database-operations.md) - Database management and migrations
 - [CLI Auth Setup](./guides/cli-auth-setup.md) - CLI authentication configuration

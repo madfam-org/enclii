@@ -81,4 +81,4 @@ A: Yes. Enclii supports cron jobs and one-off tasks via the Timetable subsystem.
 
 - **Getting Started**: [Quickstart](/docs/getting-started/QUICKSTART)
 - **Troubleshooting**: [Common Issues](/docs/troubleshooting/)
-- **Migration Guides**: [From Railway](/docs/guides/RAILWAY_MIGRATION_GUIDE), [From Vercel](/docs/guides/VERCEL_MIGRATION_GUIDE)
+- **Migration Guides**: [From Railway](/docs/guides/RAILWAY_MIGRATION_GUIDE), [From Vercel](/docs/guides/VERCEL_MIGRATION_GUIDE), [From Heroku](/docs/guides/HEROKU_MIGRATION_GUIDE)
