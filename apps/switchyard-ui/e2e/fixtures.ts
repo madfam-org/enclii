@@ -149,7 +149,8 @@ export async function setupApiMocking(page: Page, customMocks?: Record<string, u
     const path = url.pathname;
 
     // Check if we have a mock for this path
-    const mockKey = Object.keys(mocks).find((key) => path.endsWith(key) || path.includes(key));
+    const sortedKeys = Object.keys(mocks).sort((a, b) => b.length - a.length);
+    const mockKey = sortedKeys.find((key) => path.endsWith(key) || path.includes(key));
 
     if (mockKey) {
       const mockData = mocks[mockKey as keyof typeof mocks];
