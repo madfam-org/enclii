@@ -11,6 +11,8 @@ import {
 import '@xyflow/react/dist/style.css'
 import { topologyApi } from '@/lib/admin-api'
 import type { TopologyNode, TopologyEdge } from '@/types/admin'
+import { Network } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 
 const nodeColors: Record<string, string> = {
   cluster: '#22c55e',
@@ -63,7 +65,7 @@ export function TopologyCanvas() {
   }
 
   if (nodes.length === 0) {
-    return <p className="text-muted-foreground text-center py-8">No topology data available.</p>
+    return <EmptyState icon={Network} title="No Topology Data" description="Register clusters and hosts to visualize your infrastructure topology." />
   }
 
   return (

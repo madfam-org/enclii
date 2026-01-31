@@ -11,6 +11,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Boxes } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 
 const syncColors: Record<string, string> = {
   Synced: 'bg-green-500/20 text-green-400',
@@ -48,7 +50,7 @@ export function ResourceTable() {
   }
 
   if (resources.length === 0) {
-    return <p className="text-muted-foreground text-sm text-center py-8">No managed resources found.</p>
+    return <EmptyState icon={Boxes} title="No Managed Resources" description="Infrastructure resources managed by Crossplane will appear here." />
   }
 
   return (

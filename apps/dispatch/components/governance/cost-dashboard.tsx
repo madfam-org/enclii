@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { costApi } from '@/lib/admin-api'
 import type { CostAllocation } from '@/types/admin'
-import { DollarSign } from 'lucide-react'
+import { DollarSign, BarChart3 } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 
 export function CostDashboard() {
   const [summary, setSummary] = useState<CostAllocation[]>([])
@@ -27,7 +28,7 @@ export function CostDashboard() {
         <p className="text-3xl font-semibold">${(totalCents / 100).toFixed(2)}</p>
       </div>
       {summary.length === 0 ? (
-        <p className="text-muted-foreground text-sm text-center">No cost data available.</p>
+        <EmptyState icon={BarChart3} title="No Cost Data" description="Cost allocation data will appear once resources are tracked." />
       ) : (
         <div className="space-y-2">
           {summary.map((s, i) => (

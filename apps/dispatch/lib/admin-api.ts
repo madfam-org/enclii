@@ -13,11 +13,14 @@ import type {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.enclii.dev'
 
 async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('dispatch_token') : null
+
   const res = await fetch(`${API_BASE}/v1/admin${path}`, {
     ...options,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   })
