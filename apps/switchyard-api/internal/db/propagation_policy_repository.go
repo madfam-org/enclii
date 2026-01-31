@@ -53,7 +53,11 @@ func (r *PropagationPolicyRepository) GetByID(ctx context.Context, id uuid.UUID)
 	}
 	pp.ClusterIDs = make([]uuid.UUID, len(clusterIDs))
 	for i, s := range clusterIDs {
-		pp.ClusterIDs[i], _ = uuid.Parse(s)
+		parsed, err := uuid.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cluster ID %q: %w", s, err)
+		}
+		pp.ClusterIDs[i] = parsed
 	}
 	return pp, nil
 }
@@ -75,7 +79,11 @@ func (r *PropagationPolicyRepository) List(ctx context.Context) ([]*types.Propag
 		}
 		pp.ClusterIDs = make([]uuid.UUID, len(clusterIDs))
 		for i, s := range clusterIDs {
-			pp.ClusterIDs[i], _ = uuid.Parse(s)
+			parsed, err := uuid.Parse(s)
+			if err != nil {
+				return nil, fmt.Errorf("invalid cluster ID %q: %w", s, err)
+			}
+			pp.ClusterIDs[i] = parsed
 		}
 		policies = append(policies, pp)
 	}

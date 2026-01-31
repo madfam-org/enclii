@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const token = localStorage.getItem('dispatch_token')
+      const token = document.cookie.split('; ').find(r => r.startsWith('dispatch_auth='))?.split('=')[1]
       if (!token) {
         setIsLoading(false)
         return
@@ -135,7 +135,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ? 'Your email domain is not authorized for Dispatch access.'
             : 'You do not have the required role for Dispatch access.'
           setError(`Access denied. ${reason}`)
-          localStorage.removeItem('dispatch_token')
           document.cookie = `dispatch_auth=${cookieClear}`
           document.cookie = `dispatch_user_email=${cookieClear}`
           document.cookie = `dispatch_user_roles=${cookieClear}`
@@ -149,7 +148,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           document.cookie = `dispatch_user_roles=${userRoles.join(',')}${cookieBase}`
         }
       } else {
-        localStorage.removeItem('dispatch_token')
         const elseHostname = typeof window !== 'undefined' ? window.location.hostname : ''
         const clearDomain = elseHostname.includes('.enclii.dev') ? '; domain=.enclii.dev' : ''
         document.cookie = `dispatch_auth=; Max-Age=0; path=/${clearDomain}`
@@ -186,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      const token = localStorage.getItem('dispatch_token')
+      const token = document.cookie.split('; ').find(r => r.startsWith('dispatch_auth='))?.split('=')[1]
       if (token) {
         // Notify Janua of logout
         await fetch(`${JANUA_URL}/api/v1/auth/logout`, {
@@ -197,7 +195,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }).catch(() => {})
       }
     } finally {
-      localStorage.removeItem('dispatch_token')
       // Clear cookies with proper domain
       const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
       const clearDomain = hostname.includes('.enclii.dev') ? '; domain=.enclii.dev' : ''

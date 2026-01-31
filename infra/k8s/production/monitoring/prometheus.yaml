@@ -676,7 +676,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.48.0
+          image: prom/prometheus:v2.53.3
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"

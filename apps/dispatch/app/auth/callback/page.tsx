@@ -113,7 +113,6 @@ function AuthCallbackContent() {
         // Clear any stored data with proper domain
         const clearHostname = window.location.hostname
         const clearDomain = clearHostname.includes('.enclii.dev') ? '; domain=.enclii.dev' : ''
-        localStorage.removeItem('dispatch_token')
         document.cookie = `dispatch_auth=; Max-Age=0; path=/${clearDomain}`
         document.cookie = `dispatch_user_email=; Max-Age=0; path=/${clearDomain}`
         document.cookie = `dispatch_user_roles=; Max-Age=0; path=/${clearDomain}`
@@ -130,9 +129,6 @@ function AuthCallbackContent() {
         }, 2000)
         return
       }
-
-      // Store token in localStorage for client-side auth state
-      localStorage.setItem('dispatch_token', access_token)
 
       // Set cookies via server-side API route to ensure proper Set-Cookie headers
       // This avoids race conditions with client-side document.cookie
