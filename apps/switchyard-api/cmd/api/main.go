@@ -451,6 +451,23 @@ func main() {
 		logrus.Warn("⚠ Email service not configured - invitation emails will be logged only")
 	}
 
+	// Wire up Admin Control Plane services (fleet, clusters, infrastructure, multi-tenancy, governance, costs)
+	bareMetalService := services.NewBareMetalService(repos, k8sClient, logrus.StandardLogger())
+	apiHandler.SetBareMetalService(bareMetalService)
+	clusterAdminService := services.NewClusterAdminService(repos, logrus.StandardLogger())
+	apiHandler.SetClusterAdminService(clusterAdminService)
+	infrastructureService := services.NewInfrastructureService(repos, k8sClient, logrus.StandardLogger())
+	apiHandler.SetInfrastructureService(infrastructureService)
+	vclusterService := services.NewVClusterService(repos, k8sClient, logrus.StandardLogger())
+	apiHandler.SetVClusterService(vclusterService)
+	placementService := services.NewPlacementService(repos, logrus.StandardLogger())
+	apiHandler.SetPlacementService(placementService)
+	driftService := services.NewDriftService(repos, logrus.StandardLogger())
+	apiHandler.SetDriftService(driftService)
+	costTrackingService := services.NewCostTrackingService(repos, logrus.StandardLogger())
+	apiHandler.SetCostTrackingService(costTrackingService)
+	logrus.Info("✓ Admin control plane services wired (fleet, clusters, infrastructure, vclusters, placement, drift, costs)")
+
 	api.SetupRoutes(router, apiHandler)
 
 	server := &http.Server{
