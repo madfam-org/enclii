@@ -11,6 +11,7 @@ import {
   DollarSign,
   Network,
   LayoutDashboard,
+  Share2,
 } from 'lucide-react'
 
 const navItems = [
@@ -18,6 +19,7 @@ const navItems = [
   { href: '/fleet', label: 'Fleet', icon: Server },
   { href: '/clusters', label: 'Clusters', icon: Layers },
   { href: '/infrastructure', label: 'Infrastructure', icon: GitBranch },
+  { href: '/propagation', label: 'Propagation', icon: Share2 },
   { href: '/governance', label: 'Governance', icon: Shield },
   { href: '/topology', label: 'Topology', icon: Network },
 ]

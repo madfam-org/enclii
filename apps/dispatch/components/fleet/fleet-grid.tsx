@@ -4,6 +4,14 @@ import { useEffect, useState } from 'react'
 import { fleetApi } from '@/lib/admin-api'
 import type { BareMetalHost, BMHState } from '@/types/admin'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Server, Power, HardDrive, Trash2, RefreshCw } from 'lucide-react'
 
 const stateColors: Record<BMHState, string> = {
@@ -20,6 +28,11 @@ export function FleetGrid() {
   const [hosts, setHosts] = useState<BareMetalHost[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<{
+    host: BareMetalHost
+    action: 'power' | 'wipe'
+  } | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const fetchHosts = async () => {
     try {
@@ -36,6 +49,25 @@ export function FleetGrid() {
   useEffect(() => {
     fetchHosts()
   }, [])
+
+  const handleConfirm = async () => {
+    if (!confirmAction) return
+    setActionLoading(true)
+    try {
+      if (confirmAction.action === 'power') {
+        const nextState = confirmAction.host.power_state === 'on' ? 'off' : 'on'
+        await fleetApi.power(confirmAction.host.id, nextState)
+      } else {
+        await fleetApi.wipe(confirmAction.host.id)
+      }
+      setConfirmAction(null)
+      await fetchHosts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -68,34 +100,77 @@ export function FleetGrid() {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-      {hosts.map((host) => (
-        <div
-          key={host.id}
-          className={`rounded-lg border p-4 transition-all hover:shadow-md cursor-pointer ${stateColors[host.state] || 'bg-muted/20 border-border'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <Server className="size-5" />
-            <span className={`size-2.5 rounded-full ${host.power_state === 'on' ? 'bg-green-400' : host.power_state === 'off' ? 'bg-red-400' : 'bg-gray-400'}`} />
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {hosts.map((host) => (
+          <div
+            key={host.id}
+            className={`rounded-lg border p-4 transition-all hover:shadow-md cursor-pointer ${stateColors[host.state] || 'bg-muted/20 border-border'}`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <Server className="size-5" />
+              <span className={`size-2.5 rounded-full ${host.power_state === 'on' ? 'bg-green-400' : host.power_state === 'off' ? 'bg-red-400' : 'bg-gray-400'}`} />
+            </div>
+            <h4 className="font-mono text-sm font-semibold truncate">{host.name}</h4>
+            <p className="text-xs opacity-75 mt-1">{host.state}</p>
+            {host.mac_address && (
+              <p className="text-xs opacity-50 font-mono mt-1">{host.mac_address}</p>
+            )}
+            <div className="flex items-center gap-1 mt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title={host.power_state === 'on' ? 'Power Off' : 'Power On'}
+                onClick={() => setConfirmAction({ host, action: 'power' })}
+              >
+                <Power className="size-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Firmware" disabled>
+                <HardDrive className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Wipe"
+                onClick={() => setConfirmAction({ host, action: 'wipe' })}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </div>
           </div>
-          <h4 className="font-mono text-sm font-semibold truncate">{host.name}</h4>
-          <p className="text-xs opacity-75 mt-1">{host.state}</p>
-          {host.mac_address && (
-            <p className="text-xs opacity-50 font-mono mt-1">{host.mac_address}</p>
-          )}
-          <div className="flex items-center gap-1 mt-3">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Power">
-              <Power className="size-3.5" />
+        ))}
+      </div>
+
+      <Dialog open={!!confirmAction} onOpenChange={() => setConfirmAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction?.action === 'power'
+                ? `Power ${confirmAction.host.power_state === 'on' ? 'Off' : 'On'} — ${confirmAction?.host.name}`
+                : `Wipe — ${confirmAction?.host.name}`}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmAction?.action === 'power'
+                ? `This will ${confirmAction.host.power_state === 'on' ? 'shut down' : 'start'} the host.`
+                : 'This will erase all data on this host. This action cannot be undone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAction(null)} disabled={actionLoading}>
+              Cancel
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Firmware">
-              <HardDrive className="size-3.5" />
+            <Button
+              variant={confirmAction?.action === 'wipe' ? 'destructive' : 'default'}
+              onClick={handleConfirm}
+              disabled={actionLoading}
+            >
+              {actionLoading ? 'Processing...' : 'Confirm'}
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Wipe">
-              <Trash2 className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-      ))}
-    </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

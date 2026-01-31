@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -185,6 +186,9 @@ type DriftEventRepositoryInterface interface {
 // CostAllocationRepositoryInterface defines operations for cost allocations
 type CostAllocationRepositoryInterface interface {
 	Create(ctx context.Context, allocation *types.CostAllocation) error
+	ListByTenant(ctx context.Context, tenantID string, start, end time.Time) ([]*types.CostAllocation, error)
+	ListByHost(ctx context.Context, hostID uuid.UUID, start, end time.Time) ([]*types.CostAllocation, error)
+	GetSummary(ctx context.Context, start, end time.Time) ([]*types.CostAllocation, error)
 }
 
 // Note: RepositoryProvider interface exists for documentation and potential future use,
