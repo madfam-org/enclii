@@ -5,6 +5,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --solarpunk-deep: #1a1f2e;
+  --solarpunk-green: #00ff9d;
+  --solarpunk-green-dim: #00cc7d;
+  --solarpunk-slate: #0f1420;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,9 +29,9 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom gradient for hero */
+/* Custom gradient for hero - Solarpunk aesthetic */
 .hero-gradient {
-  background: linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0ea5e9 100%);
+  background: linear-gradient(135deg, var(--solarpunk-slate) 0%, var(--solarpunk-deep) 50%, #1e293b 100%);
 }
 
 /* Card hover effect */
@@ -37,5 +41,25 @@ html {
 
 .feature-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 40px rgba(0, 255, 157, 0.08);
+}
+
+/* Solarpunk glow effects */
+.glow-border {
+  border-color: rgba(0, 255, 157, 0.3);
+}
+
+.glow-border:hover {
+  border-color: rgba(0, 255, 157, 0.5);
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.1);
+}
+
+/* Pulse glow for badge */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(0, 255, 157, 0.4); }
+  50% { box-shadow: 0 0 12px rgba(0, 255, 157, 0.7); }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }

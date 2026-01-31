@@ -8,7 +8,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-solarpunk-deep rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">E</span>
               </div>
               <span className="font-bold text-xl text-gray-900 dark:text-white">Enclii</span>
@@ -28,7 +28,7 @@ export default function Home() {
               </a>
               <a
                 href="https://app.enclii.dev"
-                className="inline-flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                className="inline-flex items-center gap-2 bg-solarpunk-green text-solarpunk-slate px-4 py-2 rounded-lg font-medium hover:bg-solarpunk-green-dim transition-colors"
               >
                 Get Started
                 <ArrowRight className="w-4 h-4" />
@@ -41,8 +41,8 @@ export default function Home() {
       {/* Hero Section */}
       <section className="hero-gradient pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full text-white/90 text-sm mb-8">
-            <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+          <div className="inline-flex items-center gap-2 bg-solarpunk-green/10 backdrop-blur-sm px-4 py-2 rounded-full text-solarpunk-green text-sm mb-8 pulse-glow">
+            <span className="inline-block w-2 h-2 bg-solarpunk-green rounded-full animate-pulse"></span>
             Production Ready
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
@@ -55,7 +55,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               href="https://app.enclii.dev"
-              className="inline-flex items-center justify-center gap-2 bg-white text-primary-700 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center gap-2 bg-solarpunk-green text-solarpunk-slate px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-green-dim transition-colors shadow-lg"
             >
               Start Deploying
               <ArrowRight className="w-5 h-5" />
@@ -178,7 +178,7 @@ export default function Home() {
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Compare to traditional SaaS: <span className="line-through">Railway Pro $2,000/mo + Auth0 $220/mo</span>
             </p>
-            <p className="text-lg font-semibold text-primary-600 dark:text-primary-400">
+            <p className="text-lg font-semibold text-solarpunk-green-dim dark:text-solarpunk-green">
               5-year savings: up to $127,200 with zero vendor lock-in
             </p>
           </div>
@@ -241,7 +241,7 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-primary-600">
+      <section className="py-24 px-4 sm:px-6 lg:px-8 hero-gradient">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
             Ready to Deploy Smarter?
@@ -252,7 +252,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               href="https://app.enclii.dev"
-              className="inline-flex items-center justify-center gap-2 bg-white text-primary-700 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center gap-2 bg-solarpunk-green text-solarpunk-slate px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-green-dim transition-colors shadow-lg"
             >
               Start Building Free
               <ArrowRight className="w-5 h-5" />
@@ -274,7 +274,7 @@ export default function Home() {
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-solarpunk-deep rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-lg">E</span>
                 </div>
                 <span className="font-bold text-xl text-gray-900 dark:text-white">Enclii</span>
@@ -319,7 +319,7 @@ export default function Home() {
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
     <div className="feature-card bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-      <div className="w-14 h-14 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-xl flex items-center justify-center mb-4">
+      <div className="w-14 h-14 bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green rounded-xl flex items-center justify-center mb-4">
         {icon}
       </div>
       <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{title}</h3>
@@ -331,7 +331,7 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
 function CapabilityCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-      <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-lg flex items-center justify-center mb-4">
+      <div className="w-12 h-12 bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green rounded-lg flex items-center justify-center mb-4">
         {icon}
       </div>
       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{title}</h3>
@@ -355,12 +355,12 @@ function PricingCard({ icon, name, price, priceNote, description, features, cta,
   return (
     <div className={`relative rounded-2xl p-8 ${
       highlighted
-        ? 'bg-primary-600 text-white ring-4 ring-primary-600/20 shadow-xl scale-105'
+        ? 'bg-solarpunk-deep text-white ring-4 ring-solarpunk-green/20 shadow-xl scale-105'
         : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
     }`}>
       {highlighted && (
         <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-          <span className="bg-green-500 text-white text-sm font-medium px-3 py-1 rounded-full">
+          <span className="bg-solarpunk-green text-solarpunk-slate text-sm font-medium px-3 py-1 rounded-full">
             Most Popular
           </span>
         </div>
@@ -368,8 +368,8 @@ function PricingCard({ icon, name, price, priceNote, description, features, cta,
 
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
         highlighted
-          ? 'bg-white/20 text-white'
-          : 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+          ? 'bg-solarpunk-green/20 text-solarpunk-green'
+          : 'bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green'
       }`}>
         {icon}
       </div>
@@ -422,8 +422,8 @@ function PricingCard({ icon, name, price, priceNote, description, features, cta,
           rel={cta.external ? 'noopener noreferrer' : undefined}
           className={`block w-full py-3 px-4 rounded-xl font-semibold text-center transition-colors ${
             highlighted
-              ? 'bg-white text-primary-600 hover:bg-gray-100'
-              : 'bg-primary-600 text-white hover:bg-primary-700'
+              ? 'bg-solarpunk-green text-solarpunk-slate hover:bg-solarpunk-green-dim'
+              : 'bg-solarpunk-deep text-white hover:bg-solarpunk-slate'
           }`}
         >
           {cta.label}

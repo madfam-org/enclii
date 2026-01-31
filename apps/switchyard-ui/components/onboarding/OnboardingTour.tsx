@@ -12,19 +12,19 @@ import { useTour } from '@/contexts/TourContext';
 const TOUR_STEPS: DriveStep[] = [
   {
     popover: {
-      title: 'Welcome to Enclii!',
+      title: 'Welcome to the Foundry',
       description:
-        "You're now on the Sovereign tier. Let's take a quick tour to help you get started with deploying your first project.",
+        "You're in. Let's get your first app live in three steps.",
       side: 'over',
       align: 'center',
     },
   },
   {
-    element: '[data-tour="projects"]',
+    element: '[data-tour="domains"]',
     popover: {
-      title: 'Your Projects',
+      title: 'Connect your Domain',
       description:
-        'Projects are containers for your services. Think of them as workspaces for your applications.',
+        'Link your Cloudflare domain for zero-trust ingress with automatic SSL certificates.',
       side: 'bottom',
       align: 'start',
     },
@@ -32,50 +32,11 @@ const TOUR_STEPS: DriveStep[] = [
   {
     element: '[data-tour="create-project"]',
     popover: {
-      title: 'Create Your First Project',
+      title: 'Deploy your first App',
       description:
-        'Click here to create a new project. With Sovereign tier, you can create up to 10 projects.',
+        'Create a project, push your code, and watch it go live. Sovereign tier gives you up to 10 projects.',
       side: 'bottom',
       align: 'start',
-    },
-  },
-  {
-    element: '[data-tour="services"]',
-    popover: {
-      title: 'Your Services',
-      description:
-        'Services are the individual applications you deploy. Each service can be a web app, API, or worker.',
-      side: 'bottom',
-      align: 'start',
-    },
-  },
-  {
-    element: '[data-tour="domains"]',
-    popover: {
-      title: 'Custom Domains',
-      description:
-        'Connect your own domains to your services. Auto SSL certificates are included with your Sovereign tier.',
-      side: 'bottom',
-      align: 'start',
-    },
-  },
-  {
-    element: '[data-tour="observability"]',
-    popover: {
-      title: 'Observability',
-      description:
-        'Monitor your services with built-in logs, metrics, and traces. Know exactly what your apps are doing.',
-      side: 'bottom',
-      align: 'start',
-    },
-  },
-  {
-    popover: {
-      title: "You're All Set!",
-      description:
-        'Create your first project to start deploying. Need help? Check out our docs at docs.enclii.dev',
-      side: 'over',
-      align: 'center',
     },
   },
 ];

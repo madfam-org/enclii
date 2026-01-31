@@ -34,9 +34,15 @@ interface TierCardProps {
   isRecommended: boolean;
 }
 
-function TierCard({ tier, isCurrentTier, isRecommended }: TierCardProps) {
+interface TierCardPropsInternal extends TierCardProps {
+  checkoutUrl?: string;
+}
+
+function TierCard({ tier, isCurrentTier, isRecommended, checkoutUrl }: TierCardPropsInternal) {
   const config = TIER_CONFIG[tier ?? 'null'];
   const Icon = tier === 'ecosystem' ? Crown : tier === 'sovereign' ? Zap : Sparkles;
+  // Inside the modal, paid tiers should link to Dhanam checkout, not app.enclii.dev
+  const effectiveHref = (tier === 'sovereign' && checkoutUrl) ? checkoutUrl : config.cta.href;
 
   return (
     <div
@@ -108,9 +114,9 @@ function TierCard({ tier, isCurrentTier, isRecommended }: TierCardProps) {
           {config.cta.disabled ? (
             <span>{config.cta.label}</span>
           ) : (
-            <a href={config.cta.href} target={config.cta.href.startsWith('http') ? '_blank' : undefined}>
+            <a href={effectiveHref} target={effectiveHref.startsWith('http') ? '_blank' : undefined}>
               {config.cta.label}
-              {config.cta.href.startsWith('http') && <ExternalLink className="ml-2 h-4 w-4" />}
+              {effectiveHref.startsWith('http') && <ExternalLink className="ml-2 h-4 w-4" />}
             </a>
           )}
         </Button>
@@ -164,6 +170,7 @@ export function PricingModal({
             tier="sovereign"
             isCurrentTier={currentTier === 'sovereign'}
             isRecommended={currentTier !== 'sovereign' && currentTier !== 'ecosystem'}
+            checkoutUrl={checkoutUrl}
           />
           <TierCard
             tier="ecosystem"

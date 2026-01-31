@@ -31,5 +31,10 @@ export default defineConfig({
       testMatch: /enclii-login\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'paywall',
+      testMatch: /enclii-paywall\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });

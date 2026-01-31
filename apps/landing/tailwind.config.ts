@@ -21,6 +21,13 @@ const config: Config = {
           800: '#075985',
           900: '#0c4a6e',
         },
+        solarpunk: {
+          deep: '#1a1f2e',
+          slate: '#0f1420',
+          green: '#00ff9d',
+          'green-dim': '#00cc7d',
+          'green-muted': '#00ff9d1a',
+        },
       },
     },
   },
