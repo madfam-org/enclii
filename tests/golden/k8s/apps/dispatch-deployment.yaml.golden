@@ -23,8 +23,16 @@ spec:
     spec:
       containers:
       - name: dispatch
-        image: ghcr.io/madfam-org/enclii/dispatch:latest
-        imagePullPolicy: Always
+        image: ghcr.io/madfam-org/enclii/dispatch@sha256:1ed3a3a213769ec17b6e40e630da718aa7730e04c78a49c529a619ff5f619abd
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+              - ALL
         ports:
         - containerPort: 4203
           name: http

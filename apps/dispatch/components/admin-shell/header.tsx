@@ -7,6 +7,12 @@ import { Radio, LogOut, User } from 'lucide-react'
 export function AdminHeader() {
   const { user, isAuthorized, logout } = useAuth()
 
+  const displayRole = user?.roles?.includes('superadmin')
+    ? 'SUPERADMIN'
+    : user?.roles?.includes('admin')
+      ? 'ADMIN'
+      : 'OPERATOR'
+
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="px-4 py-3 flex items-center justify-between">
@@ -28,7 +34,7 @@ export function AdminHeader() {
             <span className="font-mono">{user?.email}</span>
             {isAuthorized && (
               <span className="px-1.5 py-0.5 rounded text-xs bg-primary/20 text-primary border border-primary/30">
-                OPERATOR
+                {displayRole}
               </span>
             )}
           </div>
