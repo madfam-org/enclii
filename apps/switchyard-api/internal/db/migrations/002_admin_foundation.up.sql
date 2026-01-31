@@ -2,6 +2,15 @@
 -- Universal Control Plane tables for bare metal fleet, infrastructure composition,
 -- multi-tenancy, governance, and cost tracking.
 
+-- Helper function for auto-updating updated_at timestamps
+CREATE OR REPLACE FUNCTION trigger_set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- 1. Clusters
 CREATE TABLE IF NOT EXISTS clusters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
