@@ -59,6 +59,12 @@ spec:
           value: "@madfam.io"
         - name: NEXT_PUBLIC_ALLOWED_ADMIN_ROLES
           value: "superadmin,admin,operator"
+        - name: SWITCHYARD_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dispatch-secrets
+              key: switchyard-api-key
+              optional: true
         - name: CLOUDFLARE_API_TOKEN
           valueFrom:
             secretKeyRef:
