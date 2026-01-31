@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS cost_allocations CASCADE;
+DROP TABLE IF EXISTS drift_events CASCADE;
+DROP TABLE IF EXISTS propagation_policies CASCADE;
+DROP TABLE IF EXISTS virtual_clusters CASCADE;
+DROP TABLE IF EXISTS managed_resources CASCADE;
+DROP TABLE IF EXISTS bare_metal_hosts CASCADE;
+DROP TABLE IF EXISTS clusters CASCADE;

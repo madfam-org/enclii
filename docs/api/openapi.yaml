@@ -99,6 +99,8 @@ tags:
     description: External integrations (GitHub)
   - name: tokens
     description: API token management for CLI/CI
+  - name: admin
+    description: Admin control plane - fleet, clusters, infrastructure, multi-tenancy, governance, costs
 
 paths:
   # ============================================
@@ -2899,6 +2901,583 @@ paths:
         '200':
           description: Callback processed
 
+  # ============================================
+  # ADMIN CONTROL PLANE ENDPOINTS
+  # ============================================
+
+  /v1/admin/fleet:
+    get:
+      summary: List bare metal hosts
+      tags: [admin]
+      operationId: listBareMetalHosts
+      responses:
+        '200':
+          description: List of bare metal hosts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BareMetalHost'
+    post:
+      summary: Register a bare metal host
+      tags: [admin]
+      operationId: registerBareMetalHost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BareMetalHost'
+      responses:
+        '201':
+          description: Host registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BareMetalHost'
+
+  /v1/admin/fleet/{id}:
+    get:
+      summary: Get bare metal host details
+      tags: [admin]
+      operationId: getBareMetalHost
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Host details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BareMetalHost'
+
+  /v1/admin/fleet/{id}/firmware:
+    put:
+      summary: Update host firmware settings
+      tags: [admin]
+      operationId: updateFirmware
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Firmware update requested
+
+  /v1/admin/fleet/{id}/partition:
+    put:
+      summary: Configure RAID and partitioning
+      tags: [admin]
+      operationId: configurePartition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root_device_hints:
+                  type: object
+                raid_config:
+                  type: object
+      responses:
+        '200':
+          description: Partition configured
+
+  /v1/admin/fleet/{id}/wipe:
+    post:
+      summary: Trigger ATA Secure Erase
+      tags: [admin]
+      operationId: secureWipe
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Secure wipe initiated
+
+  /v1/admin/fleet/{id}/power:
+    put:
+      summary: Control host power state
+      tags: [admin]
+      operationId: setPowerState
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [on, off, reboot]
+      responses:
+        '200':
+          description: Power action executed
+
+  /v1/admin/clusters:
+    get:
+      summary: List registered clusters
+      tags: [admin]
+      operationId: listAdminClusters
+      responses:
+        '200':
+          description: List of clusters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cluster'
+    post:
+      summary: Register a cluster
+      tags: [admin]
+      operationId: registerCluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Cluster'
+      responses:
+        '201':
+          description: Cluster registered
+
+  /v1/admin/clusters/{id}:
+    get:
+      summary: Get cluster details
+      tags: [admin]
+      operationId: getAdminCluster
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cluster details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster'
+    put:
+      summary: Update cluster
+      tags: [admin]
+      operationId: updateCluster
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Cluster'
+      responses:
+        '200':
+          description: Cluster updated
+    delete:
+      summary: Deregister cluster
+      tags: [admin]
+      operationId: deregisterCluster
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cluster deregistered
+
+  /v1/admin/resources:
+    get:
+      summary: List managed resources
+      tags: [admin]
+      operationId: listManagedResources
+      responses:
+        '200':
+          description: List of managed resources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ManagedResource'
+    post:
+      summary: Create or import a managed resource
+      tags: [admin]
+      operationId: createManagedResource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManagedResource'
+      responses:
+        '201':
+          description: Resource created
+
+  /v1/admin/resources/{id}:
+    get:
+      summary: Get managed resource details
+      tags: [admin]
+      operationId: getManagedResource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Resource details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedResource'
+    delete:
+      summary: Delete managed resource
+      tags: [admin]
+      operationId: deleteManagedResource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Resource deleted
+
+  /v1/admin/resources/{id}/policy:
+    put:
+      summary: Switch management policy
+      tags: [admin]
+      operationId: switchResourcePolicy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policy:
+                  type: string
+                  enum: [FullControl, ObserveOnly, OrphanOnDelete]
+      responses:
+        '200':
+          description: Policy updated
+
+  /v1/admin/vclusters:
+    get:
+      summary: List virtual clusters
+      tags: [admin]
+      operationId: listVirtualClusters
+      responses:
+        '200':
+          description: List of virtual clusters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VirtualCluster'
+    post:
+      summary: Provision a virtual cluster
+      tags: [admin]
+      operationId: provisionVirtualCluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VirtualCluster'
+      responses:
+        '201':
+          description: Virtual cluster provisioning started
+
+  /v1/admin/vclusters/{id}:
+    get:
+      summary: Get virtual cluster details
+      tags: [admin]
+      operationId: getVirtualCluster
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Virtual cluster details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VirtualCluster'
+    delete:
+      summary: Teardown virtual cluster
+      tags: [admin]
+      operationId: teardownVirtualCluster
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Virtual cluster teardown initiated
+
+  /v1/admin/vclusters/{id}/kubeconfig:
+    get:
+      summary: Get virtual cluster kubeconfig
+      tags: [admin]
+      operationId: getVClusterKubeconfig
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Kubeconfig content
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /v1/admin/propagation:
+    get:
+      summary: List propagation policies
+      tags: [admin]
+      operationId: listPropagationPolicies
+      responses:
+        '200':
+          description: List of propagation policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropagationPolicy'
+    post:
+      summary: Create propagation policy
+      tags: [admin]
+      operationId: createPropagationPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropagationPolicy'
+      responses:
+        '201':
+          description: Policy created
+
+  /v1/admin/propagation/{id}:
+    get:
+      summary: Get propagation policy
+      tags: [admin]
+      operationId: getPropagationPolicy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Policy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropagationPolicy'
+    delete:
+      summary: Delete propagation policy
+      tags: [admin]
+      operationId: deletePropagationPolicy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Policy deleted
+
+  /v1/admin/drift:
+    get:
+      summary: List drift events
+      tags: [admin]
+      operationId: listDriftEvents
+      responses:
+        '200':
+          description: List of drift events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DriftEvent'
+
+  /v1/admin/drift/{id}:
+    get:
+      summary: Get drift event details
+      tags: [admin]
+      operationId: getDriftEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Drift event details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftEvent'
+
+  /v1/admin/drift/{id}/resolve:
+    post:
+      summary: Resolve a drift event
+      tags: [admin]
+      operationId: resolveDrift
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Drift resolved
+
+  /v1/admin/costs:
+    get:
+      summary: List cost allocations
+      tags: [admin]
+      operationId: listCostAllocations
+      responses:
+        '200':
+          description: List of cost allocations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CostAllocation'
+
+  /v1/admin/costs/summary:
+    get:
+      summary: Get cost summary across tenants
+      tags: [admin]
+      operationId: getCostSummary
+      responses:
+        '200':
+          description: Cost summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_cost_cents:
+                    type: integer
+                  by_tenant:
+                    type: object
+                    additionalProperties:
+                      type: integer
+
+  /v1/admin/costs/allocate:
+    post:
+      summary: Create cost allocation
+      tags: [admin]
+      operationId: createCostAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CostAllocation'
+      responses:
+        '201':
+          description: Allocation created
+
+  /v1/admin/topology:
+    get:
+      summary: Get admin topology graph
+      tags: [admin]
+      operationId: getAdminTopology
+      responses:
+        '200':
+          description: Topology graph of clusters, hosts, and resources
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4072,6 +4651,236 @@ components:
           type: string
           format: date-time
         last_used_at:
+          type: string
+          format: date-time
+
+    # ===== Admin Control Plane =====
+    Cluster:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        type:
+          type: string
+          enum: [k3s, k8s, vcluster]
+        endpoint:
+          type: string
+        kubeconfig_secret_ref:
+          type: string
+        region:
+          type: string
+        status:
+          type: string
+          enum: [pending, ready, degraded, offline, deleting]
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BareMetalHost:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        cluster_id:
+          type: string
+          format: uuid
+        bmc_address:
+          type: string
+        bmc_credentials_ref:
+          type: string
+        mac_address:
+          type: string
+        boot_mode:
+          type: string
+        state:
+          type: string
+          enum: [discovered, inspecting, available, provisioning, provisioned, deprovisioning, error]
+        power_state:
+          type: string
+          enum: [on, off, unknown]
+        hardware_profile:
+          type: object
+        firmware_version:
+          type: string
+        root_device_hints:
+          type: object
+        raid_config:
+          type: object
+        cost_per_hour_cents:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ManagedResource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        api_version:
+          type: string
+        kind:
+          type: string
+        provider:
+          type: string
+        cluster_id:
+          type: string
+          format: uuid
+        management_policy:
+          type: string
+          enum: [FullControl, ObserveOnly, OrphanOnDelete]
+        sync_status:
+          type: string
+          enum: [Synced, OutOfSync, Unknown, Error]
+        conditions:
+          type: object
+        spec_hash:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VirtualCluster:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        host_cluster_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        namespace:
+          type: string
+        k8s_version:
+          type: string
+        status:
+          type: string
+          enum: [pending, creating, running, paused, deleting, error]
+        helm_release_name:
+          type: string
+        resource_quota:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PropagationPolicy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        cluster_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        resource_selectors:
+          type: object
+        placement_strategy:
+          type: string
+          enum: [Spread, Binpack, GPUAffinity]
+        gpu_required:
+          type: boolean
+        priority:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DriftEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [argocd, crossplane, manual]
+        resource_type:
+          type: string
+        resource_name:
+          type: string
+        cluster_id:
+          type: string
+          format: uuid
+        drift_details:
+          type: object
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+        detected_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    CostAllocation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bare_metal_host_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        allocation_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        cost_cents:
+          type: integer
+        created_at:
           type: string
           format: date-time
 

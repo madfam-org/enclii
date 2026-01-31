@@ -62,6 +62,15 @@ type Handler struct {
 
 	// Roundhouse client for async builds (optional - only used in "roundhouse" build mode)
 	roundhouseClient *clients.RoundhouseClient
+
+	// Admin Control Plane services (optional)
+	bareMetalService      *services.BareMetalService
+	clusterAdminService   *services.ClusterAdminService
+	infrastructureService *services.InfrastructureService
+	vclusterService       *services.VClusterService
+	placementService      *services.PlacementService
+	driftService          *services.DriftService
+	costTrackingService   *services.CostTrackingService
 }
 
 // NewHandler creates a new API handler with all dependencies
@@ -148,6 +157,41 @@ func (h *Handler) SetNotificationService(svc *notifications.Service) {
 // This is optional - if not set, emails will be logged instead of sent
 func (h *Handler) SetEmailService(svc *notifications.EmailService) {
 	h.emailService = svc
+}
+
+// SetBareMetalService sets the bare metal fleet service
+func (h *Handler) SetBareMetalService(svc *services.BareMetalService) {
+	h.bareMetalService = svc
+}
+
+// SetClusterAdminService sets the cluster admin service
+func (h *Handler) SetClusterAdminService(svc *services.ClusterAdminService) {
+	h.clusterAdminService = svc
+}
+
+// SetInfrastructureService sets the infrastructure composition service
+func (h *Handler) SetInfrastructureService(svc *services.InfrastructureService) {
+	h.infrastructureService = svc
+}
+
+// SetVClusterService sets the virtual cluster service
+func (h *Handler) SetVClusterService(svc *services.VClusterService) {
+	h.vclusterService = svc
+}
+
+// SetPlacementService sets the placement/propagation service
+func (h *Handler) SetPlacementService(svc *services.PlacementService) {
+	h.placementService = svc
+}
+
+// SetDriftService sets the drift detection service
+func (h *Handler) SetDriftService(svc *services.DriftService) {
+	h.driftService = svc
+}
+
+// SetCostTrackingService sets the cost tracking service
+func (h *Handler) SetCostTrackingService(svc *services.CostTrackingService) {
+	h.costTrackingService = svc
 }
 
 // SetTunnelRoutesService sets the tunnel routes service for automatic cloudflared route management
@@ -465,6 +509,62 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.POST("/templates/:slug/deploy", h.auth.RequireRole(string(types.RoleDeveloper)), h.DeployTemplate)
 			protected.GET("/templates/deployments/:id", h.GetTemplateDeployment)
 			protected.POST("/templates/import", h.auth.RequireRole(string(types.RoleDeveloper)), h.ImportTemplateFromGitHub)
+
+			// ============================================================
+			// Admin Control Plane (superuser-only)
+			// ============================================================
+			admin := protected.Group("/admin")
+			admin.Use(h.auth.RequireRole(string(types.RoleAdmin)))
+			{
+				// Fleet Management (Bare Metal Hosts)
+				admin.GET("/fleet", h.ListBareMetalHosts)
+				admin.GET("/fleet/:id", h.GetBareMetalHost)
+				admin.POST("/fleet", h.RegisterBareMetalHost)
+				admin.PUT("/fleet/:id/firmware", h.UpdateFirmware)
+				admin.PUT("/fleet/:id/partition", h.ConfigurePartition)
+				admin.POST("/fleet/:id/wipe", h.SecureWipe)
+				admin.PUT("/fleet/:id/power", h.SetPowerState)
+
+				// Cluster Management
+				admin.GET("/clusters", h.ListAdminClusters)
+				admin.GET("/clusters/:id", h.GetAdminCluster)
+				admin.POST("/clusters", h.RegisterCluster)
+				admin.PUT("/clusters/:id", h.UpdateCluster)
+				admin.DELETE("/clusters/:id", h.DeregisterCluster)
+
+				// Infrastructure Composition (Crossplane)
+				admin.GET("/resources", h.ListManagedResources)
+				admin.GET("/resources/:id", h.GetManagedResource)
+				admin.POST("/resources", h.CreateManagedResource)
+				admin.PUT("/resources/:id/policy", h.UpdateResourcePolicy)
+				admin.DELETE("/resources/:id", h.DeleteManagedResource)
+
+				// Virtual Clusters
+				admin.GET("/vclusters", h.ListVirtualClusters)
+				admin.GET("/vclusters/:id", h.GetVirtualCluster)
+				admin.POST("/vclusters", h.ProvisionVirtualCluster)
+				admin.DELETE("/vclusters/:id", h.TeardownVirtualCluster)
+				admin.GET("/vclusters/:id/kubeconfig", h.GetVClusterKubeconfig)
+
+				// Propagation Policies
+				admin.GET("/propagation", h.ListPropagationPolicies)
+				admin.GET("/propagation/:id", h.GetPropagationPolicy)
+				admin.POST("/propagation", h.CreatePropagationPolicy)
+				admin.DELETE("/propagation/:id", h.DeletePropagationPolicy)
+
+				// Drift & Governance
+				admin.GET("/drift", h.ListDriftEvents)
+				admin.GET("/drift/:id", h.GetDriftEvent)
+				admin.POST("/drift/:id/resolve", h.ResolveDrift)
+
+				// Cost Tracking
+				admin.GET("/costs", h.GetCostAllocations)
+				admin.GET("/costs/summary", h.GetCostSummary)
+				admin.POST("/costs/allocate", h.AllocateCost)
+
+				// Topology (admin-level)
+				admin.GET("/topology", h.GetAdminTopology)
+			}
 		}
 	}
 }

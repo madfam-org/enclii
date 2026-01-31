@@ -37,6 +37,15 @@ func setupTestHandler() *Handler {
 		nil, // roundhouse client
 	)
 
+	// Admin services are set via optional setters (all nil for basic integration tests)
+	// handler.SetBareMetalService(...)
+	// handler.SetClusterAdminService(...)
+	// handler.SetInfrastructureService(...)
+	// handler.SetVClusterService(...)
+	// handler.SetPlacementService(...)
+	// handler.SetDriftService(...)
+	// handler.SetCostTrackingService(...)
+
 	return handler
 }
 
@@ -53,6 +62,43 @@ func TestListProjects(t *testing.T) {
 func TestGetProject(t *testing.T) {
 	_ = setupTestHandler()
 	t.Skip("TODO: Requires full handler dependencies - see tests/integration/")
+}
+
+// Admin endpoint integration test stubs
+
+func TestListBareMetalHostsIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
+}
+
+func TestRegisterClusterIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
+}
+
+func TestListManagedResourcesIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
+}
+
+func TestProvisionVClusterIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
+}
+
+func TestCreatePropagationPolicyIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
+}
+
+func TestListDriftEventsIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
+}
+
+func TestGetCostSummaryIntegration(t *testing.T) {
+	_ = setupTestHandler()
+	t.Skip("TODO: Requires admin service dependencies - see tests/integration/")
 }
 
 // Benchmark tests also need proper setup

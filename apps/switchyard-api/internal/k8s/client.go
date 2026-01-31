@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -21,8 +22,9 @@ import (
 // =============================================================================
 
 type Client struct {
-	Clientset *kubernetes.Clientset
-	config    *rest.Config
+	Clientset     *kubernetes.Clientset
+	DynamicClient dynamic.Interface
+	config        *rest.Config
 }
 
 func NewClient(kubeconfig string, kubecontext string) (*Client, error) {
@@ -49,9 +51,16 @@ func NewClient(kubeconfig string, kubecontext string) (*Client, error) {
 		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
+	// Create dynamic client for CRD operations
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dynamic kubernetes client: %w", err)
+	}
+
 	return &Client{
-		Clientset: clientset,
-		config:    config,
+		Clientset:     clientset,
+		DynamicClient: dynClient,
+		config:        config,
 	}, nil
 }
 

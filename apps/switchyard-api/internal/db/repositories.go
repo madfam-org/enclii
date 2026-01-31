@@ -36,6 +36,15 @@ type Repositories struct {
 	Webhooks            *WebhookRepository
 	CIRuns              *CIRunRepository
 	Functions           *FunctionRepository
+
+	// Admin Control Plane repositories
+	Clusters            *ClusterRepository
+	BareMetalHosts      *BareMetalHostRepository
+	ManagedResources    *ManagedResourceRepository
+	VirtualClusters     *VirtualClusterRepository
+	PropagationPolicies *PropagationPolicyRepository
+	DriftEvents         *DriftEventRepository
+	CostAllocations     *CostAllocationRepository
 }
 
 // Ping checks database connectivity for health probes
@@ -85,6 +94,15 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		Webhooks:            NewWebhookRepositoryWithTx(tx),
 		CIRuns:              NewCIRunRepositoryWithTx(tx),
 		Functions:           NewFunctionRepositoryWithTx(tx),
+
+		// Admin Control Plane
+		Clusters:            NewClusterRepositoryWithTx(tx),
+		BareMetalHosts:      NewBareMetalHostRepositoryWithTx(tx),
+		ManagedResources:    NewManagedResourceRepositoryWithTx(tx),
+		VirtualClusters:     NewVirtualClusterRepositoryWithTx(tx),
+		PropagationPolicies: NewPropagationPolicyRepositoryWithTx(tx),
+		DriftEvents:         NewDriftEventRepositoryWithTx(tx),
+		CostAllocations:     NewCostAllocationRepositoryWithTx(tx),
 	}
 
 	// Execute the function with transaction repositories
@@ -133,5 +151,14 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Webhooks:            NewWebhookRepository(db),
 		CIRuns:              NewCIRunRepository(db),
 		Functions:           NewFunctionRepository(db),
+
+		// Admin Control Plane
+		Clusters:            NewClusterRepository(db),
+		BareMetalHosts:      NewBareMetalHostRepository(db),
+		ManagedResources:    NewManagedResourceRepository(db),
+		VirtualClusters:     NewVirtualClusterRepository(db),
+		PropagationPolicies: NewPropagationPolicyRepository(db),
+		DriftEvents:         NewDriftEventRepository(db),
+		CostAllocations:     NewCostAllocationRepository(db),
 	}
 }

@@ -72,9 +72,9 @@ export function middleware(request: NextRequest) {
   }
 
   // Check for authentication token and user info
-  const token = request.cookies.get('dispatch_auth')?.value
-  const userEmail = request.cookies.get('dispatch_user_email')?.value
-  const userRoles = request.cookies.get('dispatch_user_roles')?.value
+  const token = request.cookies.get('dispatch_auth')?.value || request.cookies.get('admin_auth')?.value
+  const userEmail = request.cookies.get('dispatch_user_email')?.value || request.cookies.get('admin_user_email')?.value
+  const userRoles = request.cookies.get('dispatch_user_roles')?.value || request.cookies.get('admin_user_roles')?.value
 
   // If no token, redirect to login
   if (!token) {

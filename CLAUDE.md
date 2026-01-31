@@ -240,9 +240,9 @@ See [PRODUCTION_DEPLOYMENT_ROADMAP.md](./docs/production/PRODUCTION_DEPLOYMENT_R
 - **Protocol:** OAuth 2.0 / OIDC with RS256 JWT
 - **Features:** Multi-tenant orgs, GitHub OAuth, JWKS rotation
 
-### Dispatch (Infrastructure Control Tower)
+### Dispatch (Admin Control Platform)
 
-Dispatch is the superuser admin interface for managing Enclii infrastructure - domains, tunnels, and ecosystem resources.
+Dispatch is the superuser admin platform for managing the Enclii infrastructure control plane — fleet management (bare metal hosts), cluster registration, Crossplane-managed resources, virtual clusters, propagation policies, drift detection, cost tracking, and topology visualization.
 
 **Access:** https://admin.enclii.dev
 
@@ -279,7 +279,7 @@ Access to Dispatch requires BOTH:
 **Production Services** (running at enclii.dev):
 - ✅ `switchyard-api` → api.enclii.dev (control plane)
 - ✅ `switchyard-ui` → app.enclii.dev (web dashboard)
-- ✅ `dispatch` → admin.enclii.dev (infrastructure control tower)
+- ✅ `dispatch` → admin.enclii.dev (admin control platform)
 - ✅ `janua` → auth.madfam.io (SSO authentication)
 - ✅ `docs-site` → docs.enclii.dev (documentation)
 - ✅ `landing-page` → enclii.dev (deployed)
@@ -465,6 +465,10 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Middleware | `apps/switchyard-api/internal/api/middleware/` |
 | Models | `apps/switchyard-api/internal/models/` |
 | Services | `apps/switchyard-api/internal/service/` |
+| Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` (bare_metal, cluster_admin, cost, drift, managed_resource, propagation, virtual_cluster, admin_topology) |
+| Admin services | `apps/switchyard-api/internal/services/` (bare_metal, cluster_admin, infrastructure, vcluster, placement, drift, cost_tracking) |
+| Admin types | `packages/sdk-go/pkg/types/admin.go` |
+| Admin migrations | `apps/switchyard-api/internal/db/migrations/002_admin_foundation.*.sql` |
 | Migrations | `apps/switchyard-api/migrations/` |
 
 ### CLI (Go)
@@ -577,6 +581,9 @@ make test
 
 # Specific package
 go test ./apps/switchyard-api/internal/api/...
+
+# Admin services and handlers
+go test ./apps/switchyard-api/internal/services/... ./apps/switchyard-api/internal/api/...
 
 # With coverage
 go test -coverprofile=coverage.out ./...

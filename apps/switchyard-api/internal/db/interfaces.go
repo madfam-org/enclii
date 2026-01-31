@@ -130,6 +130,63 @@ type RepositoryProvider interface {
 	RotationAuditLogs() RotationAuditLogRepositoryInterface
 }
 
+// ClusterRepositoryInterface defines operations for clusters
+type ClusterRepositoryInterface interface {
+	Create(ctx context.Context, cluster *types.Cluster) error
+	GetByID(ctx context.Context, id uuid.UUID) (*types.Cluster, error)
+	List(ctx context.Context) ([]*types.Cluster, error)
+	Update(ctx context.Context, cluster *types.Cluster) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// BareMetalHostRepositoryInterface defines operations for bare metal hosts
+type BareMetalHostRepositoryInterface interface {
+	Create(ctx context.Context, host *types.BareMetalHost) error
+	GetByID(ctx context.Context, id uuid.UUID) (*types.BareMetalHost, error)
+	List(ctx context.Context) ([]*types.BareMetalHost, error)
+	UpdateState(ctx context.Context, id uuid.UUID, state types.BMHState, powerState types.BMHPowerState) error
+}
+
+// ManagedResourceRepositoryInterface defines operations for managed resources
+type ManagedResourceRepositoryInterface interface {
+	Create(ctx context.Context, resource *types.ManagedResource) error
+	GetByID(ctx context.Context, id uuid.UUID) (*types.ManagedResource, error)
+	List(ctx context.Context, provider, kind string, status types.SyncStatus) ([]*types.ManagedResource, error)
+	UpdateSyncStatus(ctx context.Context, id uuid.UUID, status types.SyncStatus, conditions []byte) error
+	UpdatePolicy(ctx context.Context, id uuid.UUID, policy types.ManagementPolicy) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// VirtualClusterRepositoryInterface defines operations for virtual clusters
+type VirtualClusterRepositoryInterface interface {
+	Create(ctx context.Context, vc *types.VirtualCluster) error
+	GetByID(ctx context.Context, id uuid.UUID) (*types.VirtualCluster, error)
+	List(ctx context.Context) ([]*types.VirtualCluster, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status types.VClusterStatus) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// PropagationPolicyRepositoryInterface defines operations for propagation policies
+type PropagationPolicyRepositoryInterface interface {
+	Create(ctx context.Context, policy *types.PropagationPolicy) error
+	GetByID(ctx context.Context, id uuid.UUID) (*types.PropagationPolicy, error)
+	List(ctx context.Context) ([]*types.PropagationPolicy, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// DriftEventRepositoryInterface defines operations for drift events
+type DriftEventRepositoryInterface interface {
+	Create(ctx context.Context, event *types.DriftEvent) error
+	GetByID(ctx context.Context, id uuid.UUID) (*types.DriftEvent, error)
+	List(ctx context.Context, resolved *bool) ([]*types.DriftEvent, error)
+	Resolve(ctx context.Context, id uuid.UUID) error
+}
+
+// CostAllocationRepositoryInterface defines operations for cost allocations
+type CostAllocationRepositoryInterface interface {
+	Create(ctx context.Context, allocation *types.CostAllocation) error
+}
+
 // Note: RepositoryProvider interface exists for documentation and potential future use,
 // but Repositories struct already exposes all repositories as public fields, so no
 // accessor methods are needed (they would conflict with the field names anyway).

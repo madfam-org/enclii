@@ -5,8 +5,8 @@ import './globals.css'
 import { Providers } from './providers'
 
 export const metadata: Metadata = {
-  title: 'Dispatch | Enclii Control Tower',
-  description: 'Infrastructure Control Tower - Manage domains, tunnels, and ecosystem resources',
+  title: 'Enclii Admin | Universal Control Plane',
+  description: 'Universal Control Plane - Manage fleet, infrastructure, clusters, and governance',
   robots: 'noindex, nofollow', // Superuser-only, no indexing
 }
 
