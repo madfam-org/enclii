@@ -596,7 +596,7 @@ func (h *Handler) ListAllDeployments(c *gin.Context) {
 		}
 	}
 
-	deployments, err := h.repos.Deployments.ListAll(ctx, since, limit)
+	deployments, err := h.repos.Deployments.ListAllEnriched(ctx, since, limit)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list all deployments", logging.Error("db_error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})

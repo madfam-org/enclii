@@ -162,14 +162,19 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		}
 		// Create release record for this service
 		release := &types.Release{
-			ID:        uuid.New(),
-			ServiceID: service.ID,
-			Version:   "v" + time.Now().Format("20060102-150405") + "-" + gitSHA[:7],
-			ImageURI:  h.config.Registry + "/" + service.Name + ":" + gitSHA[:7],
-			GitSHA:    gitSHA,
-			Status:    types.ReleaseStatusBuilding,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ID:                uuid.New(),
+			ServiceID:         service.ID,
+			Version:           "v" + time.Now().Format("20060102-150405") + "-" + gitSHA[:7],
+			ImageURI:          h.config.Registry + "/" + service.Name + ":" + gitSHA[:7],
+			GitSHA:            gitSHA,
+			GitBranch:         branch,
+			CommitMessage:     event.HeadCommit.Message,
+			CommitAuthorName:  event.HeadCommit.Author.Name,
+			CommitAuthorEmail: event.HeadCommit.Author.Email,
+			RepoURL:           event.Repository.HTMLURL,
+			Status:            types.ReleaseStatusBuilding,
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now(),
 		}
 
 		if err := h.repos.Releases.Create(release); err != nil {

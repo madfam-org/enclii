@@ -1,0 +1,9 @@
+-- Remove git metadata columns from releases table
+ALTER TABLE releases DROP COLUMN IF EXISTS git_branch;
+ALTER TABLE releases DROP COLUMN IF EXISTS commit_message;
+ALTER TABLE releases DROP COLUMN IF EXISTS commit_author_name;
+ALTER TABLE releases DROP COLUMN IF EXISTS commit_author_email;
+ALTER TABLE releases DROP COLUMN IF EXISTS pr_number;
+ALTER TABLE releases DROP COLUMN IF EXISTS pr_title;
+ALTER TABLE releases DROP COLUMN IF EXISTS pr_url;
+ALTER TABLE releases DROP COLUMN IF EXISTS repo_url;

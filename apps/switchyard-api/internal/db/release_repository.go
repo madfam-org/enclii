@@ -24,10 +24,10 @@ func (r *ReleaseRepository) Create(release *types.Release) error {
 	release.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO releases (id, service_id, version, image_uri, git_sha, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO releases (id, service_id, version, image_uri, git_sha, git_branch, commit_message, commit_author_name, commit_author_email, pr_number, pr_title, pr_url, repo_url, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`
-	_, err := r.db.Exec(query, release.ID, release.ServiceID, release.Version, release.ImageURI, release.GitSHA, release.Status, release.CreatedAt, release.UpdatedAt)
+	_, err := r.db.Exec(query, release.ID, release.ServiceID, release.Version, release.ImageURI, release.GitSHA, release.GitBranch, release.CommitMessage, release.CommitAuthorName, release.CommitAuthorEmail, release.PRNumber, release.PRTitle, release.PRURL, release.RepoURL, release.Status, release.CreatedAt, release.UpdatedAt)
 	return err
 }
 

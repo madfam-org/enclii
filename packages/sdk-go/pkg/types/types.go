@@ -113,6 +113,14 @@ type Release struct {
 	Version             string        `json:"version" db:"version"`
 	ImageURI            string        `json:"image_uri" db:"image_uri"`
 	GitSHA              string        `json:"git_sha" db:"git_sha"`
+	GitBranch           string        `json:"git_branch,omitempty" db:"git_branch"`
+	CommitMessage       string        `json:"commit_message,omitempty" db:"commit_message"`
+	CommitAuthorName    string        `json:"commit_author_name,omitempty" db:"commit_author_name"`
+	CommitAuthorEmail   string        `json:"commit_author_email,omitempty" db:"commit_author_email"`
+	PRNumber            *int          `json:"pr_number,omitempty" db:"pr_number"`
+	PRTitle             string        `json:"pr_title,omitempty" db:"pr_title"`
+	PRURL               string        `json:"pr_url,omitempty" db:"pr_url"`
+	RepoURL             string        `json:"repo_url,omitempty" db:"repo_url"`
 	Status              ReleaseStatus `json:"status" db:"status"`
 	ErrorMessage        *string       `json:"error_message,omitempty" db:"error_message"`     // Error from build failure
 	SBOM                string        `json:"sbom,omitempty" db:"sbom"`                       // Software Bill of Materials (JSON)
@@ -121,6 +129,21 @@ type Release struct {
 	SignatureVerifiedAt *time.Time    `json:"signature_verified_at,omitempty" db:"signature_verified_at"`
 	CreatedAt           time.Time     `json:"created_at" db:"created_at"`
 	UpdatedAt           time.Time     `json:"updated_at" db:"updated_at"`
+}
+
+// DeploymentEnriched represents a deployment with joined release and service data
+type DeploymentEnriched struct {
+	Deployment
+	ServiceName       string `json:"service_name"`
+	GitSHA            string `json:"git_sha"`
+	GitBranch         string `json:"git_branch"`
+	CommitMessage     string `json:"commit_message"`
+	CommitAuthor      string `json:"commit_author"`
+	CommitAuthorEmail string `json:"commit_author_email"`
+	PRNumber          *int   `json:"pr_number,omitempty"`
+	PRTitle           string `json:"pr_title"`
+	PRURL             string `json:"pr_url"`
+	RepoURL           string `json:"repo_url"`
 }
 
 type ReleaseStatus string
