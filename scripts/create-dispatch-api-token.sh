@@ -1,58 +1,148 @@
 #!/usr/bin/env bash
 # Generate a Switchyard API token for Dispatch and store it as a K8s secret.
 #
-# Uses a K8s Job with postgres:16-alpine to insert the token into the DB,
-# since Switchyard pods don't have psql.
+# Uses the Switchyard API (/v1/user/tokens) to create the token properly,
+# instead of raw SQL. This is schema-resilient and uses Switchyard's own
+# token generation (SHA-256 hashing, prefix extraction, etc.).
 #
 # Usage:
-#   ./scripts/create-dispatch-api-token.sh [--dry-run]
+#   # Interactive: prompts for admin JWT if not set
+#   ./scripts/create-dispatch-api-token.sh
+#
+#   # Non-interactive: provide JWT via env
+#   ADMIN_JWT=<jwt> ./scripts/create-dispatch-api-token.sh
+#
+#   # Dry run: show what would happen without making changes
+#   ./scripts/create-dispatch-api-token.sh --dry-run
+#
+#   # Direct DB fallback (if API is unreachable):
+#   ./scripts/create-dispatch-api-token.sh --direct-db
 #
 # Prerequisites:
 #   - kubectl access to the enclii namespace
-#   - postgres-credentials secret with 'database-url' key
+#   - A valid admin JWT (obtain via Janua SSO login)
+#     OR --direct-db flag with postgres-credentials secret
 
 set -euo pipefail
 
 DRY_RUN=false
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN=true
-fi
+DIRECT_DB=false
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --direct-db) DIRECT_DB=true ;;
+  esac
+done
 
 NAMESPACE="enclii"
 SECRET_NAME="dispatch-secrets"
 TOKEN_NAME="dispatch-service"
-JOB_NAME="dispatch-api-token-setup"
+API_BASE="${SWITCHYARD_API_URL:-https://api.enclii.dev}"
 
-# Generate token using the same algorithm as Switchyard:
-# 32 random bytes → hex → prefix with "enclii_"
-RAW_HEX=$(openssl rand -hex 32)
-RAW_TOKEN="enclii_${RAW_HEX}"
-PREFIX="${RAW_TOKEN:0:16}"
-TOKEN_HASH=$(printf '%s' "$RAW_TOKEN" | shasum -a 256 | awk '{print $1}')
-
-echo "Generated API token for Dispatch"
-echo "  Prefix:  ${PREFIX}..."
-echo "  Name:    ${TOKEN_NAME}"
-echo "  Scopes:  [admin]"
+echo "=== Create Dispatch Service API Token ==="
 echo ""
 
-if $DRY_RUN; then
-  echo "[dry-run] Would create K8s Job to insert token and patch dispatch-secrets."
-  echo "[dry-run] Raw token (save this): ${RAW_TOKEN}"
-  exit 0
-fi
+# ──────────────────────────────────────────────
+# Method 1: Via Switchyard API (preferred)
+# ──────────────────────────────────────────────
+create_via_api() {
+  local jwt="$1"
 
-# --- Step 1: Clean up any previous job ---
-kubectl -n "$NAMESPACE" delete job "$JOB_NAME" --ignore-not-found 2>/dev/null
+  # Step 1: Revoke any existing dispatch-service tokens
+  echo "Checking for existing dispatch-service tokens..."
+  local existing
+  existing=$(curl -sf -H "Authorization: Bearer $jwt" \
+    -H "Content-Type: application/json" \
+    "${API_BASE}/v1/user/tokens" 2>/dev/null || echo '{"tokens":[]}')
 
-# --- Step 2: Run a Job to insert the token into the database ---
-echo "Creating K8s Job to insert token into database..."
+  local token_ids
+  token_ids=$(echo "$existing" | jq -r '.tokens[]? | select(.name == "'"$TOKEN_NAME"'" and .revoked == false) | .id' 2>/dev/null || true)
 
-kubectl apply -f - <<EOF
+  if [[ -n "$token_ids" ]]; then
+    echo "Revoking existing dispatch-service tokens..."
+    while IFS= read -r tid; do
+      [[ -z "$tid" ]] && continue
+      local code
+      code=$(curl -sf -o /dev/null -w "%{http_code}" \
+        -X DELETE \
+        -H "Authorization: Bearer $jwt" \
+        "${API_BASE}/v1/user/tokens/${tid}" 2>/dev/null || echo "000")
+      if [[ "$code" == "200" || "$code" == "204" ]]; then
+        echo "  Revoked: $tid"
+      else
+        echo "  Warning: failed to revoke $tid (HTTP $code)"
+      fi
+    done <<< "$token_ids"
+  fi
+
+  # Step 2: Create new token via API
+  echo "Creating new dispatch-service token..."
+  local resp
+  resp=$(curl -sf -w "\n%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $jwt" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"'"$TOKEN_NAME"'","scopes":["admin"]}' \
+    "${API_BASE}/v1/user/tokens" 2>/dev/null || echo -e "\n000")
+
+  local body http_code
+  http_code=$(echo "$resp" | tail -1)
+  body=$(echo "$resp" | sed '$d')
+
+  if [[ "$http_code" != "201" && "$http_code" != "200" ]]; then
+    echo "ERROR: Failed to create token (HTTP $http_code)"
+    echo "$body"
+    return 1
+  fi
+
+  RAW_TOKEN=$(echo "$body" | jq -r '.token')
+  local prefix
+  prefix=$(echo "$body" | jq -r '.prefix')
+  local token_id
+  token_id=$(echo "$body" | jq -r '.id')
+
+  if [[ -z "$RAW_TOKEN" || "$RAW_TOKEN" == "null" ]]; then
+    echo "ERROR: No token in response"
+    echo "$body"
+    return 1
+  fi
+
+  echo "  Token created successfully"
+  echo "  ID:     $token_id"
+  echo "  Prefix: ${prefix}..."
+  echo "  Scopes: [admin]"
+}
+
+# ──────────────────────────────────────────────
+# Method 2: Direct DB (fallback)
+# ──────────────────────────────────────────────
+create_via_db() {
+  local job_name="dispatch-api-token-setup"
+
+  # Generate token client-side (same algorithm as Switchyard)
+  local raw_hex
+  raw_hex=$(openssl rand -hex 32)
+  RAW_TOKEN="enclii_${raw_hex}"
+  local prefix="${RAW_TOKEN:0:16}"
+  local token_hash
+  token_hash=$(printf '%s' "$RAW_TOKEN" | shasum -a 256 | awk '{print $1}')
+
+  echo "Generated token (direct DB method)"
+  echo "  Prefix: ${prefix}..."
+  echo "  Scopes: [admin]"
+
+  if $DRY_RUN; then
+    echo "[dry-run] Would insert via K8s Job"
+    return 0
+  fi
+
+  kubectl -n "$NAMESPACE" delete job "$job_name" --ignore-not-found 2>/dev/null
+
+  kubectl apply -f - <<EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: ${JOB_NAME}
+  name: ${job_name}
   namespace: ${NAMESPACE}
 spec:
   backoffLimit: 1
@@ -78,16 +168,13 @@ spec:
             exit 1
           fi
           echo "Using user_id: \$ADMIN_ID"
-
-          # Revoke any existing dispatch-service token
           psql "\$DATABASE_URL" -c "
             UPDATE api_tokens SET revoked = true, revoked_at = now(), updated_at = now()
             WHERE name = '${TOKEN_NAME}' AND revoked = false;
           "
-
           psql "\$DATABASE_URL" -c "
             INSERT INTO api_tokens (id, user_id, name, prefix, token_hash, scopes, revoked, created_at, updated_at)
-            VALUES (gen_random_uuid(), '\$ADMIN_ID', '${TOKEN_NAME}', '${PREFIX}', '${TOKEN_HASH}', '{admin}', false, now(), now());
+            VALUES (gen_random_uuid(), '\$ADMIN_ID', '${TOKEN_NAME}', '${prefix}', '${token_hash}', '{admin}', false, now(), now());
           "
           echo "Token inserted successfully."
         env:
@@ -98,13 +185,55 @@ spec:
               key: database-url
 EOF
 
-echo "Waiting for Job to complete..."
-kubectl -n "$NAMESPACE" wait --for=condition=complete "job/${JOB_NAME}" --timeout=60s
+  echo "Waiting for Job to complete..."
+  kubectl -n "$NAMESPACE" wait --for=condition=complete "job/${job_name}" --timeout=60s
+  echo "Job completed. Logs:"
+  kubectl -n "$NAMESPACE" logs "job/${job_name}"
+  kubectl -n "$NAMESPACE" delete job "$job_name" --ignore-not-found 2>/dev/null
+}
 
-echo "Job completed. Checking logs:"
-kubectl -n "$NAMESPACE" logs "job/${JOB_NAME}"
+# ──────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────
 
-# --- Step 3: Patch K8s secret with the raw token ---
+RAW_TOKEN=""
+
+if $DIRECT_DB; then
+  echo "Using direct DB method (fallback)..."
+  create_via_db
+else
+  # Get admin JWT
+  if [[ -z "${ADMIN_JWT:-}" ]]; then
+    echo "An admin JWT is required to create the service token via the API."
+    echo "Obtain one by logging into Dispatch (admin.enclii.dev) and copying"
+    echo "the dispatch_auth cookie value from your browser."
+    echo ""
+    read -rp "Paste admin JWT: " ADMIN_JWT
+  fi
+
+  if [[ -z "$ADMIN_JWT" ]]; then
+    echo "ERROR: No JWT provided."
+    exit 1
+  fi
+
+  create_via_api "$ADMIN_JWT"
+fi
+
+if [[ -z "$RAW_TOKEN" ]]; then
+  echo "ERROR: No token was generated."
+  exit 1
+fi
+
+if $DRY_RUN; then
+  echo ""
+  echo "[dry-run] Would patch $SECRET_NAME with switchyard-api-key"
+  echo "[dry-run] Raw token: ${RAW_TOKEN}"
+  exit 0
+fi
+
+# ──────────────────────────────────────────────
+# Store token in K8s secret
+# ──────────────────────────────────────────────
 echo ""
 echo "Patching ${SECRET_NAME} with switchyard-api-key..."
 
@@ -119,9 +248,10 @@ else
   echo "Created secret."
 fi
 
-# --- Step 4: Cleanup ---
-kubectl -n "$NAMESPACE" delete job "$JOB_NAME" --ignore-not-found 2>/dev/null
-
 echo ""
 echo "Done. Restart Dispatch to pick up the new secret:"
 echo "  kubectl -n ${NAMESPACE} rollout restart deploy/dispatch"
+echo ""
+echo "To verify:"
+echo "  kubectl -n ${NAMESPACE} exec deploy/dispatch -- printenv SWITCHYARD_API_KEY | head -c 16"
+echo "  # Should show: enclii_xxxxxxxx"

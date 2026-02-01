@@ -14,9 +14,11 @@ async function handler(
     ? await request.text()
     : undefined
 
+  const token = request.cookies.get('dispatch_auth')?.value
   const res = await adminProxy(`${adminPath}${qs}`, {
     method: request.method,
     body,
+    userToken: token,
   })
 
   const data = await res.json().catch(() => ({}))

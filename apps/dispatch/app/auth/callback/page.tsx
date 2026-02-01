@@ -148,9 +148,9 @@ function AuthCallbackContent() {
 
       setStatus('success')
 
-      // Redirect to dashboard - cookies are now set via Set-Cookie headers
+      // Full navigation ensures browser processes Set-Cookie headers before next page load
       setTimeout(() => {
-        router.push('/')
+        window.location.href = '/'
       }, 500)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')

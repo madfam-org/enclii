@@ -78,6 +78,16 @@ export function FleetGrid() {
   }
 
   if (error) {
+    // Show clean empty state for auth errors instead of red error banner
+    if (error.includes('401') || error.includes('Authorization')) {
+      return (
+        <div className="rounded-lg border border-border bg-card/50 p-8 text-center">
+          <Server className="size-12 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-semibold mb-2">No Bare Metal Hosts</h3>
+          <p className="text-muted-foreground mb-4">Register your first bare metal host to get started.</p>
+        </div>
+      )
+    }
     return (
       <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center">
         <p className="text-destructive">{error}</p>
