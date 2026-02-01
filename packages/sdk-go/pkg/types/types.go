@@ -134,16 +134,17 @@ type Release struct {
 // DeploymentEnriched represents a deployment with joined release and service data
 type DeploymentEnriched struct {
 	Deployment
-	ServiceName       string `json:"service_name"`
-	GitSHA            string `json:"git_sha"`
-	GitBranch         string `json:"git_branch"`
-	CommitMessage     string `json:"commit_message"`
-	CommitAuthor      string `json:"commit_author"`
-	CommitAuthorEmail string `json:"commit_author_email"`
-	PRNumber          *int   `json:"pr_number,omitempty"`
-	PRTitle           string `json:"pr_title"`
-	PRURL             string `json:"pr_url"`
-	RepoURL           string `json:"repo_url"`
+	ServiceID         uuid.UUID `json:"service_id"`
+	ServiceName       string    `json:"service_name"`
+	GitSHA            string    `json:"git_sha"`
+	GitBranch         string    `json:"git_branch"`
+	CommitMessage     string    `json:"commit_message"`
+	CommitAuthor      string    `json:"commit_author"`
+	CommitAuthorEmail string    `json:"commit_author_email"`
+	PRNumber          *int      `json:"pr_number,omitempty"`
+	PRTitle           string    `json:"pr_title"`
+	PRURL             string    `json:"pr_url"`
+	RepoURL           string    `json:"repo_url"`
 }
 
 type ReleaseStatus string

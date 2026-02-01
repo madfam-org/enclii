@@ -180,7 +180,9 @@ export default function DeploymentDetailPage() {
           <div className="flex items-center justify-between">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <CardTitle className="text-xl">Deployment</CardTitle>
+                <CardTitle className="text-xl">
+                  Deployment{deployment.service_name ? ` — ${deployment.service_name}` : ''}
+                </CardTitle>
                 <Badge variant={getStatusVariant(deployment.status)}>{deployment.status}</Badge>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getHealthColor(deployment.health)}`}>
                   {deployment.health}
@@ -314,8 +316,8 @@ export default function DeploymentDetailPage() {
       <div>
         <h2 className="text-lg font-semibold mb-4">Logs</h2>
         <LogsTab
-          serviceId={deployment.release_id}
-          serviceName={`Deployment ${deploymentId.slice(0, 8)}`}
+          serviceId={deployment.service_id || deployment.release_id}
+          serviceName={deployment.service_name || `Deployment ${deploymentId.slice(0, 8)}`}
           deploymentId={deploymentId}
         />
       </div>

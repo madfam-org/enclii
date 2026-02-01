@@ -193,6 +193,7 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 	baseQuery := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
 		       d.error_message, d.created_at, d.updated_at,
+		       COALESCE(s.id, '00000000-0000-0000-0000-000000000000') as service_id,
 		       COALESCE(s.name, '') as service_name,
 		       COALESCE(r.git_sha, '') as git_sha,
 		       COALESCE(r.git_branch, '') as git_branch,
@@ -231,7 +232,7 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 		err := rows.Scan(
 			&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
 			&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt,
-			&d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
+			&d.ServiceID, &d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
 			&d.CommitAuthor, &d.CommitAuthorEmail,
 			&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
 		)
@@ -250,6 +251,7 @@ func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (
 	query := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
 		       d.error_message, d.created_at, d.updated_at,
+		       COALESCE(s.id, '00000000-0000-0000-0000-000000000000') as service_id,
 		       COALESCE(s.name, '') as service_name,
 		       COALESCE(r.git_sha, '') as git_sha,
 		       COALESCE(r.git_branch, '') as git_branch,
@@ -270,7 +272,7 @@ func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
 		&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt,
-		&d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
+		&d.ServiceID, &d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
 		&d.CommitAuthor, &d.CommitAuthorEmail,
 		&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
 	)

@@ -21,6 +21,9 @@ export interface Deployment {
   commit_author_avatar_url?: string;
   // Repository information for commit links
   repo_url?: string;
+  // Enriched fields from API joins
+  service_id?: string;
+  service_name?: string;
 }
 
 export interface Release {

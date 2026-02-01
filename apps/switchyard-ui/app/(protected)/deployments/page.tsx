@@ -18,8 +18,8 @@ interface ServiceListResponse {
 
 export default function DeploymentsPage() {
   const router = useRouter();
-  const [deployments, setDeployments] = useState<(Deployment & { service_name?: string })[]>([]);
-  const [activeDeployments, setActiveDeployments] = useState<(Deployment & { service_name?: string })[]>([]);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [activeDeployments, setActiveDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export default function DeploymentsPage() {
       if (isManualRefresh) setRefreshing(true);
 
       // Try the cross-service deployments endpoint first
-      let allDeployments: (Deployment & { service_name?: string })[] = [];
+      let allDeployments: Deployment[] = [];
 
       try {
         const data = await apiGet<{ deployments: Deployment[]; count: number }>('/v1/deployments');
