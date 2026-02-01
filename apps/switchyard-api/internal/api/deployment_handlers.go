@@ -576,6 +576,39 @@ func (h *Handler) ListServiceDeployments(c *gin.Context) {
 	})
 }
 
+// ListAllDeployments returns all deployments across services
+func (h *Handler) ListAllDeployments(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var since *time.Time
+	if sinceStr := c.Query("since"); sinceStr != "" {
+		// Parse duration like "24h", "7d", "1h"
+		if d, err := time.ParseDuration(sinceStr); err == nil {
+			t := time.Now().Add(-d)
+			since = &t
+		}
+	}
+
+	limit := 50
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	deployments, err := h.repos.Deployments.ListAll(ctx, since, limit)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to list all deployments", logging.Error("db_error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deployments": deployments,
+		"count":       len(deployments),
+	})
+}
+
 // sendComplianceWebhooks sends deployment evidence to Vanta/Drata
 func (h *Handler) sendComplianceWebhooks(
 	ctx context.Context,

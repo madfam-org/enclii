@@ -2,34 +2,24 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { DeploymentProgress, DeploymentProgressSkeleton, type DeploymentStage } from "@/components/dashboard/deployment-progress";
+import { AuthorAvatar, CommitLink } from "@/components/git";
+import { GitBranch } from "lucide-react";
 import { apiGet } from "@/lib/api";
+import type { Deployment, DeploymentsListResponse } from "@/components/deployments/types";
 
-interface RecentActivity {
-  id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  status: "success" | "running" | "failed" | "pending";
-  metadata?: {
-    version?: string;
-    environment?: string;
-    service_name?: string;
-    project_name?: string;
-  };
-}
-
-interface DashboardResponse {
-  stats: any;
-  activities: RecentActivity[];
-  services: any[];
+interface ServiceListResponse {
+  services: Array<{ id: string; name: string }>;
 }
 
 export default function DeploymentsPage() {
-  const [deployments, setDeployments] = useState<RecentActivity[]>([]);
-  const [activeDeployments, setActiveDeployments] = useState<RecentActivity[]>([]);
+  const router = useRouter();
+  const [deployments, setDeployments] = useState<(Deployment & { service_name?: string })[]>([]);
+  const [activeDeployments, setActiveDeployments] = useState<(Deployment & { service_name?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,19 +27,38 @@ export default function DeploymentsPage() {
   const fetchDeployments = async (isManualRefresh = false) => {
     try {
       setError(null);
-      if (isManualRefresh) {
-        setRefreshing(true);
-      }
-      const data = await apiGet<DashboardResponse>(`/v1/dashboard/stats`);
-      // Filter for deployment-related activities
-      const deploymentActivities = (data.activities || []).filter(
-        (a) => a.type === "deployment" || a.type === "deploy" || a.message.toLowerCase().includes("deploy")
-      );
-      const allDeployments = deploymentActivities.length > 0 ? deploymentActivities : data.activities || [];
+      if (isManualRefresh) setRefreshing(true);
 
-      // Separate active (running) deployments from history
-      const active = allDeployments.filter((d) => d.status === "running");
-      const history = allDeployments.filter((d) => d.status !== "running");
+      // Try the cross-service deployments endpoint first
+      let allDeployments: (Deployment & { service_name?: string })[] = [];
+
+      try {
+        const data = await apiGet<{ deployments: Deployment[]; count: number }>('/v1/deployments');
+        allDeployments = data.deployments || [];
+      } catch {
+        // Fallback: aggregate from services
+        const dashData = await apiGet<{ services: Array<{ id: string; name: string }> }>('/v1/dashboard/stats');
+        const services = dashData.services || [];
+
+        const results = await Promise.allSettled(
+          services.map(async (svc) => {
+            const data = await apiGet<DeploymentsListResponse>(`/v1/services/${svc.id}/deployments`);
+            return (data.deployments || []).map((d) => ({ ...d, service_name: svc.name }));
+          })
+        );
+
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            allDeployments.push(...result.value);
+          }
+        }
+
+        // Sort by created_at desc
+        allDeployments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      }
+
+      const active = allDeployments.filter((d) => d.status === 'deploying' || d.status === 'pending');
+      const history = allDeployments.filter((d) => d.status !== 'deploying' && d.status !== 'pending');
 
       setActiveDeployments(active);
       setDeployments(history);
@@ -63,68 +72,49 @@ export default function DeploymentsPage() {
     }
   };
 
-  // Map activity status to DeploymentStage
-  const getDeploymentStage = (activity: RecentActivity): DeploymentStage => {
-    const message = activity.message.toLowerCase();
-    if (message.includes("building") || message.includes("build")) return "building";
-    if (message.includes("pushing") || message.includes("push")) return "pushing";
-    if (message.includes("deploying") || message.includes("deploy")) return "deploying";
-    if (message.includes("verifying") || message.includes("verify")) return "verifying";
-    if (activity.status === "success") return "completed";
-    if (activity.status === "failed") return "failed";
-    return "deploying"; // default for running
+  const getDeploymentStage = (deployment: Deployment): DeploymentStage => {
+    if (deployment.status === 'deploying') return 'deploying';
+    if (deployment.status === 'pending') return 'building';
+    if (deployment.status === 'failed') return 'failed';
+    if (deployment.status === 'running') return 'completed';
+    return 'deploying';
   };
 
   useEffect(() => {
     fetchDeployments();
-
-    // Refresh every 30 seconds
     const interval = setInterval(fetchDeployments, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const formatTimeAgo = (timestamp: string) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
-
-    if (diffInSeconds < 60) {
-      return `${diffInSeconds} seconds ago`;
-    } else if (diffInSeconds < 3600) {
-      const minutes = Math.floor(diffInSeconds / 60);
-      return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
-    } else if (diffInSeconds < 86400) {
-      const hours = Math.floor(diffInSeconds / 3600);
-      return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-    } else {
-      const days = Math.floor(diffInSeconds / 86400);
-      return `${days} day${days > 1 ? "s" : ""} ago`;
-    }
+    const diff = Date.now() - new Date(timestamp).getTime();
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return `${seconds} seconds ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days > 1 ? "s" : ""} ago`;
   };
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case "success":
-        return "bg-status-success-muted text-status-success-foreground";
-      case "running":
-        return "bg-status-info-muted text-status-info-foreground";
-      case "failed":
-        return "bg-status-error-muted text-status-error-foreground";
-      default:
-        return "bg-status-warning-muted text-status-warning-foreground";
-    }
+  const getStatusVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+      running: 'default',
+      pending: 'secondary',
+      deploying: 'secondary',
+      failed: 'destructive',
+      stopped: 'outline',
+    };
+    return variants[status] || 'outline';
   };
 
   const getStatusDotClass = (status: string) => {
     switch (status) {
-      case "success":
-        return "bg-status-success";
-      case "running":
-        return "bg-status-info animate-pulse";
-      case "failed":
-        return "bg-status-error";
-      default:
-        return "bg-status-warning";
+      case "running": return "bg-status-success";
+      case "deploying": case "pending": return "bg-status-info animate-pulse";
+      case "failed": return "bg-status-error";
+      default: return "bg-status-warning";
     }
   };
 
@@ -133,14 +123,12 @@ export default function DeploymentsPage() {
       <div className="container mx-auto py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Deployments</h1>
-          <p className="text-muted-foreground mt-2">
-            Track and manage your deployment history
-          </p>
+          <p className="text-muted-foreground mt-2">Track and manage your deployment history</p>
         </div>
         <Card>
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
               <span className="ml-3 text-muted-foreground">Loading deployments...</span>
             </div>
           </CardContent>
@@ -154,9 +142,7 @@ export default function DeploymentsPage() {
       <div className="container mx-auto py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Deployments</h1>
-          <p className="text-muted-foreground mt-2">
-            Track and manage your deployment history
-          </p>
+          <p className="text-muted-foreground mt-2">Track and manage your deployment history</p>
         </div>
         <Card className="border-status-error/30 bg-status-error-muted">
           <CardContent className="py-8">
@@ -180,9 +166,7 @@ export default function DeploymentsPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold">Deployments</h1>
-          <p className="text-muted-foreground mt-2">
-            Track and manage your deployment history
-          </p>
+          <p className="text-muted-foreground mt-2">Track and manage your deployment history</p>
         </div>
         <button
           onClick={() => fetchDeployments(true)}
@@ -199,14 +183,19 @@ export default function DeploymentsPage() {
         <div className="mb-8 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Active Deployments</h2>
           {activeDeployments.map((deployment) => (
-            <DeploymentProgress
+            <div
               key={deployment.id}
-              releaseId={deployment.id}
-              serviceName={deployment.metadata?.service_name || "Unknown Service"}
-              currentStage={getDeploymentStage(deployment)}
-              startedAt={deployment.timestamp}
-              onComplete={fetchDeployments}
-            />
+              className="cursor-pointer"
+              onClick={() => router.push(`/deployments/${deployment.id}`)}
+            >
+              <DeploymentProgress
+                releaseId={deployment.id}
+                serviceName={deployment.service_name || "Unknown Service"}
+                currentStage={getDeploymentStage(deployment)}
+                startedAt={deployment.created_at}
+                onComplete={fetchDeployments}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -239,50 +228,66 @@ export default function DeploymentsPage() {
                 </ul>
                 <p className="text-sm text-muted-foreground mt-3">
                   Check the{" "}
-                  <Link href="/services" className="text-blue-600 hover:underline">
-                    Services page
-                  </Link>{" "}
+                  <Link href="/services" className="text-blue-600 hover:underline">Services page</Link>{" "}
                   to verify your services are registered.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {deployments.map((deployment) => (
                 <div
                   key={deployment.id}
-                  className="flex items-center justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors border border-border"
+                  onClick={() => router.push(`/deployments/${deployment.id}`)}
+                  className="flex items-center justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors border border-border cursor-pointer"
                 >
-                  <div className="flex items-center space-x-4">
-                    <div className={`w-3 h-3 rounded-full ${getStatusDotClass(deployment.status)}`}></div>
-                    <div>
-                      <p className="font-medium text-foreground">{deployment.message}</p>
-                      <div className="flex items-center space-x-2 text-sm text-muted-foreground mt-1">
-                        {deployment.metadata?.service_name && (
-                          <span className="font-medium">{deployment.metadata.service_name}</span>
+                  <div className="flex items-center space-x-4 min-w-0">
+                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${getStatusDotClass(deployment.status)}`} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {deployment.service_name && (
+                          <span className="font-medium text-foreground">{deployment.service_name}</span>
                         )}
-                        {deployment.metadata?.version && (
-                          <>
-                            <span>•</span>
-                            <span>{deployment.metadata.version}</span>
-                          </>
+                        {deployment.git_branch && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <GitBranch className="h-3 w-3" />
+                            <span className="truncate max-w-[120px]">{deployment.git_branch}</span>
+                          </span>
                         )}
-                        {deployment.metadata?.environment && (
-                          <>
-                            <span>•</span>
-                            <span className="capitalize">{deployment.metadata.environment}</span>
-                          </>
+                        {deployment.git_sha && (
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {deployment.git_sha.slice(0, 7)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                        {deployment.pr_number && (
+                          <span>PR #{deployment.pr_number}</span>
+                        )}
+                        {deployment.commit_message && (
+                          <span className="truncate max-w-[300px]">{deployment.commit_message}</span>
                         )}
                         <span>•</span>
-                        <span>{formatTimeAgo(deployment.timestamp)}</span>
+                        <span>{formatTimeAgo(deployment.created_at)}</span>
+                        {deployment.commit_author && (
+                          <>
+                            <span>•</span>
+                            <AuthorAvatar
+                              name={deployment.commit_author}
+                              username={deployment.commit_author_username}
+                              email={deployment.commit_author_email}
+                              avatarUrl={deployment.commit_author_avatar_url}
+                              size="xs"
+                              showName
+                            />
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(deployment.status)}`}
-                  >
-                    {deployment.status.charAt(0).toUpperCase() + deployment.status.slice(1)}
-                  </span>
+                  <Badge variant={getStatusVariant(deployment.status)} className="flex-shrink-0 ml-4">
+                    {deployment.status}
+                  </Badge>
                 </div>
               ))}
             </div>

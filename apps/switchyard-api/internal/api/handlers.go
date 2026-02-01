@@ -326,6 +326,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/services/:id/metrics", h.GetServiceResourceMetrics)
 			protected.GET("/services/:id/deployments", h.ListServiceDeployments)
 			protected.GET("/services/:id/deployments/latest", h.GetLatestDeployment)
+			protected.GET("/deployments", h.ListAllDeployments)
 			protected.GET("/deployments/:id", h.GetDeployment)
 			protected.GET("/deployments/:id/logs", h.GetLogs)
 			protected.POST("/deployments/:id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.RollbackDeployment)

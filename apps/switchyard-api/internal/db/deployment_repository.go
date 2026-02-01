@@ -142,6 +142,48 @@ func (r *DeploymentRepository) GetByStatus(ctx context.Context, status types.Dep
 	return deployments, nil
 }
 
+// ListAll retrieves all deployments across services, optionally filtered by a since time
+func (r *DeploymentRepository) ListAll(ctx context.Context, since *time.Time, limit int) ([]*types.Deployment, error) {
+	var query string
+	var args []interface{}
+
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	if since != nil {
+		query = `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+		         FROM deployments WHERE created_at >= $1 ORDER BY created_at DESC LIMIT $2`
+		args = []interface{}{*since, limit}
+	} else {
+		query = `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+		         FROM deployments ORDER BY created_at DESC LIMIT $1`
+		args = []interface{}{limit}
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []*types.Deployment
+	for rows.Next() {
+		deployment := &types.Deployment{}
+		err := rows.Scan(
+			&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
+			&deployment.Replicas, &deployment.Status, &deployment.Health,
+			&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		deployments = append(deployments, deployment)
+	}
+
+	return deployments, nil
+}
+
 // ListByGroup retrieves all deployments for a deployment group
 // Note: This feature is not yet implemented - group_id and deploy_order columns
 // don't exist in the database. Returns empty slice until feature is migrated.

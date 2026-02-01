@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { apiGet, apiPost } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 import { GitBranch, ExternalLink, RefreshCw, RotateCcw } from 'lucide-react';
 import { AuthorAvatar, CommitLink } from '@/components/git';
 import type { Deployment, DeploymentsListResponse, RollbackResponse } from './types';
@@ -31,6 +32,7 @@ interface DeploymentsTabProps {
 }
 
 export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) {
+  const router = useRouter();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +216,7 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
               </TableHeader>
               <TableBody>
                 {deployments.map((deployment, index) => (
-                  <TableRow key={deployment.id}>
+                  <TableRow key={deployment.id} className="cursor-pointer hover:bg-muted" onClick={() => router.push(`/deployments/${deployment.id}`)}>
                     <TableCell>{getStatusBadge(deployment.status)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
