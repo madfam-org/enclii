@@ -100,6 +100,13 @@ spec:
         # Janua API URL for GitHub token retrieval
         - name: ENCLII_JANUA_API_URL
           value: "https://auth.madfam.io"
+        # ArgoCD Webhook Secret (for sync callback authentication)
+        - name: ENCLII_ARGOCD_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: enclii-argocd-webhook
+              key: secret
+              optional: true
         # Cloudflare Integration (for domain status sync)
         - name: ENCLII_CLOUDFLARE_API_TOKEN
           valueFrom:

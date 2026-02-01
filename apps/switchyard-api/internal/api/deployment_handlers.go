@@ -526,7 +526,7 @@ func (h *Handler) GetDeployment(c *gin.Context) {
 		return
 	}
 
-	deployment, err := h.repos.Deployments.GetByID(ctx, deploymentID.String())
+	deployment, err := h.repos.Deployments.GetByIDEnriched(ctx, deploymentID.String())
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})

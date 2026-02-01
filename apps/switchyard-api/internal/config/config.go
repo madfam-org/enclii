@@ -62,6 +62,9 @@ type Config struct {
 	GitHubToken         string // GitHub API token for PR verification
 	GitHubWebhookSecret string // Secret for verifying GitHub webhook signatures
 
+	// ArgoCD Integration
+	ArgocdWebhookSecret string
+
 	// Compliance Webhooks
 	ComplianceWebhooksEnabled bool
 	VantaWebhookURL           string
@@ -164,6 +167,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("roundhouse-api-key", "")                 // API key for roundhouse
 	viper.SetDefault("self-url", "http://switchyard-api:4200") // This service's URL for callbacks
 	viper.SetDefault("github-webhook-secret", "")              // Webhook disabled until secret configured
+	viper.SetDefault("argocd-webhook-secret", "")
 	viper.SetDefault("compliance-webhooks-enabled", false)
 	viper.SetDefault("secret-rotation-enabled", false)
 	viper.SetDefault("vault-poll-interval", 60) // Poll every 60 seconds
@@ -234,6 +238,7 @@ func Load() (*Config, error) {
 		SelfURL:                    viper.GetString("self-url"),
 		GitHubToken:                viper.GetString("github-token"),
 		GitHubWebhookSecret:        viper.GetString("github-webhook-secret"),
+		ArgocdWebhookSecret:        viper.GetString("argocd-webhook-secret"),
 		ComplianceWebhooksEnabled:  viper.GetBool("compliance-webhooks-enabled"),
 		VantaWebhookURL:            viper.GetString("vanta-webhook-url"),
 		DrataWebhookURL:            viper.GetString("drata-webhook-url"),

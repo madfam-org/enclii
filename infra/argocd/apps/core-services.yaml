@@ -10,6 +10,8 @@ metadata:
     app.kubernetes.io/name: core-services
     app.kubernetes.io/part-of: enclii
   annotations:
+    # ArgoCD Notifications: notify Enclii API on successful sync
+    notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
     # ArgoCD Image Updater Configuration
     # Watches ghcr.io for new image versions and auto-updates deployments
     # Uses digest strategy: detects when :latest tag points to new SHA

@@ -245,6 +245,43 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 	return deployments, nil
 }
 
+// GetByIDEnriched retrieves a single deployment with joined release and service data
+func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (*types.DeploymentEnriched, error) {
+	query := `
+		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
+		       d.error_message, d.created_at, d.updated_at,
+		       COALESCE(s.name, '') as service_name,
+		       COALESCE(r.git_sha, '') as git_sha,
+		       COALESCE(r.git_branch, '') as git_branch,
+		       COALESCE(r.commit_message, '') as commit_message,
+		       COALESCE(r.commit_author_name, '') as commit_author,
+		       COALESCE(r.commit_author_email, '') as commit_author_email,
+		       r.pr_number,
+		       COALESCE(r.pr_title, '') as pr_title,
+		       COALESCE(r.pr_url, '') as pr_url,
+		       COALESCE(r.repo_url, '') as repo_url
+		FROM deployments d
+		LEFT JOIN releases r ON d.release_id = r.id
+		LEFT JOIN services s ON r.service_id = s.id
+		WHERE d.id = $1`
+
+	d := &types.DeploymentEnriched{}
+	var prNumber *int
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
+		&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt,
+		&d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
+		&d.CommitAuthor, &d.CommitAuthorEmail,
+		&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
+	)
+	if err != nil {
+		return nil, err
+	}
+	d.PRNumber = prNumber
+
+	return d, nil
+}
+
 // ListByGroup retrieves all deployments for a deployment group
 // Note: This feature is not yet implemented - group_id and deploy_order columns
 // don't exist in the database. Returns empty slice until feature is migrated.

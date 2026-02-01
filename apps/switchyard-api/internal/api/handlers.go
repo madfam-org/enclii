@@ -243,6 +243,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	// Uses API key authentication instead of user auth
 	router.POST("/v1/callbacks/build-complete", h.BuildCompleteCallback)
 	router.POST("/v1/callbacks/function-build-complete", h.FunctionBuildCompleteCallback)
+	router.POST("/v1/callbacks/argocd-sync", h.ArgocdSyncCallback)
 
 	// Internal API endpoints (for Roundhouse webhook integration)
 	// GET /v1/services?git_repo=... - Find services by git repository URL
