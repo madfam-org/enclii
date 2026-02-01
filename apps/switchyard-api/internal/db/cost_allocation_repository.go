@@ -68,6 +68,14 @@ func (r *CostAllocationRepository) ListByHost(ctx context.Context, hostID uuid.U
 	return allocations, nil
 }
 
+func (r *CostAllocationRepository) UpdateCostCents(ctx context.Context, id uuid.UUID, costCents int) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE cost_allocations SET cost_cents=$2 WHERE id=$1`, id, costCents)
+	if err != nil {
+		return fmt.Errorf("failed to update cost allocation: %w", err)
+	}
+	return nil
+}
+
 func (r *CostAllocationRepository) GetSummary(ctx context.Context, start, end time.Time) ([]*types.CostAllocation, error) {
 	query := `SELECT '' AS id, bare_metal_host_id, tenant_id, SUM(allocation_percent) as allocation_percent, MIN(period_start) as period_start, MAX(period_end) as period_end, SUM(cost_cents) as cost_cents, MIN(created_at) as created_at
 		FROM cost_allocations WHERE period_start >= $1 AND period_end <= $2

@@ -123,6 +123,7 @@ existing_hosts=$(echo "$body" | jq -r '.hosts[]?.name // empty' 2>/dev/null || t
 # Host: foundry-core
 if echo "$existing_hosts" | grep -qx "foundry-core"; then
   echo "  foundry-core: already exists"
+  CORE_BMH_ID=$(echo "$body" | jq -r '.hosts[] | select(.name=="foundry-core") | .id')
 else
   echo "  Registering foundry-core..."
   resp=$(api POST /fleet -d "{
@@ -139,7 +140,8 @@ else
   code=${parsed%%|*}
   body_h=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
-    echo "  foundry-core: registered"
+    CORE_BMH_ID=$(echo "$body_h" | jq -r '.id')
+    echo "  foundry-core: registered ($CORE_BMH_ID)"
   else
     echo "  ERROR registering foundry-core (HTTP $code): $body_h"
   fi
@@ -148,6 +150,7 @@ fi
 # Host: the-forge
 if echo "$existing_hosts" | grep -qx "the-forge"; then
   echo "  the-forge: already exists"
+  FORGE_BMH_ID=$(echo "$body" | jq -r '.hosts[] | select(.name=="the-forge") | .id')
 else
   echo "  Registering the-forge..."
   resp=$(api POST /fleet -d "{
@@ -164,7 +167,8 @@ else
   code=${parsed%%|*}
   body_h=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
-    echo "  the-forge: registered"
+    FORGE_BMH_ID=$(echo "$body_h" | jq -r '.id')
+    echo "  the-forge: registered ($FORGE_BMH_ID)"
   else
     echo "  ERROR registering the-forge (HTTP $code): $body_h"
   fi
@@ -210,26 +214,24 @@ echo ""
 echo "--- Cost Allocations ---"
 
 resp=$(api POST /costs/allocate -d "{
-  \"host_id\": \"${CORE_CLUSTER_ID:-}\",
+  \"bare_metal_host_id\": \"${CORE_BMH_ID:-}\",
   \"tenant_id\": \"madfam\",
   \"period_start\": \"2026-01-01T00:00:00Z\",
   \"period_end\": \"2026-02-01T00:00:00Z\",
-  \"amount_cents\": 5000,
-  \"currency\": \"USD\",
-  \"description\": \"foundry-core (AX41-NVMe) - January 2026\"
+  \"cost_cents\": 5000,
+  \"allocation_percent\": 100
 }")
 parsed=$(parse_response "$resp")
 code=${parsed%%|*}
 echo "  foundry-core cost: HTTP $code"
 
 resp=$(api POST /costs/allocate -d "{
-  \"host_id\": \"${BUILDER_CLUSTER_ID:-}\",
+  \"bare_metal_host_id\": \"${FORGE_BMH_ID:-}\",
   \"tenant_id\": \"madfam\",
   \"period_start\": \"2026-01-01T00:00:00Z\",
   \"period_end\": \"2026-02-01T00:00:00Z\",
-  \"amount_cents\": 500,
-  \"currency\": \"USD\",
-  \"description\": \"the-forge (CX22 VPS) - January 2026\"
+  \"cost_cents\": 500,
+  \"allocation_percent\": 100
 }")
 parsed=$(parse_response "$resp")
 code=${parsed%%|*}

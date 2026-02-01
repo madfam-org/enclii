@@ -468,6 +468,24 @@ func main() {
 	apiHandler.SetCostTrackingService(costTrackingService)
 	logrus.Info("✓ Admin control plane services wired (fleet, clusters, infrastructure, vclusters, placement, drift, costs)")
 
+	// Start admin reconciler (syncs cluster status, fleet, ArgoCD drift, costs every 60s)
+	adminReconciler := reconciler.NewAdminReconciler(repos, k8sClient, logrus.StandardLogger())
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("Admin reconciler panicked: %v", r)
+			}
+		}()
+		adminReconciler.Start(ctx)
+	}()
+	logrus.Info("✓ Admin reconciler started (cluster status, fleet, ArgoCD drift, cost tracking)")
+
+	// Start domain background sync (existing code, never activated)
+	if domainSyncService != nil {
+		domainSyncService.StartBackgroundSync(5 * time.Minute)
+		logrus.Info("✓ Domain background sync started (every 5 minutes)")
+	}
+
 	api.SetupRoutes(router, apiHandler)
 
 	server := &http.Server{
@@ -511,6 +529,10 @@ func main() {
 		domainSyncService.StopBackgroundSync()
 		logrus.Info("Domain sync service stopped")
 	}
+
+	// Stop admin reconciler
+	adminReconciler.Stop()
+	logrus.Info("Admin reconciler stopped")
 
 	// Stop reconciler controller gracefully
 	reconcilerController.Stop()
