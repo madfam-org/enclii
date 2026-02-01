@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -74,10 +75,12 @@ func (r *AdminReconciler) Stop() {
 
 // reconcileAll runs all admin sync methods sequentially
 func (r *AdminReconciler) reconcileAll(ctx context.Context) {
+	start := time.Now()
 	r.syncClusterStatus(ctx)
 	r.syncFleetStatus(ctx)
 	r.syncArgoCDDrift(ctx)
 	r.calculateCosts(ctx)
+	r.logger.WithField("duration", time.Since(start)).Debug("Admin reconciler: cycle complete")
 }
 
 // syncClusterStatus syncs K8s node status into the clusters table
@@ -128,7 +131,9 @@ func (r *AdminReconciler) syncClusterStatus(ctx context.Context) {
 	var totalCPU, totalMemory int64
 	var totalPods int
 	metrics, metricsErr := r.k8sClient.GetClusterMetrics(ctx)
-	if metricsErr == nil && metrics.MetricsEnabled {
+	if metricsErr != nil {
+		r.logger.WithError(metricsErr).Warn("Admin reconciler: cluster metrics unavailable")
+	} else if metrics.MetricsEnabled {
 		totalCPU = metrics.TotalCPU
 		totalMemory = metrics.TotalMemory
 		totalPods = metrics.TotalPods
@@ -156,10 +161,13 @@ func (r *AdminReconciler) syncClusterStatus(ctx context.Context) {
 	}
 
 	r.logger.WithFields(logrus.Fields{
-		"status":      status,
-		"ready_nodes": readyNodes,
-		"total_nodes": totalNodes,
-	}).Debug("Admin reconciler: cluster status synced")
+		"status":       status,
+		"ready_nodes":  readyNodes,
+		"total_nodes":  totalNodes,
+		"cpu_milli":    totalCPU,
+		"memory_bytes": totalMemory,
+		"pod_count":    totalPods,
+	}).Info("Admin reconciler: cluster status synced")
 }
 
 // syncFleetStatus syncs K8s node info into the bare_metal_hosts table
@@ -188,6 +196,20 @@ func (r *AdminReconciler) syncFleetStatus(ctx context.Context) {
 	for _, host := range hosts {
 		node, found := nodeMap[host.Name]
 		if !found {
+			// Try case-insensitive match
+			for nodeName, n := range nodeMap {
+				if strings.EqualFold(nodeName, host.Name) {
+					node = n
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			r.logger.WithFields(logrus.Fields{
+				"host":            host.Name,
+				"available_nodes": nodeNames(nodeMap),
+			}).Warn("Admin reconciler: no matching K8s node for host")
 			// No matching K8s node — mark power unknown if currently on
 			if host.PowerState == types.BMHPowerOn {
 				if err := r.repos.BareMetalHosts.UpdateState(ctx, host.ID, host.State, types.BMHPowerUnknown); err != nil {
@@ -377,4 +399,13 @@ func (r *AdminReconciler) calculateCosts(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// nodeNames extracts node names from a map for diagnostic logging
+func nodeNames(m map[string]corev1.Node) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	return names
 }
