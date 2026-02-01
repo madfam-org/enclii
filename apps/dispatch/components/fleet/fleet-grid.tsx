@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { fleetApi } from '@/lib/admin-api'
 import type { BareMetalHost, BMHState } from '@/types/admin'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Server, Power, HardDrive, Trash2, RefreshCw } from 'lucide-react'
+import { Server, Power, HardDrive, Trash2, RefreshCw, Clock, Cpu, DollarSign } from 'lucide-react'
 
 const stateColors: Record<BMHState, string> = {
   discovered: 'bg-blue-500/20 border-blue-500/40 text-blue-400',
@@ -24,6 +26,27 @@ const stateColors: Record<BMHState, string> = {
   error: 'bg-red-500/20 border-red-500/40 text-red-400',
 }
 
+function relativeTime(dateStr: string | undefined): string {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+function hwSummary(hw: Record<string, unknown> | undefined): string {
+  if (!hw) return ''
+  const parts: string[] = []
+  if (hw.os) parts.push(String(hw.os))
+  if (hw.arch) parts.push(String(hw.arch))
+  if (hw.cpu_cores) parts.push(`${hw.cpu_cores} cores`)
+  if (hw.memory_gb) parts.push(`${hw.memory_gb}GB`)
+  return parts.join(' · ')
+}
+
 export function FleetGrid() {
   const [hosts, setHosts] = useState<BareMetalHost[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,6 +56,9 @@ export function FleetGrid() {
     action: 'power' | 'wipe'
   } | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [selectedHost, setSelectedHost] = useState<BareMetalHost | null>(null)
+  const [editCost, setEditCost] = useState('')
+  const [costSaving, setCostSaving] = useState(false)
 
   const fetchHosts = async () => {
     try {
@@ -69,6 +95,20 @@ export function FleetGrid() {
     }
   }
 
+  const handleSaveCost = async () => {
+    if (!selectedHost) return
+    setCostSaving(true)
+    try {
+      await fleetApi.update(selectedHost.id, { cost_per_hour_cents: Number(editCost) })
+      await fetchHosts()
+      setSelectedHost((prev) => prev ? { ...prev, cost_per_hour_cents: Number(editCost) } : null)
+    } catch {
+      // error handled by adminFetch
+    } finally {
+      setCostSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -78,7 +118,6 @@ export function FleetGrid() {
   }
 
   if (error) {
-    // Show clean empty state for auth errors instead of red error banner
     if (error.includes('401') || error.includes('Authorization')) {
       return (
         <div className="rounded-lg border border-border bg-card/50 p-8 text-center">
@@ -116,6 +155,10 @@ export function FleetGrid() {
           <div
             key={host.id}
             className={`rounded-lg border p-4 transition-all hover:shadow-md cursor-pointer ${stateColors[host.state] || 'bg-muted/20 border-border'}`}
+            onClick={() => {
+              setSelectedHost(host)
+              setEditCost(String(host.cost_per_hour_cents || 0))
+            }}
           >
             <div className="flex items-center justify-between mb-2">
               <Server className="size-5" />
@@ -123,8 +166,20 @@ export function FleetGrid() {
             </div>
             <h4 className="font-mono text-sm font-semibold truncate">{host.name}</h4>
             <p className="text-xs opacity-75 mt-1">{host.state}</p>
+            {hwSummary(host.hardware_profile) && (
+              <p className="text-xs opacity-60 mt-1 flex items-center gap-1">
+                <Cpu className="size-3 inline" />
+                {hwSummary(host.hardware_profile)}
+              </p>
+            )}
             {host.mac_address && (
               <p className="text-xs opacity-50 font-mono mt-1">{host.mac_address}</p>
+            )}
+            {host.last_inspection_at && (
+              <p className="text-xs opacity-50 mt-1 flex items-center gap-1">
+                <Clock className="size-3 inline" />
+                synced {relativeTime(host.last_inspection_at)}
+              </p>
             )}
             <div className="flex items-center gap-1 mt-3">
               <Button
@@ -132,7 +187,7 @@ export function FleetGrid() {
                 size="sm"
                 className="h-7 w-7 p-0"
                 title={host.power_state === 'on' ? 'Power Off' : 'Power On'}
-                onClick={() => setConfirmAction({ host, action: 'power' })}
+                onClick={(e) => { e.stopPropagation(); setConfirmAction({ host, action: 'power' }) }}
               >
                 <Power className="size-3.5" />
               </Button>
@@ -144,7 +199,7 @@ export function FleetGrid() {
                 size="sm"
                 className="h-7 w-7 p-0"
                 title="Wipe"
-                onClick={() => setConfirmAction({ host, action: 'wipe' })}
+                onClick={(e) => { e.stopPropagation(); setConfirmAction({ host, action: 'wipe' }) }}
               >
                 <Trash2 className="size-3.5" />
               </Button>
@@ -153,6 +208,66 @@ export function FleetGrid() {
         ))}
       </div>
 
+      {/* Host Detail Dialog */}
+      <Dialog open={!!selectedHost} onOpenChange={() => setSelectedHost(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-mono">{selectedHost?.name}</DialogTitle>
+            <DialogDescription>
+              {selectedHost?.state} · power {selectedHost?.power_state}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedHost && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div className="text-muted-foreground">MAC Address</div>
+                <div className="font-mono">{selectedHost.mac_address || '—'}</div>
+                <div className="text-muted-foreground">BMC Address</div>
+                <div className="font-mono">{selectedHost.bmc_address || '—'}</div>
+                <div className="text-muted-foreground">Firmware</div>
+                <div className="font-mono">{selectedHost.firmware_version || '—'}</div>
+                <div className="text-muted-foreground">Boot Mode</div>
+                <div>{selectedHost.boot_mode || '—'}</div>
+                <div className="text-muted-foreground">Last Sync</div>
+                <div>{selectedHost.last_inspection_at ? relativeTime(selectedHost.last_inspection_at) : '—'}</div>
+              </div>
+
+              {selectedHost.hardware_profile && Object.keys(selectedHost.hardware_profile).length > 0 && (
+                <div>
+                  <h5 className="font-semibold mb-1">Hardware Profile</h5>
+                  <pre className="text-xs bg-muted/30 rounded p-2 overflow-auto max-h-40">
+                    {JSON.stringify(selectedHost.hardware_profile, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="cost-input" className="flex items-center gap-1">
+                    <DollarSign className="size-3" /> Cost (cents/hr)
+                  </Label>
+                  <Input
+                    id="cost-input"
+                    type="number"
+                    min={0}
+                    value={editCost}
+                    onChange={(e) => setEditCost(e.target.value)}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleSaveCost}
+                  disabled={costSaving || Number(editCost) === selectedHost.cost_per_hour_cents}
+                >
+                  {costSaving ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Action Dialog */}
       <Dialog open={!!confirmAction} onOpenChange={() => setConfirmAction(null)}>
         <DialogContent>
           <DialogHeader>

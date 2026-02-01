@@ -5,7 +5,7 @@ import { driftApi } from '@/lib/admin-api'
 import type { DriftEvent } from '@/types/admin'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, CheckCircle, GitBranch, Cloud } from 'lucide-react'
+import { AlertTriangle, CheckCircle, GitBranch, Cloud, ChevronDown, ChevronRight } from 'lucide-react'
 
 const severityColors: Record<string, string> = {
   low: 'bg-blue-500/20 text-blue-400',
@@ -14,9 +14,21 @@ const severityColors: Record<string, string> = {
   critical: 'bg-red-500/20 text-red-400',
 }
 
+function relativeTime(dateStr: string | undefined): string {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
 export function DriftFeed() {
   const [events, setEvents] = useState<DriftEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const fetchEvents = () => {
     setLoading(true)
@@ -42,24 +54,50 @@ export function DriftFeed() {
         </div>
       ) : (
         <div className="space-y-2">
-          {events.map((e) => (
-            <div key={e.id} className="rounded-lg border border-border bg-card/50 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {e.source === 'argocd' ? <GitBranch className="size-5 text-blue-400" /> : <Cloud className="size-5 text-purple-400" />}
-                <div>
-                  <p className="font-mono text-sm">{e.resource_name}</p>
-                  <p className="text-xs text-muted-foreground">{e.resource_type} • {e.source}</p>
+          {events.map((e) => {
+            const hasDetails = e.drift_details && Object.keys(e.drift_details).length > 0
+            const isExpanded = expandedId === e.id
+            return (
+              <div key={e.id} className="rounded-lg border border-border bg-card/50">
+                <div className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {e.source === 'argocd' ? <GitBranch className="size-5 text-blue-400" /> : <Cloud className="size-5 text-purple-400" />}
+                    <div>
+                      <p className="font-mono text-sm">{e.resource_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {e.resource_type} • {e.source}
+                        {e.detected_at && <> • detected {relativeTime(e.detected_at)}</>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className={severityColors[e.severity]}>{e.severity}</Badge>
+                    {hasDetails && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setExpandedId(isExpanded ? null : e.id)}
+                      >
+                        {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                      </Button>
+                    )}
+                    {!e.resolved && (
+                      <Button variant="outline" size="sm" onClick={() => handleResolve(e.id)}>Resolve</Button>
+                    )}
+                    {e.resolved && <Badge variant="outline" className="text-green-400">Resolved</Badge>}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge className={severityColors[e.severity]}>{e.severity}</Badge>
-                {!e.resolved && (
-                  <Button variant="outline" size="sm" onClick={() => handleResolve(e.id)}>Resolve</Button>
+                {isExpanded && hasDetails && (
+                  <div className="px-4 pb-4">
+                    <pre className="text-xs bg-muted/30 rounded p-2 overflow-auto max-h-40">
+                      {JSON.stringify(e.drift_details, null, 2)}
+                    </pre>
+                  </div>
                 )}
-                {e.resolved && <Badge variant="outline" className="text-green-400">Resolved</Badge>}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

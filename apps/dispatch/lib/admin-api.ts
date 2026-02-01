@@ -32,6 +32,7 @@ export const fleetApi = {
   register: (host: Partial<BareMetalHost>) => adminFetch<BareMetalHost>('/fleet', { method: 'POST', body: JSON.stringify(host) }),
   power: (id: string, action: string) => adminFetch<{ status: string }>(`/fleet/${id}/power`, { method: 'PUT', body: JSON.stringify({ action }) }),
   wipe: (id: string) => adminFetch<{ status: string }>(`/fleet/${id}/wipe`, { method: 'POST' }),
+  update: (id: string, host: Partial<BareMetalHost>) => adminFetch<BareMetalHost>(`/fleet/${id}`, { method: 'PUT', body: JSON.stringify(host) }),
   firmware: (id: string, settings: Record<string, string>) => adminFetch<{ status: string }>(`/fleet/${id}/firmware`, { method: 'PUT', body: JSON.stringify({ settings }) }),
 }
 

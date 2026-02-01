@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Layers, Cloud, Server, Plus, Trash2, Download } from 'lucide-react'
+import { Layers, Cloud, Server, Plus, Trash2, Download, Cpu, HardDrive, Box, Clock } from 'lucide-react'
 
 const statusColors: Record<string, string> = {
   ready: 'bg-green-500/20 text-green-400',
@@ -32,6 +32,31 @@ const statusColors: Record<string, string> = {
   running: 'bg-green-500/20 text-green-400',
   creating: 'bg-cyan-500/20 text-cyan-400',
   error: 'bg-red-500/20 text-red-400',
+}
+
+function relativeTime(dateStr: string | undefined): string {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+interface ClusterMetadata {
+  node_count?: number
+  k8s_version?: string
+  cpu_capacity?: string
+  memory_capacity?: string
+  pod_count?: number
+  synced_at?: string
+}
+
+function parseMetadata(metadata: Record<string, unknown> | undefined): ClusterMetadata {
+  if (!metadata) return {}
+  return metadata as ClusterMetadata
 }
 
 export function ClusterList() {
@@ -152,21 +177,49 @@ export function ClusterList() {
           <p className="text-muted-foreground text-sm">No clusters registered.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {clusters.map((c) => (
-              <div key={c.id} className="rounded-lg border border-border bg-card/50 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold">{c.name}</h4>
-                  <Badge className={statusColors[c.status]}>{c.status}</Badge>
+            {clusters.map((c) => {
+              const meta = parseMetadata(c.metadata)
+              return (
+                <div key={c.id} className="rounded-lg border border-border bg-card/50 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold">{c.name}</h4>
+                    <Badge className={statusColors[c.status]}>{c.status}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono">{c.type} • {c.region || 'no region'}</p>
+                  {c.endpoint && <p className="text-xs text-muted-foreground mt-1 truncate">{c.endpoint}</p>}
+
+                  {/* Reconciler metadata */}
+                  {(meta.node_count || meta.k8s_version || meta.pod_count) && (
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {meta.k8s_version && (
+                        <span className="flex items-center gap-1"><Layers className="size-3" />{meta.k8s_version}</span>
+                      )}
+                      {meta.node_count != null && (
+                        <span className="flex items-center gap-1"><Server className="size-3" />{meta.node_count} nodes</span>
+                      )}
+                      {meta.cpu_capacity && (
+                        <span className="flex items-center gap-1"><Cpu className="size-3" />{meta.cpu_capacity}</span>
+                      )}
+                      {meta.memory_capacity && (
+                        <span className="flex items-center gap-1"><HardDrive className="size-3" />{meta.memory_capacity}</span>
+                      )}
+                      {meta.pod_count != null && (
+                        <span className="flex items-center gap-1"><Box className="size-3" />{meta.pod_count} pods</span>
+                      )}
+                      {meta.synced_at && (
+                        <span className="flex items-center gap-1"><Clock className="size-3" />synced {relativeTime(meta.synced_at)}</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDeregister(c)}>
+                      <Trash2 className="size-3.5 mr-1" /> Deregister
+                    </Button>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground font-mono">{c.type} • {c.region || 'no region'}</p>
-                {c.endpoint && <p className="text-xs text-muted-foreground mt-1 truncate">{c.endpoint}</p>}
-                <div className="mt-3 flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setConfirmDeregister(c)}>
-                    <Trash2 className="size-3.5 mr-1" /> Deregister
-                  </Button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
