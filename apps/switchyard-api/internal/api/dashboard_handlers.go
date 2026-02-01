@@ -168,22 +168,25 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 	var (
 		allServiceIDs    []string
 		serviceToProject = make(map[string]string) // serviceID -> projectSlug
+		serviceMap       = make(map[string]*types.Service)
 		mu               sync.Mutex
 	)
 
 	// Parallel service fetching per project
-	g, ctx := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 	for _, project := range projects {
 		project := project // capture loop variable
 		g.Go(func() error {
-			services, err := h.projectService.ListServices(ctx, project.Slug)
+			services, err := h.projectService.ListServices(gCtx, project.Slug)
 			if err != nil {
 				return nil // Skip errors for individual projects
 			}
 			mu.Lock()
 			for _, svc := range services {
+				svcCopy := svc
 				allServiceIDs = append(allServiceIDs, svc.ID.String())
 				serviceToProject[svc.ID.String()] = project.Slug
+				serviceMap[svc.ID.String()] = svcCopy
 			}
 			mu.Unlock()
 			return nil
@@ -203,18 +206,8 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 	completedDeploys := 0
 
 	// Process services in parallel batches
-	g2, ctx := errgroup.WithContext(ctx)
+	g2, g2Ctx := errgroup.WithContext(ctx)
 	var countMu sync.Mutex
-
-	// Build a map of services for quick lookup
-	serviceMap := make(map[string]*types.Service)
-	for _, project := range projects {
-		services, _ := h.projectService.ListServices(ctx, project.Slug)
-		for _, svc := range services {
-			svcCopy := svc // capture
-			serviceMap[svc.ID.String()] = svcCopy
-		}
-	}
 
 	for _, svcID := range allServiceIDs {
 		svcID := svcID
@@ -224,7 +217,7 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 
 			// Always check deployment table for today's deployments count
 			// This must run regardless of which phase provides health status
-			deployment, err := h.repos.Deployments.GetLatestByService(ctx, svcID)
+			deployment, err := h.repos.Deployments.GetLatestByService(g2Ctx, svcID)
 			if err == nil && deployment != nil && deployment.CreatedAt.After(todayStart) {
 				countMu.Lock()
 				deploymentsToday++
@@ -266,7 +259,7 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 			}
 
 			if svc != nil {
-				k8sStatus, err := h.k8sClient.GetDeploymentStatusInfo(ctx, namespace, svc.Name)
+				k8sStatus, err := h.k8sClient.GetDeploymentStatusInfo(g2Ctx, namespace, svc.Name)
 				if err == nil && k8sStatus != nil {
 					countMu.Lock()
 					if k8sStatus.AvailableReplicas == k8sStatus.Replicas && k8sStatus.Replicas > 0 {
