@@ -29,9 +29,10 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-target: kustomization
     argocd-image-updater.argoproj.io/git-branch: main
 
-    # Kustomize image path mappings
-    argocd-image-updater.argoproj.io/switchyard-api.kustomize.image-name: ghcr.io/madfam-org/enclii/switchyard-api
-    argocd-image-updater.argoproj.io/switchyard-ui.kustomize.image-name: ghcr.io/madfam-org/enclii/switchyard-ui
+    # Kustomize image path mappings (must match the `name` field in kustomization.yaml images)
+    # Base manifests use short names (switchyard-api, switchyard-ui), so image-name must match
+    argocd-image-updater.argoproj.io/switchyard-api.kustomize.image-name: switchyard-api
+    argocd-image-updater.argoproj.io/switchyard-ui.kustomize.image-name: switchyard-ui
     argocd-image-updater.argoproj.io/roundhouse.kustomize.image-name: ghcr.io/madfam-org/enclii/roundhouse
   finalizers:
     - resources-finalizer.argocd.argoproj.io

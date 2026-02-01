@@ -32,18 +32,12 @@ configMapGenerator:
 images:
 - name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-  newTag: "latest"
+  digest: sha256:33be3b8bb3f0f315bca9b389801919a47aadc71a2bba22ece103c32f2113fded
 - name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  newTag: "latest"
+  digest: sha256:c4bb1b9661ec28b5b62284cb4bca1e466113725f71e8ffefbb23b9489532adcb
 - name: ghcr.io/madfam-org/enclii/landing-page
   newTag: "76fc3dae6d902b3230934b6f1f8ca17302fc8b66"
-- name: ghcr.io/madfam-org/enclii/switchyard-api
-  newName: ghcr.io/madfam-org/enclii/switchyard-api
-  digest: sha256:33be3b8bb3f0f315bca9b389801919a47aadc71a2bba22ece103c32f2113fded
-- name: ghcr.io/madfam-org/enclii/switchyard-ui
-  newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  digest: sha256:c4bb1b9661ec28b5b62284cb4bca1e466113725f71e8ffefbb23b9489532adcb
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 
