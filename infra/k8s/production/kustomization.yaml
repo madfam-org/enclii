@@ -35,7 +35,7 @@ images:
   digest: sha256:d5df2c01d8ab7adf6f63bb9e0d50d1b61c183a0a7c47ce0562b70cbd60d24cf9
 - name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  digest: sha256:99039ab94688248fc696a3555034bf3ee0150c2db20829dc6bc58a6a1e21b576
+  digest: sha256:b0913a952460115042ac4924326923e130c8f2fb8e1134fd0ba543e129bb27f0
 - name: ghcr.io/madfam-org/enclii/landing-page
   newTag: "76fc3dae6d902b3230934b6f1f8ca17302fc8b66"
 # Note: commonLabels removed - it adds to selectors which are immutable.
