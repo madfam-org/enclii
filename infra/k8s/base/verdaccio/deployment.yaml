@@ -87,6 +87,7 @@ spec:
             failureThreshold: 3
 
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false  # Verdaccio needs write access
             capabilities:

@@ -80,6 +80,7 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             runAsNonRoot: true
