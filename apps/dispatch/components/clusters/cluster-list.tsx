@@ -56,7 +56,15 @@ interface ClusterMetadata {
 
 function parseMetadata(metadata: Record<string, unknown> | undefined): ClusterMetadata {
   if (!metadata) return {}
-  return metadata as ClusterMetadata
+  const m = metadata as Record<string, unknown>
+  return {
+    node_count: m.node_count as number | undefined,
+    k8s_version: m.k8s_version as string | undefined,
+    cpu_capacity: m.cpu_capacity as string | undefined ?? (m.cpu_millicores ? `${Math.round(Number(m.cpu_millicores) / 1000)}c` : undefined),
+    memory_capacity: m.memory_capacity as string | undefined ?? (m.memory_bytes ? `${Math.round(Number(m.memory_bytes) / (1024 ** 3))}Gi` : undefined),
+    pod_count: m.pod_count as number | undefined,
+    synced_at: m.synced_at as string | undefined,
+  }
 }
 
 export function ClusterList() {

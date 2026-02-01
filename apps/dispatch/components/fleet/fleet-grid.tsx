@@ -43,7 +43,8 @@ function hwSummary(hw: Record<string, unknown> | undefined): string {
   if (hw.os) parts.push(String(hw.os))
   if (hw.arch) parts.push(String(hw.arch))
   if (hw.cpu_cores) parts.push(`${hw.cpu_cores} cores`)
-  if (hw.memory_gb) parts.push(`${hw.memory_gb}GB`)
+  const mem = hw.memory_gb ?? (hw.memory_bytes ? Math.round(Number(hw.memory_bytes) / (1024 ** 3)) : null)
+  if (mem) parts.push(`${mem}GB`)
   return parts.join(' · ')
 }
 
