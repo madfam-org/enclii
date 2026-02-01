@@ -89,8 +89,9 @@ export default function DeploymentDetailPage() {
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleString();
 
-  const formatRelativeTime = (dateString: string) => {
-    const diff = Date.now() - new Date(dateString).getTime();
+  const formatRelativeTime = useCallback((dateString: string) => {
+    const now = new Date();
+    const diff = now.getTime() - new Date(dateString).getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
@@ -98,7 +99,7 @@ export default function DeploymentDetailPage() {
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     return `${days}d ago`;
-  };
+  }, []);
 
   if (loading) {
     return (

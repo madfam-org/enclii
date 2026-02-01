@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
@@ -86,8 +86,9 @@ export default function DeploymentsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const formatTimeAgo = (timestamp: string) => {
-    const diff = Date.now() - new Date(timestamp).getTime();
+  const formatTimeAgo = useCallback((timestamp: string) => {
+    const now = new Date();
+    const diff = now.getTime() - new Date(timestamp).getTime();
     const seconds = Math.floor(diff / 1000);
     if (seconds < 60) return `${seconds} seconds ago`;
     const minutes = Math.floor(seconds / 60);
@@ -96,7 +97,7 @@ export default function DeploymentsPage() {
     if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
     const days = Math.floor(hours / 24);
     return `${days} day${days > 1 ? "s" : ""} ago`;
-  };
+  }, []);
 
   const getStatusVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
