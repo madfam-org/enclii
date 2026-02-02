@@ -115,11 +115,15 @@ spec:
             - name: BUILD_MODE
               value: "kaniko"
             # Redis connection
-            - name: REDIS_URL
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: enclii-secrets
-                  key: redis-url
+                  name: redis-auth
+                  key: redis-password
             # Container registry
             - name: REGISTRY
               value: "ghcr.io/madfam-org"
@@ -223,11 +227,15 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            - name: REDIS_URL
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: enclii-secrets
-                  key: redis-url
+                  name: redis-auth
+                  key: redis-password
             - name: API_PORT
               value: "8080"
             - name: SWITCHYARD_API_KEY

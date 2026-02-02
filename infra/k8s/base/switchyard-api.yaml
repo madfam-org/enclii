@@ -50,6 +50,11 @@ spec:
               value: "redis"
             - name: ENCLII_REDIS_PORT
               value: "6379"
+            - name: ENCLII_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
             - name: ENCLII_PORT
               value: "4200"
             - name: ENCLII_LOG_LEVEL

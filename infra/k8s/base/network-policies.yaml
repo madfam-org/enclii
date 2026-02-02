@@ -181,7 +181,7 @@ spec:
           kubernetes.io/metadata.name: cloudflare-tunnel
     ports:
     - protocol: TCP
-      port: 80
+      port: 8080
 ---
 # Allow ingress to landing-page only from Cloudflare tunnel
 apiVersion: networking.k8s.io/v1

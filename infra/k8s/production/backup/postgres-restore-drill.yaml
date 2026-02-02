@@ -1,0 +1,137 @@
+---
+# Postgres Backup Restore Drill
+# Non-destructive: creates a temporary database, restores into it, validates, then drops it.
+# Never touches the production 'enclii_dev' database.
+#
+# Usage:
+#   kubectl apply -f postgres-restore-drill.yaml
+#   kubectl logs -n enclii job/postgres-restore-drill -f
+#   kubectl delete job postgres-restore-drill -n enclii
+#
+# Or use the wrapper script: ./scripts/backup-restore-drill.sh
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-restore-drill
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: postgres-restore-drill
+    app.kubernetes.io/component: backup-validation
+    app.kubernetes.io/part-of: enclii
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: postgres-restore-drill
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: restore-drill
+          image: postgres:15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: PGHOST
+              value: "postgres"
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: "postgres"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-secret-access-key
+            - name: R2_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: r2-endpoint
+            - name: R2_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: r2-bucket
+                  optional: true
+          command:
+            - /bin/bash
+            - -euo
+            - pipefail
+            - -c
+            - |
+              DRILL_DB="enclii_restore_test"
+              BUCKET="${R2_BUCKET:-enclii-backups}"
+              echo "=== Postgres Restore Drill — $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+
+              # Step 1: Find latest backup
+              echo "[1/5] Finding latest backup in R2..."
+              # Install awscli (minimal)
+              apt-get update -qq && apt-get install -y -qq awscli >/dev/null 2>&1
+              LATEST=$(aws s3 ls "s3://${BUCKET}/postgres/" --endpoint-url "${R2_ENDPOINT}" | sort | tail -1 | awk '{print $4}')
+              if [ -z "$LATEST" ]; then
+                echo "FAIL: No backups found in s3://${BUCKET}/postgres/"
+                exit 1
+              fi
+              echo "  Found: ${LATEST}"
+
+              # Step 2: Download backup
+              echo "[2/5] Downloading backup..."
+              aws s3 cp "s3://${BUCKET}/postgres/${LATEST}" /tmp/restore-drill.sql.gz \
+                --endpoint-url "${R2_ENDPOINT}"
+              echo "  Downloaded: $(du -h /tmp/restore-drill.sql.gz | cut -f1)"
+
+              # Step 3: Create temp database and restore
+              echo "[3/5] Creating temp database '${DRILL_DB}' and restoring..."
+              psql -c "DROP DATABASE IF EXISTS ${DRILL_DB};"
+              psql -c "CREATE DATABASE ${DRILL_DB};"
+              gunzip -c /tmp/restore-drill.sql.gz | psql -d "${DRILL_DB}" -q 2>&1 | tail -5
+
+              # Step 4: Validate
+              echo "[4/5] Validating restore..."
+              TABLE_COUNT=$(psql -d "${DRILL_DB}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+              echo "  Tables found: ${TABLE_COUNT}"
+              if [ "${TABLE_COUNT}" -lt 1 ]; then
+                echo "FAIL: No tables found after restore"
+                psql -c "DROP DATABASE IF EXISTS ${DRILL_DB};"
+                exit 1
+              fi
+
+              # Step 5: Cleanup
+              echo "[5/5] Dropping temp database..."
+              psql -c "DROP DATABASE IF EXISTS ${DRILL_DB};"
+              rm -f /tmp/restore-drill.sql.gz
+
+              echo ""
+              echo "=== RESTORE DRILL PASSED ==="
+              echo "  Backup: ${LATEST}"
+              echo "  Tables: ${TABLE_COUNT}"
+              echo "  Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
