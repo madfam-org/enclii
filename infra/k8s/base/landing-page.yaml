@@ -29,7 +29,7 @@ spec:
         enclii.dev/managed-by: switchyard
     spec:
       imagePullSecrets:
-        - name: enclii-registry-credentials
+        - name: ghcr-credentials
       containers:
         - name: landing-page
           image: ghcr.io/madfam-org/enclii/landing-page:latest

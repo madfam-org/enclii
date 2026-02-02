@@ -15,6 +15,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/clients"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -53,11 +54,22 @@ func (h *Handler) BuildService(c *gin.Context) {
 	}
 
 	// Create release record
+	// Get project for scoped image naming
+	project, err := h.repos.Projects.GetByID(ctx, service.ProjectID)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get project", logging.Error("db_error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+		return
+	}
+
+	// Project-scoped image URI: ghcr.io/madfam-org/{project-slug}/{service-name}:{sha}
+	imageURI := h.config.Registry + "/" + project.Slug + "/" + service.Name + ":" + req.GitSHA[:7]
+
 	release := &types.Release{
 		ID:        uuid.New(),
 		ServiceID: serviceID,
 		Version:   "v" + time.Now().Format("20060102-150405") + "-" + req.GitSHA[:7],
-		ImageURI:  h.config.Registry + "/" + service.Name + ":" + req.GitSHA[:7],
+		ImageURI:  imageURI,
 		GitSHA:    req.GitSHA,
 		Status:    types.ReleaseStatusBuilding,
 		CreatedAt: time.Now(),
@@ -124,6 +136,7 @@ func (h *Handler) enqueueToRoundhouse(ctx context.Context, service *types.Servic
 		ServiceID:   service.ID,
 		ServiceName: service.Name, // Human-readable name for correct image tagging
 		ProjectID:   project.ID,
+		ProjectSlug: project.Slug, // Project slug for scoped image naming
 		GitRepo:     service.GitRepo,
 		GitSHA:      gitSHA,
 		GitBranch:   gitBranch,
@@ -186,6 +199,8 @@ func (h *Handler) triggerBuild(service *types.Service, release *types.Release, g
 		h.logger.Error(ctx, "Build failed",
 			logging.String("release_id", release.ID.String()),
 			logging.Error("build_error", buildResult.Error))
+
+		monitoring.RecordBuild("failed", "git", buildResult.Duration)
 
 		// Update release status to failed
 		if err := h.repos.Releases.UpdateStatus(release.ID, types.ReleaseStatusFailed); err != nil {
@@ -261,9 +276,8 @@ func (h *Handler) triggerBuild(service *types.Service, release *types.Release, g
 		h.logger.Debug(ctx, "Build log", logging.String("line", log))
 	}
 
-	// Record metrics
-	// TODO: Use proper metrics methods once available
-	// monitoring.RecordBuild("success", "git", buildResult.Duration)
+	// Record build metrics
+	monitoring.RecordBuild("success", "git", buildResult.Duration)
 
 	// Auto-deploy if enabled for this service
 	if service.AutoDeploy && service.AutoDeployEnv != "" {
@@ -393,7 +407,7 @@ func (h *Handler) triggerAutoDeploy(ctx context.Context, service *types.Service,
 // ensureRegistryCredentials ensures the target namespace has the registry credentials secret
 // If missing, it copies from the enclii namespace. This prevents ImagePullBackOff errors.
 func (h *Handler) ensureRegistryCredentials(ctx context.Context, targetNamespace string) error {
-	const secretName = "enclii-registry-credentials" // #nosec G101 -- secret reference name, not a credential
+	const secretName = "ghcr-credentials" // #nosec G101 -- secret reference name, not a credential
 	const sourceNamespace = "enclii"
 
 	// Check if secret already exists in target namespace

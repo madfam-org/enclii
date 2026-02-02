@@ -192,9 +192,8 @@ func (h *Handler) DeployService(c *gin.Context) {
 			logging.Error("queue_error", err))
 	}
 
-	// Record metrics
-	// TODO: Use proper metrics method
-	// monitoring.RecordDeployment(req.EnvironmentName, "pending", 0)
+	// Record deployment metrics
+	monitoring.RecordDeployment(req.EnvironmentName, "pending", 0)
 
 	h.logger.Info(ctx, "Deployment created",
 		logging.String("deployment_id", deployment.ID.String()),

@@ -298,7 +298,7 @@ func (e *KanikoExecutor) createBuildJob(ctx context.Context, job *queue.BuildJob
 							Name: "docker-config",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: "regcred",
+									SecretName: "ghcr-credentials",
 									Items: []corev1.KeyToPath{
 										{
 											Key:  ".dockerconfigjson",
@@ -416,6 +416,16 @@ func (e *KanikoExecutor) buildEnvVars(job *queue.BuildJob) []corev1.EnvVar {
 // Image Tag Generation
 // =============================================================================
 
+// imageBaseName returns the project-scoped image path for a build job.
+// Produces: {project-slug}/{service-name} when project slug is set,
+// otherwise falls back to just {service-name} for backwards compatibility.
+func (e *KanikoExecutor) imageBaseName(job *queue.BuildJob) string {
+	if job.ProjectSlug != "" {
+		return job.ProjectSlug + "/" + job.ServiceName
+	}
+	return job.ServiceName
+}
+
 // generateImageTag generates the full image tag
 func (e *KanikoExecutor) generateImageTag(job *queue.BuildJob) string {
 	shortSHA := job.GitSHA
@@ -423,21 +433,20 @@ func (e *KanikoExecutor) generateImageTag(job *queue.BuildJob) string {
 		shortSHA = shortSHA[:8]
 	}
 
-	// Use human-readable service name instead of UUID prefixes
-	// Produces: ghcr.io/madfam-org/service-name:abc12345
+	// Project-scoped image naming to prevent cross-customer collisions
+	// Produces: ghcr.io/madfam-org/project-slug/service-name:abc12345
 	return fmt.Sprintf("%s/%s:%s",
 		e.registry,
-		job.ServiceName,
+		e.imageBaseName(job),
 		shortSHA,
 	)
 }
 
 // generateLatestTag generates the :latest tag variant
 func (e *KanikoExecutor) generateLatestTag(job *queue.BuildJob) string {
-	// Use human-readable service name instead of UUID prefixes
 	return fmt.Sprintf("%s/%s:latest",
 		e.registry,
-		job.ServiceName,
+		e.imageBaseName(job),
 	)
 }
 

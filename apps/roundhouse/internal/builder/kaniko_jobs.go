@@ -6,6 +6,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	batchv1 "k8s.io/api/batch/v1"
@@ -162,9 +165,23 @@ func (e *KanikoExecutor) getJobOutput(ctx context.Context, jobName string) (stri
 // Registry Operations
 // =============================================================================
 
-// getImageDigestFromRegistry queries the registry for the image digest
+// getImageDigestFromRegistry queries the registry for the image manifest digest
 func (e *KanikoExecutor) getImageDigestFromRegistry(ctx context.Context, imageTag string) (string, error) {
-	// For now, return empty - full implementation would use crane or skopeo
-	// to query the registry for the manifest digest
-	return "", nil
+	ref, err := name.ParseReference(imageTag)
+	if err != nil {
+		return "", fmt.Errorf("invalid image reference %q: %w", imageTag, err)
+	}
+
+	desc, err := remote.Head(ref,
+		remote.WithContext(ctx),
+		remote.WithAuth(&authn.Basic{
+			Username: e.registryUser,
+			Password: e.registryPass,
+		}),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to query registry for %q: %w", imageTag, err)
+	}
+
+	return desc.Digest.String(), nil
 }

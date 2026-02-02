@@ -395,8 +395,13 @@ func (l *AsyncLogger) flushBatch(batch []*types.AuditLog, channel string) {
 				"error":         err.Error(),
 			}).Error("Failed to write audit log to database")
 
-			// For now, just continue - we don't want to crash on audit log failure
-			// TODO: Write to persistent fallback storage (file, S3, etc.)
+			// SOC 2: Write failed entries to file fallback for later recovery
+			if l.writeToFileFallback(log) {
+				fileFallbackTotal.Inc()
+			} else {
+				droppedTotal.Inc()
+				logrus.WithField("action", log.Action).Error("CRITICAL: Audit log lost — DB and file fallback both failed")
+			}
 			continue
 		}
 	}

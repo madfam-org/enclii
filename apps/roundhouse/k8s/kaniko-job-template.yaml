@@ -29,12 +29,12 @@ metadata:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: regcred
+  name: ghcr-credentials
   namespace: enclii-builds
 type: kubernetes.io/dockerconfigjson
 data:
   # Base64 encoded Docker config JSON
-  # Generate with: kubectl create secret docker-registry regcred --docker-server=ghcr.io --docker-username=<user> --docker-password=<token> --dry-run=client -o yaml
+  # Generate with: kubectl create secret docker-registry ghcr-credentials --docker-server=ghcr.io --docker-username=<user> --docker-password=<token> --dry-run=client -o yaml
   .dockerconfigjson: ""  # REPLACE with actual credentials
 ---
 # Build concurrency limiter (ResourceQuota)
@@ -227,7 +227,7 @@ spec:
       volumes:
         - name: docker-config
           secret:
-            secretName: regcred
+            secretName: ghcr-credentials
             items:
               - key: .dockerconfigjson
                 path: config.json

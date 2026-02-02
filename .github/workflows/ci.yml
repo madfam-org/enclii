@@ -650,6 +650,65 @@ jobs:
         run: echo "⏭️ Skipping status build (Conservation Law - no changes detected)"
 
   # =============================================================================
+  # IMAGE VULNERABILITY SCANNING: Trivy scan after Docker build
+  # =============================================================================
+  image-scan:
+    name: Image Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: |
+      always() &&
+      needs.docker-build.result == 'success' &&
+      github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan switchyard-api
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/switchyard-api:${{ github.sha }}
+          format: sarif
+          output: trivy-switchyard-api.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+        continue-on-error: true
+
+      - name: Scan switchyard-ui
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/switchyard-ui:${{ github.sha }}
+          format: sarif
+          output: trivy-switchyard-ui.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+        continue-on-error: true
+
+      - name: Scan roundhouse
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/roundhouse:${{ github.sha }}
+          format: sarif
+          output: trivy-roundhouse.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+        continue-on-error: true
+
+      - name: Upload Trivy SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: .
+        continue-on-error: true
+
+  # =============================================================================
   # DEPLOYMENT VERIFICATION: Guardrail for ArgoCD Image Updater
   # Verifies that new images trigger automatic deployment via digest strategy
   # =============================================================================
@@ -734,6 +793,26 @@ jobs:
             IMAGE=$(kubectl get deployment $deploy -n enclii -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "not found")
             echo "  $deploy: $IMAGE"
           done
+
+      - name: Production smoke test
+        if: steps.kubectl-setup.outputs.has_cluster_access == 'true'
+        run: |
+          echo "🏥 Running production smoke tests..."
+          FAILED=0
+          for url in https://api.enclii.dev/health https://app.enclii.dev https://auth.madfam.io/health; do
+            echo "Checking $url..."
+            if curl -sf --max-time 10 "$url" > /dev/null; then
+              echo "  ✅ $url"
+            else
+              echo "  ❌ FAILED: $url"
+              FAILED=1
+            fi
+          done
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ Smoke tests failed!"
+            exit 1
+          fi
+          echo "✅ All smoke tests passed"
 
       - name: Validate NetworkPolicy Port Consistency
         if: steps.kubectl-setup.outputs.has_cluster_access == 'true'

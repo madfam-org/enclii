@@ -146,8 +146,8 @@ metadata:
     app.kubernetes.io/component: backup
     app.kubernetes.io/part-of: enclii
 spec:
-  # Run daily at 2 AM UTC
-  schedule: "0 2 * * *"
+  # Run daily at 3 AM UTC
+  schedule: "0 3 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -161,9 +161,20 @@ spec:
             app: postgres-backup
         spec:
           restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
           containers:
             - name: backup
               image: postgres:15
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
               command:
                 - /bin/bash
                 - /scripts/backup.sh
@@ -246,9 +257,20 @@ spec:
         app: postgres-backup-manual
     spec:
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: backup
           image: postgres:15
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           command:
             - /bin/bash
             - /scripts/backup.sh

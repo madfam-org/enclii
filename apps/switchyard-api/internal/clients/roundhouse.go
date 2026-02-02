@@ -47,6 +47,7 @@ type EnqueueRequest struct {
 	ServiceID   uuid.UUID             `json:"service_id"`
 	ServiceName string                `json:"service_name"` // Human-readable service name for image tagging
 	ProjectID   uuid.UUID             `json:"project_id"`
+	ProjectSlug string                `json:"project_slug"` // Project slug for scoped image naming
 	GitRepo     string                `json:"git_repo"`
 	GitSHA      string                `json:"git_sha"`
 	GitBranch   string                `json:"git_branch"`

@@ -305,6 +305,65 @@ kubeseal --fetch-cert > pub-cert.pem
 kubeseal --cert pub-cert.pem -f secret.yaml -o yaml > sealed-secret.yaml
 ```
 
+## GHCR Credentials (madfam-bot)
+
+### Overview
+
+All private image pulls across the cluster use a single `ghcr-credentials` secret (type `docker-registry`), sourced from the `madfam-bot` GitHub account's fine-grained PAT.
+
+### Covered Namespaces
+
+| Namespace | Purpose |
+|-----------|---------|
+| `enclii` | Core platform services (switchyard-api, switchyard-ui, roundhouse) |
+| `janua` | SSO authentication service |
+| `dhanam` | Financial tracking service |
+| `enclii-builds` | Kaniko build jobs (push + pull) |
+| `argocd` | GitOps image updater |
+
+### Creating a madfam-bot PAT
+
+1. Log in as `madfam-bot` on GitHub
+2. Go to **Settings → Developer settings → Fine-grained tokens**
+3. Create token with:
+   - **Name**: `ghcr-cluster-pull` (or similar)
+   - **Resource owner**: `madfam-org`
+   - **Expiry**: 1 year
+   - **Repository access**: All repositories (or specific repos)
+   - **Permissions**: `read:packages` (add `write:packages` for build pushes)
+4. Copy the token immediately
+
+### Running the Rotation Script
+
+```bash
+# From the enclii repo root:
+GHCR_USERNAME=madfam-bot GHCR_PAT=ghp_xxx ./scripts/rotate-ghcr-credentials.sh
+
+# Dry run (preview changes):
+GHCR_USERNAME=madfam-bot GHCR_PAT=ghp_xxx ./scripts/rotate-ghcr-credentials.sh --dry-run
+```
+
+The script creates/updates the `ghcr-credentials` docker-registry secret in all 5 namespaces using idempotent `--dry-run=client | kubectl apply`.
+
+### Rotation Schedule
+
+- **Frequency**: Annually (or immediately if compromised)
+- **Reminder**: Set a calendar event for 30 days before PAT expiry
+- **Health check**: A monthly CronJob (`ghcr-credential-check`) validates that the secret exists in all namespaces and creates Warning events if missing
+
+### Monitoring
+
+```bash
+# Check the CronJob status:
+kubectl get cronjob ghcr-credential-check -n enclii
+
+# View recent job runs:
+kubectl get jobs -n enclii -l app.kubernetes.io/name=ghcr-credential-check
+
+# Check for warning events:
+kubectl get events --field-selector reason=MissingRegistryCredentials -A
+```
+
 ## References
 
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)

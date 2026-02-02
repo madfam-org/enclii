@@ -267,12 +267,23 @@ func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace strin
 		}).WithError(err).Warn("Failed to ensure registry credentials in namespace")
 	}
 
+	// Ensure customer namespace has ResourceQuota, LimitRange, and NetworkPolicy
+	if err := r.ensureResourceQuota(ctx, namespace); err != nil {
+		r.logger.WithField("namespace", namespace).WithError(err).Warn("Failed to ensure ResourceQuota")
+	}
+	if err := r.ensureLimitRange(ctx, namespace); err != nil {
+		r.logger.WithField("namespace", namespace).WithError(err).Warn("Failed to ensure LimitRange")
+	}
+	if err := r.ensureNamespaceNetworkPolicy(ctx, namespace); err != nil {
+		r.logger.WithField("namespace", namespace).WithError(err).Warn("Failed to ensure namespace NetworkPolicy")
+	}
+
 	return nil
 }
 
 // ensureRegistryCredentials copies the registry credentials secret to the target namespace if missing
 func (r *ServiceReconciler) ensureRegistryCredentials(ctx context.Context, targetNamespace string) error {
-	const secretName = "enclii-registry-credentials" // #nosec G101 -- secret reference name, not a credential
+	const secretName = "ghcr-credentials" // #nosec G101 -- secret reference name, not a credential
 	const sourceNamespace = "enclii"
 
 	secretClient := r.k8sClient.Clientset.CoreV1().Secrets(targetNamespace)
@@ -539,7 +550,7 @@ func (r *ServiceReconciler) checkPodForFatalErrors(pod *corev1.Pod) error {
 				// Check if it's a credentials issue (401/403)
 				if strings.Contains(message, "401") || strings.Contains(message, "unauthorized") ||
 					strings.Contains(message, "403") || strings.Contains(message, "forbidden") {
-					return fmt.Errorf("image pull failed due to missing registry credentials: %s - ensure enclii-registry-credentials secret exists in namespace", message)
+					return fmt.Errorf("image pull failed due to missing registry credentials: %s - ensure ghcr-credentials secret exists in namespace", message)
 				}
 				if strings.Contains(message, "not found") || strings.Contains(message, "manifest unknown") {
 					return fmt.Errorf("image not found: %s - verify the image exists and tag is correct", message)

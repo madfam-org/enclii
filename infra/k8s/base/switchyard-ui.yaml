@@ -30,7 +30,7 @@ spec:
         enclii.dev/managed-by: switchyard
     spec:
       imagePullSecrets:
-        - name: enclii-registry-credentials
+        - name: ghcr-credentials
       containers:
         - name: switchyard-ui
           image: switchyard-ui:latest

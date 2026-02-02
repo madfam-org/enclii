@@ -35,7 +35,7 @@ spec:
     spec:
       serviceAccountName: switchyard-api
       imagePullSecrets:
-        - name: enclii-registry-credentials
+        - name: ghcr-credentials
       containers:
         - name: switchyard-api
           image: switchyard-api:latest

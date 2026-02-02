@@ -50,28 +50,37 @@ func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWork
 		health = types.HealthStatusHealthy
 		logger.Info("Deployment reconciled successfully")
 	} else {
-		if result.NextCheck != nil {
-			// Retry later
+		const maxRetries = 10
+
+		if result.NextCheck != nil && work.Attempt < maxRetries {
+			// Retry with exponential backoff: min(30s * 2^retries, 5m)
 			status = types.DeploymentStatusPending
 			health = types.HealthStatusUnknown
 
-			// Schedule retry with proper backpressure handling
+			backoff := 30 * time.Second
+			for i := 1; i < work.Attempt; i++ {
+				backoff *= 2
+			}
+			if backoff > 5*time.Minute {
+				backoff = 5 * time.Minute
+			}
+			nextCheck := time.Now().Add(backoff)
+
 			retryWork := &ReconcileWork{
 				DeploymentID: work.DeploymentID,
-				Priority:     work.Priority + 1, // Increase priority for retries
+				Priority:     work.Priority + 1,
 				Attempt:      work.Attempt + 1,
-				ScheduledAt:  *result.NextCheck,
+				ScheduledAt:  nextCheck,
 			}
 
 			go func() {
-				time.Sleep(time.Until(*result.NextCheck))
+				time.Sleep(time.Until(nextCheck))
 				select {
 				case <-c.stopCh:
 					return
 				default:
 				}
 				if err := c.enqueueWork(retryWork); err != nil {
-					// Work was added to retry queue, will be processed later
 					c.logger.WithFields(logrus.Fields{
 						"deployment": retryWork.DeploymentID,
 						"attempt":    retryWork.Attempt,
@@ -79,12 +88,20 @@ func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWork
 				}
 			}()
 
-			logger.WithField("next_check", result.NextCheck).Info("Scheduled reconciliation retry")
+			logger.WithFields(logrus.Fields{
+				"next_check": nextCheck,
+				"backoff":    backoff,
+				"attempt":    work.Attempt,
+			}).Info("Scheduled reconciliation retry with exponential backoff")
 		} else {
-			// Failed permanently
+			// Failed permanently (no NextCheck or max retries exceeded)
 			status = types.DeploymentStatusFailed
 			health = types.HealthStatusUnhealthy
-			logger.WithError(result.Error).Error("Deployment reconciliation failed")
+			if work.Attempt >= maxRetries {
+				logger.WithField("attempts", work.Attempt).Error("Deployment failed after max retries")
+			} else {
+				logger.WithError(result.Error).Error("Deployment reconciliation failed")
+			}
 		}
 	}
 

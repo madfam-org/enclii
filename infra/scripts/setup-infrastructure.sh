@@ -149,14 +149,14 @@ create_secrets() {
     kubectl create namespace enclii-builds --dry-run=client -o yaml | kubectl apply -f -
 
     if [[ -n "${GITHUB_TOKEN:-}" && -n "${GITHUB_USERNAME:-}" ]]; then
-        log_info "Creating regcred for builds..."
-        kubectl create secret docker-registry regcred \
+        log_info "Creating ghcr-credentials for builds..."
+        kubectl create secret docker-registry ghcr-credentials \
             -n enclii-builds \
             --docker-server=ghcr.io \
             --docker-username="${GITHUB_USERNAME}" \
             --docker-password="${GITHUB_TOKEN}" \
             --dry-run=client -o yaml | kubectl apply -f -
-        log_success "regcred created in enclii-builds"
+        log_success "ghcr-credentials created in enclii-builds"
 
         log_info "Creating git-credentials for builds..."
         kubectl create secret generic git-credentials \

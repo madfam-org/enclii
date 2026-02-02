@@ -112,7 +112,7 @@ func (e *KanikoExecutor) runSBOMGeneration(ctx context.Context, buildID uuid.UUI
 							Name: "docker-config",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: "regcred",
+									SecretName: "ghcr-credentials",
 									Items: []corev1.KeyToPath{
 										{
 											Key:  ".dockerconfigjson",
@@ -187,7 +187,7 @@ func (e *KanikoExecutor) runImageSigning(ctx context.Context, buildID uuid.UUID,
 		Name: "docker-config",
 		VolumeSource: corev1.VolumeSource{
 			Secret: &corev1.SecretVolumeSource{
-				SecretName: "regcred",
+				SecretName: "ghcr-credentials",
 				Items: []corev1.KeyToPath{
 					{
 						Key:  ".dockerconfigjson",

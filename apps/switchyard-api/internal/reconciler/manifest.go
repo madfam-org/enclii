@@ -360,12 +360,25 @@ func (r *ServiceReconciler) generateManifests(req *ReconcileRequest, namespace, 
 							LivenessProbe:  buildLivenessProbe(req.Service.HealthCheck, containerPort),
 							ReadinessProbe: buildReadinessProbe(req.Service.HealthCheck, containerPort),
 							VolumeMounts:   buildVolumeMountsWithKubeconfig(req.Service.Volumes, req.EnvVars),
+							SecurityContext: &corev1.SecurityContext{
+								Privileged:               func() *bool { b := false; return &b }(),
+								AllowPrivilegeEscalation: func() *bool { b := false; return &b }(),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
+							},
 						},
 					},
+					// Security context - Kyverno requires non-root, drop all capabilities
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: func() *bool { b := true; return &b }(),
+						RunAsUser:    func() *int64 { i := int64(1000); return &i }(),
+						RunAsGroup:   func() *int64 { i := int64(1000); return &i }(),
+						FSGroup:      func() *int64 { i := int64(1000); return &i }(),
+					},
 					// ImagePullSecrets for private registries (GHCR, etc.)
-					// This ensures pods can pull images that require authentication
 					ImagePullSecrets: []corev1.LocalObjectReference{
-						{Name: "enclii-registry-credentials"},
+						{Name: "ghcr-credentials"},
 					},
 					Volumes:                       buildVolumesWithKubeconfig(req.Service.Volumes, req.Service.Name, req.EnvVars),
 					RestartPolicy:                 corev1.RestartPolicyAlways,
