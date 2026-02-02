@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
@@ -149,9 +149,13 @@ func NewStructuredLogger(config *LogConfig) (Logger, error) {
 }
 
 func initTracing(config *LogConfig) error {
-	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(config.JaegerEndpoint)))
+	ctx := context.Background()
+
+	exp, err := otlptracehttp.New(ctx,
+		otlptracehttp.WithEndpointURL(config.JaegerEndpoint),
+	)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Jaeger exporter: %w", err)
+		return fmt.Errorf("failed to initialize OTLP trace exporter: %w", err)
 	}
 
 	tp := trace.NewTracerProvider(
@@ -461,7 +465,7 @@ func DefaultLogConfig() *LogConfig {
 		Version:        "0.1.0",
 		Environment:    "development",
 		TracingEnabled: true,
-		JaegerEndpoint: "http://localhost:14268/api/traces",
+		JaegerEndpoint: "http://localhost:4318/v1/traces",
 		TracingSampler: 0.1, // 10% sampling
 	}
 }
