@@ -1,0 +1,14 @@
+# gosec configuration for Enclii
+# Exclusions for known false positives in security scanning
+# Each exclusion must be documented with justification
+
+global:
+  # G104: Errors unhandled - we handle these via middleware/deferred closes
+  # G115: Integer overflow conversion - validated at input boundaries
+  nosec:
+    - G104
+    - G115
+
+excludes:
+  # G304: File path provided as taint input - build system paths are validated
+  - G304

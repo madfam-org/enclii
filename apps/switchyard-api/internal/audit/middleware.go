@@ -23,7 +23,7 @@ type Middleware struct {
 func NewMiddleware(repos *db.Repositories) *Middleware {
 	return &Middleware{
 		repos:       repos,
-		asyncLogger: NewAsyncLogger(repos, 100), // Buffer size 100
+		asyncLogger: NewAsyncLogger(repos, 100, ""), // Buffer size 100, default fallback path
 	}
 }
 

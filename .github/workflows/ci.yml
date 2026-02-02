@@ -400,24 +400,21 @@ jobs:
       - name: Run gosec on switchyard-api
         working-directory: apps/switchyard-api
         run: gosec -exclude-generated ./...
-        continue-on-error: true
 
       - name: Run gosec on roundhouse
         working-directory: apps/roundhouse
         run: gosec -exclude-generated ./...
-        continue-on-error: true
 
       - name: Run gosec on waybill
         working-directory: apps/waybill
         run: gosec -exclude-generated ./...
-        continue-on-error: true
 
       - name: Check for vulnerabilities
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          cd apps/switchyard-api && govulncheck ./... || true
-          cd ../roundhouse && govulncheck ./... || true
-          cd ../waybill && govulncheck ./... || true
+          cd apps/switchyard-api && govulncheck ./...
+          cd ../roundhouse && govulncheck ./...
+          cd ../waybill && govulncheck ./...
 
   # =============================================================================
   # CONSERVATION LAW (ADR-001 Law 6): Differential Builds

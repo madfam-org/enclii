@@ -100,6 +100,12 @@ spec:
         # Janua API URL for GitHub token retrieval
         - name: ENCLII_JANUA_API_URL
           value: "https://auth.madfam.io"
+        # Session Revocation - fail closed in production (SOC 2)
+        - name: ENCLII_SESSION_REVOCATION_FAIL_MODE
+          value: "closed"
+        # Audit log file fallback path
+        - name: ENCLII_AUDIT_FALLBACK_PATH
+          value: "/var/log/enclii/audit-fallback.jsonl"
         # ArgoCD Webhook Secret (for sync callback authentication)
         - name: ENCLII_ARGOCD_WEBHOOK_SECRET
           valueFrom:

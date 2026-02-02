@@ -141,11 +141,16 @@ spec:
               mountPath: /tmp
             - name: var-run-volume
               mountPath: /var/run
+            - name: audit-fallback-volume
+              mountPath: /var/log/enclii
       volumes:
         - name: tmp-volume
           emptyDir: {}
         - name: var-run-volume
           emptyDir: {}
+        - name: audit-fallback-volume
+          emptyDir:
+            sizeLimit: 100Mi
       securityContext:
         runAsNonRoot: true
         seccompProfile:

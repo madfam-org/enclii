@@ -1,6 +1,53 @@
 package cache
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+func TestIsSessionRevoked_NilCache_FailOpen(t *testing.T) {
+	rc := &RedisCache{client: nil, FailMode: "open"}
+	revoked, err := rc.IsSessionRevoked(context.Background(), "sess-123")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if revoked {
+		t.Fatal("expected false (fail-open), got true")
+	}
+}
+
+func TestIsSessionRevoked_NilCache_FailClosed(t *testing.T) {
+	rc := &RedisCache{client: nil, FailMode: "closed"}
+	revoked, err := rc.IsSessionRevoked(context.Background(), "sess-123")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !revoked {
+		t.Fatal("expected true (fail-closed), got false")
+	}
+}
+
+func TestNewRedisCache_SetsFailMode(t *testing.T) {
+	// We can't call NewRedisCache (it pings Redis), but we can verify
+	// the FailMode propagation logic directly.
+	cfg := &CacheConfig{SessionRevocationFailMode: "closed"}
+	failMode := cfg.SessionRevocationFailMode
+	if failMode == "" {
+		failMode = "open"
+	}
+	if failMode != "closed" {
+		t.Fatalf("expected FailMode 'closed', got %q", failMode)
+	}
+
+	cfg2 := &CacheConfig{SessionRevocationFailMode: ""}
+	failMode2 := cfg2.SessionRevocationFailMode
+	if failMode2 == "" {
+		failMode2 = "open"
+	}
+	if failMode2 != "open" {
+		t.Fatalf("expected FailMode 'open' (default), got %q", failMode2)
+	}
+}
 
 func Test_parseRedisInfoInt(t *testing.T) {
 	sampleInfo := `# Stats

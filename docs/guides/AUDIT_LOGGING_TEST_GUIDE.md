@@ -17,10 +17,14 @@ This guide provides step-by-step instructions for testing the audit logging midd
    - Non-blocking async logging
 
 2. **Async Logger** (`internal/audit/async_logger.go`)
-   - Buffered channel for non-blocking log writes
+   - Buffered channel for non-blocking log writes (minimum 1000 entries)
+   - Fallback channel (50% of primary) for overflow
+   - File-based JSONL fallback (`/var/log/enclii/audit-fallback.jsonl`) when both memory buffers overflow
+   - Recovery worker (30-second tick) replays file fallback entries to DB and truncates on success
    - Batch processing (10 logs per batch)
    - Periodic flushing (every 5 seconds)
    - Graceful shutdown with pending log flush
+   - Prometheus metrics: `enclii_audit_logs_file_fallback_total`, `enclii_audit_logs_dropped_total`
    - Error tracking and statistics
 
 ### Integration Points
@@ -402,6 +406,8 @@ stats := h.auditMiddleware.GetStats()
 | Flush interval | 5 seconds | Logs appear within 5s |
 | Batch size | 10 logs | Check database write patterns |
 | Dropped logs | 0 | Check error_count in stats |
+| File fallback writes | 0 (normal) | `enclii_audit_logs_file_fallback_total` Prometheus counter |
+| Dropped logs (all fallbacks exhausted) | 0 | `enclii_audit_logs_dropped_total` Prometheus counter |
 
 ---
 
@@ -424,6 +430,9 @@ psql $ENCLII_DB_URL -c "SELECT COUNT(*) FROM audit_logs"
 
 # Check application logs for errors
 tail -f /var/log/switchyard-api.log | grep audit
+
+# Check file-based fallback for buffered entries
+cat /var/log/enclii/audit-fallback.jsonl
 
 # Check if middleware is in route chain
 curl -v http://localhost:8080/v1/projects
@@ -540,6 +549,8 @@ The audit logging implementation is successful if:
 - ✅ Resource context (type, ID, name) is captured
 - ✅ Outcome (success/failure/denied) is determined correctly
 - ✅ Immutability enforced (cannot UPDATE or DELETE audit_logs)
+- ✅ File-based JSONL fallback persists entries when DB is unavailable
+- ✅ Recovery worker replays fallback entries to DB within 30 seconds
 
 ---
 
@@ -547,10 +558,10 @@ The audit logging implementation is successful if:
 
 After successful testing:
 
-1. **Monitor Production**: Set up alerts for high error_count
+1. ~~**Monitor Production**: Set up alerts for high error_count~~ ✅ Done — Prometheus counters `enclii_audit_logs_file_fallback_total` and `enclii_audit_logs_dropped_total`
 2. **Tune Performance**: Adjust buffer size and batch size based on load
 3. **Add Metrics**: Expose AsyncLogger stats via admin endpoint
-4. **Archive Old Logs**: Implement log retention policy (e.g., 90 days)
+4. ~~**Archive Old Logs**: Implement log retention policy (e.g., 90 days)~~ ✅ Done — `004_audit_archive_support` migration + archive CronJob
 5. **Compliance Reports**: Create dashboards for SOC 2 auditors
 
 ---

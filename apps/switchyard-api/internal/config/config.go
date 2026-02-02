@@ -82,6 +82,11 @@ type Config struct {
 	RedisPort     int
 	RedisPassword string
 
+	// Session Revocation Fail Mode (SOC 2 compliance)
+	// "closed" = deny access when Redis unavailable (secure default for production)
+	// "open" = allow access when Redis unavailable (for development/availability)
+	SessionRevocationFailMode string
+
 	// Redis Sentinel (for HA failover - activate when multi-node cluster is deployed)
 	RedisSentinelEnabled    bool     // Enable Sentinel failover mode
 	RedisSentinelAddrs      []string // Sentinel addresses (e.g., ["redis-0:26379", "redis-1:26379", "redis-2:26379"])
@@ -174,6 +179,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("redis-host", "localhost")
 	viper.SetDefault("redis-port", 6379)
 	viper.SetDefault("redis-password", "")
+	viper.SetDefault("session-revocation-fail-mode", "closed") // SOC 2: fail-closed by default
 	viper.SetDefault("redis-sentinel-enabled", false)
 	viper.SetDefault("redis-sentinel-addrs", "") // Comma-separated: "redis-0:26379,redis-1:26379,redis-2:26379"
 	viper.SetDefault("redis-sentinel-master-name", "enclii-master")
@@ -250,6 +256,7 @@ func Load() (*Config, error) {
 		RedisHost:                  viper.GetString("redis-host"),
 		RedisPort:                  viper.GetInt("redis-port"),
 		RedisPassword:              viper.GetString("redis-password"),
+		SessionRevocationFailMode:  viper.GetString("session-revocation-fail-mode"),
 		RedisSentinelEnabled:       viper.GetBool("redis-sentinel-enabled"),
 		RedisSentinelAddrs:         parseCommaSeparatedList(viper.GetString("redis-sentinel-addrs")),
 		RedisSentinelMasterName:    viper.GetString("redis-sentinel-master-name"),

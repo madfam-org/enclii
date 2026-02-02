@@ -89,6 +89,11 @@ type RedisCache struct {
 	lastPing   time.Time     // Track last successful ping
 	pingMu     sync.Mutex    // Protects lastPing updates
 	defaultTTL time.Duration // Store for reference
+
+	// FailMode controls behavior when Redis is unavailable for session revocation checks.
+	// "closed" = treat sessions as revoked (deny access) - SOC 2 compliant
+	// "open"   = treat sessions as not revoked (allow access) - backward compatible default
+	FailMode string
 }
 
 type CacheConfig struct {
@@ -109,6 +114,9 @@ type CacheConfig struct {
 	SentinelEnabled    bool
 	SentinelAddrs      []string // e.g., ["redis-0:26379", "redis-1:26379", "redis-2:26379"]
 	SentinelMasterName string   // e.g., "enclii-master"
+
+	// SessionRevocationFailMode: "closed" (deny on Redis failure) or "open" (allow on Redis failure)
+	SessionRevocationFailMode string
 }
 
 type CacheItem struct {
@@ -197,11 +205,17 @@ func NewRedisCache(config *CacheConfig) (*RedisCache, error) {
 		logrus.Info("Connected to Redis cache (standalone mode)")
 	}
 
+	failMode := config.SessionRevocationFailMode
+	if failMode == "" {
+		failMode = "open" // backward compatible default
+	}
+
 	return &RedisCache{
 		client:     rdb,
 		config:     config,
 		defaultTTL: config.DefaultTTL,
 		lastPing:   time.Now(),
+		FailMode:   failMode,
 	}, nil
 }
 
@@ -548,12 +562,19 @@ func (r *RedisCache) RevokeSession(ctx context.Context, sessionID string, ttl ti
 
 // IsSessionRevoked checks if a session has been revoked.
 // Returns true if the session is revoked, false otherwise.
-// Returns false (not revoked) if cache is unavailable - fail open for availability.
+// Behavior when Redis is unavailable is controlled by FailMode:
+//   - "closed": treat as revoked (deny access) - SOC 2 compliant
+//   - "open":   treat as not revoked (allow access) - backward compatible
 func (r *RedisCache) IsSessionRevoked(ctx context.Context, sessionID string) (bool, error) {
+	failClosed := r != nil && r.FailMode == "closed"
+
 	// Guard against nil receiver (Go interface nil gotcha)
-	// Return false (not revoked) when cache unavailable - fail open for availability
 	if r == nil || r.client == nil {
-		logrus.Debug("IsSessionRevoked called with nil cache client, assuming not revoked")
+		if failClosed {
+			logrus.Warn("IsSessionRevoked: cache unavailable, fail-closed — denying access")
+			return true, nil
+		}
+		logrus.Debug("IsSessionRevoked called with nil cache client, assuming not revoked (fail-open)")
 		return false, nil
 	}
 
@@ -562,6 +583,10 @@ func (r *RedisCache) IsSessionRevoked(ctx context.Context, sessionID string) (bo
 	// Check if the key exists in Redis
 	exists, err := r.client.Exists(ctx, key).Result()
 	if err != nil {
+		if failClosed {
+			logrus.WithError(err).Warn("IsSessionRevoked: Redis error, fail-closed — denying access")
+			return true, fmt.Errorf("failed to check session revocation: %w", err)
+		}
 		return false, fmt.Errorf("failed to check session revocation: %w", err)
 	}
 

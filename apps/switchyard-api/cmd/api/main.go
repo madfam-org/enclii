@@ -42,19 +42,20 @@ import (
 // (cache will be disabled, but API continues working).
 func initRedisWithRetry(cfg *config.Config) cache.CacheService {
 	cacheConfig := &cache.CacheConfig{
-		Host:               cfg.RedisHost,
-		Port:               cfg.RedisPort,
-		Password:           cfg.RedisPassword,
-		DB:                 0,
-		MaxRetries:         3,
-		PoolSize:           10,
-		IdleTimeout:        5 * time.Minute,
-		ReadTimeout:        3 * time.Second,
-		WriteTimeout:       3 * time.Second,
-		DefaultTTL:         cache.MediumTTL,
-		SentinelEnabled:    cfg.RedisSentinelEnabled,
-		SentinelAddrs:      cfg.RedisSentinelAddrs,
-		SentinelMasterName: cfg.RedisSentinelMasterName,
+		Host:                      cfg.RedisHost,
+		Port:                      cfg.RedisPort,
+		Password:                  cfg.RedisPassword,
+		DB:                        0,
+		MaxRetries:                3,
+		PoolSize:                  10,
+		IdleTimeout:               5 * time.Minute,
+		ReadTimeout:               3 * time.Second,
+		WriteTimeout:              3 * time.Second,
+		DefaultTTL:                cache.MediumTTL,
+		SentinelEnabled:           cfg.RedisSentinelEnabled,
+		SentinelAddrs:             cfg.RedisSentinelAddrs,
+		SentinelMasterName:        cfg.RedisSentinelMasterName,
+		SessionRevocationFailMode: cfg.SessionRevocationFailMode,
 	}
 
 	// Retry configuration

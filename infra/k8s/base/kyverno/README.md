@@ -55,9 +55,9 @@ kubectl apply -f policies/
 | Policy | Mode | Description |
 |--------|------|-------------|
 | `disallow-privileged-containers` | Enforce | Blocks privileged containers |
-| `require-run-as-nonroot` | Audit | Warns if containers run as root |
+| `require-run-as-nonroot` | Enforce | Blocks containers that run as root |
 | `disallow-host-namespaces` | Enforce | Blocks hostNetwork, hostPID, hostIPC |
-| `restrict-capabilities` | Audit | Warns on dangerous capabilities |
+| `restrict-capabilities` | Enforce | Blocks dangerous capabilities |
 
 ### Best Practice Policies
 

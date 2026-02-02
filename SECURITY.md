@@ -47,8 +47,9 @@ We are working on establishing a bug bounty program. In the meantime, we offer:
 - **Cloudflare Tunnel**: No exposed ports, zero-trust networking
 
 ### Container Security
-- **Rootless Containers**: Containers run without root privileges
-- **Read-only Filesystems**: Where possible, containers use read-only root
+- **Rootless Containers**: Enforced via Kyverno `require-run-as-nonroot` policy (Enforce mode)
+- **Capability Dropping**: Enforced via Kyverno `restrict-capabilities` policy (Enforce mode) — all containers must drop `ALL` capabilities
+- **Read-only Filesystems**: Containers use read-only root filesystem with explicit `emptyDir` mounts for writable paths
 - **Resource Limits**: CPU/memory limits prevent resource exhaustion
 - **Security Scanning**: Images scanned for vulnerabilities
 
@@ -79,6 +80,11 @@ We are working on establishing a bug bounty program. In the meantime, we offer:
 ## Compliance
 
 Enclii infrastructure is designed with:
-- SOC 2 Type II principles in mind
+- SOC 2 Type II principles in mind (see [`docs/compliance/SOC2_CONTROLS_MAPPING.md`](docs/compliance/SOC2_CONTROLS_MAPPING.md))
 - GDPR data residency awareness
 - ISO 27001 security controls
+
+### SOC 2 Remediation Highlights
+- **Session revocation fail-closed**: When Redis is unavailable, sessions are treated as revoked (deny access) to prevent unauthorized access
+- **Audit log persistence**: File-based JSONL fallback (`/var/log/enclii/audit-fallback.jsonl`) ensures audit entries survive database outages, with a 30-second recovery worker for replay
+- **Incident response**: See [`docs/operations/INCIDENT_RESPONSE_RUNBOOK.md`](docs/operations/INCIDENT_RESPONSE_RUNBOOK.md)
