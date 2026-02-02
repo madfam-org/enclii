@@ -77,6 +77,7 @@ spec:
               namespaces:
                 - kube-system
                 - cloudflare-tunnel
+                - sentinel  # infra-audit CronJob needs hostNetwork for port checks
       validate:
         message: "Host namespaces (hostNetwork, hostIPC, hostPID) are not allowed."
         pattern:

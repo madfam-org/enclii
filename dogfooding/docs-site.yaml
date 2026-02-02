@@ -21,7 +21,7 @@ spec:
         autoDeploy: true
 
   runtime:
-    port: 4203
+    port: 8080  # nginx-unprivileged listens on 8080
     replicas: 1
     resources:
       requests:
