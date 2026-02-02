@@ -31,6 +31,7 @@ spec:
                 - kube-system
                 - kyverno
                 - longhorn-system
+                - arc-system
       validate:
         message: >-
           Images must come from approved registries:

@@ -30,12 +30,12 @@ WORKDIR /app/docs-site
 ENV DOCKER_BUILD=true
 RUN npm run build
 
-# Production image - serve static files with nginx
-FROM nginx:alpine AS runner
+# Production image - serve static files with nginx (non-root)
+FROM nginxinc/nginx-unprivileged:alpine AS runner
 
-# Copy custom nginx config
+# Copy custom nginx config (listen on unprivileged port 8080)
 RUN echo 'server { \
-    listen 80; \
+    listen 8080; \
     server_name localhost; \
     root /usr/share/nginx/html; \
     index index.html; \
@@ -58,6 +58,7 @@ RUN echo 'server { \
 # Copy built static files
 COPY --from=builder /app/docs-site/build /usr/share/nginx/html
 
-EXPOSE 80
+USER nginx
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

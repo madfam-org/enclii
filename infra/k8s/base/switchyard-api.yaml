@@ -67,8 +67,8 @@ spec:
                   optional: false
             - name: ENCLII_OIDC_ISSUER
               value: "http://localhost:5556"
-            - name: OTEL_EXPORTER_JAEGER_ENDPOINT
-              value: "http://jaeger:14268/api/traces"
+            # OTEL_EXPORTER_JAEGER_ENDPOINT removed (Feb 2026) — Jaeger decommissioned
+            # Configure OTLP exporter when OTel Collector is deployed (M2)
             - name: ENCLII_METRICS_ENABLED
               value: "true"
             - name: ENCLII_CACHE_ENABLED

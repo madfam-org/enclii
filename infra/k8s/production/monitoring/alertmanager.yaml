@@ -13,8 +13,11 @@ data:
   alertmanager.yml: |
     global:
       resolve_timeout: 5m
-      # Uncomment and configure for Slack notifications
-      # slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'innovacionesmadfam@gmail.com'
+      smtp_auth_username: 'innovacionesmadfam@gmail.com'
+      smtp_auth_password_file: '/etc/alertmanager/smtp-password'
+      smtp_require_tls: true
 
     route:
       group_by: ['alertname', 'severity', 'service']
@@ -39,39 +42,23 @@ data:
 
     receivers:
       - name: 'default-receiver'
-        # Default: webhook to a placeholder endpoint
-        # Configure your notification channels here
-        webhook_configs:
-          - url: 'http://localhost:9999/alert'
+        email_configs:
+          - to: 'admin@madfam.io'
             send_resolved: true
 
       - name: 'critical-receiver'
-        # Critical alerts configuration
-        # Uncomment and configure for PagerDuty:
-        # pagerduty_configs:
-        #   - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
-        #     severity: critical
-        #
-        # Or for Slack:
-        # slack_configs:
-        #   - channel: '#alerts-critical'
-        #     title: '{{ .CommonAnnotations.summary }}'
-        #     text: '{{ .CommonAnnotations.description }}'
-        #     send_resolved: true
-        webhook_configs:
-          - url: 'http://localhost:9999/alert/critical'
+        email_configs:
+          - to: 'admin@madfam.io'
             send_resolved: true
+            headers:
+              Subject: '[CRITICAL] {{ .CommonLabels.alertname }} - Enclii'
 
       - name: 'warning-receiver'
-        # Warning alerts configuration
-        # slack_configs:
-        #   - channel: '#alerts-warning'
-        #     title: '{{ .CommonAnnotations.summary }}'
-        #     text: '{{ .CommonAnnotations.description }}'
-        #     send_resolved: true
-        webhook_configs:
-          - url: 'http://localhost:9999/alert/warning'
+        email_configs:
+          - to: 'admin@madfam.io'
             send_resolved: true
+            headers:
+              Subject: '[WARNING] {{ .CommonLabels.alertname }} - Enclii'
 
     inhibit_rules:
       # If a critical alert is firing, inhibit warnings for the same service
@@ -82,6 +69,15 @@ data:
         equal: ['alertname', 'service']
 
     templates: []
+---
+# AlertManager SMTP Secret — NOT committed to git.
+# Create manually before deploying AlertManager:
+#
+#   kubectl create secret generic alertmanager-smtp-secret -n monitoring \
+#     --from-literal=smtp-password='YOUR_GMAIL_APP_PASSWORD'
+#
+# Use a Gmail App Password (not account password).
+# Long-term: migrate to Resend SMTP relay or External Secrets Operator.
 ---
 # AlertManager PVC
 apiVersion: v1
@@ -148,7 +144,12 @@ spec:
               cpu: "100m"
           volumeMounts:
             - name: config
-              mountPath: /etc/alertmanager
+              mountPath: /etc/alertmanager/alertmanager.yml
+              subPath: alertmanager.yml
+            - name: smtp-secret
+              mountPath: /etc/alertmanager/smtp-password
+              subPath: smtp-password
+              readOnly: true
             - name: data
               mountPath: /alertmanager
           readinessProbe:
@@ -167,6 +168,9 @@ spec:
         - name: config
           configMap:
             name: alertmanager-config
+        - name: smtp-secret
+          secret:
+            secretName: alertmanager-smtp-secret
         - name: data
           persistentVolumeClaim:
             claimName: alertmanager-data
