@@ -393,7 +393,7 @@ func (h *Handler) triggerAutoDeploy(ctx context.Context, service *types.Service,
 // ensureRegistryCredentials ensures the target namespace has the registry credentials secret
 // If missing, it copies from the enclii namespace. This prevents ImagePullBackOff errors.
 func (h *Handler) ensureRegistryCredentials(ctx context.Context, targetNamespace string) error {
-	const secretName = "enclii-registry-credentials"
+	const secretName = "enclii-registry-credentials" // #nosec G101 -- secret reference name, not a credential
 	const sourceNamespace = "enclii"
 
 	// Check if secret already exists in target namespace

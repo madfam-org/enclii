@@ -81,7 +81,7 @@ func initRedisWithRetry(cfg *config.Config) cache.CacheService {
 			delay = maxDelay
 		}
 		// Add 10% jitter to prevent thundering herd when multiple pods restart
-		jitter := time.Duration(float64(delay) * 0.1 * rand.Float64())
+		jitter := time.Duration(float64(delay) * 0.1 * rand.Float64()) // #nosec G404 -- jitter, not security
 		delay += jitter
 
 		logrus.Warnf("Redis connection attempt %d/%d failed: %v (retrying in %v)",

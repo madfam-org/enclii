@@ -272,7 +272,7 @@ func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace strin
 
 // ensureRegistryCredentials copies the registry credentials secret to the target namespace if missing
 func (r *ServiceReconciler) ensureRegistryCredentials(ctx context.Context, targetNamespace string) error {
-	const secretName = "enclii-registry-credentials"
+	const secretName = "enclii-registry-credentials" // #nosec G101 -- secret reference name, not a credential
 	const sourceNamespace = "enclii"
 
 	secretClient := r.k8sClient.Clientset.CoreV1().Secrets(targetNamespace)

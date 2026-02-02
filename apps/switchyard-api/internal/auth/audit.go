@@ -18,17 +18,17 @@ const (
 	EventLoginFailure AuthEvent = "auth.login.failure"
 
 	// Token events
-	EventTokenIssued      AuthEvent = "auth.token.issued"
-	EventTokenValidated   AuthEvent = "auth.token.validated"
-	EventTokenRefreshed   AuthEvent = "auth.token.refreshed"
-	EventTokenRefreshFail AuthEvent = "auth.token.refresh_failed"
+	EventTokenIssued      AuthEvent = "auth.token.issued"         // #nosec G101 -- event name, not a credential
+	EventTokenValidated   AuthEvent = "auth.token.validated"      // #nosec G101 -- event name, not a credential
+	EventTokenRefreshed   AuthEvent = "auth.token.refreshed"      // #nosec G101 -- event name, not a credential
+	EventTokenRefreshFail AuthEvent = "auth.token.refresh_failed" // #nosec G101 -- event name, not a credential
 
 	// Session events
 	EventLogout         AuthEvent = "auth.logout"
 	EventSessionRevoked AuthEvent = "auth.session.revoked"
 
 	// External auth events
-	EventExternalTokenValidated AuthEvent = "auth.external.validated"
+	EventExternalTokenValidated AuthEvent = "auth.external.validated" // #nosec G101 -- event name, not a credential
 	EventExternalUserCreated    AuthEvent = "auth.external.user_created"
 	EventExternalUserLinked     AuthEvent = "auth.external.user_linked"
 
