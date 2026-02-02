@@ -158,3 +158,75 @@ spec:
     ports:
     - protocol: TCP
       port: 6379
+---
+# Allow ingress to docs-site only from Cloudflare tunnel
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: docs-site-ingress
+  labels:
+    app.kubernetes.io/name: docs-site
+    app.kubernetes.io/component: documentation
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: docs-site
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
+    ports:
+    - protocol: TCP
+      port: 80
+---
+# Allow ingress to landing-page only from Cloudflare tunnel
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: landing-page-ingress
+  labels:
+    app.kubernetes.io/name: landing-page
+    app.kubernetes.io/component: marketing
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: landing-page
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
+    ports:
+    - protocol: TCP
+      port: 80
+---
+# Allow ingress to roundhouse only from switchyard-api
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: roundhouse-ingress
+  labels:
+    app.kubernetes.io/name: roundhouse
+    app.kubernetes.io/component: build-system
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: roundhouse-api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: switchyard-api
+    ports:
+    - protocol: TCP
+      port: 8080

@@ -117,17 +117,6 @@ spec:
             timeoutSeconds: 5
             successThreshold: 1
             failureThreshold: 3
-          # TEMPORARY: Security context removed until new image with proper permissions is built
-          # TODO: Restore after new image deployment:
-          # securityContext:
-          #   allowPrivilegeEscalation: false
-          #   readOnlyRootFilesystem: true
-          #   runAsNonRoot: true
-          #   runAsUser: 65532
-          #   runAsGroup: 65532
-          #   capabilities:
-          #     drop:
-          #       - ALL
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false

@@ -109,11 +109,6 @@ data:
       # MADFAM Automation Services (Enclii-managed)
       # ============================================
 
-      # Auto-Claude Agents Web Interface
-      # TODO: Update service URL when Auto-Claude is deployed
-      - hostname: agents.madfam.io
-        service: http_status:503
-
       # ============================================
       # GitOps / Platform Services (namespace: argocd)
       # ============================================
