@@ -677,6 +677,12 @@ spec:
       containers:
         - name: prometheus
           image: prom/prometheus:v2.53.3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
@@ -703,6 +709,13 @@ spec:
               mountPath: /etc/prometheus/rules
             - name: data
               mountPath: /prometheus
+          startupProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /-/ready

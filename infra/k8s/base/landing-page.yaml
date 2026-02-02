@@ -28,6 +28,10 @@ spec:
         app.kubernetes.io/part-of: enclii
         enclii.dev/managed-by: switchyard
     spec:
+      securityContext:
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       imagePullSecrets:
         - name: ghcr-credentials
       containers:
@@ -45,6 +49,14 @@ spec:
             limits:
               memory: "64Mi"
               cpu: "100m"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 4204
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health
@@ -69,15 +81,12 @@ spec:
             privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
-            runAsNonRoot: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
             capabilities:
               drop:
                 - ALL
-              add:
-                - NET_BIND_SERVICE
-                - CHOWN
-                - SETUID
-                - SETGID
 ---
 apiVersion: v1
 kind: Service

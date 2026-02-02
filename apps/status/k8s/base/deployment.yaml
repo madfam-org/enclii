@@ -20,6 +20,10 @@ spec:
       labels:
         app: status
     spec:
+      securityContext:
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: status
         image: ghcr.io/madfam-org/enclii-status:latest
@@ -69,6 +73,23 @@ spec:
               name: status-config
               key: prometheus-url
               optional: true
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          capabilities:
+            drop:
+              - ALL
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 4204
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 30
         readinessProbe:
           httpGet:
             path: /api/health
