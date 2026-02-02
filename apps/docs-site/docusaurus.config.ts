@@ -53,30 +53,7 @@ const config: Config = {
     ],
   ],
 
-  // Add Redocusaurus plugin for OpenAPI documentation
-  plugins: [
-    [
-      'redocusaurus',
-      {
-        specs: [
-          {
-            id: 'enclii-api',
-            spec: process.env.DOCKER_BUILD === 'true' ? '../docs/api/openapi.yaml' : '../../docs/api/openapi.yaml',
-            route: '/api-reference/',
-          },
-        ],
-        theme: {
-          primaryColor: '#6366f1',
-          options: {
-            disableSearch: false,
-            hideDownloadButton: false,
-            hideHostname: false,
-            noAutoAuth: true,
-          },
-        },
-      },
-    ],
-  ],
+  plugins: [],
 
   themeConfig: {
     image: 'img/enclii-social-card.png',

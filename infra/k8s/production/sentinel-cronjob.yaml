@@ -254,8 +254,8 @@ spec:
               type: RuntimeDefault
           containers:
             - name: sentinel
-              image: bitnami/kubectl:1.33
-              imagePullPolicy: IfNotPresent
+              image: docker.io/bitnami/kubectl:latest
+              imagePullPolicy: Always
               command:
                 - /bin/bash
                 - /scripts/infra-audit.sh
