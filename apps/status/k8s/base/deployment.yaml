@@ -21,6 +21,7 @@ spec:
         app: status
     spec:
       securityContext:
+        runAsNonRoot: true
         fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
