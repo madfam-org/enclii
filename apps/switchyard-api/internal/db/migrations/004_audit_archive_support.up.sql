@@ -1,7 +1,7 @@
 -- Add archived_at column and index for archive tracking
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_audit_logs_archived_at ON audit_logs (archived_at) WHERE archived_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (timestamp);
 
 -- Create archive tracking table
 CREATE TABLE IF NOT EXISTS audit_archive_batches (
