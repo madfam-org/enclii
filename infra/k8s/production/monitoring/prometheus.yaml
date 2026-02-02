@@ -678,6 +678,7 @@ spec:
         - name: prometheus
           image: prom/prometheus:v2.53.3
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             capabilities:
