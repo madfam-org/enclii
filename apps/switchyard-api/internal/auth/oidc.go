@@ -477,6 +477,11 @@ func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 				c.Set("token_source", "external")
 				c.Set("external_issuer", externalClaims.Issuer)
 
+				// Extract foundry_tier from external token claims (set by Janua after Dhanam purchase)
+				if externalClaims.FoundryTier != "" {
+					c.Set("foundry_tier", externalClaims.FoundryTier)
+				}
+
 				// Audit: Log external token validation and user creation/linking
 				LogExternalTokenValidated(user.ID, user.Email, externalClaims.Issuer)
 				if isNew {

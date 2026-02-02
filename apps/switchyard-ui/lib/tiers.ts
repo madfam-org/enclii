@@ -167,10 +167,13 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
 /**
  * Get the checkout URL for upgrading
  */
-export function getCheckoutUrl(returnUrl?: string): string {
+export function getCheckoutUrl(userId?: string, returnUrl?: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL || 'https://dhanam.madfam.io/checkout';
   const params = new URLSearchParams();
   params.set('plan', 'enclii_sovereign');
+  if (userId) {
+    params.set('user_id', userId);
+  }
   if (returnUrl) {
     params.set('return_url', returnUrl);
   }

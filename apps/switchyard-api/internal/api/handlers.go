@@ -298,7 +298,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 		protected.Use(h.auditMiddleware.AuditMiddleware())
 		{
 			// Projects
-			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), h.CreateProject)
+			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), middleware.RequireTierForProject(h.repos), h.CreateProject)
 			protected.GET("/projects", h.ListProjects)
 			protected.GET("/projects/:slug", h.GetProject)
 			protected.DELETE("/projects/:slug", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProject)
@@ -309,7 +309,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/projects/:slug/environments/:env_name", h.GetEnvironment)
 
 			// Services
-			protected.POST("/projects/:slug/services", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateService)
+			protected.POST("/projects/:slug/services", h.auth.RequireRole(string(types.RoleDeveloper)), middleware.RequireTierForService(h.repos), h.CreateService)
 			protected.POST("/projects/:slug/services/bulk", h.auth.RequireRole(string(types.RoleDeveloper)), h.BulkCreateServices)
 			protected.GET("/projects/:slug/services", h.ListServices)
 			protected.GET("/services/:id", h.GetService)
@@ -320,7 +320,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Build & Deploy
 			protected.POST("/services/:id/build", h.auth.RequireRole(string(types.RoleDeveloper)), h.BuildService)
 			protected.GET("/services/:id/releases", h.ListReleases)
-			protected.POST("/services/:id/deploy", h.auth.RequireRole(string(types.RoleDeveloper)), h.DeployService)
+			protected.POST("/services/:id/deploy", h.auth.RequireRole(string(types.RoleDeveloper)), middleware.RequireTierForDeploy(h.repos), h.DeployService)
 
 			// Status & Deployments
 			protected.GET("/services/:id/status", h.GetServiceStatus)

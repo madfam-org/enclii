@@ -16,9 +16,10 @@ import (
 
 // ExternalClaims represents claims from external JWT tokens (e.g., Janua)
 type ExternalClaims struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	TenantID string `json:"tenant_id,omitempty"`
+	Email       string `json:"email"`
+	Name        string `json:"name"`
+	TenantID    string `json:"tenant_id,omitempty"`
+	FoundryTier string `json:"foundry_tier,omitempty"`
 	jwt.RegisteredClaims
 }
 

@@ -164,6 +164,7 @@ test.describe('Paywall — requireTier + PricingModal', () => {
 
     // Should point to Dhanam checkout with correct params
     expect(href).toContain('plan=enclii_sovereign');
+    expect(href).toContain('user_id=test-user-id');
     expect(href).toContain('return_url=');
   });
 });

@@ -86,6 +86,11 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 				c.Set("project_ids", []string{})
 				c.Set("external_token", true)
 
+				// Extract foundry_tier from external token claims
+				if externalClaims.FoundryTier != "" {
+					c.Set("foundry_tier", externalClaims.FoundryTier)
+				}
+
 				c.Next()
 				return
 			}

@@ -280,6 +280,11 @@ func (a *AuthMiddleware) Middleware() gin.HandlerFunc {
 
 		c.Set("user_roles", rolesStr)
 
+		// Extract foundry_tier from JWT claims
+		if ft, ok := claims["foundry_tier"].(string); ok {
+			c.Set("foundry_tier", ft)
+		}
+
 		// Check role requirements for this path
 		if requiredRoles, exists := a.requiredRoles[path]; exists {
 			userRoles := c.GetStringSlice("user_roles")

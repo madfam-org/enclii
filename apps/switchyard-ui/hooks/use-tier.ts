@@ -110,8 +110,8 @@ export function useTier() {
    */
   const checkoutUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    return getCheckoutUrl(window.location.href);
-  }, []);
+    return getCheckoutUrl(user?.id, window.location.href);
+  }, [user?.id]);
 
   return {
     // Current tier info
