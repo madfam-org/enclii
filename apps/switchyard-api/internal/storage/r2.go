@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -322,6 +323,7 @@ func (sm *StorageManager) GetArtifactURL(ctx context.Context, projectID, version
 
 // UploadFile uploads a local file to R2 (implements builder.R2Uploader interface)
 func (r *R2Client) UploadFile(ctx context.Context, localPath, r2Key string) error {
+	localPath = filepath.Clean(localPath)
 	file, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %w", err)
@@ -339,6 +341,7 @@ func (r *R2Client) DownloadFile(ctx context.Context, r2Key, localPath string) er
 	}
 	defer reader.Close()
 
+	localPath = filepath.Clean(localPath)
 	file, err := os.Create(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to create local file: %w", err)

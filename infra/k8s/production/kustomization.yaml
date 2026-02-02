@@ -36,8 +36,9 @@ images:
 - name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
   digest: sha256:b0913a952460115042ac4924326923e130c8f2fb8e1134fd0ba543e129bb27f0
-- name: ghcr.io/madfam-org/enclii/landing-page
-  newTag: "76fc3dae6d902b3230934b6f1f8ca17302fc8b66"
+- name: landing-page
+  newName: ghcr.io/madfam-org/enclii/landing-page
+  newTag: latest
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 

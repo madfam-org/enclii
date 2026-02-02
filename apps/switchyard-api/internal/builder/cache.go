@@ -117,7 +117,7 @@ func (c *BuildCache) hashDependencyFiles(sourcePath string) (string, error) {
 	foundFiles := []string{}
 
 	for _, depFile := range depFiles {
-		filePath := filepath.Join(sourcePath, depFile)
+		filePath := filepath.Clean(filepath.Join(sourcePath, depFile))
 		if _, err := os.Stat(filePath); err == nil {
 			content, err := os.ReadFile(filePath)
 			if err != nil {
@@ -152,7 +152,7 @@ func (c *BuildCache) hashBuilderConfig(sourcePath string) (string, error) {
 	found := false
 
 	for _, configFile := range configFiles {
-		filePath := filepath.Join(sourcePath, configFile)
+		filePath := filepath.Clean(filepath.Join(sourcePath, configFile))
 		if _, err := os.Stat(filePath); err == nil {
 			content, err := os.ReadFile(filePath)
 			if err != nil {
@@ -183,7 +183,7 @@ func (c *BuildCache) LookupCache(ctx context.Context, key *CacheKey) (*CacheMeta
 	metadataKey := c.getMetadataKey(key)
 
 	// Check R2 for cache metadata
-	localPath := filepath.Join(c.localCacheDir, "metadata", metadataKey+".json")
+	localPath := filepath.Clean(filepath.Join(c.localCacheDir, "metadata", metadataKey+".json"))
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (c *BuildCache) CleanupOldCaches(ctx context.Context, projectID string, max
 
 	for _, obj := range objects {
 		// Download metadata to check age
-		localPath := filepath.Join(c.localCacheDir, "cleanup", filepath.Base(obj))
+		localPath := filepath.Clean(filepath.Join(c.localCacheDir, "cleanup", filepath.Base(obj)))
 		if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 			continue
 		}
@@ -305,7 +305,7 @@ func (c *BuildCache) GetCacheStats(ctx context.Context, projectID string) (*Cach
 
 	stats := &CacheStats{}
 	for _, obj := range objects {
-		localPath := filepath.Join(c.localCacheDir, "stats", filepath.Base(obj))
+		localPath := filepath.Clean(filepath.Join(c.localCacheDir, "stats", filepath.Base(obj)))
 		if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 			continue
 		}
@@ -464,6 +464,7 @@ func (m *MonorepoCache) hashWatchedPaths(sourcePath string, watchPaths []string)
 				return nil
 			}
 
+			path = filepath.Clean(path)
 			content, err := os.ReadFile(path)
 			if err != nil {
 				return nil
@@ -510,6 +511,8 @@ func shouldSkipFile(path string) bool {
 
 // CopyFile is a utility to copy files (for cache operations)
 func CopyFile(src, dst string) error {
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
