@@ -29,9 +29,6 @@ spec:
         enclii.dev/managed-by: switchyard
     spec:
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 101
-        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       imagePullSecrets:
@@ -41,7 +38,7 @@ spec:
           image: ghcr.io/madfam-org/enclii/docs-site:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 8080
+            - containerPort: 80
               name: http
               protocol: TCP
           resources:
@@ -54,7 +51,7 @@ spec:
           startupProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: 80
               scheme: HTTP
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -62,7 +59,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: 80
               scheme: HTTP
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -72,7 +69,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: 80
               scheme: HTTP
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -83,9 +80,6 @@ spec:
             privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
-            runAsNonRoot: true
-            runAsUser: 101
-            runAsGroup: 101
             capabilities:
               drop:
                 - ALL
@@ -99,7 +93,7 @@ metadata:
 spec:
   ports:
     - port: 80
-      targetPort: 8080
+      targetPort: 80
       name: http
   selector:
     app: docs-site

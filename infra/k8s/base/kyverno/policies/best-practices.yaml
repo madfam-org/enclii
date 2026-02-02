@@ -107,6 +107,7 @@ spec:
                 - kyverno
                 - enclii-builds  # Build jobs don't need probes
                 - sentinel  # CronJob audit tasks don't need probes
+                - data  # Database/cache pods managed separately
       validate:
         message: "Readiness probes are recommended for all containers."
         anyPattern:
