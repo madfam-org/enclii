@@ -79,6 +79,7 @@ func NewAsyncLogger(repos *db.Repositories, bufferSize int, fallbackPath string)
 		fallbackPath = "/var/log/enclii/audit-fallback.jsonl"
 		logger.fallbackPath = fallbackPath
 	}
+	fallbackPath = filepath.Clean(fallbackPath)
 	if err := os.MkdirAll(filepath.Dir(fallbackPath), 0750); err != nil {
 		logrus.WithError(err).Warn("Failed to create audit fallback directory; file fallback disabled")
 	} else {

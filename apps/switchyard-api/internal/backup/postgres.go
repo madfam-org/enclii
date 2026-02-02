@@ -312,7 +312,7 @@ func (bm *BackupManager) CleanupOldBackups() error {
 
 // VerifyBackup verifies the integrity of a backup
 func (bm *BackupManager) VerifyBackup(backupFile string) error {
-	backupPath := filepath.Join(bm.config.BackupDir, backupFile)
+	backupPath := filepath.Clean(filepath.Join(bm.config.BackupDir, backupFile))
 
 	// Check if file exists and is readable
 	file, err := os.Open(backupPath)
