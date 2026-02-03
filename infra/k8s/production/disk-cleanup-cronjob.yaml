@@ -31,7 +31,7 @@ spec:
           hostPID: true
           containers:
             - name: cleanup
-              image: rancher/k3s:v1.28.4-k3s2
+              image: rancher/k3s:v1.33.6-k3s1
               command:
                 - /bin/sh
                 - -c

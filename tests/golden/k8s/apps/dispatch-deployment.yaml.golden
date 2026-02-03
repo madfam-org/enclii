@@ -114,3 +114,16 @@ spec:
             memory: 512Mi
       imagePullSecrets:
       - name: ghcr-credentials
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dispatch-pdb
+  namespace: enclii
+  labels:
+    app: dispatch
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: dispatch

@@ -68,6 +68,13 @@ spec:
             - name: storage
               mountPath: /verdaccio/storage
 
+          startupProbe:
+            httpGet:
+              path: /-/ping
+              port: http
+            failureThreshold: 15
+            periodSeconds: 5
+
           livenessProbe:
             httpGet:
               path: /-/ping

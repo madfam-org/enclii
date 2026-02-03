@@ -618,6 +618,39 @@ data:
               summary: "StatefulSet replicas not ready"
               description: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} replicas are not ready."
 
+      - name: cronjob-health
+        interval: 60s
+        rules:
+          # CronJob Failures
+          - alert: CronJobFailed
+            expr: kube_job_status_failed{namespace=~"enclii|monitoring"} > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CronJob failed"
+              description: "Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed."
+
+          - alert: BackupVerifyFailed
+            expr: kube_job_status_failed{job_name=~"backup-verify.*"} > 0
+            for: 1m
+            labels:
+              severity: critical
+              service: backup
+            annotations:
+              summary: "Backup verification failed"
+              description: "Backup verification job {{ $labels.job_name }} has failed. DR readiness at risk."
+
+          - alert: PostgresBackupMissing
+            expr: time() - max(kube_job_status_completion_time{job_name=~"postgres-backup.*"}) > 90000
+            for: 5m
+            labels:
+              severity: critical
+              service: postgres
+            annotations:
+              summary: "PostgreSQL backup missing"
+              description: "No successful PostgreSQL backup job completed in the last 25 hours."
+
           # HPA Scaling
           - alert: HPAMaxedOut
             expr: kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_spec_max_replicas
@@ -687,8 +720,8 @@ spec:
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=15d"
-            - "--storage.tsdb.retention.size=15GB"
+            - "--storage.tsdb.retention.time=30d"
+            - "--storage.tsdb.retention.size=25GB"
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
             - "--web.enable-lifecycle"

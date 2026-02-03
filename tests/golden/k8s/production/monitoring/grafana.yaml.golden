@@ -381,6 +381,12 @@ spec:
               mountPath: /var/lib/grafana/dashboards
             - name: dashboard-roundhouse
               mountPath: /var/lib/grafana/dashboards/roundhouse
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            failureThreshold: 30
+            periodSeconds: 5
           readinessProbe:
             httpGet:
               path: /api/health

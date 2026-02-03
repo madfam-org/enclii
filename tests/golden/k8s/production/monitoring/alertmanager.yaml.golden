@@ -160,6 +160,12 @@ spec:
               readOnly: true
             - name: data
               mountPath: /alertmanager
+          startupProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            failureThreshold: 15
+            periodSeconds: 5
           readinessProbe:
             httpGet:
               path: /-/ready

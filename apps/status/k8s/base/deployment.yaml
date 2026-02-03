@@ -116,3 +116,15 @@ spec:
             memory: 256Mi
       imagePullSecrets:
       - name: ghcr-credentials
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: status-pdb
+  labels:
+    app: status
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: status

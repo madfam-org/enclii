@@ -120,17 +120,28 @@ func main() {
 		logrus.Fatal("Failed to initialize logger:", err)
 	}
 
-	// Connect to database
+	// Connect to database with connection pooling
 	database, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
 		logrus.Fatal("Failed to connect to database:", err)
 	}
 	defer database.Close()
 
+	// Configure connection pool (matches db.DefaultDatabaseConfig() settings)
+	database.SetMaxOpenConns(25)
+	database.SetMaxIdleConns(5)
+	database.SetConnMaxLifetime(30 * time.Minute)
+	database.SetConnMaxIdleTime(5 * time.Minute)
+
 	// Verify database connection
 	if err := database.Ping(); err != nil {
 		logrus.Fatal("Failed to ping database:", err)
 	}
+	logrus.WithFields(logrus.Fields{
+		"max_open_conns":    25,
+		"max_idle_conns":    5,
+		"conn_max_lifetime": "30m",
+	}).Info("✓ Database connection pool configured")
 
 	// Run database migrations
 	if err := db.Migrate(database, cfg.DatabaseURL); err != nil {

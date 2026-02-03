@@ -76,3 +76,17 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: waybill-pdb
+  labels:
+    app: waybill
+    app.kubernetes.io/name: waybill
+    app.kubernetes.io/part-of: enclii
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: waybill

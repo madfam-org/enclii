@@ -50,11 +50,16 @@ COPY --from=builder /app/switchyard-ui/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/switchyard-ui/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/switchyard-ui/.next/static ./.next/static
 
+RUN apk add --no-cache wget
+
 USER nextjs
 
 EXPOSE 4201
 
 ENV PORT=4201
 ENV HOSTNAME="0.0.0.0"
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD wget -q --spider http://localhost:4201/api/health || exit 1
 
 CMD ["node", "server.js"]

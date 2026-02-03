@@ -52,11 +52,16 @@ COPY --from=builder /app/status/public/ ./public/
 COPY --from=builder --chown=nextjs:nodejs /app/status/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/status/.next/static ./.next/static
 
+RUN apk add --no-cache wget
+
 USER nextjs
 
 EXPOSE 4204
 
 ENV PORT=4204
 ENV HOSTNAME="0.0.0.0"
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD wget -q --spider http://localhost:4204/api/health || exit 1
 
 CMD ["node", "server.js"]
