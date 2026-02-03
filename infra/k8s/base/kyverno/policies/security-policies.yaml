@@ -35,6 +35,20 @@ spec:
           - resources:
               namespaces:
                 - longhorn-system
+          # Exclude database/cache components (postgres/redis) in enclii namespace
+          # These explicitly set privileged: false but policy requires the field
+          - resources:
+              namespaces:
+                - enclii
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: database
+          - resources:
+              namespaces:
+                - enclii
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: cache
       validate:
         message: "Privileged mode is not allowed. Set securityContext.privileged to false."
         pattern:
@@ -115,6 +129,20 @@ spec:
                 - kube-system
                 - longhorn-system
                 - kyverno
+          # Exclude official database/cache images that must run as root
+          # These are isolated via NetworkPolicy and PVC-only storage
+          - resources:
+              namespaces:
+                - enclii
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: database
+          - resources:
+              namespaces:
+                - enclii
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: cache
       validate:
         message: "Containers should run as non-root. Set securityContext.runAsNonRoot to true."
         pattern:

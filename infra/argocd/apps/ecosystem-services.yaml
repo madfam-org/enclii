@@ -1,5 +1,6 @@
 # Ecosystem Services Application
-# Deploys: dispatch, status-page, landing-page
+# Deploys: dispatch, status-page
+# NOTE: landing-page and docs-site are managed by core-services via kustomize (infra/k8s/production -> ../base)
 # These services have their own manifests and are managed separately from core services.
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -14,15 +15,11 @@ metadata:
     # ArgoCD Image Updater Configuration
     argocd-image-updater.argoproj.io/image-list: |
       dispatch=ghcr.io/madfam-org/enclii/dispatch:latest,
-      status-page=ghcr.io/madfam-org/enclii/enclii-status:latest,
-      landing-page=ghcr.io/madfam-org/enclii/landing-page:latest,
-      docs-site=ghcr.io/madfam-org/enclii/docs-site:latest
+      status-page=ghcr.io/madfam-org/enclii/enclii-status:latest
 
     # Update strategies (digest: detect SHA changes on :latest tag)
     argocd-image-updater.argoproj.io/dispatch.update-strategy: digest
     argocd-image-updater.argoproj.io/status-page.update-strategy: digest
-    argocd-image-updater.argoproj.io/landing-page.update-strategy: digest
-    argocd-image-updater.argoproj.io/docs-site.update-strategy: digest
 
     # Git write-back
     argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
@@ -32,8 +29,6 @@ metadata:
     # Kustomize image path mappings
     argocd-image-updater.argoproj.io/dispatch.kustomize.image-name: dispatch
     argocd-image-updater.argoproj.io/status-page.kustomize.image-name: enclii-status
-    argocd-image-updater.argoproj.io/landing-page.kustomize.image-name: landing-page
-    argocd-image-updater.argoproj.io/docs-site.kustomize.image-name: docs-site
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -49,20 +44,6 @@ spec:
     - repoURL: https://github.com/madfam-org/enclii.git
       targetRevision: main
       path: apps/status/k8s/base
-
-    # Landing page (enclii.dev)
-    - repoURL: https://github.com/madfam-org/enclii.git
-      targetRevision: main
-      path: infra/k8s/base
-      directory:
-        include: 'landing-page.yaml'
-
-    # Documentation site (docs.enclii.dev)
-    - repoURL: https://github.com/madfam-org/enclii.git
-      targetRevision: main
-      path: infra/k8s/base
-      directory:
-        include: 'docs-site.yaml'
 
   destination:
     server: https://kubernetes.default.svc

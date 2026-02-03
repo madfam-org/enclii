@@ -155,62 +155,11 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Production',
       items: [
-        'production/PRODUCTION_READINESS_AUDIT',
         'production/PRODUCTION_DEPLOYMENT_ROADMAP',
         'production/PRODUCTION_CHECKLIST',
         'production/GAP_ANALYSIS',
         'production/BUILD_PIPELINE',
         'production/dogfooding-roadmap',
-      ],
-    },
-
-    // Audits
-    {
-      type: 'category',
-      label: 'Audits',
-      collapsed: true,
-      items: [
-        {
-          type: 'category',
-          label: 'Security',
-          items: [
-            'audits/security/EXECUTIVE_SUMMARY',
-            'audits/security/COMPREHENSIVE_AUDIT',
-            'audits/security/QUICK_REFERENCE',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Codebase',
-          items: [
-            'audits/codebase/GO_SUMMARY',
-            'audits/codebase/COMPREHENSIVE_AUDIT',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'UI',
-          items: [
-            'audits/ui/EXECUTIVE_SUMMARY',
-            'audits/ui/COMPREHENSIVE_AUDIT',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Dependencies',
-          items: [
-            'audits/dependencies/UI_DEPENDENCIES',
-            'audits/dependencies/API_DEPENDENCIES',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Testing',
-          items: [
-            'audits/testing/API_COVERAGE',
-            'audits/testing/UI_COVERAGE',
-          ],
-        },
       ],
     },
 

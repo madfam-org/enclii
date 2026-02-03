@@ -29,6 +29,9 @@ spec:
         enclii.dev/managed-by: switchyard
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       imagePullSecrets:

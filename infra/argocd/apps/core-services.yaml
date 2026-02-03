@@ -1,5 +1,6 @@
 # Core Services Application
-# Deploys: switchyard-api, switchyard-ui, roundhouse, waybill
+# Deploys: switchyard-api, switchyard-ui, roundhouse, waybill, docs-site, landing-page
+# NOTE: docs-site and landing-page are included via kustomize (infra/k8s/production -> ../base)
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -18,12 +19,16 @@ metadata:
     argocd-image-updater.argoproj.io/image-list: |
       switchyard-api=ghcr.io/madfam-org/enclii/switchyard-api:latest,
       switchyard-ui=ghcr.io/madfam-org/enclii/switchyard-ui:latest,
-      roundhouse=ghcr.io/madfam-org/enclii/roundhouse:latest
+      roundhouse=ghcr.io/madfam-org/enclii/roundhouse:latest,
+      docs-site=ghcr.io/madfam-org/enclii/docs-site:latest,
+      landing-page=ghcr.io/madfam-org/enclii/landing-page:latest
 
     # Update strategies per image (digest: detect SHA changes on :latest tag)
     argocd-image-updater.argoproj.io/switchyard-api.update-strategy: digest
     argocd-image-updater.argoproj.io/switchyard-ui.update-strategy: digest
     argocd-image-updater.argoproj.io/roundhouse.update-strategy: digest
+    argocd-image-updater.argoproj.io/docs-site.update-strategy: digest
+    argocd-image-updater.argoproj.io/landing-page.update-strategy: digest
 
     # Git write-back: Image Updater commits updated tags to kustomization.yaml
     # This is compatible with App-of-Apps + selfHeal (no CR override conflicts)
@@ -36,6 +41,8 @@ metadata:
     argocd-image-updater.argoproj.io/switchyard-api.kustomize.image-name: switchyard-api
     argocd-image-updater.argoproj.io/switchyard-ui.kustomize.image-name: switchyard-ui
     argocd-image-updater.argoproj.io/roundhouse.kustomize.image-name: ghcr.io/madfam-org/enclii/roundhouse
+    argocd-image-updater.argoproj.io/docs-site.kustomize.image-name: docs-site
+    argocd-image-updater.argoproj.io/landing-page.kustomize.image-name: landing-page
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
