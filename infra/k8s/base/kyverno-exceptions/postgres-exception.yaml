@@ -1,0 +1,40 @@
+---
+# Kyverno Policy Exceptions for PostgreSQL
+# The official PostgreSQL image requires root during initialization to set up
+# data directory permissions. This is a temporary exception until we migrate
+# to a Bitnami PostgreSQL image with proper data migration.
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: postgres-security-exception
+  namespace: enclii
+  annotations:
+    policies.kyverno.io/description: >-
+      PostgreSQL requires root access during initialization to configure
+      the data directory. This exception allows postgres pods to run without
+      the require-run-as-nonroot and restrict-capabilities policies.
+      TODO: Migrate to Bitnami PostgreSQL with proper data migration procedure.
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/expires: "2026-03-03"
+spec:
+  exceptions:
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
+    - policyName: restrict-capabilities
+      ruleNames:
+        - drop-all-capabilities
+        - autogen-drop-all-capabilities
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - ReplicaSet
+          namespaces:
+            - enclii
+          names:
+            - postgres*

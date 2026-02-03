@@ -35,10 +35,8 @@ spec:
         app.kubernetes.io/component: database
         app.kubernetes.io/part-of: enclii
     spec:
-      securityContext:
-        fsGroup: 999
-        seccompProfile:
-          type: RuntimeDefault
+      # PostgreSQL requires root for initial data directory setup
+      # Policy exception: postgres-security-exception
       containers:
         - name: postgres
           image: postgres:15
@@ -84,11 +82,6 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
           readinessProbe:
             exec:
               command:
