@@ -20,21 +20,27 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /waybill-api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /waybill-aggregator ./cmd/aggregator
 
 # Aggregator runtime stage (for background jobs)
-FROM alpine:3.19 AS aggregator
+FROM alpine:3.20 AS aggregator
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
 
 COPY --from=builder /waybill-aggregator /usr/local/bin/waybill-aggregator
+
+USER 65532:65532
 
 ENTRYPOINT ["/usr/local/bin/waybill-aggregator"]
 
 # API runtime stage (default - HTTP server with health checks)
-FROM alpine:3.19 AS api
+FROM alpine:3.20 AS api
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
 
 COPY --from=builder /waybill-api /usr/local/bin/waybill-api
 
-EXPOSE 8080
+USER 65532:65532
+
+EXPOSE 4290
 
 ENTRYPOINT ["/usr/local/bin/waybill-api"]

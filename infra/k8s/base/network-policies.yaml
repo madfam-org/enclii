@@ -230,3 +230,123 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
+---
+# Allow ingress to switchyard-ui only from Cloudflare tunnel
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: switchyard-ui-ingress
+  labels:
+    app.kubernetes.io/name: switchyard-ui
+    app.kubernetes.io/component: web-ui
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: switchyard-ui
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
+    ports:
+    - protocol: TCP
+      port: 4201
+---
+# Allow ingress to waybill from switchyard-api (metrics) and Prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: waybill-ingress
+  labels:
+    app.kubernetes.io/name: waybill
+    app.kubernetes.io/component: billing
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: waybill
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: switchyard-api
+    ports:
+    - protocol: TCP
+      port: 4290
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 4290
+---
+# Waybill egress — DNS and Postgres
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: waybill-egress
+  labels:
+    app.kubernetes.io/name: waybill
+    app.kubernetes.io/component: billing
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: waybill
+  policyTypes:
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: data
+      podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Allow ingress to dispatch only from Cloudflare tunnel
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dispatch-ingress
+  labels:
+    app.kubernetes.io/name: dispatch
+    app.kubernetes.io/component: admin
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: dispatch
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
+    ports:
+    - protocol: TCP
+      port: 4203
