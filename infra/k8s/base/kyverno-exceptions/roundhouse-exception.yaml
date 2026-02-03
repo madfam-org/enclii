@@ -1,0 +1,33 @@
+---
+# Kyverno Policy Exceptions for Enclii
+# These exceptions allow specific workloads to bypass certain policies
+# with documented justification.
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: roundhouse-docker-socket
+  namespace: enclii
+  annotations:
+    policies.kyverno.io/description: >-
+      Roundhouse build workers require access to the Docker socket for
+      building container images. This is a temporary exception until
+      Kaniko (rootless builds) is fully deployed.
+    policies.kyverno.io/severity: medium
+spec:
+  exceptions:
+    - policyName: disallow-host-path
+      ruleNames:
+        - host-path
+        - autogen-host-path
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - ReplicaSet
+          namespaces:
+            - enclii
+          names:
+            - roundhouse*

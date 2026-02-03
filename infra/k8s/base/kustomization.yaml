@@ -19,6 +19,7 @@ resources:
   - ingress-nginx.yaml
   - monitoring.yaml
   - network-policies.yaml
+  - kyverno-exceptions/roundhouse-exception.yaml
 
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in individual manifests.
