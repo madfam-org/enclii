@@ -20,6 +20,7 @@ resources:
   - monitoring.yaml
   - network-policies.yaml
   - kyverno-exceptions/roundhouse-exception.yaml
+  - kyverno-exceptions/external-services-exception.yaml
 
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in individual manifests.

@@ -1,0 +1,76 @@
+---
+# Kyverno Policy Exceptions for External Services (Janua, Dhanam)
+# These services are managed in separate repositories and their manifests
+# need to be updated to meet security requirements. This exception provides
+# temporary relief until those updates are deployed.
+#
+# TODO: Remove this exception once Janua/Dhanam manifests are updated with:
+#   - securityContext.runAsNonRoot: true
+#   - securityContext.privileged: false
+#   - securityContext.capabilities.drop: ["ALL"]
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: janua-security-exception
+  namespace: janua
+  annotations:
+    policies.kyverno.io/description: >-
+      Temporary exception for Janua services until their manifests are
+      updated with proper security contexts.
+spec:
+  exceptions:
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
+    - policyName: restrict-capabilities
+      ruleNames:
+        - drop-all-capabilities
+        - autogen-drop-all-capabilities
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - ReplicaSet
+          namespaces:
+            - janua
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: dhanam-security-exception
+  namespace: dhanam
+  annotations:
+    policies.kyverno.io/description: >-
+      Temporary exception for Dhanam services until their manifests are
+      updated with proper security contexts.
+spec:
+  exceptions:
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
+    - policyName: restrict-capabilities
+      ruleNames:
+        - drop-all-capabilities
+        - autogen-drop-all-capabilities
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+            - ReplicaSet
+          namespaces:
+            - dhanam
