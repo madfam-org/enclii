@@ -187,7 +187,23 @@ jobs:
         if: steps.check-secret.outputs.skip != 'true'
         run: |
           echo "Applying production Kubernetes manifests..."
-          kubectl apply -f infra/k8s/production/arc/
+          # Apply non-CRD resources first
+          for f in infra/k8s/production/arc/*.yaml; do
+            if [[ "$(basename $f)" == "monitoring.yaml" ]]; then
+              echo "Skipping $f (requires Prometheus Operator CRDs)"
+              continue
+            fi
+            echo "Applying $f..."
+            kubectl apply -f "$f"
+          done
+
+          # Apply monitoring.yaml only if CRDs exist
+          if kubectl get crd servicemonitors.monitoring.coreos.com &>/dev/null; then
+            echo "Prometheus Operator CRDs found, applying monitoring.yaml..."
+            kubectl apply -f infra/k8s/production/arc/monitoring.yaml
+          else
+            echo "::warning::Prometheus Operator CRDs not found, skipping monitoring.yaml"
+          fi
 
       - name: Upgrade ARC Controller
         if: steps.check-secret.outputs.skip != 'true'
