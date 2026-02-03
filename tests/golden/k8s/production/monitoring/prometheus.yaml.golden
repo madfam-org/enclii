@@ -1,0 +1,763 @@
+---
+# Prometheus RBAC
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+# Prometheus Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+      external_labels:
+        cluster: enclii-production
+        environment: production
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Kubernetes API server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      # Kubernetes nodes
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # Kubernetes node cadvisor metrics
+      - job_name: 'kubernetes-cadvisor'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        metrics_path: /metrics/cadvisor
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # Kubernetes pods with prometheus.io annotations
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+
+      # Kubernetes services with prometheus.io annotations
+      - job_name: 'kubernetes-services'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: service
+
+      # Switchyard API metrics
+      - job_name: 'switchyard-api'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - enclii
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: switchyard-api
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: http
+        metrics_path: /metrics
+
+      # Redis metrics (if redis-exporter is deployed)
+      - job_name: 'redis'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - enclii
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: redis
+
+      # PostgreSQL metrics (if postgres-exporter is deployed)
+      - job_name: 'postgres'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - enclii
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: postgres
+
+      # Roundhouse Build Worker metrics
+      - job_name: 'roundhouse'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - enclii
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: roundhouse
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+        metrics_path: /metrics
+
+      # ArgoCD metrics
+      - job_name: 'argocd'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - argocd
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+      # Kyverno metrics
+      - job_name: 'kyverno'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - kyverno
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
+            action: keep
+            regex: admission-controller|background-controller
+        metrics_path: /metrics
+
+      # External Secrets metrics
+      - job_name: 'external-secrets'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - external-secrets
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+---
+# Alert Rules ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+data:
+  enclii-alerts.yml: |
+    groups:
+      - name: enclii-platform
+        interval: 30s
+        rules:
+          # API Health
+          - alert: SwitchyardAPIDown
+            expr: up{job="switchyard-api"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              service: switchyard-api
+            annotations:
+              summary: "Switchyard API is down"
+              description: "Switchyard API has been down for more than 2 minutes."
+
+          - alert: SwitchyardAPIHighLatency
+            expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="switchyard-api"}[5m])) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+              service: switchyard-api
+            annotations:
+              summary: "Switchyard API high latency"
+              description: "95th percentile latency is above 500ms for 5 minutes."
+
+          - alert: SwitchyardAPIHighErrorRate
+            expr: sum(rate(http_requests_total{job="switchyard-api",status=~"5.."}[5m])) / sum(rate(http_requests_total{job="switchyard-api"}[5m])) > 0.02
+            for: 5m
+            labels:
+              severity: warning
+              service: switchyard-api
+            annotations:
+              summary: "Switchyard API high error rate"
+              description: "Error rate is above 2% for 5 minutes."
+
+          # Database Health
+          - alert: PostgresDown
+            expr: pg_up == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: postgres
+            annotations:
+              summary: "PostgreSQL is down"
+              description: "PostgreSQL database is not responding."
+
+          - alert: PostgresHighConnections
+            expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+            for: 5m
+            labels:
+              severity: warning
+              service: postgres
+            annotations:
+              summary: "PostgreSQL high connection usage"
+              description: "Connection pool usage is above 80%."
+
+          # Redis Health
+          - alert: RedisDown
+            expr: redis_up == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: redis
+            annotations:
+              summary: "Redis is down"
+              description: "Redis cache is not responding."
+
+          - alert: RedisHighMemory
+            expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+            for: 5m
+            labels:
+              severity: warning
+              service: redis
+            annotations:
+              summary: "Redis high memory usage"
+              description: "Redis memory usage is above 85%."
+
+      - name: kubernetes-resources
+        interval: 30s
+        rules:
+          # Node Resources
+          - alert: NodeHighCPU
+            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Node CPU high"
+              description: "Node {{ $labels.instance }} CPU usage is above 80% for 15 minutes."
+
+          - alert: NodeHighMemory
+            expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Node memory high"
+              description: "Node {{ $labels.instance }} memory usage is above 85%."
+
+          - alert: NodeDiskSpaceLow
+            expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 80
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Node disk space low"
+              description: "Node {{ $labels.instance }} disk usage is above 80%."
+
+          # Pod Resources
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod crash looping"
+              description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping."
+
+          - alert: PodNotReady
+            expr: kube_pod_status_ready{condition="true"} == 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod not ready"
+              description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready."
+
+      - name: roundhouse-builds
+        interval: 30s
+        rules:
+          # Build Queue Health
+          - alert: RoundhouseBuildQueueBacklog
+            expr: roundhouse_build_queue_depth > 10
+            for: 10m
+            labels:
+              severity: warning
+              service: roundhouse
+            annotations:
+              summary: "Build queue backlog growing"
+              description: "Build queue has {{ $value }} pending builds for more than 10 minutes."
+
+          - alert: RoundhouseBuildQueueStalled
+            expr: roundhouse_build_queue_depth > 0 and rate(roundhouse_builds_completed_total[15m]) == 0
+            for: 15m
+            labels:
+              severity: critical
+              service: roundhouse
+            annotations:
+              summary: "Build queue stalled"
+              description: "Builds are queued but no builds have completed in 15 minutes."
+
+          # Build Failures
+          - alert: RoundhouseBuildFailureRate
+            expr: sum(rate(roundhouse_builds_failed_total[30m])) / sum(rate(roundhouse_builds_total[30m])) > 0.2
+            for: 10m
+            labels:
+              severity: warning
+              service: roundhouse
+            annotations:
+              summary: "High build failure rate"
+              description: "Build failure rate is above 20% for the last 10 minutes."
+
+          - alert: RoundhouseBuildFailureRateCritical
+            expr: sum(rate(roundhouse_builds_failed_total[30m])) / sum(rate(roundhouse_builds_total[30m])) > 0.5
+            for: 5m
+            labels:
+              severity: critical
+              service: roundhouse
+            annotations:
+              summary: "Critical build failure rate"
+              description: "Build failure rate is above 50% - immediate attention required."
+
+          # Build Duration
+          - alert: RoundhouseBuildSlow
+            expr: histogram_quantile(0.95, rate(roundhouse_build_duration_seconds_bucket[1h])) > 600
+            for: 30m
+            labels:
+              severity: warning
+              service: roundhouse
+            annotations:
+              summary: "Builds running slow"
+              description: "95th percentile build duration is above 10 minutes."
+
+          # Worker Health
+          - alert: RoundhouseWorkerDown
+            expr: up{job="roundhouse"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              service: roundhouse
+            annotations:
+              summary: "Roundhouse worker is down"
+              description: "Roundhouse build worker has been down for more than 2 minutes."
+
+          - alert: RoundhouseWorkerHighMemory
+            expr: container_memory_working_set_bytes{namespace="enclii",container="roundhouse"} / container_spec_memory_limit_bytes{namespace="enclii",container="roundhouse"} > 0.85
+            for: 10m
+            labels:
+              severity: warning
+              service: roundhouse
+            annotations:
+              summary: "Roundhouse worker high memory usage"
+              description: "Roundhouse worker is using more than 85% of its memory limit."
+
+      - name: argocd-gitops
+        interval: 30s
+        rules:
+          # Application Sync Status
+          - alert: ArgoCDAppOutOfSync
+            expr: argocd_app_info{sync_status!="Synced"} == 1
+            for: 15m
+            labels:
+              severity: warning
+              service: argocd
+            annotations:
+              summary: "ArgoCD application out of sync"
+              description: "Application {{ $labels.name }} has been out of sync for more than 15 minutes."
+
+          - alert: ArgoCDAppDegraded
+            expr: argocd_app_info{health_status="Degraded"} == 1
+            for: 5m
+            labels:
+              severity: critical
+              service: argocd
+            annotations:
+              summary: "ArgoCD application degraded"
+              description: "Application {{ $labels.name }} health status is Degraded."
+
+          - alert: ArgoCDAppMissing
+            expr: argocd_app_info{health_status="Missing"} == 1
+            for: 5m
+            labels:
+              severity: critical
+              service: argocd
+            annotations:
+              summary: "ArgoCD application missing"
+              description: "Application {{ $labels.name }} health status is Missing."
+
+          # Sync Failures
+          - alert: ArgoCDSyncFailed
+            expr: increase(argocd_app_sync_total{phase="Failed"}[1h]) > 3
+            for: 5m
+            labels:
+              severity: warning
+              service: argocd
+            annotations:
+              summary: "ArgoCD sync failures"
+              description: "Application {{ $labels.name }} has failed to sync more than 3 times in the last hour."
+
+          # Controller Health
+          - alert: ArgoCDControllerDown
+            expr: up{job="argocd",service="argocd-application-controller"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              service: argocd
+            annotations:
+              summary: "ArgoCD application controller is down"
+              description: "ArgoCD application controller has been down for more than 2 minutes."
+
+      - name: kyverno-policies
+        interval: 30s
+        rules:
+          # Policy Violations
+          - alert: KyvernoPolicyViolations
+            expr: increase(kyverno_policy_results_total{rule_result="fail"}[1h]) > 10
+            for: 10m
+            labels:
+              severity: warning
+              service: kyverno
+            annotations:
+              summary: "Kyverno policy violations detected"
+              description: "Policy {{ $labels.policy_name }} has been violated more than 10 times in the last hour."
+
+          - alert: KyvernoAdmissionBlocked
+            expr: increase(kyverno_admission_requests_total{request_allowed="false"}[30m]) > 5
+            for: 5m
+            labels:
+              severity: warning
+              service: kyverno
+            annotations:
+              summary: "Kyverno blocking admissions"
+              description: "Kyverno has blocked more than 5 admission requests in the last 30 minutes."
+
+          # Controller Health
+          - alert: KyvernoControllerDown
+            expr: up{job="kyverno"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              service: kyverno
+            annotations:
+              summary: "Kyverno controller is down"
+              description: "Kyverno admission controller has been down for more than 2 minutes."
+
+      - name: deployment-health
+        interval: 30s
+        rules:
+          # Deployment Rollout
+          - alert: DeploymentRolloutStuck
+            expr: kube_deployment_status_condition{condition="Progressing",status="false"} == 1
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Deployment rollout stuck"
+              description: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} rollout is stuck."
+
+          - alert: DeploymentReplicasMismatch
+            expr: kube_deployment_spec_replicas != kube_deployment_status_available_replicas
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Deployment replicas mismatch"
+              description: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} does not have the expected number of replicas."
+
+          # StatefulSet Health
+          - alert: StatefulSetReplicasMismatch
+            expr: kube_statefulset_status_replicas != kube_statefulset_status_replicas_ready
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "StatefulSet replicas not ready"
+              description: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} replicas are not ready."
+
+          # HPA Scaling
+          - alert: HPAMaxedOut
+            expr: kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_spec_max_replicas
+            for: 30m
+            labels:
+              severity: warning
+            annotations:
+              summary: "HPA at maximum replicas"
+              description: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} has been at max replicas for 30 minutes."
+---
+# Prometheus PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+---
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/part-of: enclii
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        fsGroup: 65534
+        runAsUser: 65534
+        runAsNonRoot: true
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.3
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
+            - "--storage.tsdb.retention.size=15GB"
+            - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+            - "--web.console.templates=/usr/share/prometheus/consoles"
+            - "--web.enable-lifecycle"
+            - "--web.enable-admin-api"
+          ports:
+            - containerPort: 9090
+              name: http
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: data
+              mountPath: /prometheus
+          startupProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-rules
+        - name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+---
+# Prometheus Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: http
+  selector:
+    app: prometheus

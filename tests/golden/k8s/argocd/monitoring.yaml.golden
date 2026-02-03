@@ -1,0 +1,40 @@
+# Monitoring Stack Application
+# Deploys: Prometheus, Grafana, Alertmanager, Jaeger
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: monitoring
+    app.kubernetes.io/part-of: enclii
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/monitoring
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+  # Ignore Prometheus data (changes constantly)
+  ignoreDifferences:
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-config
+      jsonPointers:
+        - /data/prometheus.yml  # May have scrape targets added dynamically

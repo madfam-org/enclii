@@ -1,0 +1,71 @@
+# Core Services Application
+# Deploys: switchyard-api, switchyard-ui, roundhouse, waybill
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: core-services
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: core-services
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    # ArgoCD Notifications: notify Enclii API on successful sync
+    notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
+    # ArgoCD Image Updater Configuration
+    # Watches ghcr.io for new image versions and auto-updates deployments
+    # Uses digest strategy: detects when :latest tag points to new SHA
+    argocd-image-updater.argoproj.io/image-list: |
+      switchyard-api=ghcr.io/madfam-org/enclii/switchyard-api:latest,
+      switchyard-ui=ghcr.io/madfam-org/enclii/switchyard-ui:latest,
+      roundhouse=ghcr.io/madfam-org/enclii/roundhouse:latest
+
+    # Update strategies per image (digest: detect SHA changes on :latest tag)
+    argocd-image-updater.argoproj.io/switchyard-api.update-strategy: digest
+    argocd-image-updater.argoproj.io/switchyard-ui.update-strategy: digest
+    argocd-image-updater.argoproj.io/roundhouse.update-strategy: digest
+
+    # Git write-back: Image Updater commits updated tags to kustomization.yaml
+    # This is compatible with App-of-Apps + selfHeal (no CR override conflicts)
+    argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
+    argocd-image-updater.argoproj.io/write-back-target: kustomization
+    argocd-image-updater.argoproj.io/git-branch: main
+
+    # Kustomize image path mappings (must match the `name` field in kustomization.yaml images)
+    # Base manifests use short names (switchyard-api, switchyard-ui), so image-name must match
+    argocd-image-updater.argoproj.io/switchyard-api.kustomize.image-name: switchyard-api
+    argocd-image-updater.argoproj.io/switchyard-ui.kustomize.image-name: switchyard-ui
+    argocd-image-updater.argoproj.io/roundhouse.kustomize.image-name: ghcr.io/madfam-org/enclii/roundhouse
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production
+    # Kustomize configuration (image tags managed by Image Updater Git commits)
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: enclii
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true  # Better for CRDs
+
+  # Ignore certain fields that change frequently
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Allow HPA to manage replicas
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP  # Auto-assigned by K8s

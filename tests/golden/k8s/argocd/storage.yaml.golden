@@ -1,0 +1,59 @@
+# Storage Application
+# Deploys: Longhorn CSI (via Helm)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: longhorn
+    app.kubernetes.io/part-of: enclii
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.longhorn.io
+    chart: longhorn
+    targetRevision: 1.7.2  # Pin to specific version (matches installed)
+    helm:
+      valueFiles: []
+      # Inline values (or reference external values file)
+      values: |
+        defaultSettings:
+          defaultReplicaCount: 2
+          storageOverProvisioningPercentage: 100
+          storageMinimalAvailablePercentage: 15
+          autoSalvage: true
+          replicaAutoBalance: best-effort
+        persistence:
+          defaultClassReplicaCount: 2
+          reclaimPolicy: Retain
+        ingress:
+          enabled: false
+        longhornManager:
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: longhorn-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+  # Longhorn creates many resources dynamically
+  ignoreDifferences:
+    - group: longhorn.io
+      kind: "*"
+      jsonPointers:
+        - /status

@@ -36,6 +36,19 @@ CONFIGS=(
     "infra/k8s/production/security-patch.yaml:production/security-patch.yaml.golden"
     "infra/k8s/base/roundhouse.yaml:base/roundhouse.yaml.golden"
     "apps/dispatch/k8s/deployment.yaml:apps/dispatch-deployment.yaml.golden"
+    "infra/k8s/production/kyverno-guards.yaml:production/kyverno-guards.yaml.golden"
+    "infra/k8s/production/monitoring/prometheus.yaml:production/monitoring/prometheus.yaml.golden"
+    "infra/k8s/production/monitoring/grafana.yaml:production/monitoring/grafana.yaml.golden"
+    "infra/k8s/production/monitoring/alertmanager.yaml:production/monitoring/alertmanager.yaml.golden"
+    "infra/argocd/apps/monitoring.yaml:argocd/monitoring.yaml.golden"
+    "infra/argocd/apps/storage.yaml:argocd/storage.yaml.golden"
+    "infra/argocd/apps/image-updater.yaml:argocd/image-updater.yaml.golden"
+    "infra/argocd/apps/external-secrets-operator.yaml:argocd/external-secrets-operator.yaml.golden"
+    "infra/argocd/apps/ingress.yaml:argocd/ingress.yaml.golden"
+    "infra/argocd/apps/arc-runners.yaml:argocd/arc-runners.yaml.golden"
+    "infra/argocd/apps/kyverno.yaml:argocd/kyverno.yaml.golden"
+    "infra/argocd/apps/core-services.yaml:argocd/core-services.yaml.golden"
+    "infra/argocd/apps/ecosystem-services.yaml:argocd/ecosystem-services.yaml.golden"
 )
 
 FAILED=0

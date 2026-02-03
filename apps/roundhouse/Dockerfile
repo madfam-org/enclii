@@ -20,11 +20,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /roundhouse-api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /roundhouse-worker ./cmd/worker
 
 # API runtime stage (lightweight)
-FROM alpine:3.19 AS api
+FROM alpine:3.20 AS api
 
 RUN apk add --no-cache ca-certificates tzdata
 
+RUN addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
+
 COPY --from=builder /roundhouse-api /usr/local/bin/roundhouse-api
+
+USER 65532:65532
 
 EXPOSE 8081
 

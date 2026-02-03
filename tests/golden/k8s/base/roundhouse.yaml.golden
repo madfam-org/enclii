@@ -212,7 +212,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: roundhouse-api
-          image: ghcr.io/madfam-org/enclii/roundhouse:latest
+          image: ghcr.io/madfam-org/enclii/roundhouse:v0.1.0
           # Override the default entrypoint to run the API binary
           command: ["/usr/local/bin/roundhouse-api"]
           imagePullPolicy: Always
@@ -251,6 +251,12 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /health

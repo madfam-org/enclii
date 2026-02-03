@@ -1,0 +1,185 @@
+# Kyverno Policy Engine Application
+# Deploys: Kyverno admission controller (via Helm)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: kyverno
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: security
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://kyverno.github.io/kyverno/
+    chart: kyverno
+    targetRevision: 3.1.4  # Pin to specific version
+    helm:
+      values: |
+        # Kyverno configuration for Enclii
+        # Note: Kyverno only supports 1 (standalone) or 3 (HA) replicas
+        # Using 1 for single-node cluster, change to 3 for multi-node
+        replicaCount: 1
+
+        # Resource limits
+        resources:
+          limits:
+            memory: 512Mi
+            cpu: 500m
+          requests:
+            memory: 256Mi
+            cpu: 100m
+
+        # Admission controller configuration
+        admissionController:
+          replicas: 1
+          # ServiceMonitor disabled - requires Prometheus Operator
+          serviceMonitor:
+            enabled: false
+
+        # Override cleanup CronJob kubectl image (bitnami removed version tags from Docker Hub)
+        # Only 'latest' and SHA-based tags are available
+        cleanupJobs:
+          admissionReports:
+            image:
+              tag: latest
+          clusterAdmissionReports:
+            image:
+              tag: latest
+        # Disable upgrade hooks to prevent deadlock (hooks use kubectl image
+        # which must be updated via the same sync that creates the hooks)
+        webhooksCleanup:
+          enabled: false
+        policyReportsCleanup:
+          enabled: false
+
+        # Background controller for policy reports
+        backgroundController:
+          enabled: true
+          # ServiceMonitor disabled - requires Prometheus Operator
+          serviceMonitor:
+            enabled: false
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 250m
+            requests:
+              memory: 128Mi
+              cpu: 50m
+
+        # Reports controller for policy reports
+        reportsController:
+          enabled: true
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 250m
+            requests:
+              memory: 128Mi
+              cpu: 50m
+
+        # Cleanup controller for temporary resources
+        cleanupController:
+          enabled: true
+
+        # Webhook configuration
+        config:
+          webhooks:
+            - namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - kube-system
+                      - kyverno
+                      - argocd
+                      - longhorn-system
+
+        # Pod disruption budget
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+
+        # Tolerate GPU nodes (don't schedule on them)
+        tolerations:
+          - key: "nvidia.com/gpu"
+            operator: "Exists"
+            effect: "NoSchedule"
+
+        # Anti-affinity for HA
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: kyverno
+                  topologyKey: kubernetes.io/hostname
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+
+  # Ignore status fields that change frequently
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+        - /webhooks/1/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+        - /webhooks/1/clientConfig/caBundle
+---
+# Kyverno Policies Application
+# Deploys: Custom Enclii security policies
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: kyverno-policies
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: security
+  annotations:
+    # Ensure Kyverno is installed first
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/base/kyverno/policies
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

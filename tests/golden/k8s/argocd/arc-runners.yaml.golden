@@ -1,0 +1,75 @@
+# GitHub Actions Runner Controller Application
+# Deploys: ARC controller + runner scale sets
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runners
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: arc-runners
+    app.kubernetes.io/part-of: enclii
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # ARC Controller
+  sources:
+    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set-controller
+      targetRevision: 0.10.1
+      helm:
+        releaseName: arc-controller
+        valueFiles:
+          - $values/infra/helm/arc/values-controller.yaml
+    # Reference values from our repo
+    - repoURL: https://github.com/madfam-org/enclii.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# ARC Runner Scale Set (Blue)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runners-blue
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: arc-runners-blue
+    app.kubernetes.io/part-of: enclii
+spec:
+  project: default
+
+  sources:
+    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set
+      targetRevision: 0.10.1
+      helm:
+        releaseName: arc-runner-blue
+        valueFiles:
+          - $values/infra/helm/arc/values-runner-set-blue.yaml
+    - repoURL: https://github.com/madfam-org/enclii.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
