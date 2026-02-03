@@ -700,6 +700,8 @@ metadata:
     app.kubernetes.io/part-of: enclii
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # Prevents PVC lock contention during rollouts
   selector:
     matchLabels:
       app: prometheus

@@ -1,0 +1,31 @@
+---
+# PolicyException for Monitoring namespace
+# Allows trusted observability images from Docker Hub (prom/, grafana/)
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: monitoring-trusted-images
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: enclii-infrastructure
+    app.kubernetes.io/component: monitoring
+  annotations:
+    description: "Allows trusted observability images (Prometheus, Grafana, Alertmanager)"
+spec:
+  exceptions:
+    - policyName: restrict-image-registries
+      ruleNames:
+        - validate-registries
+        - autogen-validate-registries
+    - policyName: disallow-latest-tag
+      ruleNames:
+        - disallow-latest
+        - autogen-disallow-latest
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - Deployment
+          namespaces:
+            - monitoring
