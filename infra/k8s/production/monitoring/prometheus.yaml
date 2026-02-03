@@ -390,14 +390,23 @@ data:
               summary: "Node memory high"
               description: "Node {{ $labels.instance }} memory usage is above 85%."
 
-          - alert: NodeDiskSpaceLow
-            expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 80
+          - alert: NodeDiskSpaceWarning
+            expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 85
             for: 10m
             labels:
               severity: warning
             annotations:
-              summary: "Node disk space low"
-              description: "Node {{ $labels.instance }} disk usage is above 80%."
+              summary: "Node disk space warning (>85%)"
+              description: "Node {{ $labels.instance }} disk usage is {{ printf \"%.1f\" $value }}%. Consider cleanup."
+
+          - alert: NodeDiskSpaceCritical
+            expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 90
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Node disk space critical (>90%)"
+              description: "Node {{ $labels.instance }} disk usage is {{ printf \"%.1f\" $value }}%. Immediate action required!"
 
           # Pod Resources
           - alert: PodCrashLooping
