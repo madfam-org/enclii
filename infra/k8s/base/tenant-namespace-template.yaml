@@ -1,0 +1,140 @@
+---
+# Multi-Tenant Namespace Template
+# This template defines the standard resources created for each tenant namespace.
+# Actual tenant creation is automated by switchyard-api — this serves as the
+# reference manifest and can be applied manually for testing.
+#
+# Usage:
+#   export TENANT_NAME=acme TENANT_TIER=starter
+#   envsubst < tenant-namespace-template.yaml | kubectl apply -f -
+#
+# Tiers: starter (default), growth, enterprise
+
+# --- Namespace ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+    enclii.dev/tier: "${TENANT_TIER}"
+    app.kubernetes.io/managed-by: switchyard
+    app.kubernetes.io/part-of: enclii
+---
+# --- Default-Deny NetworkPolicy ---
+# All traffic is denied by default. Explicit allow rules follow.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# --- Allow DNS egress ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# --- Allow Cloudflare Tunnel ingress ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cloudflare-ingress
+  namespace: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+---
+# --- Allow egress to switchyard-api control plane ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-control-plane-egress
+  namespace: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: enclii
+          podSelector:
+            matchLabels:
+              app: switchyard-api
+      ports:
+        - protocol: TCP
+          port: 4200
+---
+# --- ResourceQuota ---
+# Limits vary by tier; these are starter-tier defaults.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+    enclii.dev/tier: "${TENANT_TIER}"
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: "4Gi"
+    limits.cpu: "4"
+    limits.memory: "8Gi"
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+---
+# --- LimitRange ---
+# Default container resource limits to prevent unbounded resource usage.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-limits
+  namespace: tenant-${TENANT_NAME}
+  labels:
+    enclii.dev/tenant: "${TENANT_NAME}"
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      max:
+        cpu: "2"
+        memory: "4Gi"

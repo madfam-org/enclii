@@ -162,3 +162,18 @@ spec:
       targetPort: 4200
   selector:
     app: switchyard-api
+---
+# PodDisruptionBudget — ensure at least 1 replica available during voluntary disruptions
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: switchyard-api
+  labels:
+    app: switchyard-api
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/part-of: enclii
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: switchyard-api

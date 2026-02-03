@@ -1,0 +1,91 @@
+---
+# Client SLO Alerting Rules
+# Parameterized by namespace label enclii.dev/tenant for multi-tenant monitoring.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: client-slo-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-client-slo
+    app.kubernetes.io/part-of: enclii
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: client-slo
+      interval: 30s
+      rules:
+        # Error rate > 1% for 5 minutes
+        - alert: ClientServiceErrorRate
+          expr: |
+            (
+              sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"tenant-.*"}[5m]))
+              /
+              sum by (namespace) (rate(http_requests_total{namespace=~"tenant-.*"}[5m]))
+            ) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+            category: client-slo
+          annotations:
+            summary: "High error rate in tenant namespace {{ $labels.namespace }}"
+            description: "Error rate {{ $value | humanizePercentage }} exceeds 1% threshold for 5m."
+
+        # P95 latency > 2s for 5 minutes
+        - alert: ClientServiceLatencyP95
+          expr: |
+            histogram_quantile(0.95,
+              sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"tenant-.*"}[5m]))
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            category: client-slo
+          annotations:
+            summary: "High P95 latency in tenant namespace {{ $labels.namespace }}"
+            description: "P95 latency {{ $value | humanizeDuration }} exceeds 2s threshold."
+
+        # Pod restart rate > 3/hour
+        - alert: ClientPodRestartRate
+          expr: |
+            sum by (namespace) (
+              increase(kube_pod_container_status_restarts_total{namespace=~"tenant-.*"}[1h])
+            ) > 3
+          for: 5m
+          labels:
+            severity: warning
+            category: client-slo
+          annotations:
+            summary: "Excessive pod restarts in {{ $labels.namespace }}"
+            description: "{{ $value }} restarts in the last hour (threshold: 3)."
+
+        # Deployment unavailable for 5 minutes
+        - alert: ClientDeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_available{namespace=~"tenant-.*"}
+            <
+            kube_deployment_spec_replicas{namespace=~"tenant-.*"}
+          for: 5m
+          labels:
+            severity: critical
+            category: client-slo
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} unavailable in {{ $labels.namespace }}"
+            description: "Available replicas ({{ $value }}) < desired for 5m."
+
+        # Resource quota usage > 90%
+        - alert: TenantResourceQuotaNearLimit
+          expr: |
+            (
+              kube_resourcequota{type="used", namespace=~"tenant-.*"}
+              /
+              kube_resourcequota{type="hard", namespace=~"tenant-.*"}
+            ) > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            category: client-slo
+          annotations:
+            summary: "Quota {{ $labels.resource }} near limit in {{ $labels.namespace }}"
+            description: "Usage at {{ $value | humanizePercentage }} of quota."

@@ -247,11 +247,16 @@ resource "cloudflare_ruleset" "security" {
     enabled     = true
   }
 
-  # Rate limit API endpoints
+  # Rate limit API endpoints (api.enclii.dev)
+  # Free tier supports 1 rate-limit rule. For per-domain rules, upgrade to Pro:
+  #   api.enclii.dev  — 200 req/min per IP (API)
+  #   app.enclii.dev  — 100 req/min per IP (dashboard)
+  #   *.fn.enclii.dev — 50 req/min per IP  (serverless, cold-start aware)
+  # See: https://developers.cloudflare.com/waf/rate-limiting-rules/
   rules {
     action      = "block"
-    expression  = "(http.request.uri.path contains \"/api/\" and rate(5m) > 1000)"
-    description = "Rate limit API"
+    expression  = "(http.host eq \"${var.subdomain_api}.${var.domain}\" and http.request.uri.path contains \"/api/\" and rate(1m) > 200)"
+    description = "Rate limit API (200 req/min per IP)"
     enabled     = true
   }
 

@@ -280,3 +280,19 @@ spec:
     - port: 80
       targetPort: 8080
       name: http
+---
+# PodDisruptionBudget for roundhouse-api
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: roundhouse-api
+  namespace: enclii
+  labels:
+    app: roundhouse-api
+    app.kubernetes.io/name: roundhouse-api
+    app.kubernetes.io/part-of: enclii
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: roundhouse-api
