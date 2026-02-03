@@ -20,7 +20,7 @@ resources:
   - monitoring.yaml
   - network-policies.yaml
   - kyverno-exceptions/roundhouse-exception.yaml
-  - kyverno-exceptions/external-services-exception.yaml
+  # NOTE: external-services-exception.yaml removed - Janua/Dhanam manifests now include proper security contexts
 
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in individual manifests.
