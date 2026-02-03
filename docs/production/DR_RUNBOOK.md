@@ -3,7 +3,22 @@
 **Cluster:** 2-node k3s (foundry-core + foundry-builder-01)
 **RPO:** 24 hours (daily PostgreSQL backup to R2)
 **RTO:** 2 hours (manual rebuild)
+**Last Updated:** Feb 3, 2026 (Wave 13 Audit)
 **Last Tested:** _Update after each drill_
+
+---
+
+## Quick Reference
+
+| Scenario | RPO | RTO | Runbook Section |
+|----------|-----|-----|-----------------|
+| Database corruption | 24h | 30min | §1 PostgreSQL Restore |
+| Single service failure | 0 | 5min | §4 Partial Recovery |
+| Single node failure | 0 | 15min | §4 Node Drain |
+| Full cluster loss | 24h | 2h | §2 Full Rebuild |
+| Cloudflare tunnel loss | 0 | 5min | §3 Tunnel Reconnect |
+| Prometheus restarts | 0 | 10min | §5 Monitoring Recovery |
+| API latency spike | 0 | 15min | §6 Performance Issues |
 
 ---
 
@@ -177,13 +192,176 @@ kubectl logs -n enclii deploy/postgres --tail=100
 kubectl get pvc postgres-pvc -n enclii
 kubectl describe pvc postgres-pvc -n enclii
 
-# 4. Nuclear option: delete pod (PVC data persists)
+# 4. Check Kyverno PolicyException (added Wave 13)
+kubectl get policyexception -n enclii postgres-security-exception
+
+# 5. Nuclear option: delete pod (PVC data persists)
 kubectl delete pod -n enclii -l app=postgres
 ```
 
 ---
 
-## 5. RPO/RTO Summary
+## 5. Monitoring Recovery
+
+### Prometheus Restarts (Wave 13 Issue)
+
+**Symptoms:** Prometheus pod restarting frequently (7+ times in 15h observed)
+
+**Root Causes:**
+1. Memory pressure (fixed: increased to 3Gi limit)
+2. Disk I/O contention on Longhorn volume
+3. Large scrape configuration causing slow startup
+
+```bash
+# 1. Check current restart count
+kubectl get pods -n monitoring -l app=prometheus
+
+# 2. Check logs for OOM or other issues
+kubectl logs -n monitoring -l app=prometheus --previous --tail=100
+
+# 3. Check resource usage
+kubectl top pod -n monitoring
+
+# 4. Verify PVC is healthy
+kubectl get pvc prometheus-data -n monitoring
+kubectl exec -n longhorn-system deploy/longhorn-manager -- \
+  longhorn-manager volume get prometheus-data
+
+# 5. If restarts continue, increase memory limit
+kubectl patch deployment prometheus -n monitoring --type='json' \
+  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "4Gi"}]'
+
+# 6. Rolling restart
+kubectl rollout restart deploy/prometheus -n monitoring
+kubectl rollout status deploy/prometheus -n monitoring
+```
+
+### Grafana Recovery
+```bash
+# 1. Check Grafana status
+kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
+
+# 2. Check PVC binding
+kubectl get pvc grafana-data -n monitoring
+
+# 3. Restart if needed
+kubectl rollout restart deploy/grafana -n monitoring
+```
+
+---
+
+## 6. Performance Issues
+
+### API Latency Spike (api.dhan.am Issue - Wave 13)
+
+**Symptoms:** Health endpoint responding in 2.5s+ vs typical <1s
+
+**Investigation:**
+```bash
+# 1. Check pod resource usage
+kubectl top pod -n dhanam -l app=dhanam-api
+
+# 2. Check logs for slow queries or errors
+kubectl logs -n dhanam -l app=dhanam-api --tail=100
+
+# 3. Check HPA status (may be at max replicas)
+kubectl get hpa -n dhanam
+
+# 4. Check database connection pool
+kubectl exec -n dhanam deploy/dhanam-api -- env | grep DATABASE
+
+# 5. Verify Redis connectivity
+kubectl exec -n dhanam deploy/dhanam-api -- nc -zv redis.data.svc.cluster.local 6379
+
+# 6. Scale up if needed
+kubectl scale deploy dhanam-api -n dhanam --replicas=4
+```
+
+**Resolution:**
+- Increased resource limits (Wave 13: 768Mi memory, 1000m CPU)
+- Added startup probe to prevent cold start latency
+- Consider implementing /health endpoint for better diagnostics
+
+### Switchyard API Latency
+```bash
+# 1. Check current performance
+curl -w "@curl-format.txt" -o /dev/null -s https://api.enclii.dev/health
+
+# 2. Check pod metrics
+kubectl top pod -n enclii -l app=switchyard-api
+
+# 3. Check database query performance
+kubectl exec -n enclii deploy/postgres -- psql -U postgres -d enclii_dev \
+  -c "SELECT query, calls, total_exec_time, mean_exec_time FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;"
+```
+
+---
+
+## 7. ArgoCD Issues
+
+### Application Out of Sync
+
+**Known Non-Critical Drift (Wave 13):**
+- `arc-runners` / `arc-runners-blue`: OCI chart fetch limitation
+- `argocd-image-updater`: ConfigMap shared by 2 apps
+- `kyverno-policies`: SSA metadata drift
+
+```bash
+# 1. Check sync status
+kubectl get applications -n argocd
+
+# 2. View specific application
+kubectl describe application <app-name> -n argocd
+
+# 3. Force sync (if safe)
+kubectl patch application <app-name> -n argocd --type merge \
+  -p '{"operation":{"sync":{}}}'
+
+# 4. Hard refresh (re-read from Git)
+kubectl patch application <app-name> -n argocd --type merge \
+  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+```
+
+### ArgoCD Controller Down
+```bash
+# 1. Check controller status
+kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
+
+# 2. Restart controller
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
+
+# 3. Check Redis (ArgoCD dependency)
+kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis
+```
+
+---
+
+## 8. Kube-System Maintenance
+
+### Monthly Pod Refresh (Wave 13 Recommendation)
+
+Long-running kube-system pods (59+ days) should be refreshed monthly.
+
+```bash
+# Manual refresh (or use CronJob at infra/k8s/production/maintenance/)
+kubectl rollout restart deployment/coredns -n kube-system
+kubectl rollout status deployment/coredns -n kube-system
+
+kubectl rollout restart deployment/metrics-server -n kube-system
+kubectl rollout status deployment/metrics-server -n kube-system
+
+kubectl rollout restart deployment/local-path-provisioner -n kube-system
+kubectl rollout status deployment/local-path-provisioner -n kube-system
+```
+
+### Deploy Automated Refresh CronJob
+```bash
+kubectl apply -f infra/k8s/production/maintenance/kube-system-refresh-cronjob.yaml
+```
+
+---
+
+## 9. RPO/RTO Summary
 
 | Scenario | RPO | RTO | Notes |
 |----------|-----|-----|-------|
@@ -192,10 +370,47 @@ kubectl delete pod -n enclii -l app=postgres
 | Single node failure | 0 | 15min | Pods reschedule to other node |
 | Full cluster loss | 24h | 2h | Terraform + ArgoCD + DB restore |
 | Cloudflare tunnel loss | 0 | 5min | Pod restart, auto-reconnect |
+| Prometheus failure | 0 | 10min | Rolling restart, metrics gap |
+| API latency spike | 0 | 15min | Scale up, investigate root cause |
 
 ---
 
-## 6. Contacts & Escalation
+## 10. Health Check Commands
+
+### Quick Cluster Health
+```bash
+export KUBECONFIG=~/.kube/config-hetzner
+
+# Nodes
+kubectl get nodes
+
+# All unhealthy pods
+kubectl get pods -A | grep -v Running | grep -v Completed
+
+# ArgoCD sync status
+kubectl get applications -n argocd
+
+# Endpoint sweep
+for d in api.enclii.dev app.enclii.dev docs.enclii.dev status.enclii.dev auth.madfam.io; do
+  echo -n "$d: "; curl -s -o /dev/null -w "%{http_code} %{time_total}s" "https://$d"; echo
+done
+```
+
+### Full Audit
+```bash
+# Run comprehensive audit
+./scripts/audit-infrastructure.sh
+
+# Or manual checks:
+kubectl get nodes -o wide
+kubectl get pods -A --field-selector 'status.phase!=Running,status.phase!=Succeeded'
+kubectl top nodes
+kubectl top pods -A --sort-by=memory | head -20
+```
+
+---
+
+## 11. Contacts & Escalation
 
 | Role | Contact | When |
 |------|---------|------|
@@ -205,10 +420,24 @@ kubectl delete pod -n enclii -l app=postgres
 
 ---
 
-## 7. Post-Incident
+## 12. Post-Incident
 
 After every incident:
 1. Update this runbook with lessons learned
 2. Run `./scripts/backup-database.sh backup` to create fresh restore point
 3. Verify all monitoring alerts are firing: `kubectl get prometheusrules -A`
 4. Document timeline in `docs/production/incidents/`
+5. Update INFRA_ANATOMY.md with any configuration changes
+
+---
+
+## Appendix: Wave 13 Fixes Applied
+
+| Issue | Fix | Location |
+|-------|-----|----------|
+| PostgreSQL CrashLoopBackOff | Kyverno PolicyException | `infra/k8s/base/external-secrets/postgres-security-exception.yaml` |
+| Stale ReplicaSets (115) | Cleanup script | Manual deletion |
+| Prometheus restarts | Memory 2Gi→3Gi, CPU 500m→1000m | `infra/k8s/production/monitoring/prometheus.yaml` |
+| api.dhan.am latency | Startup probe, memory 512Mi→768Mi | `dhanam/infra/k8s/production/api-deployment.yaml` |
+| ARC runner reliability | Health probes added | `infra/helm/arc/values-runner-set.yaml` |
+| kube-system pod age | Monthly refresh CronJob | `infra/k8s/production/maintenance/kube-system-refresh-cronjob.yaml` |

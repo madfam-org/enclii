@@ -262,6 +262,10 @@ main() {
     ensure_project "Janua SSO" "janua" "https://github.com/madfam-org/janua"
     ensure_production_environment "janua"
 
+    # Create Dhanam project (Wave 13: added for webhook automation)
+    ensure_project "Dhanam Finance" "dhanam" "https://github.com/madfam-org/dhanam"
+    ensure_production_environment "dhanam"
+
     # Create Solarpunk Foundry project
     ensure_project "Solarpunk Foundry" "solarpunk-foundry" "https://github.com/madfam-org/solarpunk-foundry"
     ensure_production_environment "solarpunk-foundry"
@@ -284,6 +288,7 @@ main() {
 
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         configure_github_webhook "madfam-org/janua" || true
+        configure_github_webhook "madfam-org/dhanam" || true
         configure_github_webhook "madfam-org/solarpunk-foundry" || true
         configure_github_webhook "madfam-org/enclii" || true
     else

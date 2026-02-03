@@ -13,7 +13,7 @@ Enclii is a Railway-style Platform-as-a-Service that runs on cost-effective infr
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
 **GitOps:** ArgoCD App-of-Apps (13 apps) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (single-replica; ready for multi-node) - **Operational** (Jan 2026)
-**Last Audit:** Jan 26, 2026 — 79 pods, 0 errors, 28 domains healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
+**Last Audit:** Feb 3, 2026 — 98 pods, 0 errors, 14 endpoints 100% healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
 
 ### Port Allocation
 

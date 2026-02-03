@@ -740,11 +740,11 @@ spec:
               name: http
           resources:
             requests:
-              memory: "1Gi"
+              memory: "1.5Gi"
               cpu: "250m"
             limits:
-              memory: "2Gi"
-              cpu: "500m"
+              memory: "3Gi"
+              cpu: "1000m"
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus
@@ -756,21 +756,26 @@ spec:
             httpGet:
               path: /-/ready
               port: 9090
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            failureThreshold: 60
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /-/ready
               port: 9090
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /-/healthy
               port: 9090
             initialDelaySeconds: 30
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: config
           configMap:
