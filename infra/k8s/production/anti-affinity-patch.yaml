@@ -1,0 +1,36 @@
+# =============================================================================
+# Anti-Affinity Patch for HA Services
+# =============================================================================
+# Ensures pods spread across available nodes for high availability.
+# Uses "ScheduleAnyway" to allow scheduling even on single-node clusters.
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: switchyard-api
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: switchyard-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: switchyard-ui
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: switchyard-ui

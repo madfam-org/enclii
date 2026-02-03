@@ -45,20 +45,23 @@ spec:
               memory: "512Mi"
               cpu: "500m"
           startupProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: 4290
             initialDelaySeconds: 5
             periodSeconds: 5
             failureThreshold: 12
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /ready
               port: 4290
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: 4290
             initialDelaySeconds: 15
             periodSeconds: 15

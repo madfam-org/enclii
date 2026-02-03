@@ -21,6 +21,7 @@ patchesStrategicMerge:
 - replicas-patch.yaml
 - environment-patch.yaml
 - security-patch.yaml
+- anti-affinity-patch.yaml
 configMapGenerator:
 - name: env-config
   literals:

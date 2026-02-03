@@ -169,6 +169,23 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          # Worker process health monitoring
+          startupProbe:
+            exec:
+              command: ["pgrep", "-f", "roundhouse"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep -f roundhouse"
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           # No volume mounts needed for Kaniko mode
           # Builds happen in separate Jobs, not in this pod
       # No volumes needed for Kaniko mode

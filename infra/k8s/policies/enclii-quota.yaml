@@ -1,0 +1,55 @@
+# =============================================================================
+# Enclii Namespace ResourceQuota and LimitRange
+# =============================================================================
+# Protects against resource exhaustion and runaway pod creation.
+# Enforces default resource limits for containers without explicit limits.
+# =============================================================================
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: enclii-compute-limit
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: enclii
+    app.kubernetes.io/component: resource-quota
+    app.kubernetes.io/managed-by: switchyard
+spec:
+  hard:
+    # CPU limits
+    requests.cpu: "8"
+    limits.cpu: "16"
+    # Memory limits
+    requests.memory: 16Gi
+    limits.memory: 32Gi
+    # Pod count limit
+    pods: "50"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: enclii-container-limits
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: enclii
+    app.kubernetes.io/component: limit-range
+    app.kubernetes.io/managed-by: switchyard
+spec:
+  limits:
+    - type: Container
+      # Default limits applied to containers without explicit limits
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      # Default requests applied to containers without explicit requests
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      # Maximum allowed limits per container
+      max:
+        cpu: "4"
+        memory: "8Gi"
+      # Minimum allowed requests per container
+      min:
+        cpu: "10m"
+        memory: "16Mi"
