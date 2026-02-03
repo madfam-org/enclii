@@ -71,11 +71,16 @@ spec:
         - imageReferences:
             - "ghcr.io/madfam-org/*"
           mutateDigest: false  # Required for Audit failure action
+          verifyDigest: true
+          required: true
+          useCache: true
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    # Sigstore keyless signing (Fulcio + Rekor)
+                    # Sigstore keyless signing via GitHub Actions OIDC
+                    issuer: https://token.actions.githubusercontent.com
+                    subject: "https://github.com/madfam-org/*"
                     rekor:
                       url: https://rekor.sigstore.dev
 ---

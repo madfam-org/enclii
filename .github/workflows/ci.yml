@@ -488,6 +488,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for cosign keyless signing via OIDC
 
     steps:
       - uses: actions/checkout@v6
@@ -519,8 +520,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.2.4'
+
       # Conservation Law: Only build if changes detected
       - name: Build and push switchyard-api
+        id: build-switchyard-api
         if: needs.detect-changes.outputs.switchyard-api == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -533,12 +540,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign switchyard-api image
+        if: steps.build-switchyard-api.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/switchyard-api@${{ steps.build-switchyard-api.outputs.digest }}
+
       - name: Skip switchyard-api (no changes)
         if: needs.detect-changes.outputs.switchyard-api != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "⏭️ Skipping switchyard-api build (Conservation Law - no changes detected)"
 
       # Conservation Law: Only build if changes detected
       - name: Build and push switchyard-ui
+        id: build-switchyard-ui
         if: needs.detect-changes.outputs.switchyard-ui == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -555,12 +570,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign switchyard-ui image
+        if: steps.build-switchyard-ui.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/switchyard-ui@${{ steps.build-switchyard-ui.outputs.digest }}
+
       - name: Skip switchyard-ui (no changes)
         if: needs.detect-changes.outputs.switchyard-ui != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "⏭️ Skipping switchyard-ui build (Conservation Law - no changes detected)"
 
       # Conservation Law: Only build if changes detected
       - name: Build and push roundhouse
+        id: build-roundhouse
         if: needs.detect-changes.outputs.roundhouse == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -573,12 +596,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign roundhouse image
+        if: steps.build-roundhouse.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/roundhouse@${{ steps.build-roundhouse.outputs.digest }}
+
       - name: Skip roundhouse (no changes)
         if: needs.detect-changes.outputs.roundhouse != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "⏭️ Skipping roundhouse build (Conservation Law - no changes detected)"
 
       # Conservation Law: Only build if changes detected
       - name: Build and push waybill
+        id: build-waybill
         if: needs.detect-changes.outputs.waybill == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -591,12 +622,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign waybill image
+        if: steps.build-waybill.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/waybill@${{ steps.build-waybill.outputs.digest }}
+
       - name: Skip waybill (no changes)
         if: needs.detect-changes.outputs.waybill != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "⏭️ Skipping waybill build (Conservation Law - no changes detected)"
 
       # Conservation Law: Only build if changes detected
       - name: Build and push landing-page
+        id: build-landing-page
         if: needs.detect-changes.outputs.landing == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -609,12 +648,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign landing-page image
+        if: steps.build-landing-page.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/landing-page@${{ steps.build-landing-page.outputs.digest }}
+
       - name: Skip landing-page (no changes)
         if: needs.detect-changes.outputs.landing != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "⏭️ Skipping landing-page build (Conservation Law - no changes detected)"
 
       # Conservation Law: Only build if changes detected
       - name: Build and push dispatch
+        id: build-dispatch
         if: needs.detect-changes.outputs.dispatch == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -627,12 +674,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign dispatch image
+        if: steps.build-dispatch.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/dispatch@${{ steps.build-dispatch.outputs.digest }}
+
       - name: Skip dispatch (no changes)
         if: needs.detect-changes.outputs.dispatch != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "⏭️ Skipping dispatch build (Conservation Law - no changes detected)"
 
       # Conservation Law: Only build if changes detected
       - name: Build and push status
+        id: build-status
         if: needs.detect-changes.outputs.status == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
@@ -644,6 +699,13 @@ jobs:
             ghcr.io/${{ github.repository }}/enclii-status:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Sign status image
+        if: steps.build-status.outcome == 'success'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository }}/enclii-status@${{ steps.build-status.outputs.digest }}
 
       - name: Skip status (no changes)
         if: needs.detect-changes.outputs.status != 'true' && github.event_name != 'workflow_dispatch'
