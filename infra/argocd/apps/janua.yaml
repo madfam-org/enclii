@@ -1,6 +1,5 @@
 # Janua Identity Services Application
-# Deploys: janua-admin, janua-dashboard, janua-docs, janua-website
-# NOTE: janua-api is managed separately (has its own deployment workflow)
+# Deploys: janua-admin, janua-api, janua-dashboard, janua-docs, janua-website
 # Source: https://github.com/madfam-org/janua (external repo)
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -39,8 +38,6 @@ spec:
     repoURL: https://github.com/madfam-org/janua.git
     targetRevision: main
     path: k8s/base/deployments
-    directory:
-      exclude: '{janua-api.yaml}'
 
   destination:
     server: https://kubernetes.default.svc
@@ -52,7 +49,6 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
 
   ignoreDifferences:
     - group: apps
