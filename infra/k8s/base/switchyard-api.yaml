@@ -38,8 +38,8 @@ spec:
         - name: ghcr-credentials
       containers:
         - name: switchyard-api
-          image: switchyard-api:latest
-          imagePullPolicy: Always
+          image: ghcr.io/madfam-org/enclii/switchyard-api:latest@sha256:9af209d71633e26e029b692c32791007bc11d01cf7384629a12dc366ab0a243a
+          imagePullPolicy: IfNotPresent
           env:
             - name: ENCLII_DB_URL
               valueFrom:

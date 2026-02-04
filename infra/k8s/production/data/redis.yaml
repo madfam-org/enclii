@@ -9,7 +9,8 @@ metadata:
     app.kubernetes.io/part-of: enclii-infrastructure
 ---
 # Redis authentication secret
-# TODO: Migrate to ExternalSecret once Doppler REDIS_PASSWORD is configured
+# Future: Migrate to ExternalSecret when self-hosted HashiCorp Vault is deployed
+# See docs/infrastructure/SECRETS_MANAGEMENT.md for trigger criteria
 # The password must match dhanam-secrets REDIS_URL password component
 apiVersion: v1
 kind: Secret

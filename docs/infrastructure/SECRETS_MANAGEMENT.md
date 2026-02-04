@@ -1,8 +1,9 @@
 # Secrets Management Strategy
 
-**Last Updated:** February 2026
+**Last Updated:** February 4, 2026 (Wave 15 audit)
 **Current Approach:** Kubernetes native secrets + ESO cross-namespace copying
-**Next Review:** When any threshold below is crossed
+**Chosen Future Provider:** Self-hosted HashiCorp Vault (Community Edition)
+**Next Review:** When any trigger criteria below is met
 
 ---
 
@@ -131,18 +132,47 @@ Janua is an authentication/authorization service. Secrets management is a differ
 
 Janua **can** issue machine-to-machine tokens (OAuth client credentials) that authenticate workloads to a *separate* secrets store. That's a legitimate extension point.
 
+## Decision: Self-Hosted HashiCorp Vault
+
+**Decided:** February 4, 2026 (Wave 15 audit)
+
+After evaluating all options, **self-hosted HashiCorp Vault (Community Edition)** is the chosen path for when external secrets management is needed. Rationale:
+
+- ESO is already deployed and supports Vault natively
+- Vault integrates with Janua via OIDC for human operator access
+- Vault supports Kubernetes auth for automated pod access
+- Dynamic secrets, audit logging, and PKI cover all foreseeable needs
+- No vendor dependency (self-hosted, open source)
+- OpenBao is an acceptable alternative if licensing concerns arise
+
+**Explicitly NOT using:** Doppler (previous references in config comments have been cleaned up).
+
+### Vault Deployment Trigger Criteria
+
+Deploy Vault when **ANY** of the following conditions is met:
+
+| # | Trigger | Rationale |
+|---|---------|-----------|
+| 1 | First external client onboarded | Multi-tenant secret isolation required |
+| 2 | SOC2 audit preparation begins | Auditable secrets management is mandatory |
+| 3 | Revenue threshold reached | Justifies operational overhead |
+| 4 | Team size exceeds 3 engineers with production access | Access control + audit trails needed |
+
+**Current state:** None of these triggers are met. Manual K8s secrets remain appropriate.
+
 ## Recommended Upgrade Path
 
 ```
-Current                     Near-term                    Growth
-─────────────────────────   ─────────────────────────    ─────────────────────────
-K8s native secrets          Sealed Secrets               Vault / OpenBao
-+ ESO kubernetes-store      + ESO kubernetes-store       + ESO vault-store
-                            (secrets in git, encrypted)  (dynamic secrets, audit)
+Current                     Next step (when triggered)
+─────────────────────────   ─────────────────────────
+K8s native secrets          HashiCorp Vault (self-hosted)
++ ESO kubernetes-store      + ESO vault-store
+                            + K8s auth for pods
+                            + OIDC auth (Janua) for operators
+                            + Dynamic DB credentials
+                            + Audit logging
 
-Trigger: now                Trigger: > 3 team members    Trigger: compliance req
-                            OR secret leaked in git      OR > 100 secrets
-                                                         OR multi-cluster
+Trigger: now                Trigger: ANY criteria above
 ```
 
 ## Implementation Notes

@@ -5,72 +5,60 @@ Centralized secret management for Enclii using External Secrets Operator (ESO).
 ## Architecture
 
 ```
-Doppler (or Vault)
-       │
-       ▼
-ClusterSecretStore
-       │
-       ▼
-ExternalSecret (per namespace)
-       │
-       ▼
-Kubernetes Secret (auto-synced)
+HashiCorp Vault (future)        Kubernetes (current)
+       │                               │
+       ▼                               ▼
+ClusterSecretStore              ClusterSecretStore
+  (vault provider)              (kubernetes provider)
+       │                               │
+       ▼                               ▼
+ExternalSecret (per namespace)  ExternalSecret (per namespace)
+       │                               │
+       ▼                               ▼
+Kubernetes Secret (auto-synced) Kubernetes Secret (auto-synced)
 ```
 
-## Quick Start
+## Current State
 
-### 1. Get Doppler Service Token
+ESO is deployed with a `kubernetes-store` ClusterSecretStore that copies secrets between namespaces. There is no external secrets provider yet. This is intentional — see [SECRETS_MANAGEMENT.md](../../../docs/infrastructure/SECRETS_MANAGEMENT.md) for upgrade trigger criteria.
 
-1. Create account at [doppler.com](https://doppler.com)
-2. Create a project for Enclii
-3. Go to Access → Service Tokens → Generate
-4. Copy the token (starts with `dp.st.`)
+**Chosen future provider:** Self-hosted HashiCorp Vault (Community Edition)
 
-### 2. Create Auth Secret
+**Trigger criteria for Vault deployment (ANY of):**
+1. First external client onboarded (multi-tenant secret isolation required)
+2. SOC2 audit preparation begins (auditable secrets management mandatory)
+3. Revenue threshold reached (justifies operational overhead)
+4. Team size exceeds 3 engineers with production access
+
+## Quick Start (Current: Kubernetes Provider)
+
+### 1. Verify ClusterSecretStore
 
 ```bash
-kubectl create secret generic doppler-token-auth \
-  -n external-secrets \
-  --from-literal=dopplerToken=dp.st.YOUR_TOKEN_HERE
+kubectl get clustersecretstore
+# Should show kubernetes-store with STATUS: Valid
 ```
 
-### 3. Apply ClusterSecretStore
-
-```bash
-kubectl apply -f cluster-secret-store.yaml
-```
-
-### 4. Verify Store is Ready
-
-```bash
-kubectl get clustersecretstore doppler-store
-# Should show STATUS: Valid
-```
-
-### 5. Create ExternalSecrets
+### 2. Create ExternalSecrets
 
 ```bash
 kubectl apply -f example-external-secret.yaml
 ```
 
-## Migrating Existing Secrets
+## Future: HashiCorp Vault Integration
 
-To migrate from Kubernetes secrets to Doppler:
+When trigger criteria are met, the migration path is:
 
-1. Export existing secrets:
-```bash
-kubectl get secret enclii-secrets -n enclii -o json | jq -r '.data | to_entries[] | "\(.key)=\(.value | @base64d)"'
+1. Deploy Vault (self-hosted, in-cluster or dedicated node)
+2. Configure Kubernetes auth backend in Vault
+3. Add a `vault-store` ClusterSecretStore alongside the existing `kubernetes-store`
+4. Migrate ExternalSecrets one namespace at a time to use `vault-store`
+5. Decommission `kubernetes-store` when migration is complete
+
 ```
-
-2. Add each secret to Doppler via CLI or dashboard:
-```bash
-doppler secrets set DATABASE_URL="postgres://..."
-doppler secrets set REDIS_URL="redis://..."
+Vault (self-hosted) ← K8s ServiceAccount auth ← ESO ← ExternalSecret → K8s Secret
+                    ← OIDC auth (via Janua) ← Human operators (UI/CLI)
 ```
-
-3. Create ExternalSecret pointing to Doppler
-4. Update deployments to use the new secret name
-5. Delete old Kubernetes secret
 
 ## Secret Rotation
 
@@ -78,22 +66,6 @@ ESO automatically syncs secrets based on `refreshInterval`:
 - Default: 1 hour
 - For sensitive secrets, reduce to 5-15 minutes
 - For static config, increase to 24 hours
-
-## Providers
-
-### Doppler (Recommended)
-- Simple setup, great UI
-- Free tier: 5 users, unlimited secrets
-- Auto-sync with webhooks available
-
-### HashiCorp Vault
-- Self-hosted or HCP
-- More complex, better for enterprise
-- Dynamic secrets, PKI, transit encryption
-
-### Kubernetes (Migration Helper)
-- Copy secrets between namespaces
-- Useful during migration to external provider
 
 ## Troubleshooting
 
@@ -105,7 +77,7 @@ kubectl describe externalsecret <name> -n <namespace>
 
 ### ClusterSecretStore invalid
 ```bash
-kubectl describe clustersecretstore doppler-store
+kubectl describe clustersecretstore <store-name>
 # Verify auth secret exists and token is valid
 ```
 
@@ -116,8 +88,14 @@ kubectl get events -n <namespace> --field-selector reason=SyncFailed
 
 ## Security Best Practices
 
-1. **Least Privilege**: Create separate Doppler configs per environment
-2. **Rotation**: Enable automatic rotation in Doppler
-3. **Audit**: Review Doppler access logs regularly
+1. **Least Privilege**: Scope service accounts to minimum required secrets
+2. **Rotation**: Implement rotation policy (automated when Vault is deployed)
+3. **Audit**: Review secret access logs (Vault provides this natively)
 4. **RBAC**: Limit who can view ExternalSecrets in Kubernetes
 5. **Namespacing**: Use ExternalSecret (not ClusterExternalSecret) for namespace isolation
+
+## Related Documentation
+
+- [Secrets Management Strategy](../../../docs/infrastructure/SECRETS_MANAGEMENT.md)
+- [External Secrets Operator](../../../docs/infrastructure/EXTERNAL_SECRETS.md)
+- [GitOps with ArgoCD](../../../docs/infrastructure/GITOPS.md)

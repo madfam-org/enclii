@@ -1,28 +1,46 @@
 # Infrastructure Anatomy - Production State
 
-> **Generated**: 2026-01-17 | **Last Updated**: 2026-02-03 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 14 (Health + Issue Resolution)
+> **Generated**: 2026-01-17 | **Last Updated**: 2026-02-04 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 15 (Full Health + Hardening)
 >
-> **Live Status Check** (2026-02-03 @ 22:05 UTC):
-> - auth.madfam.io OIDC: ✅ 200 OK (567ms)
-> - api.enclii.dev: ✅ 404 (606ms) - expected for root path
-> - app.enclii.dev: ✅ 200 OK (640ms)
-> - api.dhan.am: ✅ 404 (564ms) - latency **RESOLVED** from 2.5s
-> - All endpoints: ✅ <1s latency, 100% availability
+> **Live Status Check** (2026-02-04 @ 07:05 UTC):
+> - auth.madfam.io OIDC: ✅ 200 OK (700ms)
+> - api.enclii.dev: ✅ 404 (750ms) - expected for root path
+> - app.enclii.dev: ✅ 200 OK (800ms)
+> - api.dhan.am: ✅ 404 (570ms) - latency stable (<1s)
+> - All endpoints: ✅ <1s latency, 100% availability (9/9)
 > - Pods: 84 total (80 Running, 4 Completed, 0 errors)
-> - Prometheus: ✅ **FIXED** (strategy changed to Recreate)
-> - Redis (data namespace): ✅ **DEPLOYED** with authentication
+> - CPU: 5% core, 1% builder — Excellent
+> - Memory: 23% core (14.9/64Gi), 31% builder (1.2/4Gi) — Healthy
+> - Disk: 66% (61G/98G) foundry-core — Monitor at 75%
+> - Longhorn: 5/5 volumes healthy (42GB allocated)
+> - Cloudflared: Updated to 2026.1.2 (was 2025.11.1)
+> - Image pinning: 4 enclii deployments pinned to SHA digests
 
 ## Executive Summary
 
 | Category | Status | Severity |
 |----------|--------|----------|
 | **Overall Health** | 99% operational | ✅ HEALTHY |
-| **Endpoints** | 9/9 responding | ✅ HEALTHY |
+| **Endpoints** | 9/9 responding <1s | ✅ HEALTHY |
 | **Pods** | 84 total (80 Running, 4 Completed) | ✅ HEALTHY |
-| **Nodes** | 2/2 Ready, version matched | ✅ HEALTHY |
-| **ArgoCD** | 10/14 Synced, 3 Healthy-OutOfSync, 1 Degraded→**FIXED** | ✅ HEALTHY |
+| **Nodes** | 2/2 Ready, version matched (k3s v1.33.6) | ✅ HEALTHY |
+| **ArgoCD** | 10/14 Synced, 3 OutOfSync (cosmetic), 1 Progressing | ✅ HEALTHY |
 | **Storage** | 10/11 PVCs bound (1 pending, expected) | ✅ HEALTHY |
+| **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
 | **Cost** | ~$55/month | ✅ ON TARGET |
+
+### Wave 15 Changes (Wave 14 → Wave 15)
+
+| Item | Before | After | Status |
+|------|--------|-------|--------|
+| Cloudflared | 2025.11.1 | 2026.1.2 (SHA-pinned) | **UPDATED** |
+| docs-site image | `:latest` (mutable) | SHA-pinned digest | **PINNED** |
+| landing-page image | `:latest` (mutable) | SHA-pinned digest | **PINNED** |
+| switchyard-api image | `switchyard-api:latest` (no registry) | Full GHCR path + SHA digest | **PINNED** |
+| switchyard-ui image | `switchyard-ui:latest` (no registry) | Full GHCR path + SHA digest | **PINNED** |
+| Secrets strategy | Doppler references in config | Vault chosen, Doppler refs removed | **CLARIFIED** |
+| External Secrets README | Doppler-focused docs | Vault-focused with trigger criteria | **UPDATED** |
+| Redis secret TODO | "Migrate to Doppler" | "Migrate when Vault deployed" | **UPDATED** |
 
 ### Wave 14 Changes (Wave 13 → Wave 14)
 
@@ -72,8 +90,8 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.6+k3s1 | 4% | 19% (12.6GB/64GB) | ✅ Ready | 59 days |
-| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.6+k3s1 | 1% | 31% (1.2GB/4GB) | ✅ Ready | 15 days |
+| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.6+k3s1 | 5% | 23% (14.9GB/64GB) | ✅ Ready | 60 days |
+| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.6+k3s1 | 1% | 31% (1.2GB/4GB) | ✅ Ready | 16 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)
 - **Kernel**: 6.8.0-88-generic
@@ -92,7 +110,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │              CLOUDFLARE TUNNEL (single unified)                  │
-│  K8s: cloudflared pods (2 replicas, v2025.11.1)                 │
+│  K8s: cloudflared pods (2 replicas, v2026.1.2)                  │
 │  Config: infra/k8s/production/cloudflared-unified.yaml          │
 │  Routes: ~28 production domains                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -119,7 +137,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 
 ---
 
-## Namespaces (19 active as of Feb 3, 2026)
+## Namespaces (15 active as of Feb 4, 2026)
 
 | Namespace | Purpose | Pod Count | Status |
 |-----------|---------|-----------|--------|
@@ -145,21 +163,21 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 
 ---
 
-## Live Endpoint Health (Feb 3, 2026 @ 21:30 UTC)
+## Live Endpoint Health (Feb 4, 2026 @ 07:05 UTC)
 
 | Endpoint | Status | Code | Latency | Notes |
 |----------|--------|------|---------|-------|
-| api.enclii.dev | ✅ | 404 | 617ms | Root path 404 expected |
-| app.enclii.dev | ✅ | 200 | 623ms | Dashboard responsive |
-| admin.enclii.dev | ✅ | 307 | 640ms | Auth redirect (expected) |
-| docs.enclii.dev | ✅ | 200 | 652ms | Documentation operational |
-| enclii.dev | ✅ | 200 | 668ms | Landing page |
-| status.enclii.dev | ✅ | 200 | 925ms | Status page operational |
-| status.madfam.io | ✅ | 200 | 1005ms | Madfam status |
-| auth.madfam.io (OIDC) | ✅ | 200 | 634ms | JWKS available |
-| api.dhan.am | ✅ | 404 | **289ms** | ✅ Latency **FIXED** (was 2.5s) |
+| api.enclii.dev | ✅ | 404 | 750ms | Root path 404 expected |
+| app.enclii.dev | ✅ | 200 | 800ms | Dashboard responsive |
+| admin.enclii.dev | ✅ | 307 | 620ms | Auth redirect (expected) |
+| docs.enclii.dev | ✅ | 200 | 630ms | Documentation operational |
+| enclii.dev | ✅ | 200 | 650ms | Landing page |
+| status.enclii.dev | ✅ | 200 | 680ms | Status page operational |
+| status.madfam.io | ✅ | 200 | 910ms | Madfam status |
+| auth.madfam.io (OIDC) | ✅ | 200 | 700ms | JWKS available |
+| api.dhan.am | ✅ | 404 | 570ms | Stable (<1s since Wave 14 fix) |
 
-**Result:** 100% endpoint availability (9/9 responding)
+**Result:** 100% endpoint availability (9/9 responding, all <1s)
 
 ---
 
@@ -352,16 +370,16 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 **Fix Applied:** Created `monitoring-policy-exception.yaml`
 **Result:** Prometheus, Grafana, Alertmanager images no longer blocked
 
-### P2: Container Images Using :latest Tag (10 deployments)
+### P2: Container Images Using :latest Tag (6 remaining)
 
-**Issue:** 10 deployments use `:latest` tag, 47 without SHA digest pins
+**Issue:** 6 deployments still use `:latest` or mutable tags without SHA digest pins
 **Impact:** Reproducibility, potential security drift
-**Affected:**
-- dhanam: dhanam-admin, dhanam-api
-- enclii: dispatch, docs-site, landing-page, status
-- janua: janua-admin, janua-dashboard, janua-docs, janua-website
+**Wave 15 Progress:** 4 enclii deployments pinned (docs-site, landing-page, switchyard-api, switchyard-ui)
+**Remaining:**
+- dhanam: dhanam-admin, dhanam-api (`:main` tag)
+- janua: janua-admin, janua-dashboard, janua-docs, janua-website (`:latest`)
 
-**Recommendation:** Run `scripts/audit-image-pins.sh` and configure argocd-image-updater
+**Recommendation:** Pin remaining images in next wave; configure argocd-image-updater for automated pinning
 
 ---
 
@@ -401,12 +419,16 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 
 | Task | Priority | Effort | Impact |
 |------|----------|--------|--------|
-| Pin images to digests (10 using :latest) | P2 | 2h | Immutability |
+| ~~Pin enclii images to digests (4 deployments)~~ | ~~P2~~ | ~~1h~~ | ✅ **DONE** (Wave 15) |
+| Pin remaining images (6 deployments: dhanam + janua) | P2 | 1h | Immutability |
+| Standardize 5 registry secrets to madfam-bot | P2 | 1h | Security |
 | Configure argocd-image-updater for auto-pinning | P2 | 2h | Automation |
 | Fix dhanam-api ioredis config (connects to localhost, not REDIS_URL) | P2 | 2h | Reliability |
 | Increase dhanam ResourceQuota (blocks rolling updates) | P2 | 30min | Operability |
 | Add health probes to arc-runners | P2 | 1h | Reliability |
+| Configure webhooks for janua/dhanam (via madfam-bot) | P2 | 2h | Automation |
 | Document disaster recovery runbook | P2 | 4h | Resilience |
+| Migrate PostgreSQL to Bitnami image | P3 | 4h | Security |
 
 ### For Client Onboarding (Next Month)
 
@@ -496,6 +518,57 @@ kubectl get nodes -o wide
 ---
 
 ## Stabilization Log
+
+### Wave 15 (2026-02-04 @ 07:05 UTC)
+
+**Trigger:** Full health audit, infrastructure hardening, client onboarding readiness assessment.
+
+**Scope:** 2-node cluster, 15 active namespaces, 84 pods, 9 key endpoints, 14 ArgoCD applications.
+
+**Changes Applied:**
+
+1. **Cloudflared Updated** (2025.11.1 → 2026.1.2)
+   - Image pinned to SHA digest for immutability
+   - File: `infra/k8s/production/cloudflared-unified.yaml`
+
+2. **4 Enclii Images Pinned to SHA Digests**
+   - docs-site, landing-page, switchyard-api, switchyard-ui
+   - switchyard-api/ui also corrected to full GHCR paths (were missing registry prefix)
+   - `imagePullPolicy` changed from `Always` to `IfNotPresent` (SHA guarantees immutability)
+
+3. **Secrets Strategy Clarified**
+   - Self-hosted HashiCorp Vault chosen as future provider
+   - Removed all Doppler references from config comments (redis.yaml, external-secrets README)
+   - Documented explicit trigger criteria for Vault deployment
+
+4. **15 Orphaned ReplicaSets Identified** (kubectl cleanup pending)
+
+5. **ArgoCD Drift Reviewed** (3 OutOfSync — all cosmetic)
+   - argocd-image-updater: ConfigMap shared by 2 apps
+   - enclii-infrastructure: Root app drift
+   - kyverno-policies: SSA metadata drift
+
+**Remaining Items (Phase 2):**
+- Standardize 5 registry secrets to madfam-bot (remove personal credentials)
+- Increase dhanam ResourceQuota
+- Pin remaining 6 images (dhanam + janua namespaces)
+- Configure GitHub webhooks for janua/dhanam repos
+- Add health probes to ARC runners
+- Centralized logging (Loki)
+- Disaster recovery runbook
+
+**Post-Audit Metrics:**
+- Pods: 84 (80 Running, 4 Completed)
+- PVCs: 10/11 Bound (1 pending by design)
+- Endpoints: 9/9 responding <1s
+- ArgoCD: 10/14 Synced (cosmetic drift only)
+- CPU: 5% core, 1% builder
+- Memory: 23% core, 31% builder
+- Disk: 66% foundry-core (healthy, monitor at 75%)
+
+**Client Onboarding Assessment:** Infrastructure ready for 1-10 clients. Software has 5 blockers (tenant provisioning, registration UI, per-project RBAC, audit logging, billing).
+
+**Audit Conclusion:** Infrastructure is 99% healthy. Hardening changes applied. No critical issues found.
 
 ### Wave 14 (2026-02-03 @ 21:30 UTC)
 

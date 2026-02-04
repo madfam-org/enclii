@@ -38,8 +38,8 @@ spec:
         - name: ghcr-credentials
       containers:
         - name: docs-site
-          image: ghcr.io/madfam-org/enclii/docs-site:latest
-          imagePullPolicy: Always
+          image: ghcr.io/madfam-org/enclii/docs-site:latest@sha256:9d600c4cfd945c83a37f7a4796b17814af1f1b95e55c56fc72b147ebd9f5a955
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80  # TODO: Rebuild image with nginx-unprivileged to use 8080
               name: http

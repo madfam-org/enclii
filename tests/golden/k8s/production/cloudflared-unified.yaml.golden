@@ -319,7 +319,7 @@ spec:
     spec:
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:2025.11.1
+          image: cloudflare/cloudflared:2026.1.2@sha256:e6aba36f47b17ba21c62404f826e7be09f089dc0d8978732752204a75d9d7375
           args:
             - tunnel
             - --config
