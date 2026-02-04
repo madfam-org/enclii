@@ -58,6 +58,7 @@ spec:
       helm:
         releaseName: arc-runner-blue
         valueFiles:
+          - $values/infra/helm/arc/values-runner-set.yaml
           - $values/infra/helm/arc/values-runner-set-blue.yaml
     - repoURL: https://github.com/madfam-org/enclii.git
       targetRevision: main

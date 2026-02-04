@@ -1,0 +1,63 @@
+# Janua Identity Services Application
+# Deploys: janua-admin, janua-dashboard, janua-docs, janua-website
+# NOTE: janua-api is managed separately (has its own deployment workflow)
+# Source: https://github.com/madfam-org/janua (external repo)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: janua-services
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: janua-services
+    app.kubernetes.io/part-of: janua
+  annotations:
+    # ArgoCD Image Updater Configuration
+    argocd-image-updater.argoproj.io/image-list: |
+      janua-admin=ghcr.io/madfam-org/janua-admin:main,
+      janua-dashboard=ghcr.io/madfam-org/janua-dashboard:main,
+      janua-docs=ghcr.io/madfam-org/janua-docs:main,
+      janua-website=ghcr.io/madfam-org/janua-website:main
+
+    # Update strategies (digest: detect SHA changes on :main tag)
+    argocd-image-updater.argoproj.io/janua-admin.update-strategy: digest
+    argocd-image-updater.argoproj.io/janua-dashboard.update-strategy: digest
+    argocd-image-updater.argoproj.io/janua-docs.update-strategy: digest
+    argocd-image-updater.argoproj.io/janua-website.update-strategy: digest
+
+    # Git write-back (janua repo)
+    argocd-image-updater.argoproj.io/git-repository: https://github.com/madfam-org/janua.git
+    argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
+    argocd-image-updater.argoproj.io/write-back-target: kustomization
+    argocd-image-updater.argoproj.io/git-branch: main
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/janua.git
+    targetRevision: main
+    path: k8s/base/deployments
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: janua
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP

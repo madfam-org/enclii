@@ -1,0 +1,67 @@
+# Dhanam Finance Services Application
+# Deploys: dhanam-admin, dhanam-api, dhanam-web (from external repo)
+# Source: https://github.com/madfam-org/dhanam (external repo)
+#
+# NOTE: Dhanam CI currently deploys via SSH + kubectl set image.
+# ArgoCD management enables GitOps workflow and automatic drift correction.
+# Transition plan:
+#   1. ArgoCD syncs manifests from git (this app)
+#   2. CI workflow updated to commit image tags to git (not kubectl set image)
+#   3. ArgoCD Image Updater detects new digests and updates manifests
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dhanam-services
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: dhanam-services
+    app.kubernetes.io/part-of: dhanam
+  annotations:
+    # ArgoCD Image Updater — disabled until CI pushes images with consistent tags
+    # Uncomment when dhanam CI standardizes on :main tag
+    # argocd-image-updater.argoproj.io/image-list: |
+    #   dhanam-api=ghcr.io/madfam-org/dhanam-api:main,
+    #   dhanam-admin=ghcr.io/madfam-org/dhanam-admin:main
+    # argocd-image-updater.argoproj.io/dhanam-api.update-strategy: digest
+    # argocd-image-updater.argoproj.io/dhanam-admin.update-strategy: digest
+    # argocd-image-updater.argoproj.io/git-repository: https://github.com/madfam-org/dhanam.git
+    # argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
+    # argocd-image-updater.argoproj.io/write-back-target: kustomization
+    # argocd-image-updater.argoproj.io/git-branch: main
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/dhanam.git
+    targetRevision: main
+    path: infra/k8s/production
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dhanam
+
+  syncPolicy:
+    automated:
+      prune: false  # Don't prune until CI migration is complete
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  ignoreDifferences:
+    # Ignore image field — CI currently sets images via kubectl, not git
+    # Remove this once CI is migrated to commit image refs to git
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/spec/containers/0/image
+        - /spec/replicas
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
