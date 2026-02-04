@@ -65,6 +65,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true  # Better for CRDs
+      - RespectIgnoreDifferences=true  # selfHeal won't overwrite ignored fields
 
   # Ignore certain fields that change frequently
   ignoreDifferences:
@@ -76,3 +77,10 @@ spec:
       kind: Service
       jsonPointers:
         - /spec/clusterIP  # Auto-assigned by K8s
+    # Ignore Secret data — base/secrets.dev.yaml has dev placeholders,
+    # production secrets are managed imperatively (until Vault is deployed)
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data
+        - /stringData
