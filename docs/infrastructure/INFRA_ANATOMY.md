@@ -2,15 +2,22 @@
 
 > **Generated**: 2026-01-17 | **Last Updated**: 2026-02-04 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 15 (Full Health + Hardening + ArgoCD Expansion)
 >
-> **Live Status Check** (2026-02-04, session 3):
-> - All 9 endpoints: ✅ <1s latency, 100% availability
-> - auth.madfam.io: ✅ 200 (0.52s) | api.dhan.am: ✅ 404 (0.54s) | app.dhan.am: ✅ 307 (0.30s)
-> - Pods: All Running (0 errors, 0 CrashLoops)
-> - ArgoCD: 16 apps — dhanam auto-sync ENABLED (was disabled), janua Image Updater active
+> **Live Status Check** (2026-02-04, session 3 end):
+> - **BROKEN**: `dhan.am` and `app.dhan.am` return 502 Bad Gateway (see known issue below)
+> - api.dhan.am: ✅ 200 OK | auth.madfam.io: ✅ 200 | All other endpoints: ✅ <1s
+> - Pods: All Running 1/1 (0 errors, 0 CrashLoops)
+> - ArgoCD: 16 apps — dhanam-services **OutOfSync/Failed** (SSA merge conflict on dhanam-web Deployment)
 > - Dhanam CI: Fixed, fresh images in GHCR (`dhanam/api:main`, `dhanam/web:main`)
 > - Image pinning: All services pinned — 4 enclii (SHA), 5 janua (kustomize+Image Updater), 2 dhanam (CI SHA)
 > - Registry secrets: 100% madfam-bot (0 personal credentials in cluster)
 > - Golden configs: 20/20 passing
+>
+> **🔴 KNOWN ISSUE — dhan.am / app.dhan.am 502 Bad Gateway:**
+> - **Root cause**: Service targetPort=4200 but live Deployment containerPort=3000 (app listens on 3000)
+> - **Why**: ArgoCD SSA merge conflict blocks Deployment update; Service was updated but Deployment was not
+> - **ArgoCD error**: `spec.template.spec.containers[0].ports[1].name: Duplicate value: "http"` (retried 5x, Failed)
+> - **Fix needed**: Force-apply the Deployment via `kubectl apply --server-side --force-conflicts` from the dhanam repo's `infra/k8s/production/web-deployment.yaml`, or revert Service targetPort to 3000 as interim fix
+> - See stabilization log for full context
 
 ## Executive Summary
 
@@ -20,7 +27,7 @@
 | **Endpoints** | 9/9 responding <1s | ✅ HEALTHY |
 | **Pods** | 84 total (80 Running, 4 Completed) | ✅ HEALTHY |
 | **Nodes** | 2/2 Ready, version matched (k3s v1.33.6) | ✅ HEALTHY |
-| **ArgoCD** | 16 apps: dhanam auto-sync enabled, janua Image Updater active | ✅ HEALTHY |
+| **ArgoCD** | 16 apps: dhanam-services **Failed** (SSA conflict), janua Image Updater active | ⚠️ DEGRADED |
 | **Storage** | 10/11 PVCs bound (1 pending, expected) | ✅ HEALTHY |
 | **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
 | **Cost** | ~$55/month | ✅ ON TARGET |
@@ -303,13 +310,13 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | longhorn | ✅ Synced | Healthy | |
 | monitoring | ✅ Synced | Healthy | |
 | **janua-services** | ✅ Synced | Healthy | **NEW** — auto-sync enabled (prune+selfHeal) |
-| **dhanam-services** | ✅ Synced | Healthy | **NEW** — auto-sync enabled (selfHeal + ServerSideApply) |
+| **dhanam-services** | 🔴 OutOfSync | **Failed** | SSA merge conflict on dhanam-web Deployment (duplicate port "http") — causes 502 on dhan.am/app.dhan.am |
 | arc-runners | ⚠️ Unknown | Healthy | OCI chart fetch issue |
 | arc-runners-blue | ⚠️ Unknown | Healthy | OCI chart fetch issue |
 | argocd-image-updater | ⚠️ OutOfSync | Healthy | ConfigMap shared by 2 apps |
 | kyverno-policies | ⚠️ OutOfSync | Healthy | SSA metadata drift |
 
-**Summary:** 16 apps total. 12 Synced/Healthy, 4 with known non-critical drift.
+**Summary:** 16 apps total. 11 Synced/Healthy, 1 Failed (dhanam-services SSA conflict), 4 cosmetic drift.
 
 ---
 
@@ -659,14 +666,20 @@ kubectl get nodes -o wide
     - `match[1]` → `match?.[1]` (optional chaining) — unblocked CI build
     - File: `apps/web/src/providers/PostHogProvider.tsx` (dhanam repo)
 
-**Incident: ArgoCD SSA Merge Conflict (dhanam-web, P2, ~10 min)**
+**Incident: ArgoCD SSA Merge Conflict (dhanam-web, P2, ongoing)**
 
-- **Cause:** Live deployment had `containerPort: 4200` (from manual kubectl), git had `containerPort: 3000`. Server-Side Apply tried to merge both entries, creating duplicate port names.
-- **Error:** `spec.template.spec.containers[0].ports[1].name: Duplicate value: "http"`
-- **Resolution:** Updated git manifest (all ports → 4200), added `ServerSideApply=true` sync option, ran `kubectl apply --server-side --force-conflicts` to take over field ownership.
-- **Lesson:** When migrating from `kubectl set image` to GitOps, ensure git manifests match live state before enabling auto-sync. SSA merge conflicts from field ownership divergence require `--force-conflicts`.
+- **Cause:** Live deployment has `containerPort: 3000`, git manifest has `containerPort: 4200`. Server-Side Apply tries to merge both port entries, creating duplicate "http" named ports.
+- **Error:** `spec.template.spec.containers[0].ports[1].name: Duplicate value: "http"` (retried 5x, Failed)
+- **Impact:** ArgoCD updated the Service (targetPort→4200) but could NOT update the Deployment (still containerPort 3000). App listens on 3000, Service sends to 4200 → **502 Bad Gateway on `dhan.am` and `app.dhan.am`**.
+- **Partial resolution attempted:** `kubectl apply --server-side --force-conflicts` resolved earlier for the Service, but the Deployment SSA conflict persists.
+- **Fix needed (next session):**
+  1. **Quick fix**: `KUBECONFIG=~/.kube/config-hetzner kubectl apply --server-side --force-conflicts -f infra/k8s/production/web-deployment.yaml` from the dhanam repo (force ArgoCD to take over Deployment field ownership)
+  2. **Alternative**: Revert Service targetPort to 3000 as interim fix if force-apply fails
+  3. **Root cause fix**: The Docker image defaults to PORT=3000 (Next.js default). The manifest sets PORT=4200 but this hasn't been applied due to SSA conflict. Either align the image to 4200 or the manifests to 3000.
+- **Lesson:** When migrating from `kubectl set image` to GitOps, ensure git manifests match live state before enabling auto-sync. SSA merge conflicts from field ownership divergence require `--force-conflicts` on each affected resource type (Service AND Deployment).
 
 **Remaining Items:**
+- **🔴 P0: Fix dhan.am / app.dhan.am 502** — resolve SSA merge conflict on dhanam-web Deployment (see incident above)
 - ~~Run dhanam CI to push fresh `:main` images~~ — **DONE** (Session 3)
 - ~~Standardize 5 registry secrets to madfam-bot~~ — **DONE** (Session 3)
 - ~~Pin remaining 6 images (dhanam + janua)~~ — **DONE** (Session 3)
@@ -677,17 +690,18 @@ kubectl get nodes -o wide
 - PostgreSQL Bitnami migration — Phase 3
 
 **Post-Session 3 Metrics:**
-- Endpoints: 9/9 responding <1s (all under 0.67s)
-- Non-running pods: 0
-- ArgoCD: 16 apps (12 Synced/Healthy, 4 cosmetic drift)
+- Endpoints: 7/9 healthy — **dhan.am and app.dhan.am returning 502** (SSA conflict)
+- api.dhan.am: ✅ 200 OK | auth.madfam.io: ✅ 200 | All enclii endpoints: ✅
+- Non-running pods: 0 (all pods Running 1/1, issue is port mismatch not pod health)
+- ArgoCD: 16 apps (11 Synced/Healthy, 1 Failed, 4 cosmetic drift)
 - Registry secrets: 100% madfam-bot (0 personal credentials)
 - Image pinning: 11/11 services pinned (4 enclii SHA, 5 janua kustomize, 2 dhanam CI SHA)
-- All changes committed and pushed (9 commits across 3 repos + 2 enclii commits)
+- All changes committed and pushed (9 commits across 3 repos + 3 enclii commits)
 - Golden configs: 20/20 passing
 
 **Client Onboarding Assessment:** Infrastructure ready for 1-10 clients. Software has 5 blockers (tenant provisioning, registration UI, per-project RBAC, audit logging, billing).
 
-**Audit Conclusion:** Infrastructure is 99%+ healthy. ArgoCD expanded to 16 apps covering all repos (enclii, janua, dhanam) with auto-sync enabled. All images pinned to immutable digests. All registry secrets standardized. Two incidents during Wave 15 (auth.madfam.io 502, dhanam SSA merge conflict), both resolved within minutes. Dhanam CI fully operational with GHCR nested naming workaround.
+**Audit Conclusion:** Significant progress — CI pipelines fixed, images pinned, secrets standardized, ArgoCD expanded. However, session ends with **dhan.am and app.dhan.am broken** (502 Bad Gateway) due to an unresolved SSA merge conflict on the dhanam-web Deployment. The Service targetPort was updated to 4200 but the Deployment still has containerPort 3000. This is the **top priority** for the next session. See incident log and fix instructions above.
 
 ### Wave 14 (2026-02-03 @ 21:30 UTC)
 
