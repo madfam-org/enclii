@@ -3,11 +3,18 @@
 # Source: https://github.com/madfam-org/dhanam (external repo)
 #
 # NOTE: Dhanam CI currently deploys via SSH + kubectl set image.
-# ArgoCD management enables GitOps workflow and automatic drift correction.
+# ArgoCD management is VISIBILITY-ONLY (no auto-sync) until migration complete.
+#
+# Known issues blocking auto-sync:
+#   - Container name mismatch: live "dhanam-web" vs manifest "web" (causes merge patch failure)
+#   - Images deployed via kubectl (live images don't match manifest tags)
+#   - :main tag doesn't exist in GHCR for dhanam images
+#
 # Transition plan:
-#   1. ArgoCD syncs manifests from git (this app)
+#   1. Fix container names in dhanam manifests to match live state
 #   2. CI workflow updated to commit image tags to git (not kubectl set image)
-#   3. ArgoCD Image Updater detects new digests and updates manifests
+#   3. Enable automated sync (uncomment syncPolicy.automated below)
+#   4. ArgoCD Image Updater detects new digests and updates manifests
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -47,9 +54,11 @@ spec:
     namespace: dhanam
 
   syncPolicy:
-    automated:
-      prune: false  # Don't prune until CI migration is complete
-      selfHeal: true
+    # Auto-sync DISABLED — visibility-only mode
+    # Uncomment when container name mismatch and CI workflow are resolved
+    # automated:
+    #   prune: false
+    #   selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - RespectIgnoreDifferences=true
