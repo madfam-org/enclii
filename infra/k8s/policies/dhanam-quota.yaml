@@ -16,9 +16,9 @@ metadata:
     app.kubernetes.io/managed-by: enclii
 spec:
   hard:
-    # CPU limits (increased for rolling updates with 2x dhanam-api replicas)
-    requests.cpu: "2"
-    limits.cpu: "4"
-    # Memory limits (increased for rolling updates headroom)
-    requests.memory: 3Gi
-    limits.memory: 6Gi
+    # Base: 3.4 CPU / 3Gi across 6 pods (3 services x 2 replicas)
+    # Headroom: +2.6 CPU / +5Gi for rolling update surge (maxSurge: 1 per service)
+    requests.cpu: "3"
+    limits.cpu: "6"
+    requests.memory: 4Gi
+    limits.memory: 8Gi
