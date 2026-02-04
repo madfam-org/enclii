@@ -2,16 +2,13 @@
 # Deploys: dhanam-admin, dhanam-api, dhanam-web (from external repo)
 # Source: https://github.com/madfam-org/dhanam (external repo)
 #
-# NOTE: Dhanam CI currently deploys via SSH + kubectl set image.
-# ArgoCD auto-sync DISABLED — old image tags (e.g. :89438293) are expired
-# in GHCR, so any rollout creates pods that fail ImagePull.
-# The running pods use node-cached images.
+# Images pushed as nested GHCR packages (auto-linked to repo):
+#   - ghcr.io/madfam-org/dhanam/api:main  (API, NestJS)
+#   - ghcr.io/madfam-org/dhanam/web:main  (Web, Next.js)
 #
-# Prerequisites for enabling auto-sync:
-#   1. Run dhanam CI to push fresh :main tags to GHCR
-#   2. Set imagePullPolicy: IfNotPresent (prevents re-pull of cached images)
-#   3. Uncomment syncPolicy.automated below
-#   4. Migrate CI to commit image refs to git (remove kubectl set image)
+# CI deploys via kubectl set image with SHA digests.
+# ArgoCD auto-sync enabled (selfHeal) for non-image drift correction.
+# Image field excluded from diff — CI manages image versions.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -22,17 +19,6 @@ metadata:
     app.kubernetes.io/name: dhanam-services
     app.kubernetes.io/part-of: dhanam
   annotations:
-    # ArgoCD Image Updater — disabled until CI pushes images with consistent tags
-    # Uncomment when dhanam CI standardizes on :main tag
-    # argocd-image-updater.argoproj.io/image-list: |
-    #   dhanam-api=ghcr.io/madfam-org/dhanam-api:main,
-    #   dhanam-admin=ghcr.io/madfam-org/dhanam-admin:main
-    # argocd-image-updater.argoproj.io/dhanam-api.update-strategy: digest
-    # argocd-image-updater.argoproj.io/dhanam-admin.update-strategy: digest
-    # argocd-image-updater.argoproj.io/git-repository: https://github.com/madfam-org/dhanam.git
-    # argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
-    # argocd-image-updater.argoproj.io/write-back-target: kustomization
-    # argocd-image-updater.argoproj.io/git-branch: main
     argocd.argoproj.io/compare-options: IgnoreExtraneous=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -51,17 +37,15 @@ spec:
     namespace: dhanam
 
   syncPolicy:
-    # Auto-sync DISABLED — see prerequisites in header comment
-    # automated:
-    #   prune: false
-    #   selfHeal: true
+    automated:
+      prune: false
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - RespectIgnoreDifferences=true
 
   ignoreDifferences:
-    # Ignore image field — CI currently sets images via kubectl, not git
-    # Remove this once CI is migrated to commit image refs to git
+    # Ignore image field — CI sets images via kubectl set image with SHA digests
     - group: apps
       kind: Deployment
       jsonPointers:
