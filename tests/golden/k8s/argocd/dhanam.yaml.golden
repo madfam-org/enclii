@@ -43,6 +43,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - RespectIgnoreDifferences=true
+      - ServerSideApply=true
 
   ignoreDifferences:
     # Ignore image field — CI sets images via kubectl set image with SHA digests
