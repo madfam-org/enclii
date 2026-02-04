@@ -49,6 +49,8 @@ CONFIGS=(
     "infra/argocd/apps/kyverno.yaml:argocd/kyverno.yaml.golden"
     "infra/argocd/apps/core-services.yaml:argocd/core-services.yaml.golden"
     "infra/argocd/apps/ecosystem-services.yaml:argocd/ecosystem-services.yaml.golden"
+    "infra/argocd/apps/janua.yaml:argocd/janua.yaml.golden"
+    "infra/argocd/apps/dhanam.yaml:argocd/dhanam.yaml.golden"
 )
 
 FAILED=0
