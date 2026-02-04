@@ -39,6 +39,8 @@ spec:
     repoURL: https://github.com/madfam-org/janua.git
     targetRevision: main
     path: k8s/base/deployments
+    directory:
+      exclude: '{janua-api.yaml}'
 
   destination:
     server: https://kubernetes.default.svc
