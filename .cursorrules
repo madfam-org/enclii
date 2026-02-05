@@ -1,7 +1,7 @@
 # Enclii Code Guidelines
 
 ## Project Context
-Enclii is a Railway-style PaaS running on Hetzner + Cloudflare (~$100/month).
+Enclii is an open source DevOps platform running on Hetzner + Cloudflare.
 Authenticated via Janua SSO (OIDC/RS256). Production services at enclii.dev.
 
 ## Architecture

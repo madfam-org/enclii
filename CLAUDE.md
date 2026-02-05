@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Enclii is a Railway-style Platform-as-a-Service that runs on cost-effective infrastructure (~$55/month vs $2,220 for Railway + Auth0). It deploys containerized services with enterprise-grade security, auto-scaling, and zero vendor lock-in.
+Enclii is an open source DevOps platform for deploying, scaling, and operating containerized services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
 
 **Current Status:** 🟢 v0.1.0 - Production Beta (95% ready) ([checklist](./docs/production/PRODUCTION_CHECKLIST.md))
 **Infrastructure:** Hetzner Dedicated (2-node k3s) + Cloudflare (~$55/month) - **Running**
@@ -519,6 +519,9 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Storage/Longhorn | `docs/infrastructure/STORAGE.md` |
 | Cloudflare integration | `docs/infrastructure/CLOUDFLARE.md` |
 | External secrets | `docs/infrastructure/EXTERNAL_SECRETS.md` |
+| **LLM Context** | |
+| LLM context (compact) | `llms.txt` |
+| LLM context (full) | `llms-full.txt` |
 
 ---
 

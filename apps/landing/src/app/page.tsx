@@ -49,8 +49,8 @@ export default function Home() {
             Deploy Without<br />the Bill Shock
           </h1>
           <p className="text-xl text-white/80 mb-10 max-w-2xl mx-auto">
-            Railway-style PaaS at 95% less cost. Auto-scaling, zero-downtime deployments,
-            and built-in observability on cost-effective infrastructure.
+            Open source container deployment platform. Auto-scaling, zero-downtime deployments,
+            and built-in observability on infrastructure you own.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a

@@ -10,8 +10,8 @@ import (
 func NewRootCommand(cfg *config.Config) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "enclii",
-		Short: "🚂 Enclii CLI - Control & orchestration for your cloud",
-		Long: `Enclii is a Railway-style platform that lets teams build, deploy,
+		Short: "Enclii - Deploy, scale, and operate your services",
+		Long: `Enclii is an open source DevOps platform that lets teams build, deploy,
 scale, and operate containerized services with guardrails.
 
 Learn more at https://enclii.dev`,

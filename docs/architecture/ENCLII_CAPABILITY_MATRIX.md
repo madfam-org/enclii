@@ -7,7 +7,7 @@
 
 ## EXECUTIVE SUMMARY
 
-Enclii is a **Railway-style Platform-as-a-Service** running on cost-optimized infrastructure. Current status is **95% production-ready** with core services deployed. The platform provides multi-tenant SaaS capabilities at 97% cost savings vs Railway/Auth0 (~$55/mo vs $2,220/mo).
+Enclii is a **open source DevOps platform** running on cost-optimized infrastructure. Current status is **95% production-ready** with core services deployed. The platform provides multi-tenant SaaS capabilities at 97% cost savings vs Railway/Auth0 (~$55/mo vs $2,220/mo).
 
 **Key Achievements:**
 - ✅ Complete control plane API with RBAC/Auth

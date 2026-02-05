@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Enclii Platform API
   description: |
-    Railway-style Platform-as-a-Service API for deploying and managing containerized applications.
+    Open source DevOps platform API for deploying and managing containerized applications.
 
     ## Overview
 

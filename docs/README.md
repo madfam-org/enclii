@@ -1,6 +1,6 @@
 ---
 title: Overview
-description: Welcome to Enclii - a Railway-style PaaS on cost-effective infrastructure
+description: Welcome to Enclii - an open source DevOps platform for containerized services
 sidebar_position: 1
 tags: [overview, documentation, getting-started]
 ---

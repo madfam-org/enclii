@@ -9,7 +9,7 @@
 
 ## 0) Purpose & Scope
 
-Enclii is MADFAM’s internal, Railway‑style platform that abstracts infra complexity and lets teams deploy, scale, and operate containerized services with high safety and low cognitive load. v1 runs on managed Kubernetes and managed databases; v2 targets portability to any cloud and eventually bare metal.
+Enclii is MADFAM’s internal, open source DevOps platform that abstracts infra complexity and lets teams deploy, scale, and operate containerized services with high safety and low cognitive load. v1 runs on managed Kubernetes and managed databases; v2 targets portability to any cloud and eventually bare metal.
 
 **In scope (v1):** Container services, zero‑downtime deploys, rollbacks, autoscaling (HPA/KEDA), logs/metrics/traces, cron jobs, one‑off jobs, volumes (basic), domains/TLS, preview environments, secrets management, cost showback, SSO/RBAC, CLI+UI.
 

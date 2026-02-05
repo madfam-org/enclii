@@ -12,7 +12,7 @@
 
 ## THE PLATFORM AT A GLANCE
 
-Enclii is a **self-hosted Railway-style PaaS** that enables teams to deploy containerized services with enterprise-grade security and observability—at 97% lower cost than Railway + Auth0.
+Enclii is a **open source DevOps platform** that enables teams to deploy containerized services with enterprise-grade security and observability—at 97% lower cost than Railway + Auth0.
 
 **Key Numbers (Updated Jan 2026):**
 - ✅ **95% production ready** - Core services running at enclii.dev

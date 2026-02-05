@@ -9,7 +9,7 @@ import (
 // ============================================================================
 // DATABASE ADDON TYPES
 // One-click database provisioning for PostgreSQL, Redis, MySQL
-// Matches Railway's core value proposition
+// Core platform value proposition
 // ============================================================================
 
 // DatabaseAddonType represents the type of database addon

@@ -1,5 +1,5 @@
 // Package github provides GitHub App integration for repository management.
-// This enables Vercel/Railway-style GitHub repo connections.
+// This enables platform-native GitHub repo connections.
 package github
 
 import (

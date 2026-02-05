@@ -38,7 +38,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("AGGREGATION_INTERVAL", time.Hour)
 	viper.SetDefault("RETENTION_DAYS", 90)
 
-	// Default pricing (similar to Railway)
+	// Default pricing (usage-based pricing model)
 	viper.SetDefault("PRICE_COMPUTE_GB_HOUR", 0.000463)
 	viper.SetDefault("PRICE_BUILD_MINUTE", 0.01)
 	viper.SetDefault("PRICE_STORAGE_GB_MONTH", 0.25)

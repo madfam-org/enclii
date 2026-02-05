@@ -20,7 +20,7 @@ tags: [architecture, system-design, kubernetes, security]
 
 ## Overview
 
-Enclii is a production-ready Platform-as-a-Service (PaaS) that provides Railway-style internal developer platforms with enterprise-grade security, scalability, and observability. Built on Kubernetes, it enables teams to deploy containerized services with comprehensive guardrails and operational excellence.
+Enclii is a production-ready Platform-as-a-Service (PaaS) that provides modern internal developer platforms with enterprise-grade security, scalability, and observability. Built on Kubernetes, it enables teams to deploy containerized services with comprehensive guardrails and operational excellence.
 
 ### Key Principles
 

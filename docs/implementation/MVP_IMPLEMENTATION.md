@@ -186,7 +186,7 @@ enclii rollback my-api
 - [x] Logs stream with < 2s latency
 - [x] Complete developer workflow functional
 
-## 🚂 **The Railway Vision Realized**
+## 🚀 **The Platform Vision Realized**
 
 This MVP delivers on Enclii's core promise: **making deployment as simple as a railway system** - reliable, predictable, and safe. Developers get the simplicity of `git push` with the power of Kubernetes, wrapped in an experience that feels magical but operates with engineering rigor.
 

@@ -280,7 +280,7 @@ Available for apps: ~8 vCPU, 45GB RAM
 
 | App | Domain | What It Does |
 |-----|--------|--------------|
-| **enclii** | enclii.dev | Railway-style PaaS (~$55/mo) |
+| **enclii** | enclii.dev | Open source DevOps platform |
 | **janua** | janua.dev | Self-hosted Auth0 alternative |
 | **forgesight** | forgesight.quest | Fabrication pricing intelligence |
 | **dhanam** | dhanam.app | Budget/wealth tracking (LATAM) |

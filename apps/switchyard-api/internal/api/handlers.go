@@ -408,7 +408,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.POST("/previews/:id/comments", h.CreatePreviewComment)
 			protected.POST("/previews/:id/comments/:comment_id/resolve", h.ResolvePreviewComment)
 
-			// Teams (Railway/Vercel-style team management)
+			// Teams (platform team management)
 			protected.POST("/teams", h.CreateTeam)
 			protected.GET("/teams", h.ListTeams)
 			protected.GET("/teams/:slug", h.GetTeam)

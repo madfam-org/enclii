@@ -5,7 +5,7 @@
 
 ## Overview
 
-Enclii is MADFAM's Platform-as-a-Service (PaaS) for deploying containerized applications. It provides Railway-style deployment experience on cost-effective bare metal infrastructure.
+Enclii is MADFAM's open source DevOps platform for deploying, scaling, and operating containerized services. It provides streamlined deployment experience on bare metal infrastructure with GitOps automation and zero vendor lock-in.
 
 ## Architecture
 
@@ -98,6 +98,8 @@ kubectl rollout restart deployment/cloudflared -n cloudflare-tunnel
 
 ## Related Documentation
 - [CLAUDE.md](./CLAUDE.md) - Full development guide
+- [llms.txt](./llms.txt) - LLM context (compact)
+- [llms-full.txt](./llms-full.txt) - LLM context (full)
 - [Janua System Context](/Users/aldoruizluna/labspace/janua/SYSTEM_CONTEXT.md)
 - [Dhanam System Context](/Users/aldoruizluna/labspace/dhanam/SYSTEM_CONTEXT.md)
 

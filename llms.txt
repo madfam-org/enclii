@@ -1,0 +1,66 @@
+# Enclii
+
+> Open source DevOps platform for deploying, scaling, and operating containerized
+> services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
+> Go backend + Next.js frontend + ArgoCD GitOps + Cloudflare Tunnel zero-trust ingress.
+
+Enclii is MADFAM's production PaaS running on a 2-node k3s cluster on Hetzner +
+Cloudflare. It dogfoods itself — the control plane runs on Enclii. Authentication
+is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
+16 managed applications.
+
+## Core Documentation
+
+- [CLAUDE.md](./CLAUDE.md): Complete development guide — commands, architecture, debugging, key file locations
+- [AI_CONTEXT.md](./AI_CONTEXT.md): Agent directives, god files, secret management protocols
+- [SYSTEM_CONTEXT.md](./SYSTEM_CONTEXT.md): System architecture, K8s resources, tunnel routing, Operation Ratchet rules
+
+## Architecture
+
+- [Architecture Overview](./docs/architecture/ARCHITECTURE.md)
+- [OpenAPI Spec](./docs/api/openapi.yaml): 107+ REST endpoints
+- [Infrastructure Anatomy](./docs/infrastructure/INFRA_ANATOMY.md): Full cluster audit
+- [GitOps](./docs/infrastructure/GITOPS.md): ArgoCD App-of-Apps configuration
+- [Storage](./docs/infrastructure/STORAGE.md): Longhorn CSI block storage
+- [Cloudflare Integration](./docs/infrastructure/CLOUDFLARE.md): Tunnel and DNS
+
+## Getting Started
+
+- [Quickstart](./docs/quickstart/)
+- [Dogfooding Guide](./docs/guides/DOGFOODING_GUIDE.md): Self-deployment strategy
+- [Production Checklist](./docs/production/PRODUCTION_CHECKLIST.md): 95% complete
+- [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
+
+## Infrastructure
+
+- [ArgoCD Config](./infra/argocd/): Root application + 16 app definitions
+- [K8s Production Manifests](./infra/k8s/production/): Deployments, services, patches
+- [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): 28 domain routes
+- [Terraform](./infra/terraform/): Infrastructure as code for Hetzner + Cloudflare
+
+## Integrations
+
+- [Janua SSO](https://github.com/madfam-org/janua): auth.madfam.io — OIDC/RS256 JWT authentication
+- [Dhanam](https://github.com/madfam-org/dhanam): dhan.am — managed by ArgoCD
+- [Integration Docs](./docs/integrations/)
+
+## Components
+
+- [apps/switchyard-api/](./apps/switchyard-api/): Control plane API (Go/Gin, port 4200)
+- [apps/switchyard-ui/](./apps/switchyard-ui/): Web dashboard (Next.js, port 4201)
+- [apps/dispatch/](./apps/dispatch/): Admin platform (Next.js, port 4203)
+- [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
+- [packages/sdk-go/](./packages/sdk-go/): Go SDK and type definitions
+- [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
+- [apps/reconcilers/](./apps/reconcilers/): Kubernetes controllers
+
+## Optional
+
+- [CLI Reference](./docs/cli/): Command documentation
+- [Gap Analysis](./docs/production/GAP_ANALYSIS.md): Production readiness gaps
+- [Railway Migration Guide](./docs/guides/RAILWAY_MIGRATION_GUIDE.md)
+- [Vercel Migration Guide](./docs/guides/VERCEL_MIGRATION_GUIDE.md)
+- [Heroku Migration Guide](./docs/guides/HEROKU_MIGRATION_GUIDE.md)
+- [Longhorn Helm Values](./infra/helm/longhorn/)
+- [Golden Config Snapshots](./tests/golden/): Pre-commit validation baselines
+- [Scripts](./scripts/): Deployment and validation scripts

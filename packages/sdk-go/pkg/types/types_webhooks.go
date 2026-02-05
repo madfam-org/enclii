@@ -9,7 +9,7 @@ import (
 // ============================================================================
 // NOTIFICATION WEBHOOK TYPES
 // Slack, Discord, and Telegram notifications for deployment events
-// Matches Vercel/Railway webhook functionality
+// Platform webhook functionality
 // ============================================================================
 
 // WebhookType represents the type of webhook destination

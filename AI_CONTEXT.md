@@ -23,6 +23,8 @@
 | Enclii Config | `.enclii.yml` |
 | Dispatch API | `apps/dispatch/` |
 | Infra Anatomy | `docs/infrastructure/INFRA_ANATOMY.md` |
+| LLM Context (compact) | `llms.txt` |
+| LLM Context (full) | `llms-full.txt` |
 
 ## Port Allocation
 - 4200: Switchyard API (api.enclii.dev)

@@ -19,7 +19,7 @@ type Pricing struct {
 	BandwidthPerGB    float64 // $/GB egress
 }
 
-// DefaultPricing returns Railway-like default pricing
+// DefaultPricing returns industry-standard default pricing
 func DefaultPricing() *Pricing {
 	return &Pricing{
 		ComputePerGBHour:  0.000463,

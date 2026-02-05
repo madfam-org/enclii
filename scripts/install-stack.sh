@@ -121,7 +121,7 @@ select_deployment_mode() {
     echo ""
     echo -e "${CYAN}What would you like to deploy?${NC}"
     echo ""
-    echo "  1) Enclii Only      - DevOps Platform (Vercel/Railway alternative)"
+    echo "  1) Enclii Only      - Open Source DevOps Platform"
     echo "  2) Janua Only       - Auth Platform (Auth0 alternative)"
     echo "  3) The Trinity      - Both + Foundry (Complete self-hosted stack)"
     echo ""

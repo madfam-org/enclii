@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Enclii Documentation',
-  tagline: 'Railway-style PaaS on your own infrastructure',
+  tagline: 'Deploy, scale, and operate — on infrastructure you own',
   favicon: 'img/favicon.ico',
 
   url: 'https://docs.enclii.dev',

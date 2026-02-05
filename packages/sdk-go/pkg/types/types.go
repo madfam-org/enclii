@@ -495,7 +495,7 @@ const (
 )
 
 // PreviewEnvironment represents an ephemeral environment for a pull request
-// This is the killer feature for Vercel/Railway parity
+// This is the killer feature for platform parity
 type PreviewEnvironment struct {
 	ID        uuid.UUID `json:"id" db:"id"`
 	ProjectID uuid.UUID `json:"project_id" db:"project_id"`

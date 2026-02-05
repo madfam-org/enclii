@@ -455,7 +455,7 @@ Response:
 │     Updated 2 hours ago          [ Select → ]                    │
 │                                                                  │
 │  📦 madfam-org/enclii             ⭐ Monorepo Detected            │
-│     Railway-style PaaS           8 services found                │
+│     Open source DevOps platform  8 services found                │
 │     Updated 1 day ago            [ Select → ]                    │
 │                                                                  │
 │  📦 madfam-org/simple-app                                         │

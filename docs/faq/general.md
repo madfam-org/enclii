@@ -13,7 +13,7 @@ Common questions about what Enclii is and how it works.
 
 ### What is Enclii?
 
-Enclii is a Platform-as-a-Service (PaaS) that provides Railway-style developer experience on cost-effective infrastructure. Deploy containerized services with enterprise-grade security, auto-scaling, and zero vendor lock-in.
+Enclii is a Platform-as-a-Service (PaaS) that provides streamlined developer experience on your own infrastructure. Deploy containerized services with enterprise-grade security, auto-scaling, and zero vendor lock-in.
 
 **Key features**:
 - Git-push deployment workflow

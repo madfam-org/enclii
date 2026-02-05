@@ -3,12 +3,12 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Enclii - Deploy Without the Bill Shock',
-  description: 'Railway-style PaaS at 95% less cost. Auto-scaling, zero-downtime deployments, and built-in observability on cost-effective infrastructure.',
-  keywords: ['PaaS', 'deployment', 'Kubernetes', 'containers', 'DevOps', 'Railway alternative'],
+  description: 'Open source DevOps platform. Auto-scaling, zero-downtime deployments, and built-in observability on infrastructure you own.',
+  keywords: ['PaaS', 'deployment', 'Kubernetes', 'containers', 'DevOps', 'open source', 'GitOps'],
   authors: [{ name: 'Enclii Team' }],
   openGraph: {
     title: 'Enclii - Deploy Without the Bill Shock',
-    description: 'Railway-style PaaS at 95% less cost. Auto-scaling, zero-downtime deployments, and built-in observability.',
+    description: 'Open source DevOps platform. Auto-scaling, zero-downtime deployments, and built-in observability.',
     url: 'https://enclii.dev',
     siteName: 'Enclii',
     type: 'website',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Enclii - Deploy Without the Bill Shock',
-    description: 'Railway-style PaaS at 95% less cost.',
+    description: 'Open source DevOps platform for containerized services.',
   },
   icons: { icon: '/favicon.ico' },
 }

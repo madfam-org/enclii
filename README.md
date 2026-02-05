@@ -1,7 +1,7 @@
 # Enclii
 
-> **The Railway-style platform with ~$55/month production infrastructure.**
-> *Production-grade Kubernetes orchestration on Hetzner + Cloudflare.*
+> **Deploy, scale, and operate — on infrastructure you own.**
+> *Open source DevOps platform with production-grade Kubernetes on Hetzner + Cloudflare.*
 
 [![Production Readiness](https://img.shields.io/badge/production%20ready-95%25-brightgreen)](./docs/production/PRODUCTION_CHECKLIST.md)
 [![Infrastructure](https://img.shields.io/badge/infrastructure-Hetzner%20%2B%20Cloudflare-blue)](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
@@ -16,7 +16,7 @@
 
 ## What is Enclii?
 
-Enclii is a **Railway-style Platform-as-a-Service** that runs on cost-effective infrastructure (~$55/month vs $2,220 for Railway + Auth0). It deploys containerized services with enterprise-grade security, auto-scaling, and zero vendor lock-in.
+Enclii is an **open source DevOps platform** for deploying, scaling, and operating containerized services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
 
 ### The Dogfooding Strategy (In Progress)
 
@@ -111,7 +111,7 @@ Enclii is a **Railway-style Platform-as-a-Service** that runs on cost-effective 
 ### 📦 Complete Feature Set
 
 **Developer Experience:**
-- Railway-style CLI (`enclii init`, `enclii up`, `enclii deploy`)
+- Intuitive CLI (`enclii init`, `enclii up`, `enclii deploy`)
 - Auto-detect buildpacks (Nixpacks, Buildpacks, Dockerfile)
 - Preview environments on every PR
 - Real-time log streaming
@@ -540,6 +540,15 @@ The AGPL-3.0 license ensures that:
 - **Freedom Preservation**: Users retain the freedom to study, modify, and distribute the software
 
 This aligns with the **MADFAM Manifesto Section IV**: protecting open infrastructure from proprietary capture.
+
+---
+
+## For AI Agents
+
+This repository includes machine-readable context files following the [llmstxt.org](https://llmstxt.org) spec:
+
+- **[llms.txt](./llms.txt)** — Compact overview with links to all key documentation
+- **[llms-full.txt](./llms-full.txt)** — Full inline context including architecture, commands, debugging, and infrastructure details
 
 ---
 
