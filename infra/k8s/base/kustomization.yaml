@@ -16,7 +16,8 @@ resources:
   - switchyard-ui.yaml
   - landing-page.yaml
   - docs-site.yaml
-  - ingress-nginx.yaml
+  # ingress-nginx.yaml removed — Cloudflare Tunnel handles all production routing
+  # Keeping the file for local development reference
   - monitoring.yaml
   - network-policies.yaml
   - kyverno-exceptions/roundhouse-exception.yaml
