@@ -2,13 +2,14 @@
 
 > **Generated**: 2026-01-17 | **Last Updated**: 2026-02-05 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 15 (Full Health + Hardening + ArgoCD Expansion)
 >
-> **Live Status Check** (2026-02-05, session 5):
-> - dhan.am 502: ✅ RESOLVED (PR #35 fixed ArgoCD SSA conflict, confirmed HTTP 200)
-> - dhanam-admin ImagePullBackOff: ✅ RESOLVED (CI workflow created, image built as `dhanam/admin:main`)
-> - ArgoCD: 16 apps — dhanam-services resync in progress (SSA removed, 3-way merge)
-> - Dhanam CI: All 3 services covered (`dhanam/admin`, `dhanam/api`, `dhanam/web`)
-> - Image pinning: All services pinned — 4 enclii (SHA), 5 janua (kustomize+Image Updater), 3 dhanam (CI SHA)
-> - Registry secrets: 100% madfam-bot (0 personal credentials in cluster)
+> **Live Status Check** (2026-02-05, session 6):
+> - Janua Image Updater thrashing: ✅ FIXED (annotations removed, kustomization reverted to `:main` tags)
+> - Disk usage: ⚠️ 72% (67G/98G) — containerd image cache needs pruning
+> - ArgoCD: 16 apps — 12 Synced, 2 OutOfSync, 2 Unknown
+> - core-services: ⚠️ Progressing (not Healthy) — investigation needed
+> - Endpoints: 17/17 responding, all <1s
+> - TLS Certs: All valid, 73-87 days remaining
+> - Longhorn: 5/5 volumes healthy, 42GB allocated
 > - Golden configs: 20/20 passing
 >
 > **✅ FIXED — dhan.am / app.dhan.am 502 Bad Gateway:**
@@ -20,13 +21,17 @@
 
 | Category | Status | Severity |
 |----------|--------|----------|
-| **Overall Health** | 99% operational | ✅ HEALTHY |
-| **Endpoints** | 9/9 responding <1s | ✅ HEALTHY |
-| **Pods** | 84 total (80 Running, 4 Completed) | ✅ HEALTHY |
+| **Overall Health** | 98% operational | ✅ HEALTHY |
+| **Endpoints** | 17/17 responding <1s | ✅ HEALTHY |
+| **Pods** | ~90 total (most Running, janua stabilizing) | ✅ HEALTHY |
 | **Nodes** | 2/2 Ready, version matched (k3s v1.33.6) | ✅ HEALTHY |
-| **ArgoCD** | 16 apps: dhanam-services resyncing (3-way merge), janua Image Updater active | ⚠️ PENDING |
+| **CPU** | core: 12% (1504m), builder: 1% (35m) | ✅ HEALTHY |
+| **Memory** | core: 27% (17.7GB/64GB), builder: 33% (1.2GB/4GB) | ✅ HEALTHY |
+| **Disk** | core: 72% (67G/98G) | ⚠️ MONITOR |
+| **ArgoCD** | 16 apps: 12 Synced, 2 OutOfSync, 2 Unknown | ⚠️ PENDING |
 | **Storage** | 10/11 PVCs bound (1 pending, expected) | ✅ HEALTHY |
 | **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
+| **TLS Certs** | All valid, 73-87 days remaining | ✅ HEALTHY |
 | **Cost** | ~$55/month | ✅ ON TARGET |
 
 ### Wave 15 Changes (Wave 14 → Wave 15)
@@ -124,8 +129,8 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.6+k3s1 | 5% | 23% (14.9GB/64GB) | ✅ Ready | 60 days |
-| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.6+k3s1 | 1% | 31% (1.2GB/4GB) | ✅ Ready | 16 days |
+| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.6+k3s1 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
+| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.6+k3s1 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)
 - **Kernel**: 6.8.0-88-generic
@@ -197,21 +202,29 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 
 ---
 
-## Live Endpoint Health (Feb 4, 2026 @ 07:05 UTC)
+## Live Endpoint Health (Feb 5, 2026 @ 22:08 UTC)
 
 | Endpoint | Status | Code | Latency | Notes |
 |----------|--------|------|---------|-------|
-| api.enclii.dev | ✅ | 404 | 750ms | Root path 404 expected |
-| app.enclii.dev | ✅ | 200 | 800ms | Dashboard responsive |
-| admin.enclii.dev | ✅ | 307 | 620ms | Auth redirect (expected) |
-| docs.enclii.dev | ✅ | 200 | 630ms | Documentation operational |
-| enclii.dev | ✅ | 200 | 650ms | Landing page |
-| status.enclii.dev | ✅ | 200 | 680ms | Status page operational |
-| status.madfam.io | ✅ | 200 | 910ms | Madfam status |
-| auth.madfam.io (OIDC) | ✅ | 200 | 700ms | JWKS available |
-| api.dhan.am | ✅ | 404 | 570ms | Stable (<1s since Wave 14 fix) |
+| api.enclii.dev | ✅ | 404 | <1s | Root path 404 expected |
+| app.enclii.dev | ✅ | 200 | <1s | Dashboard responsive |
+| admin.enclii.dev | ✅ | 307 | <1s | Auth redirect (expected) |
+| docs.enclii.dev | ✅ | 200 | <1s | Documentation operational |
+| enclii.dev | ✅ | 200 | <1s | Landing page |
+| status.enclii.dev | ✅ | 200 | <1s | Status page operational |
+| status.madfam.io | ✅ | 200 | <1s | Madfam status |
+| auth.madfam.io (OIDC) | ✅ | 200 | <1s | JWKS available |
+| api.dhan.am | ✅ | 200 | <1s | Stable |
+| admin.dhan.am | ✅ | 200 | <1s | Dhanam admin |
+| app.dhan.am | ✅ | 307 | <1s | Auth redirect |
+| dhan.am | ✅ | 200 | <1s | Dhanam landing |
+| api.janua.dev | ✅ | 200 | <1s | Janua API |
+| app.janua.dev | ✅ | 307 | <1s | Janua dashboard |
+| admin.janua.dev | ✅ | 307 | <1s | Janua admin |
+| docs.janua.dev | ✅ | 200 | <1s | Janua docs |
+| janua.dev | ✅ | 200 | <1s | Janua website |
 
-**Result:** 100% endpoint availability (9/9 responding, all <1s)
+**Result:** 100% endpoint availability (17/17 responding, all <1s)
 
 ---
 
@@ -306,7 +319,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | kyverno | ✅ Synced | Healthy | |
 | longhorn | ✅ Synced | Healthy | |
 | monitoring | ✅ Synced | Healthy | |
-| **janua-services** | ✅ Synced | Healthy | **NEW** — auto-sync enabled (prune+selfHeal) |
+| **janua-services** | ✅ Synced | Healthy | auto-sync enabled; **Image Updater disabled** (was thrashing, Session 6) |
 | **dhanam-services** | ⚠️ OutOfSync | Pending | SSA removed → 3-way merge enabled; admin CI workflow created; image name fixed to `dhanam/admin` |
 | arc-runners | ⚠️ Unknown | Healthy | OCI chart fetch issue |
 | arc-runners-blue | ⚠️ Unknown | Healthy | OCI chart fetch issue |
@@ -408,9 +421,9 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 
 ### ~~P2: Container Images Using :latest Tag~~ ✅ RESOLVED
 
-**Wave 15 Progress:** All production images now pinned to SHA digests:
+**Wave 15 Progress:** Production images pinned where stable:
 - 4 enclii deployments: SHA-pinned in base manifests (docs-site, landing-page, switchyard-api, switchyard-ui)
-- 5 janua deployments: SHA-pinned via kustomization.yaml + ArgoCD Image Updater auto-update
+- 5 janua deployments: `:main` mutable tags via kustomization.yaml (Image Updater **disabled** — was causing thrashing, see Session 6)
 - 3 dhanam deployments: SHA-pinned via CI `kubectl set image` (dhanam/admin, dhanam/api, dhanam/web)
 
 **Note:** Orphaned GHCR packages `dhanam-api` and `dhanam-web` still exist with restrictive permissions. New images use nested naming (`dhanam/api`, `dhanam/web`) which auto-link to the repo. The orphaned packages should be deleted via GitHub UI when convenient (requires `delete:packages` scope).
@@ -457,6 +470,15 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | ~~Pin remaining images (dhanam + janua)~~ | ~~P2~~ | ~~1h~~ | ✅ **DONE** (all pinned to SHA) |
 | ~~Standardize 5 registry secrets to madfam-bot~~ | ~~P2~~ | ~~1h~~ | ✅ **DONE** (0 personal creds) |
 | ~~Configure argocd-image-updater for auto-pinning~~ | ~~P2~~ | ~~2h~~ | ✅ **DONE** (janua active) |
+| ~~Disable Image Updater for janua (thrashing)~~ | ~~P0~~ | ~~30min~~ | ✅ **DONE** (Session 6) |
+| Clean containerd image cache on foundry-core (72% disk) | P1 | 30min | Disk headroom |
+| Investigate core-services Progressing status | P1 | 1h | ArgoCD health |
+| Clean orphaned janua ReplicaSets (59 → ~5-10) | P2 | 15min | Lean namespace |
+| Disk monitoring alert at 80% in Prometheus | P1 | 1h | Prevent outages |
+| Pod Disruption Budgets for switchyard-api, janua-api, cloudflared | P1 | 2h | Zero-downtime maintenance |
+| Investigate `status` vs `status-enclii` redundancy | P2 | 1h | Lean operations |
+| Investigate `roundhouse` vs `roundhouse-api` split | P2 | 1h | Documentation |
+| Decide on `janua-proxy` (scaled to 0/0) | P2 | 30min | Cleanup |
 | Fix dhanam-api ioredis config (connects to localhost, not REDIS_URL) | P2 | 2h | Reliability |
 | ~~Increase dhanam ResourceQuota~~ | ~~P2~~ | ~~30min~~ | ✅ **DONE** (CPU 4→6, memory 6→8Gi) |
 | Add health probes to arc-runners | P2 | 1h | Reliability |
@@ -478,6 +500,15 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | Audit logging (SOC2) | ❌ | 1-2 weeks | Compliance |
 | Billing/quota (Waybill) | ⚠️ Partial | 2-3 weeks | Revenue |
 | Custom domain automation | ⚠️ Manual | 1-2 weeks | UX |
+
+### Scaling Readiness Assessment (Session 6)
+
+| Clients | Ready? | Blockers |
+|---------|--------|----------|
+| 1-5 | ✅ Yes (after P0 fix) | None — infrastructure solid |
+| 5-10 | ⚠️ Mostly | Need PDBs, alerting, backup verification |
+| 10-25 | ❌ Not yet | Need 3rd node, PostgreSQL HA, Redis Sentinel, tenant isolation |
+| 25+ | ❌ Not yet | Multi-region, managed DB evaluation |
 
 ### Scaling Thresholds
 
@@ -671,13 +702,17 @@ kubectl get nodes -o wide
 - **Lesson:** When CI uses `kubectl set image` (creating a competing field manager), SSA merge conflicts are inevitable for any field that diverges between git and live state. Traditional 3-way merge avoids this by not tracking field ownership.
 
 **Remaining Items:**
-- ~~**🔴 P0: Fix dhan.am / app.dhan.am 502**~~ — **FIXED** (Session 4): Removed `ServerSideApply=true` and `RespectIgnoreDifferences=true` from `dhanam.yaml`, switching to 3-way merge. ArgoCD will resync cleanly.
+- ~~**🔴 P0: Fix dhan.am / app.dhan.am 502**~~ — **FIXED** (Session 4)
+- ~~**🔴 P0: Janua Image Updater thrashing**~~ — **FIXED** (Session 6): Removed all Image Updater annotations from `janua.yaml`, reverted kustomization to `:main` tags
 - ~~Run dhanam CI to push fresh `:main` images~~ — **DONE** (Session 3)
 - ~~Standardize 5 registry secrets to madfam-bot~~ — **DONE** (Session 3)
 - ~~Pin remaining 6 images (dhanam + janua)~~ — **DONE** (Session 3)
+- ~~dhanam-admin CI workflow (no workflow exists)~~ — **DONE** (Session 5)
+- Clean containerd image cache on foundry-core (72% disk → target <70%) — P1
+- Investigate core-services Progressing status — P1
+- Clean orphaned janua ReplicaSets (59 → ~5-10) — P2
 - Delete orphaned GHCR packages (`dhanam-api`, `dhanam-web`) via GitHub UI — P3
 - Migrate dhanam CI from `kubectl set image` to full GitOps (commit image refs) — P3
-- ~~dhanam-admin CI workflow (no workflow exists)~~ — **DONE** (Session 5, 2026-02-05)
 - Centralized logging (Loki) — Phase 3
 - PostgreSQL Bitnami migration — Phase 3
 
@@ -695,6 +730,16 @@ kubectl get nodes -o wide
 - SSA sync options removed from `dhanam.yaml` → 3-way merge enabled
 - ArgoCD will resync dhanam-services cleanly, resolving the 502 on dhan.am/app.dhan.am
 - Expected: 9/9 endpoints healthy after resync
+
+**Session 6 — Production Health Audit (2026-02-05, 22:08 UTC):**
+
+| Item | Before | After | Status |
+|------|--------|-------|--------|
+| Janua Image Updater | Thrashing (59 orphaned RS, 403s, 10+ versions in 20 min) | Annotations removed, kustomization reverted to `:main` | **FIXED** |
+| Janua kustomization | SHA digests (written by Image Updater) | `:main` mutable tags (stable pull) | **REVERTED** |
+| Disk usage | 72% (67G/98G) — approaching 80% threshold | Needs containerd image cache prune | **MONITOR** |
+| core-services ArgoCD | Synced/Progressing (not Healthy) | Investigation needed | **PENDING** |
+| Endpoint count | 9 documented | 17 verified (all <1s) | **UPDATED** |
 
 **Session 5 — Stability Session (2026-02-05):**
 
@@ -722,9 +767,9 @@ kubectl get nodes -o wide
     - Graceful preflight with `::notice::` skip (not hard-fail)
     - 9 unused SSH secrets eliminated
 
-**Client Onboarding Assessment:** Infrastructure ready for 1-10 clients. Software has 5 blockers (tenant provisioning, registration UI, per-project RBAC, audit logging, billing).
+**Client Onboarding Assessment:** Infrastructure ready for 1-5 clients immediately (after Session 6 P0 fix). 5-10 clients need PDBs, alerting, backup verification. Software has 5 blockers (tenant provisioning, registration UI, per-project RBAC, audit logging, billing).
 
-**Audit Conclusion:** Significant progress — CI pipelines fixed, images pinned, secrets standardized, ArgoCD expanded. Session 4 resolved the P0 502 Bad Gateway on dhan.am/app.dhan.am by removing SSA sync options from `dhanam.yaml`, switching to 3-way merge. ArgoCD will resync cleanly after push.
+**Audit Conclusion (through Session 6):** Infrastructure stabilized — janua Image Updater thrashing resolved (P0), CI pipelines fixed, images pinned, secrets standardized, ArgoCD expanded to 16 apps. Disk usage at 72% needs monitoring. core-services Progressing status needs investigation. 17/17 endpoints healthy.
 
 ### Wave 14 (2026-02-03 @ 21:30 UTC)
 
