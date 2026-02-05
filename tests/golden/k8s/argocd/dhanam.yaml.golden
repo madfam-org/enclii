@@ -3,8 +3,9 @@
 # Source: https://github.com/madfam-org/dhanam (external repo)
 #
 # Images pushed as nested GHCR packages (auto-linked to repo):
-#   - ghcr.io/madfam-org/dhanam/api:main  (API, NestJS)
-#   - ghcr.io/madfam-org/dhanam/web:main  (Web, Next.js)
+#   - ghcr.io/madfam-org/dhanam/admin:main  (Admin, Next.js)
+#   - ghcr.io/madfam-org/dhanam/api:main    (API, NestJS)
+#   - ghcr.io/madfam-org/dhanam/web:main    (Web, Next.js)
 #
 # CI deploys via kubectl set image with SHA digests.
 # ArgoCD auto-sync enabled (selfHeal) for non-image drift correction.

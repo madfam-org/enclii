@@ -1,13 +1,13 @@
 # Infrastructure Anatomy - Production State
 
-> **Generated**: 2026-01-17 | **Last Updated**: 2026-02-04 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 15 (Full Health + Hardening + ArgoCD Expansion)
+> **Generated**: 2026-01-17 | **Last Updated**: 2026-02-05 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 15 (Full Health + Hardening + ArgoCD Expansion)
 >
-> **Live Status Check** (2026-02-04, session 4):
-> - api.dhan.am: ✅ 200 OK | auth.madfam.io: ✅ 200 | All endpoints: ✅ <1s
-> - Pods: All Running 1/1 (0 errors, 0 CrashLoops)
-> - ArgoCD: 16 apps — dhanam-services pending resync (SSA removed, 3-way merge enabled)
-> - Dhanam CI: Fixed, fresh images in GHCR (`dhanam/api:main`, `dhanam/web:main`)
-> - Image pinning: All services pinned — 4 enclii (SHA), 5 janua (kustomize+Image Updater), 2 dhanam (CI SHA)
+> **Live Status Check** (2026-02-05, session 5):
+> - dhan.am 502: ✅ RESOLVED (PR #35 fixed ArgoCD SSA conflict, confirmed HTTP 200)
+> - dhanam-admin ImagePullBackOff: ✅ RESOLVED (CI workflow created, image built as `dhanam/admin:main`)
+> - ArgoCD: 16 apps — dhanam-services resync in progress (SSA removed, 3-way merge)
+> - Dhanam CI: All 3 services covered (`dhanam/admin`, `dhanam/api`, `dhanam/web`)
+> - Image pinning: All services pinned — 4 enclii (SHA), 5 janua (kustomize+Image Updater), 3 dhanam (CI SHA)
 > - Registry secrets: 100% madfam-bot (0 personal credentials in cluster)
 > - Golden configs: 20/20 passing
 >
@@ -24,7 +24,7 @@
 | **Endpoints** | 9/9 responding <1s | ✅ HEALTHY |
 | **Pods** | 84 total (80 Running, 4 Completed) | ✅ HEALTHY |
 | **Nodes** | 2/2 Ready, version matched (k3s v1.33.6) | ✅ HEALTHY |
-| **ArgoCD** | 16 apps: dhanam-services pending resync (SSA→3-way merge), janua Image Updater active | ⚠️ PENDING |
+| **ArgoCD** | 16 apps: dhanam-services resyncing (3-way merge), janua Image Updater active | ⚠️ PENDING |
 | **Storage** | 10/11 PVCs bound (1 pending, expected) | ✅ HEALTHY |
 | **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
 | **Cost** | ~$55/month | ✅ ON TARGET |
@@ -307,7 +307,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | longhorn | ✅ Synced | Healthy | |
 | monitoring | ✅ Synced | Healthy | |
 | **janua-services** | ✅ Synced | Healthy | **NEW** — auto-sync enabled (prune+selfHeal) |
-| **dhanam-services** | ⚠️ OutOfSync | Pending | SSA removed → 3-way merge enabled (fix for 502 on dhan.am/app.dhan.am) — pending resync |
+| **dhanam-services** | ⚠️ OutOfSync | Pending | SSA removed → 3-way merge enabled; admin CI workflow created; image name fixed to `dhanam/admin` |
 | arc-runners | ⚠️ Unknown | Healthy | OCI chart fetch issue |
 | arc-runners-blue | ⚠️ Unknown | Healthy | OCI chart fetch issue |
 | argocd-image-updater | ⚠️ OutOfSync | Healthy | ConfigMap shared by 2 apps |
@@ -411,8 +411,7 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 **Wave 15 Progress:** All production images now pinned to SHA digests:
 - 4 enclii deployments: SHA-pinned in base manifests (docs-site, landing-page, switchyard-api, switchyard-ui)
 - 5 janua deployments: SHA-pinned via kustomization.yaml + ArgoCD Image Updater auto-update
-- 2 dhanam deployments: SHA-pinned via CI `kubectl set image` (dhanam/api, dhanam/web)
-- dhanam-admin: Still `:main` tag (no CI workflow yet)
+- 3 dhanam deployments: SHA-pinned via CI `kubectl set image` (dhanam/admin, dhanam/api, dhanam/web)
 
 **Note:** Orphaned GHCR packages `dhanam-api` and `dhanam-web` still exist with restrictive permissions. New images use nested naming (`dhanam/api`, `dhanam/web`) which auto-link to the repo. The orphaned packages should be deleted via GitHub UI when convenient (requires `delete:packages` scope).
 
@@ -433,7 +432,7 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | roundhouse | (internal) | ✅ Running | 1 | ✅ |
 | waybill | (internal) | ✅ Running | 1 | ✅ |
 
-**Remaining Gap:** dhanam-admin has no CI workflow. All other services fully managed via ArgoCD + CI.
+**Status:** All services fully managed via ArgoCD + CI (dhanam-admin CI workflow added 2026-02-05).
 
 ---
 
@@ -464,7 +463,7 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | ~~Configure ArgoCD apps for janua/dhanam~~ | ~~P2~~ | ~~2h~~ | ✅ **DONE** (both auto-sync enabled) |
 | ~~Document disaster recovery runbook~~ | ~~P2~~ | ~~4h~~ | ✅ **DONE** (`docs/runbooks/DISASTER_RECOVERY.md`) |
 | ~~Run dhanam CI to push fresh `:main` images to GHCR~~ | ~~P2~~ | ~~1h~~ | ✅ **DONE** (nested naming: `dhanam/api`, `dhanam/web`) |
-| Create dhanam-admin CI workflow (no workflow exists) | P3 | 2h | Full CI coverage |
+| ~~Create dhanam-admin CI workflow (no workflow exists)~~ | ~~P3~~ | ~~2h~~ | ✅ **DONE** (2026-02-05, `deploy-admin-k8s.yml`) |
 | Migrate dhanam CI from `kubectl set image` to GitOps | P3 | 4h | Full GitOps |
 | Delete orphaned GHCR packages (`dhanam-api`, `dhanam-web`) | P3 | 15min | Cleanup (requires GitHub UI) |
 | Migrate PostgreSQL to Bitnami image | P3 | 4h | Security |
@@ -678,7 +677,7 @@ kubectl get nodes -o wide
 - ~~Pin remaining 6 images (dhanam + janua)~~ — **DONE** (Session 3)
 - Delete orphaned GHCR packages (`dhanam-api`, `dhanam-web`) via GitHub UI — P3
 - Migrate dhanam CI from `kubectl set image` to full GitOps (commit image refs) — P3
-- dhanam-admin CI workflow (no workflow exists) — P3
+- ~~dhanam-admin CI workflow (no workflow exists)~~ — **DONE** (Session 5, 2026-02-05)
 - Centralized logging (Loki) — Phase 3
 - PostgreSQL Bitnami migration — Phase 3
 
@@ -696,6 +695,32 @@ kubectl get nodes -o wide
 - SSA sync options removed from `dhanam.yaml` → 3-way merge enabled
 - ArgoCD will resync dhanam-services cleanly, resolving the 502 on dhan.am/app.dhan.am
 - Expected: 9/9 endpoints healthy after resync
+
+**Session 5 — Stability Session (2026-02-05):**
+
+19. **PR #36 Merged** (Dependabot: `github/codeql-action` v3 → v4)
+    - All 13 CI checks passed, squash-merged
+
+20. **dhanam-admin CI Workflow Created**
+    - New file: `.github/workflows/deploy-admin-k8s.yml` (dhanam repo)
+    - Follows same kubeconfig+kubectl pattern as `deploy-web-k8s.yml`
+    - Graceful preflight, `dhanam/admin` nested GHCR naming
+    - Container name `admin` matches deployment spec
+
+21. **dhanam-admin Image Name Fixed**
+    - `ghcr.io/madfam-org/dhanam-admin:main` → `ghcr.io/madfam-org/dhanam/admin:main`
+    - Aligns with api/web nested GHCR package convention
+    - File: `infra/k8s/production/admin-deployment.yaml` (dhanam repo)
+
+22. **ArgoCD dhanam.yaml Updated**
+    - Added `dhanam/admin` to GHCR package list in header comments
+    - `ignoreDifferences` already covers all Deployments (no `name` filter)
+    - Golden config synced
+
+23. **Dhanam Workflows Aligned** (done by dhanam agent earlier in session)
+    - All 3 deploy workflows rewritten: SSH → kubeconfig+kubectl
+    - Graceful preflight with `::notice::` skip (not hard-fail)
+    - 9 unused SSH secrets eliminated
 
 **Client Onboarding Assessment:** Infrastructure ready for 1-10 clients. Software has 5 blockers (tenant provisioning, registration UI, per-project RBAC, audit logging, billing).
 
