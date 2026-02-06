@@ -167,13 +167,13 @@ spec:
         spec:
           restartPolicy: OnFailure
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
+            # Runs as root for apt-get awscli install; ephemeral job (<5 min)
             fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: backup
-              image: docker.io/library/postgres:15
+              image: docker.io/library/postgres:16
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false
@@ -263,13 +263,13 @@ spec:
     spec:
       restartPolicy: Never
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
+        # Runs as root for apt-get awscli install; ephemeral job (<5 min)
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backup
-          image: docker.io/library/postgres:15
+          image: docker.io/library/postgres:16
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
