@@ -11,9 +11,9 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Dogfooding:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
-**GitOps:** ArgoCD App-of-Apps (13 apps) with self-heal - **Operational** (Jan 2026)
+**GitOps:** ArgoCD App-of-Apps (16 apps) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (single-replica; ready for multi-node) - **Operational** (Jan 2026)
-**Last Audit:** Feb 3, 2026 — 98 pods, 0 errors, 14 endpoints 100% healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
+**Last Audit:** Feb 6, 2026 — 82 pods, 0 errors, 12 endpoints 100% healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
 
 ### Port Allocation
 

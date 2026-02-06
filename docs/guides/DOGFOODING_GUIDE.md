@@ -9,7 +9,7 @@ tags: [guides, dogfooding, deployment, self-hosting, janua]
 
 > ✅ **ACTIVE** - Enclii is now self-hosting with automated deployment pipeline.
 > **Current Status:** Production services deployed, GitHub webhook configured, auto-deploy enabled.
-> **Last Updated:** December 2025
+> **Last Updated:** February 2026
 
 ---
 
@@ -25,18 +25,17 @@ This document describes how Enclii deploys **itself** using its own platform, an
 | Switchyard API | api.enclii.dev | 4200 | ✅ Running | ✅ Enabled |
 | Switchyard UI | app.enclii.dev | 4201 | ✅ Running | ✅ Enabled |
 | Docs Site | docs.enclii.dev | - | ✅ Running | ✅ Enabled |
-| Landing Page | enclii.dev | - | 🔲 Pending | ✅ Enabled |
-| Status Page | status.enclii.dev | - | 🔲 Pending | ✅ Enabled |
+| Landing Page | enclii.dev | - | ✅ Running | ✅ Enabled |
+| Status Page | status.enclii.dev | - | ✅ Running | ✅ Enabled |
 
 ### Janua Services (github.com/madfam-org/janua)
 | Service | URL | Port | Status | Auto-Deploy |
 |---------|-----|------|--------|-------------|
-| Janua API | api.janua.madfam.io | 4100 | ✅ Running | ✅ Enabled |
-| Janua Dashboard | auth.madfam.io | 4101 | ✅ Running | ✅ Enabled |
-| Janua Admin | admin.janua.madfam.io | 4102 | 🔲 Pending | ✅ Enabled |
-| Janua Docs | docs.janua.madfam.io | 4103 | 🔲 Pending | ✅ Enabled |
-| Janua Website | janua.madfam.io | 4104 | 🔲 Pending | ✅ Enabled |
-| Janua Landing | landing.janua.madfam.io | - | 🔲 Pending | ✅ Enabled |
+| Janua API | api.janua.dev | 80 | ✅ Running | ✅ Enabled |
+| Janua Dashboard | app.janua.dev | 80 | ✅ Running | ✅ Enabled |
+| Janua Admin | admin.janua.dev | 80 | ✅ Running | ✅ Enabled |
+| Janua Docs | docs.janua.dev | 80 | ✅ Running | ✅ Enabled |
+| Janua Website | janua.dev | 80 | ✅ Running | ✅ Enabled |
 
 ### Solarpunk Foundry Services (github.com/madfam-org/solarpunk-foundry)
 | Service | URL | Port | Status | Auto-Deploy |
@@ -46,11 +45,10 @@ This document describes how Enclii deploys **itself** using its own platform, an
 
 ### GitHub Webhook Status
 
-| Repository | Webhook Configured | Webhook ID | Events |
-|------------|-------------------|------------|--------|
-| madfam-org/enclii | ✅ Active | 585841923 | push, pull_request |
-| madfam-org/janua | 🔲 Pending | - | push, pull_request |
-| madfam-org/solarpunk-foundry | 🔲 Pending | - | push, pull_request |
+| Repository | Webhook Configured | Events |
+|------------|-------------------|--------|
+| madfam-org/enclii | ✅ Active | push, pull_request |
+| madfam-org/janua | ✅ Active | push, pull_request |
 
 **Webhook Endpoint:** `POST /v1/webhooks/github`
 **Events:** Push (triggers auto-deploy on main branch)
@@ -134,8 +132,8 @@ This document describes how Enclii deploys **itself** using its own platform, an
 ### What's Still Pending
 
 **Remaining Work:**
-- 🔲 Landing page (enclii.dev) - not yet deployed via Enclii
-- 🔲 Status page (status.enclii.dev) - not yet implemented
+- ✅ Landing page (enclii.dev) - deployed and running
+- ✅ Status page (status.enclii.dev) - deployed and running
 - 🔲 Full end-to-end test with actual push event (awaiting next commit to main)
 
 ---
@@ -736,8 +734,8 @@ kubectl exec -it -n enclii-platform deployment/janua -- date
 - [x] K8s reconciliation integration
 
 ### Phase 5: Remaining Work 🔲 IN PROGRESS
-- [ ] Deploy landing page via Enclii
-- [ ] Implement status page
+- [x] Deploy landing page via Enclii
+- [x] Implement status page
 - [ ] Full end-to-end test with production push
 - [ ] Load test to 1000 RPS
 - [ ] Update sales materials with dogfooding narrative
