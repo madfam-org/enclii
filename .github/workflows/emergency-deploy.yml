@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     if: contains(github.event.inputs.services, 'switchyard-api')
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -78,43 +78,49 @@ jobs:
       image: ${{ env.IMAGE_PREFIX }}/switchyard-api:${{ github.sha }}
 
   deploy:
-    name: Deploy to Production
+    name: Deploy via GitOps
     runs-on: ubuntu-latest
     needs: [build-switchyard-api]
     if: always() && (needs.build-switchyard-api.result == 'success' || needs.build-switchyard-api.result == 'skipped')
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup kubectl
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update switchyard-api image digest
+        if: contains(github.event.inputs.services, 'switchyard-api') && needs.build-switchyard-api.result == 'success'
+        working-directory: infra/k8s/production
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/switchyard-api
+          TAG: ${{ github.sha }}
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-          kubectl cluster-info
+          # Use tag-based reference (digest resolved by ArgoCD Image Updater on next poll)
+          echo "Setting image: switchyard-api=${IMAGE}:${TAG}"
+          kustomize edit set image "switchyard-api=${IMAGE}:${TAG}"
 
-      - name: Deploy switchyard-api
-        if: contains(github.event.inputs.services, 'switchyard-api')
+      - name: Commit and push
         run: |
-          echo "=== Deploying switchyard-api ==="
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add infra/k8s/production/kustomization.yaml
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "$(cat <<'EOF'
+          build: emergency update image digests for ${{ github.event.inputs.services }}
 
-          # Update the deployment with the new image
-          kubectl set image deployment/switchyard-api \
-            switchyard-api=${{ env.IMAGE_PREFIX }}/switchyard-api:${{ github.sha }} \
-            -n enclii
+          Triggered by: ${{ github.actor }}
+          Source SHA: ${{ github.sha }}
+          EOF
+          )"
+          git push origin main
 
-          # Force restart to ensure new image is pulled
-          kubectl rollout restart deployment/switchyard-api -n enclii
-
-          # Wait for rollout
-          kubectl rollout status deployment/switchyard-api -n enclii --timeout=300s
-
-          echo "=== switchyard-api deployed successfully ==="
-
-      - name: Verify deployment
+      - name: Monitor
         run: |
-          echo "=== Checking pod status ==="
-          kubectl get pods -n enclii -l app=switchyard-api
-
-          echo "=== Checking deployment ==="
-          kubectl get deployment switchyard-api -n enclii
+          echo "Image reference committed to kustomization.yaml."
+          echo "ArgoCD will auto-sync within ~3 minutes."
+          echo "Monitor: kubectl get application core-services -n argocd -w"

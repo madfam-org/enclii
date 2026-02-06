@@ -38,7 +38,7 @@ spec:
         - name: ghcr-credentials
       containers:
         - name: landing-page
-          image: ghcr.io/madfam-org/enclii/landing-page:latest@sha256:f8a742903fd33d290958c93796d6acd45d51b51ea9b06483dd2ffcd8d6e21736
+          image: landing-page
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 4204

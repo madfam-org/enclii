@@ -33,7 +33,7 @@ spec:
         - name: ghcr-credentials
       containers:
         - name: switchyard-ui
-          image: ghcr.io/madfam-org/enclii/switchyard-ui:latest@sha256:763d84b0f4761562ddb863e0ff5733d69cc4c2f62938baf83e937f5a894ee363
+          image: switchyard-ui
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT

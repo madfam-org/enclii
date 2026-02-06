@@ -28,8 +28,16 @@ resources:
 
 images:
   - name: switchyard-api
+    newName: ghcr.io/madfam-org/enclii/switchyard-api
     newTag: latest
   - name: switchyard-ui
+    newName: ghcr.io/madfam-org/enclii/switchyard-ui
+    newTag: latest
+  - name: landing-page
+    newName: ghcr.io/madfam-org/enclii/landing-page
+    newTag: latest
+  - name: docs-site
+    newName: ghcr.io/madfam-org/enclii/docs-site
     newTag: latest
 
 namespace: default
