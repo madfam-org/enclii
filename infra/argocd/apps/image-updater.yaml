@@ -96,6 +96,7 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
 
   # Ignore status fields and shared ConfigMap (managed by image-updater-config app)
   ignoreDifferences:
