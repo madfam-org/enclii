@@ -37,6 +37,10 @@ type Repositories struct {
 	CIRuns              *CIRunRepository
 	Functions           *FunctionRepository
 
+	// Deployment Lifecycle & Onboarding
+	LifecycleEvents *LifecycleEventRepository
+	Onboardings     *OnboardingRepository
+
 	// Admin Control Plane repositories
 	Clusters            *ClusterRepository
 	BareMetalHosts      *BareMetalHostRepository
@@ -95,6 +99,10 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		CIRuns:              NewCIRunRepositoryWithTx(tx),
 		Functions:           NewFunctionRepositoryWithTx(tx),
 
+		// Deployment Lifecycle & Onboarding
+		LifecycleEvents: NewLifecycleEventRepositoryWithTx(tx),
+		Onboardings:     NewOnboardingRepositoryWithTx(tx),
+
 		// Admin Control Plane
 		Clusters:            NewClusterRepositoryWithTx(tx),
 		BareMetalHosts:      NewBareMetalHostRepositoryWithTx(tx),
@@ -151,6 +159,10 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Webhooks:            NewWebhookRepository(db),
 		CIRuns:              NewCIRunRepository(db),
 		Functions:           NewFunctionRepository(db),
+
+		// Deployment Lifecycle & Onboarding
+		LifecycleEvents: NewLifecycleEventRepository(db),
+		Onboardings:     NewOnboardingRepository(db),
 
 		// Admin Control Plane
 		Clusters:            NewClusterRepository(db),

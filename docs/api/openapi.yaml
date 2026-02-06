@@ -99,6 +99,10 @@ tags:
     description: External integrations (GitHub)
   - name: tokens
     description: API token management for CLI/CI
+  - name: lifecycle
+    description: Deployment lifecycle event tracking and timeline queries
+  - name: onboarding
+    description: Self-service repository onboarding
   - name: admin
     description: Admin control plane - fleet, clusters, infrastructure, multi-tenancy, governance, costs
 
@@ -2902,6 +2906,267 @@ paths:
           description: Callback processed
 
   # ============================================
+  # DEPLOYMENT LIFECYCLE ENDPOINTS
+  # ============================================
+
+  /v1/callbacks/lifecycle-event:
+    post:
+      summary: Report a deployment lifecycle event
+      description: |
+        Called by external CI workflows (dhanam, janua, etc.) to report build and deploy events.
+        Auth: Bearer token (ENCLII_CALLBACK_TOKEN).
+      tags: [lifecycle]
+      operationId: reportLifecycleEvent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LifecycleEventCreate'
+      responses:
+        '201':
+          description: Event recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: recorded
+        '400':
+          description: Invalid event data
+        '401':
+          description: Invalid or missing bearer token
+
+  /v1/lifecycle/timeline/{owner}/{repo}:
+    get:
+      summary: Get lifecycle timeline for a repository
+      description: Returns lifecycle events for the specified repo, most recent first.
+      tags: [lifecycle]
+      operationId: getLifecycleTimeline
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+          description: Filter by branch name
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, staging, preview, dev]
+          description: Filter by target environment
+        - name: event_type
+          in: query
+          schema:
+            type: string
+          description: Filter by event type
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Only events after this timestamp
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: List of lifecycle events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+
+  /v1/lifecycle/branch/{owner}/{repo}/{branch}:
+    get:
+      summary: Get lifecycle events for a specific branch
+      tags: [lifecycle]
+      operationId: getLifecycleBranch
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Events for the branch
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+
+  /v1/lifecycle/commit/{sha}:
+    get:
+      summary: Get lifecycle events for a specific commit
+      tags: [lifecycle]
+      operationId: getLifecycleCommit
+      parameters:
+        - name: sha
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Events for the commit
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+
+  /v1/lifecycle/events:
+    get:
+      summary: List recent lifecycle events
+      description: Returns recent lifecycle events across all repos, filterable.
+      tags: [lifecycle]
+      operationId: listLifecycleEvents
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+        - name: event_type
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of recent events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+
+  # ============================================
+  # ONBOARDING ENDPOINTS
+  # ============================================
+
+  /v1/admin/onboard:
+    post:
+      summary: Onboard a new repository
+      description: |
+        Multi-step onboarding: validates enclii.yaml, creates project/services,
+        sets up webhook, generates ArgoCD app YAML, provisions domains.
+      tags: [onboarding]
+      operationId: onboardRepo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingRequest'
+      responses:
+        '200':
+          description: Onboarding completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registration:
+                    $ref: '#/components/schemas/OnboardingRegistration'
+                  argocd_yaml:
+                    type: string
+                  next_steps:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Invalid request or enclii.yaml
+        '500':
+          description: Onboarding step failed
+    get:
+      summary: List all onboarded repositories
+      tags: [onboarding]
+      operationId: listOnboardings
+      responses:
+        '200':
+          description: List of onboarding registrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OnboardingRegistration'
+
+  /v1/admin/onboard/{owner}/{repo}:
+    get:
+      summary: Get onboarding status for a repository
+      tags: [onboarding]
+      operationId: getOnboarding
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Onboarding registration details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingRegistration'
+        '404':
+          description: Repository not onboarded
+
+  # ============================================
   # ADMIN CONTROL PLANE ENDPOINTS
   # ============================================
 
@@ -4881,6 +5146,126 @@ components:
         cost_cents:
           type: integer
         created_at:
+          type: string
+          format: date-time
+
+    # ===== Lifecycle =====
+    DeploymentLifecycleEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deployment_id:
+          type: string
+          format: uuid
+          nullable: true
+        release_id:
+          type: string
+          format: uuid
+          nullable: true
+        ci_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        service_id:
+          type: string
+          format: uuid
+          nullable: true
+        repo_full_name:
+          type: string
+        commit_sha:
+          type: string
+        branch:
+          type: string
+        ref:
+          type: string
+        target_env:
+          type: string
+          nullable: true
+        event_type:
+          type: string
+          enum: [push_received, build_started, build_succeeded, build_failed, image_pushed, digest_committed, deploy_started, deploy_synced, deploy_healthy, deploy_degraded, deploy_failed, preview_created, preview_destroyed]
+        source:
+          type: string
+          enum: [github_webhook, ci_callback, argocd_callback, manual]
+        message:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    LifecycleEventCreate:
+      type: object
+      required: [repo_full_name, commit_sha, branch, ref, event_type, source]
+      properties:
+        repo_full_name:
+          type: string
+        commit_sha:
+          type: string
+        branch:
+          type: string
+        ref:
+          type: string
+        event_type:
+          type: string
+        source:
+          type: string
+        target_env:
+          type: string
+        message:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    OnboardingRequest:
+      type: object
+      required: [repo_full_name]
+      properties:
+        repo_full_name:
+          type: string
+          description: GitHub owner/repo (e.g. madfam-org/my-project)
+        branch:
+          type: string
+          default: main
+          description: Branch to read enclii.yaml from
+
+    OnboardingRegistration:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        repo_full_name:
+          type: string
+        webhook_id:
+          type: integer
+          nullable: true
+        argocd_app_name:
+          type: string
+          nullable: true
+        onboard_status:
+          type: string
+          enum: [pending, in_progress, completed, failed]
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 

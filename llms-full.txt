@@ -72,6 +72,23 @@ Git push → GitHub webhook → Roundhouse build → ArgoCD sync → K8s deploym
                           ↳ Parse enclii.yaml → Auto-provision domains (tunnel routes + DNS CNAMEs)
 ```
 
+### External Repo Auto-Deploy Flow
+```
+Git push → CI build → GHCR push → digest commit to kustomization.yaml → ArgoCD sync
+         ↳ POST /v1/callbacks/lifecycle-event (tracks push_received → image_pushed → deploy_healthy)
+```
+
+### Deployment Lifecycle Tracking
+- Events: push_received, build_started, build_succeeded, image_pushed, deploy_synced, deploy_healthy
+- Query: GET /v1/lifecycle/timeline/:owner/:repo, /branch/:owner/:repo/:branch, /commit/:sha
+- Callback: POST /v1/callbacks/lifecycle-event (bearer token auth)
+- Branch→env mapping: main→production, staging/*→staging, feature/*→preview
+
+### Self-Service Onboarding
+- POST /v1/admin/onboard — validates enclii.yaml, creates project/services, generates ArgoCD app YAML
+- GET /v1/admin/onboard — list onboarded repos
+- Guides: [Deployment Tracking](./docs/guides/DEPLOYMENT_TRACKING.md), [Onboarding](./docs/guides/ONBOARDING_GUIDE.md), [External Repos](./docs/guides/EXTERNAL_REPO_DEPLOY.md)
+
 ---
 
 ## System Architecture (SYSTEM_CONTEXT.md)
@@ -310,6 +327,12 @@ Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Lo
 - [Janua SSO](https://github.com/madfam-org/janua): auth.madfam.io — OIDC/RS256 JWT authentication
 - [Dhanam](https://github.com/madfam-org/dhanam): dhan.am — managed by ArgoCD
 - [Integration Docs](./docs/integrations/)
+
+## Deployment & Onboarding
+
+- [Deployment Tracking](./docs/guides/DEPLOYMENT_TRACKING.md): Lifecycle event timeline API
+- [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md): Self-service repo registration
+- [External Repo Deploy](./docs/guides/EXTERNAL_REPO_DEPLOY.md): Auto-deploy for dhanam/janua/client repos
 
 ## Optional
 

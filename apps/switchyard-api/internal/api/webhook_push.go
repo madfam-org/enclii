@@ -138,6 +138,30 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		logging.String("pusher", event.Pusher.Name),
 		logging.String("commit_message", truncateString(event.HeadCommit.Message, 100)))
 
+	// Emit push_received lifecycle event
+	pushMsg := fmt.Sprintf("Push to %s by %s: %s", branch, event.Pusher.Name, truncateString(event.HeadCommit.Message, 80))
+	var firstProjectID, firstServiceID *uuid.UUID
+	if len(services) > 0 {
+		firstProjectID = &services[0].ProjectID
+		firstServiceID = &services[0].ID
+	}
+	h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
+		ProjectID:    firstProjectID,
+		ServiceID:    firstServiceID,
+		RepoFullName: event.Repository.FullName,
+		CommitSHA:    gitSHA,
+		Branch:       branch,
+		Ref:          event.Ref,
+		EventType:    types.LifecyclePushReceived,
+		Source:       types.SourceGitHubWebhook,
+		Message:      &pushMsg,
+		Metadata: map[string]interface{}{
+			"pusher":        event.Pusher.Name,
+			"service_count": len(services),
+			"changed_files": len(changedFiles),
+		},
+	})
+
 	// Trigger builds for matching services (filtered by watch paths if configured)
 	type buildResult struct {
 		Service   string `json:"service"`

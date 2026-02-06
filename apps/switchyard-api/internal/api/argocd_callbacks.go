@@ -148,6 +148,37 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			logging.String("deployment_id", deployment.ID.String()),
 			logging.String("service_name", serviceName),
 			logging.String("revision", req.Revision))
+
+		// Emit lifecycle event for the deploy
+		var lifecycleEventType string
+		switch {
+		case req.HealthStatus == "Healthy" && (req.SyncStatus == "Synced" || req.SyncStatus == ""):
+			lifecycleEventType = types.LifecycleDeployHealthy
+		case req.HealthStatus == "Degraded":
+			lifecycleEventType = types.LifecycleDeployDegraded
+		default:
+			lifecycleEventType = types.LifecycleDeploySynced
+		}
+		deployMsg := fmt.Sprintf("ArgoCD sync %s: %s/%s", req.SyncStatus, req.AppName, serviceName)
+		h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
+			DeploymentID: &deployment.ID,
+			ReleaseID:    &release.ID,
+			ProjectID:    &service.ProjectID,
+			ServiceID:    &service.ID,
+			RepoFullName: repoFullNameFromImage(imageURI),
+			CommitSHA:    req.Revision,
+			Branch:       "main",
+			Ref:          "refs/heads/main",
+			EventType:    lifecycleEventType,
+			Source:       types.SourceArgocdCallback,
+			Message:      &deployMsg,
+			Metadata: map[string]interface{}{
+				"app_name":      req.AppName,
+				"sync_status":   req.SyncStatus,
+				"health_status": req.HealthStatus,
+				"image":         imageURI,
+			},
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -208,4 +239,28 @@ func shortSHA(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// repoFullNameFromImage extracts the org/repo from a GHCR image URI
+// e.g., "ghcr.io/madfam-org/enclii/switchyard-api:latest" → "madfam-org/enclii"
+// e.g., "ghcr.io/madfam-org/dhanam/api:main" → "madfam-org/dhanam"
+func repoFullNameFromImage(imageURI string) string {
+	// Remove tag/digest
+	ref := imageURI
+	if idx := strings.LastIndex(ref, "@"); idx != -1 {
+		ref = ref[:idx]
+	}
+	if idx := strings.LastIndex(ref, ":"); idx != -1 {
+		ref = ref[:idx]
+	}
+
+	// Remove registry prefix (e.g., "ghcr.io/")
+	ref = strings.TrimPrefix(ref, "ghcr.io/")
+
+	// Split into parts: org/repo/service
+	parts := strings.Split(ref, "/")
+	if len(parts) >= 2 {
+		return parts[0] + "/" + parts[1]
+	}
+	return ref
 }

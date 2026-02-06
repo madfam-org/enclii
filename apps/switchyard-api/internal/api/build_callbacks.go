@@ -83,6 +83,33 @@ func (h *Handler) processBuildCallback(ctx context.Context, req *BuildCallbackRe
 		return err
 	}
 
+	// Emit build lifecycle event
+	buildEventType := types.LifecycleBuildSucceeded
+	if !req.Success {
+		buildEventType = types.LifecycleBuildFailed
+	}
+	buildMsg := "Build completed"
+	if !req.Success && req.ErrorMessage != "" {
+		buildMsg = "Build failed: " + req.ErrorMessage
+	}
+	h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
+		ReleaseID:    &req.ReleaseID,
+		ProjectID:    nil, // Will be resolved below if service lookup succeeds
+		RepoFullName: release.RepoURL,
+		CommitSHA:    release.GitSHA,
+		Branch:       release.GitBranch,
+		Ref:          "refs/heads/" + release.GitBranch,
+		EventType:    buildEventType,
+		Source:       types.SourceCICallback,
+		Message:      &buildMsg,
+		Metadata: map[string]interface{}{
+			"job_id":        req.JobID.String(),
+			"image_uri":     req.ImageURI,
+			"image_digest":  req.ImageDigest,
+			"duration_secs": req.DurationSecs,
+		},
+	})
+
 	if req.Success {
 		// Update release with build results
 		if req.ImageURI != "" {

@@ -292,6 +292,8 @@ Access to Dispatch requires BOTH:
 - ✅ Real build pipeline (Buildpacks/Dockerfile detection)
 - ✅ Container registry push (ghcr.io/madfam-org)
 - ✅ Kubernetes reconciler for deployments
+- ✅ Deployment lifecycle event tracking (push → build → deploy → healthy)
+- ✅ Self-service repo onboarding API
 
 See [DOGFOODING_GUIDE.md](./docs/guides/DOGFOODING_GUIDE.md) for complete implementation plan.
 
@@ -320,6 +322,18 @@ See [DOGFOODING_GUIDE.md](./docs/guides/DOGFOODING_GUIDE.md) for complete implem
 2. **Register in root** in `packages/cli/internal/cmd/root.go`
 3. **Add documentation** in `docs/cli/commands/`
 4. **Test locally**: `go run ./cmd/enclii <command>`
+
+### Auto-Deploy Pipeline (External Repos)
+
+External repos (dhanam, janua, etc.) auto-deploy via GitOps:
+1. Push to `main` triggers CI → builds Docker image → pushes to GHCR
+2. CI commits image digest to `kustomization.yaml` via `kustomize edit set image`
+3. ArgoCD detects the change and syncs the new digest to K8s
+4. Lifecycle events tracked at each step via `POST /v1/callbacks/lifecycle-event`
+
+See [EXTERNAL_REPO_DEPLOY.md](./docs/guides/EXTERNAL_REPO_DEPLOY.md) for the full pattern.
+See [DEPLOYMENT_TRACKING.md](./docs/guides/DEPLOYMENT_TRACKING.md) for the lifecycle event API.
+See [ONBOARDING_GUIDE.md](./docs/guides/ONBOARDING_GUIDE.md) for adding new repos.
 
 ### Deploying a Service Change
 

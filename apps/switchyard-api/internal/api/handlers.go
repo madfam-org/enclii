@@ -244,6 +244,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	router.POST("/v1/callbacks/build-complete", h.BuildCompleteCallback)
 	router.POST("/v1/callbacks/function-build-complete", h.FunctionBuildCompleteCallback)
 	router.POST("/v1/callbacks/argocd-sync", h.ArgocdSyncCallback)
+	router.POST("/v1/callbacks/lifecycle-event", h.LifecycleEventCallback)
 
 	// Internal API endpoints (for Roundhouse webhook integration)
 	// GET /v1/services?git_repo=... - Find services by git repository URL
@@ -445,6 +446,12 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Cloudflare Tunnel Status
 			protected.GET("/tunnel/status", h.GetTunnelStatus)
 
+			// Deployment Lifecycle Timeline
+			protected.GET("/lifecycle/timeline/:owner/:repo", h.GetLifecycleTimeline)
+			protected.GET("/lifecycle/branch/:owner/:repo/:branch", h.GetLifecycleBranch)
+			protected.GET("/lifecycle/commit/:sha", h.GetLifecycleCommit)
+			protected.GET("/lifecycle/events", h.GetLifecycleEvents)
+
 			// Activity (Audit Logs)
 			protected.GET("/activity", h.GetActivity)
 			protected.GET("/activity/actions", h.GetActivityActions)
@@ -563,6 +570,11 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 				admin.GET("/costs", h.GetCostAllocations)
 				admin.GET("/costs/summary", h.GetCostSummary)
 				admin.POST("/costs/allocate", h.AllocateCost)
+
+				// Repo Onboarding (self-service)
+				admin.POST("/onboard", h.OnboardRepo)
+				admin.GET("/onboard", h.ListOnboardings)
+				admin.GET("/onboard/:owner/:repo", h.GetOnboarding)
 
 				// Topology (admin-level)
 				admin.GET("/topology", h.GetAdminTopology)
