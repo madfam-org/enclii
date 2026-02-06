@@ -15,7 +15,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-backup-script
-  namespace: enclii
+  namespace: data
   labels:
     app.kubernetes.io/name: postgres-backup
     app.kubernetes.io/component: backup
@@ -29,6 +29,7 @@ data:
     BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
     BACKUP_PREFIX="${BACKUP_PREFIX:-postgres}"
     RETENTION_DAYS="${RETENTION_DAYS:-30}"
+    R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
     # Timestamp for backup file
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -37,15 +38,19 @@ data:
 
     echo "[$(date)] Starting PostgreSQL backup..."
 
-    # Create backup
-    echo "[$(date)] Running pg_dump..."
-    PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
+    # Install AWS CLI (lightweight, cached in /tmp if container reuses)
+    if ! command -v aws &>/dev/null; then
+      echo "[$(date)] Installing AWS CLI..."
+      apt-get update -qq && apt-get install -y -qq awscli >/dev/null 2>&1
+    fi
+
+    # Dump all databases (enclii, janua, dhanam share this postgres)
+    echo "[$(date)] Running pg_dumpall..."
+    PGPASSWORD="${POSTGRES_PASSWORD}" pg_dumpall \
       -h "${POSTGRES_HOST}" \
       -U "${POSTGRES_USER}" \
-      -d "${POSTGRES_DB}" \
-      --format=plain \
       --no-owner \
-      --no-acl \
+      --no-role-passwords \
       | gzip > "${BACKUP_FILE}"
 
     BACKUP_SIZE=$(du -h "${BACKUP_FILE}" | cut -f1)
@@ -54,11 +59,11 @@ data:
     # Upload to R2
     echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
     aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_KEY}" \
-      --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+      --endpoint-url "${R2_ENDPOINT}"
 
     # Also maintain a 'latest' copy for easy access
     aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest.sql.gz" \
-      --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+      --endpoint-url "${R2_ENDPOINT}"
 
     echo "[$(date)] Upload complete"
 
@@ -67,7 +72,7 @@ data:
     CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
 
     aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/" \
-      --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+      --endpoint-url "${R2_ENDPOINT}" \
       | while read -r line; do
         FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1 || echo "")
         FILE_NAME=$(echo "$line" | awk '{print $4}')
@@ -75,7 +80,7 @@ data:
         if [[ -n "${FILE_DATE}" && "${FILE_DATE}" < "${CUTOFF_DATE}" && "${FILE_NAME}" != "latest.sql.gz" ]]; then
           echo "[$(date)] Deleting old backup: ${FILE_NAME}"
           aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${FILE_NAME}" \
-            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+            --endpoint-url "${R2_ENDPOINT}"
         fi
       done
 
@@ -140,7 +145,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: postgres-backup
-  namespace: enclii
+  namespace: data
   labels:
     app.kubernetes.io/name: postgres-backup
     app.kubernetes.io/component: backup
@@ -243,7 +248,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: postgres-backup-manual
-  namespace: enclii
+  namespace: data
   labels:
     app.kubernetes.io/name: postgres-backup
     app.kubernetes.io/component: backup

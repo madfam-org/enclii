@@ -300,6 +300,7 @@ metadata:
     app.kubernetes.io/component: ingress
 spec:
   replicas: 2  # HA: run multiple replicas for redundancy
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: cloudflared

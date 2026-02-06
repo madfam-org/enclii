@@ -15,7 +15,7 @@ metadata:
       Limits container images to approved registries only.
       This prevents pulling from untrusted sources.
 spec:
-  validationFailureAction: Audit  # Start with audit, move to Enforce
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -31,11 +31,12 @@ spec:
                 - kube-system
                 - kyverno
                 - longhorn-system
-                - arc-system
+                - arc-systems
+                - arc-runners
       validate:
         message: >-
           Images must come from approved registries:
-          ghcr.io/madfam-org, gcr.io, docker.io, quay.io
+          ghcr.io/madfam-org, gcr.io, docker.io, quay.io, registry.k8s.io
         pattern:
           spec:
             containers:

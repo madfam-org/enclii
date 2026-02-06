@@ -17,8 +17,9 @@ metadata:
 spec:
   hard:
     # Base: 3.4 CPU / 3Gi across 6 pods (3 services x 2 replicas)
-    # Headroom: +2.6 CPU / +5Gi for rolling update surge (maxSurge: 1 per service)
-    requests.cpu: "3"
-    limits.cpu: "6"
-    requests.memory: 4Gi
-    limits.memory: 8Gi
+    # Headroom: +6.6 CPU / +9Gi for rolling update surge + future services
+    # Previous limits.cpu: 6 caused pods stuck Pending during rolling updates (90% at 5400m)
+    requests.cpu: "5"
+    limits.cpu: "10"
+    requests.memory: 6Gi
+    limits.memory: 12Gi

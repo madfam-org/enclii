@@ -7,300 +7,217 @@ tags: [production, deployment, checklist, operations]
 
 # Enclii Production Deployment Checklist
 
-**Status:** ✅ 100% Production Ready
-**Last Updated:** January 2026
+**Status:** Production Beta v0.1.0
+**Last Updated:** February 2026
+**Last Audit:** Wave 15 Session 13 (Feb 6, 2026)
 
 ---
 
 ## Pre-Deployment Checklist
 
 ### 1. Accounts & Credentials
-- [ ] **Hetzner Cloud account** created at https://console.hetzner.cloud
-- [ ] **Hetzner API token** generated (Read & Write permissions)
-- [ ] **Cloudflare account** created at https://dash.cloudflare.com
-- [ ] **Cloudflare API token** generated with permissions:
-  - Zone:DNS:Edit
-  - Zone:Zone:Read  
-  - Account:Cloudflare Tunnel:Edit
-  - Account:R2:Edit
-- [ ] **Cloudflare R2** enabled and API keys generated
-- [ ] **Domain** added to Cloudflare (DNS managed by Cloudflare)
+- [x] **Hetzner Cloud account** created
+- [x] **Hetzner API token** generated (Read & Write permissions)
+- [x] **Cloudflare account** created
+- [x] **Cloudflare API token** generated (Zone:DNS:Edit, Zone:Zone:Read, Account:Tunnel:Edit, Account:R2:Edit)
+- [x] **Cloudflare R2** enabled and API keys generated
+- [x] **Domain** added to Cloudflare (DNS managed by Cloudflare)
+- [x] **GitHub OAuth** configured for repo imports
+- [x] **GHCR credentials** (long-lived PAT for imagePullSecrets)
 
 ### 2. Local Tools
-- [ ] `terraform` >= 1.5.0 installed
-- [ ] `kubectl` installed
-- [ ] `hcloud` CLI installed
-- [ ] `cloudflared` installed
-- [ ] `jq` installed
-
-Install all with: `brew install terraform kubectl hcloud cloudflared jq`
+- [x] `terraform` >= 1.5.0
+- [x] `kubectl`
+- [x] `hcloud` CLI
+- [x] `cloudflared`
+- [x] `jq`
+- [x] `gh` CLI (GitHub)
 
 ### 3. Configuration
-- [ ] Copy `terraform.tfvars.example` → `terraform.tfvars`
-- [ ] Fill in all credential values (no `YOUR_*` placeholders)
-- [ ] Add your IP to `management_ips` for SSH access
-- [ ] Choose datacenter location (recommend `nbg1` for EU)
-- [ ] Review compute sizing (defaults are good for starter)
+- [x] `terraform.tfvars` filled (no `YOUR_*` placeholders)
+- [x] Management IP in `management_ips` for SSH access
+- [x] Datacenter location selected
 
 ---
 
-## Deployment Steps
+## Infrastructure Status
 
-### Phase 1: Infrastructure (30-45 minutes)
+### Compute & Kubernetes
+- [x] 2-node k3s cluster (foundry-core + foundry-builder-01)
+- [x] k3s v1.33.6+k3s1 on both nodes
+- [x] Builder node tainted (builder=true:NoSchedule)
+- [x] Cloudflare Tunnel ingress (2 replicas + PDB)
+- [x] 28 tunnel routes configured
+- [x] Zero exposed node ports
 
-```bash
-cd /path/to/enclii
+### Database & Caching
+- [x] PostgreSQL 15 in-cluster (data namespace, Longhorn PVC)
+- [x] Redis 7 in-cluster (data namespace)
+- [x] Redis authentication via K8s Secret
+- [x] PostgreSQL daily backup CronJob to R2
+- [x] Longhorn backup target configured to R2
 
-# 1. Validate configuration
-./scripts/deploy-production.sh check
+### Storage
+- [x] Longhorn CSI v1.7.2 (sole default StorageClass)
+- [x] local-path demoted from default
+- [x] Longhorn backup to Cloudflare R2
 
-# 2. Initialize Terraform
-./scripts/deploy-production.sh init
+### GitOps & CI/CD
+- [x] ArgoCD App-of-Apps (16 apps)
+- [x] ArgoCD self-heal enabled
+- [x] GitHub webhook CI/CD operational
+- [x] Auto-deploy pipeline (enclii, dhanam, janua)
+- [x] Kustomize digest commit pattern working
+- [x] Concurrent digest commit retry loop
+- [x] Deployment lifecycle event tracking
+- [x] Emergency deploy workflow
 
-# 3. Review plan
-./scripts/deploy-production.sh plan
-
-# 4. Apply infrastructure
-./scripts/deploy-production.sh apply
-
-# 5. Get kubeconfig (wait 2-3 min for k3s)
-./scripts/deploy-production.sh kubeconfig
-
-# 6. Post-deployment setup
-./scripts/deploy-production.sh post-deploy
-```
-
-### Phase 2: Core Services (15-20 minutes)
-
-```bash
-export KUBECONFIG=$(pwd)/kubeconfig.yaml
-
-# Deploy PostgreSQL
-kubectl apply -f infra/k8s/base/postgres.yaml
-
-# Deploy Redis
-kubectl apply -f infra/k8s/base/redis.yaml
-
-# Wait for databases
-kubectl wait --for=condition=ready pod -l app=postgres -n enclii-production --timeout=300s
-kubectl wait --for=condition=ready pod -l app=redis -n enclii-production --timeout=300s
-
-# Deploy Switchyard API
-kubectl apply -f infra/k8s/base/switchyard-api.yaml
-
-# Deploy Switchyard UI
-kubectl apply -f infra/k8s/base/switchyard-ui.yaml
-```
-
-### Phase 3: Verification (10 minutes)
-
-```bash
-# Check all pods are running
-kubectl get pods -A
-
-# Check services
-kubectl get svc -A
-
-# Check tunnel connectivity
-kubectl logs -n ingress -l app=cloudflared
-
-# Test API endpoint
-curl https://api.enclii.dev/health
-
-# Test UI
-curl https://app.enclii.dev
-```
+### Authentication
+- [x] Janua SSO (OIDC/OAuth 2.0 with RS256 JWT)
+- [x] Admin user created (admin@madfam.io)
+- [x] 2 OAuth clients registered (CLI + Platform)
+- [x] RBAC with admin/developer/viewer roles
+- [x] Session management via Redis
+- [x] SSO Logout (RP-Initiated)
 
 ---
 
-## Post-Deployment Checklist
+## Security Checklist
 
-### Security
-- [ ] Verify no public IPs on worker nodes (tunnel-only access)
-- [ ] Verify NetworkPolicies are enforced
-- [ ] Verify Sealed Secrets controller is running
-- [ ] Create sealed secrets for production credentials
-- [ ] Enable Kubernetes audit logging
+### Network Security
+- [x] Zero exposed node ports (all via Cloudflare Tunnel)
+- [x] NetworkPolicies for enclii namespace
+- [x] NetworkPolicies for dhanam namespace (default-deny + allow)
+- [x] Cloudflare Zero Trust ingress
+- [ ] NetworkPolicies for janua namespace
+- [ ] Default-deny for all namespaces
 
-### Monitoring
-- [ ] Deploy Prometheus operator
-- [ ] Deploy Grafana with dashboards
-- [ ] Configure alert rules
-- [ ] Set up PagerDuty/Opsgenie integration
-- [ ] Verify metrics are being collected
+### Image Security
+- [x] Kyverno `restrict-image-registries` in **Enforce** mode
+- [x] Kyverno `block-latest-ifnotpresent` active
+- [x] Kyverno `require-probes` active
+- [x] Kyverno `require-resources` active
+- [x] Monitoring namespace PolicyException configured
+- [ ] Cosign image signature verification (Audit mode)
 
-### Backups
-- [ ] Configure PostgreSQL backup to R2
-- [ ] Test backup restoration
-- [ ] Document recovery procedures
+### Secrets Management
+- [x] Redis password in K8s Secret (not in git)
+- [x] OIDC credentials in K8s Secret
+- [x] ArgoCD webhook secret configured
+- [x] GHCR credentials per namespace
+- [x] ENCLII_CALLBACK_TOKEN in all 3 repos
+- [ ] HashiCorp Vault / ExternalSecrets (future)
 
-### DNS & SSL
-- [ ] Verify api.enclii.dev resolves correctly
-- [ ] Verify app.enclii.dev resolves correctly
-- [ ] Verify SSL certificates are valid
-- [ ] Test Cloudflare for SaaS (custom domains)
-
----
-
-## Infrastructure Summary
-
-### Compute (Hetzner Cloud)
-| Resource | Spec | Monthly Cost |
-|----------|------|--------------|
-| Control Plane | 1x cx21 (2 vCPU, 4GB) | €5.18 |
-| Workers | 2x cx31 (2 vCPU, 8GB) | €19.84 |
-| PostgreSQL Volume | 50GB NVMe | €2.00 |
-| Redis Volume | 10GB NVMe | €0.40 |
-| Build Cache Volume | 100GB NVMe | €4.00 |
-| **Subtotal** | | **~€31/mo** |
-
-### Networking (Cloudflare)
-| Service | Tier | Monthly Cost |
-|---------|------|--------------|
-| Cloudflare Tunnel | Free | $0 |
-| R2 Storage | Free tier (10GB) | $0 |
-| DNS | Free | $0 |
-| DDoS Protection | Free | $0 |
-| For SaaS | 100 domains free | $0 |
-| **Subtotal** | | **$0** |
-
-### Total: ~$55/month (current single-node production)
+### Pod Security
+- [x] PostgreSQL: seccompProfile, capability restrictions
+- [x] Redis: runAsNonRoot, read-only where possible
+- [x] All app pods: runAsNonRoot, drop ALL capabilities
+- [x] Cloudflared: restricted security context
 
 ---
 
-## Scaling Guide
+## Backup & Recovery
 
-### When to Scale
+### PostgreSQL
+- [x] Daily CronJob (3 AM UTC) → Cloudflare R2
+- [x] pg_dumpall (all databases: enclii, janua, dhanam)
+- [x] 30-day retention with automatic cleanup
+- [x] Manual backup Job template available
+- [ ] Tested restore from R2 backup
+- [ ] Automated restore drill CronJob
 
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| CPU > 80% sustained | 15 minutes | Add worker node |
-| Memory > 85% | Any pod | Increase pod limits or add node |
-| API latency P95 > 500ms | 5 minutes | Scale API replicas |
-| Disk > 80% | Any volume | Expand volume |
-
-### How to Scale
-
-```bash
-# Add worker node
-# Edit terraform.tfvars: worker_count = 3
-terraform plan
-terraform apply
-
-# Scale deployment
-kubectl scale deployment switchyard-api --replicas=3 -n enclii-production
-
-# Expand volume (Hetzner)
-hcloud volume resize <volume-id> --size 100
-```
+### Longhorn Volumes
+- [x] Backup target: s3://enclii-backups@auto/
+- [x] Credential secret configured
+- [ ] Recurring volume backup schedule
+- [ ] Tested volume restore
 
 ---
 
-## Troubleshooting
+## Monitoring & Observability
 
-### Tunnel Not Connecting
-```bash
-# Check cloudflared logs
-kubectl logs -n ingress -l app=cloudflared -f
+### Metrics
+- [x] Prometheus deployed (monitoring namespace)
+- [x] Grafana deployed
+- [x] AlertManager deployed
+- [x] Client SLO recording rules
+- [ ] Alerting rules for disk, CPU, memory
+- [ ] PagerDuty/Opsgenie integration
 
-# Verify tunnel token
-kubectl get secret cloudflared-credentials -n ingress -o yaml
-
-# Restart cloudflared
-kubectl rollout restart deployment/cloudflared -n ingress
-```
-
-### Database Connection Issues
-```bash
-# Check PostgreSQL logs
-kubectl logs -n enclii-production -l app=postgres
-
-# Test connection from pod
-kubectl exec -it deployment/switchyard-api -n enclii-production -- \
-  psql "$DATABASE_URL" -c "SELECT 1"
-```
-
-### SSL Certificate Issues
-```bash
-# Check Cloudflare tunnel config
-cloudflared tunnel info <tunnel-id>
-
-# Verify DNS records
-dig api.enclii.dev
-dig app.enclii.dev
-```
-
-### Node Not Joining Cluster
-```bash
-# SSH to server (via Cloudflare Zero Trust tunnel)
-ssh ssh.madfam.io
-# User: solarpunk (use sudo for admin commands)
-
-# Check k3s status
-sudo systemctl status k3s-agent
-
-# View k3s logs
-journalctl -u k3s-agent -f
-
-# Check token
-cat /etc/rancher/k3s/token
-```
+### Endpoints (12/12 Healthy)
+- [x] api.enclii.dev/health → 200
+- [x] app.enclii.dev → 200
+- [x] enclii.dev → 200
+- [x] docs.enclii.dev → 200
+- [x] admin.enclii.dev → 200
+- [x] status.enclii.dev → 200
+- [x] api.dhan.am/health → 200
+- [x] app.dhan.am → 200
+- [x] admin.dhan.am → 200
+- [x] api.janua.dev/health → 200
+- [x] app.janua.dev → 200
+- [x] admin.janua.dev → 200
 
 ---
 
-## Emergency Procedures
+## Operational Hygiene
 
-### Rollback Deployment
-```bash
-kubectl rollout undo deployment/switchyard-api -n enclii-production
-kubectl rollout undo deployment/switchyard-ui -n enclii-production
-```
+### Deployments
+- [x] revisionHistoryLimit: 3 on all Deployments (18 total)
+- [x] Rolling update strategy on all services
+- [x] HPA configured for key services
+- [x] PDB on stateful workloads
 
-### Database Recovery
-```bash
-# List backups in R2
-aws s3 ls s3://enclii-backups/postgres/ --endpoint-url https://<account>.r2.cloudflarestorage.com
-
-# Restore from backup
-kubectl exec -it postgres-0 -n enclii-production -- \
-  pg_restore -d enclii /backups/latest.dump
-```
-
-### Complete Cluster Recovery
-```bash
-# If cluster is unrecoverable
-./scripts/deploy-production.sh destroy
-./scripts/deploy-production.sh apply
-./scripts/deploy-production.sh post-deploy
-
-# Restore from R2 backups
-# (detailed in DR runbook)
-```
+### Resource Management
+- [x] ResourceQuota on enclii namespace
+- [x] ResourceQuota on dhanam namespace (10 CPU limit)
+- [x] LimitRange on enclii namespace
+- [x] Resource requests/limits on all containers
 
 ---
 
-## Support Contacts
+## Services Deployed
 
-| Issue | Contact |
-|-------|---------|
-| Infrastructure | Platform Team |
-| Application | Backend Team |
-| Security | Security Team |
-| Billing | Finance |
+| Service | Domain | Port | Status |
+|---------|--------|------|--------|
+| Switchyard API | api.enclii.dev | 4200 | Running |
+| Switchyard UI | app.enclii.dev | 4201 | Running |
+| Dispatch (Admin) | admin.enclii.dev | 4203 | Running |
+| Status Page | status.enclii.dev | 4204 | Running |
+| Docs Site | docs.enclii.dev | 8080 | Running |
+| Landing Page | enclii.dev | 80 | Running |
+| Dhanam API | api.dhan.am | 4300 | Running |
+| Dhanam Admin | admin.dhan.am | 3400 | Running |
+| Dhanam Web | app.dhan.am | 4200 | Running |
+| Janua API | api.janua.dev | - | Running |
+| Janua Dashboard | app.janua.dev | - | Running |
+| Janua Admin | admin.janua.dev | - | Running |
 
 ---
 
-**Document Version:** 1.1
+## Cost Summary
+
+| Resource | Monthly Cost |
+|----------|-------------|
+| Hetzner AX41-NVME (foundry-core) | ~$50 |
+| Cloudflare R2 (backups) | ~$5 |
+| Cloudflare (tunnel, DNS, DDoS) | $0 |
+| **Total** | **~$55/month** |
+
+---
+
+## Known Issues / Future Work
+
+- [ ] ArgoCD v2.13 OCI Helm chart bug (2 apps show Unknown — Healthy)
+- [ ] Image Updater ConfigMap OutOfSync (cosmetic, dual-ownership)
+- [ ] Janua Database Backup workflow failing (separate from platform backups)
+- [ ] PostgreSQL HA (Patroni/CloudNativePG) — when SLA > 99.9%
+- [ ] Redis Sentinel — manifests staged
+- [ ] Multi-node Longhorn — when additional storage nodes added
+- [ ] Monitoring access restriction (Cloudflare Access or remove public routes)
+
+---
+
+**Document Version:** 2.0
+**Last Audit:** Wave 15 Session 13 (Feb 6, 2026)
 **Maintained By:** Platform Team
-
----
-
-## Related Documentation
-
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART) | [Development Guide](/docs/getting-started/DEVELOPMENT)
-- **Infrastructure**: [Infrastructure Overview](/docs/infrastructure/) | [GitOps](/docs/infrastructure/GITOPS) | [Storage](/docs/infrastructure/STORAGE)
-- **Guides**: [Dogfooding Guide](/docs/guides/DOGFOODING_GUIDE) | [Database Operations](/docs/guides/database-operations)
-- **CLI**: [CLI Reference](/docs/cli/) | [Deploy Command](/docs/cli/commands/deploy)
-- **Troubleshooting**: [Deployment Issues](/docs/troubleshooting/deployment-issues) | [Networking](/docs/troubleshooting/networking)
-- **Runbooks**: [Database Recovery](/docs/runbooks/DATABASE_RECOVERY)
-- **Architecture**: [Platform Architecture](/docs/architecture/ARCHITECTURE)

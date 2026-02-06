@@ -11,6 +11,7 @@ metadata:
     enclii.dev/managed-by: switchyard
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: waybill

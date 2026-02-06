@@ -8,27 +8,15 @@ metadata:
   labels:
     app.kubernetes.io/part-of: enclii-infrastructure
 ---
-# Redis authentication secret
-# Future: Migrate to ExternalSecret when self-hosted HashiCorp Vault is deployed
-# See docs/infrastructure/SECRETS_MANAGEMENT.md for trigger criteria
+# Redis authentication secret — NOT tracked in git
+# Apply separately: kubectl apply -f redis-auth-secret.yaml
+# See: infra/k8s/production/data/redis-auth-secret.yaml.template
 # The password must match dhanam-secrets REDIS_URL password component
-apiVersion: v1
-kind: Secret
-metadata:
-  name: redis-auth
-  namespace: data
-  labels:
-    app: redis
-    app.kubernetes.io/name: redis
-    app.kubernetes.io/component: cache
-    app.kubernetes.io/part-of: enclii-infrastructure
-  annotations:
-    # nosec: Infrastructure secret, managed by platform team
-    secret.enclii.dev/type: infrastructure
-type: Opaque
-data:
-  # Base64 encoded: EncliiRedis2024!SecureCache
-  redis-password: RW5jbGlpUmVkaXMyMDI0IVNlY3VyZUNhY2hl
+#
+# The redis-auth Secret must exist in the data namespace with key: redis-password
+# Create via:
+#   kubectl create secret generic redis-auth -n data \
+#     --from-literal=redis-password='<PASSWORD>'
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -60,6 +48,7 @@ metadata:
     app.kubernetes.io/part-of: enclii-infrastructure
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: redis

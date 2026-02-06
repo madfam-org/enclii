@@ -17,9 +17,10 @@ defaultSettings:
   storageOverProvisioningPercentage: 100
   storageMinimalAvailablePercentage: 15
 
-  # Backup settings (configure when R2 is ready)
-  backupTarget: ""
-  backupTargetCredentialSecret: ""
+  # Backup to Cloudflare R2 (offsite)
+  # Requires longhorn-backup-secret in longhorn-system namespace
+  backupTarget: "s3://enclii-backups@auto/"
+  backupTargetCredentialSecret: "longhorn-backup-secret"
 
   # Performance tuning for SSD/NVMe
   guaranteedEngineManagerCPU: 12
@@ -57,6 +58,11 @@ longhornManager:
     limits:
       cpu: 500m
       memory: 512Mi
+  # Tolerate GPU taints (Longhorn needs to run on all nodes)
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 longhornDriver:
   resources:
@@ -66,10 +72,3 @@ longhornDriver:
     limits:
       cpu: 500m
       memory: 512Mi
-
-# Tolerate GPU taints (Longhorn needs to run on all nodes)
-longhornManager:
-  tolerations:
-    - key: "nvidia.com/gpu"
-      operator: "Exists"
-      effect: "NoSchedule"

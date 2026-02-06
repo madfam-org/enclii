@@ -24,6 +24,7 @@ metadata:
     app.kubernetes.io/part-of: enclii
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: postgres
@@ -35,11 +36,26 @@ spec:
         app.kubernetes.io/component: database
         app.kubernetes.io/part-of: enclii
     spec:
-      # PostgreSQL requires root for initial data directory setup
-      # Policy exception: postgres-security-exception
+      # PostgreSQL official image runs initdb as root, then drops to UID 999.
+      # securityContext allows root but blocks privilege escalation.
+      securityContext:
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:15
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - DAC_OVERRIDE
+                - FOWNER
+                - SETGID
+                - SETUID
           env:
             - name: POSTGRES_DB
               value: "enclii_dev"

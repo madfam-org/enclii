@@ -11,6 +11,7 @@ metadata:
     enclii.dev/managed-by: switchyard
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:

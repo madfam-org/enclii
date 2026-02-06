@@ -72,10 +72,12 @@ temp/
 infra/k8s/production/oidc-secrets.yaml
 infra/k8s/production/backup/backup-secrets.yaml
 *-secrets.yaml
+*-secret.yaml
 secrets.dev.yaml
 secrets.*.yaml
 !*-secrets.example.yaml
 !*-secrets.yaml.template
+!*-secret.yaml.template
 !*.TEMPLATE
 !secrets.yaml.TEMPLATE
 
