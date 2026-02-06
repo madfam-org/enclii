@@ -62,7 +62,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: docker.io/library/redis:7-alpine
           command:
             - /bin/sh
             - -c

@@ -173,7 +173,7 @@ spec:
             fsGroup: 1000
           containers:
             - name: backup
-              image: postgres:15
+              image: docker.io/library/postgres:15
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false
@@ -269,7 +269,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: backup
-          image: postgres:15
+          image: docker.io/library/postgres:15
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
