@@ -3,7 +3,7 @@
 #
 # Install ArgoCD first:
 #   kubectl create namespace argocd
-#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.3/manifests/install.yaml
 #
 # Then apply this root application:
 #   kubectl apply -f infra/argocd/root-application.yaml

@@ -24,8 +24,8 @@ root-application.yaml
 # Create namespace
 kubectl create namespace argocd
 
-# Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# Install ArgoCD (pin to specific version for reproducibility)
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.3/manifests/install.yaml
 
 # Wait for pods to be ready
 kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
@@ -227,8 +227,8 @@ kubectl get configmaps,secrets -n argocd -o yaml > argocd-config-backup.yaml
 
 To restore:
 ```bash
-# Reinstall ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# Reinstall ArgoCD (use pinned version matching production)
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.3/manifests/install.yaml
 
 # Restore applications
 kubectl apply -f argocd-apps-backup.yaml

@@ -731,8 +731,8 @@ spec:
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=30d"
-            - "--storage.tsdb.retention.size=25GB"
+            - "--storage.tsdb.retention.time=15d"
+            - "--storage.tsdb.retention.size=15GB"
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
             - "--web.enable-lifecycle"
@@ -742,11 +742,11 @@ spec:
               name: http
           resources:
             requests:
-              memory: "1.5Gi"
-              cpu: "250m"
+              memory: "768Mi"
+              cpu: "200m"
             limits:
-              memory: "3Gi"
-              cpu: "1000m"
+              memory: "2Gi"
+              cpu: "500m"
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus

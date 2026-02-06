@@ -337,7 +337,7 @@ helm install kyverno kyverno/kyverno -n kyverno --create-namespace
 
 # Install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.3/manifests/install.yaml
 
 # Wait for ArgoCD
 kubectl wait --for=condition=available deploy/argocd-server -n argocd --timeout=300s

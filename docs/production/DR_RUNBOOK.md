@@ -85,7 +85,7 @@ kubectl get nodes
 
 # 4. Bootstrap ArgoCD (installs all apps via App-of-Apps)
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.3/manifests/install.yaml
 kubectl apply -f infra/argocd/root-application.yaml
 
 # 5. Wait for ArgoCD to sync all applications

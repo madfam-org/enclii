@@ -65,7 +65,7 @@ check_prerequisites() {
     # Check ArgoCD namespace
     if ! kubectl get namespace argocd &> /dev/null; then
         log_warn "ArgoCD namespace not found - install ArgoCD first"
-        log_info "Run: kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+        log_info "Run: kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.3/manifests/install.yaml"
     else
         log_success "ArgoCD namespace exists"
     fi

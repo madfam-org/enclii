@@ -16,4 +16,5 @@ commonLabels:
 
 images:
   - name: ghcr.io/madfam-org/enclii/enclii-status
-    newTag: latest
+    newName: ghcr.io/madfam-org/enclii/enclii-status
+    digest: sha256:a337ab0709a21e57e475d925e2221d62a9d4530c323c92d37cd7e4760c142155
