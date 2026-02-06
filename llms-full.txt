@@ -30,7 +30,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 | K8s Manifests | `infra/k8s/production/` |
 | ArgoCD Root | `infra/argocd/root-application.yaml` |
 | ArgoCD Apps | `infra/argocd/apps/*.yaml` (16 apps) |
-| Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (28 domains) |
+| Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (28 domains, auto-provisioned via enclii.yaml) |
 | Kyverno Policies | `infra/k8s/base/kyverno/policies/` |
 | Golden Tests | `tests/golden/` (pre-commit validation) |
 | Enclii Config | `.enclii.yml` |
@@ -69,6 +69,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 ### Self-Deployment Flow
 ```
 Git push → GitHub webhook → Roundhouse build → ArgoCD sync → K8s deployment
+                          ↳ Parse enclii.yaml → Auto-provision domains (tunnel routes + DNS CNAMEs)
 ```
 
 ---
@@ -188,6 +189,8 @@ make precommit          # All checks before committing
 | Services | `apps/switchyard-api/internal/service/` |
 | Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` |
 | Admin services | `apps/switchyard-api/internal/services/` |
+| enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
+| Domain provisioner | `apps/switchyard-api/internal/api/domain_provisioner.go` |
 
 **CLI (Go):**
 | Purpose | Location |

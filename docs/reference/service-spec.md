@@ -115,6 +115,11 @@ spec:
 **Cleanup:**
 When a service is deleted, its tunnel routes and DNS records are automatically removed.
 
+**How It Works:**
+On each push to main, the webhook handler fetches `enclii.yaml` from the repo (via the GitHub Contents API), parses the `spec.domains` section, and provisions each domain through three steps: DB record creation, Cloudflare tunnel route addition, and DNS CNAME creation. Errors in provisioning are logged but never block the deployment.
+
+**See Also:** [Cloudflare Integration](../infrastructure/CLOUDFLARE.md#self-service-domain-auto-provisioning) for infrastructure details.
+
 ---
 
 ## Build Configuration

@@ -109,9 +109,10 @@ Services are defined using YAML specs (stored versioned in the control plane):
 
 ### Deployment Flow
 1. Build via Nixpacks/Buildpacks or Dockerfile
-2. Create immutable Release with provenance (git SHA, SBOM, signature)
-3. Deploy with canary/blue-green strategies
-4. Automatic rollback on failure based on SLO metrics
+2. Parse `enclii.yaml` — auto-provision custom domains (tunnel routes + DNS CNAMEs)
+3. Create immutable Release with provenance (git SHA, SBOM, signature)
+4. Deploy with canary/blue-green strategies
+5. Automatic rollback on failure based on SLO metrics
 
 ### Environment Variables
 Key vars for local development (set in `.env`):
@@ -311,6 +312,8 @@ See [DOGFOODING_GUIDE.md](./docs/guides/DOGFOODING_GUIDE.md) for complete implem
 4. **Add tests** in `apps/switchyard-api/internal/api/*_test.go`
 5. **Run validation**: `make lint && make test`
 
+> **Note:** Domain provisioning hooks into the webhook flow (not the router). See `enclii_yaml.go` and `domain_provisioner.go` for the auto-provisioning pipeline triggered by GitHub push events.
+
 ### Adding a New CLI Command
 
 1. **Create command file** in `packages/cli/internal/cmd/`
@@ -469,6 +472,8 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Admin services | `apps/switchyard-api/internal/services/` (bare_metal, cluster_admin, infrastructure, vcluster, placement, drift, cost_tracking) |
 | Admin types | `packages/sdk-go/pkg/types/admin.go` |
 | Admin migrations | `apps/switchyard-api/internal/db/migrations/002_admin_foundation.*.sql` |
+| enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
+| Domain provisioner | `apps/switchyard-api/internal/api/domain_provisioner.go` |
 | Migrations | `apps/switchyard-api/migrations/` |
 
 ### CLI (Go)

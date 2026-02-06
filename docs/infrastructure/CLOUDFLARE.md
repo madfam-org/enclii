@@ -82,7 +82,7 @@ Stored in Kubernetes secret: `enclii-cloudflare-credentials`
 | `api-token` | Cloudflare API token with Zone/Tunnel permissions |
 | `account-id` | Cloudflare account identifier |
 | `zone-id` | Zone identifier for enclii.dev |
-| `tunnel-id` | Tunnel identifier |
+| `tunnel-id` | Tunnel identifier (required for auto-provisioning) |
 
 ### Environment Variables
 
@@ -112,7 +112,29 @@ env:
 
 ## Route Automation
 
-### How It Works
+### Self-Service Domain Auto-Provisioning
+
+Domains declared in `enclii.yaml` are automatically provisioned on each push to main. No manual infrastructure edits required.
+
+**Flow:**
+1. GitHub push webhook received by Switchyard API
+2. `enclii.yaml` fetched and parsed from the repo (`enclii_yaml.go`)
+3. For each declared domain (`domain_provisioner.go`):
+   - Create `CustomDomain` record in database (if not exists)
+   - Add Cloudflare tunnel route via `TunnelRoutesManager.AddRoute()`
+   - Create DNS CNAME record in Cloudflare via `Client.EnsureDNSRecord()`
+4. DNS records point to `tunnel.enclii.dev` (the tunnel endpoint)
+
+**Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
+
+**Cleanup:** When a service is deleted, `cleanupDomainsForService()` removes tunnel routes and DNS records for all associated domains.
+
+**Source Code:**
+- Parser: `apps/switchyard-api/internal/api/enclii_yaml.go`
+- Provisioner: `apps/switchyard-api/internal/api/domain_provisioner.go`
+- DNS operations: `apps/switchyard-api/internal/cloudflare/dns.go`
+
+### Manual Route Addition (CLI)
 
 When `enclii domains add` is called:
 
@@ -120,6 +142,8 @@ When `enclii domains add` is called:
 2. **TunnelRoutesServiceCloudflare.AddRoute()** called
 3. **Cloudflare API** updates tunnel configuration
 4. **No pod restart needed** (API-based, not ConfigMap)
+
+> For self-service provisioning, declare domains in your `enclii.yaml` instead. See the [Service Spec Reference](../reference/service-spec.md#domains-custom-domain-auto-provisioning).
 
 ### API Flow
 
@@ -206,8 +230,10 @@ curl -s https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunnel/{t
 
 ### Add Route Manually
 
+> **Preferred:** Declare domains in `enclii.yaml` for automatic provisioning on push. Manual route addition is still supported for ad-hoc needs.
+
 ```bash
-# Via CLI (recommended)
+# Via CLI
 enclii domains add myapp.enclii.dev --service myapp --namespace default --port 80
 
 # Via API directly

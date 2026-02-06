@@ -290,6 +290,34 @@ sequenceDiagram
     CLI-->>User: Success message
 ```
 
+### Domain Auto-Provisioning Flow
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant GH as GitHub
+    participant API as Switchyard API
+    participant DB as PostgreSQL
+    participant CF as Cloudflare API
+
+    Dev->>GH: git push (main)
+    GH->>API: Webhook (push event)
+    API->>GH: Fetch enclii.yaml (Contents API)
+    GH-->>API: YAML content
+    API->>API: Parse domains from spec
+    loop For each domain
+        API->>DB: Create CustomDomain record
+        API->>CF: AddRoute (tunnel config)
+        API->>CF: CreateDNSRecord (CNAME → tunnel.enclii.dev)
+    end
+    API-->>GH: 200 OK (webhook response)
+```
+
+On service deletion:
+1. Remove tunnel routes for all associated domains
+2. Delete DNS records from Cloudflare
+3. Delete `CustomDomain` records from database
+
 ### Request Authentication Flow
 
 ```mermaid

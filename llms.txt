@@ -30,12 +30,13 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 - [Dogfooding Guide](./docs/guides/DOGFOODING_GUIDE.md): Self-deployment strategy
 - [Production Checklist](./docs/production/PRODUCTION_CHECKLIST.md): 95% complete
 - [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
+- [Service Spec Reference](./docs/reference/service-spec.md): enclii.yaml schema (domains auto-provisioned on push)
 
 ## Infrastructure
 
 - [ArgoCD Config](./infra/argocd/): Root application + 16 app definitions
 - [K8s Production Manifests](./infra/k8s/production/): Deployments, services, patches
-- [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): 28 domain routes
+- [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): 28 domain routes (auto-provisioned via enclii.yaml)
 - [Terraform](./infra/terraform/): Infrastructure as code for Hetzner + Cloudflare
 
 ## Integrations
