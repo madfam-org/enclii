@@ -1,0 +1,101 @@
+# =============================================================================
+# Orphaned ReplicaSet Cleanup CronJob
+# =============================================================================
+# Weekly cleanup of ReplicaSets with 0 desired/current replicas.
+# These accumulate from deployments and waste etcd storage.
+# Runs Sunday 4 AM UTC (after daily DB backup at 3 AM).
+# =============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: replicaset-cleanup
+  namespace: enclii
+  labels:
+    app: replicaset-cleanup
+    app.kubernetes.io/name: replicaset-cleanup
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "0 4 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          serviceAccountName: replicaset-cleanup
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              image: docker.io/bitnami/kubectl:1.33
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "=== ReplicaSet cleanup started at $(date -u) ==="
+                  for ns in enclii dhanam janua; do
+                    echo "--- Namespace: $ns ---"
+                    kubectl get rs -n "$ns" --no-headers | \
+                      awk '$2 == 0 && $3 == 0 && $4 == 0 {print $1}' | \
+                      while read rs; do
+                        echo "Deleting orphaned RS: $ns/$rs"
+                        kubectl delete rs -n "$ns" "$rs" --ignore-not-found
+                      done
+                  done
+                  echo "=== ReplicaSet cleanup completed at $(date -u) ==="
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: replicaset-cleanup
+  namespace: enclii
+  labels:
+    app: replicaset-cleanup
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: replicaset-cleanup
+  labels:
+    app: replicaset-cleanup
+rules:
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: replicaset-cleanup
+  labels:
+    app: replicaset-cleanup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: replicaset-cleanup
+subjects:
+  - kind: ServiceAccount
+    name: replicaset-cleanup
+    namespace: enclii
