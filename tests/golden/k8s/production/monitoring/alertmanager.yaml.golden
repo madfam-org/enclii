@@ -128,7 +128,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: alertmanager
-          image: prom/alertmanager:v0.26.0
+          image: docker.io/prom/alertmanager:v0.26.0
           securityContext:
             allowPrivilegeEscalation: false
             privileged: false

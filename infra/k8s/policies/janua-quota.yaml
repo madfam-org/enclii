@@ -1,36 +1,35 @@
 # =============================================================================
-# Dhanam Namespace ResourceQuota + LimitRange
+# Janua Namespace ResourceQuota + LimitRange
 # =============================================================================
-# Protects against "noisy neighbor" resource exhaustion
-# Ensures dhanam workloads stay within defined boundaries
+# Protects against resource exhaustion in the Janua SSO namespace
+# Ensures janua workloads stay within defined boundaries
 # =============================================================================
 
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: dhanam-compute-limit
-  namespace: dhanam
+  name: janua-compute-limit
+  namespace: janua
   labels:
-    app.kubernetes.io/name: dhanam
+    app.kubernetes.io/name: janua
     app.kubernetes.io/component: resource-quota
     app.kubernetes.io/managed-by: enclii
 spec:
   hard:
-    # Base: 3.4 CPU / 3Gi across 6 pods (3 services x 2 replicas)
-    # Headroom: allows HPAs to scale to max replicas + rolling update surge
-    # Previous limits.cpu: 6/10 caused near-exhaustion at 57% with min replicas
-    requests.cpu: "8"
-    limits.cpu: "16"
+    # Base: 5 services (api, admin, dashboard, docs, website) x 1-2 replicas
+    # Headroom: allows HPA scaling + rolling update surge
+    requests.cpu: "6"
+    limits.cpu: "12"
     requests.memory: 8Gi
     limits.memory: 16Gi
 ---
 apiVersion: v1
 kind: LimitRange
 metadata:
-  name: dhanam-container-limits
-  namespace: dhanam
+  name: janua-container-limits
+  namespace: janua
   labels:
-    app.kubernetes.io/name: dhanam
+    app.kubernetes.io/name: janua
     app.kubernetes.io/component: limit-range
     app.kubernetes.io/managed-by: enclii
 spec:

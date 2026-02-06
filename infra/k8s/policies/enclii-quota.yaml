@@ -16,9 +16,10 @@ metadata:
     app.kubernetes.io/managed-by: switchyard
 spec:
   hard:
-    # CPU limits
-    requests.cpu: "8"
-    limits.cpu: "16"
+    # Current usage: 3.5 CPU req / 15.2 CPU lim / 4.5Gi mem req / 15.5Gi mem lim (20 pods)
+    # Headroom: allows 5 switchyard-api replicas (2 CPU each) + remaining services
+    requests.cpu: "12"
+    limits.cpu: "24"
     # Memory limits
     requests.memory: 16Gi
     limits.memory: 32Gi

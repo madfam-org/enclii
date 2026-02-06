@@ -345,7 +345,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: grafana
-          image: grafana/grafana:10.2.2
+          image: docker.io/grafana/grafana:10.2.2
           ports:
             - containerPort: 3000
               name: http
