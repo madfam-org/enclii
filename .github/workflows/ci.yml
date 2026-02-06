@@ -1024,10 +1024,34 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add apps/dispatch/k8s/kustomization.yaml apps/status/k8s/base/kustomization.yaml
-          git diff --staged --quiet || git commit -m "chore(deploy): update $UPDATED ecosystem service digest(s)"
-          git pull --rebase origin main || true
-          git push
+
+          # Save modified kustomization files for retry
+          cp apps/dispatch/k8s/kustomization.yaml /tmp/dispatch-kustomization.yaml
+          cp apps/status/k8s/base/kustomization.yaml /tmp/status-kustomization.yaml
+
+          # Retry loop: handles concurrent pushes (Image Updater may also commit)
+          for ATTEMPT in 1 2 3; do
+            echo "Push attempt $ATTEMPT/3"
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Re-apply our digest changes on top of latest remote
+            cp /tmp/dispatch-kustomization.yaml apps/dispatch/k8s/kustomization.yaml
+            cp /tmp/status-kustomization.yaml apps/status/k8s/base/kustomization.yaml
+
+            git add apps/dispatch/k8s/kustomization.yaml apps/status/k8s/base/kustomization.yaml
+            git diff --staged --quiet && { echo "No changes to commit"; exit 0; }
+            git commit -m "chore(deploy): update $UPDATED ecosystem service digest(s)"
+
+            if git push origin main; then
+              echo "Push succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "Push failed (likely concurrent update), retrying..."
+            sleep $((ATTEMPT * 2))
+          done
+          echo "ERROR: Failed to push after 3 attempts"
+          exit 1
 
   test-summary:
     name: Test Summary

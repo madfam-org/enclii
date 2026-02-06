@@ -151,16 +151,32 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
-          cd k8s/production
-          kustomize edit set image ${{ env.SERVICE_SHORT_NAME }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}
-
-          cd ${{ github.workspace }}
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/production/kustomization.yaml
-          git diff --staged --quiet || git commit -m "chore(deploy): update image digest to ${DIGEST:0:19}"
-          git pull --rebase origin main || true
-          git push
+
+          # Retry loop: handles concurrent pushes from parallel deploy workflows
+          for ATTEMPT in 1 2 3; do
+            echo "Push attempt $ATTEMPT/3"
+            git fetch origin main
+            git reset --hard origin/main
+
+            cd k8s/production
+            kustomize edit set image ${{ env.SERVICE_SHORT_NAME }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}
+            cd ${{ github.workspace }}
+
+            git add k8s/production/kustomization.yaml
+            git diff --staged --quiet && { echo "No changes to commit"; exit 0; }
+            git commit -m "chore(deploy): update image digest to ${DIGEST:0:19}"
+
+            if git push origin main; then
+              echo "Push succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "Push failed (likely concurrent update), retrying..."
+            sleep $((ATTEMPT * 2))
+          done
+          echo "ERROR: Failed to push after 3 attempts"
+          exit 1
 
       - name: Report lifecycle event
         if: always()
@@ -301,5 +317,5 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 | GHCR 403 on digest pull | Attestation manifest SHA | Set `provenance: false` in build-push-action |
 | Build succeeds but no deploy | Missing digest commit step | Add kustomize edit + git push step |
 | Lifecycle events not appearing | Missing/wrong callback token | Check `ENCLII_CALLBACK_TOKEN` secret |
-| Concurrent digest commit fails | Multiple workflows push same file | Add `git pull --rebase origin main \|\| true` before `git push` |
+| Concurrent digest commit fails | Multiple workflows push same file | Use fetch/reset/re-apply retry loop (see CI workflow pattern above) |
 | New image not pulled by K8s | `imagePullPolicy: IfNotPresent` with tag | Set `imagePullPolicy: Always` or use digest refs |
