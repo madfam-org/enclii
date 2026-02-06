@@ -12,24 +12,10 @@ metadata:
     app.kubernetes.io/name: ecosystem-services
     app.kubernetes.io/part-of: enclii
   annotations:
-    # ArgoCD Image Updater Configuration
-    argocd-image-updater.argoproj.io/image-list: |
-      dispatch=ghcr.io/madfam-org/enclii/dispatch:latest,
-      status-page=ghcr.io/madfam-org/enclii/enclii-status:latest
-
-    # Update strategies (digest: detect SHA changes on :latest tag)
-    argocd-image-updater.argoproj.io/dispatch.update-strategy: digest
-    argocd-image-updater.argoproj.io/status-page.update-strategy: digest
-
-    # Git write-back (explicit repo URL required for multi-source apps)
-    argocd-image-updater.argoproj.io/git-repository: https://github.com/madfam-org/enclii.git
-    argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
-    argocd-image-updater.argoproj.io/write-back-target: kustomization
-    argocd-image-updater.argoproj.io/git-branch: main
-
-    # Kustomize image path mappings
-    argocd-image-updater.argoproj.io/dispatch.kustomize.image-name: dispatch
-    argocd-image-updater.argoproj.io/status-page.kustomize.image-name: enclii-status
+    # Image Updater DISABLED — multi-source apps cause git write-back errors:
+    # "could not get creds for repo '': unknown repository type"
+    # These services change infrequently; use CI deploy workflows instead.
+    # See: PR #38 (janua thrashing fix) for similar rationale.
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -56,7 +42,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
+      - ServerSideApply=false
 
   ignoreDifferences:
     - group: apps

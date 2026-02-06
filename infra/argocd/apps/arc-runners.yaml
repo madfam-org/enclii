@@ -1,5 +1,15 @@
 # GitHub Actions Runner Controller Application
 # Deploys: ARC controller + runner scale sets
+#
+# NOTE: ArgoCD v2.13.3 has a known bug with OCI Helm chart comparison.
+# It constructs `helm pull --repo oci://... chart` which is invalid syntax.
+# The correct syntax is `helm pull oci://.../chart --version X.Y.Z`.
+# This causes ComparisonError (Unknown sync status) but does NOT affect
+# the running pods — ARC runners are Healthy and functional.
+#
+# Automated sync is DISABLED to prevent ArgoCD from thrashing on comparison
+# errors. Manual sync via `kubectl apply` or Helm CLI when chart upgrades
+# are needed. Re-enable automated sync after upgrading to ArgoCD >= v2.14.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -33,9 +43,11 @@ spec:
     namespace: arc-system
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+    # Automated sync DISABLED — OCI comparison bug in ArgoCD v2.13
+    # Re-enable after upgrading ArgoCD:
+    # automated:
+    #   prune: true
+    #   selfHeal: true
     syncOptions:
       - CreateNamespace=true
 ---
@@ -69,8 +81,10 @@ spec:
     namespace: arc-runners
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+    # Automated sync DISABLED — OCI comparison bug in ArgoCD v2.13
+    # Re-enable after upgrading ArgoCD:
+    # automated:
+    #   prune: true
+    #   selfHeal: true
     syncOptions:
       - CreateNamespace=true
