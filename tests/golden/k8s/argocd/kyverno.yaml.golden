@@ -182,4 +182,16 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - ServerSideApply=true
+      - ServerSideApply=false
+      - RespectIgnoreDifferences=true
+
+  # Kyverno controller mutates ClusterPolicy resources in-cluster:
+  # - status: autogen rules, conditions, rulecount (computed by Kyverno)
+  # - spec.admission: defaults added by Kyverno webhook
+  # Without ignoreDifferences, ArgoCD detects constant drift (5000+ self-heal attempts).
+  ignoreDifferences:
+    - group: kyverno.io
+      kind: ClusterPolicy
+      jqPathExpressions:
+        - .status
+        - .spec.admission
