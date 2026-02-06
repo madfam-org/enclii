@@ -24,9 +24,11 @@ spec:
         app.kubernetes.io/part-of: enclii
         enclii.dev/managed-by: switchyard
     spec:
+      imagePullSecrets:
+        - name: ghcr-credentials
       containers:
         - name: waybill-aggregator
-          image: ghcr.io/madfam-org/enclii/waybill:1ead1b30fdb4732051596d2d2ca7726dde4acf7c
+          image: waybill
           imagePullPolicy: Always
           env:
             - name: DATABASE_URL
