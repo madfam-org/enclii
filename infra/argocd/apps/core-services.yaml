@@ -13,36 +13,7 @@ metadata:
   annotations:
     # ArgoCD Notifications: notify Enclii API on successful sync
     notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
-    # ArgoCD Image Updater Configuration
-    # Watches ghcr.io for new image versions and auto-updates deployments
-    # Uses digest strategy: detects when :latest tag points to new SHA
-    argocd-image-updater.argoproj.io/image-list: |
-      switchyard-api=ghcr.io/madfam-org/enclii/switchyard-api:latest,
-      switchyard-ui=ghcr.io/madfam-org/enclii/switchyard-ui:latest,
-      roundhouse=ghcr.io/madfam-org/enclii/roundhouse:latest,
-      docs-site=ghcr.io/madfam-org/enclii/docs-site:latest,
-      landing-page=ghcr.io/madfam-org/enclii/landing-page:latest
-
-    # Update strategies per image (digest: detect SHA changes on :latest tag)
-    argocd-image-updater.argoproj.io/switchyard-api.update-strategy: digest
-    argocd-image-updater.argoproj.io/switchyard-ui.update-strategy: digest
-    argocd-image-updater.argoproj.io/roundhouse.update-strategy: digest
-    argocd-image-updater.argoproj.io/docs-site.update-strategy: digest
-    argocd-image-updater.argoproj.io/landing-page.update-strategy: digest
-
-    # Git write-back: Image Updater commits updated tags to kustomization.yaml
-    # This is compatible with App-of-Apps + selfHeal (no CR override conflicts)
-    argocd-image-updater.argoproj.io/write-back-method: "git:secret:argocd/git-creds"
-    argocd-image-updater.argoproj.io/write-back-target: kustomization
-    argocd-image-updater.argoproj.io/git-branch: main
-
-    # Kustomize image path mappings (must match the `name` field in kustomization.yaml images)
-    # Base manifests use short names (switchyard-api, switchyard-ui), so image-name must match
-    argocd-image-updater.argoproj.io/switchyard-api.kustomize.image-name: switchyard-api
-    argocd-image-updater.argoproj.io/switchyard-ui.kustomize.image-name: switchyard-ui
-    argocd-image-updater.argoproj.io/roundhouse.kustomize.image-name: ghcr.io/madfam-org/enclii/roundhouse
-    argocd-image-updater.argoproj.io/docs-site.kustomize.image-name: docs-site
-    argocd-image-updater.argoproj.io/landing-page.kustomize.image-name: landing-page
+    # Image updates managed by CI digest commits (Image Updater disabled session 16)
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -52,7 +23,7 @@ spec:
     repoURL: https://github.com/madfam-org/enclii.git
     targetRevision: main
     path: infra/k8s/production
-    # Kustomize configuration (image tags managed by Image Updater Git commits)
+    # Kustomize configuration (image digests managed by CI commit workflows)
 
   destination:
     server: https://kubernetes.default.svc

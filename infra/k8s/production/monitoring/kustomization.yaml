@@ -8,6 +8,9 @@ resources:
   - prometheus.yaml
   - grafana.yaml
   - alertmanager.yaml
+  - network-policies.yaml
+  - monitoring-policy-exception.yaml
+  - prometheus-client-slo-rules.yaml
   - dashboards/
 
 # Note: commonLabels are NOT used here because kustomize adds them to service

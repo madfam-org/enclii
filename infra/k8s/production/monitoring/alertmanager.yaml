@@ -79,24 +79,6 @@ data:
 # Use a Gmail App Password (not account password).
 # Long-term: migrate to Resend SMTP relay or External Secrets Operator.
 ---
-# AlertManager PVC
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: alertmanager-data
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/name: alertmanager
-    app.kubernetes.io/component: monitoring
-    app.kubernetes.io/part-of: enclii
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 2Gi
-  storageClassName: longhorn
----
 # AlertManager Deployment
 apiVersion: apps/v1
 kind: Deployment
@@ -108,7 +90,7 @@ metadata:
     app.kubernetes.io/component: monitoring
     app.kubernetes.io/part-of: enclii
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: alertmanager
@@ -138,11 +120,14 @@ spec:
           args:
             - "--config.file=/etc/alertmanager/alertmanager.yml"
             - "--storage.path=/alertmanager"
-            - "--cluster.listen-address="
+            - "--cluster.listen-address=0.0.0.0:9094"
+            - "--cluster.peer=alertmanager-cluster.monitoring.svc.cluster.local:9094"
             - "--web.external-url=https://alertmanager.enclii.dev"
           ports:
             - containerPort: 9093
               name: http
+            - containerPort: 9094
+              name: cluster
           resources:
             requests:
               memory: "64Mi"
@@ -186,8 +171,8 @@ spec:
           secret:
             secretName: alertmanager-smtp-secret
         - name: data
-          persistentVolumeClaim:
-            claimName: alertmanager-data
+          emptyDir:
+            sizeLimit: 256Mi
 ---
 # AlertManager Service
 apiVersion: v1
@@ -207,3 +192,39 @@ spec:
       name: http
   selector:
     app: alertmanager
+---
+# Headless Service for AlertManager cluster peer discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-cluster
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: 9094
+      targetPort: 9094
+      name: cluster
+  selector:
+    app: alertmanager
+---
+# AlertManager PDB — prevent simultaneous eviction during node drain
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alertmanager-pdb
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: alertmanager
