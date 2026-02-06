@@ -8,7 +8,7 @@ apiVersion: kyverno.io/v2beta1
 kind: PolicyException
 metadata:
   name: postgres-security-exception
-  namespace: enclii
+  namespace: data
   annotations:
     policies.kyverno.io/description: >-
       PostgreSQL requires root access during initialization to configure
@@ -35,6 +35,6 @@ spec:
             - Deployment
             - ReplicaSet
           namespaces:
-            - enclii
+            - data
           names:
             - postgres*
