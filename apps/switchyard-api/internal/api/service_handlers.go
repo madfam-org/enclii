@@ -141,6 +141,9 @@ func (h *Handler) DeleteService(c *gin.Context) {
 		}
 	}
 
+	// Cleanup tunnel routes and DNS records for all domains (before deleting from DB)
+	h.cleanupDomainsForService(ctx, serviceUUID)
+
 	// Delete custom domains for this service
 	if err := h.repos.CustomDomains.DeleteByServiceID(ctx, serviceID); err != nil {
 		h.logger.Warn(ctx, "Failed to delete custom domains for service",

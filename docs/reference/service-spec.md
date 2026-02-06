@@ -19,6 +19,8 @@ spec:
     port: 8080
     replicas: 2
     healthCheck: /health
+  domains:
+    - name: api.example.com
   env:
     - name: NODE_ENV
       value: production
@@ -68,12 +70,50 @@ The `spec` section contains all service configuration.
 spec:
   build: { ... }
   runtime: { ... }
+  domains: [ ... ]
   env: [ ... ]
   volumes: [ ... ]
   healthCheck: { ... }
   resources: { ... }
   autoDeploy: { ... }
 ```
+
+---
+
+## Domains (Custom Domain Auto-Provisioning)
+
+Declares custom domains that are automatically provisioned when the service is deployed.
+On each push to main, Enclii reads `enclii.yaml` and:
+
+1. Creates a `CustomDomain` record in the platform database
+2. Adds a Cloudflare tunnel route pointing to the service
+3. Creates a CNAME DNS record in Cloudflare
+
+**No manual edits to infrastructure repos required.**
+
+```yaml
+spec:
+  domains:
+    - name: api.qubic.quest
+      environment: production
+      tlsEnabled: true
+    - name: studio.qubic.quest
+      environment: production
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | Fully qualified domain name (e.g., `api.qubic.quest`) |
+| `environment` | string | No | `production` | Target environment for this domain |
+| `tlsEnabled` | boolean | No | `true` | Whether to enable TLS via cert-manager |
+
+**Requirements:**
+- The domain's zone (e.g., `qubic.quest`) must be managed by Cloudflare under the same account
+- The service must be registered via `enclii service create` before the first push
+- DNS records are CNAME'd to `tunnel.enclii.dev` (the Cloudflare tunnel endpoint)
+
+**Cleanup:**
+When a service is deleted, its tunnel routes and DNS records are automatically removed.
 
 ---
 

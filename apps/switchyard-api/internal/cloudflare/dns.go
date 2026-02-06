@@ -1,7 +1,9 @@
 package cloudflare
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -155,4 +157,182 @@ func (c *Client) CheckDomainExists(ctx context.Context, domain string) (bool, er
 		return false, err
 	}
 	return record != nil, nil
+}
+
+// CreateDNSRecord creates a new DNS record in the configured zone
+func (c *Client) CreateDNSRecord(ctx context.Context, name, recordType, content string, proxied bool) (*DNSRecord, error) {
+	return c.CreateDNSRecordInZone(ctx, c.zoneID, name, recordType, content, proxied)
+}
+
+// CreateDNSRecordInZone creates a new DNS record in a specific zone
+func (c *Client) CreateDNSRecordInZone(ctx context.Context, zoneID, name, recordType, content string, proxied bool) (*DNSRecord, error) {
+	payload := struct {
+		Type    string `json:"type"`
+		Name    string `json:"name"`
+		Content string `json:"content"`
+		Proxied bool   `json:"proxied"`
+		TTL     int    `json:"ttl"`
+		Comment string `json:"comment,omitempty"`
+	}{
+		Type:    recordType,
+		Name:    name,
+		Content: content,
+		Proxied: proxied,
+		TTL:     1, // Auto
+		Comment: "Managed by Enclii platform",
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal DNS record: %w", err)
+	}
+
+	var resp APIResponse[DNSRecord]
+	path := fmt.Sprintf("/zones/%s/dns_records", zoneID)
+
+	if err := c.post(ctx, path, bytes.NewReader(payloadBytes), &resp); err != nil {
+		return nil, fmt.Errorf("failed to create DNS record for %s: %w", name, err)
+	}
+
+	if !resp.Success {
+		if len(resp.Errors) > 0 {
+			return nil, fmt.Errorf("API error creating DNS record: %s", resp.Errors[0].Message)
+		}
+		return nil, fmt.Errorf("unknown API error creating DNS record")
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"name":    name,
+		"type":    recordType,
+		"content": content,
+		"proxied": proxied,
+	}).Info("Created DNS record in Cloudflare")
+
+	return &resp.Result, nil
+}
+
+// DeleteDNSRecord deletes a DNS record by its ID in the configured zone
+func (c *Client) DeleteDNSRecord(ctx context.Context, recordID string) error {
+	return c.DeleteDNSRecordInZone(ctx, c.zoneID, recordID)
+}
+
+// DeleteDNSRecordInZone deletes a DNS record by its ID in a specific zone
+func (c *Client) DeleteDNSRecordInZone(ctx context.Context, zoneID, recordID string) error {
+	var resp APIResponse[struct {
+		ID string `json:"id"`
+	}]
+	path := fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, recordID)
+
+	if err := c.httpDelete(ctx, path, &resp); err != nil {
+		return fmt.Errorf("failed to delete DNS record %s: %w", recordID, err)
+	}
+
+	if !resp.Success {
+		if len(resp.Errors) > 0 {
+			return fmt.Errorf("API error deleting DNS record: %s", resp.Errors[0].Message)
+		}
+		return fmt.Errorf("unknown API error deleting DNS record")
+	}
+
+	logrus.WithField("record_id", recordID).Info("Deleted DNS record from Cloudflare")
+	return nil
+}
+
+// ListZones lists all zones accessible by the API token
+func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
+	var allZones []Zone
+	page := 1
+	perPage := 50
+
+	for {
+		query := url.Values{}
+		query.Set("page", fmt.Sprintf("%d", page))
+		query.Set("per_page", fmt.Sprintf("%d", perPage))
+		query.Set("status", "active")
+
+		var resp APIResponse[[]Zone]
+		if err := c.get(ctx, "/zones", query, &resp); err != nil {
+			return nil, fmt.Errorf("failed to list zones: %w", err)
+		}
+
+		if !resp.Success {
+			if len(resp.Errors) > 0 {
+				return nil, fmt.Errorf("API error: %s", resp.Errors[0].Message)
+			}
+			return nil, fmt.Errorf("unknown API error")
+		}
+
+		allZones = append(allZones, resp.Result...)
+
+		if resp.ResultInfo == nil || page >= resp.ResultInfo.TotalPages {
+			break
+		}
+		page++
+	}
+
+	return allZones, nil
+}
+
+// FindZoneForDomain finds the Cloudflare zone that manages a given domain
+// For example, "api.qubic.quest" would match zone "qubic.quest"
+func (c *Client) FindZoneForDomain(ctx context.Context, domain string) (*Zone, error) {
+	zones, err := c.ListZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the most specific matching zone (longest suffix match)
+	var bestMatch *Zone
+	bestLen := 0
+
+	for i, zone := range zones {
+		if domain == zone.Name || strings.HasSuffix(domain, "."+zone.Name) {
+			if len(zone.Name) > bestLen {
+				bestMatch = &zones[i]
+				bestLen = len(zone.Name)
+			}
+		}
+	}
+
+	if bestMatch == nil {
+		return nil, fmt.Errorf("no Cloudflare zone found for domain %s", domain)
+	}
+
+	return bestMatch, nil
+}
+
+// EnsureDNSRecord creates a CNAME record for the domain if it doesn't already exist.
+// If a record exists with different content, it is left unchanged.
+// Returns the record and whether it was created.
+func (c *Client) EnsureDNSRecord(ctx context.Context, domain, cnameTarget string) (*DNSRecord, bool, error) {
+	// Find which zone manages this domain
+	zone, err := c.FindZoneForDomain(ctx, domain)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Check if record already exists in that zone
+	query := url.Values{}
+	query.Set("name", domain)
+	query.Set("type", "CNAME")
+
+	var resp APIResponse[[]DNSRecord]
+	path := fmt.Sprintf("/zones/%s/dns_records", zone.ID)
+
+	if err := c.get(ctx, path, query, &resp); err != nil {
+		return nil, false, fmt.Errorf("failed to check DNS record for %s: %w", domain, err)
+	}
+
+	if resp.Success && len(resp.Result) > 0 {
+		// Record already exists
+		return &resp.Result[0], false, nil
+	}
+
+	// Create the record
+	record, err := c.CreateDNSRecordInZone(ctx, zone.ID, domain, "CNAME", cnameTarget, true)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return record, true, nil
 }

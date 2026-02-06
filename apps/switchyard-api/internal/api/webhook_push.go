@@ -122,6 +122,10 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		return
 	}
 
+	// Fetch and parse enclii.yaml from the repo for domain auto-provisioning
+	// This is non-blocking — if the file doesn't exist or can't be parsed, we continue
+	encliiConfig := h.fetchAndParseEncliiYAML(ctx, event.Repository.FullName, gitSHA)
+
 	// Extract all changed files from the push event for monorepo path filtering
 	changedFiles := extractChangedFiles(&event)
 
@@ -144,6 +148,12 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 	}
 	var results []buildResult
 	var skippedCount int
+
+	// Auto-provision domains from enclii.yaml (non-blocking, best-effort)
+	// This runs once per push, not per service — domains apply to the first matching service
+	if encliiConfig != nil && len(encliiConfig.Spec.Domains) > 0 && len(services) > 0 {
+		go h.provisionDomainsFromYAML(context.Background(), services[0], encliiConfig)
+	}
 
 	for _, service := range services {
 		// Check if service should be rebuilt based on changed files and WatchPaths

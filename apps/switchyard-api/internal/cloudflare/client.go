@@ -105,6 +105,28 @@ func (c *Client) put(ctx context.Context, path string, body io.Reader, result in
 	return c.handleResponse(resp, result)
 }
 
+// post performs a POST request and decodes the response
+func (c *Client) post(ctx context.Context, path string, body io.Reader, result interface{}) error {
+	resp, err := c.doRequest(ctx, http.MethodPost, path, nil, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return c.handleResponse(resp, result)
+}
+
+// delete performs a DELETE request and decodes the response
+func (c *Client) httpDelete(ctx context.Context, path string, result interface{}) error {
+	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return c.handleResponse(resp, result)
+}
+
 // handleResponse processes the API response
 func (c *Client) handleResponse(resp *http.Response, result interface{}) error {
 	body, err := io.ReadAll(resp.Body)

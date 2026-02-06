@@ -1,0 +1,173 @@
+package api
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+)
+
+// EncliiYAML represents the parsed enclii.yaml configuration from a project repo
+type EncliiYAML struct {
+	APIVersion string         `yaml:"apiVersion"`
+	Kind       string         `yaml:"kind"`
+	Metadata   EncliiYAMLMeta `yaml:"metadata"`
+	Spec       EncliiYAMLSpec `yaml:"spec"`
+}
+
+// EncliiYAMLMeta contains service identification
+type EncliiYAMLMeta struct {
+	Name    string `yaml:"name"`
+	Project string `yaml:"project"`
+}
+
+// EncliiYAMLSpec contains the service configuration
+type EncliiYAMLSpec struct {
+	Domains []EncliiYAMLDomain `yaml:"domains,omitempty"`
+	Runtime EncliiYAMLRuntime  `yaml:"runtime,omitempty"`
+}
+
+// EncliiYAMLDomain represents a custom domain declared in enclii.yaml
+type EncliiYAMLDomain struct {
+	Name        string `yaml:"name"`        // e.g., "api.qubic.quest"
+	Environment string `yaml:"environment"` // e.g., "production" (defaults to "production")
+	TLSEnabled  *bool  `yaml:"tlsEnabled"`  // defaults to true
+}
+
+// EncliiYAMLRuntime contains runtime configuration
+type EncliiYAMLRuntime struct {
+	Port int `yaml:"port,omitempty"`
+}
+
+// IsTLSEnabled returns whether TLS is enabled, defaulting to true
+func (d *EncliiYAMLDomain) IsTLSEnabled() bool {
+	if d.TLSEnabled == nil {
+		return true
+	}
+	return *d.TLSEnabled
+}
+
+// ParseEncliiYAML parses an enclii.yaml file content
+func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
+	var config EncliiYAML
+	if err := yaml.Unmarshal(content, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse enclii.yaml: %w", err)
+	}
+
+	// Validate basic structure
+	if config.APIVersion != "enclii.dev/v1" {
+		return nil, fmt.Errorf("unsupported apiVersion: %s (expected enclii.dev/v1)", config.APIVersion)
+	}
+	if config.Kind != "Service" {
+		return nil, fmt.Errorf("unsupported kind: %s (expected Service)", config.Kind)
+	}
+
+	// Apply defaults
+	for i := range config.Spec.Domains {
+		if config.Spec.Domains[i].Environment == "" {
+			config.Spec.Domains[i].Environment = "production"
+		}
+	}
+
+	return &config, nil
+}
+
+// fetchAndParseEncliiYAML fetches enclii.yaml from a GitHub repo and parses domains.
+// Returns nil (not error) if the file doesn't exist — it's optional.
+func (h *Handler) fetchAndParseEncliiYAML(ctx context.Context, repoFullName, gitSHA string) *EncliiYAML {
+	// Parse owner/repo from full name (e.g., "madfam-org/qubic")
+	parts := strings.SplitN(repoFullName, "/", 2)
+	if len(parts) != 2 {
+		h.logger.Warn(ctx, "Invalid repository full name for enclii.yaml fetch",
+			logging.String("repo", repoFullName))
+		return nil
+	}
+	owner, repo := parts[0], parts[1]
+
+	// Use configured GitHub token, or try unauthenticated for public repos
+	token := h.config.GitHubToken
+	content, err := fetchGitHubRawFile(ctx, token, owner, repo, "enclii.yaml", gitSHA)
+	if err != nil {
+		h.logger.Warn(ctx, "Failed to fetch enclii.yaml from repo",
+			logging.String("repo", repoFullName),
+			logging.Error("error", err))
+		return nil
+	}
+
+	if content == nil {
+		return nil // File doesn't exist — that's fine
+	}
+
+	config, err := ParseEncliiYAML(content)
+	if err != nil {
+		h.logger.Warn(ctx, "Failed to parse enclii.yaml",
+			logging.String("repo", repoFullName),
+			logging.Error("error", err))
+		return nil
+	}
+
+	if len(config.Spec.Domains) > 0 {
+		h.logger.Info(ctx, "Parsed domains from enclii.yaml",
+			logging.String("repo", repoFullName),
+			logging.Int("domain_count", len(config.Spec.Domains)))
+	}
+
+	return config
+}
+
+// fetchGitHubRawFile fetches raw file content from the GitHub Contents API.
+// Returns nil content (not error) if the file doesn't exist (404).
+func fetchGitHubRawFile(ctx context.Context, token, owner, repo, path, ref string) ([]byte, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+	if ref != "" {
+		apiURL += "?ref=" + ref
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Request raw content to avoid base64 decoding
+	req.Header.Set("Accept", "application/vnd.github.raw+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // File doesn't exist
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API error: %d", resp.StatusCode)
+	}
+
+	// Read up to 64KB (enclii.yaml should be tiny)
+	content, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"repo": owner + "/" + repo,
+		"path": path,
+		"size": len(content),
+	}).Debug("Fetched file content from GitHub")
+
+	return content, nil
+}

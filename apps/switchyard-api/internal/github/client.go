@@ -480,6 +480,66 @@ func (c *Client) createCommentWithToken(ctx context.Context, token, owner, repo 
 	return &comment, nil
 }
 
+// FileContent represents a file retrieved from a GitHub repository
+type FileContent struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	SHA         string `json:"sha"`
+	Size        int    `json:"size"`
+	Content     string `json:"content"`  // Base64-encoded content
+	Encoding    string `json:"encoding"` // "base64" or "utf-8"
+	DownloadURL string `json:"download_url"`
+}
+
+// GetFileContent retrieves file content from a repository using a personal access token or installation token
+func (c *Client) GetFileContent(ctx context.Context, token, owner, repo, path, ref string) ([]byte, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+	if ref != "" {
+		apiURL += "?ref=" + ref
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.raw+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // File doesn't exist
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API error: %d - %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	return content, nil
+}
+
+// GetFileContentWithInstallation retrieves file content using an installation token
+func (c *Client) GetFileContentWithInstallation(ctx context.Context, installationID int64, owner, repo, path, ref string) ([]byte, error) {
+	token, err := c.GetInstallationToken(ctx, installationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get installation token: %w", err)
+	}
+
+	return c.GetFileContent(ctx, token, owner, repo, path, ref)
+}
+
 // FindExistingPreviewComment finds an existing preview comment on a PR by looking for a marker
 func (c *Client) FindExistingPreviewComment(ctx context.Context, token, owner, repo string, issueNumber int, marker string) (*IssueComment, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d/comments?per_page=100", owner, repo, issueNumber)

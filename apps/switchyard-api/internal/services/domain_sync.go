@@ -62,6 +62,11 @@ func (s *DomainSyncService) SetTunnelCNAME(cname string) {
 	s.tunnelCNAME = cname
 }
 
+// GetCloudflareClient returns the underlying Cloudflare client for DNS operations
+func (s *DomainSyncService) GetCloudflareClient() *cloudflare.Client {
+	return s.cf
+}
+
 // SyncDomainResult contains the result of syncing a single domain
 type SyncDomainResult struct {
 	DomainID    uuid.UUID `json:"domain_id"`
