@@ -13,3 +13,7 @@ commonLabels:
   app.kubernetes.io/name: status
   app.kubernetes.io/part-of: enclii
   app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: ghcr.io/madfam-org/enclii/enclii-status
+    newTag: latest

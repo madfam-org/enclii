@@ -899,6 +899,136 @@ jobs:
           echo ""
           echo "This job will pass but deployment status was not verified."
 
+  # =============================================================================
+  # LIFECYCLE EVENTS: Report build status to Enclii deployment tracking
+  # =============================================================================
+  report-lifecycle:
+    name: Report Lifecycle Events
+    runs-on: ubuntu-latest
+    needs: [docker-build, detect-changes]
+    if: |
+      always() &&
+      needs.docker-build.result == 'success' &&
+      github.ref == 'refs/heads/main'
+    steps:
+      - name: Report build events
+        run: |
+          report_event() {
+            local SERVICE="$1"
+            local CHANGED="$2"
+            local DIGEST="$3"
+
+            if [ "$CHANGED" != "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+              return 0
+            fi
+
+            EVENT_TYPE="image_pushed"
+            curl -sf -X POST "https://api.enclii.dev/v1/callbacks/lifecycle-event" \
+              -H "Authorization: Bearer ${{ secrets.ENCLII_CALLBACK_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "repo_full_name": "madfam-org/enclii",
+                "commit_sha": "${{ github.sha }}",
+                "branch": "${{ github.ref_name }}",
+                "ref": "${{ github.ref }}",
+                "event_type": "'"$EVENT_TYPE"'",
+                "source": "ci_callback",
+                "message": "'"$SERVICE"' build '"$EVENT_TYPE"'",
+                "metadata": {
+                  "image": "ghcr.io/madfam-org/enclii/'"$SERVICE"'",
+                  "workflow": "ci",
+                  "service": "'"$SERVICE"'"
+                }
+              }' || true
+          }
+
+          report_event "switchyard-api" "${{ needs.detect-changes.outputs.switchyard-api }}" ""
+          report_event "switchyard-ui" "${{ needs.detect-changes.outputs.switchyard-ui }}" ""
+          report_event "dispatch" "${{ needs.detect-changes.outputs.dispatch }}" ""
+          report_event "enclii-status" "${{ needs.detect-changes.outputs.status }}" ""
+          report_event "landing-page" "${{ needs.detect-changes.outputs.landing }}" ""
+
+  # =============================================================================
+  # ECOSYSTEM DIGEST COMMIT: Update dispatch + status kustomization with digests
+  # dispatch and status use multi-source ArgoCD apps (Image Updater incompatible).
+  # This job commits digests to their kustomization.yaml files for ArgoCD sync.
+  # =============================================================================
+  commit-ecosystem-digests:
+    name: Commit Ecosystem Digests
+    runs-on: ubuntu-latest
+    needs: [docker-build, detect-changes]
+    if: |
+      always() &&
+      needs.docker-build.result == 'success' &&
+      github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Login to GHCR (for digest lookup)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update ecosystem digests
+        run: |
+          UPDATED=0
+
+          # Dispatch
+          DISPATCH_CHANGED="${{ needs.detect-changes.outputs.dispatch }}"
+          if [ "$DISPATCH_CHANGED" == "true" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/dispatch:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
+            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+              echo "Updating dispatch digest: $DIGEST"
+              cd apps/dispatch/k8s
+              kustomize edit set image ghcr.io/madfam-org/enclii/dispatch=ghcr.io/${{ github.repository }}/dispatch@${DIGEST}
+              cd ${{ github.workspace }}
+              UPDATED=$((UPDATED + 1))
+            else
+              echo "Could not resolve dispatch digest for :${{ github.sha }}"
+            fi
+          fi
+
+          # Status
+          STATUS_CHANGED="${{ needs.detect-changes.outputs.status }}"
+          if [ "$STATUS_CHANGED" == "true" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/enclii-status:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
+            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+              echo "Updating status digest: $DIGEST"
+              cd apps/status/k8s/base
+              kustomize edit set image ghcr.io/madfam-org/enclii/enclii-status=ghcr.io/${{ github.repository }}/enclii-status@${DIGEST}
+              cd ${{ github.workspace }}
+              UPDATED=$((UPDATED + 1))
+            else
+              echo "Could not resolve status digest for :${{ github.sha }}"
+            fi
+          fi
+
+          echo "Updated $UPDATED ecosystem digest(s)"
+
+          if [ "$UPDATED" -eq 0 ]; then
+            echo "No ecosystem services changed — skipping commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/dispatch/k8s/kustomization.yaml apps/status/k8s/base/kustomization.yaml
+          git diff --staged --quiet || git commit -m "chore(deploy): update $UPDATED ecosystem service digest(s)"
+          git pull --rebase origin main || true
+          git push
+
   test-summary:
     name: Test Summary
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}

@@ -207,6 +207,23 @@ CREATE TABLE deployment_lifecycle_events (
 
 Migration: `005_deployment_lifecycle.up.sql`
 
+## Secret Configuration
+
+The `ENCLII_CALLBACK_TOKEN` secret must be configured in each repo that reports lifecycle events:
+
+```bash
+# The token value is the ArgoCD webhook secret from the enclii-argocd-webhook K8s secret.
+# Get the value:
+ssh foundry-core "sudo kubectl get secret enclii-argocd-webhook -n enclii -o jsonpath='{.data.secret}' | base64 -d"
+
+# Set in each repo:
+gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/dhanam --body "<token>"
+gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/janua --body "<token>"
+gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/enclii --body "<token>"
+```
+
+The ArgoCD Notifications webhook uses the same token value (stored in `argocd-notifications-secret` in the `argocd` namespace as `argocd-webhook-secret`).
+
 ## Key Files
 
 | Purpose | Path |

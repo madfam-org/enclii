@@ -159,6 +159,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add k8s/production/kustomization.yaml
           git diff --staged --quiet || git commit -m "chore(deploy): update image digest to ${DIGEST:0:19}"
+          git pull --rebase origin main || true
           git push
 
       - name: Report lifecycle event
@@ -286,9 +287,9 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 ### Janua (auth.madfam.io)
 
 - **Repo**: `madfam-org/janua`
-- **Services**: janua-api (others use mutable `:main` tags)
+- **Services**: janua-api, janua-admin, janua-dashboard, janua-docs, janua-website
 - **Manifests**: `k8s/base/deployments/`
-- **Workflow**: `docker-publish.yml`
+- **Workflow**: `docker-publish.yml` (consolidated — builds all 5 services with change detection)
 - **ArgoCD app**: `infra/argocd/apps/janua.yaml`
 
 ## Troubleshooting
@@ -300,3 +301,5 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 | GHCR 403 on digest pull | Attestation manifest SHA | Set `provenance: false` in build-push-action |
 | Build succeeds but no deploy | Missing digest commit step | Add kustomize edit + git push step |
 | Lifecycle events not appearing | Missing/wrong callback token | Check `ENCLII_CALLBACK_TOKEN` secret |
+| Concurrent digest commit fails | Multiple workflows push same file | Add `git pull --rebase origin main \|\| true` before `git push` |
+| New image not pulled by K8s | `imagePullPolicy: IfNotPresent` with tag | Set `imagePullPolicy: Always` or use digest refs |
