@@ -1,8 +1,8 @@
 ---
 # PostgreSQL Backup to Cloudflare R2
 #
-# This CronJob runs daily backups of PostgreSQL and uploads to R2.
-# Requires r2-backup-credentials secret with R2 access keys.
+# Architecture: initContainer (postgres:16) dumps → main container (aws-cli) uploads
+# This avoids needing awscli in the postgres image or python3 for S3 signing.
 #
 # Usage:
 #   1. Create the R2 bucket: enclii-backups
@@ -21,24 +21,16 @@ metadata:
     app.kubernetes.io/component: backup
     app.kubernetes.io/part-of: enclii
 data:
-  backup.sh: |
+  dump.sh: |
     #!/bin/bash
     set -euo pipefail
 
-    # Configuration from environment
-    BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
-    BACKUP_PREFIX="${BACKUP_PREFIX:-postgres}"
-    R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-
-    # Timestamp for backup file
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    BACKUP_FILE="/tmp/backup_${TIMESTAMP}.sql.gz"
-    BACKUP_KEY="${BACKUP_PREFIX}/${TIMESTAMP}.sql.gz"
+    BACKUP_FILE="/backup/backup_${TIMESTAMP}.sql.gz"
 
     echo "[$(date)] Starting PostgreSQL backup..."
-
-    # Dump all databases (enclii, janua, dhanam share this postgres)
     echo "[$(date)] Running pg_dumpall..."
+
     PGPASSWORD="${POSTGRES_PASSWORD}" pg_dumpall \
       -h "${POSTGRES_HOST}" \
       -U "${POSTGRES_USER}" \
@@ -47,168 +39,52 @@ data:
       | gzip > "${BACKUP_FILE}"
 
     BACKUP_SIZE=$(du -h "${BACKUP_FILE}" | cut -f1)
-    echo "[$(date)] Backup created: ${BACKUP_FILE} (${BACKUP_SIZE})"
+    echo "[$(date)] Dump complete: ${BACKUP_FILE} (${BACKUP_SIZE})"
 
-    # Upload to R2 using Python S3v4 signer (no awscli needed)
-    echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
-    python3 /scripts/s3upload.py put "${BACKUP_FILE}" "${BACKUP_KEY}"
+    # Write timestamp for upload script
+    echo "${TIMESTAMP}" > /backup/TIMESTAMP
 
-    # Also maintain a 'latest' copy for easy access
-    python3 /scripts/s3upload.py put "${BACKUP_FILE}" "${BACKUP_PREFIX}/latest.sql.gz"
-
-    echo "[$(date)] Upload complete"
-
-    # Cleanup local file
-    rm -f "${BACKUP_FILE}"
-
-    echo "[$(date)] Backup complete: ${BACKUP_KEY}"
-
-  s3upload.py: |
-    #!/usr/bin/env python3
-    """Minimal S3v4-compatible upload for Cloudflare R2. No external dependencies."""
-    import hashlib, hmac, os, sys, urllib.request, urllib.error
-    from datetime import datetime, timezone
-
-    REGION = "auto"
-    SERVICE = "s3"
-    BUCKET = os.environ.get("R2_BUCKET", "enclii-backups")
-    ENDPOINT = f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
-    ACCESS_KEY = os.environ["AWS_ACCESS_KEY_ID"]
-    SECRET_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
-
-    def sign(key, msg):
-        return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
-
-    def get_signature_key(date_stamp):
-        k = sign(("AWS4" + SECRET_KEY).encode("utf-8"), date_stamp)
-        k = sign(k, REGION)
-        k = sign(k, SERVICE)
-        return sign(k, "aws4_request")
-
-    def put_object(local_path, key):
-        with open(local_path, "rb") as f:
-            body = f.read()
-
-        now = datetime.now(timezone.utc)
-        date_stamp = now.strftime("%Y%m%d")
-        amz_date = now.strftime("%Y%m%dT%H%M%SZ")
-        host = f"{BUCKET}.{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
-        url = f"https://{host}/{key}"
-
-        content_hash = hashlib.sha256(body).hexdigest()
-        headers_to_sign = {
-            "host": host,
-            "x-amz-content-sha256": content_hash,
-            "x-amz-date": amz_date,
-        }
-        signed_header_keys = ";".join(sorted(headers_to_sign))
-        canonical_headers = "".join(f"{k}:{v}\n" for k, v in sorted(headers_to_sign.items()))
-
-        canonical_request = f"PUT\n/{key}\n\n{canonical_headers}\n{signed_header_keys}\n{content_hash}"
-        credential_scope = f"{date_stamp}/{REGION}/{SERVICE}/aws4_request"
-        string_to_sign = f"AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode()).hexdigest()}"
-
-        signing_key = get_signature_key(date_stamp)
-        signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
-
-        auth = f"AWS4-HMAC-SHA256 Credential={ACCESS_KEY}/{credential_scope}, SignedHeaders={signed_header_keys}, Signature={signature}"
-
-        req = urllib.request.Request(url, data=body, method="PUT")
-        req.add_header("Authorization", auth)
-        req.add_header("x-amz-content-sha256", content_hash)
-        req.add_header("x-amz-date", amz_date)
-        req.add_header("Content-Length", str(len(body)))
-
-        try:
-            with urllib.request.urlopen(req) as resp:
-                print(f"  Uploaded {key} ({len(body)} bytes) → {resp.status}")
-        except urllib.error.HTTPError as e:
-            print(f"  FAILED {key}: {e.code} {e.read().decode()}", file=sys.stderr)
-            sys.exit(1)
-
-    if __name__ == "__main__":
-        if len(sys.argv) < 4 or sys.argv[1] != "put":
-            print("Usage: s3upload.py put <local_file> <s3_key>", file=sys.stderr)
-            sys.exit(1)
-        put_object(sys.argv[2], sys.argv[3])
-
-  restore.sh: |
+  upload.sh: |
     #!/bin/bash
     set -euo pipefail
 
-    # Usage: restore.sh [backup_key]
-    # If no backup_key provided, restores from latest
-    # Requires awscli — install manually or use a helper image
-
     BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
     BACKUP_PREFIX="${BACKUP_PREFIX:-postgres}"
-    BACKUP_KEY="${1:-${BACKUP_PREFIX}/latest.sql.gz}"
-    RESTORE_FILE="/tmp/restore.sql.gz"
+    R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-    echo "[$(date)] Starting PostgreSQL restore..."
-    echo "[$(date)] Downloading backup: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
+    TIMESTAMP=$(cat /backup/TIMESTAMP)
+    BACKUP_FILE="/backup/backup_${TIMESTAMP}.sql.gz"
+    BACKUP_KEY="${BACKUP_PREFIX}/${TIMESTAMP}.sql.gz"
 
-    # Download using Python S3v4 signer
-    python3 -c "
-    import os, sys, hashlib, hmac, urllib.request, urllib.error
-    from datetime import datetime, timezone
-    REGION='auto'; SERVICE='s3'
-    BUCKET=os.environ.get('R2_BUCKET','enclii-backups')
-    AK=os.environ['AWS_ACCESS_KEY_ID']; SK=os.environ['AWS_SECRET_ACCESS_KEY']
-    AID=os.environ['R2_ACCOUNT_ID']
-    def sign(k,m): return hmac.new(k,m.encode('utf-8'),hashlib.sha256).digest()
-    def sigkey(ds):
-        k=sign(('AWS4'+SK).encode('utf-8'),ds)
-        for s in [REGION,SERVICE,'aws4_request']: k=sign(k,s)
-        return k
-    key='${BACKUP_KEY}'; host=f'{BUCKET}.{AID}.r2.cloudflarestorage.com'
-    now=datetime.now(timezone.utc); ds=now.strftime('%Y%m%d'); ad=now.strftime('%Y%m%dT%H%M%SZ')
-    ch='UNSIGNED-PAYLOAD'
-    hts={'host':host,'x-amz-content-sha256':ch,'x-amz-date':ad}
-    shk=';'.join(sorted(hts)); cnh=''.join(f'{k}:{v}\n' for k,v in sorted(hts.items()))
-    cr=f'GET\n/{key}\n\n{cnh}\n{shk}\n{ch}'
-    cs=f'{ds}/{REGION}/{SERVICE}/aws4_request'
-    sts=f'AWS4-HMAC-SHA256\n{ad}\n{cs}\n{hashlib.sha256(cr.encode()).hexdigest()}'
-    sig=hmac.new(sigkey(ds),sts.encode('utf-8'),hashlib.sha256).hexdigest()
-    auth=f'AWS4-HMAC-SHA256 Credential={AK}/{cs}, SignedHeaders={shk}, Signature={sig}'
-    req=urllib.request.Request(f'https://{host}/{key}')
-    req.add_header('Authorization',auth); req.add_header('x-amz-content-sha256',ch); req.add_header('x-amz-date',ad)
-    with urllib.request.urlopen(req) as r, open('${RESTORE_FILE}','wb') as f: f.write(r.read())
-    print(f'Downloaded {key}')
-    "
+    echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
+    aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_KEY}" \
+      --endpoint-url "${R2_ENDPOINT}"
 
-    echo "[$(date)] Restoring database..."
+    # Maintain a 'latest' copy for easy access
+    aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest.sql.gz" \
+      --endpoint-url "${R2_ENDPOINT}"
 
-    # Drop existing connections
-    PGPASSWORD="${POSTGRES_PASSWORD}" psql \
-      -h "${POSTGRES_HOST}" \
-      -U "${POSTGRES_USER}" \
-      -d postgres \
-      -c "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '${POSTGRES_DB}' AND pid <> pg_backend_pid();" || true
+    echo "[$(date)] Upload complete"
 
-    # Drop and recreate database
-    PGPASSWORD="${POSTGRES_PASSWORD}" psql \
-      -h "${POSTGRES_HOST}" \
-      -U "${POSTGRES_USER}" \
-      -d postgres \
-      -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
+    # Cleanup old backups (keep last RETENTION_DAYS days)
+    RETENTION_DAYS="${RETENTION_DAYS:-30}"
+    echo "[$(date)] Cleaning up backups older than ${RETENTION_DAYS} days..."
+    CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
 
-    PGPASSWORD="${POSTGRES_PASSWORD}" psql \
-      -h "${POSTGRES_HOST}" \
-      -U "${POSTGRES_USER}" \
-      -d postgres \
-      -c "CREATE DATABASE ${POSTGRES_DB};"
+    aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/" \
+      --endpoint-url "${R2_ENDPOINT}" 2>/dev/null \
+      | while read -r line; do
+        FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1 || echo "")
+        FILE_NAME=$(echo "$line" | awk '{print $4}')
 
-    # Restore
-    gunzip -c "${RESTORE_FILE}" | PGPASSWORD="${POSTGRES_PASSWORD}" psql \
-      -h "${POSTGRES_HOST}" \
-      -U "${POSTGRES_USER}" \
-      -d "${POSTGRES_DB}"
+        if [[ -n "${FILE_DATE}" && "${FILE_DATE}" < "${CUTOFF_DATE}" && "${FILE_NAME}" != "latest.sql.gz" ]]; then
+          echo "[$(date)] Deleting old backup: ${FILE_NAME}"
+          aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${FILE_NAME}" \
+            --endpoint-url "${R2_ENDPOINT}"
+        fi
+      done
 
-    # Cleanup
-    rm -f "${RESTORE_FILE}"
-
-    echo "[$(date)] Restore complete"
+    echo "[$(date)] Backup pipeline complete: ${BACKUP_KEY}"
 ---
 # CronJob for daily backups
 apiVersion: batch/v1
@@ -237,14 +113,11 @@ spec:
         spec:
           restartPolicy: OnFailure
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 999
-            runAsGroup: 999
-            fsGroup: 999
             seccompProfile:
               type: RuntimeDefault
-          containers:
-            - name: backup
+          # Step 1: pg_dumpall writes to shared /backup volume
+          initContainers:
+            - name: dump
               image: docker.io/library/postgres:16
               securityContext:
                 privileged: false
@@ -254,9 +127,8 @@ spec:
                     - ALL
               command:
                 - /bin/bash
-                - /scripts/backup.sh
+                - /scripts/dump.sh
               env:
-                # PostgreSQL connection
                 - name: POSTGRES_HOST
                   value: postgres.data.svc.cluster.local
                 - name: POSTGRES_USER
@@ -264,17 +136,37 @@ spec:
                     secretKeyRef:
                       name: postgres-credentials
                       key: username
-                - name: POSTGRES_DB
-                  valueFrom:
-                    secretKeyRef:
-                      name: postgres-credentials
-                      key: database
                 - name: POSTGRES_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: postgres-credentials
                       key: password
-                # R2 configuration
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          # Step 2: aws-cli uploads from shared /backup volume to R2
+          containers:
+            - name: upload
+              image: docker.io/amazon/aws-cli:latest
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/bash
+                - /scripts/upload.sh
+              env:
                 - name: R2_ACCOUNT_ID
                   valueFrom:
                     secretKeyRef:
@@ -286,7 +178,6 @@ spec:
                   value: postgres
                 - name: RETENTION_DAYS
                   value: "30"
-                # AWS CLI config for R2
                 - name: AWS_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
@@ -302,108 +193,20 @@ spec:
               volumeMounts:
                 - name: scripts
                   mountPath: /scripts
+                - name: backup-data
+                  mountPath: /backup
               resources:
                 requests:
-                  memory: "256Mi"
-                  cpu: "100m"
+                  memory: "128Mi"
+                  cpu: "50m"
                 limits:
-                  memory: "512Mi"
-                  cpu: "500m"
+                  memory: "256Mi"
+                  cpu: "200m"
           volumes:
             - name: scripts
               configMap:
                 name: postgres-backup-script
                 defaultMode: 0755
----
-# Manual backup job template (for ad-hoc backups)
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: postgres-backup-manual
-  namespace: data
-  labels:
-    app.kubernetes.io/name: postgres-backup
-    app.kubernetes.io/component: backup
-    app.kubernetes.io/part-of: enclii
-spec:
-  backoffLimit: 1
-  activeDeadlineSeconds: 1800
-  template:
-    metadata:
-      labels:
-        app: postgres-backup-manual
-    spec:
-      restartPolicy: Never
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 999
-        runAsGroup: 999
-        fsGroup: 999
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: backup
-          image: docker.io/library/postgres:16
-          securityContext:
-            privileged: false
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-          command:
-            - /bin/bash
-            - /scripts/backup.sh
-          env:
-            - name: POSTGRES_HOST
-              value: postgres.data.svc.cluster.local
-            - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: username
-            - name: POSTGRES_DB
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: database
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: password
-            - name: R2_ACCOUNT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: r2-backup-credentials
-                  key: account-id
-            - name: R2_BUCKET
-              value: enclii-backups
-            - name: BACKUP_PREFIX
-              value: postgres
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: r2-backup-credentials
-                  key: access-key-id
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: r2-backup-credentials
-                  key: secret-access-key
-            - name: AWS_DEFAULT_REGION
-              value: auto
-          volumeMounts:
-            - name: scripts
-              mountPath: /scripts
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-      volumes:
-        - name: scripts
-          configMap:
-            name: postgres-backup-script
-            defaultMode: 0755
+            - name: backup-data
+              emptyDir:
+                sizeLimit: 2Gi
