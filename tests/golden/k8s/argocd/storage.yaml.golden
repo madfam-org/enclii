@@ -23,13 +23,13 @@ spec:
       # Inline values (or reference external values file)
       values: |
         defaultSettings:
-          defaultReplicaCount: 2
+          defaultReplicaCount: 1
           storageOverProvisioningPercentage: 100
           storageMinimalAvailablePercentage: 15
           autoSalvage: true
           replicaAutoBalance: best-effort
         persistence:
-          defaultClassReplicaCount: 2
+          defaultClassReplicaCount: 1
           reclaimPolicy: Retain
         ingress:
           enabled: false

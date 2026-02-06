@@ -57,7 +57,7 @@ metadata:
       Verifies that container images are signed with Cosign.
       All production namespaces require signed images.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-signature
@@ -73,15 +73,17 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/madfam-org/*"
-          mutateDigest: false  # Required for Audit failure action
+          mutateDigest: true
           verifyDigest: true
           required: true
           useCache: true
+          imageRegistryCredentials:
+            secrets:
+              - ghcr-credentials
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    # Sigstore keyless signing via GitHub Actions OIDC
                     issuer: https://token.actions.githubusercontent.com
                     subject: "https://github.com/madfam-org/*"
                     rekor:

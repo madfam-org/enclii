@@ -41,7 +41,6 @@ CONFIGS=(
     "apps/dispatch/k8s/deployment.yaml:apps/dispatch-deployment.yaml.golden"
     "infra/argocd/apps/monitoring.yaml:argocd/monitoring.yaml.golden"
     "infra/argocd/apps/storage.yaml:argocd/storage.yaml.golden"
-    "infra/argocd/apps/image-updater.yaml:argocd/image-updater.yaml.golden"
     "infra/argocd/apps/external-secrets-operator.yaml:argocd/external-secrets-operator.yaml.golden"
     "infra/argocd/apps/ingress.yaml:argocd/ingress.yaml.golden"
     "infra/argocd/apps/arc-runners.yaml:argocd/arc-runners.yaml.golden"
