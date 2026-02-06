@@ -1,0 +1,51 @@
+# Tezca Legal Research Platform Application
+# Deploys: tezca-api, tezca-web, tezca-admin, tezca-worker, tezca-beat, tezca-redis, tezca-es
+# Source: https://github.com/madfam-org/leyes-como-codigo-mx (external repo)
+#
+# Images pushed as nested GHCR packages:
+#   - ghcr.io/madfam-org/tezca/api    (API + Worker + Beat, Django)
+#   - ghcr.io/madfam-org/tezca/web    (Web, Next.js)
+#   - ghcr.io/madfam-org/tezca/admin  (Admin, Next.js)
+#
+# Auto-deploy flow: push main → CI builds + commits digest to kustomization.yaml → ArgoCD syncs
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tezca-services
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: tezca-services
+    app.kubernetes.io/part-of: tezca
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/leyes-como-codigo-mx.git
+    targetRevision: main
+    path: k8s/production
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tezca
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP

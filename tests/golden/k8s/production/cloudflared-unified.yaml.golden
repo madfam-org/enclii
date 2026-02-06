@@ -277,6 +277,36 @@ data:
           httpHostHeader: www.dhan.am
 
       # ============================================
+      # Tezca Legal Research Services (namespace: tezca)
+      # ============================================
+
+      # Tezca API (Django)
+      - hostname: api.tezca.mx
+        service: http://tezca-api.tezca.svc.cluster.local:8000
+        originRequest:
+          connectTimeout: 30s
+          keepAliveTimeout: 90s
+          httpHostHeader: api.tezca.mx
+
+      # Tezca Web (Next.js)
+      - hostname: tezca.mx
+        service: http://tezca-web.tezca.svc.cluster.local:3000
+        originRequest:
+          httpHostHeader: tezca.mx
+
+      # Tezca Web (www subdomain)
+      - hostname: www.tezca.mx
+        service: http://tezca-web.tezca.svc.cluster.local:3000
+        originRequest:
+          httpHostHeader: www.tezca.mx
+
+      # Tezca Admin (Next.js)
+      - hostname: admin.tezca.mx
+        service: http://tezca-admin.tezca.svc.cluster.local:3001
+        originRequest:
+          httpHostHeader: admin.tezca.mx
+
+      # ============================================
       # SSH Access (Cloudflare Access protected)
       # ============================================
       # SSH to foundry-core via Cloudflare Access tunnel
