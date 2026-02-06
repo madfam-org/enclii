@@ -33,7 +33,7 @@ configMapGenerator:
 images:
 - name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-  digest: sha256:fe78573d71155542739e4a56ffdb59697f4e6b3cb5bea7c6960e97af0c69e08f
+  digest: sha256:14758cb87a84fb9c8439335b0c84762b7e14cad60d1c08862b6108170f2b4b01
 - name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
   digest: sha256:13caac15fb1681352a448f10746c0820332279034564246290ee560f6a1d7bf4
