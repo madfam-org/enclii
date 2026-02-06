@@ -14,7 +14,7 @@ on:
         type: boolean
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.24.13'
   NODE_VERSION: '20'
   # Runner selection: Use self-hosted if ARC bootstrap is complete, otherwise GitHub-hosted
   # Set ARC_BOOTSTRAP_COMPLETE=true in repository variables after ARC is installed
@@ -32,6 +32,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache: true
 
       - name: Install golangci-lint
@@ -218,6 +219,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache: true
 
       - name: Run switchyard-api tests
@@ -269,6 +271,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache: true
 
       - name: Build switchyard-api
@@ -392,6 +395,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache: true
 
       - name: Install gosec
