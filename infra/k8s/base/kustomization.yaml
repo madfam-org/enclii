@@ -26,18 +26,11 @@ resources:
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in individual manifests.
 
-images:
-  - name: switchyard-api
-    newName: ghcr.io/madfam-org/enclii/switchyard-api
-    newTag: latest
-  - name: switchyard-ui
-    newName: ghcr.io/madfam-org/enclii/switchyard-ui
-    newTag: latest
-  - name: landing-page
-    newName: ghcr.io/madfam-org/enclii/landing-page
-    newTag: latest
-  - name: docs-site
-    newName: ghcr.io/madfam-org/enclii/docs-site
-    newTag: latest
+# Note: images transformer is intentionally omitted from the base.
+# Base manifests use short placeholder names (e.g. image: switchyard-api).
+# The production overlay (production/kustomization.yaml) handles the full
+# transformation: name → newName (GHCR path) + digest.
+# If the base also transforms images, it fires first and changes the name,
+# preventing the production overlay's digest transformer from matching.
 
 namespace: default
