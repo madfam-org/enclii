@@ -10,8 +10,9 @@
 # - Dashboard available via: kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
 
 defaultSettings:
-  # Replicate data across 2 nodes for HA (set to 3 when >3 nodes available)
-  defaultReplicaCount: 2
+  # Single-node cluster: 1 replica (both replicas land on same disk = zero HA value)
+  # Increase to 2 when 2nd storage node joins, 3 when 3+ nodes available
+  defaultReplicaCount: 1
 
   # Storage allocation settings
   storageOverProvisioningPercentage: 100
@@ -40,8 +41,8 @@ defaultSettings:
   replicaAutoBalance: best-effort
 
 persistence:
-  # Default replica count for dynamic provisioning
-  defaultClassReplicaCount: 2
+  # Default replica count for dynamic provisioning (1 for single-node, increase when scaling)
+  defaultClassReplicaCount: 1
 
   # Reclaim policy - Retain data on PVC deletion (safer for production)
   reclaimPolicy: Retain

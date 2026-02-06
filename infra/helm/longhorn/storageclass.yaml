@@ -5,7 +5,7 @@
 #   storageClassName: longhorn-replicated
 #
 # Features:
-# - 2 replicas across nodes (HA)
+# - 1 replica on single-node (increase to 2+ when storage nodes added)
 # - Retain policy (data preserved on PVC deletion)
 # - Immediate binding (volume created immediately)
 ---
@@ -20,12 +20,11 @@ allowVolumeExpansion: true
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
 parameters:
-  numberOfReplicas: "2"
+  numberOfReplicas: "1"
   staleReplicaTimeout: "30"
   fromBackup: ""
   fsType: "ext4"
-  # Currently single-node: 2nd replica will auto-schedule when a 3rd storage node joins.
-  # No manual intervention needed — Longhorn handles replica placement automatically.
+  # Single-node: 1 replica (both on same disk = zero HA). Increase when storage nodes added.
   dataLocality: "disabled"  # Allow replicas on any node
 ---
 # High-performance StorageClass for local-only workloads (build caches)

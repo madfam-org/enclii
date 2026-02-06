@@ -156,7 +156,7 @@ spec:
           # Step 2: aws-cli uploads from shared /backup volume to R2
           containers:
             - name: upload
-              image: docker.io/amazon/aws-cli:latest
+              image: docker.io/amazon/aws-cli:2.33.16
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false

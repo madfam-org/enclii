@@ -1,0 +1,30 @@
+---
+# PolicyException for Kyverno namespace
+# Kyverno's own cleanup CronJobs use :latest images because bitnami removed
+# version tags from Docker Hub — only 'latest' and SHA-based tags are available.
+# Without this exception, ~144 warning events/day are generated (noise).
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: kyverno-internal-latest
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/part-of: enclii-infrastructure
+    app.kubernetes.io/component: security
+  annotations:
+    description: "Exempts Kyverno's own CronJobs from disallow-latest-tag (Helm-managed images)"
+spec:
+  exceptions:
+    - policyName: disallow-latest-tag
+      ruleNames:
+        - disallow-latest
+        - autogen-disallow-latest
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - CronJob
+            - Job
+          namespaces:
+            - kyverno
