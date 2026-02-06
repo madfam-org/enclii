@@ -151,9 +151,9 @@ After building and pushing the Docker image, commit the digest:
       }'
 ```
 
-### C. Add paths-ignore to prevent CI loops
+### C. Exclude kustomization.yaml to prevent CI loops
 
-The digest commit will modify `kustomization.yaml`. Prevent it from re-triggering CI:
+The digest commit will modify `kustomization.yaml`. Use `!` negation in `paths` to exclude it (GitHub Actions does not allow `paths` and `paths-ignore` together):
 
 ```yaml
 on:
@@ -161,8 +161,7 @@ on:
     branches: [main]
     paths:
       - 'apps/my-service/**'
-    paths-ignore:
-      - 'path/to/k8s/production/kustomization.yaml'
+      - '!path/to/k8s/production/kustomization.yaml'
 ```
 
 ## Step 5: Create K8s Manifests

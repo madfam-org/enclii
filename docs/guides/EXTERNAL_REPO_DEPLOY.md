@@ -91,8 +91,7 @@ on:
     paths:
       - 'apps/my-service/**'
       - 'packages/**'
-    paths-ignore:
-      - 'k8s/production/kustomization.yaml'
+      - '!k8s/production/kustomization.yaml'
   workflow_dispatch: {}
 
 env:
@@ -233,12 +232,18 @@ spec:
 
 ## Preventing CI Loops
 
-The digest commit to `kustomization.yaml` would re-trigger CI without `paths-ignore`. Always include:
+The digest commit to `kustomization.yaml` would re-trigger CI. Use `!` negation in `paths` to exclude it (GitHub Actions does not allow `paths` and `paths-ignore` together):
 
 ```yaml
+paths:
+  - 'apps/my-service/**'
+  - '!k8s/production/kustomization.yaml'   # negation pattern
+```
+
+Alternatively, if using only `paths-ignore` (no `paths` filter), you can exclude broadly:
+```yaml
 paths-ignore:
-  - 'k8s/production/kustomization.yaml'    # dhanam pattern
-  - 'k8s/**'                                # janua pattern (broader)
+  - 'k8s/**'                                # janua pattern
 ```
 
 ## GHCR Image Naming
@@ -290,7 +295,7 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| CI loop on kustomization commit | Missing `paths-ignore` | Add `paths-ignore` for kustomization.yaml |
+| CI loop on kustomization commit | Missing path negation | Add `!kustomization.yaml` to `paths` filter |
 | ArgoCD not syncing | Git poll interval (3min) | Wait or force-sync via kubectl |
 | GHCR 403 on digest pull | Attestation manifest SHA | Set `provenance: false` in build-push-action |
 | Build succeeds but no deploy | Missing digest commit step | Add kustomize edit + git push step |
