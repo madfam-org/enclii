@@ -249,7 +249,7 @@ The `LifecycleEventCallback` handler creates Deployment records automatically fo
 
 **Release enrichment:** The ArgoCD callback enriches Releases with git metadata (commit message, author, branch, repo URL) from lifecycle events — both when creating new Releases AND when finding existing ones with empty metadata fields. This handles the race condition where CI creates the release first (without commit metadata) and ArgoCD later finds it. The `"actor"` metadata key is also accepted as a fallback for `"author"` since some CI workflows use GitHub's `actor` field. **Event source preference:** `enrichReleaseFields` prefers CI/webhook events (`ci_callback`, `github_webhook`) over ArgoCD events when populating metadata. ArgoCD status messages like "ArgoCD sync Synced: ..." are never stored as `commit_message` — only genuine CI commit messages are used.
 
-**Stale deploying filter (UI):** The Active Deployments section filters out `deploying`/`pending` records older than 30 minutes. These are almost certainly orphaned records from before the SHA-fallback fix and will never transition. The full deployment history (including stale records) remains in the database and in the Deployment History section.
+**Stale deploying filter (UI):** The Active Deployments card is always visible on the deployments page. It filters out `deploying`/`pending` records older than 30 minutes (these are almost certainly orphaned records from before the SHA-fallback fix and will never transition). When no active deployments exist, the card shows a green "No active deployments" idle state. The full deployment history (including stale records) remains in the database and in the Deployment History section.
 
 ### Service Name Resolution
 

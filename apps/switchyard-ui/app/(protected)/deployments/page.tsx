@@ -239,27 +239,41 @@ export default function DeploymentsPage() {
         </button>
       </div>
 
-      {/* Active Deployments */}
-      {activeDeployments.length > 0 && (
-        <div className="mb-8 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Active Deployments</h2>
-          {activeDeployments.map((deployment) => (
-            <div
-              key={deployment.id}
-              className="cursor-pointer"
-              onClick={() => router.push(`/deployments/${deployment.id}`)}
-            >
-              <DeploymentProgress
-                releaseId={deployment.id}
-                serviceName={deployment.service_name || "Unknown Service"}
-                currentStage={getDeploymentStage(deployment)}
-                startedAt={deployment.created_at}
-                onComplete={fetchDeployments}
-              />
+      {/* Active Deployments — always visible */}
+      <Card className="mb-8">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Active Deployments</CardTitle>
+          <CardDescription>
+            Currently deploying or pending rollouts
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activeDeployments.length > 0 ? (
+            <div className="space-y-4">
+              {activeDeployments.map((deployment) => (
+                <div
+                  key={deployment.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/deployments/${deployment.id}`)}
+                >
+                  <DeploymentProgress
+                    releaseId={deployment.id}
+                    serviceName={deployment.service_name || "Unknown Service"}
+                    currentStage={getDeploymentStage(deployment)}
+                    startedAt={deployment.created_at}
+                    onComplete={fetchDeployments}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+              <div className="w-2 h-2 rounded-full bg-status-success" />
+              No active deployments
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Pipeline Activity */}
       {lifecycleEvents.length > 0 && (
