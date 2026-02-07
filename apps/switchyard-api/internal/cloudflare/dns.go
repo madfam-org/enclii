@@ -313,6 +313,71 @@ func (c *Client) FindZoneForDomain(ctx context.Context, domain string) (*Zone, e
 	return bestMatch, nil
 }
 
+// CreateZone creates a new Cloudflare zone for a domain.
+// Uses jump_start to auto-scan for existing DNS records.
+func (c *Client) CreateZone(ctx context.Context, name string) (*Zone, error) {
+	payload := struct {
+		Name    string `json:"name"`
+		Account struct {
+			ID string `json:"id"`
+		} `json:"account"`
+		JumpStart bool `json:"jump_start"`
+	}{
+		Name:      name,
+		JumpStart: true,
+	}
+	payload.Account.ID = c.accountID
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal zone creation request: %w", err)
+	}
+
+	var resp APIResponse[Zone]
+	if err := c.post(ctx, "/zones", bytes.NewReader(payloadBytes), &resp); err != nil {
+		return nil, fmt.Errorf("failed to create zone %s: %w", name, err)
+	}
+
+	if !resp.Success {
+		if len(resp.Errors) > 0 {
+			return nil, fmt.Errorf("API error creating zone %s: %s", name, resp.Errors[0].Message)
+		}
+		return nil, fmt.Errorf("unknown API error creating zone %s", name)
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"zone_id":      resp.Result.ID,
+		"zone_name":    resp.Result.Name,
+		"status":       resp.Result.Status,
+		"name_servers": resp.Result.NameServers,
+	}).Info("Created Cloudflare zone")
+
+	return &resp.Result, nil
+}
+
+// EnsureZoneForDomain finds the Cloudflare zone for a domain, creating it if missing.
+// Extracts the apex domain (last 2 segments) from the FQDN for zone creation.
+func (c *Client) EnsureZoneForDomain(ctx context.Context, domain string) (*Zone, error) {
+	zone, err := c.FindZoneForDomain(ctx, domain)
+	if err == nil {
+		return zone, nil
+	}
+
+	// Extract apex domain: "api.tezca.mx" → "tezca.mx"
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("cannot extract apex domain from %s", domain)
+	}
+	apex := strings.Join(parts[len(parts)-2:], ".")
+
+	logrus.WithFields(logrus.Fields{
+		"domain": domain,
+		"apex":   apex,
+	}).Info("Zone not found, creating new Cloudflare zone")
+
+	return c.CreateZone(ctx, apex)
+}
+
 // EnsureDNSRecord creates a CNAME record for the domain if it doesn't already exist.
 // If a record exists with different content, it is left unchanged.
 // Returns the record and whether it was created.

@@ -198,6 +198,14 @@ func (h *Handler) ensureDNSRecord(ctx context.Context, domain string) {
 		return
 	}
 
+	// Ensure the Cloudflare zone exists for this domain (creates if missing)
+	if _, err := cfClient.EnsureZoneForDomain(ctx, domain); err != nil {
+		h.logger.Warn(ctx, "Failed to ensure Cloudflare zone for domain",
+			logging.String("domain", domain),
+			logging.Error("error", err))
+		// Continue — EnsureDNSRecord will fail with a clearer error if zone is truly missing
+	}
+
 	// The tunnel CNAME target — domains are CNAME'd to the tunnel endpoint
 	tunnelCNAME := services.DefaultTunnelCNAME
 

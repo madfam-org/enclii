@@ -54,6 +54,8 @@ The onboarding endpoint:
 3. Sets up a GitHub webhook for push events
 4. Generates an ArgoCD Application YAML
 5. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
+   - If the domain's zone doesn't exist in Cloudflare (e.g., `tezca.mx`), it is created automatically
+   - Nameservers must be delegated to Cloudflare for the zone to activate
 
 ### Response
 

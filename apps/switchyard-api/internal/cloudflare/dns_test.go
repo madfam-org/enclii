@@ -356,6 +356,199 @@ func TestFindZoneForDomain(t *testing.T) {
 	}
 }
 
+func TestCreateZone(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		wantErr bool
+		checkFn func(t *testing.T, zone *Zone)
+	}{
+		{
+			name: "successful creation",
+			handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("method = %s, want POST", r.Method)
+				}
+				if r.URL.Path != "/zones" {
+					t.Errorf("path = %s, want /zones", r.URL.Path)
+				}
+
+				body, _ := io.ReadAll(r.Body)
+				var payload struct {
+					Name    string `json:"name"`
+					Account struct {
+						ID string `json:"id"`
+					} `json:"account"`
+					JumpStart bool `json:"jump_start"`
+				}
+				if err := json.Unmarshal(body, &payload); err != nil {
+					t.Fatalf("failed to parse request body: %v", err)
+				}
+				if payload.Name != "tezca.mx" {
+					t.Errorf("name = %q, want tezca.mx", payload.Name)
+				}
+				if payload.Account.ID != "test-account" {
+					t.Errorf("account.id = %q, want test-account", payload.Account.ID)
+				}
+				if !payload.JumpStart {
+					t.Error("jump_start = false, want true")
+				}
+
+				resp := APIResponse[Zone]{
+					Success: true,
+					Result: Zone{
+						ID:          "zone-tezca",
+						Name:        "tezca.mx",
+						Status:      "pending",
+						NameServers: []string{"ns1.cloudflare.com", "ns2.cloudflare.com"},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+			}),
+			wantErr: false,
+			checkFn: func(t *testing.T, zone *Zone) {
+				if zone.ID != "zone-tezca" {
+					t.Errorf("ID = %q, want zone-tezca", zone.ID)
+				}
+				if zone.Name != "tezca.mx" {
+					t.Errorf("Name = %q, want tezca.mx", zone.Name)
+				}
+				if zone.Status != "pending" {
+					t.Errorf("Status = %q, want pending", zone.Status)
+				}
+			},
+		},
+		{
+			name: "API error response",
+			handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				resp := APIResponse[Zone]{
+					Success: false,
+					Errors:  []APIError{{Code: 1061, Message: "A zone with that name already exists"}},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+			}),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			zone, err := client.CreateZone(context.Background(), "tezca.mx")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.checkFn != nil {
+				tt.checkFn(t, zone)
+			}
+		})
+	}
+}
+
+func TestEnsureZoneForDomain(t *testing.T) {
+	tests := []struct {
+		name       string
+		domain     string
+		wantZone   string
+		wantErr    bool
+		zoneExists bool // whether FindZoneForDomain should find an existing zone
+	}{
+		{
+			name:       "zone already exists",
+			domain:     "api.enclii.dev",
+			wantZone:   "enclii.dev",
+			zoneExists: true,
+		},
+		{
+			name:       "zone does not exist - creates apex",
+			domain:     "api.tezca.mx",
+			wantZone:   "tezca.mx",
+			zoneExists: false,
+		},
+		{
+			name:       "bare apex domain - creates it",
+			domain:     "tezca.mx",
+			wantZone:   "tezca.mx",
+			zoneExists: false,
+		},
+		{
+			name:    "single segment domain - error",
+			domain:  "localhost",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+
+				// ListZones (GET /zones) — used by FindZoneForDomain
+				if r.Method == http.MethodGet && r.URL.Path == "/zones" {
+					var zones []Zone
+					if tt.zoneExists {
+						zones = []Zone{{ID: "z-existing", Name: tt.wantZone, Status: "active"}}
+					}
+					resp := APIResponse[[]Zone]{
+						Success:    true,
+						Result:     zones,
+						ResultInfo: &ResultInfo{Page: 1, TotalPages: 1, Count: len(zones), TotalCount: len(zones)},
+					}
+					json.NewEncoder(w).Encode(resp)
+					return
+				}
+
+				// CreateZone (POST /zones)
+				if r.Method == http.MethodPost && r.URL.Path == "/zones" {
+					body, _ := io.ReadAll(r.Body)
+					var payload struct {
+						Name string `json:"name"`
+					}
+					json.Unmarshal(body, &payload)
+
+					resp := APIResponse[Zone]{
+						Success: true,
+						Result: Zone{
+							ID:     "z-new",
+							Name:   payload.Name,
+							Status: "pending",
+						},
+					}
+					json.NewEncoder(w).Encode(resp)
+					return
+				}
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			zone, err := client.EnsureZoneForDomain(context.Background(), tt.domain)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if zone.Name != tt.wantZone {
+				t.Errorf("zone.Name = %q, want %q", zone.Name, tt.wantZone)
+			}
+		})
+	}
+}
+
 func TestEnsureDNSRecord(t *testing.T) {
 	tests := []struct {
 		name        string

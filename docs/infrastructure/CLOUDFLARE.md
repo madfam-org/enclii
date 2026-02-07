@@ -127,6 +127,8 @@ Domains declared in `enclii.yaml` are automatically provisioned on each push to 
 
 **Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
 
+**Auto Zone Creation:** If the domain's zone doesn't exist in Cloudflare (e.g., onboarding `tezca.mx` when only `madfam.io` is configured), the provisioner automatically creates the zone via `EnsureZoneForDomain()`. This requires the API token to have account-level Zone:Edit permissions (not zone-scoped). New zones start in `pending` status until nameserver delegation is verified by Cloudflare.
+
 **Cleanup:** When a service is deleted, `cleanupDomainsForService()` removes tunnel routes and DNS records for all associated domains.
 
 **Source Code:**
@@ -324,9 +326,10 @@ SSL auto-provisions via Cloudflare for SaaS.
 
 ### API Token Permissions
 
-Required scopes:
-- Zone:Read
-- Zone:Edit (for custom hostnames)
+Required scopes (must be **account-level**, not zone-scoped, to support auto zone creation):
+- Zone:Read (All zones)
+- Zone:Edit (All zones — required for zone creation and custom hostnames)
+- Zone DNS:Edit (All zones)
 - Account:Cloudflare Tunnel:Read
 - Account:Cloudflare Tunnel:Edit
 
