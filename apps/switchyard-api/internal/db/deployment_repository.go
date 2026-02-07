@@ -284,6 +284,33 @@ func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (
 	return d, nil
 }
 
+// FindDeployingByServiceAndSHA finds the most recent deployment with status 'deploying'
+// for a given service and git SHA. Returns nil, nil if no match is found.
+func (r *DeploymentRepository) FindDeployingByServiceAndSHA(ctx context.Context, serviceID uuid.UUID, gitSHA string) (*types.Deployment, error) {
+	deployment := &types.Deployment{}
+	query := `
+		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
+		       d.error_message, d.created_at, d.updated_at
+		FROM deployments d
+		JOIN releases r ON d.release_id = r.id
+		WHERE r.service_id = $1 AND r.git_sha = $2 AND d.status = 'deploying'
+		ORDER BY d.created_at DESC
+		LIMIT 1
+	`
+	err := r.db.QueryRowContext(ctx, query, serviceID, gitSHA).Scan(
+		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
+		&deployment.Replicas, &deployment.Status, &deployment.Health,
+		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+	)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return deployment, nil
+}
+
 // ListByGroup retrieves all deployments for a deployment group
 // Note: This feature is not yet implemented - group_id and deploy_order columns
 // don't exist in the database. Returns empty slice until feature is migrated.

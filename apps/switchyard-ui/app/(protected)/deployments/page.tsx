@@ -5,7 +5,7 @@ import { usePolling } from "@/hooks/use-polling";
 import { POLLING_SLOW } from "@/lib/constants";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Activity } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,38 @@ import { GitBranch } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { Deployment, DeploymentsListResponse } from "@/components/deployments/types";
 
+interface LifecycleEvent {
+  id: string;
+  event_type: string;
+  source: string;
+  repo_full_name: string;
+  commit_sha: string;
+  branch: string;
+  message?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  service_id?: string;
+  project_id?: string;
+}
+
+interface LifecycleEventsResponse {
+  count: number;
+  events: LifecycleEvent[];
+}
+
+const EVENT_TYPE_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; dotClass: string }> = {
+  image_pushed:    { label: "Image Pushed",  variant: "default",     dotClass: "bg-status-success" },
+  build_failed:    { label: "Build Failed",  variant: "destructive", dotClass: "bg-status-error" },
+  deploy_healthy:  { label: "Deployed",      variant: "default",     dotClass: "bg-status-success" },
+  deploy_synced:   { label: "Syncing",       variant: "secondary",   dotClass: "bg-status-info animate-pulse" },
+  deploy_degraded: { label: "Degraded",      variant: "outline",     dotClass: "bg-status-warning" },
+  deploy_failed:   { label: "Deploy Failed", variant: "destructive", dotClass: "bg-status-error" },
+  push_received:   { label: "Push Received", variant: "outline",     dotClass: "bg-muted-foreground" },
+  build_started:   { label: "Building",      variant: "secondary",   dotClass: "bg-status-info animate-pulse" },
+  build_succeeded: { label: "Build OK",      variant: "default",     dotClass: "bg-status-success" },
+  digest_committed:{ label: "Digest Committed", variant: "outline",  dotClass: "bg-muted-foreground" },
+};
+
 interface ServiceListResponse {
   services: Array<{ id: string; name: string }>;
 }
@@ -23,6 +55,7 @@ export default function DeploymentsPage() {
   const router = useRouter();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [activeDeployments, setActiveDeployments] = useState<Deployment[]>([]);
+  const [lifecycleEvents, setLifecycleEvents] = useState<LifecycleEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +98,15 @@ export default function DeploymentsPage() {
 
       setActiveDeployments(active);
       setDeployments(history);
+
+      // Fetch lifecycle events (best-effort, don't block on failure)
+      try {
+        const eventsData = await apiGet<LifecycleEventsResponse>('/v1/lifecycle/events?limit=20');
+        setLifecycleEvents(eventsData.events || []);
+      } catch {
+        // Lifecycle events are supplementary — don't fail the page
+      }
+
       setLoading(false);
       setRefreshing(false);
     } catch (err) {
@@ -202,6 +244,68 @@ export default function DeploymentsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Pipeline Activity */}
+      {lifecycleEvents.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">Pipeline Activity</CardTitle>
+            </div>
+            <CardDescription>
+              Recent CI/CD events across all repos
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {lifecycleEvents.map((event) => {
+                const config = EVENT_TYPE_CONFIG[event.event_type] || {
+                  label: event.event_type,
+                  variant: "outline" as const,
+                  dotClass: "bg-muted-foreground",
+                };
+                const serviceName = (event.metadata?.service as string) || event.repo_full_name.split("/").pop() || "unknown";
+                const repoShort = event.repo_full_name.split("/").pop() || event.repo_full_name;
+                return (
+                  <div
+                    key={event.id}
+                    className="flex items-center justify-between p-3 bg-muted/30 rounded-md border border-border/50"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${config.dotClass}`} />
+                      <Badge variant={config.variant} className="text-xs flex-shrink-0">
+                        {config.label}
+                      </Badge>
+                      <span className="text-sm font-medium text-foreground truncate">
+                        {serviceName}
+                      </span>
+                      {event.commit_sha && (
+                        <span className="text-xs font-mono text-muted-foreground flex-shrink-0">
+                          {event.commit_sha.slice(0, 7)}
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground truncate hidden sm:inline">
+                        {repoShort}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      {event.message && (
+                        <span className="text-xs text-muted-foreground truncate max-w-[200px] hidden md:inline">
+                          {event.message}
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatTimeAgo(event.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <Card>

@@ -112,23 +112,48 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			continue
 		}
 
-		// Create deployment record
-		deployment := &types.Deployment{
-			ID:            uuid.New(),
-			ReleaseID:     release.ID,
-			EnvironmentID: env.ID,
-			Replicas:      1,
-			Status:        types.DeploymentStatusRunning,
-			Health:        types.HealthStatusHealthy,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+		// Check for existing deployment with 'deploying' status (created by CI lifecycle event)
+		existingDeployment, findErr := h.repos.Deployments.FindDeployingByServiceAndSHA(ctx, service.ID, req.Revision)
+		if findErr != nil {
+			h.logger.Warn(ctx, "Error looking up existing deploying deployment",
+				logging.String("service_name", serviceName),
+				logging.Error("error", findErr))
 		}
 
-		if err := h.repos.Deployments.Create(deployment); err != nil {
-			h.logger.Error(ctx, "Failed to create deployment from ArgoCD sync",
-				logging.String("service_name", serviceName),
-				logging.Error("db_error", err))
-			continue
+		var deployment *types.Deployment
+		if existingDeployment != nil {
+			// Update the existing deploying record to running/healthy
+			if err := h.repos.Deployments.UpdateStatus(existingDeployment.ID, types.DeploymentStatusRunning, types.HealthStatusHealthy); err != nil {
+				h.logger.Error(ctx, "Failed to update deploying deployment from ArgoCD sync",
+					logging.String("service_name", serviceName),
+					logging.Error("db_error", err))
+				continue
+			}
+			deployment = existingDeployment
+			deployment.Status = types.DeploymentStatusRunning
+			deployment.Health = types.HealthStatusHealthy
+			h.logger.Info(ctx, "Updated existing deploying deployment to running",
+				logging.String("deployment_id", deployment.ID.String()),
+				logging.String("service_name", serviceName))
+		} else {
+			// Create new deployment record (backward compatible — no prior CI event)
+			deployment = &types.Deployment{
+				ID:            uuid.New(),
+				ReleaseID:     release.ID,
+				EnvironmentID: env.ID,
+				Replicas:      1,
+				Status:        types.DeploymentStatusRunning,
+				Health:        types.HealthStatusHealthy,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			}
+
+			if err := h.repos.Deployments.Create(deployment); err != nil {
+				h.logger.Error(ctx, "Failed to create deployment from ArgoCD sync",
+					logging.String("service_name", serviceName),
+					logging.Error("db_error", err))
+				continue
+			}
 		}
 
 		deploymentsCreated++

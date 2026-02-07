@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -76,6 +77,9 @@ func (h *Handler) LifecycleEventCallback(c *gin.Context) {
 		logging.String("repo", req.RepoFullName),
 		logging.String("branch", req.Branch),
 		logging.String("commit", req.CommitSHA))
+
+	// Create deployment records for pipeline-visible events (best-effort, non-blocking)
+	go h.createDeploymentFromLifecycleEvent(req, event)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "recorded",
@@ -247,6 +251,161 @@ func (h *Handler) GetLifecycleEvents(c *gin.Context) {
 		"count":  len(events),
 		"events": events,
 	})
+}
+
+// createDeploymentFromLifecycleEvent creates a Deployment record from CI lifecycle events
+// so that image_pushed shows as "deploying" and build_failed shows as "failed" in the UI.
+// Runs async and best-effort — errors are logged but don't affect the callback response.
+func (h *Handler) createDeploymentFromLifecycleEvent(req types.LifecycleEventCreate, event *types.DeploymentLifecycleEvent) {
+	ctx := context.Background()
+
+	// Only handle events that should create deployment records
+	var deployStatus types.DeploymentStatus
+	var deployHealth types.HealthStatus
+	var releaseStatus types.ReleaseStatus
+
+	switch req.EventType {
+	case types.LifecycleImagePushed:
+		deployStatus = types.DeploymentStatusDeploying
+		deployHealth = types.HealthStatusUnknown
+		releaseStatus = types.ReleaseStatusReady
+	case types.LifecycleBuildFailed:
+		deployStatus = types.DeploymentStatusFailed
+		deployHealth = types.HealthStatusUnhealthy
+		releaseStatus = types.ReleaseStatusFailed
+	default:
+		return
+	}
+
+	// Resolve service name from metadata
+	serviceName, _ := req.Metadata["service"].(string)
+	if serviceName == "" {
+		// Try to extract from repo name
+		parts := strings.Split(req.RepoFullName, "/")
+		if len(parts) >= 2 {
+			serviceName = parts[len(parts)-1]
+		}
+	}
+	if serviceName == "" {
+		return
+	}
+
+	// Try candidate service names (same pattern as ArgoCD callback for nested images)
+	candidates := []string{serviceName}
+	// If metadata has an image, extract candidates from it
+	if imageURI, ok := req.Metadata["image"].(string); ok && imageURI != "" {
+		candidates = extractServiceCandidates(imageURI)
+		if len(candidates) == 0 {
+			candidates = []string{serviceName}
+		}
+	}
+
+	var service *types.Service
+	for _, candidate := range candidates {
+		svc, err := h.repos.Services.GetByName(candidate)
+		if err == nil {
+			service = svc
+			break
+		}
+	}
+	if service == nil {
+		h.logger.Debug(ctx, "No matching service for lifecycle event deployment",
+			logging.String("service_name", serviceName),
+			logging.String("event_type", req.EventType))
+		return
+	}
+
+	// Find or create release
+	imageURI, _ := req.Metadata["image"].(string)
+	if imageURI == "" {
+		imageURI = "ci://" + req.RepoFullName + ":" + shortSHA(req.CommitSHA)
+	}
+
+	release, err := h.findOrCreateReleaseWithStatus(ctx, service, imageURI, req.CommitSHA, releaseStatus)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to find/create release for lifecycle deployment",
+			logging.String("service_name", service.Name),
+			logging.Error("error", err))
+		return
+	}
+
+	// Find environment
+	envName := service.AutoDeployEnv
+	if envName == "" {
+		envName = "production"
+	}
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get environment for lifecycle deployment",
+			logging.String("env_name", envName),
+			logging.Error("db_error", err))
+		return
+	}
+
+	// Create deployment record
+	deployment := &types.Deployment{
+		ID:            uuid.New(),
+		ReleaseID:     release.ID,
+		EnvironmentID: env.ID,
+		Replicas:      1,
+		Status:        deployStatus,
+		Health:        deployHealth,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	// For build_failed, add error message
+	if req.EventType == types.LifecycleBuildFailed {
+		msg := "Build failed"
+		if req.Message != nil {
+			msg = *req.Message
+		}
+		deployment.ErrorMessage = &msg
+	}
+
+	if err := h.repos.Deployments.Create(deployment); err != nil {
+		h.logger.Error(ctx, "Failed to create deployment from lifecycle event",
+			logging.String("service_name", service.Name),
+			logging.String("event_type", req.EventType),
+			logging.Error("db_error", err))
+		return
+	}
+
+	h.logger.Info(ctx, "Deployment created from lifecycle event",
+		logging.String("deployment_id", deployment.ID.String()),
+		logging.String("service_name", service.Name),
+		logging.String("status", string(deployStatus)),
+		logging.String("event_type", req.EventType))
+}
+
+// findOrCreateReleaseWithStatus is like findOrCreateRelease but allows setting the release status
+func (h *Handler) findOrCreateReleaseWithStatus(ctx interface{ Value(any) any }, service *types.Service, imageURI, gitSHA string, status types.ReleaseStatus) (*types.Release, error) {
+	// Try to find existing release by service + git SHA
+	releases, err := h.repos.Releases.ListByService(service.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list releases: %w", err)
+	}
+
+	for _, r := range releases {
+		if r.GitSHA == gitSHA && r.ServiceID == service.ID {
+			return r, nil
+		}
+	}
+
+	// No matching release — create one
+	release := &types.Release{
+		ServiceID: service.ID,
+		Version:   fmt.Sprintf("ci-%s", shortSHA(gitSHA)),
+		ImageURI:  imageURI,
+		GitSHA:    gitSHA,
+		Status:    status,
+	}
+
+	if err := h.repos.Releases.Create(release); err != nil {
+		return nil, fmt.Errorf("create release: %w", err)
+	}
+
+	return release, nil
 }
 
 // emitLifecycleEvent is a helper to emit a lifecycle event (non-blocking, best-effort)

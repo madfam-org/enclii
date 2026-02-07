@@ -173,9 +173,10 @@ type Deployment struct {
 type DeploymentStatus string
 
 const (
-	DeploymentStatusPending DeploymentStatus = "pending"
-	DeploymentStatusRunning DeploymentStatus = "running"
-	DeploymentStatusFailed  DeploymentStatus = "failed"
+	DeploymentStatusPending   DeploymentStatus = "pending"
+	DeploymentStatusDeploying DeploymentStatus = "deploying"
+	DeploymentStatusRunning   DeploymentStatus = "running"
+	DeploymentStatusFailed    DeploymentStatus = "failed"
 )
 
 type HealthStatus string
