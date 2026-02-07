@@ -115,6 +115,17 @@ spec:
             # Build mode: Use Kaniko for secure rootless builds
             - name: BUILD_MODE
               value: "kaniko"
+            # Kaniko job settings (used by worker to create build Jobs)
+            - name: CALLBACK_URL
+              value: "http://switchyard-api"
+            - name: BUILD_WORK_DIR
+              value: "/var/lib/roundhouse/builds"
+            - name: KANIKO_NODE_SELECTOR
+              value: "role=builder"
+            - name: KANIKO_TOLERATIONS
+              value: "builder=true:NoSchedule"
+            - name: KANIKO_JOB_TEMPLATE_PATH
+              value: "/etc/roundhouse/templates/job-template.yaml"
             # Redis connection
             - name: REDIS_URL
               value: "redis://redis:6379/0"
