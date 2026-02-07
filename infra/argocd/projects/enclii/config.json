@@ -4,7 +4,5 @@
   "branch": "main",
   "manifestPath": "infra/k8s/production",
   "namespace": "enclii",
-  "partOf": "enclii",
-  "serverSideApply": true,
-  "ignoreSecrets": true
+  "partOf": "enclii"
 }
