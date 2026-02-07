@@ -10,7 +10,8 @@ metadata:
   labels:
     app.kubernetes.io/name: janua-services
     app.kubernetes.io/part-of: janua
-  annotations: {}
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

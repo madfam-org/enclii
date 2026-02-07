@@ -20,6 +20,7 @@ metadata:
     app.kubernetes.io/part-of: dhanam
   annotations:
     argocd.argoproj.io/compare-options: IgnoreExtraneous=true
+    notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
