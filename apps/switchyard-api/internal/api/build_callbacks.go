@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -165,41 +168,50 @@ func (h *Handler) processBuildCallback(ctx context.Context, req *BuildCallbackRe
 			logging.Float64("duration_secs", req.DurationSecs),
 			logging.String("image_uri", req.ImageURI))
 
-		// Trigger auto-deploy if enabled
+		// Look up service for auto-deploy and GitOps digest commit
 		service, err := h.repos.Services.GetByID(release.ServiceID)
 		if err != nil {
-			h.logger.Error(ctx, "Failed to get service for auto-deploy check",
+			h.logger.Error(ctx, "Failed to get service for post-build actions",
 				logging.String("service_id", release.ServiceID.String()),
 				logging.Error("db_error", err))
-			// Non-fatal - build succeeded, just can't auto-deploy
-		} else if service.AutoDeploy && service.AutoDeployEnv != "" {
-			h.logger.Info(ctx, "Triggering auto-deploy from Roundhouse callback",
-				logging.String("service_name", service.Name),
-				logging.String("target_env", service.AutoDeployEnv))
+			// Non-fatal - build succeeded, just can't auto-deploy or commit digest
+		} else {
+			// Commit image digest to target repo's kustomization.yaml (GitOps deploy)
+			// This triggers ArgoCD auto-sync — the primary deployment mechanism for external repos
+			if req.ImageDigest != "" {
+				go h.commitDigestToTargetRepo(context.Background(), service, release, req.ImageURI, req.ImageDigest)
+			}
 
-			// Log auto-deploy to Activity feed for dashboard visibility
-			h.repos.AuditLogs.Log(ctx, &types.AuditLog{
-				ActorID:      nil, // System action (auto-deploy)
-				ActorEmail:   "auto-deploy@system.enclii.dev",
-				ActorRole:    types.RoleSystem,
-				Action:       "deployment.auto_triggered",
-				ResourceType: "release",
-				ResourceID:   release.ID.String(),
-				ResourceName: service.Name,
-				ProjectID:    &service.ProjectID,
-				Outcome:      "success",
-				Context: map[string]interface{}{
-					"service_name": service.Name,
-					"service_id":   service.ID.String(),
-					"release_id":   release.ID.String(),
-					"target_env":   service.AutoDeployEnv,
-					"trigger":      "build_success",
-					"commit_sha":   release.GitSHA,
-					"image":        req.ImageURI,
-				},
-			})
+			// Also trigger reconciler-based auto-deploy if configured
+			if service.AutoDeploy && service.AutoDeployEnv != "" {
+				h.logger.Info(ctx, "Triggering auto-deploy from Roundhouse callback",
+					logging.String("service_name", service.Name),
+					logging.String("target_env", service.AutoDeployEnv))
 
-			h.triggerAutoDeploy(ctx, service, release)
+				// Log auto-deploy to Activity feed for dashboard visibility
+				h.repos.AuditLogs.Log(ctx, &types.AuditLog{
+					ActorID:      nil, // System action (auto-deploy)
+					ActorEmail:   "auto-deploy@system.enclii.dev",
+					ActorRole:    types.RoleSystem,
+					Action:       "deployment.auto_triggered",
+					ResourceType: "release",
+					ResourceID:   release.ID.String(),
+					ResourceName: service.Name,
+					ProjectID:    &service.ProjectID,
+					Outcome:      "success",
+					Context: map[string]interface{}{
+						"service_name": service.Name,
+						"service_id":   service.ID.String(),
+						"release_id":   release.ID.String(),
+						"target_env":   service.AutoDeployEnv,
+						"trigger":      "build_success",
+						"commit_sha":   release.GitSHA,
+						"image":        req.ImageURI,
+					},
+				})
+
+				h.triggerAutoDeploy(ctx, service, release)
+			}
 		}
 	} else {
 		// Build failed - store the error message for debugging
@@ -222,4 +234,284 @@ func (h *Handler) processBuildCallback(ctx context.Context, req *BuildCallbackRe
 	}
 
 	return nil
+}
+
+// commitDigestToTargetRepo commits an image digest to the target repo's kustomization.yaml
+// via the GitHub Contents API. This triggers ArgoCD auto-sync for GitOps-based deployments.
+// Runs in a goroutine — failures are logged but non-fatal to the build callback.
+func (h *Handler) commitDigestToTargetRepo(ctx context.Context, service *types.Service, release *types.Release, imageURI, imageDigest string) {
+	if h.config.GitHubToken == "" {
+		h.logger.Debug(ctx, "Skipping digest commit: ENCLII_GITHUB_TOKEN not configured",
+			logging.String("service", service.Name))
+		return
+	}
+
+	// Extract owner/repo from service's git URL
+	owner, repo := parseGitHubOwnerRepo(service.GitRepo)
+	if owner == "" || repo == "" {
+		h.logger.Warn(ctx, "Cannot commit digest: unable to parse git repo URL",
+			logging.String("git_repo", service.GitRepo),
+			logging.String("service", service.Name))
+		return
+	}
+
+	// Look up the kustomization path from onboarding config snapshot
+	repoFullName := owner + "/" + repo
+	kustomizationPath := h.resolveKustomizationPath(ctx, repoFullName, service)
+	if kustomizationPath == "" {
+		h.logger.Warn(ctx, "Cannot commit digest: no kustomization path found",
+			logging.String("repo", repoFullName),
+			logging.String("service", service.Name))
+		return
+	}
+
+	// Build the kustomize image reference: name=registry/image@digest
+	// Extract the image name (without tag) from the full image URI
+	imageName := imageURI
+	if idx := strings.LastIndex(imageName, ":"); idx != -1 {
+		imageName = imageName[:idx]
+	}
+	if idx := strings.LastIndex(imageName, "@"); idx != -1 {
+		imageName = imageName[:idx]
+	}
+
+	// Read the current kustomization.yaml
+	kustomizationFile := kustomizationPath + "/kustomization.yaml"
+	currentContent, currentSHA, err := getGitHubFileContent(ctx, h.config.GitHubToken, owner, repo, kustomizationFile, "main")
+	if err != nil {
+		h.logger.Warn(ctx, "Failed to read kustomization.yaml from target repo (non-fatal)",
+			logging.String("repo", repoFullName),
+			logging.String("path", kustomizationFile),
+			logging.Error("error", err))
+		return
+	}
+
+	// Update the image digest in the kustomization content
+	updatedContent := updateKustomizationImage(currentContent, imageName, service.Name, imageDigest)
+	if updatedContent == currentContent {
+		h.logger.Info(ctx, "Kustomization already up to date, skipping commit",
+			logging.String("repo", repoFullName),
+			logging.String("service", service.Name))
+		return
+	}
+
+	// Commit the updated kustomization.yaml
+	commitMsg := fmt.Sprintf("build: update %s image digest\n\nImage: %s@%s\nRelease: %s\nCommit: %s\n\nAuto-committed by Enclii platform build pipeline",
+		service.Name, imageName, imageDigest[:12], release.ID.String()[:8], release.GitSHA[:8])
+
+	commitSHA, err := createOrUpdateGitHubFileWithSHA(
+		ctx,
+		h.config.GitHubToken,
+		owner, repo,
+		kustomizationFile,
+		[]byte(updatedContent),
+		commitMsg,
+		"main",
+		currentSHA,
+	)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to commit digest to target repo (non-fatal)",
+			logging.String("repo", repoFullName),
+			logging.String("service", service.Name),
+			logging.Error("error", err))
+
+		// Emit lifecycle event for failed digest commit
+		failMsg := "Failed to commit image digest to target repo: " + err.Error()
+		h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
+			ReleaseID:    &release.ID,
+			ProjectID:    &service.ProjectID,
+			RepoFullName: repoFullName,
+			CommitSHA:    release.GitSHA,
+			Branch:       release.GitBranch,
+			EventType:    types.LifecycleDeployFailed,
+			Source:       types.SourcePlatform,
+			Message:      &failMsg,
+		})
+		return
+	}
+
+	h.logger.Info(ctx, "Successfully committed image digest to target repo",
+		logging.String("repo", repoFullName),
+		logging.String("service", service.Name),
+		logging.String("digest", imageDigest[:12]),
+		logging.String("commit", commitSHA))
+
+	// Emit lifecycle event for successful digest commit
+	deployMsg := fmt.Sprintf("Image digest committed to %s — ArgoCD will auto-sync", repoFullName)
+	h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
+		ReleaseID:    &release.ID,
+		ProjectID:    &service.ProjectID,
+		RepoFullName: repoFullName,
+		CommitSHA:    release.GitSHA,
+		Branch:       release.GitBranch,
+		EventType:    types.LifecycleDeployStarted,
+		Source:       types.SourcePlatform,
+		Message:      &deployMsg,
+		Metadata: map[string]interface{}{
+			"digest_commit_sha": commitSHA,
+			"image_digest":      imageDigest,
+			"kustomization":     kustomizationFile,
+		},
+	})
+}
+
+// resolveKustomizationPath determines where the kustomization.yaml lives for a given repo/service.
+// It checks: 1) onboarding config snapshot, 2) service build config context, 3) default path.
+func (h *Handler) resolveKustomizationPath(ctx context.Context, repoFullName string, service *types.Service) string {
+	// Try onboarding registration first (most reliable source)
+	reg, err := h.repos.Onboardings.GetByRepo(ctx, repoFullName)
+	if err == nil && reg != nil && reg.ConfigSnapshot != nil {
+		if manifestPath, ok := reg.ConfigSnapshot["manifest_path"].(string); ok && manifestPath != "" {
+			return manifestPath
+		}
+	}
+
+	// Default to infra/k8s/production
+	return "infra/k8s/production"
+}
+
+// parseGitHubOwnerRepo extracts owner and repo from a GitHub URL.
+// Handles: https://github.com/owner/repo, https://github.com/owner/repo.git
+func parseGitHubOwnerRepo(gitURL string) (string, string) {
+	// Strip trailing .git
+	gitURL = strings.TrimSuffix(gitURL, ".git")
+
+	// Try HTTPS format: https://github.com/owner/repo
+	re := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)`)
+	matches := re.FindStringSubmatch(gitURL)
+	if len(matches) == 3 {
+		return matches[1], matches[2]
+	}
+
+	// Try owner/repo format directly
+	parts := strings.SplitN(gitURL, "/", 2)
+	if len(parts) == 2 && !strings.Contains(parts[0], ".") {
+		return parts[0], parts[1]
+	}
+
+	return "", ""
+}
+
+// updateKustomizationImage updates or adds an image digest entry in kustomization.yaml content.
+// It handles the standard kustomize images format:
+//
+//	images:
+//	  - name: image-name
+//	    newName: registry/image
+//	    digest: sha256:...
+func updateKustomizationImage(content, imageName, serviceName, digest string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+	inImages := false
+	foundImage := false
+	imageIndent := ""
+	i := 0
+
+	for i < len(lines) {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+
+		// Detect "images:" section
+		if trimmed == "images:" {
+			inImages = true
+			result = append(result, line)
+			i++
+			continue
+		}
+
+		// Inside images section
+		if inImages {
+			// Check if we've left the images section (non-indented, non-empty line)
+			if trimmed != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(trimmed, "-") && !strings.HasPrefix(trimmed, "#") {
+				inImages = false
+				// If we haven't found our image yet, add it before leaving
+				if !foundImage {
+					result = append(result, addImageEntry(imageIndent, imageName, serviceName, digest)...)
+					foundImage = true
+				}
+				result = append(result, line)
+				i++
+				continue
+			}
+
+			// Check for our image entry: "- name: <imageName>" or "- name: <serviceName>"
+			if strings.HasPrefix(trimmed, "- name:") {
+				nameValue := strings.TrimSpace(strings.TrimPrefix(trimmed, "- name:"))
+				// Match by full image name or service name (short name used in kustomize)
+				if nameValue == imageName || nameValue == serviceName ||
+					strings.HasSuffix(imageName, "/"+nameValue) {
+					foundImage = true
+					imageIndent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+					result = append(result, line)
+					i++
+					// Process sub-fields (newName, newTag, digest) — update digest, drop newTag
+					for i < len(lines) {
+						subLine := lines[i]
+						subTrimmed := strings.TrimSpace(subLine)
+						// Still in this image entry (indented more than the "- name:" line, not a new entry)
+						if subTrimmed == "" || (strings.HasPrefix(subLine, imageIndent+" ") && !strings.HasPrefix(subTrimmed, "- ")) {
+							if strings.HasPrefix(subTrimmed, "digest:") {
+								// Replace existing digest
+								result = append(result, imageIndent+"  digest: "+digest)
+							} else if strings.HasPrefix(subTrimmed, "newTag:") {
+								// Drop newTag when using digest
+								// (kustomize uses either newTag or digest, not both)
+							} else {
+								result = append(result, subLine)
+							}
+							i++
+						} else {
+							// Add digest if not already present
+							hasDigest := false
+							for _, r := range result {
+								if strings.Contains(r, "digest:") && strings.HasPrefix(strings.TrimSpace(r), "digest:") {
+									hasDigest = true
+									break
+								}
+							}
+							if !hasDigest {
+								result = append(result, imageIndent+"  digest: "+digest)
+							}
+							break
+						}
+					}
+					continue
+				}
+			}
+
+			// Track indent for image entries
+			if strings.HasPrefix(trimmed, "- ") {
+				imageIndent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			}
+		}
+
+		result = append(result, line)
+		i++
+	}
+
+	// If images section ended at EOF without finding our image
+	if inImages && !foundImage {
+		result = append(result, addImageEntry(imageIndent, imageName, serviceName, digest)...)
+		foundImage = true
+	}
+
+	// If no images section exists at all, add one
+	if !foundImage {
+		result = append(result, "images:")
+		result = append(result, addImageEntry("", imageName, serviceName, digest)...)
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// addImageEntry generates YAML lines for a new kustomize image entry
+func addImageEntry(indent, imageName, serviceName, digest string) []string {
+	if indent == "" {
+		indent = "  "
+	}
+	return []string{
+		indent + "- name: " + serviceName,
+		indent + "  newName: " + imageName,
+		indent + "  digest: " + digest,
+	}
 }

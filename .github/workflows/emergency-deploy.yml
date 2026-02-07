@@ -2,12 +2,13 @@ name: Emergency Deploy (GitHub-hosted)
 
 # Emergency deployment workflow that uses ONLY GitHub-hosted runners
 # Use this when self-hosted runners (ARC) are unavailable
+# Reads services.json to dynamically build and deploy any service
 
 on:
   workflow_dispatch:
     inputs:
       services:
-        description: 'Services to deploy (comma-separated: switchyard-api,dispatch)'
+        description: 'Services to deploy (comma-separated, must match services.json names)'
         required: true
         default: 'switchyard-api'
         type: string
@@ -24,18 +25,54 @@ env:
   IMAGE_PREFIX: ghcr.io/madfam-org/enclii
 
 jobs:
-  build-switchyard-api:
-    name: Build switchyard-api
+  resolve-matrix:
+    name: Resolve Services
     runs-on: ubuntu-latest
-    if: contains(github.event.inputs.services, 'switchyard-api')
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve service matrix from services.json
+        id: resolve
+        run: |
+          REQUESTED="${{ github.event.inputs.services }}"
+          echo "Requested services: $REQUESTED"
+
+          MATRIX_INCLUDE="[]"
+          IFS=',' read -ra SVC_LIST <<< "$REQUESTED"
+          for svc in "${SVC_LIST[@]}"; do
+            svc=$(echo "$svc" | xargs)  # trim whitespace
+            ENTRY=$(jq -c --arg name "$svc" '.services[] | select(.name == $name)' services.json)
+            if [ -z "$ENTRY" ]; then
+              echo "⚠️ Service '$svc' not found in services.json — skipping"
+              continue
+            fi
+            MATRIX_INCLUDE=$(echo "$MATRIX_INCLUDE" | jq --argjson entry "$ENTRY" '. + [$entry]')
+            echo "✅ Found: $svc"
+          done
+
+          COUNT=$(echo "$MATRIX_INCLUDE" | jq length)
+          echo "Resolved $COUNT service(s) for emergency deploy"
+          echo "matrix=$(echo "{\"include\":$MATRIX_INCLUDE}" | jq -c '.')" >> $GITHUB_OUTPUT
+
+  emergency-build:
+    name: 'Emergency: ${{ matrix.name }}'
+    runs-on: ubuntu-latest
+    needs: resolve-matrix
     permissions:
-      contents: write
+      contents: read
       packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-matrix.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up Go
+        if: matrix.type == 'go'
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -43,15 +80,10 @@ jobs:
           cache: true
 
       - name: Run tests
-        if: ${{ github.event.inputs.skip_tests != 'true' }}
-        working-directory: apps/switchyard-api
+        if: github.event.inputs.skip_tests != 'true' && matrix.type == 'go'
+        working-directory: ${{ matrix.path }}
         run: go test -v -short ./...
         continue-on-error: true
-
-      - name: Build binary
-        working-directory: apps/switchyard-api
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o switchyard-api ./cmd/api
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,26 +95,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Build and push ${{ matrix.name }}
+        id: docker-build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/switchyard-api/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ env.IMAGE_PREFIX }}/switchyard-api:latest
-            ${{ env.IMAGE_PREFIX }}/switchyard-api:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:latest
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=emergency-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=emergency-${{ matrix.name }}
+
+      - name: Sign ${{ matrix.name }} image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.docker-build.outputs.digest }}
 
     outputs:
-      image: ${{ env.IMAGE_PREFIX }}/switchyard-api:${{ github.sha }}
+      image: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
 
   deploy:
     name: Deploy via GitOps
     runs-on: ubuntu-latest
-    needs: [build-switchyard-api]
-    if: always() && (needs.build-switchyard-api.result == 'success' || needs.build-switchyard-api.result == 'skipped')
+    needs: [emergency-build, resolve-matrix]
+    if: always() && needs.emergency-build.result == 'success'
     permissions:
       contents: write
 
@@ -90,38 +134,58 @@ jobs:
       - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
 
       - name: Install kustomize
-        uses: imranismail/setup-kustomize@v2
-
-      - name: Update switchyard-api image digest
-        if: contains(github.event.inputs.services, 'switchyard-api') && needs.build-switchyard-api.result == 'success'
-        working-directory: infra/k8s/production
-        env:
-          IMAGE: ${{ env.IMAGE_PREFIX }}/switchyard-api
-          TAG: ${{ github.sha }}
         run: |
-          # Use tag-based reference (digest resolved by ArgoCD Image Updater on next poll)
-          echo "Setting image: switchyard-api=${IMAGE}:${TAG}"
-          kustomize edit set image "switchyard-api=${IMAGE}:${TAG}"
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Login to GHCR (for digest lookup)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update image digests from services.json
+        run: |
+          UPDATED=0
+          MODIFIED_FILES=""
+          MATRIX='${{ needs.resolve-matrix.outputs.matrix }}'
+
+          echo "$MATRIX" | jq -c '.include[]' | while IFS= read -r line; do
+            NAME=$(echo "$line" | jq -r '.name')
+            IMAGE=$(echo "$line" | jq -r '.image')
+            KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
+            KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
+
+            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
+            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+              echo "Updating ${NAME}: ${KUSTOMIZE_IMAGE}@${DIGEST}"
+              (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
+              UPDATED=$((UPDATED + 1))
+            else
+              echo "⚠️ Could not resolve ${IMAGE} digest"
+            fi
+          done
+
+          echo "Updated $UPDATED service digest(s)"
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add infra/k8s/production/kustomization.yaml
+          git add -A '**/kustomization.yaml'
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "$(cat <<'EOF'
-          build: emergency update image digests for ${{ github.event.inputs.services }}
+          git commit -m "build: emergency deploy ${{ github.event.inputs.services }}
 
           Triggered by: ${{ github.actor }}
-          Source SHA: ${{ github.sha }}
-          EOF
-          )"
+          Source SHA: ${{ github.sha }}"
           git push origin main
 
       - name: Monitor
         run: |
-          echo "Image reference committed to kustomization.yaml."
+          echo "Image digests committed to kustomization files."
           echo "ArgoCD will auto-sync within ~3 minutes."
-          echo "Monitor: kubectl get application core-services -n argocd -w"
+          echo "Monitor: kubectl get applications -n argocd -w"

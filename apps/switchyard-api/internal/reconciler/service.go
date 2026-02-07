@@ -239,6 +239,7 @@ func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace strin
 	requiredLabels := map[string]string{
 		"managed-by":                   "enclii",
 		"platform":                     "enclii",
+		"enclii.dev/type":              "application",
 		"enclii.dev/verify-signatures": "true",
 	}
 

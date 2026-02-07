@@ -28,17 +28,13 @@ spec:
                 - Pod
       exclude:
         any:
+          # Exclude all platform-managed namespaces via label selector
+          # New projects get this label automatically during onboarding
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
-                - sentinel
-                - janua
-                - data
-                - enclii
-                - enclii-builds  # Build jobs use Kaniko which doesn't expose hostPorts
-                - dhanam
-                - tezca
+              namespaceSelector:
+                matchExpressions:
+                  - key: enclii.dev/type
+                    operator: Exists
       validate:
         message: >-
           hostPort is forbidden. Use ClusterIP services for internal communication.
@@ -81,18 +77,12 @@ spec:
                 - Deployment
       exclude:
         any:
+          # Exclude all platform-managed namespaces via label selector
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
-                - argocd
-                - longhorn-system
-                - cloudflare-tunnel
-                - janua
-                - data
-                - enclii
-                - dhanam
-                - tezca
+              namespaceSelector:
+                matchExpressions:
+                  - key: enclii.dev/type
+                    operator: Exists
       validate:
         message: >-
           Deployment containers must have a readinessProbe defined.
@@ -112,18 +102,12 @@ spec:
                 - Deployment
       exclude:
         any:
+          # Exclude all platform-managed namespaces via label selector
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
-                - argocd
-                - longhorn-system
-                - cloudflare-tunnel
-                - janua
-                - data
-                - enclii
-                - dhanam
-                - tezca
+              namespaceSelector:
+                matchExpressions:
+                  - key: enclii.dev/type
+                    operator: Exists
       validate:
         message: >-
           Deployment containers must have a livenessProbe defined.

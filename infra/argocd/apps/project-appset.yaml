@@ -1,0 +1,71 @@
+# Project ApplicationSet — Auto-generates ArgoCD Applications from config.json files
+# Adding a new project requires only a config.json in infra/argocd/projects/<name>/
+# No manual Application YAML needed — the platform handles it automatically.
+#
+# Replaces: core-services.yaml, dhanam.yaml, janua.yaml, tezca.yaml, ecosystem-services.yaml
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: project-applications
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: project-applications
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/managed-by: enclii-platform
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  # Preserve existing Applications when ApplicationSet is deleted (safety net)
+  preservedFields:
+    annotations:
+      - notifications.argoproj.io/subscribe.on-sync-succeeded.enclii
+  generators:
+    - git:
+        repoURL: https://github.com/madfam-org/enclii.git
+        revision: main
+        files:
+          - path: "infra/argocd/projects/*/config.json"
+  template:
+    metadata:
+      name: '{{ .name }}-services'
+      labels:
+        app.kubernetes.io/name: '{{ .name }}-services'
+        app.kubernetes.io/part-of: '{{ .partOf }}'
+        app.kubernetes.io/managed-by: enclii-platform
+      annotations:
+        notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
+        argocd.argoproj.io/compare-options: IgnoreExtraneous=true
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: '{{ .repoURL }}'
+        targetRevision: '{{ .branch }}'
+        path: '{{ .manifestPath }}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{ .namespace }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas
+        - group: ""
+          kind: Service
+          jsonPointers:
+            - /spec/clusterIP
+        - group: ""
+          kind: Secret
+          jsonPointers:
+            - /data
+            - /stringData

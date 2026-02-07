@@ -4,9 +4,7 @@ on:
   push:
     branches: [main, develop]
     paths-ignore:
-      - 'infra/k8s/production/kustomization.yaml'
-      - 'apps/dispatch/k8s/kustomization.yaml'
-      - 'apps/status/k8s/base/kustomization.yaml'
+      - '**/kustomization.yaml'
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
@@ -43,21 +41,22 @@ jobs:
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
-      - name: Run golangci-lint on switchyard-api
-        working-directory: apps/switchyard-api
-        run: golangci-lint run --timeout=5m ./...
-
-      - name: Run golangci-lint on roundhouse
-        working-directory: apps/roundhouse
-        run: golangci-lint run --timeout=5m ./...
-
-      - name: Run golangci-lint on waybill
-        working-directory: apps/waybill
-        run: golangci-lint run --timeout=5m ./...
-
-      - name: Run golangci-lint on CLI
-        working-directory: packages/cli
-        run: golangci-lint run --timeout=5m ./...
+      - name: Auto-discover and lint Go modules
+        run: |
+          echo "🔍 Auto-discovering Go modules..."
+          MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
+          echo "Found modules:"
+          echo "$MODULES"
+          echo ""
+          FAILED=0
+          for mod in $MODULES; do
+            echo "▶ Linting $mod"
+            (cd "$mod" && golangci-lint run --timeout=5m ./...) || FAILED=1
+          done
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ Lint failures detected"
+            exit 1
+          fi
 
       - name: Check Go formatting
         run: |
@@ -226,40 +225,29 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Run switchyard-api tests
-        working-directory: apps/switchyard-api
+      - name: Auto-discover and test Go modules
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          echo "🔍 Auto-discovering Go modules for testing..."
+          MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
+          COVERAGE_FILES=""
+          for mod in $MODULES; do
+            echo "▶ Testing $mod"
+            (cd "$mod" && go test -v -race -coverprofile=coverage.out -covermode=atomic ./...) || true
+            if [ -f "$mod/coverage.out" ]; then
+              COVERAGE_FILES="$COVERAGE_FILES,$mod/coverage.out"
+            fi
+          done
+          echo "COVERAGE_FILES=${COVERAGE_FILES#,}" >> $GITHUB_ENV
         env:
           DATABASE_URL: postgres://enclii:enclii_test@localhost:5432/enclii_test?sslmode=disable
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET: test-secret-key
           ENV: test
 
-      - name: Run roundhouse tests
-        working-directory: apps/roundhouse
-        run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-        env:
-          REDIS_URL: redis://localhost:6379/0
-          ENV: test
-
-      - name: Run waybill tests
-        working-directory: apps/waybill
-        run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-        env:
-          DATABASE_URL: postgres://enclii:enclii_test@localhost:5432/enclii_test?sslmode=disable
-          ENV: test
-
-      - name: Run CLI tests
-        working-directory: packages/cli
-        run: go test -v -race ./...
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: ./apps/switchyard-api/coverage.out,./apps/roundhouse/coverage.out,./apps/waybill/coverage.out
+          files: ${{ env.COVERAGE_FILES }}
           flags: unit
           name: enclii-coverage
 
@@ -278,29 +266,26 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Build switchyard-api
-        working-directory: apps/switchyard-api
-        run: go build -o ../../bin/switchyard-api ./cmd/api
-
-      - name: Build roundhouse-api
-        working-directory: apps/roundhouse
-        run: go build -o ../../bin/roundhouse-api ./cmd/api
-
-      - name: Build roundhouse-worker
-        working-directory: apps/roundhouse
-        run: go build -o ../../bin/roundhouse-worker ./cmd/worker
-
-      - name: Build waybill-api
-        working-directory: apps/waybill
-        run: go build -o ../../bin/waybill-api ./cmd/api
-
-      - name: Build waybill-aggregator
-        working-directory: apps/waybill
-        run: go build -o ../../bin/waybill-aggregator ./cmd/aggregator
-
-      - name: Build CLI
-        working-directory: packages/cli
-        run: go build -o ../../bin/enclii ./cmd/enclii
+      - name: Auto-discover and build Go binaries
+        run: |
+          echo "🔍 Building Go binaries from services.json..."
+          mkdir -p bin
+          # Build all Go services from services.json
+          for svc in $(jq -r '.services[] | select(.type == "go") | .path' services.json); do
+            NAME=$(basename "$svc")
+            echo "▶ Building $NAME"
+            # Find all cmd/ entries
+            if [ -d "$svc/cmd" ]; then
+              for cmd_dir in "$svc"/cmd/*/; do
+                CMD_NAME=$(basename "$cmd_dir")
+                echo "  → $CMD_NAME"
+                (cd "$svc" && go build -o "../../bin/${NAME}-${CMD_NAME}" "./cmd/${CMD_NAME}")
+              done
+            fi
+          done
+          echo ""
+          echo "Built binaries:"
+          ls -la bin/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -408,102 +393,142 @@ jobs:
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-      - name: Run gosec on switchyard-api
-        working-directory: apps/switchyard-api
-        run: gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...
-
-      - name: Run gosec on roundhouse
-        working-directory: apps/roundhouse
-        run: gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...
-
-      - name: Run gosec on waybill
-        working-directory: apps/waybill
-        run: gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...
+      - name: Auto-discover and scan Go modules
+        run: |
+          MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
+          FAILED=0
+          for mod in $MODULES; do
+            echo "▶ Security scan: $mod"
+            (cd "$mod" && gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...) || FAILED=1
+          done
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ Security scan failures detected"
+            exit 1
+          fi
 
       - name: Check for vulnerabilities
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          cd apps/switchyard-api && govulncheck ./...
-          cd ../roundhouse && govulncheck ./...
-          cd ../waybill && govulncheck ./...
+          MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
+          for mod in $MODULES; do
+            echo "▶ Vulnerability check: $mod"
+            (cd "$mod" && govulncheck ./...) || true
+          done
 
   # =============================================================================
   # CONSERVATION LAW (ADR-001 Law 6): Differential Builds
-  # Only rebuild services that have actually changed
+  # Only rebuild services that have actually changed.
+  # Reads services.json to dynamically detect changes per service.
   # =============================================================================
   detect-changes:
     name: Detect Changes (Conservation Law)
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
-      switchyard-api: ${{ steps.filter.outputs.switchyard-api }}
-      switchyard-ui: ${{ steps.filter.outputs.switchyard-ui }}
-      roundhouse: ${{ steps.filter.outputs.roundhouse }}
-      waybill: ${{ steps.filter.outputs.waybill }}
-      landing: ${{ steps.filter.outputs.landing }}
-      dispatch: ${{ steps.filter.outputs.dispatch }}
-      status: ${{ steps.filter.outputs.status }}
-      docs-site: ${{ steps.filter.outputs.docs-site }}
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+      has_changes: ${{ steps.build-matrix.outputs.has_changes }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Detect changed paths
-        uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            switchyard-api:
-              - 'apps/switchyard-api/**'
-              - 'packages/core/**'
-            switchyard-ui:
-              - 'apps/switchyard-ui/**'
-              - 'packages/ui/**'
-            roundhouse:
-              - 'apps/roundhouse/**'
-              - 'packages/core/**'
-            waybill:
-              - 'apps/waybill/**'
-              - 'packages/core/**'
-            landing:
-              - 'apps/landing/**'
-            dispatch:
-              - 'apps/dispatch/**'
-              - 'packages/ui/**'
-            status:
-              - 'apps/status/**'
-            docs-site:
-              - 'apps/docs-site/**'
+          fetch-depth: 2
 
-      - name: Log detected changes
+      - name: Build service matrix from services.json
+        id: build-matrix
         run: |
-          echo "🔍 Conservation Law - Change Detection Results:"
-          echo "  switchyard-api: ${{ steps.filter.outputs.switchyard-api }}"
-          echo "  switchyard-ui:  ${{ steps.filter.outputs.switchyard-ui }}"
-          echo "  roundhouse:     ${{ steps.filter.outputs.roundhouse }}"
-          echo "  waybill:        ${{ steps.filter.outputs.waybill }}"
-          echo "  landing:        ${{ steps.filter.outputs.landing }}"
-          echo "  dispatch:       ${{ steps.filter.outputs.dispatch }}"
-          echo "  status:         ${{ steps.filter.outputs.status }}"
-          echo "  docs-site:      ${{ steps.filter.outputs.docs-site }}"
+          echo "🔍 Conservation Law - Building change matrix from services.json..."
 
+          # Get changed files between HEAD~1 and HEAD
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+
+          # Build matrix of changed services
+          SERVICES_JSON=$(cat services.json)
+          MATRIX_INCLUDE="[]"
+
+          while IFS= read -r line; do
+            NAME=$(echo "$line" | jq -r '.name')
+            PATH_PREFIX=$(echo "$line" | jq -r '.path')
+            DEPS=$(echo "$line" | jq -r '.dependencies // [] | .[]')
+            DOCKERFILE=$(echo "$line" | jq -r '.dockerfile')
+            IMAGE=$(echo "$line" | jq -r '.image')
+            KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
+            KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
+            SCAN=$(echo "$line" | jq -r '.scan')
+            BUILD_ARGS=$(echo "$line" | jq -c '.build_args // {}')
+
+            # Check if service or its dependencies changed
+            CHANGED=false
+            if echo "$CHANGED_FILES" | grep -q "^${PATH_PREFIX}/"; then
+              CHANGED=true
+            fi
+            for dep in $DEPS; do
+              if echo "$CHANGED_FILES" | grep -q "^${dep}/"; then
+                CHANGED=true
+              fi
+            done
+
+            # Force build on workflow_dispatch
+            if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+              CHANGED=true
+            fi
+
+            if [ "$CHANGED" == "true" ]; then
+              ENTRY=$(jq -n \
+                --arg name "$NAME" \
+                --arg path "$PATH_PREFIX" \
+                --arg dockerfile "$DOCKERFILE" \
+                --arg image "$IMAGE" \
+                --arg kustomization "$KUSTOMIZATION" \
+                --arg kustomize_image "$KUSTOMIZE_IMAGE" \
+                --argjson scan "$SCAN" \
+                --argjson build_args "$BUILD_ARGS" \
+                '{name: $name, path: $path, dockerfile: $dockerfile, image: $image, kustomization: $kustomization, kustomize_image: $kustomize_image, scan: $scan, build_args: $build_args}')
+              MATRIX_INCLUDE=$(echo "$MATRIX_INCLUDE" | jq --argjson entry "$ENTRY" '. + [$entry]')
+            fi
+
+            echo "  $NAME: changed=$CHANGED"
+          done < <(echo "$SERVICES_JSON" | jq -c '.services[]')
+
+          COUNT=$(echo "$MATRIX_INCLUDE" | jq length)
+          echo ""
+          echo "📊 $COUNT service(s) need rebuilding"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            # Output empty matrix — downstream jobs check has_changes
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "matrix=$(echo "{\"include\":$MATRIX_INCLUDE}" | jq -c '.')" >> $GITHUB_OUTPUT
+          fi
+
+  # =============================================================================
+  # MATRIX DOCKER BUILD: Single template builds any service from services.json
+  # =============================================================================
   docker-build:
-    name: Docker Build
-    # Docker builds benefit most from self-hosted runners (DinD, build cache)
+    name: 'Build: ${{ matrix.name }}'
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
-    # HARD GATE 1: E2E must pass before Docker build (Operation Fortification)
     needs: [build, ui-tests, detect-changes, ecosystem-e2e]
-    # Use always() to run even when detect-changes/ecosystem-e2e is skipped
-    # E2E must pass on main branch pushes (Operation Fortification HARD GATE)
     if: |
       always() &&
       (needs.build.result == 'success') &&
       (needs.ui-tests.result == 'success') &&
       (needs.ecosystem-e2e.result == 'success' || needs.ecosystem-e2e.result == 'skipped') &&
+      needs.detect-changes.outputs.has_changes == 'true' &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: write
       id-token: write  # Required for cosign keyless signing via OIDC
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect-changes.outputs.matrix) }}
+    outputs:
+      # Collect all build digests for the commit-digests job
+      # Each matrix leg outputs its digest as an environment variable
+      built_services: ${{ steps.collect.outputs.built_services }}
 
     steps:
       - uses: actions/checkout@v6
@@ -540,229 +565,60 @@ jobs:
         with:
           cosign-release: 'v2.2.4'
 
-      # Conservation Law: Only build if changes detected
-      - name: Build and push switchyard-api
-        id: build-switchyard-api
-        if: needs.detect-changes.outputs.switchyard-api == 'true' || github.event_name == 'workflow_dispatch'
+      - name: Prepare build args
+        id: prep
+        run: |
+          # Convert build_args JSON to Docker build-arg format
+          BUILD_ARGS_JSON='${{ toJSON(matrix.build_args) }}'
+          if [ "$BUILD_ARGS_JSON" != "{}" ] && [ "$BUILD_ARGS_JSON" != "null" ] && [ -n "$BUILD_ARGS_JSON" ]; then
+            BUILD_ARGS=$(echo "$BUILD_ARGS_JSON" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
+            echo "build_args<<EOF" >> $GITHUB_OUTPUT
+            echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "build_args=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push ${{ matrix.name }}
+        id: docker-build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/switchyard-api/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/switchyard-api:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/switchyard-api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/${{ matrix.image }}:latest
+          build-args: ${{ steps.prep.outputs.build_args }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
-      - name: Sign switchyard-api image
-        if: steps.build-switchyard-api.outcome == 'success'
+      - name: Sign ${{ matrix.name }} image
         env:
           COSIGN_EXPERIMENTAL: "true"
         run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/switchyard-api@${{ steps.build-switchyard-api.outputs.digest }}
+          cosign sign --yes ghcr.io/${{ github.repository }}/${{ matrix.image }}@${{ steps.docker-build.outputs.digest }}
 
-      - name: Skip switchyard-api (no changes)
-        if: needs.detect-changes.outputs.switchyard-api != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping switchyard-api build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push switchyard-ui
-        id: build-switchyard-ui
-        if: needs.detect-changes.outputs.switchyard-ui == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/switchyard-ui/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/switchyard-ui:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/switchyard-ui:latest
-          build-args: |
-            NEXT_PUBLIC_API_URL=https://api.enclii.dev
-            NEXT_PUBLIC_AUTH_MODE=oidc
-            NEXT_PUBLIC_JANUA_URL=https://auth.madfam.io
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign switchyard-ui image
-        if: steps.build-switchyard-ui.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
+      - name: Collect build info
+        id: collect
         run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/switchyard-ui@${{ steps.build-switchyard-ui.outputs.digest }}
-
-      - name: Skip switchyard-ui (no changes)
-        if: needs.detect-changes.outputs.switchyard-ui != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping switchyard-ui build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push roundhouse
-        id: build-roundhouse
-        if: needs.detect-changes.outputs.roundhouse == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/roundhouse/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/roundhouse:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/roundhouse:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign roundhouse image
-        if: steps.build-roundhouse.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/roundhouse@${{ steps.build-roundhouse.outputs.digest }}
-
-      - name: Skip roundhouse (no changes)
-        if: needs.detect-changes.outputs.roundhouse != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping roundhouse build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push waybill
-        id: build-waybill
-        if: needs.detect-changes.outputs.waybill == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/waybill/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/waybill:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/waybill:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign waybill image
-        if: steps.build-waybill.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/waybill@${{ steps.build-waybill.outputs.digest }}
-
-      - name: Skip waybill (no changes)
-        if: needs.detect-changes.outputs.waybill != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping waybill build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push landing-page
-        id: build-landing-page
-        if: needs.detect-changes.outputs.landing == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/landing/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/landing-page:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/landing-page:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign landing-page image
-        if: steps.build-landing-page.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/landing-page@${{ steps.build-landing-page.outputs.digest }}
-
-      - name: Skip landing-page (no changes)
-        if: needs.detect-changes.outputs.landing != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping landing-page build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push dispatch
-        id: build-dispatch
-        if: needs.detect-changes.outputs.dispatch == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/dispatch/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/dispatch:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/dispatch:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign dispatch image
-        if: steps.build-dispatch.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/dispatch@${{ steps.build-dispatch.outputs.digest }}
-
-      - name: Skip dispatch (no changes)
-        if: needs.detect-changes.outputs.dispatch != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping dispatch build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push status
-        id: build-status
-        if: needs.detect-changes.outputs.status == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/status/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/enclii-status:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/enclii-status:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign status image
-        if: steps.build-status.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/enclii-status@${{ steps.build-status.outputs.digest }}
-
-      - name: Skip status (no changes)
-        if: needs.detect-changes.outputs.status != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping status build (Conservation Law - no changes detected)"
-
-      # Conservation Law: Only build if changes detected
-      - name: Build and push docs-site
-        id: build-docs-site
-        if: needs.detect-changes.outputs.docs-site == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/docs-site/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/docs-site:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/docs-site:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign docs-site image
-        if: steps.build-docs-site.outcome == 'success'
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}/docs-site@${{ steps.build-docs-site.outputs.digest }}
-
-      - name: Skip docs-site (no changes)
-        if: needs.detect-changes.outputs.docs-site != 'true' && github.event_name != 'workflow_dispatch'
-        run: echo "⏭️ Skipping docs-site build (Conservation Law - no changes detected)"
+          echo "built_services=${{ matrix.name }}:${{ matrix.image }}:${{ matrix.kustomization }}:${{ matrix.kustomize_image }}:${{ steps.docker-build.outputs.digest }}" >> $GITHUB_OUTPUT
 
   # =============================================================================
   # IMAGE VULNERABILITY SCANNING: Trivy scan after Docker build
   # =============================================================================
   image-scan:
-    name: Image Vulnerability Scan
+    name: 'Scan: ${{ matrix.name }}'
     runs-on: ubuntu-latest
-    needs: [docker-build]
+    needs: [docker-build, detect-changes]
     if: |
       always() &&
       needs.docker-build.result == 'success' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      needs.detect-changes.outputs.has_changes == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect-changes.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -774,57 +630,157 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Scan switchyard-api
+      - name: Scan ${{ matrix.name }}
+        if: matrix.scan == true
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}/switchyard-api:${{ github.sha }}
+          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.sha }}
           format: sarif
-          output: trivy-switchyard-api.sarif
+          output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
           exit-code: '1'
         continue-on-error: true
 
-      - name: Scan switchyard-ui
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/${{ github.repository }}/switchyard-ui:${{ github.sha }}
-          format: sarif
-          output: trivy-switchyard-ui.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-        continue-on-error: true
-
-      - name: Scan roundhouse
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/${{ github.repository }}/roundhouse:${{ github.sha }}
-          format: sarif
-          output: trivy-roundhouse.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-        continue-on-error: true
+      - name: Skip scan (not configured)
+        if: matrix.scan != true
+        run: echo "⏭️ Trivy scan not enabled for ${{ matrix.name }}"
 
       - name: Upload Trivy SARIF results
+        if: matrix.scan == true
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
         with:
           sarif_file: .
         continue-on-error: true
 
   # =============================================================================
-  # DEPLOYMENT VERIFICATION: Guardrail for ArgoCD Image Updater
-  # Verifies that new images trigger automatic deployment via digest strategy
+  # UNIFIED DIGEST COMMIT: Update ALL kustomization files with image digests
+  # Replaces commit-core-digests + commit-ecosystem-digests
+  # Groups services by kustomization path to minimize commits
+  # =============================================================================
+  commit-digests:
+    name: Commit Image Digests
+    runs-on: ubuntu-latest
+    needs: [docker-build, detect-changes]
+    if: |
+      always() &&
+      needs.docker-build.result == 'success' &&
+      github.ref == 'refs/heads/main' &&
+      needs.detect-changes.outputs.has_changes == 'true'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Login to GHCR (for digest lookup)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update all service digests from services.json
+        run: |
+          UPDATED=0
+          MODIFIED_FILES=""
+          SERVICES_JSON=$(cat services.json)
+          MATRIX='${{ needs.detect-changes.outputs.matrix }}'
+
+          # Get list of services that were actually built (from the matrix)
+          BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
+
+          while IFS= read -r line; do
+            NAME=$(echo "$line" | jq -r '.name')
+            IMAGE=$(echo "$line" | jq -r '.image')
+            KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
+            KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
+
+            # Skip if not in the built matrix
+            if ! echo "$BUILT_NAMES" | grep -q "^${NAME}$"; then
+              continue
+            fi
+
+            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
+            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+              echo "Updating ${NAME} in ${KUSTOMIZATION}: digest=${DIGEST}"
+              (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
+              UPDATED=$((UPDATED + 1))
+              # Track modified kustomization files
+              KUST_FILE="${KUSTOMIZATION}/kustomization.yaml"
+              if ! echo "$MODIFIED_FILES" | grep -q "$KUST_FILE"; then
+                MODIFIED_FILES="$MODIFIED_FILES $KUST_FILE"
+              fi
+            else
+              echo "Could not resolve ${IMAGE} digest for :${{ github.sha }}"
+            fi
+          done < <(echo "$SERVICES_JSON" | jq -c '.services[]')
+
+          echo "Updated $UPDATED service digest(s)"
+          echo "UPDATED=$UPDATED" >> $GITHUB_ENV
+          echo "MODIFIED_FILES=$MODIFIED_FILES" >> $GITHUB_ENV
+
+          if [ "$UPDATED" -eq 0 ]; then
+            echo "No services changed — skipping commit"
+            exit 0
+          fi
+
+          # Save modified kustomization files for retry
+          for f in $MODIFIED_FILES; do
+            BACKUP="/tmp/$(echo "$f" | tr '/' '_')"
+            cp "$f" "$BACKUP"
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Retry loop: handles concurrent pushes
+          for ATTEMPT in 1 2 3; do
+            echo "Push attempt $ATTEMPT/3"
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Re-apply our digest changes on top of latest remote
+            for f in $MODIFIED_FILES; do
+              BACKUP="/tmp/$(echo "$f" | tr '/' '_')"
+              cp "$BACKUP" "$f"
+            done
+
+            git add $MODIFIED_FILES
+            git diff --staged --quiet && { echo "No changes to commit"; exit 0; }
+            git commit -m "chore(deploy): update $UPDATED service digest(s)"
+
+            if git push origin main; then
+              echo "Push succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "Push failed (likely concurrent update), retrying..."
+            sleep $((ATTEMPT * 2))
+          done
+          echo "ERROR: Failed to push after 3 attempts"
+          exit 1
+
+  # =============================================================================
+  # DEPLOYMENT VERIFICATION: Validate ArgoCD sync and smoke test production
   # =============================================================================
   verify-deployment:
     name: Verify Deployment Trigger
     runs-on: ubuntu-latest
-    needs: [docker-build]
+    needs: [docker-build, detect-changes]
     if: |
       always() &&
       needs.docker-build.result == 'success' &&
       github.ref == 'refs/heads/main'
 
     steps:
+      - uses: actions/checkout@v6
+
       - name: Setup and Validate kubectl
         id: kubectl-setup
         run: |
@@ -863,32 +819,16 @@ jobs:
       - name: Check ArgoCD Application Status
         if: steps.kubectl-setup.outputs.has_cluster_access == 'true'
         run: |
-          echo "🔍 Checking ArgoCD core-services application..."
+          echo "🔍 Checking ArgoCD applications..."
+          kubectl get applications -n argocd -o wide
 
-          # Get the Application CR status
-          APP_STATUS=$(kubectl get application core-services -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "NotFound")
-          HEALTH_STATUS=$(kubectl get application core-services -n argocd -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
-
-          echo "Sync Status: $APP_STATUS"
-          echo "Health Status: $HEALTH_STATUS"
-
-          # Verify deployment pods
-          echo ""
-          echo "🚀 Current deployment status:"
-          kubectl get deployments -n enclii -o wide
-
-          echo ""
-          echo "✅ Deployment verification complete"
-          echo "   Sync: $APP_STATUS | Health: $HEALTH_STATUS"
-
-      - name: Check for Image Updates
+      - name: Check Image Updates (dynamic from services.json)
         if: steps.kubectl-setup.outputs.has_cluster_access == 'true'
         run: |
-          echo "📋 Checking if images were updated..."
-
-          # Show current images in deployments
-          for deploy in switchyard-api switchyard-ui roundhouse roundhouse-api waybill; do
-            IMAGE=$(kubectl get deployment $deploy -n enclii -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "not found")
+          echo "📋 Checking current images in deployments..."
+          SERVICES_JSON=$(cat services.json)
+          echo "$SERVICES_JSON" | jq -r '.services[] | select(.deploy_check != null) | .deploy_check' | while read deploy; do
+            IMAGE=$(kubectl get deployment "$deploy" -n enclii -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "not found")
             echo "  $deploy: $IMAGE"
           done
 
@@ -941,20 +881,18 @@ jobs:
     if: |
       always() &&
       needs.docker-build.result == 'success' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      needs.detect-changes.outputs.has_changes == 'true'
     steps:
-      - name: Report build events
+      - uses: actions/checkout@v6
+
+      - name: Report build events from services.json
         run: |
-          report_event() {
-            local SERVICE="$1"
-            local CHANGED="$2"
-            local DIGEST="$3"
+          MATRIX='${{ needs.detect-changes.outputs.matrix }}'
+          BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
 
-            if [ "$CHANGED" != "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-              return 0
-            fi
-
-            EVENT_TYPE="image_pushed"
+          for SERVICE in $BUILT_NAMES; do
+            echo "Reporting lifecycle event for $SERVICE..."
             curl -sf -X POST "https://api.enclii.dev/v1/callbacks/lifecycle-event" \
               -H "Authorization: Bearer ${{ secrets.ENCLII_CALLBACK_TOKEN }}" \
               -H "Content-Type: application/json" \
@@ -963,233 +901,16 @@ jobs:
                 "commit_sha": "${{ github.sha }}",
                 "branch": "${{ github.ref_name }}",
                 "ref": "${{ github.ref }}",
-                "event_type": "'"$EVENT_TYPE"'",
+                "event_type": "image_pushed",
                 "source": "ci_callback",
-                "message": "'"$SERVICE"' build '"$EVENT_TYPE"'",
+                "message": "'"$SERVICE"' build image_pushed",
                 "metadata": {
                   "image": "ghcr.io/madfam-org/enclii/'"$SERVICE"'",
                   "workflow": "ci",
                   "service": "'"$SERVICE"'"
                 }
               }' || true
-          }
-
-          report_event "switchyard-api" "${{ needs.detect-changes.outputs.switchyard-api }}" ""
-          report_event "switchyard-ui" "${{ needs.detect-changes.outputs.switchyard-ui }}" ""
-          report_event "dispatch" "${{ needs.detect-changes.outputs.dispatch }}" ""
-          report_event "enclii-status" "${{ needs.detect-changes.outputs.status }}" ""
-          report_event "landing-page" "${{ needs.detect-changes.outputs.landing }}" ""
-          report_event "roundhouse" "${{ needs.detect-changes.outputs.roundhouse }}" ""
-          report_event "waybill" "${{ needs.detect-changes.outputs.waybill }}" ""
-          report_event "docs-site" "${{ needs.detect-changes.outputs.docs-site }}" ""
-
-  # =============================================================================
-  # ECOSYSTEM DIGEST COMMIT: Update dispatch + status kustomization with digests
-  # dispatch and status use multi-source ArgoCD apps (Image Updater incompatible).
-  # This job commits digests to their kustomization.yaml files for ArgoCD sync.
-  # =============================================================================
-  commit-ecosystem-digests:
-    name: Commit Ecosystem Digests
-    runs-on: ubuntu-latest
-    needs: [docker-build, detect-changes]
-    if: |
-      always() &&
-      needs.docker-build.result == 'success' &&
-      github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: main
-
-      - name: Install kustomize
-        run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          sudo mv kustomize /usr/local/bin/
-
-      - name: Login to GHCR (for digest lookup)
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update ecosystem digests
-        run: |
-          UPDATED=0
-
-          # Dispatch
-          DISPATCH_CHANGED="${{ needs.detect-changes.outputs.dispatch }}"
-          if [ "$DISPATCH_CHANGED" == "true" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/dispatch:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
-            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
-              echo "Updating dispatch digest: $DIGEST"
-              cd apps/dispatch/k8s
-              kustomize edit set image ghcr.io/madfam-org/enclii/dispatch=ghcr.io/${{ github.repository }}/dispatch@${DIGEST}
-              cd ${{ github.workspace }}
-              UPDATED=$((UPDATED + 1))
-            else
-              echo "Could not resolve dispatch digest for :${{ github.sha }}"
-            fi
-          fi
-
-          # Status
-          STATUS_CHANGED="${{ needs.detect-changes.outputs.status }}"
-          if [ "$STATUS_CHANGED" == "true" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/enclii-status:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
-            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
-              echo "Updating status digest: $DIGEST"
-              cd apps/status/k8s/base
-              kustomize edit set image ghcr.io/madfam-org/enclii/enclii-status=ghcr.io/${{ github.repository }}/enclii-status@${DIGEST}
-              cd ${{ github.workspace }}
-              UPDATED=$((UPDATED + 1))
-            else
-              echo "Could not resolve status digest for :${{ github.sha }}"
-            fi
-          fi
-
-          echo "Updated $UPDATED ecosystem digest(s)"
-
-          if [ "$UPDATED" -eq 0 ]; then
-            echo "No ecosystem services changed — skipping commit"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Save modified kustomization files for retry
-          cp apps/dispatch/k8s/kustomization.yaml /tmp/dispatch-kustomization.yaml
-          cp apps/status/k8s/base/kustomization.yaml /tmp/status-kustomization.yaml
-
-          # Retry loop: handles concurrent pushes (Image Updater may also commit)
-          for ATTEMPT in 1 2 3; do
-            echo "Push attempt $ATTEMPT/3"
-            git fetch origin main
-            git reset --hard origin/main
-
-            # Re-apply our digest changes on top of latest remote
-            cp /tmp/dispatch-kustomization.yaml apps/dispatch/k8s/kustomization.yaml
-            cp /tmp/status-kustomization.yaml apps/status/k8s/base/kustomization.yaml
-
-            git add apps/dispatch/k8s/kustomization.yaml apps/status/k8s/base/kustomization.yaml
-            git diff --staged --quiet && { echo "No changes to commit"; exit 0; }
-            git commit -m "chore(deploy): update $UPDATED ecosystem service digest(s)"
-
-            if git push origin main; then
-              echo "Push succeeded on attempt $ATTEMPT"
-              exit 0
-            fi
-            echo "Push failed (likely concurrent update), retrying..."
-            sleep $((ATTEMPT * 2))
           done
-          echo "ERROR: Failed to push after 3 attempts"
-          exit 1
-
-  # =============================================================================
-  # CORE DIGEST COMMIT: Update production kustomization with core service digests
-  # Core services (switchyard-api, switchyard-ui, landing-page, docs-site,
-  # roundhouse, waybill) use the production overlay kustomization.yaml.
-  # This job commits digests for ArgoCD to sync.
-  # =============================================================================
-  commit-core-digests:
-    name: Commit Core Digests
-    runs-on: ubuntu-latest
-    needs: [docker-build, detect-changes]
-    if: |
-      always() &&
-      needs.docker-build.result == 'success' &&
-      github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: main
-
-      - name: Install kustomize
-        run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          sudo mv kustomize /usr/local/bin/
-
-      - name: Login to GHCR (for digest lookup)
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update core digests
-        run: |
-          UPDATED=0
-
-          update_digest() {
-            local SERVICE="$1"
-            local CHANGED="$2"
-            local IMAGE_NAME="$3"
-
-            if [ "$CHANGED" != "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-              return 0
-            fi
-
-            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/${IMAGE_NAME}:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
-            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
-              echo "Updating ${SERVICE} digest: $DIGEST"
-              cd infra/k8s/production
-              kustomize edit set image ${SERVICE}=ghcr.io/${{ github.repository }}/${IMAGE_NAME}@${DIGEST}
-              cd ${{ github.workspace }}
-              UPDATED=$((UPDATED + 1))
-            else
-              echo "Could not resolve ${IMAGE_NAME} digest for :${{ github.sha }}"
-            fi
-          }
-
-          update_digest "switchyard-api" "${{ needs.detect-changes.outputs.switchyard-api }}" "switchyard-api"
-          update_digest "switchyard-ui" "${{ needs.detect-changes.outputs.switchyard-ui }}" "switchyard-ui"
-          update_digest "landing-page" "${{ needs.detect-changes.outputs.landing }}" "landing-page"
-          update_digest "docs-site" "${{ needs.detect-changes.outputs.docs-site }}" "docs-site"
-          update_digest "roundhouse" "${{ needs.detect-changes.outputs.roundhouse }}" "roundhouse"
-          update_digest "waybill" "${{ needs.detect-changes.outputs.waybill }}" "waybill"
-
-          echo "Updated $UPDATED core digest(s)"
-          echo "UPDATED=$UPDATED" >> $GITHUB_ENV
-
-          if [ "$UPDATED" -eq 0 ]; then
-            echo "No core services changed — skipping commit"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Save modified kustomization for retry
-          cp infra/k8s/production/kustomization.yaml /tmp/core-kustomization.yaml
-
-          # Retry loop: handles concurrent pushes
-          for ATTEMPT in 1 2 3; do
-            echo "Push attempt $ATTEMPT/3"
-            git fetch origin main
-            git reset --hard origin/main
-
-            # Re-apply our digest changes on top of latest remote
-            cp /tmp/core-kustomization.yaml infra/k8s/production/kustomization.yaml
-
-            git add infra/k8s/production/kustomization.yaml
-            git diff --staged --quiet && { echo "No changes to commit"; exit 0; }
-            git commit -m "chore(deploy): update $UPDATED core service digest(s)"
-
-            if git push origin main; then
-              echo "Push succeeded on attempt $ATTEMPT"
-              exit 0
-            fi
-            echo "Push failed (likely concurrent update), retrying..."
-            sleep $((ATTEMPT * 2))
-          done
-          echo "ERROR: Failed to push after 3 attempts"
-          exit 1
 
   test-summary:
     name: Test Summary

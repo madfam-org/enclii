@@ -27,25 +27,18 @@ spec:
                 - Pod
       exclude:
         any:
-          # Exclude kube-system for system components
+          # Exclude infrastructure namespaces (kube-system, longhorn, etc.)
           - resources:
-              namespaces:
-                - kube-system
-          # Exclude longhorn for CSI driver
-          - resources:
-              namespaces:
-                - longhorn-system
-          # Exclude database/cache components (postgres/redis) in enclii namespace
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
+          # Exclude database/cache components across all namespaces
           # These explicitly set privileged: false but policy requires the field
           - resources:
-              namespaces:
-                - enclii
               selector:
                 matchLabels:
                   app.kubernetes.io/component: database
           - resources:
-              namespaces:
-                - enclii
               selector:
                 matchLabels:
                   app.kubernetes.io/component: cache
@@ -87,11 +80,11 @@ spec:
                 - Pod
       exclude:
         any:
+          # Exclude infrastructure namespaces (kube-system, cloudflare-tunnel, sentinel, etc.)
           - resources:
-              namespaces:
-                - kube-system
-                - cloudflare-tunnel
-                - sentinel  # infra-audit CronJob needs hostNetwork for port checks
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "Host namespaces (hostNetwork, hostIPC, hostPID) are not allowed."
         pattern:
@@ -124,22 +117,18 @@ spec:
                 - Pod
       exclude:
         any:
+          # Exclude infrastructure namespaces (kube-system, longhorn, kyverno, etc.)
           - resources:
-              namespaces:
-                - kube-system
-                - longhorn-system
-                - kyverno
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
           # Exclude official database/cache images that must run as root
           # These are isolated via NetworkPolicy and PVC-only storage
           - resources:
-              namespaces:
-                - enclii
               selector:
                 matchLabels:
                   app.kubernetes.io/component: database
           - resources:
-              namespaces:
-                - enclii
               selector:
                 matchLabels:
                   app.kubernetes.io/component: cache
@@ -174,10 +163,11 @@ spec:
                 - Pod
       exclude:
         any:
+          # Exclude infrastructure namespaces (kube-system, longhorn, etc.)
           - resources:
-              namespaces:
-                - kube-system
-                - longhorn-system
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "Containers should drop ALL capabilities. Set securityContext.capabilities.drop to ['ALL']."
         pattern:
@@ -213,10 +203,11 @@ spec:
                 - Pod
       exclude:
         any:
+          # Exclude infrastructure namespaces (kube-system, longhorn, etc.)
           - resources:
-              namespaces:
-                - kube-system
-                - longhorn-system
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "hostPath volumes are not allowed."
         pattern:

@@ -1,0 +1,8 @@
+{
+  "name": "janua",
+  "repoURL": "https://github.com/madfam-org/janua.git",
+  "branch": "main",
+  "manifestPath": "k8s/base/deployments",
+  "namespace": "janua",
+  "partOf": "janua"
+}

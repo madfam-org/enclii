@@ -27,9 +27,9 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "Resource limits (CPU and memory) are required for all containers."
         pattern:
@@ -67,9 +67,9 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "Resources should have app.kubernetes.io/name label for proper identification."
         pattern:
@@ -102,12 +102,11 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
-                - enclii-builds  # Build jobs don't need probes
-                - sentinel  # CronJob audit tasks don't need probes
-                - data  # Database/cache pods managed separately
+              namespaceSelector:
+                matchExpressions:
+                  - key: enclii.dev/type
+                    operator: In
+                    values: [infrastructure, build, data]
       validate:
         message: "Readiness probes are recommended for all containers."
         anyPattern:
@@ -152,8 +151,9 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces:
-                - kube-system
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "Using ':latest' tag is not recommended. Specify a version tag."
         pattern:
@@ -185,8 +185,9 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - enclii  # Only production namespace for now
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: application
       validate:
         message: "Production images should use digests (@sha256:...) for immutability."
         pattern:

@@ -1,0 +1,8 @@
+{
+  "name": "status",
+  "repoURL": "https://github.com/madfam-org/enclii.git",
+  "branch": "main",
+  "manifestPath": "apps/status/k8s/base",
+  "namespace": "enclii",
+  "partOf": "enclii"
+}

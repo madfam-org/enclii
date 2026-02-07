@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -71,4 +72,37 @@ spec:
       jsonPointers:
         - /spec/clusterIP
 `, appName, repoURL, appName, appName, partOf, repoURL, branch, manifestPath, namespace)
+}
+
+// generateProjectConfig creates a config.json for the ArgoCD ApplicationSet generator.
+// The ApplicationSet reads these files from infra/argocd/projects/*/config.json
+// and auto-generates Application CRs — no manual YAML files needed.
+func generateProjectConfig(name, repoURL, branch, manifestPath, namespace string) string {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, "_", "-")
+
+	config := map[string]interface{}{
+		"name":         name,
+		"repoURL":      repoURL,
+		"branch":       branch,
+		"manifestPath": manifestPath,
+		"namespace":    namespace,
+		"partOf":       name,
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		// Fallback to manual formatting (should never happen with simple map)
+		return fmt.Sprintf(`{
+  "name": %q,
+  "repoURL": %q,
+  "branch": %q,
+  "manifestPath": %q,
+  "namespace": %q,
+  "partOf": %q
+}
+`, name, repoURL, branch, manifestPath, namespace, name)
+	}
+
+	return string(data) + "\n"
 }

@@ -26,13 +26,11 @@ spec:
                 - Pod
       exclude:
         any:
+          # Exclude infrastructure namespaces (kube-system, kyverno, longhorn, ARC, etc.)
           - resources:
-              namespaces:
-                - kube-system
-                - kyverno
-                - longhorn-system
-                - arc-systems
-                - arc-runners
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: >-
           Images must come from approved registries:
@@ -113,8 +111,9 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces:
-                - kube-system
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/type: infrastructure
       validate:
         message: "imagePullPolicy should be explicitly set to IfNotPresent or Always."
         pattern:

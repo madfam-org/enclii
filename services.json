@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "description": "Service registry for the Enclii monorepo. CI reads this to build, scan, sign, and deploy services dynamically.",
+  "services": [
+    {
+      "name": "switchyard-api",
+      "path": "apps/switchyard-api",
+      "type": "go",
+      "dockerfile": "apps/switchyard-api/Dockerfile",
+      "image": "switchyard-api",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "switchyard-api",
+      "dependencies": ["packages/core", "packages/sdk-go"],
+      "scan": true,
+      "deploy_check": "switchyard-api",
+      "build_args": {}
+    },
+    {
+      "name": "switchyard-ui",
+      "path": "apps/switchyard-ui",
+      "type": "node",
+      "dockerfile": "apps/switchyard-ui/Dockerfile",
+      "image": "switchyard-ui",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "switchyard-ui",
+      "dependencies": ["packages/ui"],
+      "scan": true,
+      "deploy_check": "switchyard-ui",
+      "build_args": {
+        "NEXT_PUBLIC_API_URL": "https://api.enclii.dev",
+        "NEXT_PUBLIC_AUTH_MODE": "oidc",
+        "NEXT_PUBLIC_JANUA_URL": "https://auth.madfam.io"
+      }
+    },
+    {
+      "name": "roundhouse",
+      "path": "apps/roundhouse",
+      "type": "go",
+      "dockerfile": "apps/roundhouse/Dockerfile",
+      "image": "roundhouse",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "roundhouse",
+      "dependencies": ["packages/core"],
+      "scan": true,
+      "deploy_check": "roundhouse"
+    },
+    {
+      "name": "waybill",
+      "path": "apps/waybill",
+      "type": "go",
+      "dockerfile": "apps/waybill/Dockerfile",
+      "image": "waybill",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "waybill",
+      "dependencies": ["packages/core"],
+      "scan": false,
+      "deploy_check": "waybill"
+    },
+    {
+      "name": "landing-page",
+      "path": "apps/landing",
+      "type": "node",
+      "dockerfile": "apps/landing/Dockerfile",
+      "image": "landing-page",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "landing-page",
+      "dependencies": [],
+      "scan": false,
+      "deploy_check": null
+    },
+    {
+      "name": "dispatch",
+      "path": "apps/dispatch",
+      "type": "node",
+      "dockerfile": "apps/dispatch/Dockerfile",
+      "image": "dispatch",
+      "kustomization": "apps/dispatch/k8s",
+      "kustomize_image": "ghcr.io/madfam-org/enclii/dispatch",
+      "dependencies": ["packages/ui"],
+      "scan": false,
+      "deploy_check": null
+    },
+    {
+      "name": "enclii-status",
+      "path": "apps/status",
+      "type": "node",
+      "dockerfile": "apps/status/Dockerfile",
+      "image": "enclii-status",
+      "kustomization": "apps/status/k8s/base",
+      "kustomize_image": "ghcr.io/madfam-org/enclii/enclii-status",
+      "dependencies": [],
+      "scan": false,
+      "deploy_check": null
+    },
+    {
+      "name": "docs-site",
+      "path": "apps/docs-site",
+      "type": "node",
+      "dockerfile": "apps/docs-site/Dockerfile",
+      "image": "docs-site",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "docs-site",
+      "dependencies": [],
+      "scan": false,
+      "deploy_check": null
+    }
+  ]
+}

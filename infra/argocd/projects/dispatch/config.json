@@ -1,0 +1,8 @@
+{
+  "name": "dispatch",
+  "repoURL": "https://github.com/madfam-org/enclii.git",
+  "branch": "main",
+  "manifestPath": "apps/dispatch/k8s",
+  "namespace": "enclii",
+  "partOf": "enclii"
+}

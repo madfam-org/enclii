@@ -28,6 +28,7 @@ const (
 	SourceGitHubWebhook  = "github_webhook"
 	SourceCICallback     = "ci_callback"
 	SourceArgocdCallback = "argocd_callback"
+	SourcePlatform       = "platform"
 	SourceManual         = "manual"
 )
 

@@ -1,0 +1,9 @@
+{
+  "name": "dhanam",
+  "repoURL": "https://github.com/madfam-org/dhanam.git",
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "namespace": "dhanam",
+  "partOf": "dhanam",
+  "ignoreExtraneous": true
+}

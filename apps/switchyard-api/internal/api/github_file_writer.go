@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -89,6 +90,115 @@ func createOrUpdateGitHubFile(ctx context.Context, token, owner, repo, path stri
 	}
 
 	// Build request payload
+	payload := map[string]string{
+		"message": message,
+		"content": base64.StdEncoding.EncodeToString(content),
+		"branch":  branch,
+	}
+	if existingSHA != "" {
+		payload["sha"] = existingSHA
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return "", fmt.Errorf("GitHub API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var commitResp gitHubCommitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&commitResp); err != nil {
+		return "", fmt.Errorf("failed to decode commit response: %w", err)
+	}
+
+	return commitResp.Commit.SHA, nil
+}
+
+// getGitHubFileContent retrieves the content and SHA of a file from a GitHub repo.
+// Returns content as string, the blob SHA (for updates), and any error.
+func getGitHubFileContent(ctx context.Context, token, owner, repo, path, ref string) (string, string, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+	if ref != "" {
+		apiURL += "?ref=" + ref
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return "", "", err
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", "", fmt.Errorf("file not found: %s/%s:%s", owner, repo, path)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return "", "", fmt.Errorf("GitHub API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var fileResp gitHubFileResponse
+	if err := json.NewDecoder(resp.Body).Decode(&fileResp); err != nil {
+		return "", "", fmt.Errorf("failed to decode GitHub response: %w", err)
+	}
+
+	// Decode base64 content (GitHub returns content base64-encoded with newlines)
+	// GitHub uses standard base64 with \n line breaks
+	cleanContent := strings.ReplaceAll(fileResp.Content, "\n", "")
+	decoded, err := base64.StdEncoding.DecodeString(cleanContent)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to decode file content: %w", err)
+	}
+
+	return string(decoded), fileResp.SHA, nil
+}
+
+// createOrUpdateGitHubFileWithSHA commits a file to a GitHub repo using a pre-fetched SHA.
+// This avoids a redundant GET to resolve the SHA when the caller already has it.
+// Returns the commit SHA on success.
+func createOrUpdateGitHubFileWithSHA(ctx context.Context, token, owner, repo, path string, content []byte, message, branch, existingSHA string) (string, error) {
+	if token == "" {
+		return "", fmt.Errorf("GitHub token is required for file commits")
+	}
+
+	if branch == "" {
+		branch = "main"
+	}
+
 	payload := map[string]string{
 		"message": message,
 		"content": base64.StdEncoding.EncodeToString(content),

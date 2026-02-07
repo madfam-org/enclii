@@ -109,7 +109,7 @@ func (c *Client) DeployService(ctx context.Context, spec *DeploymentSpec) error 
 }
 
 func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
-	_, err := c.Clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	existing, err := c.Clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil {
 		// Namespace doesn't exist, create it
 		ns := &corev1.Namespace{
@@ -117,6 +117,7 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 				Name: namespace,
 				Labels: map[string]string{
 					"managed-by":                   "enclii",
+					"enclii.dev/type":              "application",
 					"enclii.dev/verify-signatures": "true",
 				},
 			},
@@ -124,6 +125,30 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 		_, err = c.Clientset.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
+		}
+		return nil
+	}
+
+	// Namespace exists — ensure required labels are present
+	needsUpdate := false
+	if existing.Labels == nil {
+		existing.Labels = make(map[string]string)
+	}
+	requiredLabels := map[string]string{
+		"managed-by":                   "enclii",
+		"enclii.dev/type":              "application",
+		"enclii.dev/verify-signatures": "true",
+	}
+	for k, v := range requiredLabels {
+		if existing.Labels[k] != v {
+			existing.Labels[k] = v
+			needsUpdate = true
+		}
+	}
+	if needsUpdate {
+		_, err = c.Clientset.CoreV1().Namespaces().Update(ctx, existing, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to update namespace labels for %s: %w", namespace, err)
 		}
 	}
 	return nil
