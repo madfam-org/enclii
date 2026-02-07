@@ -37,6 +37,8 @@ spec:
                 - data
                 - enclii
                 - enclii-builds  # Build jobs use Kaniko which doesn't expose hostPorts
+                - dhanam
+                - tezca
       validate:
         message: >-
           hostPort is forbidden. Use ClusterIP services for internal communication.
@@ -89,6 +91,8 @@ spec:
                 - janua
                 - data
                 - enclii
+                - dhanam
+                - tezca
       validate:
         message: >-
           Deployment containers must have a readinessProbe defined.
@@ -118,6 +122,8 @@ spec:
                 - janua
                 - data
                 - enclii
+                - dhanam
+                - tezca
       validate:
         message: >-
           Deployment containers must have a livenessProbe defined.

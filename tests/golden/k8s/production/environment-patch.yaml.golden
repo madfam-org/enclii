@@ -113,6 +113,13 @@ spec:
               name: enclii-argocd-webhook
               key: secret
               optional: true
+        # GitHub Token (for auto-committing ArgoCD apps during onboarding)
+        - name: ENCLII_GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: enclii-github-token
+              key: token
+              optional: true
         # Cloudflare Integration (for domain status sync)
         - name: ENCLII_CLOUDFLARE_API_TOKEN
           valueFrom:
