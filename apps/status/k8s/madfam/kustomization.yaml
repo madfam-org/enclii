@@ -31,6 +31,42 @@ patches:
       kind: Deployment
       name: status
 
+  # Update configMapKeyRef to use overlay-specific ConfigMap
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: status
+      spec:
+        template:
+          spec:
+            containers:
+            - name: status
+              env:
+              - name: SITE_NAME
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: SITE_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: NEXT_PUBLIC_APP_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: SERVICES_CONFIG
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: PROMETHEUS_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+    target:
+      kind: Deployment
+      name: status
+
   # Update service name and selector
   - patch: |-
       - op: replace

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: status-config
+  name: status-config-madfam
   namespace: enclii
 data:
   site-name: "MADFAM System Status"

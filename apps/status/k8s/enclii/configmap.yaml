@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: status-config
+  name: status-config-enclii
   namespace: enclii
 data:
   site-name: "Enclii Status"
