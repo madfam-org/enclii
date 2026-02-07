@@ -7,25 +7,25 @@ const DEFAULT_ENCLII_SERVICES: ServiceConfig[] = [
   {
     name: 'Switchyard API',
     url: 'https://api.enclii.dev/health/ready',
-    group: 'Core Platform',
+    group: 'Enclii',
     description: 'Control plane API',
   },
   {
     name: 'Web Dashboard',
     url: 'https://app.enclii.dev',
-    group: 'Core Platform',
+    group: 'Enclii',
     description: 'User dashboard',
   },
   {
     name: 'Admin Console',
     url: 'https://admin.enclii.dev',
-    group: 'Core Platform',
+    group: 'Enclii',
     description: 'Infrastructure admin',
   },
   {
     name: 'Documentation',
     url: 'https://docs.enclii.dev',
-    group: 'Resources',
+    group: 'Enclii',
     description: 'Documentation site',
   },
 ]

@@ -7,31 +7,73 @@ data:
   site-name: "Enclii Status"
   site-url: "https://status.enclii.dev"
   prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
-  # Services to monitor for Enclii Platform
+  # Services to monitor for Enclii Platform + core ecosystem
   services-config: |
     [
       {
         "name": "Switchyard API",
         "url": "https://api.enclii.dev/health/ready",
-        "group": "Core Platform",
+        "group": "Enclii",
         "description": "Control plane API"
       },
       {
         "name": "Web Dashboard",
         "url": "https://app.enclii.dev",
-        "group": "Core Platform",
+        "group": "Enclii",
         "description": "User dashboard"
       },
       {
         "name": "Admin Console",
         "url": "https://admin.enclii.dev",
-        "group": "Core Platform",
+        "group": "Enclii",
         "description": "Infrastructure admin"
       },
       {
         "name": "Documentation",
         "url": "https://docs.enclii.dev",
-        "group": "Resources",
+        "group": "Enclii",
         "description": "Documentation site"
+      },
+      {
+        "name": "Auth (Default)",
+        "url": "https://auth.janua.dev",
+        "group": "Janua",
+        "description": "SSO authentication (canonical)"
+      },
+      {
+        "name": "Auth (Ecosystem)",
+        "url": "https://auth.madfam.io/health",
+        "group": "Janua",
+        "description": "SSO authentication (whitelabel)"
+      },
+      {
+        "name": "Janua Website",
+        "url": "https://janua.dev",
+        "group": "Janua",
+        "description": "Janua landing page"
+      },
+      {
+        "name": "Janua Docs",
+        "url": "https://docs.janua.dev",
+        "group": "Janua",
+        "description": "Janua documentation"
+      },
+      {
+        "name": "Dhanam API",
+        "url": "https://api.dhan.am/health",
+        "group": "Dhanam",
+        "description": "Financial platform API"
+      },
+      {
+        "name": "Dhanam Admin",
+        "url": "https://admin.dhan.am",
+        "group": "Dhanam",
+        "description": "Admin dashboard"
+      },
+      {
+        "name": "Dhanam Web",
+        "url": "https://dhan.am",
+        "group": "Dhanam",
+        "description": "Landing page"
       }
     ]

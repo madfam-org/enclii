@@ -7,49 +7,109 @@ data:
   site-name: "MADFAM System Status"
   site-url: "https://status.madfam.io"
   prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
-  # Services to monitor for MADFAM Ecosystem
+  # Services to monitor for MADFAM Ecosystem (all projects)
   services-config: |
     [
       {
-        "name": "Janua Auth API",
-        "url": "https://auth.madfam.io/health",
-        "group": "Authentication",
-        "description": "SSO authentication service"
-      },
-      {
-        "name": "Janua Dashboard",
-        "url": "https://app.janua.dev",
-        "group": "Authentication",
-        "description": "Janua admin UI"
-      },
-      {
-        "name": "Janua API",
-        "url": "https://api.janua.dev/health",
-        "group": "Authentication",
-        "description": "Janua API"
-      },
-      {
         "name": "Enclii API",
         "url": "https://api.enclii.dev/health/ready",
-        "group": "Platform",
-        "description": "Enclii control plane"
+        "group": "Enclii",
+        "description": "Control plane API"
       },
       {
         "name": "Enclii Dashboard",
         "url": "https://app.enclii.dev",
-        "group": "Platform",
-        "description": "Enclii user UI"
+        "group": "Enclii",
+        "description": "User dashboard"
       },
       {
         "name": "Enclii Admin",
         "url": "https://admin.enclii.dev",
-        "group": "Platform",
+        "group": "Enclii",
         "description": "Infrastructure admin"
       },
       {
         "name": "Documentation",
         "url": "https://docs.enclii.dev",
-        "group": "Resources",
+        "group": "Enclii",
         "description": "Documentation site"
+      },
+      {
+        "name": "Auth (Default)",
+        "url": "https://auth.janua.dev",
+        "group": "Janua",
+        "description": "SSO authentication (canonical)"
+      },
+      {
+        "name": "Auth (Ecosystem)",
+        "url": "https://auth.madfam.io/health",
+        "group": "Janua",
+        "description": "SSO authentication (whitelabel)"
+      },
+      {
+        "name": "Janua Website",
+        "url": "https://janua.dev",
+        "group": "Janua",
+        "description": "Janua landing page"
+      },
+      {
+        "name": "Janua Docs",
+        "url": "https://docs.janua.dev",
+        "group": "Janua",
+        "description": "Janua documentation"
+      },
+      {
+        "name": "Dhanam API",
+        "url": "https://api.dhan.am/health",
+        "group": "Dhanam",
+        "description": "Financial platform API"
+      },
+      {
+        "name": "Dhanam Admin",
+        "url": "https://admin.dhan.am",
+        "group": "Dhanam",
+        "description": "Admin dashboard"
+      },
+      {
+        "name": "Dhanam Web",
+        "url": "https://dhan.am",
+        "group": "Dhanam",
+        "description": "Landing page"
+      },
+      {
+        "name": "Tezca Web",
+        "url": "https://tezca.mx",
+        "group": "Tezca",
+        "description": "Legal tech platform"
+      },
+      {
+        "name": "Tezca Admin",
+        "url": "https://admin.tezca.mx",
+        "group": "Tezca",
+        "description": "Admin dashboard"
+      },
+      {
+        "name": "Tezca API",
+        "url": "https://api.tezca.mx",
+        "group": "Tezca",
+        "description": "Django API"
+      },
+      {
+        "name": "Yantra4D Landing",
+        "url": "https://4d.madfam.io",
+        "group": "Yantra4D",
+        "description": "Landing page"
+      },
+      {
+        "name": "Yantra4D Studio",
+        "url": "https://4d-app.madfam.io",
+        "group": "Yantra4D",
+        "description": "4D visualization studio"
+      },
+      {
+        "name": "Yantra4D API",
+        "url": "https://4d-api.madfam.io/api/health",
+        "group": "Yantra4D",
+        "description": "Flask API"
       }
     ]
