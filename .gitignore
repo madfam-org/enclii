@@ -53,6 +53,7 @@ yarn-error.log*
 .npm
 .next/
 .cache/
+*.tsbuildinfo
 
 # Kubernetes
 kubeconfig

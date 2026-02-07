@@ -277,6 +277,12 @@ Examples:
 - `ghcr.io/madfam-org/dhanam/web`
 - `ghcr.io/madfam-org/janua-api`
 
+### Service Name Resolution
+
+Enclii resolves GHCR image paths to registered service names using a candidate strategy. For nested paths like `ghcr.io/madfam-org/tezca/api`, it tries `tezca-api` first, then `api`. This means your DB service names should use the `{project}-{service}` pattern (e.g. `tezca-api`, `dhanam-admin`) for reliable matching.
+
+The `metadata.service` field in lifecycle event callbacks provides an explicit override — set it to the exact service name registered in Enclii (e.g. `"service": "dhanam-api"`).
+
 ## Disabling Provenance Attestations
 
 Always set `provenance: false` and `sbom: false` in `docker/build-push-action`:
@@ -319,3 +325,5 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 | Lifecycle events not appearing | Missing/wrong callback token | Check `ENCLII_CALLBACK_TOKEN` secret |
 | Concurrent digest commit fails | Multiple workflows push same file | Use fetch/reset/re-apply retry loop (see CI workflow pattern above) |
 | New image not pulled by K8s | `imagePullPolicy: IfNotPresent` with tag | Set `imagePullPolicy: Always` or use digest refs |
+| Lifecycle events exist but no deployment record | Service name in DB doesn't match image path | Ensure DB service name follows `{project}-{service}` pattern (e.g. `tezca-api`), or set explicit `metadata.service` in CI callback |
+| Duplicate deployment records on ArgoCD sync | CI callback didn't create a `deploying` record first | Normal for first deploy; subsequent deploys will update existing `deploying` records |

@@ -224,14 +224,51 @@ gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/enclii --body "<token>"
 
 The ArgoCD Notifications webhook uses the same token value (stored in `argocd-notifications-secret` in the `argocd` namespace as `argocd-webhook-secret`).
 
+## Pipeline Visibility (UI)
+
+The **Deployments** page at `app.enclii.dev/deployments` shows two views:
+
+1. **Pipeline Activity** — A real-time feed of lifecycle events from all repos, fetched from `GET /v1/lifecycle/events?limit=20`. Each event is color-coded by type (green for success, red for failure, blue for in-progress). This provides immediate feedback after a `git push` — events appear within seconds, long before ArgoCD syncs.
+
+2. **Deployment History** — The traditional deployment records, now enriched with `deploying` and `failed` states from CI events:
+
+### Deployment Status Flow
+
+```
+CI reports image_pushed  → Deployment created as "deploying"
+ArgoCD syncs             → Deployment updated to "running" (healthy)
+
+CI reports build_failed  → Deployment created as "failed"
+```
+
+The `LifecycleEventCallback` handler creates Deployment records automatically for `image_pushed` and `build_failed` events. When ArgoCD later syncs, the `ArgocdSyncCallback` finds the existing `deploying` record and updates it to `running` instead of creating a duplicate.
+
+### Service Name Resolution
+
+When a lifecycle event or ArgoCD callback arrives with an image URI like `ghcr.io/madfam-org/tezca/api`, Enclii needs to match it to a registered service. The `extractServiceCandidates` function generates candidate names:
+
+| Image URI | Candidates (tried in order) |
+|-----------|-----------------------------|
+| `ghcr.io/madfam-org/tezca/api` | `tezca-api`, `api` |
+| `ghcr.io/madfam-org/dhanam/admin` | `dhanam-admin`, `admin` |
+| `ghcr.io/madfam-org/enclii/switchyard-api` | `enclii-switchyard-api`, `switchyard-api` |
+
+For nested GHCR paths (3+ segments after the registry), the prefixed form (`{project}-{service}`) is tried first. This ensures services registered as `tezca-api` in the DB are correctly matched.
+
+The `metadata.service` field in CI callbacks provides an explicit service name and is preferred when present.
+
 ## Key Files
 
 | Purpose | Path |
 |---------|------|
 | Types & constants | `packages/sdk-go/pkg/types/deployment_lifecycle.go` |
+| Deployment types (status constants) | `packages/sdk-go/pkg/types/types.go` |
 | Event repository | `apps/switchyard-api/internal/db/lifecycle_event_repository.go` |
+| Deployment repository | `apps/switchyard-api/internal/db/deployment_repository.go` |
 | Callback + query handlers | `apps/switchyard-api/internal/api/lifecycle_event_handlers.go` |
+| ArgoCD callback (emits events + updates deployments) | `apps/switchyard-api/internal/api/argocd_callbacks.go` |
+| Service name extraction tests | `apps/switchyard-api/internal/api/argocd_callbacks_test.go` |
 | DB migration | `apps/switchyard-api/internal/db/migrations/005_deployment_lifecycle.up.sql` |
 | Push webhook (emits events) | `apps/switchyard-api/internal/api/webhook_push.go` |
-| ArgoCD callback (emits events) | `apps/switchyard-api/internal/api/argocd_callbacks.go` |
 | Build callback (emits events) | `apps/switchyard-api/internal/api/build_callbacks.go` |
+| Deployments UI page | `apps/switchyard-ui/app/(protected)/deployments/page.tsx` |
