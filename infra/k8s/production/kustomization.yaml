@@ -45,7 +45,7 @@ images:
   digest: sha256:cc0b55ca096a72ce0033bf822566da4e4f2ae934079ad11be1b0ab40637e0cf1
 - name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-  digest: sha256:3263a94baa4b18d3baa4f455e9c78efcb394b65c3753b259c0d22d648d022965
+  digest: sha256:b660daf086efcb335ce3c13a7fc04a37a49def92a3a6b96380d36cc2e9866627
 - name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
   digest: sha256:4e8d48545f9899e0cc89bd7b2fc9a2531e1121e35523a73f01e6f7cc4d42c27a
