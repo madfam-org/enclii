@@ -1,7 +1,7 @@
 # Cloudflare Integration
 
-**Last Updated:** January 26, 2026
-**Status:** Operational (single unified tunnel, 28 domains, 2 replicas)
+**Last Updated:** February 7, 2026
+**Status:** Operational (single unified tunnel, 28+ domains, 2 replicas, HTTPS enforced on all zones)
 
 ---
 
@@ -326,12 +326,36 @@ SSL auto-provisions via Cloudflare for SaaS.
 
 ### API Token Permissions
 
-Required scopes (must be **account-level**, not zone-scoped, to support auto zone creation):
-- Zone:Read (All zones)
-- Zone:Edit (All zones — required for zone creation and custom hostnames)
-- Zone DNS:Edit (All zones)
-- Account:Cloudflare Tunnel:Read
-- Account:Cloudflare Tunnel:Edit
+The "Enclii Platform Token" (All accounts, All zones) has these scopes:
+
+| Permission | Scope | Purpose |
+|------------|-------|---------|
+| Account: Cloudflare Tunnel: Edit | All accounts | Tunnel config management |
+| Zone: Zone: Edit | All zones | Zone creation, custom hostnames |
+| Zone: DNS: Edit | All zones | DNS record management |
+| Zone: Zone Settings: Edit | All zones | `always_use_https`, `min_tls_version`, etc. |
+| Zone: SSL and Certificates: Edit | All zones | SSL mode, certificate management |
+
+> **Note:** Must be **account-level** (not zone-scoped) to support auto zone creation.
+
+### Zone Settings Management
+
+Use the zone settings script to manage security-critical settings across all zones:
+
+```bash
+# List all zones
+./scripts/cloudflare-zone-settings.sh list
+
+# Check a setting across all zones
+./scripts/cloudflare-zone-settings.sh get always_use_https
+
+# Set a setting across all zones
+./scripts/cloudflare-zone-settings.sh set always_use_https on
+./scripts/cloudflare-zone-settings.sh set min_tls_version 1.2
+
+# Audit security settings (color-coded output)
+./scripts/cloudflare-zone-settings.sh audit
+```
 
 ## Related Documentation
 

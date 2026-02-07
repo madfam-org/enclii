@@ -361,17 +361,20 @@ EOF
 # =============================================================================
 # Required API Token Permissions
 # =============================================================================
-# For full domain provisioning, the API token needs:
-#   - Zone:Read (list zones)
-#   - Zone:Edit (create zones)
-#   - DNS:Edit (create DNS records)
-#   - Cloudflare Tunnel:Read (get tunnel info)
-#   - Cloudflare Tunnel:Edit (update tunnel config)
+# The "Enclii Platform Token" (All accounts, All zones) has:
+#   - Account.Cloudflare Tunnel:Edit (tunnel config)
+#   - Zone.Zone:Edit (create/manage zones)
+#   - Zone.DNS:Edit (create DNS records)
+#   - Zone.Zone Settings:Edit (always_use_https, min_tls_version, etc.)
+#   - Zone.SSL and Certificates:Edit (SSL mode, certificates)
 #
-# To create a token with these permissions:
-#   1. Go to Cloudflare Dashboard -> API Tokens
-#   2. Click "Create Token"
-#   3. Use "Create Custom Token" template
-#   4. Add permissions listed above for "Account: All accounts"
-#   5. Set appropriate TTL or no expiration
+# To create/edit the token:
+#   1. Go to Cloudflare Dashboard -> Profile -> API Tokens
+#   2. Edit "Enclii Platform Token" or create new with above permissions
+#   3. Set scope to "All accounts, All zones"
+#   4. No TTL expiration recommended for platform token
+#
+# Stored in:
+#   - K8s secret: enclii-cloudflare-credentials (enclii namespace)
+#   - Local file: ~/.enclii/credentials
 # =============================================================================

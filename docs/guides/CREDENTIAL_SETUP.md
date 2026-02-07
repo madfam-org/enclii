@@ -57,11 +57,11 @@ Add the following permissions:
 
 | Permission | Access Level | Scope | Purpose |
 |------------|-------------|-------|---------|
-| Zone | Read | Account: All zones | List existing zones |
-| Zone | Edit | Account: All zones | Create new zones |
+| Zone | Edit | Account: All zones | Create/manage zones |
 | DNS | Edit | Account: All zones | Create/update DNS records |
-| Cloudflare Tunnel | Read | Account | Get tunnel information |
-| Cloudflare Tunnel | Edit | Account | Update tunnel configuration |
+| Zone Settings | Edit | Account: All zones | HTTPS enforcement, TLS version, etc. |
+| SSL and Certificates | Edit | Account: All zones | SSL mode, certificate management |
+| Cloudflare Tunnel | Edit | Account | Tunnel configuration |
 
 ### Step 4: Set Token Name and TTL
 
@@ -206,6 +206,7 @@ Scripts load credentials in this order:
 | Script | kubectl Required | Purpose |
 |--------|------------------|---------|
 | `cloudflare-zone-create.sh` | No | Create zones and DNS records only |
+| `cloudflare-zone-settings.sh` | No | Manage zone settings (HTTPS, TLS, security) |
 | `provision-domain.sh` | Yes | Full provisioning including tunnel routing |
 | `deploy-client.sh` | Yes | Complete client deployment orchestration |
 
