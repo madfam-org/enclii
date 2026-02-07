@@ -247,7 +247,9 @@ The `LifecycleEventCallback` handler creates Deployment records automatically fo
 
 **Deduplication:** The ArgoCD callback also checks whether the service's latest deployment already points to the same Release (same git SHA + image). If so, it skips creating a new record. This prevents deployment record explosion when ArgoCD syncs an Application containing multiple images but only some actually changed.
 
-**Release enrichment:** The ArgoCD callback enriches Releases with git metadata (commit message, author, branch, repo URL) from lifecycle events — both when creating new Releases AND when finding existing ones with empty metadata fields. This handles the race condition where CI creates the release first (without commit metadata) and ArgoCD later finds it. The `"actor"` metadata key is also accepted as a fallback for `"author"` since some CI workflows use GitHub's `actor` field.
+**Release enrichment:** The ArgoCD callback enriches Releases with git metadata (commit message, author, branch, repo URL) from lifecycle events — both when creating new Releases AND when finding existing ones with empty metadata fields. This handles the race condition where CI creates the release first (without commit metadata) and ArgoCD later finds it. The `"actor"` metadata key is also accepted as a fallback for `"author"` since some CI workflows use GitHub's `actor` field. **Event source preference:** `enrichReleaseFields` prefers CI/webhook events (`ci_callback`, `github_webhook`) over ArgoCD events when populating metadata. ArgoCD status messages like "ArgoCD sync Synced: ..." are never stored as `commit_message` — only genuine CI commit messages are used.
+
+**Stale deploying filter (UI):** The Active Deployments section filters out `deploying`/`pending` records older than 30 minutes. These are almost certainly orphaned records from before the SHA-fallback fix and will never transition. The full deployment history (including stale records) remains in the database and in the Deployment History section.
 
 ### Service Name Resolution
 
@@ -261,7 +263,7 @@ When a lifecycle event or ArgoCD callback arrives with an image URI like `ghcr.i
 
 For nested GHCR paths (3+ segments after the registry), the prefixed form (`{project}-{service}`) is tried first. This ensures services registered as `tezca-api` in the DB are correctly matched.
 
-The `metadata.service` field in CI callbacks provides an explicit service name and is preferred when present. ArgoCD lifecycle events also include the resolved `service` name in their metadata, so the Pipeline Activity UI shows the actual service name (e.g. "switchyard-api") instead of falling back to the repo name.
+The `metadata.service` field in CI callbacks provides an explicit service name and is preferred when present. ArgoCD lifecycle events also include the resolved `service` name in their metadata. When neither `metadata.service` is set, the Pipeline Activity UI extracts the service name from `metadata.image` (last path segment without tag/digest) — e.g. `ghcr.io/madfam-org/enclii/switchyard-api:sha-abc` → "switchyard-api". The full fallback chain is: `metadata.service` → image URI extraction → repo name.
 
 ## Key Files
 

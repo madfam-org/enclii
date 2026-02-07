@@ -375,28 +375,45 @@ func argocdEventType(syncStatus, healthStatus string) string {
 
 // enrichReleaseFields populates empty metadata fields on a release from lifecycle events.
 // Used when creating new releases in findOrCreateRelease.
+// Prefers CI/webhook events over ArgoCD events — ArgoCD status messages like
+// "ArgoCD sync Synced: ..." should never be stored as commit messages.
 func (h *Handler) enrichReleaseFields(release *types.Release, gitSHA string) {
 	events, err := h.repos.LifecycleEvents.GetByCommit(context.Background(), gitSHA)
 	if err != nil || len(events) == 0 {
 		return
 	}
-	evt := events[0]
-	if evt.Message != nil && *evt.Message != "" && release.CommitMessage == "" {
-		release.CommitMessage = *evt.Message
+
+	// Prefer CI/webhook events over ArgoCD events for enrichment
+	var bestEvt *types.DeploymentLifecycleEvent
+	for i := range events {
+		if events[i].Source == types.SourceCICallback || events[i].Source == types.SourceGitHubWebhook {
+			bestEvt = &events[i]
+			break
+		}
 	}
-	if evt.Branch != "" && release.GitBranch == "" {
-		release.GitBranch = evt.Branch
+	// Fallback to any event for non-message fields
+	if bestEvt == nil {
+		bestEvt = &events[0]
 	}
-	if evt.RepoFullName != "" && release.RepoURL == "" {
-		release.RepoURL = "https://github.com/" + evt.RepoFullName
+
+	// Only use message as CommitMessage from CI/webhook events (not ArgoCD status messages)
+	if bestEvt.Message != nil && *bestEvt.Message != "" && release.CommitMessage == "" &&
+		bestEvt.Source != types.SourceArgocdCallback {
+		release.CommitMessage = *bestEvt.Message
+	}
+	if bestEvt.Branch != "" && release.GitBranch == "" {
+		release.GitBranch = bestEvt.Branch
+	}
+	if bestEvt.RepoFullName != "" && release.RepoURL == "" {
+		release.RepoURL = "https://github.com/" + bestEvt.RepoFullName
 	}
 	// Check both "author" and "actor" keys — external CI may use either
-	if author, ok := evt.Metadata["author"].(string); ok && author != "" && release.CommitAuthorName == "" {
+	if author, ok := bestEvt.Metadata["author"].(string); ok && author != "" && release.CommitAuthorName == "" {
 		release.CommitAuthorName = author
-	} else if actor, ok := evt.Metadata["actor"].(string); ok && actor != "" && release.CommitAuthorName == "" {
+	} else if actor, ok := bestEvt.Metadata["actor"].(string); ok && actor != "" && release.CommitAuthorName == "" {
 		release.CommitAuthorName = actor
 	}
-	if email, ok := evt.Metadata["author_email"].(string); ok && email != "" && release.CommitAuthorEmail == "" {
+	if email, ok := bestEvt.Metadata["author_email"].(string); ok && email != "" && release.CommitAuthorEmail == "" {
 		release.CommitAuthorEmail = email
 	}
 }

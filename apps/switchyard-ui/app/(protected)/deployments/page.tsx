@@ -47,6 +47,14 @@ const EVENT_TYPE_CONFIG: Record<string, { label: string; variant: 'default' | 's
   digest_committed:{ label: "Digest Committed", variant: "outline",  dotClass: "bg-muted-foreground" },
 };
 
+// Extract service name from a container image URI (last path segment without tag/digest)
+// e.g. "ghcr.io/madfam-org/enclii/switchyard-api:sha-abc123" → "switchyard-api"
+function extractServiceFromImage(imageURI?: string): string | null {
+  if (!imageURI) return null;
+  const ref = imageURI.replace(/@.*$/, '').replace(/:(?!.*\/).*$/, '');
+  return ref.split('/').pop() || null;
+}
+
 interface ServiceListResponse {
   services: Array<{ id: string; name: string }>;
 }
@@ -93,7 +101,14 @@ export default function DeploymentsPage() {
         allDeployments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       }
 
-      const active = allDeployments.filter((d) => d.status === 'deploying' || d.status === 'pending');
+      // Filter out stale deploying records (older than 30 min are almost certainly orphaned)
+      const STALE_DEPLOYING_MS = 30 * 60 * 1000;
+      const now = Date.now();
+      const active = allDeployments.filter((d) => {
+        if (d.status !== 'deploying' && d.status !== 'pending') return false;
+        const age = now - new Date(d.created_at).getTime();
+        return age < STALE_DEPLOYING_MS;
+      });
       const history = allDeployments.filter((d) => d.status !== 'deploying' && d.status !== 'pending');
 
       setActiveDeployments(active);
@@ -266,7 +281,10 @@ export default function DeploymentsPage() {
                   variant: "outline" as const,
                   dotClass: "bg-muted-foreground",
                 };
-                const serviceName = (event.metadata?.service as string) || event.repo_full_name.split("/").pop() || "unknown";
+                const serviceName = (event.metadata?.service as string)
+                  || extractServiceFromImage(event.metadata?.image as string)
+                  || event.repo_full_name.split("/").pop()
+                  || "unknown";
                 const repoShort = event.repo_full_name.split("/").pop() || event.repo_full_name;
                 return (
                   <div
