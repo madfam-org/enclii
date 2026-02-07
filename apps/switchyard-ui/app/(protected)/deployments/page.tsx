@@ -262,7 +262,7 @@ export default function DeploymentsPage() {
             <div className="space-y-2">
               {lifecycleEvents.map((event) => {
                 const config = EVENT_TYPE_CONFIG[event.event_type] || {
-                  label: event.event_type,
+                  label: event.event_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
                   variant: "outline" as const,
                   dotClass: "bg-muted-foreground",
                 };

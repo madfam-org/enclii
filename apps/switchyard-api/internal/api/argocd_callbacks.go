@@ -132,6 +132,24 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 				logging.Error("error", findErr))
 		}
 
+		// Fallback: digest-commit CI job creates a new commit (B) after the original push (A).
+		// CI lifecycle events use SHA=A, but ArgoCD syncs with SHA=B. Try finding any recent
+		// deploying deployment for this service within a 30-minute window.
+		if existingDeployment == nil && findErr == nil {
+			existingDeployment, findErr = h.repos.Deployments.FindRecentDeployingByService(ctx, service.ID, 30*time.Minute)
+			if findErr != nil {
+				h.logger.Warn(ctx, "Error in fallback deploying deployment lookup",
+					logging.String("service_name", serviceName),
+					logging.Error("error", findErr))
+			}
+			if existingDeployment != nil {
+				h.logger.Info(ctx, "Found deploying deployment via time-window fallback (SHA mismatch)",
+					logging.String("service_name", serviceName),
+					logging.String("argocd_revision", req.Revision),
+					logging.String("deployment_id", existingDeployment.ID.String()))
+			}
+		}
+
 		var deployment *types.Deployment
 		if existingDeployment != nil {
 			// Update the existing deploying record to running/healthy
@@ -214,6 +232,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 				"sync_status":   req.SyncStatus,
 				"health_status": req.HealthStatus,
 				"image":         imageURI,
+				"service":       serviceName,
 			},
 		})
 	}
@@ -234,6 +253,11 @@ func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *
 
 	for _, r := range releases {
 		if r.GitSHA == gitSHA && r.ServiceID == service.ID {
+			// Enrich existing release if it's missing metadata (race condition:
+			// CI created the release first without commit metadata)
+			if r.CommitMessage == "" || r.CommitAuthorName == "" || r.GitBranch == "" {
+				h.enrichReleaseFromLifecycleEvents(ctx, r, gitSHA)
+			}
 			return r, nil
 		}
 	}
@@ -248,28 +272,7 @@ func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *
 	}
 
 	// Enrich with metadata from lifecycle events (if available)
-	// External repos (tezca, dhanam) push lifecycle events via CI callbacks
-	// that carry commit metadata we can attach to the release.
-	if events, err := h.repos.LifecycleEvents.GetByCommit(context.Background(), gitSHA); err == nil && len(events) > 0 {
-		for _, evt := range events {
-			if evt.Message != nil && *evt.Message != "" && release.CommitMessage == "" {
-				release.CommitMessage = *evt.Message
-			}
-			if evt.Branch != "" && release.GitBranch == "" {
-				release.GitBranch = evt.Branch
-			}
-			if evt.RepoFullName != "" && release.RepoURL == "" {
-				release.RepoURL = "https://github.com/" + evt.RepoFullName
-			}
-			if author, ok := evt.Metadata["author"].(string); ok && author != "" && release.CommitAuthorName == "" {
-				release.CommitAuthorName = author
-			}
-			if email, ok := evt.Metadata["author_email"].(string); ok && email != "" && release.CommitAuthorEmail == "" {
-				release.CommitAuthorEmail = email
-			}
-			break // Use first matching event
-		}
-	}
+	h.enrichReleaseFields(release, gitSHA)
 
 	if err := h.repos.Releases.Create(release); err != nil {
 		return nil, fmt.Errorf("create release: %w", err)
@@ -367,5 +370,51 @@ func argocdEventType(syncStatus, healthStatus string) string {
 		return types.LifecycleDeployHealthy
 	default:
 		return types.LifecycleDeploySynced
+	}
+}
+
+// enrichReleaseFields populates empty metadata fields on a release from lifecycle events.
+// Used when creating new releases in findOrCreateRelease.
+func (h *Handler) enrichReleaseFields(release *types.Release, gitSHA string) {
+	events, err := h.repos.LifecycleEvents.GetByCommit(context.Background(), gitSHA)
+	if err != nil || len(events) == 0 {
+		return
+	}
+	evt := events[0]
+	if evt.Message != nil && *evt.Message != "" && release.CommitMessage == "" {
+		release.CommitMessage = *evt.Message
+	}
+	if evt.Branch != "" && release.GitBranch == "" {
+		release.GitBranch = evt.Branch
+	}
+	if evt.RepoFullName != "" && release.RepoURL == "" {
+		release.RepoURL = "https://github.com/" + evt.RepoFullName
+	}
+	// Check both "author" and "actor" keys — external CI may use either
+	if author, ok := evt.Metadata["author"].(string); ok && author != "" && release.CommitAuthorName == "" {
+		release.CommitAuthorName = author
+	} else if actor, ok := evt.Metadata["actor"].(string); ok && actor != "" && release.CommitAuthorName == "" {
+		release.CommitAuthorName = actor
+	}
+	if email, ok := evt.Metadata["author_email"].(string); ok && email != "" && release.CommitAuthorEmail == "" {
+		release.CommitAuthorEmail = email
+	}
+}
+
+// enrichReleaseFromLifecycleEvents enriches an existing release that has empty metadata
+// and persists the update to the database. Used when CI created the release first
+// (without commit metadata) and ArgoCD later finds it.
+func (h *Handler) enrichReleaseFromLifecycleEvents(ctx interface{ Value(any) any }, release *types.Release, gitSHA string) {
+	h.enrichReleaseFields(release, gitSHA)
+
+	// Persist enriched metadata to DB
+	if err := h.repos.Releases.UpdateMetadata(
+		context.Background(), release.ID,
+		release.CommitMessage, release.CommitAuthorName, release.CommitAuthorEmail,
+		release.GitBranch, release.RepoURL,
+	); err != nil {
+		h.logger.Warn(context.Background(), "Failed to persist release metadata enrichment",
+			logging.String("release_id", release.ID.String()),
+			logging.Error("error", err))
 	}
 }

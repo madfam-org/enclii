@@ -62,6 +62,23 @@ func (r *ReleaseRepository) UpdateSignature(ctx context.Context, id uuid.UUID, s
 	return err
 }
 
+// UpdateMetadata updates commit metadata fields on an existing release.
+// Only non-empty fields in the provided release are written.
+func (r *ReleaseRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, commitMessage, commitAuthorName, commitAuthorEmail, gitBranch, repoURL string) error {
+	query := `
+		UPDATE releases
+		SET commit_message = CASE WHEN $2 != '' THEN $2 ELSE commit_message END,
+		    commit_author_name = CASE WHEN $3 != '' THEN $3 ELSE commit_author_name END,
+		    commit_author_email = CASE WHEN $4 != '' THEN $4 ELSE commit_author_email END,
+		    git_branch = CASE WHEN $5 != '' THEN $5 ELSE git_branch END,
+		    repo_url = CASE WHEN $6 != '' THEN $6 ELSE repo_url END,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.db.ExecContext(ctx, query, id, commitMessage, commitAuthorName, commitAuthorEmail, gitBranch, repoURL)
+	return err
+}
+
 func (r *ReleaseRepository) GetByID(id uuid.UUID) (*types.Release, error) {
 	release := &types.Release{}
 	query := `SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE id = $1`

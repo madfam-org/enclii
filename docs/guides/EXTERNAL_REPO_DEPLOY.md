@@ -245,7 +245,7 @@ spec:
 5. **ArgoCD detects** the kustomization.yaml change (git poll every 3 minutes)
 6. **ArgoCD syncs** — applies the new image digest to the K8s deployment
 7. **K8s rolls** out the new pods
-8. **ArgoCD reports** sync status via callback → Enclii records `deploy_healthy` (skips services whose digest didn't change; enriches new Releases with commit metadata from lifecycle events)
+8. **ArgoCD reports** sync status via callback → Enclii records `deploy_healthy` (skips services whose digest didn't change; enriches Releases with commit metadata from lifecycle events; transitions `deploying` → `running` even when the ArgoCD sync SHA differs from the original CI push SHA)
 
 ## Preventing CI Loops
 
@@ -327,4 +327,6 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 | New image not pulled by K8s | `imagePullPolicy: IfNotPresent` with tag | Set `imagePullPolicy: Always` or use digest refs |
 | Lifecycle events exist but no deployment record | Service name in DB doesn't match image path | Ensure DB service name follows `{project}-{service}` pattern (e.g. `tezca-api`), or set explicit `metadata.service` in CI callback |
 | Duplicate deployment records on ArgoCD sync | ArgoCD syncs all images in the Application, not just changed ones | Fixed: callback now skips services whose latest deployment already has the same Release |
-| External repo deployments lack git metadata | ArgoCD callback creates bare Releases (`argocd-{sha}`) | Fixed: callback now enriches new Releases with metadata from lifecycle events (commit message, author, branch) |
+| External repo deployments lack git metadata | ArgoCD callback creates bare Releases (`argocd-{sha}`) | Fixed: callback enriches both new AND existing Releases with metadata from lifecycle events (commit message, author/actor, branch) |
+| Active deployments stuck "Deploying" forever | CI commit SHA (A) differs from ArgoCD sync SHA (B) due to digest-commit creating a new commit | Fixed: callback falls back to time-window lookup (30 min) when SHA match fails |
+| Pipeline Activity shows repo name instead of service | ArgoCD lifecycle events lacked `service` key in metadata | Fixed: ArgoCD events now include `"service": serviceName` in metadata |
