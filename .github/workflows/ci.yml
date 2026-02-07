@@ -322,24 +322,27 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: apps/switchyard-ui/package-lock.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Install dependencies
         working-directory: apps/switchyard-ui
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run linting
         working-directory: apps/switchyard-ui
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Run tests
         working-directory: apps/switchyard-ui
-        run: npm test -- --coverage --passWithNoTests
+        run: pnpm test -- --coverage --passWithNoTests
 
       - name: Build UI
         working-directory: apps/switchyard-ui
-        run: npm run build
+        run: pnpm run build
 
   # =============================================================================
   # OPERATION FORTIFICATION: Ecosystem E2E Tests (Blocking)
