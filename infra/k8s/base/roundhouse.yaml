@@ -202,8 +202,7 @@ spec:
             failureThreshold: 3
           # No volume mounts needed for Kaniko mode
           # Builds happen in separate Jobs, not in this pod
-      # No volumes needed for Kaniko mode
-      volumes: []
+      # No volumes needed for Kaniko mode (builds happen in separate Jobs)
 ---
 # Roundhouse API Deployment
 # HTTP API that receives build requests from Switchyard and enqueues to Redis
