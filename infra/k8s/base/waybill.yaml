@@ -27,7 +27,7 @@ spec:
       imagePullSecrets:
         - name: ghcr-credentials
       containers:
-        - name: waybill-aggregator
+        - name: waybill
           image: waybill
           imagePullPolicy: Always
           env:
