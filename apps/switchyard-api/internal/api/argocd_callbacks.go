@@ -59,25 +59,33 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 	deploymentsCreated := 0
 
 	for _, imageURI := range req.Images {
-		serviceName := extractServiceName(imageURI)
-		if serviceName == "" {
+		candidateNames := extractServiceCandidates(imageURI)
+		if len(candidateNames) == 0 {
 			h.logger.Warn(ctx, "Could not extract service name from image",
 				logging.String("image", imageURI))
 			continue
 		}
 
-		// Look up service by name
-		service, err := h.repos.Services.GetByName(serviceName)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				h.logger.Debug(ctx, "No matching service for image",
-					logging.String("service_name", serviceName),
-					logging.String("image", imageURI))
-			} else {
+		// Look up service by name, trying candidates in order
+		var service *types.Service
+		var serviceName string
+		for _, candidate := range candidateNames {
+			svc, err := h.repos.Services.GetByName(candidate)
+			if err == nil {
+				service = svc
+				serviceName = candidate
+				break
+			}
+			if err != sql.ErrNoRows {
 				h.logger.Error(ctx, "Failed to look up service",
-					logging.String("service_name", serviceName),
+					logging.String("service_name", candidate),
 					logging.Error("db_error", err))
 			}
+		}
+		if service == nil {
+			h.logger.Debug(ctx, "No matching service for image",
+				logging.String("candidates", strings.Join(candidateNames, ",")),
+				logging.String("image", imageURI))
 			continue
 		}
 
@@ -217,9 +225,13 @@ func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *
 	return release, nil
 }
 
-// extractServiceName extracts a service name from a container image URI
-// e.g., "ghcr.io/madfam-org/enclii/switchyard-api:latest" → "switchyard-api"
-func extractServiceName(imageURI string) string {
+// extractServiceCandidates returns candidate service names from a container image URI.
+// For nested image paths like "ghcr.io/madfam-org/tezca/api", it returns both the
+// simple name ("api") and the prefixed name ("tezca-api") so the caller can try both.
+// e.g., "ghcr.io/madfam-org/enclii/switchyard-api:latest" → ["switchyard-api"]
+// e.g., "ghcr.io/madfam-org/tezca/api@sha256:..." → ["tezca-api", "api"]
+// e.g., "ghcr.io/madfam-org/dhanam/admin:main" → ["dhanam-admin", "admin"]
+func extractServiceCandidates(imageURI string) []string {
 	// Remove tag/digest
 	ref := imageURI
 	if idx := strings.LastIndex(ref, "@"); idx != -1 {
@@ -229,8 +241,34 @@ func extractServiceName(imageURI string) string {
 		ref = ref[:idx]
 	}
 
-	// Get the last path component
-	return path.Base(ref)
+	// Remove registry prefix (e.g., "ghcr.io/")
+	cleaned := strings.TrimPrefix(ref, "ghcr.io/")
+	cleaned = strings.TrimPrefix(cleaned, "docker.io/")
+
+	parts := strings.Split(cleaned, "/")
+	simpleName := path.Base(ref)
+
+	// For paths like org/project/service (3+ segments after registry),
+	// try project-service first (e.g., "tezca-api"), then simple name ("api")
+	if len(parts) >= 3 {
+		project := parts[len(parts)-2]
+		prefixed := project + "-" + simpleName
+		if prefixed != simpleName {
+			return []string{prefixed, simpleName}
+		}
+	}
+
+	return []string{simpleName}
+}
+
+// extractServiceName extracts a service name from a container image URI (simple version).
+// Kept for backward compatibility.
+func extractServiceName(imageURI string) string {
+	candidates := extractServiceCandidates(imageURI)
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0]
 }
 
 // shortSHA returns the first 7 characters of a SHA
