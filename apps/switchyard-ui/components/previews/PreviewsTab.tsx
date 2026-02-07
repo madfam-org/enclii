@@ -1,10 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_SLOW } from '@/lib/constants';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
+import { formatRelativeTime } from '@/lib/formatting';
 import { PreviewEnvironment, PreviewEnvironmentListResponse, PreviewEnvironmentStatus } from './types';
 
 interface PreviewsTabProps {
@@ -13,28 +19,14 @@ interface PreviewsTabProps {
 }
 
 const statusConfig: Record<PreviewEnvironmentStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className: string }> = {
-  pending: { label: 'Pending', variant: 'secondary', className: 'bg-gray-100 text-gray-800' },
+  pending: { label: 'Pending', variant: 'secondary', className: 'bg-muted text-foreground' },
   building: { label: 'Building', variant: 'default', className: 'bg-status-info-muted text-status-info-foreground animate-pulse' },
   deploying: { label: 'Deploying', variant: 'default', className: 'bg-status-info-muted text-status-info-foreground animate-pulse' },
   active: { label: 'Active', variant: 'default', className: 'bg-status-success-muted text-status-success-foreground' },
   sleeping: { label: 'Sleeping', variant: 'secondary', className: 'bg-status-warning-muted text-status-warning-foreground' },
   failed: { label: 'Failed', variant: 'destructive', className: 'bg-status-error-muted text-status-error-foreground' },
-  closed: { label: 'Closed', variant: 'outline', className: 'bg-gray-100 text-gray-500' },
+  closed: { label: 'Closed', variant: 'outline', className: 'bg-muted text-muted-foreground' },
 };
-
-function formatTimeAgo(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffDays > 0) return `${diffDays}d ago`;
-  if (diffHours > 0) return `${diffHours}h ago`;
-  if (diffMins > 0) return `${diffMins}m ago`;
-  return 'Just now';
-}
 
 // Generate GitHub avatar URL from username
 function getGitHubAvatarUrl(username: string, size: number = 40): string {
@@ -66,6 +58,7 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'close' | 'delete'; preview: PreviewEnvironment } | null>(null);
 
   const fetchPreviews = async () => {
     try {
@@ -82,10 +75,9 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
 
   useEffect(() => {
     fetchPreviews();
-    // Poll for updates every 30 seconds for active previews
-    const interval = setInterval(fetchPreviews, 30000);
-    return () => clearInterval(interval);
   }, [serviceId]);
+
+  usePolling(fetchPreviews, POLLING_SLOW);
 
   const handleWake = async (preview: PreviewEnvironment) => {
     setActionLoading(preview.id);
@@ -94,39 +86,36 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
       await fetchPreviews();
     } catch (err) {
       console.error('Failed to wake preview:', err);
-      alert('Failed to wake preview: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      toast.error('Failed to wake preview: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleClose = async (preview: PreviewEnvironment) => {
-    if (!confirm(`Close preview for PR #${preview.pr_number}? This will stop the preview deployment.`)) {
-      return;
-    }
-    setActionLoading(preview.id);
-    try {
-      await apiPost(`/v1/previews/${preview.id}/close`, {});
-      await fetchPreviews();
-    } catch (err) {
-      console.error('Failed to close preview:', err);
-      alert('Failed to close preview: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setActionLoading(null);
-    }
+  const handleClose = (preview: PreviewEnvironment) => {
+    setConfirmAction({ type: 'close', preview });
   };
 
-  const handleDelete = async (preview: PreviewEnvironment) => {
-    if (!confirm(`Permanently delete preview for PR #${preview.pr_number}? This cannot be undone.`)) {
-      return;
-    }
+  const handleDelete = (preview: PreviewEnvironment) => {
+    setConfirmAction({ type: 'delete', preview });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const { type, preview } = confirmAction;
+    setConfirmAction(null);
     setActionLoading(preview.id);
     try {
-      await apiDelete(`/v1/previews/${preview.id}`);
+      if (type === 'close') {
+        await apiPost(`/v1/previews/${preview.id}/close`, {});
+      } else {
+        await apiDelete(`/v1/previews/${preview.id}`);
+      }
       await fetchPreviews();
     } catch (err) {
-      console.error('Failed to delete preview:', err);
-      alert('Failed to delete preview: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      const action = type === 'close' ? 'close' : 'delete';
+      console.error(`Failed to ${action} preview:`, err);
+      toast.error(`Failed to ${action} preview: ` + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setActionLoading(null);
     }
@@ -135,7 +124,7 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="lg" />
         <span className="ml-3 text-muted-foreground">Loading preview environments...</span>
       </div>
     );
@@ -165,7 +154,7 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" />
             </svg>
             Preview Environments
@@ -214,15 +203,15 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
         <Card>
           <CardContent className="py-12">
             <div className="text-center">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg aria-hidden="true" className="mx-auto h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <h3 className="mt-4 text-lg font-medium text-gray-900">No active previews</h3>
+              <h3 className="mt-4 text-lg font-medium text-foreground">No active previews</h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 Preview environments are automatically created when you open a pull request.
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Each PR gets a unique URL like <code className="bg-gray-100 px-1 rounded">pr-123-{serviceName.toLowerCase()}.preview.enclii.app</code>
+                Each PR gets a unique URL like <code className="bg-muted px-1 rounded">pr-123-{serviceName.toLowerCase()}.preview.enclii.app</code>
               </p>
             </div>
           </CardContent>
@@ -251,6 +240,20 @@ export function PreviewsTab({ serviceId, serviceName }: PreviewsTabProps) {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.type === 'close' ? 'Close Preview' : 'Delete Preview'}
+        description={
+          confirmAction?.type === 'close'
+            ? `Close preview for PR #${confirmAction.preview.pr_number}? This will stop the preview deployment.`
+            : `Permanently delete preview for PR #${confirmAction?.preview.pr_number}? This cannot be undone.`
+        }
+        variant="destructive"
+        confirmLabel={confirmAction?.type === 'close' ? 'Close' : 'Delete'}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }
@@ -311,7 +314,7 @@ function PreviewCard({ preview, onWake, onClose, onDelete, actionLoading, isHist
 
               {/* Branch */}
               <span className="flex items-center gap-1">
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="6" y1="3" x2="6" y2="15" />
                   <circle cx="18" cy="6" r="3" />
                   <circle cx="6" cy="18" r="3" />
@@ -333,7 +336,7 @@ function PreviewCard({ preview, onWake, onClose, onDelete, actionLoading, isHist
                     className="flex items-center gap-1 hover:text-foreground transition-colors font-mono text-xs"
                     title="View commit on GitHub"
                   >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="4" />
                       <line x1="1.05" y1="12" x2="7" y2="12" />
                       <line x1="17.01" y1="12" x2="22.96" y2="12" />
@@ -342,7 +345,7 @@ function PreviewCard({ preview, onWake, onClose, onDelete, actionLoading, isHist
                   </a>
                 ) : (
                   <span className="flex items-center gap-1 font-mono text-xs">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="4" />
                       <line x1="1.05" y1="12" x2="7" y2="12" />
                       <line x1="17.01" y1="12" x2="22.96" y2="12" />
@@ -355,7 +358,7 @@ function PreviewCard({ preview, onWake, onClose, onDelete, actionLoading, isHist
               <span className="text-muted-foreground/50">•</span>
 
               {/* Time ago */}
-              <span>{formatTimeAgo(preview.created_at)}</span>
+              <span>{formatRelativeTime(preview.created_at)}</span>
             </div>
 
             {/* Preview URL */}
@@ -365,9 +368,9 @@ function PreviewCard({ preview, onWake, onClose, onDelete, actionLoading, isHist
                   href={preview.preview_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"
+                  className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80"
                 >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
@@ -387,7 +390,7 @@ function PreviewCard({ preview, onWake, onClose, onDelete, actionLoading, isHist
             {/* Sleeping Info */}
             {preview.status === 'sleeping' && preview.sleeping_since && (
               <p className="mt-2 text-sm text-status-warning">
-                Sleeping since {formatTimeAgo(preview.sleeping_since)} (auto-sleep after {preview.auto_sleep_after} minutes of inactivity)
+                Sleeping since {formatRelativeTime(preview.sleeping_since)} (auto-sleep after {preview.auto_sleep_after} minutes of inactivity)
               </p>
             )}
           </div>

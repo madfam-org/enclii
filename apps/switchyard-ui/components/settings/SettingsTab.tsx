@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiGet, apiPatch, apiDelete } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
 
 interface ServiceSettings {
   id: string;
@@ -94,10 +96,10 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
         auto_deploy_env: form.auto_deploy_env || undefined,
       });
       await fetchSettings();
-      alert('Settings saved successfully');
+      toast.success('Settings saved successfully');
     } catch (err) {
       console.error('Failed to save settings:', err);
-      alert('Failed to save settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      toast.error('Failed to save settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setSaving(false);
     }
@@ -105,7 +107,7 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
 
   const handleDelete = async () => {
     if (deleteConfirmName !== settings?.name) {
-      alert('Please type the service name to confirm deletion');
+      toast.error('Please type the service name to confirm deletion');
       return;
     }
 
@@ -115,7 +117,7 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
       router.push('/services');
     } catch (err) {
       console.error('Failed to delete service:', err);
-      alert('Failed to delete service: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      toast.error('Failed to delete service: ' + (err instanceof Error ? err.message : 'Unknown error'));
       setDeleting(false);
     }
   };
@@ -125,7 +127,7 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
       <Card>
         <CardContent className="py-8">
           <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <Spinner size="lg" />
             <span className="ml-3 text-muted-foreground">Loading settings...</span>
           </div>
         </CardContent>
@@ -205,7 +207,7 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
               id="auto_deploy"
               checked={form.auto_deploy}
               onChange={(e) => setForm({ ...form, auto_deploy: e.target.checked })}
-              className="h-4 w-4 rounded border-gray-300"
+              className="h-4 w-4 rounded border-input"
             />
             <Label htmlFor="auto_deploy">Enable auto deploy</Label>
           </div>
@@ -280,9 +282,9 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
       </div>
 
       {/* Danger Zone */}
-      <Card className="border-red-200">
+      <Card className="border-destructive/30">
         <CardHeader>
-          <CardTitle className="text-red-600">Danger Zone</CardTitle>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
           <CardDescription>Irreversible actions</CardDescription>
         </CardHeader>
         <CardContent>

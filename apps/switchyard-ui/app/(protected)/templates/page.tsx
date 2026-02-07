@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 import { TemplateCard } from "@/components/templates/TemplateCard";
 import { DeployTemplateModal } from "@/components/templates/DeployTemplateModal";
 import { ImportTemplateModal } from "@/components/templates/ImportTemplateModal";
@@ -190,7 +191,7 @@ export default function TemplatesPage() {
         <Card>
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <Spinner size="lg" />
               <span className="ml-3 text-muted-foreground">Loading templates...</span>
             </div>
           </CardContent>
@@ -233,7 +234,7 @@ export default function TemplatesPage() {
           </p>
         </div>
         <Button onClick={() => setIsImportModalOpen(true)} variant="outline">
-          <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+          <svg aria-hidden="true" className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
           </svg>
           Import Template
@@ -245,7 +246,7 @@ export default function TemplatesPage() {
         <div className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold flex items-center gap-2">
-              <svg className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
               Featured Templates
@@ -271,7 +272,8 @@ export default function TemplatesPage() {
         {/* Search Bar */}
         <div className="relative">
           <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -281,7 +283,7 @@ export default function TemplatesPage() {
           <input
             type="text"
             placeholder="Search templates..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent bg-background text-foreground"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -291,7 +293,7 @@ export default function TemplatesPage() {
         <div className="flex flex-wrap items-center gap-3">
           {/* Category Filter */}
           <select
-            className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-input rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring"
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
           >
@@ -305,7 +307,7 @@ export default function TemplatesPage() {
 
           {/* Framework Filter */}
           <select
-            className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-input rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring"
             value={selectedFramework}
             onChange={(e) => setSelectedFramework(e.target.value)}
           >
@@ -323,15 +325,15 @@ export default function TemplatesPage() {
               type="checkbox"
               checked={showFeaturedOnly}
               onChange={(e) => setShowFeaturedOnly(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-4 h-4 rounded border-input text-primary focus:ring-ring"
             />
-            <span className="text-sm text-gray-600">Featured only</span>
+            <span className="text-sm text-muted-foreground">Featured only</span>
           </label>
 
           {/* Clear Filters */}
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters}>
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
               Clear filters
@@ -350,8 +352,8 @@ export default function TemplatesPage() {
         <Card>
           <CardContent className="py-16">
             <div className="text-center">
-              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">
+                <svg aria-hidden="true" className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                 </svg>
               </div>
@@ -382,21 +384,21 @@ export default function TemplatesPage() {
       )}
 
       {/* Import from GitHub CTA */}
-      <div className="mt-12 p-6 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border">
+      <div className="mt-12 p-6 bg-gradient-to-r from-muted/50 to-primary/5 rounded-lg border">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-white rounded-lg shadow-sm">
-              <svg className="w-8 h-8 text-gray-700" viewBox="0 0 24 24" fill="currentColor">
+            <div className="p-3 bg-card rounded-lg shadow-sm">
+              <svg aria-hidden="true" className="w-8 h-8 text-foreground" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
               </svg>
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Have your own repository?</h3>
-              <p className="text-sm text-gray-600">Import directly from GitHub to create a new service</p>
+              <h3 className="font-semibold text-foreground">Have your own repository?</h3>
+              <p className="text-sm text-muted-foreground">Import directly from GitHub to create a new service</p>
             </div>
           </div>
           <Button onClick={() => router.push('/services/import')}>
-            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
             </svg>
             Import from GitHub

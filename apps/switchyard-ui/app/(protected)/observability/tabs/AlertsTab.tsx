@@ -47,6 +47,7 @@ export function AlertsTab({ alerts }: AlertsTabProps) {
         {alerts?.alerts.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground">
             <svg
+              aria-hidden="true"
               className="mx-auto mb-4 h-12 w-12 text-status-success"
               fill="none"
               stroke="currentColor"

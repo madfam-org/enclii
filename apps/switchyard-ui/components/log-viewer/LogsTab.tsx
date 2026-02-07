@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { apiGet, apiPost } from '@/lib/api';
+import { API_BASE_URL } from '@/lib/constants';
+import { formatTimestamp } from '@/lib/formatting';
 import { LogMessage, LogLine, LogLevel, LogHistoryResponse, LogSearchResponse } from './types';
 
 interface LogsTabProps {
@@ -15,21 +17,10 @@ interface LogsTabProps {
   env?: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4200';
-
 function getWebSocketUrl(): string {
   const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
   const baseUrl = API_BASE_URL.replace(/^https?:\/\//, '');
   return `${wsProtocol}://${baseUrl}`;
-}
-
-function formatTimestamp(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }) + '.' + String(date.getMilliseconds()).padStart(3, '0');
 }
 
 function getLogLevelFromMessage(message: string): LogLevel {
@@ -278,7 +269,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 Real-time Logs
@@ -294,7 +285,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
                     ? 'bg-status-success-muted text-status-success-foreground'
                     : connectionStatus === 'connecting'
                     ? 'bg-status-warning-muted text-status-warning-foreground animate-pulse'
-                    : 'bg-gray-100 text-gray-800'
+                    : 'bg-muted text-foreground'
                 }
               >
                 {connectionStatus === 'connected' && '● Connected'}
@@ -314,14 +305,14 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
             >
               {isStreaming ? (
                 <>
-                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                  <svg aria-hidden="true" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="6" width="12" height="12" />
                   </svg>
                   Stop Streaming
                 </>
               ) : (
                 <>
-                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                  <svg aria-hidden="true" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="5 3 19 12 5 21" />
                   </svg>
                   Start Streaming
@@ -331,7 +322,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
 
             {/* Load historical logs */}
             <Button onClick={loadHistoricalLogs} variant="outline" size="sm">
-              <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
               </svg>
@@ -340,7 +331,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
 
             {/* Clear logs */}
             <Button onClick={clearLogs} variant="outline" size="sm">
-              <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 6h18M8 6V4h8v2m2 0v14a2 2 0 01-2 2H8a2 2 0 01-2-2V6h12z" />
               </svg>
               Clear
@@ -348,7 +339,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
 
             {/* Download logs */}
             <Button onClick={downloadLogs} variant="outline" size="sm" disabled={logs.length === 0}>
-              <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
               </svg>
               Download
@@ -360,7 +351,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
               variant={autoScroll ? 'secondary' : 'outline'}
               size="sm"
             >
-              <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 5v14M19 12l-7 7-7-7" />
               </svg>
               Auto-scroll {autoScroll ? 'ON' : 'OFF'}
@@ -384,7 +375,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value as LogLevel)}
-              className="h-8 px-2 text-sm border rounded-md bg-white"
+              className="h-8 px-2 text-sm border rounded-md bg-card"
             >
               <option value="all">All Levels</option>
               <option value="error">Error</option>
@@ -397,7 +388,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
             <select
               value={tailLines}
               onChange={(e) => setTailLines(parseInt(e.target.value))}
-              className="h-8 px-2 text-sm border rounded-md bg-white"
+              className="h-8 px-2 text-sm border rounded-md bg-card"
             >
               <option value="50">50 lines</option>
               <option value="100">100 lines</option>
@@ -474,7 +465,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
       {error && (
         <div className="bg-status-error-muted border border-status-error/30 rounded-md p-4 text-status-error-foreground">
           <div className="flex items-center gap-2">
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+            <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
             </svg>
             <span>{error}</span>
@@ -492,7 +483,7 @@ export function LogsTab({ serviceId, serviceName, deploymentId, env = 'developme
             <div className="text-center text-gray-500 py-8">
               {logs.length === 0 ? (
                 <>
-                  <svg className="mx-auto h-12 w-12 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                  <svg aria-hidden="true" className="mx-auto h-12 w-12 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
                     <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   <p>No logs yet</p>

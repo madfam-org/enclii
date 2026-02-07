@@ -165,7 +165,7 @@ export function PlanSelector({
               <div className="space-y-2 pt-2 border-t">
                 {plan.features.map((feature) => (
                   <div key={feature} className="flex items-center gap-2 text-sm">
-                    <Check className="h-4 w-4 text-green-500" />
+                    <Check className="h-4 w-4 text-status-success" />
                     <span>{feature}</span>
                   </div>
                 ))}

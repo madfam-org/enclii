@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_SLOW } from '@/lib/constants';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
   TableBody,
@@ -24,6 +27,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { GitBranch, ExternalLink, RefreshCw, RotateCcw } from 'lucide-react';
 import { AuthorAvatar, CommitLink } from '@/components/git';
+import { formatDate, formatRelativeTime } from '@/lib/formatting';
 import type { Deployment, DeploymentsListResponse, RollbackResponse } from './types';
 
 interface DeploymentsTabProps {
@@ -56,10 +60,9 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
 
   useEffect(() => {
     fetchDeployments();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchDeployments, 30000);
-    return () => clearInterval(interval);
   }, [fetchDeployments]);
+
+  usePolling(fetchDeployments, POLLING_SLOW);
 
   const handleRollbackClick = (deploymentId: string) => {
     setSelectedDeploymentId(deploymentId);
@@ -104,33 +107,13 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
     const colors: Record<string, string> = {
       healthy: 'bg-status-success-muted text-status-success-foreground',
       unhealthy: 'bg-status-error-muted text-status-error-foreground',
-      unknown: 'bg-gray-100 text-gray-800',
+      unknown: 'bg-muted text-foreground',
     };
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[health] || colors.unknown}`}>
         {health}
       </span>
     );
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  };
-
-  const formatRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
   };
 
   if (loading) {
@@ -142,7 +125,7 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <Spinner size="lg" />
             <span className="ml-3 text-muted-foreground">Loading deployments...</span>
           </div>
         </CardContent>
@@ -186,7 +169,7 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
           {rollbackSuccess && (
             <div className="mb-4 p-4 bg-status-success-muted border border-status-success/30 rounded-md">
               <p className="text-status-success-foreground text-sm">
-                <svg className="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 Rollback initiated successfully. The previous deployment is being restored.
@@ -196,7 +179,7 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
 
           {deployments.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               <p className="text-lg font-medium">No deployments yet</p>
@@ -226,7 +209,7 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
                             href={deployment.pr_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80"
                           >
                             <span className="font-medium">PR #{deployment.pr_number}</span>
                             <ExternalLink className="h-3 w-3" />

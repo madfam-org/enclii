@@ -4,6 +4,15 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Team {
   id: string;
@@ -52,6 +61,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState<TeamMember | null>(null);
+  const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
 
   // Form states
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'member' });
@@ -125,14 +135,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
     }
   };
 
-  const removeMember = async (memberId: string) => {
-    if (!confirm('Are you sure you want to remove this member from the team?')) return;
+  const confirmRemoveMember = async () => {
+    if (!removeMemberId) return;
     try {
-      await apiDelete(`/v1/teams/${resolvedParams.slug}/members/${memberId}`);
+      await apiDelete(`/v1/teams/${resolvedParams.slug}/members/${removeMemberId}`);
       fetchMembers();
       fetchTeam();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove member');
+    } finally {
+      setRemoveMemberId(null);
     }
   };
 
@@ -172,11 +184,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'owner': return 'bg-purple-100 text-purple-800';
-      case 'admin': return 'bg-blue-100 text-blue-800';
-      case 'member': return 'bg-green-100 text-green-800';
-      case 'viewer': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'owner': return 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300';
+      case 'admin': return 'bg-primary/10 text-primary';
+      case 'member': return 'bg-status-success-muted text-status-success-foreground';
+      case 'viewer': return 'bg-muted text-foreground';
+      default: return 'bg-muted text-foreground';
     }
   };
 
@@ -184,10 +196,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-muted rounded w-1/4 mb-6"></div>
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
+              <div key={i} className="h-16 bg-muted rounded"></div>
             ))}
           </div>
         </div>
@@ -199,7 +211,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="text-center py-12">
-          <h3 className="text-lg font-medium text-gray-900">Team not found</h3>
+          <h3 className="text-lg font-medium text-foreground">Team not found</h3>
           <Link href="/teams" className="text-enclii-blue hover:underline mt-2 inline-block">
             Back to teams
           </Link>
@@ -214,8 +226,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
-            <Link href="/teams" className="text-gray-500 hover:text-gray-700 mr-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <Link href="/teams" className="text-muted-foreground hover:text-foreground mr-4" aria-label="Back to teams">
+              <svg aria-hidden="true" className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
@@ -227,8 +239,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
               </div>
             )}
             <div className="ml-4">
-              <h1 className="text-2xl font-bold text-gray-900">{team.name}</h1>
-              {team.description && <p className="text-sm text-gray-500">{team.description}</p>}
+              <h1 className="text-2xl font-bold text-foreground">{team.name}</h1>
+              {team.description && <p className="text-sm text-muted-foreground">{team.description}</p>}
             </div>
           </div>
           {isAdmin && (
@@ -236,7 +248,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
               onClick={() => setShowInviteModal(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-enclii-blue hover:bg-enclii-blue-dark"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
               Invite Member
@@ -251,8 +263,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
               <div className="text-status-error-foreground">
                 <div className="text-sm">{error}</div>
               </div>
-              <button onClick={() => setError(null)} className="ml-auto text-status-error hover:text-status-error-foreground">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <button onClick={() => setError(null)} className="ml-auto text-status-error hover:text-status-error-foreground" aria-label="Dismiss error">
+                <svg aria-hidden="true" className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </button>
@@ -261,14 +273,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
         )}
 
         {/* Tabs */}
-        <div className="border-b border-gray-200 mb-6">
+        <div className="border-b border-border mb-6">
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('members')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'members'
                   ? 'border-enclii-blue text-enclii-blue'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               Members ({members.length})
@@ -279,7 +291,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'invitations'
                     ? 'border-enclii-blue text-enclii-blue'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 }`}
               >
                 Invitations ({invitations.length})
@@ -291,7 +303,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'settings'
                     ? 'border-enclii-blue text-enclii-blue'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 }`}
               >
                 Settings
@@ -302,21 +314,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
 
         {/* Members Tab */}
         {activeTab === 'members' && (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <ul className="divide-y divide-gray-200">
+          <div className="bg-card shadow overflow-hidden sm:rounded-lg">
+            <ul className="divide-y divide-border">
               {members.map((member) => (
                 <li key={member.id} className="px-4 py-4 sm:px-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                        <span className="text-gray-600 font-medium">
+                      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                        <span className="text-muted-foreground font-medium">
                           {(member.name || member.email).charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div className="ml-4">
-                        <p className="text-sm font-medium text-gray-900">{member.name || member.email}</p>
-                        {member.name && <p className="text-sm text-gray-500">{member.email}</p>}
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm font-medium text-foreground">{member.name || member.email}</p>
+                        {member.name && <p className="text-sm text-muted-foreground">{member.email}</p>}
+                        <p className="text-xs text-muted-foreground">
                           Joined {new Date(member.joined_at).toLocaleDateString()}
                         </p>
                       </div>
@@ -332,19 +344,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
                               setSelectedRole(member.role);
                               setShowRoleModal(member);
                             }}
-                            className="text-gray-400 hover:text-gray-600"
+                            className="text-muted-foreground hover:text-foreground"
                             title="Change role"
+                            aria-label="Change role"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
                           <button
-                            onClick={() => removeMember(member.id)}
+                            onClick={() => setRemoveMemberId(member.id)}
                             className="text-status-error/60 hover:text-status-error"
                             title="Remove member"
+                            aria-label="Remove member"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
@@ -360,19 +374,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
 
         {/* Invitations Tab */}
         {activeTab === 'invitations' && isAdmin && (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="bg-card shadow overflow-hidden sm:rounded-lg">
             {invitations.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-muted-foreground">
                 No pending invitations
               </div>
             ) : (
-              <ul className="divide-y divide-gray-200">
+              <ul className="divide-y divide-border">
                 {invitations.map((invitation) => (
                   <li key={invitation.id} className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{invitation.email}</p>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm font-medium text-foreground">{invitation.email}</p>
+                        <p className="text-sm text-muted-foreground">
                           Invited as {invitation.role} - Expires {new Date(invitation.expires_at).toLocaleDateString()}
                         </p>
                       </div>
@@ -393,13 +407,13 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
         {/* Settings Tab */}
         {activeTab === 'settings' && isAdmin && (
           <div className="space-y-6">
-            <div className="bg-white shadow sm:rounded-lg">
+            <div className="bg-card shadow sm:rounded-lg">
               <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg font-medium text-gray-900">Team Settings</h3>
+                <h3 className="text-lg font-medium text-foreground">Team Settings</h3>
                 <div className="mt-4 space-y-4">
                   <button
                     onClick={() => setShowEditModal(true)}
-                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    className="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-card hover:bg-accent"
                   >
                     Edit Team Details
                   </button>
@@ -417,7 +431,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
                   <div className="mt-4">
                     <button
                       onClick={() => setShowDeleteModal(true)}
-                      className="inline-flex items-center px-4 py-2 border border-status-error/30 text-sm font-medium rounded-md text-status-error bg-white hover:bg-status-error-muted"
+                      className="inline-flex items-center px-4 py-2 border border-status-error/30 text-sm font-medium rounded-md text-status-error bg-card hover:bg-status-error-muted"
                     >
                       Delete Team
                     </button>
@@ -429,170 +443,189 @@ export default function TeamDetailPage({ params }: { params: Promise<{ slug: str
         )}
 
         {/* Invite Modal */}
-        {showInviteModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Invite Team Member</h3>
-              <form onSubmit={inviteMember}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                  <input
-                    type="email"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                    value={inviteForm.email}
-                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                    value={inviteForm.role}
-                    onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-                  >
-                    <option value="viewer">Viewer - Read-only access</option>
-                    <option value="member">Member - Can manage services</option>
-                    <option value="admin">Admin - Can manage team settings</option>
-                  </select>
-                </div>
-                <div className="flex justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowInviteModal(false)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
-                  >
-                    Send Invitation
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Team Modal */}
-        {showEditModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Edit Team</h3>
-              <form onSubmit={updateTeam}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                  <textarea
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                    rows={3}
-                    value={editForm.description}
-                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Billing Email</label>
-                  <input
-                    type="email"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                    value={editForm.billing_email}
-                    onChange={(e) => setEditForm({ ...editForm, billing_email: e.target.value })}
-                  />
-                </div>
-                <div className="flex justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowEditModal(false)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Change Role Modal */}
-        {showRoleModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Change Role for {showRoleModal.name || showRoleModal.email}
-              </h3>
+        <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Invite Team Member</DialogTitle>
+              <DialogDescription>
+                Send an invitation to join this team.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={inviteMember}>
               <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">Email</label>
+                <input
+                  type="email"
+                  required
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">Role</label>
                 <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  value={inviteForm.role}
+                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
                 >
-                  <option value="viewer">Viewer</option>
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                  {isOwner && <option value="owner">Owner</option>}
+                  <option value="viewer">Viewer - Read-only access</option>
+                  <option value="member">Member - Can manage services</option>
+                  <option value="admin">Admin - Can manage team settings</option>
                 </select>
               </div>
-              <div className="flex justify-end space-x-2">
+              <DialogFooter>
                 <button
-                  onClick={() => setShowRoleModal(null)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-foreground bg-muted rounded-md hover:bg-accent"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => updateMemberRole(showRoleModal.id, selectedRole)}
+                  type="submit"
                   className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
                 >
-                  Update Role
+                  Send Invitation
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <h3 className="text-lg font-medium text-status-error-foreground mb-4">Delete Team</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Are you sure you want to delete "{team.name}"? This action cannot be undone.
-                All team members will lose access.
-              </p>
-              <div className="flex justify-end space-x-2">
+        {/* Edit Team Modal */}
+        <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Team</DialogTitle>
+              <DialogDescription>
+                Update your team details.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={updateTeam}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">Name</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">Description</label>
+                <textarea
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  rows={3}
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">Billing Email</label>
+                <input
+                  type="email"
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  value={editForm.billing_email}
+                  onChange={(e) => setEditForm({ ...editForm, billing_email: e.target.value })}
+                />
+              </div>
+              <DialogFooter>
                 <button
-                  onClick={() => setShowDeleteModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-foreground bg-muted rounded-md hover:bg-accent"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={deleteTeam}
-                  className="px-4 py-2 text-sm font-medium text-white bg-status-error rounded-md hover:bg-status-error-foreground"
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
                 >
-                  Delete Team
+                  Save Changes
                 </button>
-              </div>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Change Role Modal */}
+        <Dialog open={!!showRoleModal} onOpenChange={(open) => { if (!open) setShowRoleModal(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Change Role for {showRoleModal?.name || showRoleModal?.email}
+              </DialogTitle>
+              <DialogDescription>
+                Select a new role for this team member.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mb-4">
+              <select
+                className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value)}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+                {isOwner && <option value="owner">Owner</option>}
+              </select>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <button
+                onClick={() => setShowRoleModal(null)}
+                className="px-4 py-2 text-sm font-medium text-foreground bg-muted rounded-md hover:bg-accent"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => showRoleModal && updateMemberRole(showRoleModal.id, selectedRole)}
+                className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
+              >
+                Update Role
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-status-error-foreground">Delete Team</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete &quot;{team.name}&quot;? This action cannot be undone.
+                All team members will lose access.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 text-sm font-medium text-foreground bg-muted rounded-md hover:bg-accent"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteTeam}
+                className="px-4 py-2 text-sm font-medium text-white bg-status-error rounded-md hover:bg-status-error-foreground"
+              >
+                Delete Team
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <ConfirmDialog
+          open={removeMemberId !== null}
+          title="Remove Member"
+          description="Are you sure you want to remove this member from the team?"
+          variant="destructive"
+          confirmLabel="Remove"
+          onConfirm={confirmRemoveMember}
+          onCancel={() => setRemoveMemberId(null)}
+        />
       </div>
     </div>
   );

@@ -12,9 +12,9 @@ interface StatCardProps {
 }
 
 const variantStyles = {
-  success: "bg-green-500",
-  warning: "bg-orange-500",
-  info: "bg-blue-500",
+  success: "bg-status-success",
+  warning: "bg-status-warning",
+  info: "bg-status-info",
   neutral: "bg-muted-foreground",
 };
 

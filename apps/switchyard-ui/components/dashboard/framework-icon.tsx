@@ -128,7 +128,7 @@ const frameworkIcons: Record<string, { path: JSX.Element; color: string; label: 
         strokeLinecap="round"
       />
     ),
-    color: "text-gray-500",
+    color: "text-muted-foreground",
     label: "Express",
   },
   fastapi: {
@@ -148,7 +148,7 @@ const frameworkIcons: Record<string, { path: JSX.Element; color: string; label: 
         d="M12 4v4M10 8h4M8 12c0 4 2 6 4 6s4-2 4-6M10 10c-2 1-3 2-2 4 1 3 3 4 4 4s3-1 4-4c1-2 0-3-2-4"
       />
     ),
-    color: "text-gray-600",
+    color: "text-muted-foreground",
     label: "Flask",
   },
   django: {
@@ -221,7 +221,7 @@ const frameworkIcons: Record<string, { path: JSX.Element; color: string; label: 
         d="M12 4C7.6 4 4 7.6 4 12s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8zm0 2c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6zm0 2v4m0 2v1"
       />
     ),
-    color: "text-gray-400",
+    color: "text-muted-foreground",
     label: "Unknown",
   },
 };

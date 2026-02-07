@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiGet, apiPost } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
 import { Environment, AddDomainRequest, AddDomainResponse } from './types';
 
 interface AddDomainModalProps {
@@ -132,7 +133,7 @@ export function AddDomainModal({
             <div className="rounded-lg border p-4 bg-muted/50">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">Step 1: Verification Record</span>
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">TXT</span>
+                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">TXT</span>
               </div>
               <div className="space-y-2 text-sm">
                 <div>
@@ -208,8 +209,8 @@ export function AddDomainModal({
                   onClick={() => setDomainType('platform')}
                   className={`p-3 rounded-lg border text-left transition-colors ${
                     domainType === 'platform'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border hover:border-border/80'
                   }`}
                 >
                   <div className="font-medium text-sm">Platform Domain</div>
@@ -222,8 +223,8 @@ export function AddDomainModal({
                   onClick={() => setDomainType('custom')}
                   className={`p-3 rounded-lg border text-left transition-colors ${
                     domainType === 'custom'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border hover:border-border/80'
                   }`}
                 >
                   <div className="font-medium text-sm">Custom Domain</div>
@@ -255,7 +256,7 @@ export function AddDomainModal({
               <Label htmlFor="environment">Environment</Label>
               {loadingEnvs ? (
                 <div className="h-10 flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <Spinner size="sm" />
                   <span className="ml-2 text-sm text-muted-foreground">Loading environments...</span>
                 </div>
               ) : (
@@ -278,7 +279,7 @@ export function AddDomainModal({
             <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
               <div>
                 <div className="font-medium text-sm flex items-center gap-2">
-                  <svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                  <svg aria-hidden="true" className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                   Zero Trust Protection
@@ -292,8 +293,8 @@ export function AddDomainModal({
                 role="switch"
                 aria-checked={zeroTrustEnabled}
                 onClick={() => setZeroTrustEnabled(!zeroTrustEnabled)}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  zeroTrustEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                  zeroTrustEnabled ? 'bg-primary' : 'bg-muted'
                 }`}
               >
                 <span
@@ -319,7 +320,7 @@ export function AddDomainModal({
             <Button type="submit" disabled={loading || !selectedEnvironment}>
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <Spinner size="sm" className="text-white mr-2" />
                   Adding...
                 </>
               ) : (

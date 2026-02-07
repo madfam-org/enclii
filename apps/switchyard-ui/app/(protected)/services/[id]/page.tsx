@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiGet } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 import { NetworkingTab } from "@/components/networking";
 import { EnvVarsTab } from "@/components/env-vars";
 import { PreviewsTab, RecentPreviews } from "@/components/previews";
@@ -81,7 +82,7 @@ export default function ServiceDetailPage() {
       case "unhealthy":
         return "bg-status-error-muted text-status-error-foreground";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-muted text-muted-foreground";
     }
   };
 
@@ -100,8 +101,8 @@ export default function ServiceDetailPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="mb-6">
-          <Link href="/services" className="text-blue-600 hover:text-blue-800 flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/services" className="text-primary hover:text-primary/80 flex items-center gap-1">
+            <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to Services
@@ -110,7 +111,7 @@ export default function ServiceDetailPage() {
         <Card>
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <Spinner size="lg" />
               <span className="ml-3 text-muted-foreground">Loading service details...</span>
             </div>
           </CardContent>
@@ -123,8 +124,8 @@ export default function ServiceDetailPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="mb-6">
-          <Link href="/services" className="text-blue-600 hover:text-blue-800 flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/services" className="text-primary hover:text-primary/80 flex items-center gap-1">
+            <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to Services
@@ -137,13 +138,13 @@ export default function ServiceDetailPage() {
               <div className="space-x-4">
                 <button
                   onClick={fetchService}
-                  className="inline-flex items-center px-4 py-2 border border-status-error/30 rounded-md shadow-sm text-sm font-medium text-status-error-foreground bg-white hover:bg-status-error-muted"
+                  className="inline-flex items-center px-4 py-2 border border-status-error/30 rounded-md shadow-sm text-sm font-medium text-status-error-foreground bg-card hover:bg-status-error-muted"
                 >
                   Try Again
                 </button>
                 <button
                   onClick={() => router.push("/services")}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  className="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
                 >
                   Go to Services
                 </button>
@@ -163,7 +164,7 @@ export default function ServiceDetailPage() {
     <div className="container mx-auto py-8">
       {/* Breadcrumb */}
       <div className="mb-6">
-        <Link href="/services" className="text-blue-600 hover:text-blue-800 flex items-center gap-1">
+        <Link href="/services" className="text-primary hover:text-primary/80 flex items-center gap-1">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
@@ -214,37 +215,37 @@ export default function ServiceDetailPage() {
               <CardContent>
                 <dl className="space-y-4">
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Service ID</dt>
+                    <dt className="text-muted-foreground">Service ID</dt>
                     <dd className="font-mono text-sm">{service.id}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Project</dt>
+                    <dt className="text-muted-foreground">Project</dt>
                     <dd>
                       <Link
                         href={`/projects/${service.project_slug || service.project_name?.toLowerCase().replace(/\s+/g, '-')}`}
-                        className="text-blue-600 hover:text-blue-800"
+                        className="text-primary hover:text-primary/80"
                       >
                         {service.project_name}
                       </Link>
                     </dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Version</dt>
+                    <dt className="text-muted-foreground">Version</dt>
                     <dd className="font-mono text-sm">{service.version || "N/A"}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Replicas</dt>
+                    <dt className="text-muted-foreground">Replicas</dt>
                     <dd>{service.replicas || "0/0"}</dd>
                   </div>
                   {service.created_at && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Created</dt>
+                      <dt className="text-muted-foreground">Created</dt>
                       <dd>{new Date(service.created_at).toLocaleDateString()}</dd>
                     </div>
                   )}
                   {service.updated_at && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Last Updated</dt>
+                      <dt className="text-muted-foreground">Last Updated</dt>
                       <dd>{new Date(service.updated_at).toLocaleDateString()}</dd>
                     </div>
                   )}
@@ -262,7 +263,7 @@ export default function ServiceDetailPage() {
                 <dl className="space-y-4">
                   {service.config?.image && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Image</dt>
+                      <dt className="text-muted-foreground">Image</dt>
                       <dd className="font-mono text-sm truncate max-w-[200px]" title={service.config.image}>
                         {service.config.image}
                       </dd>
@@ -270,24 +271,24 @@ export default function ServiceDetailPage() {
                   )}
                   {service.config?.port && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Port</dt>
+                      <dt className="text-muted-foreground">Port</dt>
                       <dd>{service.config.port}</dd>
                     </div>
                   )}
                   {service.config?.cpu_limit && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">CPU Limit</dt>
+                      <dt className="text-muted-foreground">CPU Limit</dt>
                       <dd>{service.config.cpu_limit}</dd>
                     </div>
                   )}
                   {service.config?.memory_limit && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">Memory Limit</dt>
+                      <dt className="text-muted-foreground">Memory Limit</dt>
                       <dd>{service.config.memory_limit}</dd>
                     </div>
                   )}
                   {!service.config && (
-                    <p className="text-gray-400 text-sm">No configuration data available</p>
+                    <p className="text-muted-foreground text-sm">No configuration data available</p>
                   )}
                 </dl>
               </CardContent>
@@ -304,25 +305,25 @@ export default function ServiceDetailPage() {
                   <dl className="space-y-4">
                     {service.metrics.cpu_usage && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">CPU Usage</dt>
+                        <dt className="text-muted-foreground">CPU Usage</dt>
                         <dd>{service.metrics.cpu_usage}</dd>
                       </div>
                     )}
                     {service.metrics.memory_usage && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">Memory Usage</dt>
+                        <dt className="text-muted-foreground">Memory Usage</dt>
                         <dd>{service.metrics.memory_usage}</dd>
                       </div>
                     )}
                     {service.metrics.request_count !== undefined && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">Requests (24h)</dt>
+                        <dt className="text-muted-foreground">Requests (24h)</dt>
                         <dd>{service.metrics.request_count.toLocaleString()}</dd>
                       </div>
                     )}
                     {service.metrics.error_rate && (
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">Error Rate</dt>
+                        <dt className="text-muted-foreground">Error Rate</dt>
                         <dd>{service.metrics.error_rate}</dd>
                       </div>
                     )}
@@ -340,32 +341,32 @@ export default function ServiceDetailPage() {
               <CardContent>
                 <div className="space-y-3">
                   <button
-                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
                     onClick={() => router.push(`/deployments?service=${serviceId}`)}
                   >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                     View Deployments
                   </button>
                   <button
-                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
                     onClick={() => {
                       // Switch to logs tab
                       const logsTab = document.querySelector('[data-state="inactive"][value="logs"]') as HTMLElement;
                       if (logsTab) logsTab.click();
                     }}
                   >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     View Logs
                   </button>
                   <button
-                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-md shadow-sm text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-primary/30 rounded-md shadow-sm text-sm font-medium text-primary bg-primary/5 hover:bg-primary/10"
                     onClick={fetchService}
                   >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                     Refresh

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_SLOW } from '@/lib/constants';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { apiGet, apiPost } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
 import { ArrowLeft, GitBranch, ExternalLink, RefreshCw, RotateCcw, Clock, Server, Container, Hash } from 'lucide-react';
 import { AuthorAvatar, CommitLink } from '@/components/git';
 import type { Deployment, RollbackResponse } from '@/components/deployments/types';
@@ -47,9 +50,9 @@ export default function DeploymentDetailPage() {
 
   useEffect(() => {
     fetchDeployment();
-    const interval = setInterval(fetchDeployment, 30000);
-    return () => clearInterval(interval);
   }, [fetchDeployment]);
+
+  usePolling(fetchDeployment, POLLING_SLOW);
 
   const handleConfirmRollback = async () => {
     try {
@@ -82,7 +85,7 @@ export default function DeploymentDetailPage() {
     const colors: Record<string, string> = {
       healthy: 'bg-status-success-muted text-status-success-foreground',
       unhealthy: 'bg-status-error-muted text-status-error-foreground',
-      unknown: 'bg-gray-100 text-gray-800',
+      unknown: 'bg-muted text-foreground',
     };
     return colors[health] || colors.unknown;
   };
@@ -105,7 +108,7 @@ export default function DeploymentDetailPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          <Spinner size="lg" />
           <span className="ml-3 text-muted-foreground">Loading deployment...</span>
         </div>
       </div>
@@ -258,7 +261,7 @@ export default function DeploymentDetailPage() {
                   href={deployment.pr_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80"
                 >
                   <span className="font-medium">PR #{deployment.pr_number}</span>
                   <ExternalLink className="h-3 w-3" />

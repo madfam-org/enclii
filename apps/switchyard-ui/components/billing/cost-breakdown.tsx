@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 
 interface CostCategory {
   name: string;
@@ -70,7 +71,7 @@ export function CostBreakdown({
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <Spinner />
             <span className="ml-2 text-sm text-muted-foreground">Loading costs...</span>
           </div>
         </CardContent>
@@ -80,12 +81,12 @@ export function CostBreakdown({
 
   if (error) {
     return (
-      <Card className={cn("border-red-200", className)}>
+      <Card className={cn("border-destructive/30", className)}>
         <CardHeader>
           <CardTitle className="text-sm font-medium">Cost Breakdown</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-destructive">{error}</p>
         </CardContent>
       </Card>
     );

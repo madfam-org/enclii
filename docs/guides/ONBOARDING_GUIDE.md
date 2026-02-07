@@ -7,6 +7,11 @@ How to add a new repository to the Enclii platform for auto-deploy, deployment t
 - GitHub repository under `madfam-org` (or with webhook access)
 - `ENCLII_CALLBACK_TOKEN` secret configured in the repo's GitHub Actions
 - `MADFAM_BOT_PAT` secret for GHCR image push
+- **Automation team access** — the `automation` team (which includes `madfam-bot`) must have `write` (push) access to the repo for CI digest commits. The org default is `read`, so new repos do NOT inherit write access automatically. Grant it with:
+  ```bash
+  gh api -X PUT "orgs/madfam-org/teams/automation/repos/madfam-org/<repo-name>" \
+    -f permission=push
+  ```
 
 ## Step 1: Create `enclii.yaml`
 

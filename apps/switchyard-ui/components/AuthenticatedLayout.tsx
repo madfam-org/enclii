@@ -8,6 +8,7 @@ import { AuthErrorBanner } from '@/components/AuthErrorBanner';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { CommandPalette } from '@/components/command/command-palette';
 import { SystemHealthBadge } from '@/components/dashboard/system-health';
+import { Spinner } from '@/components/ui/spinner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
   DropdownMenu,
@@ -107,7 +108,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enclii-blue mx-auto"></div>
+          <Spinner size="lg" className="mx-auto" />
           <p className="mt-4 text-muted-foreground">Loading...</p>
         </div>
       </div>

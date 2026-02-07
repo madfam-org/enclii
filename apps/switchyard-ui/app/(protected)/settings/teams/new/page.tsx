@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useScope } from '@/contexts/ScopeContext';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 // =============================================================================
@@ -289,7 +290,7 @@ export default function CreateTeamPage() {
               >
                 {isSubmitting ? (
                   <>
-                    <span className="animate-spin mr-2">⏳</span>
+                    <Spinner size="sm" className="mr-2" />
                     Creating...
                   </>
                 ) : (

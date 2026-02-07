@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,49 +47,49 @@ interface FunctionCardProps {
 }
 
 const STATUS_COLORS: Record<FunctionStatus, string> = {
-  pending: 'bg-gray-100 text-gray-800',
+  pending: 'bg-muted text-muted-foreground',
   building: 'bg-status-info-muted text-status-info-foreground',
   deploying: 'bg-status-warning-muted text-status-warning-foreground',
   ready: 'bg-status-success-muted text-status-success-foreground',
   failed: 'bg-status-error-muted text-status-error-foreground',
-  deleting: 'bg-orange-100 text-orange-800',
+  deleting: 'bg-status-warning-muted text-status-warning-foreground',
 };
 
 const RUNTIME_ICONS: Record<FunctionRuntime, { icon: JSX.Element; color: string; label: string }> = {
   go: {
     icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+      <svg aria-hidden="true" className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-4-4 1.41-1.41L11 14.17l6.59-6.59L19 9l-8 8z"/>
       </svg>
     ),
-    color: 'text-cyan-600 bg-cyan-100',
+    color: 'text-primary bg-primary/10',
     label: 'Go',
   },
   python: {
     icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+      <svg aria-hidden="true" className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2c-1.66 0-3.06.53-3.94 1.42-.89.89-1.42 2.28-1.42 3.94v2h5v1H5.28c-1.66 0-3.28.9-3.28 3.28v4c0 1.66.53 3.06 1.42 3.94.89.89 2.28 1.42 3.94 1.42h1.64v-3.94c0-1.66.9-3.06 2.56-3.06h5c1.66 0 3-1.34 3-3v-4c0-1.66-1.34-3-3-3h-1V5.36c0-1.66-.53-3.06-1.42-3.94C14.06 2.53 12.66 2 11 2h1zm-1.5 2.5a1 1 0 110 2 1 1 0 010-2z"/>
       </svg>
     ),
-    color: 'text-yellow-600 bg-yellow-100',
+    color: 'text-status-warning bg-status-warning-muted',
     label: 'Python',
   },
   node: {
     icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+      <svg aria-hidden="true" className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 1.85c-.27 0-.55.07-.78.2L3.78 6.35c-.48.28-.78.8-.78 1.36v8.58c0 .56.3 1.08.78 1.36l7.44 4.3c.48.28 1.08.28 1.56 0l7.44-4.3c.48-.28.78-.8.78-1.36V7.71c0-.56-.3-1.08-.78-1.36l-7.44-4.3c-.23-.13-.51-.2-.78-.2z"/>
       </svg>
     ),
-    color: 'text-green-600 bg-green-100',
+    color: 'text-status-success bg-status-success-muted',
     label: 'Node.js',
   },
   rust: {
     icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+      <svg aria-hidden="true" className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-1 3v2H9v2h2v4H9v2h6v-2h-2v-4h2V9h-2V7h-2z"/>
       </svg>
     ),
-    color: 'text-orange-600 bg-orange-100',
+    color: 'text-destructive bg-destructive/10',
     label: 'Rust',
   },
 };
@@ -102,7 +103,7 @@ export function FunctionCard({ fn, onDelete, isDeleting }: FunctionCardProps) {
 
   const handleInvoke = async () => {
     if (fn.status !== 'ready') {
-      alert('Function must be ready to invoke');
+      toast.error('Function must be ready to invoke');
       return;
     }
 

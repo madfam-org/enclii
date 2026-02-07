@@ -6,6 +6,7 @@ import { CircularGauge, UsageGauge, GaugeGrid } from '@/components/ui/circular-g
 import { useUsageMetrics, useRealtimeResources } from '@/hooks/use-usage-metrics';
 import { Cpu, HardDrive, Gauge, Activity, Hammer, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Spinner } from '@/components/ui/spinner';
 
 // =============================================================================
 // TYPES
@@ -48,7 +49,7 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-enclii-blue"></div>
+            <Spinner size="lg" />
           </div>
         </CardContent>
       </Card>
@@ -158,8 +159,8 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-4 flex items-center gap-2">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-status-success"></span>
               </span>
               Live Resources
             </h3>
@@ -200,7 +201,7 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
             {usage.total_cost > 0 && (
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Overage charges</p>
-                <p className="text-lg font-medium text-yellow-600">${usage.total_cost.toFixed(2)}</p>
+                <p className="text-lg font-medium text-status-warning">${usage.total_cost.toFixed(2)}</p>
               </div>
             )}
           </div>

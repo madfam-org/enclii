@@ -255,6 +255,7 @@ export function CommitLink({
 function CommitIcon({ className }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"
@@ -273,6 +274,7 @@ function CommitIcon({ className }: { className?: string }) {
 function ExternalLinkIcon({ className }: { className?: string }) {
   return (
     <svg
+      aria-hidden="true"
       className={className}
       viewBox="0 0 24 24"
       fill="none"

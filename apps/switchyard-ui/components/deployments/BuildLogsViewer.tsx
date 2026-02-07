@@ -1,11 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_NORMAL } from '@/lib/constants';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { apiGet } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
+import { API_BASE_URL } from '@/lib/constants';
+import { formatTimestamp, formatRelativeTime } from '@/lib/formatting';
 import type { Release } from './types';
 
 interface BuildLogsViewerProps {
@@ -30,21 +35,10 @@ interface LogLine {
   message: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4200';
-
 function getWebSocketUrl(): string {
   const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
   const baseUrl = API_BASE_URL.replace(/^https?:\/\//, '');
   return `${wsProtocol}://${baseUrl}`;
-}
-
-function formatTimestamp(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }) + '.' + String(date.getMilliseconds()).padStart(3, '0');
 }
 
 export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps) {
@@ -77,9 +71,9 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
 
   useEffect(() => {
     fetchReleases();
-    const interval = setInterval(fetchReleases, 15000); // Refresh every 15 seconds
-    return () => clearInterval(interval);
   }, [fetchReleases]);
+
+  usePolling(fetchReleases, POLLING_NORMAL);
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -204,21 +198,6 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
     return <Badge variant={variants[status] || 'outline'}>{status}</Badge>;
   };
 
-  const formatRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
-  };
-
   const getLogLineColor = (type: LogMessage['type'], message: string): string => {
     if (type === 'error') return 'text-status-error';
     if (type === 'info' || type === 'connected') return 'text-status-info';
@@ -240,7 +219,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <Spinner size="lg" />
             <span className="ml-3 text-muted-foreground">Loading builds...</span>
           </div>
         </CardContent>
@@ -276,7 +255,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
             <CardDescription>Build history for {serviceName}</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={fetchReleases}>
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
@@ -285,7 +264,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
         <CardContent>
           {releases.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
               </svg>
               <p className="text-lg font-medium">No builds yet</p>
@@ -296,7 +275,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
               {releases.map((release) => (
                 <div
                   key={release.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent"
                 >
                   <div className="flex items-center gap-4">
                     <div>
@@ -318,7 +297,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
                       size="sm"
                       onClick={() => openLogsDialog(release)}
                     >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg aria-hidden="true" className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       View Logs
@@ -386,7 +365,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
                   </>
                 ) : selectedRelease?.status === 'ready' ? (
                   <>
-                    <svg className="mx-auto h-12 w-12 mb-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" className="mx-auto h-12 w-12 mb-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <p>Build completed successfully</p>
@@ -394,7 +373,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
                   </>
                 ) : selectedRelease?.status === 'failed' ? (
                   <>
-                    <svg className="mx-auto h-12 w-12 mb-4 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" className="mx-auto h-12 w-12 mb-4 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <p className="text-status-error font-semibold">Build failed</p>

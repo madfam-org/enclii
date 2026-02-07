@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_SLOW } from '@/lib/constants';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Spinner } from '@/components/ui/spinner';
 import {
   BarChart,
   Bar,
@@ -88,28 +91,28 @@ function formatNumber(num: number): string {
 
 const iconMap: Record<string, React.ReactNode> = {
   compute: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
     </svg>
   ),
   build: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   ),
   storage: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
     </svg>
   ),
   bandwidth: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
     </svg>
   ),
   domains: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
     </svg>
   ),
@@ -144,21 +147,23 @@ export default function UsagePage() {
     }
   }, []);
 
+  const fetchRealtimeMetrics = useCallback(() => {
+    apiGet<RealtimeMetrics>('/v1/usage/realtime')
+      .then(setRealtime)
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     fetchData();
-    // Auto-refresh realtime metrics every 30 seconds
-    const interval = setInterval(() => {
-      apiGet<RealtimeMetrics>('/v1/usage/realtime')
-        .then(setRealtime)
-        .catch(console.error);
-    }, 30000);
-    return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Auto-refresh realtime metrics every 30 seconds
+  usePolling(fetchRealtimeMetrics, POLLING_SLOW);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="lg" />
         <span className="ml-3 text-muted-foreground">Loading usage data...</span>
       </div>
     );
@@ -195,7 +200,7 @@ export default function UsagePage() {
           </p>
         </div>
         <Button variant="outline" onClick={fetchData}>
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
           Refresh
@@ -207,7 +212,7 @@ export default function UsagePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Current Period</CardTitle>
-            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </CardHeader>
@@ -221,7 +226,7 @@ export default function UsagePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Plan Base</CardTitle>
-            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
           </CardHeader>
@@ -233,24 +238,24 @@ export default function UsagePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Usage Charges</CardTitle>
-            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">${usage?.total_cost.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-primary">${usage?.total_cost.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">Overage this period</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
+        <Card className="bg-gradient-to-br from-primary/5 to-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Estimated Total</CardTitle>
-            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-700">${usage?.grand_total.toFixed(2)}</div>
+            <div className="text-3xl font-bold text-primary">${usage?.grand_total.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">Due at period end</p>
           </CardContent>
         </Card>
@@ -290,16 +295,16 @@ export default function UsagePage() {
               <>
                 {/* Cluster Summary */}
                 <div className="grid gap-4 md:grid-cols-3 mb-6">
-                  <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4">
+                  <div className="bg-primary/5 rounded-lg p-4">
                     <div className="text-sm text-muted-foreground">Total CPU</div>
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-2xl font-bold text-primary">
                       {(realtime.total_cpu_millicores / 1000).toFixed(2)} cores
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {realtime.total_cpu_millicores.toFixed(0)} millicores
                     </div>
                   </div>
-                  <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-4">
+                  <div className="bg-purple-500/5 rounded-lg p-4">
                     <div className="text-sm text-muted-foreground">Total Memory</div>
                     <div className="text-2xl font-bold text-purple-600">
                       {realtime.total_memory_mb >= 1024
@@ -329,7 +334,7 @@ export default function UsagePage() {
                       {realtime.services.map((svc) => (
                         <div
                           key={svc.service_id}
-                          className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
+                          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-2 h-2 rounded-full ${
@@ -345,7 +350,7 @@ export default function UsagePage() {
                           </div>
                           <div className="flex gap-6 text-sm">
                             <div className="text-right">
-                              <div className="font-mono text-blue-600">
+                              <div className="font-mono text-primary">
                                 {(svc.cpu_usage_millicores / 1000).toFixed(2)} cores
                               </div>
                               <div className="text-xs text-muted-foreground">CPU</div>
@@ -367,7 +372,7 @@ export default function UsagePage() {
               </>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 <p className="font-medium">Metrics collection unavailable</p>
@@ -477,7 +482,7 @@ export default function UsagePage() {
             ) : (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <div className="text-center">
-                  <svg className="w-12 h-12 mx-auto mb-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg aria-hidden="true" className="w-12 h-12 mx-auto mb-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="font-medium">No overage charges</p>
@@ -569,13 +574,13 @@ export default function UsagePage() {
                     </tr>
                   );
                 })}
-                <tr className="bg-gray-50">
+                <tr className="bg-muted/50">
                   <td colSpan={4} className="py-3 px-4 font-medium">Plan Base ({usage?.plan_name})</td>
                   <td className="text-right py-3 px-4 font-mono font-medium">${usage?.plan_base.toFixed(2)}</td>
                 </tr>
-                <tr className="bg-blue-50">
+                <tr className="bg-primary/5">
                   <td colSpan={4} className="py-3 px-4 font-bold">Estimated Total</td>
-                  <td className="text-right py-3 px-4 font-mono font-bold text-blue-600">${usage?.grand_total.toFixed(2)}</td>
+                  <td className="text-right py-3 px-4 font-mono font-bold text-primary">${usage?.grand_total.toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>

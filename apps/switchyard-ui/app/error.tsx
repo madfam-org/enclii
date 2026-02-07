@@ -24,22 +24,22 @@ export default function Error({ error, reset }: ErrorProps) {
   }, [error]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-muted/50 px-4">
       <div className="max-w-md w-full text-center">
-        <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/30 mb-6">
-          <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+        <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-destructive/10 mb-6">
+          <AlertCircle className="h-8 w-8 text-destructive" />
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+        <h1 className="text-2xl font-bold text-foreground mb-2">
           Something went wrong
         </h1>
 
-        <p className="text-gray-600 dark:text-gray-400 mb-6">
+        <p className="text-muted-foreground mb-6">
           {error.message || 'An unexpected error occurred. Please try again.'}
         </p>
 
         {error.digest && (
-          <p className="text-xs text-gray-500 dark:text-gray-500 mb-6 font-mono">
+          <p className="text-xs text-muted-foreground mb-6 font-mono">
             Error ID: {error.digest}
           </p>
         )}
@@ -47,7 +47,7 @@ export default function Error({ error, reset }: ErrorProps) {
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             onClick={reset}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
           >
             <RotateCcw className="h-4 w-4" />
             Try again
@@ -55,7 +55,7 @@ export default function Error({ error, reset }: ErrorProps) {
 
           <Link
             href="/"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-foreground bg-muted hover:bg-accent rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
           >
             <Home className="h-4 w-4" />
             Go home

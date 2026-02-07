@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { Spinner } from "@/components/ui/spinner";
 
 /**
  * OAuth Callback Content Component
@@ -119,13 +120,13 @@ function AuthCallbackContent() {
     <div className="text-center">
       {/* Enclii Logo */}
       <h1 className="text-3xl font-bold text-enclii-blue mb-2">🚂 Enclii</h1>
-      <p className="text-gray-500 text-sm mb-8">Switchyard Platform</p>
+      <p className="text-muted-foreground text-sm mb-8">Switchyard Platform</p>
 
       {status === "processing" && (
         <div className="space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enclii-blue mx-auto"></div>
-          <p className="text-gray-600">Completing authentication...</p>
-          <p className="text-gray-400 text-sm">
+          <Spinner size="lg" className="mx-auto" />
+          <p className="text-muted-foreground">Completing authentication...</p>
+          <p className="text-muted-foreground text-sm">
             Please wait while we verify your credentials
           </p>
         </div>
@@ -135,6 +136,7 @@ function AuthCallbackContent() {
         <div className="space-y-4">
           <div className="rounded-full h-12 w-12 bg-status-success-muted mx-auto flex items-center justify-center">
             <svg
+              aria-hidden="true"
               className="h-6 w-6 text-status-success"
               fill="none"
               stroke="currentColor"
@@ -151,7 +153,7 @@ function AuthCallbackContent() {
           <p className="text-status-success font-medium">
             Authentication successful!
           </p>
-          <p className="text-gray-400 text-sm">Redirecting to dashboard...</p>
+          <p className="text-muted-foreground text-sm">Redirecting to dashboard...</p>
         </div>
       )}
 
@@ -159,6 +161,7 @@ function AuthCallbackContent() {
         <div className="space-y-4">
           <div className="rounded-full h-12 w-12 bg-status-error-muted mx-auto flex items-center justify-center">
             <svg
+              aria-hidden="true"
               className="h-6 w-6 text-status-error"
               fill="none"
               stroke="currentColor"
@@ -173,7 +176,7 @@ function AuthCallbackContent() {
             </svg>
           </div>
           <p className="text-status-error font-medium">Authentication failed</p>
-          <p className="text-gray-500 text-sm">{errorMessage}</p>
+          <p className="text-muted-foreground text-sm">{errorMessage}</p>
 
           <div className="pt-4 space-y-2">
             <button
@@ -184,7 +187,7 @@ function AuthCallbackContent() {
             </button>
             <button
               onClick={() => router.push("/")}
-              className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200 transition-colors"
+              className="w-full bg-muted text-foreground py-2 px-4 rounded-md hover:bg-accent transition-colors"
             >
               Return to home
             </button>
@@ -202,10 +205,10 @@ function AuthCallbackLoading() {
   return (
     <div className="text-center">
       <h1 className="text-3xl font-bold text-enclii-blue mb-2">🚂 Enclii</h1>
-      <p className="text-gray-500 text-sm mb-8">Switchyard Platform</p>
+      <p className="text-muted-foreground text-sm mb-8">Switchyard Platform</p>
       <div className="space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-enclii-blue mx-auto"></div>
-        <p className="text-gray-600">Loading...</p>
+        <Spinner size="lg" className="mx-auto" />
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     </div>
   );
@@ -219,7 +222,7 @@ function AuthCallbackLoading() {
  */
 export default function AuthCallbackPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-muted/50">
       <div className="max-w-md w-full space-y-8 p-8">
         <Suspense fallback={<AuthCallbackLoading />}>
           <AuthCallbackContent />

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePolling } from "@/hooks/use-polling";
+import { POLLING_SLOW } from "@/lib/constants";
 import Link from "next/link";
 import { CheckCircle2, AlertTriangle, BarChart3, Clock, RefreshCw } from "lucide-react";
 import { StatCard, StatCardSkeleton } from "@/components/dashboard/stat-card";
@@ -77,11 +79,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDashboardData();
-
-    // Refresh data every 30 seconds
-    const interval = setInterval(fetchDashboardData, 30000);
-    return () => clearInterval(interval);
   }, []);
+
+  usePolling(fetchDashboardData, POLLING_SLOW);
 
   const formatTimeAgo = (timestamp: string) => {
     const now = new Date();

@@ -70,8 +70,8 @@ function getStatusConfig(status: OverallPipelineStatus) {
     case "deploying":
       return {
         icon: Loader2,
-        color: "text-purple-500",
-        bgColor: "bg-purple-100 dark:bg-purple-900/30",
+        color: "text-primary",
+        bgColor: "bg-primary/10",
         label: "Deploying",
         animate: true,
       };
@@ -86,8 +86,8 @@ function getStatusConfig(status: OverallPipelineStatus) {
     default:
       return {
         icon: Circle,
-        color: "text-gray-400",
-        bgColor: "bg-gray-100 dark:bg-gray-800",
+        color: "text-muted-foreground",
+        bgColor: "bg-muted",
         label: "Pending",
         animate: false,
       };

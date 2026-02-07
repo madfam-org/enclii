@@ -75,7 +75,7 @@ function TierCard({ tier, isCurrentTier, isRecommended, checkoutUrl }: TierCardP
 
       <ul className="space-y-1.5 text-sm mb-4">
         <li className="flex items-center gap-2">
-          <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+          <Check className="h-4 w-4 text-status-success flex-shrink-0" />
           <span>
             {config.projectLimit === -1
               ? 'Unlimited projects'
@@ -83,7 +83,7 @@ function TierCard({ tier, isCurrentTier, isRecommended, checkoutUrl }: TierCardP
           </span>
         </li>
         <li className="flex items-center gap-2">
-          <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+          <Check className="h-4 w-4 text-status-success flex-shrink-0" />
           <span>
             {config.serviceLimit === -1
               ? 'Unlimited services'
@@ -92,13 +92,13 @@ function TierCard({ tier, isCurrentTier, isRecommended, checkoutUrl }: TierCardP
         </li>
         {config.canUseCustomDomains && (
           <li className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+            <Check className="h-4 w-4 text-status-success flex-shrink-0" />
             <span>Custom domains</span>
           </li>
         )}
         {config.canManageTeams && (
           <li className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+            <Check className="h-4 w-4 text-status-success flex-shrink-0" />
             <span>Team management</span>
           </li>
         )}

@@ -94,7 +94,7 @@ export function ProjectSearch({
     <div className="flex items-center gap-3 mb-6">
       {/* Search Input */}
       <div className="relative flex-1 max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
         <Input
           type="text"
           placeholder="Search services..."
@@ -105,7 +105,7 @@ export function ProjectSearch({
         {filters.search && (
           <button
             onClick={() => onFilterChange({ ...filters, search: '' })}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -119,7 +119,7 @@ export function ProjectSearch({
             <Filter className="h-4 w-4" />
             Filter
             {hasActiveFilters && (
-              <span className="ml-1 bg-blue-100 text-blue-600 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="ml-1 bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded-full">
                 {filters.statuses.length + filters.environments.length + (filters.search ? 1 : 0)}
               </span>
             )}
@@ -150,7 +150,7 @@ export function ProjectSearch({
             onCheckedChange={() => handleStatusToggle('unknown')}
           >
             <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-gray-400" />
+              <span className="w-2 h-2 rounded-full bg-muted-foreground" />
               Unknown
             </span>
           </DropdownMenuCheckboxItem>
@@ -176,7 +176,7 @@ export function ProjectSearch({
               <DropdownMenuSeparator />
               <button
                 onClick={clearFilters}
-                className="w-full px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 text-left"
+                className="w-full px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 text-left"
               >
                 Clear all filters
               </button>
@@ -232,12 +232,12 @@ export function ProjectSearch({
           {filters.statuses.map((status) => (
             <span
               key={status}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-muted text-muted-foreground"
             >
               {status}
               <button
                 onClick={() => handleStatusToggle(status)}
-                className="hover:text-red-500"
+                className="hover:text-destructive"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -246,12 +246,12 @@ export function ProjectSearch({
           {filters.environments.map((env) => (
             <span
               key={env}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-primary/10 text-primary"
             >
               {env}
               <button
                 onClick={() => handleEnvironmentToggle(env)}
-                className="hover:text-red-500"
+                className="hover:text-destructive"
               >
                 <X className="h-3 w-3" />
               </button>

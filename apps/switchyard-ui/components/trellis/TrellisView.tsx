@@ -84,10 +84,10 @@ const HEALTH_ICONS = {
 } as const;
 
 const STATUS_COLORS = {
-  running: 'bg-green-500',
-  deploying: 'bg-yellow-500',
-  stopped: 'bg-gray-400',
-  failed: 'bg-red-500',
+  running: 'bg-status-success',
+  deploying: 'bg-status-warning',
+  stopped: 'bg-muted-foreground',
+  failed: 'bg-status-error',
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -446,12 +446,12 @@ function TrellisHeader({
       <div className="flex items-center gap-4">
         {/* Health summary badges */}
         <div className="flex items-center gap-2">
-          <Badge variant="default" className="bg-green-500/10 text-green-600 border-green-500/20">
+          <Badge variant="default" className="bg-status-success-muted text-status-success-foreground border-status-success/20">
             <Zap className="h-3 w-3 mr-1" />
             {healthSummary.healthy} healthy
           </Badge>
           {healthSummary.degraded > 0 && (
-            <Badge variant="outline" className="text-yellow-600 border-yellow-500/30">
+            <Badge variant="outline" className="text-status-warning border-status-warning/30">
               {healthSummary.degraded} deploying
             </Badge>
           )}

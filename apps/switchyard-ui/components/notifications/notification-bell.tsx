@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_SLOW } from '@/lib/constants';
 import { Bell, Check, X, AlertCircle, CheckCircle2, Clock, Rocket, RefreshCw } from 'lucide-react';
 import {
   DropdownMenu,
@@ -184,16 +186,16 @@ export function NotificationBell() {
     }
   }, [readIds]);
 
-  // Initial fetch and polling — only after auth is ready
+  // Initial fetch — only after auth is ready
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
-
     fetchNotifications();
-
-    // Poll every 30 seconds for updates
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
   }, [fetchNotifications, authLoading, isAuthenticated]);
+
+  // Poll every 30 seconds for updates (pauses when auth not ready)
+  usePolling(fetchNotifications, POLLING_SLOW, {
+    enabled: !authLoading && isAuthenticated,
+  });
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -262,7 +264,7 @@ export function NotificationBell() {
               <p className="text-sm text-status-error">{error}</p>
               <button
                 onClick={() => fetchNotifications()}
-                className="mt-2 text-xs text-blue-600 hover:underline"
+                className="mt-2 text-xs text-primary hover:underline"
               >
                 Retry
               </button>

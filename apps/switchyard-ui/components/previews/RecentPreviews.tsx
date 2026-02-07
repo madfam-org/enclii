@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_IDLE } from '@/lib/constants';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { apiGet } from '@/lib/api';
+import { Spinner } from '@/components/ui/spinner';
 import { GitBranch, GitCommit, ExternalLink, Clock, Eye } from 'lucide-react';
 
 interface RecentPreview {
@@ -28,13 +31,13 @@ interface RecentPreviewsProps {
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Pending', className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200' },
+  pending: { label: 'Pending', className: 'bg-muted text-foreground' },
   building: { label: 'Building', className: 'bg-status-info-muted text-status-info-foreground animate-pulse' },
   deploying: { label: 'Deploying', className: 'bg-status-info-muted text-status-info-foreground animate-pulse' },
   active: { label: 'Active', className: 'bg-status-success-muted text-status-success-foreground' },
   sleeping: { label: 'Sleeping', className: 'bg-status-warning-muted text-status-warning-foreground' },
   failed: { label: 'Failed', className: 'bg-status-error-muted text-status-error-foreground' },
-  closed: { label: 'Closed', className: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
+  closed: { label: 'Closed', className: 'bg-muted text-muted-foreground' },
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -56,28 +59,28 @@ export function RecentPreviews({ serviceId, limit = 3 }: RecentPreviewsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchPreviews = async () => {
-      try {
-        setError(null);
-        const data = await apiGet<{ previews: RecentPreview[] }>(`/v1/services/${serviceId}/previews`);
-        // Filter to active previews and limit
-        const recentActive = (data.previews || [])
-          .filter(p => !['closed', 'failed'].includes(p.status))
-          .slice(0, limit);
-        setPreviews(recentActive);
-      } catch (err) {
-        console.error('Failed to fetch previews:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPreviews();
-    const interval = setInterval(fetchPreviews, 60000);
-    return () => clearInterval(interval);
+  const fetchPreviews = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await apiGet<{ previews: RecentPreview[] }>(`/v1/services/${serviceId}/previews`);
+      // Filter to active previews and limit
+      const recentActive = (data.previews || [])
+        .filter(p => !['closed', 'failed'].includes(p.status))
+        .slice(0, limit);
+      setPreviews(recentActive);
+    } catch (err) {
+      console.error('Failed to fetch previews:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
   }, [serviceId, limit]);
+
+  useEffect(() => {
+    fetchPreviews();
+  }, [fetchPreviews]);
+
+  usePolling(fetchPreviews, POLLING_IDLE);
 
   if (loading) {
     return (
@@ -90,7 +93,7 @@ export function RecentPreviews({ serviceId, limit = 3 }: RecentPreviewsProps) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-4">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            <Spinner />
           </div>
         </CardContent>
       </Card>

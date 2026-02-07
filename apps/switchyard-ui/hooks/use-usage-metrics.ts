@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePolling } from '@/hooks/use-polling';
 import { apiGet } from '@/lib/api';
 
 // =============================================================================
@@ -106,12 +107,7 @@ export function useUsageMetrics(options: UseUsageMetricsOptions = {}): UseUsageM
   }, [fetchData]);
 
   // Auto-refresh
-  useEffect(() => {
-    if (refreshInterval <= 0) return;
-
-    const interval = setInterval(fetchData, refreshInterval);
-    return () => clearInterval(interval);
-  }, [fetchData, refreshInterval]);
+  usePolling(fetchData, refreshInterval, { enabled: refreshInterval > 0 });
 
   return {
     usage,
@@ -204,12 +200,9 @@ export function useRealtimeResources(refreshIntervalMs: number = 30000) {
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
 
-    if (refreshIntervalMs > 0) {
-      const interval = setInterval(fetchData, refreshIntervalMs);
-      return () => clearInterval(interval);
-    }
-  }, [fetchData, refreshIntervalMs]);
+  usePolling(fetchData, refreshIntervalMs, { enabled: refreshIntervalMs > 0 });
 
   return {
     metrics,
@@ -229,29 +222,8 @@ export function useRealtimeResources(refreshIntervalMs: number = 30000) {
 // HELPER FUNCTIONS
 // =============================================================================
 
-/**
- * Format bytes to human-readable string
- */
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-/**
- * Format number with K/M suffix
- */
-export function formatNumber(num: number): string {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
-  return num.toFixed(0);
-}
+// Re-export formatting helpers for backward compatibility
+export { formatBytes, formatNumber } from '@/lib/formatting';
 
 /**
  * Get color based on usage percentage

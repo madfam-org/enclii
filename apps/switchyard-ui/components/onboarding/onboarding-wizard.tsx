@@ -231,8 +231,8 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           {/* Complete Step */}
           {steps[currentStep].id === "complete" && (
             <div className="text-center space-y-4 py-8">
-              <div className="w-16 h-16 mx-auto bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                <Rocket className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <div className="w-16 h-16 mx-auto bg-status-success-muted rounded-full flex items-center justify-center">
+                <Rocket className="h-8 w-8 text-status-success" />
               </div>
               <h3 className="text-xl font-semibold">You're all set!</h3>
               <p className="text-muted-foreground max-w-md mx-auto">

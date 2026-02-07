@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
+import { POLLING_SLOW } from "@/lib/constants";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
 import { DeploymentProgress, DeploymentProgressSkeleton, type DeploymentStage } from "@/components/dashboard/deployment-progress";
 import { AuthorAvatar, CommitLink } from "@/components/git";
@@ -82,9 +85,9 @@ export default function DeploymentsPage() {
 
   useEffect(() => {
     fetchDeployments();
-    const interval = setInterval(fetchDeployments, 30000);
-    return () => clearInterval(interval);
   }, []);
+
+  usePolling(fetchDeployments, POLLING_SLOW);
 
   const formatTimeAgo = useCallback((timestamp: string) => {
     const now = new Date();
@@ -129,7 +132,7 @@ export default function DeploymentsPage() {
         <Card>
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <Spinner size="lg" />
               <span className="ml-3 text-muted-foreground">Loading deployments...</span>
             </div>
           </CardContent>
@@ -212,7 +215,7 @@ export default function DeploymentsPage() {
           {deployments.length === 0 ? (
             <div className="text-center py-12">
               <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                 </svg>
               </div>
@@ -229,7 +232,7 @@ export default function DeploymentsPage() {
                 </ul>
                 <p className="text-sm text-muted-foreground mt-3">
                   Check the{" "}
-                  <Link href="/services" className="text-blue-600 hover:underline">Services page</Link>{" "}
+                  <Link href="/services" className="text-primary hover:underline">Services page</Link>{" "}
                   to verify your services are registered.
                 </p>
               </div>

@@ -1,9 +1,14 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { usePolling } from "@/hooks/use-polling";
+import { POLLING_NORMAL } from "@/lib/constants";
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 import { CreateDatabaseModal } from "@/components/databases/CreateDatabaseModal";
 import { DatabaseCard } from "@/components/databases/DatabaseCard";
 
@@ -50,6 +55,7 @@ export default function DatabasesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const fetchDatabases = async () => {
     try {
@@ -84,11 +90,9 @@ export default function DatabasesPage() {
 
   useEffect(() => {
     fetchDatabases();
-
-    // Refresh every 15 seconds (databases provision in background)
-    const interval = setInterval(fetchDatabases, 15000);
-    return () => clearInterval(interval);
   }, []);
+
+  usePolling(fetchDatabases, POLLING_NORMAL);
 
   const handleCreateDatabase = async (data: {
     projectSlug: string;
@@ -114,18 +118,22 @@ export default function DatabasesPage() {
     }
   };
 
-  const handleDeleteDatabase = async (addonId: string) => {
-    if (!confirm('Are you sure you want to delete this database? This action cannot be undone.')) {
-      return;
-    }
+  const handleDeleteDatabase = (addonId: string) => {
+    setDeleteTargetId(addonId);
+  };
 
+  const confirmDeleteDatabase = async () => {
+    if (!deleteTargetId) return;
+
+    const addonId = deleteTargetId;
+    setDeleteTargetId(null);
     setDeletingId(addonId);
     try {
       await apiDelete(`/v1/addons/${addonId}`);
       fetchDatabases();
     } catch (err) {
       console.error("Failed to delete database:", err);
-      alert(err instanceof Error ? err.message : "Failed to delete database");
+      toast.error(err instanceof Error ? err.message : "Failed to delete database");
     } finally {
       setDeletingId(null);
     }
@@ -143,7 +151,7 @@ export default function DatabasesPage() {
         <Card>
           <CardContent className="py-12">
             <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <Spinner size="lg" />
               <span className="ml-3 text-muted-foreground">Loading databases...</span>
             </div>
           </CardContent>
@@ -186,13 +194,13 @@ export default function DatabasesPage() {
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={() => setIsCreateModalOpen(true)}>
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             New Database
           </Button>
           <Button variant="outline" onClick={fetchDatabases}>
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
@@ -204,8 +212,8 @@ export default function DatabasesPage() {
         <Card>
           <CardContent className="py-16">
             <div className="text-center">
-              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-blue-100 flex items-center justify-center">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                <svg aria-hidden="true" className="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                 </svg>
               </div>
@@ -215,7 +223,7 @@ export default function DatabasesPage() {
                 for automatic environment variable injection.
               </p>
               <Button onClick={() => setIsCreateModalOpen(true)}>
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
                 Create Your First Database
@@ -241,6 +249,16 @@ export default function DatabasesPage() {
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleCreateDatabase}
         projects={projects}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTargetId}
+        title="Delete Database"
+        description="Are you sure you want to delete this database? This action cannot be undone."
+        variant="destructive"
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteDatabase}
+        onCancel={() => setDeleteTargetId(null)}
       />
     </div>
   );

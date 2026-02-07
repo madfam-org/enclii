@@ -7,8 +7,7 @@
  * - SECURITY_AUDIT_COMPREHENSIVE_2025.md
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
-const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || "local";
+import { API_BASE_URL, AUTH_MODE } from '@/lib/constants';
 
 // CSRF token cache
 let csrfToken: string | null = null;
@@ -156,7 +155,7 @@ async function fetchCSRFToken(): Promise<void> {
  * @param options - Fetch options (method, body, etc.)
  * @returns Promise with the response
  */
-export async function apiRequest<T = any>(
+export async function apiRequest<T = unknown>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -274,16 +273,16 @@ export async function apiRequest<T = any>(
 /**
  * GET request helper
  */
-export async function apiGet<T = any>(endpoint: string): Promise<T> {
+export async function apiGet<T = unknown>(endpoint: string): Promise<T> {
   return apiRequest<T>(endpoint, { method: "GET" });
 }
 
 /**
  * POST request helper
  */
-export async function apiPost<T = any>(
+export async function apiPost<T = unknown>(
   endpoint: string,
-  data: any,
+  data: unknown,
 ): Promise<T> {
   return apiRequest<T>(endpoint, {
     method: "POST",
@@ -294,7 +293,7 @@ export async function apiPost<T = any>(
 /**
  * PUT request helper
  */
-export async function apiPut<T = any>(endpoint: string, data: any): Promise<T> {
+export async function apiPut<T = unknown>(endpoint: string, data: unknown): Promise<T> {
   return apiRequest<T>(endpoint, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -304,14 +303,14 @@ export async function apiPut<T = any>(endpoint: string, data: any): Promise<T> {
 /**
  * DELETE request helper
  */
-export async function apiDelete<T = any>(endpoint: string): Promise<T> {
+export async function apiDelete<T = unknown>(endpoint: string): Promise<T> {
   return apiRequest<T>(endpoint, { method: "DELETE" });
 }
 
 /**
  * PATCH request helper
  */
-export async function apiPatch<T = any>(endpoint: string, data: any): Promise<T> {
+export async function apiPatch<T = unknown>(endpoint: string, data: unknown): Promise<T> {
   return apiRequest<T>(endpoint, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -346,7 +345,7 @@ export interface PaginatedResponse<T> {
 /**
  * GET request with pagination support
  */
-export async function apiGetPaginated<T = any>(
+export async function apiGetPaginated<T = unknown>(
   endpoint: string,
   params?: PaginationParams,
 ): Promise<PaginatedResponse<T>> {

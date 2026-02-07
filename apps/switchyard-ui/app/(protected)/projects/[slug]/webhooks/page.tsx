@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { WebhookCard, Webhook, WebhookType, WebhookEventType } from '@/components/webhooks/WebhookCard';
@@ -87,9 +88,9 @@ export default function ProjectWebhooksPage() {
   const handleTestWebhook = async (webhookId: string) => {
     try {
       await apiPost(`/v1/webhooks/${webhookId}/test`, { event_type: 'deployment_succeeded' });
-      alert('Test notification sent successfully!');
+      toast.success('Test notification sent successfully');
     } catch (err) {
-      alert('Failed to send test notification: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      toast.error('Failed to send test notification: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   };
 
@@ -102,11 +103,11 @@ export default function ProjectWebhooksPage() {
     return (
       <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+          <div className="h-8 bg-muted rounded w-1/3"></div>
+          <div className="h-4 bg-muted rounded w-2/3"></div>
           <div className="grid gap-4 md:grid-cols-2">
             {[1, 2].map((i) => (
-              <div key={i} className="h-48 bg-gray-200 rounded-lg"></div>
+              <div key={i} className="h-48 bg-muted rounded-lg"></div>
             ))}
           </div>
         </div>
@@ -120,26 +121,26 @@ export default function ProjectWebhooksPage() {
       <nav className="flex mb-6" aria-label="Breadcrumb">
         <ol className="flex items-center space-x-4">
           <li>
-            <Link href="/projects" className="text-gray-400 hover:text-gray-500">
+            <Link href="/projects" className="text-muted-foreground hover:text-foreground">
               Projects
             </Link>
           </li>
           <li>
             <div className="flex items-center">
-              <svg className="flex-shrink-0 h-5 w-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+              <svg aria-hidden="true" className="flex-shrink-0 h-5 w-5 text-muted-foreground/50" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
-              <Link href={`/projects/${slug}`} className="ml-4 text-gray-400 hover:text-gray-500">
+              <Link href={`/projects/${slug}`} className="ml-4 text-muted-foreground hover:text-foreground">
                 {project?.name || slug}
               </Link>
             </div>
           </li>
           <li>
             <div className="flex items-center">
-              <svg className="flex-shrink-0 h-5 w-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+              <svg aria-hidden="true" className="flex-shrink-0 h-5 w-5 text-muted-foreground/50" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
-              <span className="ml-4 text-sm font-medium text-gray-500">Webhooks</span>
+              <span className="ml-4 text-sm font-medium text-muted-foreground">Webhooks</span>
             </div>
           </li>
         </ol>
@@ -148,13 +149,13 @@ export default function ProjectWebhooksPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notification Webhooks</h1>
+          <h1 className="text-2xl font-bold text-foreground">Notification Webhooks</h1>
           <p className="text-muted-foreground mt-1">
             Receive real-time notifications about deployments, builds, and more
           </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Add Webhook
@@ -165,7 +166,7 @@ export default function ProjectWebhooksPage() {
         <Card className="border-status-error/30 bg-status-error-muted mb-6">
           <CardContent className="py-4">
             <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-5 h-5 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-status-error">{error}</p>
@@ -183,7 +184,8 @@ export default function ProjectWebhooksPage() {
           <CardContent className="py-12">
             <div className="text-center">
               <svg
-                className="mx-auto h-12 w-12 text-gray-400"
+                aria-hidden="true"
+                className="mx-auto h-12 w-12 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -195,13 +197,13 @@ export default function ProjectWebhooksPage() {
                   d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                 />
               </svg>
-              <h3 className="mt-4 text-lg font-medium text-gray-900">No webhooks configured</h3>
+              <h3 className="mt-4 text-lg font-medium text-foreground">No webhooks configured</h3>
               <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
                 Set up webhooks to receive notifications on Slack, Discord, Telegram, or your own endpoints
                 when deployments succeed, builds fail, and more.
               </p>
               <Button onClick={() => setShowCreateModal(true)} className="mt-6">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
                 Create Your First Webhook
@@ -228,7 +230,7 @@ export default function ProjectWebhooksPage() {
       <Card className="mt-8 bg-status-info-muted border-status-info/30">
         <CardContent className="py-4">
           <div className="flex gap-3">
-            <svg className="w-5 h-5 text-status-info mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-5 h-5 text-status-info mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>

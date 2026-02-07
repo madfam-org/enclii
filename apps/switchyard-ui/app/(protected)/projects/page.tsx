@@ -5,6 +5,14 @@ import Link from 'next/link';
 import { apiGet, apiPost } from '@/lib/api';
 import { useTier } from '@/hooks/use-tier';
 import { PricingModal } from '@/components/modals/PricingModal';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Project {
   id: string;
@@ -104,10 +112,10 @@ export default function ProjectsPage() {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-muted rounded w-1/4 mb-6"></div>
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
+              <div key={i} className="h-24 bg-muted rounded"></div>
             ))}
           </div>
         </div>
@@ -134,7 +142,7 @@ export default function ProjectsPage() {
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
+          <h1 className="text-3xl font-bold text-foreground">Projects</h1>
           <button
             onClick={handleCreateProjectClick}
             data-tour="create-project"
@@ -145,95 +153,96 @@ export default function ProjectsPage() {
         </div>
 
         {/* Create Project Modal */}
-        {showCreateForm && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <div className="mt-3">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Project</h3>
-                <form onSubmit={createProject}>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Project Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                      value={newProject.name}
-                      onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Slug
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                      value={newProject.slug}
-                      onChange={(e) => setNewProject({ ...newProject, slug: e.target.value })}
-                    />
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
-                      rows={3}
-                      value={newProject.description}
-                      onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                    />
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateForm(false)}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
-                    >
-                      Create
-                    </button>
-                  </div>
-                </form>
+        <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create New Project</DialogTitle>
+              <DialogDescription>
+                Add a new project to organize your services.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={createProject}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  value={newProject.name}
+                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                />
               </div>
-            </div>
-          </div>
-        )}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Slug
+                </label>
+                <input
+                  type="text"
+                  required
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  value={newProject.slug}
+                  onChange={(e) => setNewProject({ ...newProject, slug: e.target.value })}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Description
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  rows={3}
+                  value={newProject.description}
+                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                />
+              </div>
+              <DialogFooter>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
+                >
+                  Create
+                </button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Projects List */}
         <div className="space-y-6">
           {projects.length === 0 ? (
             <div className="text-center py-12">
-              <div className="text-gray-500 mb-4">
-                <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="text-muted-foreground mb-4">
+                <svg aria-hidden="true" className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900">No projects found</h3>
-              <p className="text-gray-500 mt-1">Get started by creating your first project.</p>
+              <h3 className="text-lg font-medium text-foreground">No projects found</h3>
+              <p className="text-muted-foreground mt-1">Get started by creating your first project.</p>
             </div>
           ) : (
             projects.map((project) => (
-              <div key={project.id} className="bg-white shadow overflow-hidden sm:rounded-lg">
+              <div key={project.id} className="bg-card shadow overflow-hidden sm:rounded-lg">
                 <div className="px-4 py-5 sm:p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <Link 
                         href={`/projects/${project.slug}`}
-                        className="block hover:bg-gray-50 transition-colors duration-150 -m-2 p-2 rounded"
+                        className="block hover:bg-accent transition-colors duration-150 -m-2 p-2 rounded"
                       >
-                        <h3 className="text-lg font-medium text-gray-900 hover:text-enclii-blue">
+                        <h3 className="text-lg font-medium text-foreground hover:text-enclii-blue">
                           {project.name}
                         </h3>
-                        <p className="text-sm text-gray-500 mt-1">{project.description}</p>
-                        <div className="flex items-center mt-2 space-x-4 text-xs text-gray-400">
+                        <p className="text-sm text-muted-foreground mt-1">{project.description}</p>
+                        <div className="flex items-center mt-2 space-x-4 text-xs text-muted-foreground">
                           <span>Slug: {project.slug}</span>
                           <span>Created: {new Date(project.created_at).toLocaleDateString()}</span>
                         </div>
@@ -241,7 +250,7 @@ export default function ProjectsPage() {
                     </div>
                     <div className="flex-shrink-0 ml-4">
                       <div className="text-right">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-foreground">
                           {services[project.id]?.length || 0} service{(services[project.id]?.length || 0) !== 1 ? 's' : ''}
                         </div>
                         <div className="flex space-x-1 mt-1">
@@ -253,14 +262,14 @@ export default function ProjectsPage() {
                                   ? 'bg-status-success-muted text-status-success-foreground'
                                   : service.health === 'unhealthy'
                                   ? 'bg-status-error-muted text-status-error-foreground'
-                                  : 'bg-gray-100 text-gray-800'
+                                  : 'bg-muted text-muted-foreground'
                               }`}
                             >
                               {service.name}
                             </span>
                           ))}
                           {services[project.id]?.length > 3 && (
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-muted-foreground">
                               +{services[project.id].length - 3} more
                             </span>
                           )}

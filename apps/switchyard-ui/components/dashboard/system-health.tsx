@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
+import { POLLING_SLOW } from "@/lib/constants";
 import {
   Activity,
   AlertTriangle,
@@ -10,9 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
+import { API_BASE_URL } from "@/lib/constants";
 
 interface HealthStatus {
   status: "healthy" | "degraded" | "unhealthy" | "unknown";
@@ -150,10 +150,9 @@ export function SystemHealth({ className, compact = false }: SystemHealthProps) 
 
   useEffect(() => {
     fetchHealth();
-    // Check health every 30 seconds
-    const interval = setInterval(fetchHealth, 30000);
-    return () => clearInterval(interval);
   }, []);
+
+  usePolling(fetchHealth, POLLING_SLOW);
 
   if (compact) {
     // Compact mode: just a status indicator
@@ -294,22 +293,22 @@ export function SystemHealthBadge({ className }: { className?: string }) {
   const [status, setStatus] = useState<"healthy" | "degraded" | "unhealthy" | "unknown">("unknown");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/health`);
-        setStatus(response.ok ? "healthy" : "unhealthy");
-      } catch {
-        setStatus("unhealthy");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkHealth();
-    const interval = setInterval(checkHealth, 30000);
-    return () => clearInterval(interval);
+  const checkHealth = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`);
+      setStatus(response.ok ? "healthy" : "unhealthy");
+    } catch {
+      setStatus("unhealthy");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    checkHealth();
+  }, [checkHealth]);
+
+  usePolling(checkHealth, POLLING_SLOW);
 
   if (loading) {
     return (
@@ -334,7 +333,7 @@ export function SystemHealthBadge({ className }: { className?: string }) {
               ? "bg-status-warning"
               : status === "unhealthy"
                 ? "bg-status-error"
-                : "bg-gray-400"
+                : "bg-muted-foreground"
         )}
       />
       <span className="text-xs text-muted-foreground hidden sm:inline">

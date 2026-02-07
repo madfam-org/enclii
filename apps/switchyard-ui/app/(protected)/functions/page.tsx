@@ -1,10 +1,15 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { usePolling } from "@/hooks/use-polling";
+import { POLLING_NORMAL } from "@/lib/constants";
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 import { FunctionCard, CreateFunctionModal } from "@/components/functions";
 import type { Function, FunctionConfig } from "@/components/functions";
 
@@ -21,6 +26,7 @@ export default function FunctionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const fetchFunctions = async () => {
     try {
@@ -58,11 +64,9 @@ export default function FunctionsPage() {
 
   useEffect(() => {
     fetchFunctions();
-
-    // Refresh every 10 seconds (functions may be building/deploying)
-    const interval = setInterval(fetchFunctions, 10000);
-    return () => clearInterval(interval);
   }, []);
+
+  usePolling(fetchFunctions, POLLING_NORMAL);
 
   const handleCreateFunction = async (data: {
     projectSlug: string;
@@ -76,16 +80,22 @@ export default function FunctionsPage() {
     fetchFunctions();
   };
 
-  const handleDeleteFunction = async (id: string, projectSlug?: string) => {
-    if (!confirm('Are you sure you want to delete this function?')) return;
+  const handleDeleteFunction = (id: string, _projectSlug?: string) => {
+    setDeleteTargetId(id);
+  };
 
+  const confirmDeleteFunction = async () => {
+    if (!deleteTargetId) return;
+
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
     setDeletingId(id);
     try {
       await apiDelete(`/v1/functions/${id}`);
       setFunctions(functions.filter(fn => fn.id !== id));
     } catch (err) {
       console.error("Failed to delete function:", err);
-      alert(err instanceof Error ? err.message : 'Failed to delete function');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete function');
     } finally {
       setDeletingId(null);
     }
@@ -108,6 +118,7 @@ export default function FunctionsPage() {
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)}>
           <svg
+            aria-hidden="true"
             className="mr-2 h-4 w-4"
             fill="none"
             stroke="currentColor"
@@ -153,7 +164,7 @@ export default function FunctionsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-600">{scaledToZeroCount}</div>
+            <div className="text-3xl font-bold text-primary">{scaledToZeroCount}</div>
             <p className="text-xs text-muted-foreground mt-1">Saving resources</p>
           </CardContent>
         </Card>
@@ -174,7 +185,7 @@ export default function FunctionsPage() {
         <Card className="border-destructive">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-destructive">
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span>{error}</span>
@@ -186,7 +197,7 @@ export default function FunctionsPage() {
       {/* Loading State */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <Spinner size="lg" />
           <span className="ml-3 text-muted-foreground">Loading functions...</span>
         </div>
       )}
@@ -196,7 +207,7 @@ export default function FunctionsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="rounded-full bg-muted p-4 mb-4">
-              <svg className="h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
@@ -256,6 +267,16 @@ export default function FunctionsPage() {
         onOpenChange={setIsCreateModalOpen}
         projects={projects}
         onSubmit={handleCreateFunction}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTargetId}
+        title="Delete Function"
+        description="Are you sure you want to delete this function? This action cannot be undone."
+        variant="destructive"
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteFunction}
+        onCancel={() => setDeleteTargetId(null)}
       />
     </div>
   );

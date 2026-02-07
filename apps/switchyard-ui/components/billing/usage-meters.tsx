@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 
 interface UsageMetric {
   type: string;
@@ -98,7 +99,7 @@ export function UsageMeters({
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <Spinner />
             <span className="ml-2 text-sm text-muted-foreground">Loading usage...</span>
           </div>
         </CardContent>

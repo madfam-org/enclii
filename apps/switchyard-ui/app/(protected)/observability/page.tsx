@@ -10,11 +10,14 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { usePolling } from "@/hooks/use-polling";
+import { POLLING_SLOW } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 import type {
   MetricsSnapshot,
   MetricsHistory,
@@ -35,7 +38,7 @@ const tabs: TabDefinition[] = [
     id: "metrics",
     label: "Metrics",
     icon: (
-      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -49,7 +52,7 @@ const tabs: TabDefinition[] = [
     id: "health",
     label: "Service Health",
     icon: (
-      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -63,7 +66,7 @@ const tabs: TabDefinition[] = [
     id: "errors",
     label: "Errors",
     icon: (
-      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -77,7 +80,7 @@ const tabs: TabDefinition[] = [
     id: "alerts",
     label: "Alerts",
     icon: (
-      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -137,14 +140,14 @@ export default function ObservabilityPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
   }, [fetchData]);
+
+  usePolling(fetchData, POLLING_SLOW);
 
   if (loading && !snapshot) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+        <Spinner size="lg" />
         <span className="ml-3 text-muted-foreground">
           Loading observability data...
         </span>
@@ -186,6 +189,7 @@ export default function ObservabilityPage() {
           </select>
           <Button variant="outline" onClick={fetchData}>
             <svg
+              aria-hidden="true"
               className="mr-2 h-4 w-4"
               fill="none"
               stroke="currentColor"
@@ -209,6 +213,7 @@ export default function ObservabilityPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Error Rate</CardTitle>
             <svg
+              aria-hidden="true"
               className="h-4 w-4 text-muted-foreground"
               fill="none"
               stroke="currentColor"
@@ -234,6 +239,7 @@ export default function ObservabilityPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Latency</CardTitle>
             <svg
+              aria-hidden="true"
               className="h-4 w-4 text-muted-foreground"
               fill="none"
               stroke="currentColor"
@@ -259,6 +265,7 @@ export default function ObservabilityPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Healthy Services</CardTitle>
             <svg
+              aria-hidden="true"
               className="h-4 w-4 text-status-success"
               fill="none"
               stroke="currentColor"
@@ -289,6 +296,7 @@ export default function ObservabilityPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
             <svg
+              aria-hidden="true"
               className={cn(
                 "h-4 w-4",
                 alerts && alerts.critical_count > 0

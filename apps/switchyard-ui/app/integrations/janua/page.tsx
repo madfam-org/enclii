@@ -161,7 +161,7 @@ export default function JanuaIntegrationPage() {
   const [activeTab, setActiveTab] = useState<'nextjs' | 'react' | 'api'>('nextjs');
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-muted/50">
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-enclii-blue to-blue-700 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -190,14 +190,14 @@ export default function JanuaIntegrationPage() {
               <div className="flex flex-wrap gap-4">
                 <Link
                   href="/projects/new?template=janua"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-primary font-semibold rounded-lg hover:bg-white/90 transition-colors"
                 >
                   <Zap className="w-5 h-5" />
                   Deploy Janua
                 </Link>
                 <Link
                   href="https://janua.io/docs"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-500 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
                 >
                   <Code className="w-5 h-5" />
                   View Docs
@@ -232,21 +232,21 @@ export default function JanuaIntegrationPage() {
       {/* Features Grid */}
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 text-center mb-4">
+          <h2 className="text-3xl font-bold text-foreground text-center mb-4">
             Complete Authentication Solution
           </h2>
-          <p className="text-lg text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
             Everything you need to secure your applications, deployed and managed on your Enclii infrastructure.
           </p>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, idx) => (
-              <div key={idx} className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-                  <feature.icon className="w-6 h-6 text-blue-600" />
+              <div key={idx} className="bg-card rounded-xl p-6 shadow-sm border border-border hover:shadow-md transition-shadow">
+                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4">
+                  <feature.icon className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{feature.title}</h3>
-                <p className="text-gray-600">{feature.description}</p>
+                <h3 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h3>
+                <p className="text-muted-foreground">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -298,10 +298,10 @@ export default function JanuaIntegrationPage() {
       {/* Pricing */}
       <section className="py-16">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 text-center mb-4">
+          <h2 className="text-3xl font-bold text-foreground text-center mb-4">
             Simple, Transparent Pricing
           </h2>
-          <p className="text-lg text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
             Janua is included free with every Enclii plan. Add enterprise features when you need them.
           </p>
 
@@ -311,20 +311,20 @@ export default function JanuaIntegrationPage() {
                 key={idx}
                 className={`rounded-2xl p-8 ${
                   tier.highlighted
-                    ? 'bg-blue-600 text-white ring-4 ring-blue-600 ring-offset-4'
-                    : 'bg-white border border-gray-200'
+                    ? 'bg-primary text-primary-foreground ring-4 ring-primary ring-offset-4'
+                    : 'bg-card border border-border'
                 }`}
               >
-                <h3 className={`text-xl font-semibold mb-2 ${tier.highlighted ? 'text-white' : 'text-gray-900'}`}>
+                <h3 className={`text-xl font-semibold mb-2 ${tier.highlighted ? 'text-primary-foreground' : 'text-foreground'}`}>
                   {tier.name}
                 </h3>
                 <div className="flex items-baseline gap-1 mb-2">
-                  <span className={`text-4xl font-bold ${tier.highlighted ? 'text-white' : 'text-gray-900'}`}>
+                  <span className={`text-4xl font-bold ${tier.highlighted ? 'text-primary-foreground' : 'text-foreground'}`}>
                     {tier.price}
                   </span>
-                  <span className={tier.highlighted ? 'text-blue-200' : 'text-gray-500'}>/month</span>
+                  <span className={tier.highlighted ? 'text-primary-foreground/70' : 'text-muted-foreground'}>/month</span>
                 </div>
-                <p className={`mb-6 ${tier.highlighted ? 'text-blue-100' : 'text-gray-600'}`}>
+                <p className={`mb-6 ${tier.highlighted ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                   {tier.description}
                 </p>
 
@@ -334,7 +334,7 @@ export default function JanuaIntegrationPage() {
                       <CheckCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
                         tier.highlighted ? 'text-blue-200' : 'text-status-success'
                       }`} />
-                      <span className={tier.highlighted ? 'text-white' : 'text-gray-700'}>
+                      <span className={tier.highlighted ? 'text-primary-foreground' : 'text-foreground'}>
                         {feature}
                       </span>
                     </li>
@@ -345,8 +345,8 @@ export default function JanuaIntegrationPage() {
                   href={tier.ctaLink}
                   className={`block w-full text-center py-3 px-6 rounded-lg font-semibold transition-colors ${
                     tier.highlighted
-                      ? 'bg-white text-blue-600 hover:bg-blue-50'
-                      : 'bg-gray-900 text-white hover:bg-gray-800'
+                      ? 'bg-card text-primary hover:bg-accent'
+                      : 'bg-foreground text-background hover:bg-foreground/90'
                   }`}
                 >
                   {tier.cta}
@@ -358,12 +358,12 @@ export default function JanuaIntegrationPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 bg-gray-100">
+      <section className="py-16 bg-muted">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <h2 className="text-3xl font-bold text-foreground mb-4">
             Ready to Add Authentication?
           </h2>
-          <p className="text-lg text-gray-600 mb-8">
+          <p className="text-lg text-muted-foreground mb-8">
             Deploy Janua to your Enclii project in one click. No credit card required.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -376,7 +376,7 @@ export default function JanuaIntegrationPage() {
             </Link>
             <Link
               href="https://janua.io"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-gray-700 font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-card text-foreground font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
             >
               Learn More About Janua
             </Link>

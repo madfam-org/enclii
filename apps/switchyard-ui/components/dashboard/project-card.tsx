@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { formatRelativeTime, formatFullTimestamp, formatDuration } from '@/lib/formatting';
 import { FrameworkIcon, FrameworkType } from "./framework-icon";
 
 interface Service {
@@ -111,7 +112,7 @@ const serviceStatusConfig = {
     label: "Running",
   },
   stopped: {
-    color: "bg-gray-400",
+    color: "bg-muted-foreground",
     label: "Stopped",
   },
   deploying: {
@@ -127,52 +128,6 @@ const serviceStatusConfig = {
     label: "Pending",
   },
 };
-
-// Format relative time (e.g., "2 hours ago")
-function formatRelativeTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) {
-    return "just now";
-  }
-  if (diffInSeconds < 3600) {
-    const minutes = Math.floor(diffInSeconds / 60);
-    return `${minutes}m ago`;
-  }
-  if (diffInSeconds < 86400) {
-    const hours = Math.floor(diffInSeconds / 3600);
-    return `${hours}h ago`;
-  }
-  if (diffInSeconds < 604800) {
-    const days = Math.floor(diffInSeconds / 86400);
-    return `${days}d ago`;
-  }
-  return date.toLocaleDateString();
-}
-
-// Format full timestamp for tooltip
-function formatFullTimestamp(timestamp: string): string {
-  return new Date(timestamp).toLocaleString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-// Format duration (e.g., "1m 23s")
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
-}
 
 export function ProjectCard({ project, className, onDelete }: ProjectCardProps) {
   const activeServices = project.services.filter(
@@ -298,7 +253,7 @@ export function ProjectCard({ project, className, onDelete }: ProjectCardProps) 
                         {statusConfig.label}
                       </div>
                       {service.url && (
-                        <div className="text-blue-400 mt-1">{service.url}</div>
+                        <div className="text-primary mt-1">{service.url}</div>
                       )}
                     </div>
                   </TooltipContent>
