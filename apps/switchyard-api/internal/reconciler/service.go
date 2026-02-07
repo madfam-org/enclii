@@ -236,13 +236,16 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req *ReconcileRequest
 }
 
 func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace string) error {
+	requiredLabels := map[string]string{
+		"managed-by":                   "enclii",
+		"platform":                     "enclii",
+		"enclii.dev/verify-signatures": "true",
+	}
+
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: namespace,
-			Labels: map[string]string{
-				"managed-by": "enclii",
-				"platform":   "enclii",
-			},
+			Name:   namespace,
+			Labels: requiredLabels,
 		},
 	}
 
@@ -252,6 +255,8 @@ func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace strin
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 		}
+		// Namespace already exists — ensure required labels are present
+		r.ensureNamespaceLabels(ctx, namespace, requiredLabels)
 	} else {
 		created = true
 		r.logger.WithField("namespace", namespace).Info("Created new namespace")
@@ -279,6 +284,36 @@ func (r *ServiceReconciler) ensureNamespace(ctx context.Context, namespace strin
 	}
 
 	return nil
+}
+
+// ensureNamespaceLabels patches an existing namespace to add any missing required labels
+func (r *ServiceReconciler) ensureNamespaceLabels(ctx context.Context, namespace string, requiredLabels map[string]string) {
+	nsClient := r.k8sClient.Clientset.CoreV1().Namespaces()
+
+	existing, err := nsClient.Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		r.logger.WithField("namespace", namespace).WithError(err).Warn("Failed to get namespace for label patching")
+		return
+	}
+
+	needsUpdate := false
+	if existing.Labels == nil {
+		existing.Labels = make(map[string]string)
+	}
+	for k, v := range requiredLabels {
+		if existing.Labels[k] != v {
+			existing.Labels[k] = v
+			needsUpdate = true
+		}
+	}
+
+	if needsUpdate {
+		if _, err := nsClient.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+			r.logger.WithField("namespace", namespace).WithError(err).Warn("Failed to patch namespace labels")
+		} else {
+			r.logger.WithField("namespace", namespace).Info("Patched namespace with required labels")
+		}
+	}
 }
 
 // ensureRegistryCredentials copies the registry credentials secret to the target namespace if missing

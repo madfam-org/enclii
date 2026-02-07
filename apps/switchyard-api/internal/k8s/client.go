@@ -116,7 +116,8 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: namespace,
 				Labels: map[string]string{
-					"managed-by": "enclii",
+					"managed-by":                   "enclii",
+					"enclii.dev/verify-signatures": "true",
 				},
 			},
 		}

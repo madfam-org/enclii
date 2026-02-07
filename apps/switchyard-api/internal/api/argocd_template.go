@@ -38,6 +38,8 @@ metadata:
     app.kubernetes.io/name: %s
     app.kubernetes.io/part-of: %s
     app.kubernetes.io/managed-by: enclii-onboarding
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -54,7 +56,7 @@ spec:
 
   syncPolicy:
     automated:
-      prune: false
+      prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true

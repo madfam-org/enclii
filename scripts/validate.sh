@@ -114,20 +114,21 @@ manifest_audit() {
     fi
 
     # --- cloudflared-unified.yaml checks ---
+    # NOTE: Ingress routes are remotely-managed via Cloudflare Tunnel Configuration API
+    # (session 22). The ConfigMap no longer contains ingress rules — routes are managed
+    # by switchyard-api's domain provisioner. We verify the file exists and has metrics config.
     CLOUDFLARED="${REPO_ROOT}/infra/k8s/production/cloudflared-unified.yaml"
     if [[ -f "${CLOUDFLARED}" ]]; then
         echo ""
         echo "  Checking: cloudflared-unified.yaml"
 
-        # Critical routes
-        for hostname in "api.enclii.dev" "app.enclii.dev" "admin.enclii.dev" "auth.madfam.io"; do
-            if grep -q "hostname: ${hostname}" "${CLOUDFLARED}"; then
-                echo -e "    ${GREEN}hostname: ${hostname}${NC}"
-            else
-                echo -e "    ${RED}MISSING ROUTE: ${hostname}${NC}"
-                audit_failed=1
-            fi
-        done
+        if grep -q "metrics: 0.0.0.0:2000" "${CLOUDFLARED}"; then
+            echo -e "    ${GREEN}metrics endpoint configured${NC}"
+        else
+            echo -e "    ${RED}MISSING: metrics endpoint${NC}"
+            audit_failed=1
+        fi
+        echo -e "    ${GREEN}ingress routes: remotely-managed via Cloudflare API${NC}"
     else
         echo -e "  ${RED}MISSING FILE: cloudflared-unified.yaml${NC}"
         audit_failed=1

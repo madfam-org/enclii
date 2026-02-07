@@ -36,9 +36,22 @@ type EncliiYAMLSpec struct {
 
 // EncliiYAMLDomain represents a custom domain declared in enclii.yaml
 type EncliiYAMLDomain struct {
-	Name        string `yaml:"name"`        // e.g., "api.qubic.quest"
-	Environment string `yaml:"environment"` // e.g., "production" (defaults to "production")
-	TLSEnabled  *bool  `yaml:"tlsEnabled"`  // defaults to true
+	Name        string `yaml:"name"`           // e.g., "api.qubic.quest"
+	Environment string `yaml:"environment"`    // e.g., "production" (defaults to "production")
+	TLSEnabled  *bool  `yaml:"tlsEnabled"`     // defaults to true
+	Port        int    `yaml:"port,omitempty"` // per-domain port override (defaults to runtime port or 80)
+}
+
+// GetPort returns the effective service port for this domain.
+// Priority: domain-level port > runtime port > 80.
+func (d *EncliiYAMLDomain) GetPort(runtimePort int) int {
+	if d.Port > 0 {
+		return d.Port
+	}
+	if runtimePort > 0 {
+		return runtimePort
+	}
+	return 80
 }
 
 // EncliiYAMLRuntime contains runtime configuration

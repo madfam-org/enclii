@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 
@@ -28,8 +27,9 @@ func (h *Handler) provisionDomainsFromYAML(
 		return
 	}
 
+	runtimePort := envConfig.Spec.Runtime.Port
 	for _, domainCfg := range envConfig.Spec.Domains {
-		h.provisionSingleDomain(ctx, service, domainCfg)
+		h.provisionSingleDomain(ctx, service, domainCfg, runtimePort)
 	}
 }
 
@@ -38,9 +38,11 @@ func (h *Handler) provisionSingleDomain(
 	ctx context.Context,
 	service *types.Service,
 	domainCfg EncliiYAMLDomain,
+	runtimePort int,
 ) {
 	domainName := domainCfg.Name
 	envName := domainCfg.Environment
+	servicePort := domainCfg.GetPort(runtimePort)
 
 	// Validate domain format
 	if !isValidDomain(domainName) {
@@ -63,7 +65,7 @@ func (h *Handler) provisionSingleDomain(
 		h.logger.Debug(ctx, "Domain already registered, skipping creation",
 			logging.String("domain", domainName))
 		// Even if already registered, ensure tunnel route + DNS exist
-		h.ensureTunnelRoute(ctx, domainName, service, envName)
+		h.ensureTunnelRoute(ctx, domainName, service, envName, servicePort)
 		h.ensureDNSRecord(ctx, domainName)
 		return
 	}
@@ -107,14 +109,14 @@ func (h *Handler) provisionSingleDomain(
 		logging.String("environment", envName))
 
 	// Add tunnel route
-	h.ensureTunnelRoute(ctx, domainName, service, envName)
+	h.ensureTunnelRoute(ctx, domainName, service, envName, servicePort)
 
 	// Create DNS CNAME record
 	h.ensureDNSRecord(ctx, domainName)
 }
 
 // ensureTunnelRoute adds a Cloudflare tunnel route for a domain
-func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service *types.Service, envName string) {
+func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service *types.Service, envName string, servicePort int) {
 	if h.tunnelRoutesService == nil {
 		return
 	}
@@ -134,14 +136,14 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 		return
 	}
 
-	// Determine namespace — look up from environment or use convention
-	namespace := fmt.Sprintf("enclii-%s", envName)
+	// Determine namespace from the service's project record
+	namespace := h.resolveServiceNamespace(ctx, service, envName)
 
 	routeSpec := &services.RouteSpec{
 		Hostname:         domain,
 		ServiceName:      service.Name,
 		ServiceNamespace: namespace,
-		ServicePort:      80,
+		ServicePort:      servicePort,
 		ConnectTimeout:   "30s",
 		KeepAliveTimeout: "90s",
 	}
@@ -153,8 +155,32 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 	} else {
 		h.logger.Info(ctx, "Tunnel route added for domain",
 			logging.String("domain", domain),
-			logging.String("service", service.Name))
+			logging.String("service", service.Name),
+			logging.String("namespace", namespace),
+			logging.Int("port", servicePort))
 	}
+}
+
+// resolveServiceNamespace determines the Kubernetes namespace for a service.
+// It looks up the project's slug to use as the namespace. Falls back to the
+// project slug derived from the service name if the project lookup fails.
+func (h *Handler) resolveServiceNamespace(ctx context.Context, service *types.Service, envName string) string {
+	// Try to get the namespace from the environment record
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err == nil && env.KubeNamespace != "" {
+		return env.KubeNamespace
+	}
+
+	// Fall back to project slug
+	project, err := h.repos.Projects.GetByID(ctx, service.ProjectID)
+	if err == nil && project.Slug != "" {
+		return project.Slug
+	}
+
+	// Last resort: use project name or service name prefix
+	h.logger.Warn(ctx, "Could not resolve namespace from project, using service name prefix",
+		logging.String("service", service.Name))
+	return service.Name
 }
 
 // ensureDNSRecord creates a CNAME DNS record in Cloudflare for the domain.
@@ -221,10 +247,17 @@ func (h *Handler) cleanupDomainsForService(ctx context.Context, serviceID uuid.U
 			}
 		}
 
-		// Remove DNS record
+		// Remove DNS record (zone-aware: finds correct zone for each domain)
 		if h.domainSyncService != nil {
 			cfClient := h.domainSyncService.GetCloudflareClient()
 			if cfClient != nil {
+				zone, zoneErr := cfClient.FindZoneForDomain(ctx, domain.Domain)
+				if zoneErr != nil {
+					h.logger.Warn(ctx, "Failed to find zone for domain during cleanup",
+						logging.String("domain", domain.Domain),
+						logging.Error("error", zoneErr))
+					continue
+				}
 				record, err := cfClient.GetDNSRecord(ctx, domain.Domain)
 				if err != nil {
 					h.logger.Warn(ctx, "Failed to look up DNS record during cleanup",
@@ -233,7 +266,7 @@ func (h *Handler) cleanupDomainsForService(ctx context.Context, serviceID uuid.U
 					continue
 				}
 				if record != nil {
-					if err := cfClient.DeleteDNSRecord(ctx, record.ID); err != nil {
+					if err := cfClient.DeleteDNSRecordInZone(ctx, zone.ID, record.ID); err != nil {
 						h.logger.Warn(ctx, "Failed to delete DNS record during cleanup",
 							logging.String("domain", domain.Domain),
 							logging.Error("error", err))

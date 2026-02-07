@@ -93,7 +93,7 @@ func TestEnsureTunnelRoute_NilService(t *testing.T) {
 	h.ensureTunnelRoute(context.Background(), "example.com", &types.Service{
 		ID:   uuid.New(),
 		Name: "test-svc",
-	}, "production")
+	}, "production", 80)
 }
 
 func TestEnsureDNSRecord_NilDomainSyncService(t *testing.T) {
@@ -118,7 +118,7 @@ func TestCleanupDomainsForService_NilGuards(t *testing.T) {
 	h.ensureTunnelRoute(context.Background(), "test.com", &types.Service{
 		ID:   uuid.New(),
 		Name: "svc",
-	}, "production")
+	}, "production", 80)
 
 	// ensureDNSRecord with nil domainSyncService returns immediately
 	h.ensureDNSRecord(context.Background(), "test.com")
@@ -136,5 +136,5 @@ func TestProvisionSingleDomain_InvalidDomain(t *testing.T) {
 	}, EncliiYAMLDomain{
 		Name:        "invalid",
 		Environment: "production",
-	})
+	}, 80)
 }

@@ -128,6 +128,10 @@ type Config struct {
 	EmailFromAddress string // EMAIL_FROM_ADDRESS - From email address (default: noreply@enclii.dev)
 	EmailFromName    string // EMAIL_FROM_NAME - From name (default: Enclii)
 	AppBaseURL       string // APP_BASE_URL - Base URL for app links in emails (default: https://app.enclii.dev)
+
+	// Enclii Repo Coordinates (for auto-committing ArgoCD apps)
+	EncliiRepoOwner string // ENCLII_ENCLII_REPO_OWNER - GitHub owner for Enclii repo (default: madfam-org)
+	EncliiRepoName  string // ENCLII_ENCLII_REPO_NAME - GitHub repo name (default: enclii)
 }
 
 func Load() (*Config, error) {
@@ -205,6 +209,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("email-from-name", "Enclii")                // EMAIL_FROM_NAME
 	viper.SetDefault("app-base-url", "https://app.enclii.dev")   // APP_BASE_URL
 
+	// Enclii repo coordinates (for auto-committing ArgoCD apps)
+	viper.SetDefault("enclii-repo-owner", "madfam-org") // ENCLII_ENCLII_REPO_OWNER
+	viper.SetDefault("enclii-repo-name", "enclii")      // ENCLII_ENCLII_REPO_NAME
+
 	// Parse log level
 	logLevelStr := viper.GetString("log-level")
 	logLevel, err := logrus.ParseLevel(logLevelStr)
@@ -277,6 +285,8 @@ func Load() (*Config, error) {
 		EmailFromAddress:           viper.GetString("email-from-address"),
 		EmailFromName:              viper.GetString("email-from-name"),
 		AppBaseURL:                 viper.GetString("app-base-url"),
+		EncliiRepoOwner:            viper.GetString("enclii-repo-owner"),
+		EncliiRepoName:             viper.GetString("enclii-repo-name"),
 	}
 
 	// SEC-001: Validate required configuration

@@ -66,11 +66,9 @@ spec:
           - resources:
               kinds:
                 - Pod
-              namespaces:
-                - enclii
-                - dhanam
-                - janua
-                - tezca
+              namespaceSelector:
+                matchLabels:
+                  enclii.dev/verify-signatures: "true"
       verifyImages:
         - imageReferences:
             - "ghcr.io/madfam-org/*"

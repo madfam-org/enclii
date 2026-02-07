@@ -53,13 +53,19 @@ func (c *Client) ListDNSRecordsForZone(ctx context.Context, zoneID string) ([]DN
 	return allRecords, nil
 }
 
-// GetDNSRecord retrieves a specific DNS record by domain name
+// GetDNSRecord retrieves a specific DNS record by domain name.
+// Uses FindZoneForDomain to support multi-zone lookups (e.g., madfam.io, tezca.mx).
 func (c *Client) GetDNSRecord(ctx context.Context, domain string) (*DNSRecord, error) {
+	zone, err := c.FindZoneForDomain(ctx, domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find zone for %s: %w", domain, err)
+	}
+
 	query := url.Values{}
 	query.Set("name", domain)
 
 	var resp APIResponse[[]DNSRecord]
-	path := fmt.Sprintf("/zones/%s/dns_records", c.zoneID)
+	path := fmt.Sprintf("/zones/%s/dns_records", zone.ID)
 
 	if err := c.get(ctx, path, query, &resp); err != nil {
 		return nil, fmt.Errorf("failed to get DNS record for %s: %w", domain, err)
@@ -72,14 +78,20 @@ func (c *Client) GetDNSRecord(ctx context.Context, domain string) (*DNSRecord, e
 	return &resp.Result[0], nil
 }
 
-// GetDNSRecordByType retrieves a DNS record by name and type
+// GetDNSRecordByType retrieves a DNS record by name and type.
+// Uses FindZoneForDomain to support multi-zone lookups.
 func (c *Client) GetDNSRecordByType(ctx context.Context, domain, recordType string) (*DNSRecord, error) {
+	zone, err := c.FindZoneForDomain(ctx, domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find zone for %s: %w", domain, err)
+	}
+
 	query := url.Values{}
 	query.Set("name", domain)
 	query.Set("type", recordType)
 
 	var resp APIResponse[[]DNSRecord]
-	path := fmt.Sprintf("/zones/%s/dns_records", c.zoneID)
+	path := fmt.Sprintf("/zones/%s/dns_records", zone.ID)
 
 	if err := c.get(ctx, path, query, &resp); err != nil {
 		return nil, fmt.Errorf("failed to get %s record for %s: %w", recordType, domain, err)
