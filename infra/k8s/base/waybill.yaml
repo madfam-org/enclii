@@ -37,7 +37,7 @@ spec:
                   name: enclii-secrets
                   key: database-url
           ports:
-            - containerPort: 4290
+            - containerPort: 8080
               name: metrics
               protocol: TCP
           resources:
@@ -50,14 +50,14 @@ spec:
           startupProbe:
             httpGet:
               path: /health
-              port: 4290
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
             failureThreshold: 12
           readinessProbe:
             httpGet:
               path: /ready
-              port: 4290
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
@@ -65,7 +65,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 4290
+              port: 8080
             initialDelaySeconds: 15
             periodSeconds: 15
             timeoutSeconds: 5
