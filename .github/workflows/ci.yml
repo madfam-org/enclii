@@ -50,6 +50,11 @@ jobs:
           echo ""
           FAILED=0
           for mod in $MODULES; do
+            # Skip modules with no Go source files
+            if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
+              echo "▶ Skipping $mod (no Go files)"
+              continue
+            fi
             echo "▶ Linting $mod"
             (cd "$mod" && golangci-lint run --timeout=5m ./...) || FAILED=1
           done
@@ -231,6 +236,11 @@ jobs:
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
           COVERAGE_FILES=""
           for mod in $MODULES; do
+            # Skip modules with no Go source files
+            if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
+              echo "▶ Skipping $mod (no Go files)"
+              continue
+            fi
             echo "▶ Testing $mod"
             (cd "$mod" && go test -v -race -coverprofile=coverage.out -covermode=atomic ./...) || true
             if [ -f "$mod/coverage.out" ]; then
@@ -398,6 +408,10 @@ jobs:
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
           FAILED=0
           for mod in $MODULES; do
+            if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
+              echo "▶ Skipping $mod (no Go files)"
+              continue
+            fi
             echo "▶ Security scan: $mod"
             (cd "$mod" && gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...) || FAILED=1
           done
@@ -411,6 +425,10 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
           for mod in $MODULES; do
+            if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
+              echo "▶ Skipping $mod (no Go files)"
+              continue
+            fi
             echo "▶ Vulnerability check: $mod"
             (cd "$mod" && govulncheck ./...) || true
           done
