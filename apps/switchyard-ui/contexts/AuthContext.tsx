@@ -284,6 +284,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     state?: string
   ): Promise<void> => {
     setIsLoading(true);
+    setAuthError(null);
 
     try {
       const params = new URLSearchParams({ code });
@@ -343,6 +344,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     redirectTokens: RedirectTokens
   ): Promise<void> => {
     setIsLoading(true);
+    setAuthError(null);
 
     try {
       const tokenInfo: TokenInfo = {

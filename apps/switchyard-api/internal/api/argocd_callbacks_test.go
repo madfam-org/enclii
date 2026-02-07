@@ -2,6 +2,8 @@ package api
 
 import (
 	"testing"
+
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 func TestExtractServiceCandidates(t *testing.T) {
@@ -119,6 +121,74 @@ func TestShortSHA(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("shortSHA(%q) = %q, want %q", tt.sha, got, tt.want)
 		}
+	}
+}
+
+func TestArgocdEventType(t *testing.T) {
+	tests := []struct {
+		name         string
+		syncStatus   string
+		healthStatus string
+		want         string
+	}{
+		{
+			name:         "synced+healthy → deploy_healthy",
+			syncStatus:   "Synced",
+			healthStatus: "Healthy",
+			want:         types.LifecycleDeployHealthy,
+		},
+		{
+			name:         "synced+empty health → deploy_healthy (primary signal is SyncStatus)",
+			syncStatus:   "Synced",
+			healthStatus: "",
+			want:         types.LifecycleDeployHealthy,
+		},
+		{
+			name:         "synced+progressing → deploy_healthy (not syncing)",
+			syncStatus:   "Synced",
+			healthStatus: "Progressing",
+			want:         types.LifecycleDeployHealthy,
+		},
+		{
+			name:         "synced+degraded → deploy_degraded",
+			syncStatus:   "Synced",
+			healthStatus: "Degraded",
+			want:         types.LifecycleDeployDegraded,
+		},
+		{
+			name:         "synced+unknown → deploy_healthy",
+			syncStatus:   "Synced",
+			healthStatus: "Unknown",
+			want:         types.LifecycleDeployHealthy,
+		},
+		{
+			name:         "outofsync → deploy_synced (in-progress)",
+			syncStatus:   "OutOfSync",
+			healthStatus: "Healthy",
+			want:         types.LifecycleDeploySynced,
+		},
+		{
+			name:         "empty sync status → deploy_synced",
+			syncStatus:   "",
+			healthStatus: "Healthy",
+			want:         types.LifecycleDeploySynced,
+		},
+		{
+			name:         "unknown sync status → deploy_synced",
+			syncStatus:   "Unknown",
+			healthStatus: "",
+			want:         types.LifecycleDeploySynced,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := argocdEventType(tt.syncStatus, tt.healthStatus)
+			if got != tt.want {
+				t.Errorf("argocdEventType(%q, %q) = %q, want %q",
+					tt.syncStatus, tt.healthStatus, got, tt.want)
+			}
+		})
 	}
 }
 

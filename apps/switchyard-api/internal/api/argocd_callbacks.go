@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -98,6 +99,17 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			continue
 		}
 
+		// Skip if this service already has a running deployment with the same release
+		// (happens when ArgoCD syncs an Application but not all images changed)
+		latestDeployment, _ := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
+		if latestDeployment != nil && latestDeployment.ReleaseID == release.ID &&
+			latestDeployment.Status == types.DeploymentStatusRunning {
+			h.logger.Debug(ctx, "Service already deployed with this release, skipping",
+				logging.String("service_name", serviceName),
+				logging.String("release_id", release.ID.String()))
+			continue
+		}
+
 		// Find environment — use the service's auto-deploy env, fallback to "production"
 		envName := service.AutoDeployEnv
 		if envName == "" {
@@ -183,15 +195,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			logging.String("revision", req.Revision))
 
 		// Emit lifecycle event for the deploy
-		var lifecycleEventType string
-		switch {
-		case req.HealthStatus == "Healthy" && (req.SyncStatus == "Synced" || req.SyncStatus == ""):
-			lifecycleEventType = types.LifecycleDeployHealthy
-		case req.HealthStatus == "Degraded":
-			lifecycleEventType = types.LifecycleDeployDegraded
-		default:
-			lifecycleEventType = types.LifecycleDeploySynced
-		}
+		lifecycleEventType := argocdEventType(req.SyncStatus, req.HealthStatus)
 		deployMsg := fmt.Sprintf("ArgoCD sync %s: %s/%s", req.SyncStatus, req.AppName, serviceName)
 		h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
 			DeploymentID: &deployment.ID,
@@ -241,6 +245,30 @@ func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *
 		ImageURI:  imageURI,
 		GitSHA:    gitSHA,
 		Status:    types.ReleaseStatusReady,
+	}
+
+	// Enrich with metadata from lifecycle events (if available)
+	// External repos (tezca, dhanam) push lifecycle events via CI callbacks
+	// that carry commit metadata we can attach to the release.
+	if events, err := h.repos.LifecycleEvents.GetByCommit(context.Background(), gitSHA); err == nil && len(events) > 0 {
+		for _, evt := range events {
+			if evt.Message != nil && *evt.Message != "" && release.CommitMessage == "" {
+				release.CommitMessage = *evt.Message
+			}
+			if evt.Branch != "" && release.GitBranch == "" {
+				release.GitBranch = evt.Branch
+			}
+			if evt.RepoFullName != "" && release.RepoURL == "" {
+				release.RepoURL = "https://github.com/" + evt.RepoFullName
+			}
+			if author, ok := evt.Metadata["author"].(string); ok && author != "" && release.CommitAuthorName == "" {
+				release.CommitAuthorName = author
+			}
+			if email, ok := evt.Metadata["author_email"].(string); ok && email != "" && release.CommitAuthorEmail == "" {
+				release.CommitAuthorEmail = email
+			}
+			break // Use first matching event
+		}
 	}
 
 	if err := h.repos.Releases.Create(release); err != nil {
@@ -326,4 +354,18 @@ func repoFullNameFromImage(imageURI string) string {
 		return parts[0] + "/" + parts[1]
 	}
 	return ref
+}
+
+// argocdEventType determines the lifecycle event type from ArgoCD sync/health status.
+// SyncStatus is the primary signal: "Synced" means ArgoCD finished applying.
+// HealthStatus refines it: "Degraded" is the only negative terminal state.
+func argocdEventType(syncStatus, healthStatus string) string {
+	switch {
+	case syncStatus == "Synced" && healthStatus == "Degraded":
+		return types.LifecycleDeployDegraded
+	case syncStatus == "Synced":
+		return types.LifecycleDeployHealthy
+	default:
+		return types.LifecycleDeploySynced
+	}
 }

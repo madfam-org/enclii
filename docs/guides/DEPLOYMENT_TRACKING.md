@@ -22,9 +22,9 @@ Each event is stored in the `deployment_lifecycle_events` table and linked to ex
 | `image_pushed` | Image available in GHCR | `ci_callback` |
 | `digest_committed` | Digest written to kustomization.yaml | `ci_callback` |
 | `deploy_started` | ArgoCD sync initiated | `argocd_callback` |
-| `deploy_synced` | ArgoCD reports Synced | `argocd_callback` |
-| `deploy_healthy` | Pods running and healthy | `argocd_callback` |
-| `deploy_degraded` | Deployment degraded | `argocd_callback` |
+| `deploy_synced` | ArgoCD sync in progress (health unknown) | `argocd_callback` |
+| `deploy_healthy` | ArgoCD reports Synced (primary deploy success signal) | `argocd_callback` |
+| `deploy_degraded` | ArgoCD reports Synced but health Degraded | `argocd_callback` |
 | `deploy_failed` | Deployment failed | `argocd_callback` |
 | `preview_created` | Preview environment created | `ci_callback` |
 | `preview_destroyed` | Preview environment destroyed | `ci_callback` |
@@ -242,6 +242,10 @@ CI reports build_failed  → Deployment created as "failed"
 ```
 
 The `LifecycleEventCallback` handler creates Deployment records automatically for `image_pushed` and `build_failed` events. When ArgoCD later syncs, the `ArgocdSyncCallback` finds the existing `deploying` record and updates it to `running` instead of creating a duplicate.
+
+**Deduplication:** The ArgoCD callback also checks whether the service's latest deployment already points to the same Release (same git SHA + image). If so, it skips creating a new record. This prevents deployment record explosion when ArgoCD syncs an Application containing multiple images but only some actually changed.
+
+**Release enrichment:** When the ArgoCD callback creates a new Release, it looks up lifecycle events for the same commit SHA and copies available git metadata (commit message, author, branch, repo URL) onto the Release. This means external repo deployments (tezca, dhanam) show richer data in the Deployment History even when the deploy was first seen via ArgoCD rather than CI.
 
 ### Service Name Resolution
 

@@ -38,7 +38,7 @@ const EVENT_TYPE_CONFIG: Record<string, { label: string; variant: 'default' | 's
   image_pushed:    { label: "Image Pushed",  variant: "default",     dotClass: "bg-status-success" },
   build_failed:    { label: "Build Failed",  variant: "destructive", dotClass: "bg-status-error" },
   deploy_healthy:  { label: "Deployed",      variant: "default",     dotClass: "bg-status-success" },
-  deploy_synced:   { label: "Syncing",       variant: "secondary",   dotClass: "bg-status-info animate-pulse" },
+  deploy_synced:   { label: "Synced",         variant: "secondary",   dotClass: "bg-status-info" },
   deploy_degraded: { label: "Degraded",      variant: "outline",     dotClass: "bg-status-warning" },
   deploy_failed:   { label: "Deploy Failed", variant: "destructive", dotClass: "bg-status-error" },
   push_received:   { label: "Push Received", variant: "outline",     dotClass: "bg-muted-foreground" },
