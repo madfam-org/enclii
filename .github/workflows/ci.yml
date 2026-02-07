@@ -97,17 +97,17 @@ jobs:
           done
 
           # --- cloudflared-unified.yaml ---
+          # Since session 22, tunnel is remotely-managed via Cloudflare API.
+          # Hostname routes are no longer in the YAML — verify remote-config mode instead.
           echo ""
           echo "Checking: infra/k8s/production/cloudflared-unified.yaml"
           CLOUDFLARED="infra/k8s/production/cloudflared-unified.yaml"
-          for hostname in "api.enclii.dev" "app.enclii.dev" "admin.enclii.dev" "auth.madfam.io"; do
-            if grep -q "hostname: $hostname" "$CLOUDFLARED" 2>/dev/null; then
-              echo "  ✅ hostname: $hostname"
-            else
-              echo "  ❌ MISSING ROUTE: $hostname"
-              FAILED=1
-            fi
-          done
+          if grep -q "remote config" "$CLOUDFLARED" 2>/dev/null || grep -q "tunnel run" "$CLOUDFLARED" 2>/dev/null; then
+            echo "  ✅ Tunnel is remotely-managed (routes via Cloudflare API)"
+          else
+            echo "  ❌ Tunnel config missing remote-management indicators"
+            FAILED=1
+          fi
 
           # --- roundhouse.yaml ---
           echo ""
