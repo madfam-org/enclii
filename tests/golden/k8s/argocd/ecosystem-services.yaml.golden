@@ -16,6 +16,7 @@ metadata:
     # "could not get creds for repo '': unknown repository type"
     # These services change infrequently; use CI deploy workflows instead.
     # See: PR #38 (janua thrashing fix) for similar rationale.
+    notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

@@ -33,10 +33,10 @@ configMapGenerator:
 images:
 - name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-  digest: sha256:12767a4de9026d2caca5b6620fdf389fe10c8b0d72a7b5349192231e0989c743
+  digest: sha256:c0999358ef84934809bb5bca71502466c8762706d07c1ef0352d0b564ca088c3
 - name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  digest: sha256:13caac15fb1681352a448f10746c0820332279034564246290ee560f6a1d7bf4
+  digest: sha256:6736169e325206aec42131e9c11acd642d0d51a4040c24c307a0d1dcf9cf549b
 - name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
   digest: sha256:b38b92522ca2cbbb1faf343babe410a2496a81c1ec90eb5f3d3f310b33d35c1d
@@ -45,7 +45,7 @@ images:
   digest: sha256:cc0b55ca096a72ce0033bf822566da4e4f2ae934079ad11be1b0ab40637e0cf1
 - name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-  digest: sha256:b660daf086efcb335ce3c13a7fc04a37a49def92a3a6b96380d36cc2e9866627
+  digest: sha256:3263a94baa4b18d3baa4f455e9c78efcb394b65c3753b259c0d22d648d022965
 - name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
   digest: sha256:4e8d48545f9899e0cc89bd7b2fc9a2531e1121e35523a73f01e6f7cc4d42c27a
