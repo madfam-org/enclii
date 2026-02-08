@@ -70,3 +70,7 @@ spec:
           jsonPointers:
             - /data
             - /stringData
+        # ArgoCD label tracking sets app.kubernetes.io/instance to the app
+        # name, conflicting with kustomize commonLabels. Ignore on all types.
+        - jsonPointers:
+            - /metadata/labels/app.kubernetes.io~1instance

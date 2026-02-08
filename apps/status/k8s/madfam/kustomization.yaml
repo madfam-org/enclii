@@ -79,6 +79,18 @@ patches:
       kind: Service
       name: status
 
+  # Update PDB name and selector
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: status-pdb-madfam
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: status-madfam
+    target:
+      kind: PodDisruptionBudget
+      name: status-pdb
+
 images:
   - name: ghcr.io/madfam-org/enclii-status
     newName: ghcr.io/madfam-org/enclii/enclii-status
