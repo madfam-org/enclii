@@ -55,22 +55,29 @@ spec:
           - CreateNamespace=true
           - RespectIgnoreDifferences=true
       ignoreDifferences:
+        # ArgoCD tracking label conflicts with kustomize commonLabels
         - group: apps
           kind: Deployment
           jsonPointers:
             - /spec/replicas
             - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
             - /metadata/annotations/kyverno.io~1verify-images
+            - /metadata/labels/app.kubernetes.io~1instance
         - group: ""
           kind: Service
           jsonPointers:
             - /spec/clusterIP
+            - /metadata/labels/app.kubernetes.io~1instance
+        - group: ""
+          kind: ConfigMap
+          jsonPointers:
+            - /metadata/labels/app.kubernetes.io~1instance
+        - group: policy
+          kind: PodDisruptionBudget
+          jsonPointers:
+            - /metadata/labels/app.kubernetes.io~1instance
         - group: ""
           kind: Secret
           jsonPointers:
             - /data
             - /stringData
-        # ArgoCD label tracking sets app.kubernetes.io/instance to the app
-        # name, conflicting with kustomize commonLabels. Ignore on all types.
-        - jsonPointers:
-            - /metadata/labels/app.kubernetes.io~1instance
