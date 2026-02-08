@@ -60,6 +60,7 @@ spec:
           jsonPointers:
             - /spec/replicas
             - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
+            - /metadata/annotations/kyverno.io~1verify-images
         - group: ""
           kind: Service
           jsonPointers:
