@@ -3,7 +3,7 @@
 **Cluster:** 2-node k3s (foundry-core + foundry-builder-01)
 **RPO:** 24 hours (daily PostgreSQL backup to R2)
 **RTO:** 2 hours (manual rebuild)
-**Last Updated:** Feb 3, 2026 (Wave 13 Audit)
+**Last Updated:** Feb 23, 2026 (Production Audit — Session 37)
 **Last Tested:** _Update after each drill_
 
 ---
@@ -28,7 +28,7 @@
 
 ### Prerequisites
 - `kubectl` access to cluster
-- R2 credentials in `r2-backup-credentials` secret
+- R2 credentials in `r2-backup-credentials` secret (data namespace)
 
 ### Steps
 

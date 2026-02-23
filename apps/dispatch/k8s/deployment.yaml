@@ -37,8 +37,8 @@ spec:
           type: RuntimeDefault
       containers:
       - name: dispatch
-        image: ghcr.io/madfam-org/enclii/dispatch:latest
-        imagePullPolicy: Always
+        image: dispatch
+        imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
           privileged: false

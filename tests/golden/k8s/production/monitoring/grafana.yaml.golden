@@ -12,8 +12,8 @@ metadata:
 data:
   grafana.ini: |
     [server]
-    root_url = https://grafana.enclii.dev
-    domain = grafana.enclii.dev
+    root_url = http://localhost:3000
+    domain = localhost
 
     [security]
     admin_user = admin

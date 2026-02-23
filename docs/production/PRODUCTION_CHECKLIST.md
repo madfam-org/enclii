@@ -88,9 +88,12 @@ tags: [production, deployment, checklist, operations]
 - [x] Zero exposed node ports (all via Cloudflare Tunnel)
 - [x] NetworkPolicies for enclii namespace
 - [x] NetworkPolicies for dhanam namespace (default-deny + allow)
+- [x] NetworkPolicies for janua namespace (default-deny + allow)
+- [x] NetworkPolicies for tezca namespace (default-deny + allow)
+- [x] NetworkPolicies for data namespace (default-deny + allow)
+- [x] NetworkPolicies for status namespace (default-deny + allow)
 - [x] Cloudflare Zero Trust ingress
-- [ ] NetworkPolicies for janua namespace
-- [ ] Default-deny for all namespaces
+- [ ] Default-deny for all remaining namespaces
 
 ### Image Security
 - [x] Kyverno `restrict-image-registries` in **Enforce** mode
@@ -123,13 +126,15 @@ tags: [production, deployment, checklist, operations]
 - [x] pg_dumpall (all databases: enclii, janua, dhanam)
 - [x] 30-day retention with automatic cleanup
 - [x] Manual backup Job template available
-- [ ] Tested restore from R2 backup
-- [ ] Automated restore drill CronJob
+- [x] Restore drill Job configured (data namespace)
+- [x] Backup-verify weekly CronJob (Sundays 4 AM UTC)
 
 ### Longhorn Volumes
 - [x] Backup target: s3://enclii-backups@auto/
 - [x] Credential secret configured
-- [ ] Recurring volume backup schedule
+- [x] Daily local snapshots (retain 7)
+- [x] Daily R2 backups (retain 7)
+- [x] Weekly R2 backups (retain 4)
 - [ ] Tested volume restore
 
 ---
@@ -140,8 +145,11 @@ tags: [production, deployment, checklist, operations]
 - [x] Prometheus deployed (monitoring namespace)
 - [x] Grafana deployed
 - [x] AlertManager deployed
-- [x] Client SLO recording rules
-- [ ] Alerting rules for disk, CPU, memory
+- [x] Client SLO recording rules (ConfigMap-based)
+- [x] Node-exporter DaemonSet (CPU, memory, disk metrics)
+- [x] Redis-exporter (data namespace)
+- [x] Postgres-exporter (data namespace)
+- [x] Alerting rules for disk, CPU, memory (node-exporter based)
 - [ ] PagerDuty/Opsgenie integration
 
 ### Endpoints (12/12 Healthy)

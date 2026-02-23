@@ -192,29 +192,41 @@ data:
             regex: http
         metrics_path: /metrics
 
-      # Redis metrics (if redis-exporter is deployed)
+      # Node exporter metrics (host CPU, memory, disk, network)
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - monitoring
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+            action: keep
+            regex: node-exporter
+
+      # Redis metrics (redis-exporter in data namespace)
       - job_name: 'redis'
         kubernetes_sd_configs:
           - role: endpoints
             namespaces:
               names:
-                - enclii
+                - data
         relabel_configs:
-          - source_labels: [__meta_kubernetes_service_label_app]
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
             action: keep
-            regex: redis
+            regex: redis-exporter
 
-      # PostgreSQL metrics (if postgres-exporter is deployed)
+      # PostgreSQL metrics (postgres-exporter in data namespace)
       - job_name: 'postgres'
         kubernetes_sd_configs:
           - role: endpoints
             namespaces:
               names:
-                - enclii
+                - data
         relabel_configs:
-          - source_labels: [__meta_kubernetes_service_label_app]
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
             action: keep
-            regex: postgres
+            regex: postgres-exporter
 
       # Roundhouse Build Worker metrics
       - job_name: 'roundhouse'
@@ -669,6 +681,80 @@ data:
             annotations:
               summary: "HPA at maximum replicas"
               description: "HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} has been at max replicas for 30 minutes."
+
+  client-slo-rules.yml: |
+    groups:
+      - name: client-slo
+        interval: 30s
+        rules:
+          - alert: ClientServiceErrorRate
+            expr: |
+              (
+                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"tenant-.*"}[5m]))
+                /
+                sum by (namespace) (rate(http_requests_total{namespace=~"tenant-.*"}[5m]))
+              ) > 0.01
+            for: 5m
+            labels:
+              severity: warning
+              category: client-slo
+            annotations:
+              summary: "High error rate in tenant namespace {{ $labels.namespace }}"
+              description: "Error rate {{ $value | humanizePercentage }} exceeds 1% threshold for 5m."
+
+          - alert: ClientServiceLatencyP95
+            expr: |
+              histogram_quantile(0.95,
+                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"tenant-.*"}[5m]))
+              ) > 2
+            for: 5m
+            labels:
+              severity: warning
+              category: client-slo
+            annotations:
+              summary: "High P95 latency in tenant namespace {{ $labels.namespace }}"
+              description: "P95 latency {{ $value | humanizeDuration }} exceeds 2s threshold."
+
+          - alert: ClientPodRestartRate
+            expr: |
+              sum by (namespace) (
+                increase(kube_pod_container_status_restarts_total{namespace=~"tenant-.*"}[1h])
+              ) > 3
+            for: 5m
+            labels:
+              severity: warning
+              category: client-slo
+            annotations:
+              summary: "Excessive pod restarts in {{ $labels.namespace }}"
+              description: "{{ $value }} restarts in the last hour (threshold: 3)."
+
+          - alert: ClientDeploymentUnavailable
+            expr: |
+              kube_deployment_status_replicas_available{namespace=~"tenant-.*"}
+              <
+              kube_deployment_spec_replicas{namespace=~"tenant-.*"}
+            for: 5m
+            labels:
+              severity: critical
+              category: client-slo
+            annotations:
+              summary: "Deployment {{ $labels.deployment }} unavailable in {{ $labels.namespace }}"
+              description: "Available replicas ({{ $value }}) < desired for 5m."
+
+          - alert: TenantResourceQuotaNearLimit
+            expr: |
+              (
+                kube_resourcequota{type="used", namespace=~"tenant-.*"}
+                /
+                kube_resourcequota{type="hard", namespace=~"tenant-.*"}
+              ) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+              category: client-slo
+            annotations:
+              summary: "Quota {{ $labels.resource }} near limit in {{ $labels.namespace }}"
+              description: "Usage at {{ $value | humanizePercentage }} of quota."
 ---
 # Prometheus PVC
 apiVersion: v1
@@ -736,7 +822,6 @@ spec:
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
             - "--web.enable-lifecycle"
-            - "--web.enable-admin-api"
           ports:
             - containerPort: 9090
               name: http

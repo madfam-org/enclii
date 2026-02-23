@@ -1,19 +1,19 @@
 ---
 # Postgres Backup Restore Drill
 # Non-destructive: creates a temporary database, restores into it, validates, then drops it.
-# Never touches the production 'enclii_dev' database.
+# Never touches production databases.
 #
 # Usage:
 #   kubectl apply -f postgres-restore-drill.yaml
-#   kubectl logs -n enclii job/postgres-restore-drill -f
-#   kubectl delete job postgres-restore-drill -n enclii
+#   kubectl logs -n data job/postgres-restore-drill -f
+#   kubectl delete job postgres-restore-drill -n data
 #
 # Or use the wrapper script: ./scripts/backup-restore-drill.sh
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: postgres-restore-drill
-  namespace: enclii
+  namespace: data
   labels:
     app.kubernetes.io/name: postgres-restore-drill
     app.kubernetes.io/component: backup-validation
@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: restore-drill
-          image: postgres:15
+          image: docker.io/amazon/aws-cli:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -44,11 +44,14 @@ spec:
                 - ALL
           env:
             - name: PGHOST
-              value: "postgres"
+              value: "postgres.data.svc.cluster.local"
             - name: PGPORT
               value: "5432"
             - name: PGUSER
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
@@ -57,24 +60,22 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: backup-credentials
-                  key: aws-access-key-id
+                  name: r2-backup-credentials
+                  key: access-key-id
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: backup-credentials
-                  key: aws-secret-access-key
-            - name: R2_ENDPOINT
+                  name: r2-backup-credentials
+                  key: secret-access-key
+            - name: R2_ACCOUNT_ID
               valueFrom:
                 secretKeyRef:
-                  name: backup-credentials
-                  key: r2-endpoint
+                  name: r2-backup-credentials
+                  key: account-id
             - name: R2_BUCKET
-              valueFrom:
-                secretKeyRef:
-                  name: backup-credentials
-                  key: r2-bucket
-                  optional: true
+              value: "enclii-backups"
+            - name: AWS_DEFAULT_REGION
+              value: "auto"
           command:
             - /bin/bash
             - -euo
@@ -82,13 +83,15 @@ spec:
             - -c
             - |
               DRILL_DB="enclii_restore_test"
-              BUCKET="${R2_BUCKET:-enclii-backups}"
+              BUCKET="${R2_BUCKET}"
+              R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
               echo "=== Postgres Restore Drill — $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+
+              # Install psql (aws-cli image is Amazon Linux)
+              yum install -y -q postgresql15 2>/dev/null || yum install -y -q postgresql 2>/dev/null
 
               # Step 1: Find latest backup
               echo "[1/5] Finding latest backup in R2..."
-              # Install awscli (minimal)
-              apt-get update -qq && apt-get install -y -qq awscli >/dev/null 2>&1
               LATEST=$(aws s3 ls "s3://${BUCKET}/postgres/" --endpoint-url "${R2_ENDPOINT}" | sort | tail -1 | awk '{print $4}')
               if [ -z "$LATEST" ]; then
                 echo "FAIL: No backups found in s3://${BUCKET}/postgres/"

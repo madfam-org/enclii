@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOB_MANIFEST="${SCRIPT_DIR}/../infra/k8s/production/backup/postgres-restore-drill.yaml"
-NAMESPACE="enclii"
+NAMESPACE="data"
 JOB_NAME="postgres-restore-drill"
 
 echo "=== Postgres Backup Restore Drill ==="

@@ -730,12 +730,18 @@ jobs:
 
             FULL_IMAGE="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
             # Use buildx imagetools which correctly reports the OCI index digest
-            DIGEST=$(docker buildx imagetools inspect "$FULL_IMAGE" 2>/dev/null | awk '/^Digest:/{print $2; exit}')
-            if [ -z "$DIGEST" ]; then
-              echo "Digest not available yet for ${IMAGE}, retrying in 10s..."
-              sleep 10
+            # Exponential backoff: 5s, 10s, 20s, 30s (GHCR propagation can take 30s+)
+            DIGEST=""
+            for WAIT in 0 5 10 20 30; do
+              if [ "$WAIT" -gt 0 ]; then
+                echo "Digest not available yet for ${IMAGE}, retrying in ${WAIT}s..."
+                sleep "$WAIT"
+              fi
               DIGEST=$(docker buildx imagetools inspect "$FULL_IMAGE" 2>/dev/null | awk '/^Digest:/{print $2; exit}')
-            fi
+              if [ -n "$DIGEST" ]; then
+                break
+              fi
+            done
             if [ -n "$DIGEST" ]; then
               echo "Updating ${NAME} in ${KUSTOMIZATION}: digest=${DIGEST}"
               (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
