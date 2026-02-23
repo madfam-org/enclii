@@ -37,6 +37,12 @@ spec:
           image: docker.io/oliver006/redis_exporter:v1.58.0
           args:
             - "--redis.addr=redis://redis.data.svc.cluster.local:6379"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false

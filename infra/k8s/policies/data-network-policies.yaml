@@ -37,7 +37,7 @@ spec:
   policyTypes:
     - Egress
 
-# Allow enclii, janua, dhanam, tezca -> PostgreSQL (port 5432)
+# Allow enclii, janua, dhanam, tezca, data (exporters/backups) -> PostgreSQL (port 5432)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -69,7 +69,7 @@ spec:
         - protocol: TCP
           port: 5432
 
-# Allow enclii, janua -> Redis (port 6379)
+# Allow enclii, janua, data (exporters) -> Redis (port 6379)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -94,6 +94,7 @@ spec:
                 values:
                   - enclii
                   - janua
+                  - data
       ports:
         - protocol: TCP
           port: 6379
