@@ -51,6 +51,11 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: external-secrets
+  # Scrape targets in data (redis-exporter, postgres-exporter)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: data
   # Kubernetes API server
   - to: []
     ports:

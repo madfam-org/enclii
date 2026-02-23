@@ -40,7 +40,8 @@ spec:
         prometheus.io/port: "9100"
     spec:
       serviceAccountName: node-exporter
-      hostNetwork: true
+      # NOTE: hostNetwork removed — Hetzner external IPs are unreachable from pod network.
+      # Host metrics are still collected via volume mounts (/proc, /sys, /).
       hostPID: true
       # Tolerate builder node taint so we monitor all nodes
       tolerations:
@@ -73,7 +74,6 @@ spec:
                 - ALL
           ports:
             - containerPort: 9100
-              hostPort: 9100
               name: metrics
               protocol: TCP
           resources:
@@ -119,7 +119,6 @@ metadata:
     prometheus.io/port: "9100"
 spec:
   type: ClusterIP
-  clusterIP: None
   selector:
     app.kubernetes.io/name: node-exporter
   ports:
