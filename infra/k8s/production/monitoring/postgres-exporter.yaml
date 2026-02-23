@@ -49,6 +49,7 @@ spec:
             - name: DATA_SOURCE_URI
               value: "postgres.data.svc.cluster.local:5432/postgres?sslmode=disable"
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:

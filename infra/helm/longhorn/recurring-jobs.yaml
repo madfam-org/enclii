@@ -15,7 +15,7 @@
 
 # Daily local snapshots — 02:00 UTC, retain 7 days
 # Enables quick rollback of postgres-data, prometheus-data, redis-data
-apiVersion: longhorn.io/v1beta2
+apiVersion: longhorn.io/v1beta1
 kind: RecurringJob
 metadata:
   name: daily-snapshot
@@ -37,7 +37,7 @@ spec:
 ---
 # Weekly R2 backup — Sundays at 04:00 UTC, retain 4 weeks
 # Supplements the daily backup (7 retention) with longer-term copies
-apiVersion: longhorn.io/v1beta2
+apiVersion: longhorn.io/v1beta1
 kind: RecurringJob
 metadata:
   name: weekly-s3-backup

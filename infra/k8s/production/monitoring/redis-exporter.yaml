@@ -38,6 +38,7 @@ spec:
           args:
             - "--redis.addr=redis://redis.data.svc.cluster.local:6379"
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
