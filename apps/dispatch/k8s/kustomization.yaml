@@ -8,4 +8,4 @@ resources:
 images:
   - name: ghcr.io/madfam-org/enclii/dispatch
     newName: ghcr.io/madfam-org/enclii/dispatch
-    digest: sha256:5ca9e0fe567a18eada41aeccd47cdff5dea1d7f7c574e1b6c1da394befb077e6
+    digest: sha256:a3c24f75a2154f8face20722fd932a4593f384232a1aee093a6ecfd4dd28ffd4
