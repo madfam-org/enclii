@@ -197,6 +197,16 @@ func (r *LifecycleEventRepository) GetLatestByBranch(ctx context.Context, repoFu
 	return &events[0], nil
 }
 
+// UpdateMetadata updates the metadata JSON field for an existing lifecycle event
+func (r *LifecycleEventRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]interface{}) error {
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE deployment_lifecycle_events SET metadata = $1 WHERE id = $2`, metadataJSON, id)
+	return err
+}
+
 // scanEvents is a shared helper to scan event rows
 func (r *LifecycleEventRepository) scanEvents(ctx context.Context, query string, args ...interface{}) ([]types.DeploymentLifecycleEvent, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)

@@ -78,8 +78,8 @@ func (h *Handler) LifecycleEventCallback(c *gin.Context) {
 		logging.String("branch", req.Branch),
 		logging.String("commit", req.CommitSHA))
 
-	// Create deployment records for pipeline-visible events (best-effort, non-blocking)
-	go h.createDeploymentFromLifecycleEvent(req, event)
+	// Create deployment records for pipeline-visible events (synchronous, best-effort)
+	h.createDeploymentFromLifecycleEvent(ctx, req, event)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "recorded",
@@ -255,9 +255,8 @@ func (h *Handler) GetLifecycleEvents(c *gin.Context) {
 
 // createDeploymentFromLifecycleEvent creates a Deployment record from CI lifecycle events
 // so that image_pushed shows as "deploying" and build_failed shows as "failed" in the UI.
-// Runs async and best-effort — errors are logged but don't affect the callback response.
-func (h *Handler) createDeploymentFromLifecycleEvent(req types.LifecycleEventCreate, event *types.DeploymentLifecycleEvent) {
-	ctx := context.Background()
+// Runs synchronously — errors are logged but don't affect the callback response.
+func (h *Handler) createDeploymentFromLifecycleEvent(ctx context.Context, req types.LifecycleEventCreate, event *types.DeploymentLifecycleEvent) {
 
 	// Only handle events that should create deployment records
 	var deployStatus types.DeploymentStatus
@@ -313,9 +312,17 @@ func (h *Handler) createDeploymentFromLifecycleEvent(req types.LifecycleEventCre
 		}
 	}
 	if service == nil {
-		h.logger.Debug(ctx, "No matching service for lifecycle event deployment",
+		h.logger.Warn(ctx, "No matching service for lifecycle event deployment",
 			logging.String("service_name", serviceName),
+			logging.String("candidates", strings.Join(candidates, ",")),
 			logging.String("event_type", req.EventType))
+		// Track resolution failure in event metadata for debugging
+		if event.Metadata == nil {
+			event.Metadata = make(map[string]interface{})
+		}
+		event.Metadata["service_resolution_failed"] = true
+		event.Metadata["service_candidates"] = candidates
+		_ = h.repos.LifecycleEvents.UpdateMetadata(ctx, event.ID, event.Metadata)
 		return
 	}
 

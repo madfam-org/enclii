@@ -25,6 +25,7 @@ type ArgocdSyncRequest struct {
 	Images       []string `json:"images"`
 	StartedAt    string   `json:"started_at"`
 	FinishedAt   string   `json:"finished_at"`
+	ErrorMessage string   `json:"error_message"`
 }
 
 // ArgocdSyncCallback handles the callback from ArgoCD when a sync completes
@@ -56,6 +57,11 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		logging.String("health_status", req.HealthStatus),
 		logging.String("revision", req.Revision),
 		logging.Int("image_count", len(req.Images)))
+
+	// Detect sync failure/degradation
+	isSyncFailure := req.SyncStatus == "OutOfSync" || req.SyncStatus == "Unknown" ||
+		req.SyncStatus == "Error" || req.SyncStatus == "Failed" ||
+		req.HealthStatus == "Degraded" || req.HealthStatus == "Missing"
 
 	deploymentsCreated := 0
 
@@ -132,13 +138,29 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 				logging.Error("error", findErr))
 		}
 
-		// Fallback: digest-commit CI job creates a new commit (B) after the original push (A).
-		// CI lifecycle events use SHA=A, but ArgoCD syncs with SHA=B. Try finding any recent
-		// deploying deployment for this service within a 30-minute window.
+		// Fallback 1: digest-commit CI job creates a new commit (B) after the original push (A).
+		// CI lifecycle events use SHA=A, but ArgoCD syncs with SHA=B. Try matching via
+		// the release's git_sha (which stores the original push SHA).
 		if existingDeployment == nil && findErr == nil {
-			existingDeployment, findErr = h.repos.Deployments.FindRecentDeployingByService(ctx, service.ID, 30*time.Minute)
+			existingDeployment, findErr = h.repos.Deployments.FindDeployingByServiceAndReleaseSHA(ctx, service.ID, release.GitSHA)
 			if findErr != nil {
-				h.logger.Warn(ctx, "Error in fallback deploying deployment lookup",
+				h.logger.Warn(ctx, "Error in release-SHA deploying deployment lookup",
+					logging.String("service_name", serviceName),
+					logging.Error("error", findErr))
+			}
+			if existingDeployment != nil {
+				h.logger.Info(ctx, "Found deploying deployment via release-SHA lookup",
+					logging.String("service_name", serviceName),
+					logging.String("release_git_sha", release.GitSHA),
+					logging.String("deployment_id", existingDeployment.ID.String()))
+			}
+		}
+
+		// Fallback 2: Time-window fallback (last resort — tightened to 15 minutes)
+		if existingDeployment == nil && findErr == nil {
+			existingDeployment, findErr = h.repos.Deployments.FindRecentDeployingByService(ctx, service.ID, 15*time.Minute)
+			if findErr != nil {
+				h.logger.Warn(ctx, "Error in time-window deploying deployment lookup",
 					logging.String("service_name", serviceName),
 					logging.Error("error", findErr))
 			}
@@ -150,21 +172,42 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			}
 		}
 
+		// Determine deployment status based on sync result
+		var targetStatus types.DeploymentStatus
+		var targetHealth types.HealthStatus
+		if isSyncFailure {
+			targetStatus = types.DeploymentStatusFailed
+			targetHealth = types.HealthStatusUnhealthy
+		} else {
+			targetStatus = types.DeploymentStatusRunning
+			targetHealth = types.HealthStatusHealthy
+		}
+
 		var deployment *types.Deployment
 		if existingDeployment != nil {
-			// Update the existing deploying record to running/healthy
-			if err := h.repos.Deployments.UpdateStatus(existingDeployment.ID, types.DeploymentStatusRunning, types.HealthStatusHealthy); err != nil {
-				h.logger.Error(ctx, "Failed to update deploying deployment from ArgoCD sync",
-					logging.String("service_name", serviceName),
-					logging.Error("db_error", err))
-				continue
+			// Update the existing deploying record
+			if isSyncFailure && req.ErrorMessage != "" {
+				if err := h.repos.Deployments.UpdateStatusWithError(existingDeployment.ID, targetStatus, targetHealth, &req.ErrorMessage); err != nil {
+					h.logger.Error(ctx, "Failed to update deploying deployment from ArgoCD sync",
+						logging.String("service_name", serviceName),
+						logging.Error("db_error", err))
+					continue
+				}
+			} else {
+				if err := h.repos.Deployments.UpdateStatus(existingDeployment.ID, targetStatus, targetHealth); err != nil {
+					h.logger.Error(ctx, "Failed to update deploying deployment from ArgoCD sync",
+						logging.String("service_name", serviceName),
+						logging.Error("db_error", err))
+					continue
+				}
 			}
 			deployment = existingDeployment
-			deployment.Status = types.DeploymentStatusRunning
-			deployment.Health = types.HealthStatusHealthy
-			h.logger.Info(ctx, "Updated existing deploying deployment to running",
+			deployment.Status = targetStatus
+			deployment.Health = targetHealth
+			h.logger.Info(ctx, "Updated existing deploying deployment",
 				logging.String("deployment_id", deployment.ID.String()),
-				logging.String("service_name", serviceName))
+				logging.String("service_name", serviceName),
+				logging.String("status", string(targetStatus)))
 		} else {
 			// Create new deployment record (backward compatible — no prior CI event)
 			deployment = &types.Deployment{
@@ -172,10 +215,13 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 				ReleaseID:     release.ID,
 				EnvironmentID: env.ID,
 				Replicas:      1,
-				Status:        types.DeploymentStatusRunning,
-				Health:        types.HealthStatusHealthy,
+				Status:        targetStatus,
+				Health:        targetHealth,
 				CreatedAt:     time.Now(),
 				UpdatedAt:     time.Now(),
+			}
+			if isSyncFailure && req.ErrorMessage != "" {
+				deployment.ErrorMessage = &req.ErrorMessage
 			}
 
 			if err := h.repos.Deployments.Create(deployment); err != nil {
@@ -372,8 +418,14 @@ func repoFullNameFromImage(imageURI string) string {
 // HealthStatus refines it: "Degraded" is the only negative terminal state.
 func argocdEventType(syncStatus, healthStatus string) string {
 	switch {
-	case syncStatus == "Synced" && healthStatus == "Degraded":
+	case syncStatus == "Error" || syncStatus == "Failed":
+		return types.LifecycleDeployFailed
+	case healthStatus == "Degraded":
 		return types.LifecycleDeployDegraded
+	case healthStatus == "Missing":
+		return types.LifecycleDeployFailed
+	case syncStatus == "Synced" && healthStatus == "Healthy":
+		return types.LifecycleDeployHealthy
 	case syncStatus == "Synced":
 		return types.LifecycleDeployHealthy
 	default:
