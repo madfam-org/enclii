@@ -15,7 +15,7 @@ export function AuthErrorBanner() {
   }
 
   return (
-    <div className="bg-destructive/10 border-b border-destructive/30">
+    <div className="fixed top-0 left-0 right-0 z-[60] bg-destructive/10 border-b border-destructive/30 shadow-sm animate-in slide-in-from-top duration-300">
       <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">

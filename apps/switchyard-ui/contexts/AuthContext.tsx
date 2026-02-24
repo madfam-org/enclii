@@ -179,6 +179,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
+    setAuthError(null);
 
     try {
       const response = await apiRequest("/v1/auth/login", {
@@ -223,6 +224,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     name: string
   ): Promise<void> => {
     setIsLoading(true);
+    setAuthError(null);
 
     try {
       const response = await apiRequest("/v1/auth/register", {
@@ -273,6 +275,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (typeof window !== "undefined") {
       localStorage.setItem("auth_return_url", window.location.pathname);
     }
+
+    // Clear stale tokens before redirect so that when the callback page loads,
+    // initAuth() won't find expired tokens and race with storeTokensFromRedirect()
+    storage.clear();
 
     // Redirect to backend OIDC login endpoint
     // The backend will redirect to the OIDC provider (Janua)
