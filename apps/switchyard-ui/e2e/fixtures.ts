@@ -72,10 +72,76 @@ const mockApiResponses = {
   // Silent auth check - returns error to skip silent auth in tests
   '/v1/auth/silent-check': { error: 'oidc_not_enabled', message: 'OIDC authentication is not enabled' },
 
-  // Projects
-  '/v1/projects': { projects: [], count: 0 },
+  // Projects (used by dashboard home page and projects page)
+  '/v1/projects': {
+    projects: [
+      {
+        id: 'proj-1',
+        name: 'Enclii Core',
+        slug: 'enclii-core',
+        description: 'Core platform services',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: 'proj-2',
+        name: 'Docs Site',
+        slug: 'docs-site',
+        description: 'Documentation website',
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+        updated_at: new Date(Date.now() - 3600000).toISOString(),
+      },
+    ],
+    count: 2,
+  },
 
-  // Services
+  // Services per project (home page fetches these per project slug)
+  '/v1/projects/enclii-core/services': {
+    services: [
+      {
+        id: 'svc-1',
+        name: 'switchyard-api',
+        project_id: 'proj-1',
+        git_repo: 'https://github.com/madfam-org/enclii',
+        status: 'running',
+        health: 'healthy',
+        last_deployment: new Date().toISOString(),
+        framework: 'go',
+        last_commit_branch: 'main',
+        last_commit_message: 'fix: resolve deployment tracking',
+      },
+      {
+        id: 'svc-2',
+        name: 'switchyard-ui',
+        project_id: 'proj-1',
+        git_repo: 'https://github.com/madfam-org/enclii',
+        status: 'running',
+        health: 'healthy',
+        last_deployment: new Date().toISOString(),
+        framework: 'nextjs',
+        last_commit_branch: 'main',
+        last_commit_message: 'feat: project-centric dashboard',
+      },
+    ],
+  },
+  '/v1/projects/docs-site/services': {
+    services: [
+      {
+        id: 'svc-3',
+        name: 'docs-site',
+        project_id: 'proj-2',
+        git_repo: 'https://github.com/madfam-org/enclii',
+        status: 'running',
+        health: 'healthy',
+        last_deployment: new Date(Date.now() - 3600000).toISOString(),
+        framework: 'nextjs',
+        last_commit_branch: 'main',
+        last_commit_message: 'docs: update API reference',
+      },
+    ],
+  },
+
+  // Services (global endpoint)
   '/v1/services': { services: [], count: 0 },
 };
 
@@ -242,10 +308,11 @@ export const testIds = {
   themeToggle: 'theme-toggle',
   userMenu: 'user-menu',
 
-  // Dashboard
-  statCard: 'stat-card',
-  recentActivity: 'recent-activity',
-  servicesTable: 'services-table',
+  // Dashboard (project-centric grid)
+  projectCard: 'project-card',
+  projectGrid: 'project-grid',
+  searchInput: 'search-input',
+  sortDropdown: 'sort-dropdown',
   loadingSkeleton: 'loading-skeleton',
 
   // Auth

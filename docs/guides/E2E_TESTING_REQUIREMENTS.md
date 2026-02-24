@@ -55,19 +55,21 @@ test('SSO login via Janua', async ({ page }) => {
 
   // Verify redirect back to dashboard
   await page.waitForURL('https://app.enclii.dev/');
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(/Projects/);
 });
 ```
 
-### 2. Dashboard Tests
+### 2. Dashboard Tests (Project-Centric)
 
 | Test Case | Description | Priority |
 |-----------|-------------|----------|
-| `dashboard/data-loading` | Stats cards load with API data | P0 |
-| `dashboard/recent-activity` | Activity list renders deployments | P1 |
-| `dashboard/services-table` | Services table displays all services | P1 |
-| `dashboard/refresh-action` | Refresh button reloads data | P2 |
-| `dashboard/skeleton-loading` | Loading state shows skeletons | P2 |
+| `dashboard/project-grid` | Project cards load in responsive grid | P0 |
+| `dashboard/search-filter` | Search input filters projects by name | P1 |
+| `dashboard/sort-dropdown` | Sort dropdown reorders project cards | P1 |
+| `dashboard/scope-title` | Page title reflects current scope | P1 |
+| `dashboard/skeleton-loading` | Loading state shows card skeletons | P2 |
+| `dashboard/empty-state` | Empty state with CTA when no projects | P2 |
+| `dashboard/show-more` | Show More button loads additional cards | P2 |
 
 ### 3. Theme Tests
 
@@ -92,9 +94,9 @@ test('dark mode toggle', async ({ page }) => {
   const html = page.locator('html');
   await expect(html).toHaveClass(/dark/);
 
-  // Verify no white backgrounds on stat cards
-  const statCard = page.locator('[data-testid="stat-card"]').first();
-  await expect(statCard).not.toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  // Verify no white backgrounds on project cards
+  const projectCard = page.locator('[class*="Card"]').first();
+  await expect(projectCard).not.toHaveCSS('background-color', 'rgb(255, 255, 255)');
 });
 ```
 

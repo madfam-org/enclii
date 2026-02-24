@@ -1,120 +1,242 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { usePolling } from "@/hooks/use-polling";
 import { POLLING_SLOW } from "@/lib/constants";
+import { apiGet } from "@/lib/api";
+import { useScope } from "@/contexts/ScopeContext";
+import { useTier } from "@/hooks/use-tier";
+import { PricingModal } from "@/components/modals/PricingModal";
+import { Button } from "@/components/ui/button";
+import { Plus, Package, CheckCircle2, Rocket } from "lucide-react";
 import Link from "next/link";
-import { CheckCircle2, AlertTriangle, BarChart3, Clock, RefreshCw } from "lucide-react";
-import { StatCard, StatCardSkeleton } from "@/components/dashboard/stat-card";
+import {
+  ProjectCardCompact,
+  ProjectCardCompactSkeleton,
+  type CompactProject,
+} from "@/components/dashboard/project-card-compact";
+import {
+  ProjectSearchFilter,
+  type SortOption,
+} from "@/components/dashboard/project-search-filter";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
-
-interface DashboardStats {
-  healthy_services: number;
-  deployments_today: number;
-  active_projects: number;
-  avg_deploy_time: string;
-}
-
-interface RecentActivity {
-  id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  status: "success" | "running" | "failed" | "pending";
-  metadata?: any;
-}
-
-interface ServiceOverview {
+interface ApiProject {
   id: string;
   name: string;
-  project_name: string;
-  environment: string;
-  status: "healthy" | "unhealthy" | "unknown";
-  version: string;
-  replicas: string;
+  slug: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }
 
-interface DashboardResponse {
-  stats: DashboardStats;
-  activities: RecentActivity[];
-  services: ServiceOverview[];
+interface ApiService {
+  id: string;
+  name: string;
+  project_id: string;
+  git_repo: string;
+  status: string;
+  health: string;
+  last_deployment: string;
+  domain?: string;
+  framework?: string;
+  last_commit_message?: string;
+  last_commit_branch?: string;
 }
+
+const INITIAL_VISIBLE = 9;
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
-    healthy_services: 0,
-    deployments_today: 0,
-    active_projects: 0,
-    avg_deploy_time: "N/A",
-  });
-  const [activities, setActivities] = useState<RecentActivity[]>([]);
-  const [services, setServices] = useState<ServiceOverview[]>([]);
+  const { currentScope } = useScope();
+  const {
+    requireTier,
+    showUpgradeModal,
+    closeUpgradeModal,
+    blockedAction,
+    upgradeMessage,
+    checkoutUrl,
+    tier,
+  } = useTier();
+
+  const [projects, setProjects] = useState<CompactProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortOption>("updated");
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
-  const fetchDashboardData = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setError(null);
-      const response = await fetch(`${API_BASE_URL}/v1/dashboard/stats`);
+      const data = await apiGet<{ projects: ApiProject[] }>("/v1/projects");
+      const apiProjects = data.projects || [];
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
-      }
+      // Fetch services per project in parallel
+      const serviceResults = await Promise.allSettled(
+        apiProjects.map((p) =>
+          apiGet<{ services: ApiService[] }>(`/v1/projects/${p.slug}/services`),
+        ),
+      );
 
-      const data: DashboardResponse = await response.json();
+      const compactProjects: CompactProject[] = apiProjects.map(
+        (project, i) => {
+          const result = serviceResults[i];
+          const services =
+            result.status === "fulfilled" ? result.value.services || [] : [];
 
-      setStats(data.stats);
-      setActivities(data.activities || []);
-      setServices(data.services || []);
+          const healthyCount = services.filter(
+            (s) => s.health === "healthy",
+          ).length;
+
+          // Derive domain from first service with a domain, or from project slug
+          const domain =
+            services.find((s) => s.domain)?.domain || undefined;
+
+          // Derive framework from first service
+          const framework = services.find((s) => s.framework)?.framework;
+
+          // Derive git repo from first service
+          const gitRepo = services.find((s) => s.git_repo)?.git_repo;
+
+          // Find the most recent deployment info
+          const latestService = services
+            .filter((s) => s.last_deployment)
+            .sort(
+              (a, b) =>
+                new Date(b.last_deployment).getTime() -
+                new Date(a.last_deployment).getTime(),
+            )[0];
+
+          const lastDeployment = latestService
+            ? {
+                timestamp: latestService.last_deployment,
+                status: (latestService.status === "running"
+                  ? "success"
+                  : latestService.status === "failed"
+                    ? "failed"
+                    : latestService.status === "deploying"
+                      ? "building"
+                      : "pending") as
+                  | "success"
+                  | "failed"
+                  | "pending"
+                  | "building",
+                branch: latestService.last_commit_branch || "main",
+                commitMessage:
+                  latestService.last_commit_message || undefined,
+              }
+            : undefined;
+
+          return {
+            id: project.id,
+            name: project.name,
+            slug: project.slug,
+            description: project.description,
+            framework,
+            gitRepo,
+            domain,
+            lastDeployment,
+            serviceCount: services.length,
+            healthyCount,
+          };
+        },
+      );
+
+      setProjects(compactProjects);
       setLoading(false);
     } catch (err) {
-      console.error("Failed to fetch dashboard data:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch dashboard data",
-      );
+      console.error("Failed to fetch projects:", err);
+      setError(err instanceof Error ? err.message : "Failed to load projects");
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
   }, []);
 
-  usePolling(fetchDashboardData, POLLING_SLOW);
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
-  const formatTimeAgo = (timestamp: string) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
+  usePolling(fetchProjects, POLLING_SLOW);
 
-    if (diffInSeconds < 60) {
-      return `${diffInSeconds} seconds ago`;
-    } else if (diffInSeconds < 3600) {
-      const minutes = Math.floor(diffInSeconds / 60);
-      return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
-    } else if (diffInSeconds < 86400) {
-      const hours = Math.floor(diffInSeconds / 3600);
-      return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-    } else {
-      const days = Math.floor(diffInSeconds / 86400);
-      return `${days} day${days > 1 ? "s" : ""} ago`;
+  // Filter and sort
+  const filteredProjects = useMemo(() => {
+    let result = projects;
+
+    // Search
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.slug.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q),
+      );
     }
+
+    // Sort
+    switch (sort) {
+      case "name-asc":
+        result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "name-desc":
+        result = [...result].sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case "newest":
+        // Projects are already sorted by created_at desc from API, but we can reverse for "updated"
+        break;
+      case "updated":
+      default:
+        // Sort by last deployment timestamp desc, projects without deployments last
+        result = [...result].sort((a, b) => {
+          const aTime = a.lastDeployment?.timestamp
+            ? new Date(a.lastDeployment.timestamp).getTime()
+            : 0;
+          const bTime = b.lastDeployment?.timestamp
+            ? new Date(b.lastDeployment.timestamp).getTime()
+            : 0;
+          return bTime - aTime;
+        });
+        break;
+    }
+
+    return result;
+  }, [projects, search, sort]);
+
+  const visibleProjects = filteredProjects.slice(0, visibleCount);
+  const hasMore = filteredProjects.length > visibleCount;
+
+  const handleCreateProjectClick = () => {
+    if (!requireTier("project", { currentProjectCount: projects.length })) {
+      return;
+    }
+    // Navigate to projects page with create intent
+    window.location.href = "/projects?create=true";
   };
+
+  // Inline stats
+  const totalServices = projects.reduce(
+    (sum, p) => sum + (p.serviceCount || 0),
+    0,
+  );
+  const totalHealthy = projects.reduce(
+    (sum, p) => sum + (p.healthyCount || 0),
+    0,
+  );
+
+  const scopeName = currentScope?.name || "Your";
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="h-8 bg-muted rounded w-1/4 mb-8 animate-pulse"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {[1, 2, 3, 4].map((i) => (
-              <StatCardSkeleton key={i} />
-            ))}
+          <div className="bg-muted mb-2 h-8 w-1/3 animate-pulse rounded" />
+          <div className="bg-muted mb-6 h-4 w-1/4 animate-pulse rounded" />
+          <div className="mb-6 flex items-center gap-3">
+            <div className="bg-muted h-10 w-64 animate-pulse rounded" />
+            <div className="bg-muted h-10 w-40 animate-pulse rounded" />
           </div>
-          <div className="space-y-6">
-            <div className="h-64 bg-muted rounded animate-pulse"></div>
-            <div className="h-64 bg-muted rounded animate-pulse"></div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <ProjectCardCompactSkeleton key={i} />
+            ))}
           </div>
         </div>
       </div>
@@ -123,226 +245,130 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-destructive mb-2">
+      <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+        <div className="bg-destructive/10 border-destructive/20 rounded-lg border p-6">
+          <h2 className="text-destructive mb-2 text-lg font-semibold">
             Error Loading Dashboard
           </h2>
           <p className="text-destructive/80 mb-4">{error}</p>
-          <button
-            onClick={fetchDashboardData}
-            className="inline-flex items-center px-4 py-2 border border-destructive/30 rounded-md shadow-sm text-sm font-medium text-destructive bg-background hover:bg-destructive/10"
-          >
+          <Button variant="outline" onClick={fetchProjects}>
             Try Again
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <button
-            onClick={fetchDashboardData}
-            className="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-accent"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </button>
-        </div>
-
-        {/* Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            title="Healthy Services"
-            value={stats.healthy_services}
-            icon={CheckCircle2}
-            variant="success"
-          />
-          <StatCard
-            title="Deployments Today"
-            value={stats.deployments_today}
-            icon={AlertTriangle}
-            variant="warning"
-          />
-          <StatCard
-            title="Active Projects"
-            value={stats.active_projects}
-            icon={BarChart3}
-            variant="info"
-          />
-          <StatCard
-            title="Avg Deploy Time"
-            value={stats.avg_deploy_time}
-            icon={Clock}
-            variant="neutral"
-          />
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-card shadow overflow-hidden sm:rounded-md mb-8 border border-border">
-          <div className="px-4 py-5 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-foreground">
-              Recent Activity
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Latest deployments and system events
-            </p>
-          </div>
-          <ul className="divide-y divide-border">
-            {activities.length === 0 ? (
-              <li className="px-4 py-8 text-center text-muted-foreground">
-                No recent activity
-              </li>
-            ) : (
-              activities.map((activity) => (
-                <li key={activity.id} className="px-4 py-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div
-                        className={`w-2 h-2 rounded-full mr-3 ${
-                          activity.status === "success"
-                            ? "bg-status-success"
-                            : activity.status === "running"
-                              ? "bg-status-info"
-                              : activity.status === "failed"
-                                ? "bg-status-error"
-                                : "bg-status-warning"
-                        }`}
-                      ></div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {activity.message}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {activity.metadata?.version ||
-                            activity.metadata?.environment ||
-                            ""}{" "}
-                          • {formatTimeAgo(activity.timestamp)}
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        activity.status === "success"
-                          ? "bg-status-success-muted text-status-success-foreground"
-                          : activity.status === "running"
-                            ? "bg-status-info-muted text-status-info-foreground"
-                            : activity.status === "failed"
-                              ? "bg-status-error-muted text-status-error-foreground"
-                              : "bg-status-warning-muted text-status-warning-foreground"
-                      }`}
-                    >
-                      {activity.status.charAt(0).toUpperCase() +
-                        activity.status.slice(1)}
-                    </span>
-                  </div>
-                </li>
-              ))
+        {/* Header */}
+        <div className="mb-1 flex items-start justify-between">
+          <div>
+            <h1 className="text-foreground text-2xl font-bold">
+              {scopeName}&apos;s Projects
+            </h1>
+            {projects.length > 0 && (
+              <p className="text-muted-foreground mt-1 flex items-center gap-3 text-sm">
+                <span className="flex items-center gap-1">
+                  <Package className="h-3.5 w-3.5" />
+                  {projects.length} project{projects.length !== 1 ? "s" : ""}
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {totalHealthy}/{totalServices} services healthy
+                </span>
+              </p>
             )}
-          </ul>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleCreateProjectClick}
+            data-tour="create-project"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add New...
+          </Button>
         </div>
 
-        {/* Services Overview */}
-        <div className="bg-card shadow overflow-hidden sm:rounded-md border border-border">
-          <div className="px-4 py-5 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-foreground">
-              Services Overview
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Current status of all services
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Service
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Environment
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Version
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Replicas
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-card divide-y divide-border">
-                {services.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-8 text-center text-muted-foreground"
-                    >
-                      No services found
-                    </td>
-                  </tr>
-                ) : (
-                  services.map((service) => (
-                    <tr key={service.id} className="hover:bg-accent">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Link
-                            href={`/services/${service.id}`}
-                            className="text-sm font-medium text-foreground hover:text-primary"
-                          >
-                            {service.name}
-                          </Link>
-                          <div className="text-xs text-muted-foreground ml-2">
-                            in {service.project_name}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            service.environment === "production"
-                              ? "bg-status-success-muted text-status-success-foreground"
-                              : service.environment === "staging"
-                                ? "bg-status-warning-muted text-status-warning-foreground"
-                                : "bg-status-info-muted text-status-info-foreground"
-                          }`}
-                        >
-                          {service.environment}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            service.status === "healthy"
-                              ? "bg-status-success-muted text-status-success-foreground"
-                              : service.status === "unhealthy"
-                                ? "bg-status-error-muted text-status-error-foreground"
-                                : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {service.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {service.version}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {service.replicas}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        {/* Search & Filter */}
+        <div className="mt-6">
+          <ProjectSearchFilter
+            search={search}
+            onSearchChange={setSearch}
+            sort={sort}
+            onSortChange={setSort}
+          />
         </div>
+
+        {/* Project Grid */}
+        {filteredProjects.length === 0 ? (
+          projects.length === 0 ? (
+            // No projects at all
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
+              <h3 className="text-foreground text-lg font-medium">
+                No projects yet
+              </h3>
+              <p className="text-muted-foreground mx-auto mb-4 mt-1 max-w-sm">
+                Get started by creating your first project to deploy and manage
+                your services.
+              </p>
+              <Button onClick={handleCreateProjectClick}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Create Project
+              </Button>
+            </div>
+          ) : (
+            // Search returned no results
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <p className="text-muted-foreground">
+                No projects match &quot;{search}&quot;
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => setSearch("")}
+              >
+                Clear search
+              </Button>
+            </div>
+          )
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {visibleProjects.map((project) => (
+                <ProjectCardCompact key={project.id} project={project} />
+              ))}
+            </div>
+
+            {/* Show More */}
+            {hasMore && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setVisibleCount((c) => c + INITIAL_VISIBLE)
+                  }
+                >
+                  Show More ({filteredProjects.length - visibleCount} remaining)
+                </Button>
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Pricing/Upgrade Modal */}
+      <PricingModal
+        isOpen={showUpgradeModal}
+        onClose={closeUpgradeModal}
+        blockedAction={blockedAction}
+        upgradeMessage={upgradeMessage}
+        checkoutUrl={checkoutUrl}
+        currentTier={tier}
+      />
     </div>
   );
 }

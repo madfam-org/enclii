@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiGet, apiPost } from '@/lib/api';
 import { useTier } from '@/hooks/use-tier';
+import { usePolling } from '@/hooks/use-polling';
+import { POLLING_SLOW } from '@/lib/constants';
 import { PricingModal } from '@/components/modals/PricingModal';
+import { Button } from '@/components/ui/button';
+import { Plus, Rocket } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,8 +17,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  ProjectCardCompact,
+  ProjectCardCompactSkeleton,
+  type CompactProject,
+} from '@/components/dashboard/project-card-compact';
+import {
+  ProjectSearchFilter,
+  type SortOption,
+} from '@/components/dashboard/project-search-filter';
 
-interface Project {
+interface ApiProject {
   id: string;
   name: string;
   slug: string;
@@ -23,7 +36,7 @@ interface Project {
   updated_at: string;
 }
 
-interface Service {
+interface ApiService {
   id: string;
   name: string;
   project_id: string;
@@ -31,11 +44,17 @@ interface Service {
   status: string;
   health: string;
   last_deployment: string;
+  domain?: string;
+  framework?: string;
+  last_commit_message?: string;
+  last_commit_branch?: string;
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [services, setServices] = useState<{ [key: string]: Service[] }>({});
+  const searchParams = useSearchParams();
+
+  const [projects, setProjects] = useState<CompactProject[]>([]);
+  const [rawProjects, setRawProjects] = useState<ApiProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -44,6 +63,8 @@ export default function ProjectsPage() {
     slug: '',
     description: ''
   });
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortOption>('updated');
 
   // Tier-based RBAC
   const {
@@ -56,39 +77,95 @@ export default function ProjectsPage() {
     tier,
   } = useTier();
 
-  // Handler for Create Project button with tier check
+  // Open create modal if redirected with ?create=true
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setShowCreateForm(true);
+    }
+  }, [searchParams]);
+
   const handleCreateProjectClick = () => {
-    if (!requireTier('project', { currentProjectCount: projects.length })) {
-      return; // Modal will be shown automatically
+    if (!requireTier('project', { currentProjectCount: rawProjects.length })) {
+      return;
     }
     setShowCreateForm(true);
   };
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
-      const data = await apiGet<{ projects: Project[] }>('/v1/projects');
-      setProjects(data.projects || []);
+      setError(null);
+      const data = await apiGet<{ projects: ApiProject[] }>('/v1/projects');
+      const apiProjects = data.projects || [];
+      setRawProjects(apiProjects);
 
-      // Fetch services for each project
-      const servicesData: { [key: string]: Service[] } = {};
-      for (const project of data.projects || []) {
-        try {
-          const servicesResult = await apiGet<{ services: Service[] }>(
-            `/v1/projects/${project.slug}/services`
-          );
-          servicesData[project.id] = servicesResult.services || [];
-        } catch (err) {
-          console.error(`Failed to fetch services for project ${project.slug}:`, err);
+      // Fetch services per project in parallel
+      const serviceResults = await Promise.allSettled(
+        apiProjects.map((p) =>
+          apiGet<{ services: ApiService[] }>(`/v1/projects/${p.slug}/services`)
+        )
+      );
+
+      const compactProjects: CompactProject[] = apiProjects.map(
+        (project, i) => {
+          const result = serviceResults[i];
+          const services =
+            result.status === 'fulfilled' ? result.value.services || [] : [];
+
+          const healthyCount = services.filter(
+            (s) => s.health === 'healthy'
+          ).length;
+
+          const domain = services.find((s) => s.domain)?.domain || undefined;
+          const framework = services.find((s) => s.framework)?.framework;
+
+          const latestService = services
+            .filter((s) => s.last_deployment)
+            .sort(
+              (a, b) =>
+                new Date(b.last_deployment).getTime() -
+                new Date(a.last_deployment).getTime()
+            )[0];
+
+          const lastDeployment = latestService
+            ? {
+                timestamp: latestService.last_deployment,
+                status: (latestService.status === 'running'
+                  ? 'success'
+                  : latestService.status === 'failed'
+                    ? 'failed'
+                    : latestService.status === 'deploying'
+                      ? 'building'
+                      : 'pending') as
+                  | 'success'
+                  | 'failed'
+                  | 'pending'
+                  | 'building',
+                branch: latestService.last_commit_branch || 'main',
+                commitMessage: latestService.last_commit_message || undefined,
+              }
+            : undefined;
+
+          return {
+            id: project.id,
+            name: project.name,
+            slug: project.slug,
+            description: project.description,
+            framework,
+            domain,
+            lastDeployment,
+            serviceCount: services.length,
+            healthyCount,
+          };
         }
-      }
+      );
 
-      setServices(servicesData);
+      setProjects(compactProjects);
       setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
     }
-  };
+  }, []);
 
   const createProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +175,7 @@ export default function ProjectsPage() {
 
       setNewProject({ name: '', slug: '', description: '' });
       setShowCreateForm(false);
-      fetchProjects(); // Refresh the list
+      fetchProjects();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
     }
@@ -106,16 +183,62 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [fetchProjects]);
+
+  usePolling(fetchProjects, POLLING_SLOW);
+
+  // Filter and sort
+  const filteredProjects = useMemo(() => {
+    let result = projects;
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.slug.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q)
+      );
+    }
+
+    switch (sort) {
+      case 'name-asc':
+        result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name-desc':
+        result = [...result].sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'newest':
+        break;
+      case 'updated':
+      default:
+        result = [...result].sort((a, b) => {
+          const aTime = a.lastDeployment?.timestamp
+            ? new Date(a.lastDeployment.timestamp).getTime()
+            : 0;
+          const bTime = b.lastDeployment?.timestamp
+            ? new Date(b.lastDeployment.timestamp).getTime()
+            : 0;
+          return bTime - aTime;
+        });
+        break;
+    }
+
+    return result;
+  }, [projects, search, sort]);
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-muted rounded w-1/4 mb-6"></div>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-muted rounded"></div>
+      <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+        <div className="px-4 py-6 sm:px-0">
+          <div className="bg-muted mb-6 h-8 w-1/4 animate-pulse rounded" />
+          <div className="mb-6 flex items-center gap-3">
+            <div className="bg-muted h-10 w-64 animate-pulse rounded" />
+            <div className="bg-muted h-10 w-40 animate-pulse rounded" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <ProjectCardCompactSkeleton key={i} />
             ))}
           </div>
         </div>
@@ -123,15 +246,13 @@ export default function ProjectsPage() {
     );
   }
 
-  if (error) {
+  if (error && projects.length === 0) {
     return (
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-status-error-muted border border-status-error/30 rounded-md p-4">
-          <div className="flex">
-            <div className="text-status-error-foreground">
-              <h3 className="text-sm font-medium">Error loading projects</h3>
-              <div className="mt-2 text-sm">{error}</div>
-            </div>
+      <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+        <div className="bg-status-error-muted border-status-error/30 rounded-md border p-4">
+          <div className="text-status-error-foreground">
+            <h3 className="text-sm font-medium">Error loading projects</h3>
+            <div className="mt-2 text-sm">{error}</div>
           </div>
         </div>
       </div>
@@ -139,17 +260,19 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Projects</h1>
-          <button
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-foreground text-2xl font-bold">Projects</h1>
+          <Button
+            size="sm"
             onClick={handleCreateProjectClick}
             data-tour="create-project"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-enclii-blue hover:bg-enclii-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue"
           >
+            <Plus className="mr-1.5 h-4 w-4" />
             Create Project
-          </button>
+          </Button>
         </div>
 
         {/* Create Project Modal */}
@@ -163,35 +286,35 @@ export default function ProjectsPage() {
             </DialogHeader>
             <form onSubmit={createProject}>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-2">
+                <label className="text-foreground mb-2 block text-sm font-medium">
                   Project Name
                 </label>
                 <input
                   type="text"
                   required
-                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
                   value={newProject.name}
                   onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                 />
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-2">
+                <label className="text-foreground mb-2 block text-sm font-medium">
                   Slug
                 </label>
                 <input
                   type="text"
                   required
-                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
                   value={newProject.slug}
                   onChange={(e) => setNewProject({ ...newProject, slug: e.target.value })}
                 />
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-2">
+                <label className="text-foreground mb-2 block text-sm font-medium">
                   Description
                 </label>
                 <textarea
-                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
                   rows={3}
                   value={newProject.description}
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
@@ -201,13 +324,13 @@ export default function ProjectsPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
+                  className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-4 py-2 text-sm font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium text-white bg-enclii-blue rounded-md hover:bg-enclii-blue-dark"
+                  className="bg-enclii-blue hover:bg-enclii-blue-dark rounded-md px-4 py-2 text-sm font-medium text-white"
                 >
                   Create
                 </button>
@@ -216,72 +339,50 @@ export default function ProjectsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Projects List */}
-        <div className="space-y-6">
-          {projects.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-muted-foreground mb-4">
-                <svg aria-hidden="true" className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-foreground">No projects found</h3>
-              <p className="text-muted-foreground mt-1">Get started by creating your first project.</p>
+        {/* Search & Filter */}
+        <ProjectSearchFilter
+          search={search}
+          onSearchChange={setSearch}
+          sort={sort}
+          onSortChange={setSort}
+        />
+
+        {/* Project Grid */}
+        {filteredProjects.length === 0 ? (
+          projects.length === 0 ? (
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
+              <h3 className="text-foreground text-lg font-medium">No projects found</h3>
+              <p className="text-muted-foreground mb-4 mt-1">
+                Get started by creating your first project.
+              </p>
+              <Button onClick={handleCreateProjectClick}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Create Project
+              </Button>
             </div>
           ) : (
-            projects.map((project) => (
-              <div key={project.id} className="bg-card shadow overflow-hidden sm:rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <Link 
-                        href={`/projects/${project.slug}`}
-                        className="block hover:bg-accent transition-colors duration-150 -m-2 p-2 rounded"
-                      >
-                        <h3 className="text-lg font-medium text-foreground hover:text-enclii-blue">
-                          {project.name}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-1">{project.description}</p>
-                        <div className="flex items-center mt-2 space-x-4 text-xs text-muted-foreground">
-                          <span>Slug: {project.slug}</span>
-                          <span>Created: {new Date(project.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </Link>
-                    </div>
-                    <div className="flex-shrink-0 ml-4">
-                      <div className="text-right">
-                        <div className="text-sm font-medium text-foreground">
-                          {services[project.id]?.length || 0} service{(services[project.id]?.length || 0) !== 1 ? 's' : ''}
-                        </div>
-                        <div className="flex space-x-1 mt-1">
-                          {services[project.id]?.slice(0, 3).map((service) => (
-                            <span
-                              key={service.id}
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                service.health === 'healthy'
-                                  ? 'bg-status-success-muted text-status-success-foreground'
-                                  : service.health === 'unhealthy'
-                                  ? 'bg-status-error-muted text-status-error-foreground'
-                                  : 'bg-muted text-muted-foreground'
-                              }`}
-                            >
-                              {service.name}
-                            </span>
-                          ))}
-                          {services[project.id]?.length > 3 && (
-                            <span className="text-xs text-muted-foreground">
-                              +{services[project.id].length - 3} more
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <p className="text-muted-foreground">
+                No projects match &quot;{search}&quot;
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => setSearch('')}
+              >
+                Clear search
+              </Button>
+            </div>
+          )
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {filteredProjects.map((project) => (
+              <ProjectCardCompact key={project.id} project={project} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Pricing/Upgrade Modal */}

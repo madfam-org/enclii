@@ -183,13 +183,13 @@ test.describe('Responsive Design', () => {
       });
     });
 
-    test.describe('Dashboard Layout', () => {
+    test.describe('Project Grid - Mobile', () => {
       test.use({ viewport: viewports.mobile });
 
-      test('stat cards should stack vertically on mobile', async ({ page }) => {
+      test('project cards should stack vertically on mobile', async ({ page }) => {
         await page.goto('/');
 
-        const cards = page.locator('[data-testid="stat-card"], [class*="Card"]');
+        const cards = page.locator('[class*="Card"]');
         const count = await cards.count();
 
         if (count >= 2) {
@@ -197,20 +197,20 @@ test.describe('Responsive Design', () => {
           const card2Box = await cards.nth(1).boundingBox();
 
           if (card1Box && card2Box) {
-            // Cards should be stacked (different Y positions)
+            // Cards should be stacked (different Y positions) in single column
             expect(card2Box.y).toBeGreaterThan(card1Box.y);
           }
         }
       });
     });
 
-    test.describe('Stat Cards - Tablet', () => {
+    test.describe('Project Grid - Tablet', () => {
       test.use({ viewport: viewports.tablet });
 
-      test('stat cards should display in 2-column grid', async ({ page }) => {
+      test('project cards should display in 2-column grid', async ({ page }) => {
         await page.goto('/');
 
-        const cards = page.locator('[data-testid="stat-card"], [class*="Card"]');
+        const cards = page.locator('[class*="Card"]');
         const count = await cards.count();
 
         if (count >= 2) {
@@ -227,13 +227,13 @@ test.describe('Responsive Design', () => {
       });
     });
 
-    test.describe('Stat Cards - Desktop', () => {
+    test.describe('Project Grid - Desktop', () => {
       test.use({ viewport: viewports.desktop });
 
-      test('stat cards should display in row', async ({ page }) => {
+      test('project cards should display in 3-column grid', async ({ page }) => {
         await page.goto('/');
 
-        const cards = page.locator('[data-testid="stat-card"], [class*="Card"]');
+        const cards = page.locator('[class*="Card"]');
         const count = await cards.count();
 
         if (count >= 3) {
@@ -242,7 +242,7 @@ test.describe('Responsive Design', () => {
           const card3Box = await cards.nth(2).boundingBox();
 
           if (card1Box && card2Box && card3Box) {
-            // All cards should be in same row (similar Y)
+            // All 3 cards should be in same row (similar Y)
             const sameRow =
               Math.abs(card1Box.y - card2Box.y) < 50 && Math.abs(card2Box.y - card3Box.y) < 50;
             expect(sameRow).toBeTruthy();
