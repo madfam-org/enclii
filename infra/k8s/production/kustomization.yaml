@@ -36,10 +36,10 @@ images:
   digest: sha256:23b9678ae73c6ea302dd9d66369b531931c82602c9c5980faed2b706d817b392
 - name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  digest: sha256:90a5305c80777ac3822fdedad3f301e3895e45d7f08f0471b1634865af90ead0
+  digest: sha256:7ddb520acbaf79a11b06c4e503acaa146cbb86c8992b0b983faaa5966905ee32
 - name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-  digest: sha256:b38b92522ca2cbbb1faf343babe410a2496a81c1ec90eb5f3d3f310b33d35c1d
+  digest: sha256:df4a8251ebe3ebeb0245394f3b07ae872a50a6b91dee8dd68315e14404df2ebd
 - name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
   digest: sha256:cc0b55ca096a72ce0033bf822566da4e4f2ae934079ad11be1b0ab40637e0cf1
