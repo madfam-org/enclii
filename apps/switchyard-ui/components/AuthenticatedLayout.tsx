@@ -40,7 +40,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
     <Link
       href={item.href}
       data-tour={item.tourId}
-      className={`px-3 py-2 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
+      className={`px-2 lg:px-3 py-2 text-sm font-medium transition-colors duration-150 whitespace-nowrap ${
         isActive
           ? 'text-enclii-blue border-b-2 border-enclii-blue'
           : 'text-muted-foreground hover:text-enclii-blue hover:border-b-2 hover:border-border'
@@ -69,7 +69,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     { name: 'Observability', href: '/observability', tourId: 'observability' },
   ];
 
-  // Overflow navigation - in dropdown at lg, visible at xl+
+  // Overflow navigation - in dropdown at lg-xl, visible inline at 2xl+
   const overflowNav: NavItem[] = [
     { name: 'Templates', href: '/templates' },
     { name: 'Databases', href: '/databases' },
@@ -149,14 +149,14 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                 )}
               </div>
               {/* Desktop Navigation - Hidden on mobile/tablet */}
-              <div className="hidden lg:flex ml-6 items-baseline space-x-1 xl:space-x-4 flex-shrink-0 relative z-10">
+              <div className="hidden lg:flex ml-6 items-baseline space-x-1 xl:space-x-2 2xl:space-x-4 relative z-10">
                 {/* Primary nav items - always visible at lg+ */}
                 {primaryNav.map((item) => (
                   <NavLink key={item.name} item={item} pathname={pathname} />
                 ))}
 
                 {/* More dropdown - visible at lg, hidden at xl */}
-                <div className="xl:hidden">
+                <div className="2xl:hidden">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -189,7 +189,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                 </div>
 
                 {/* Overflow items - visible at xl+ */}
-                <div className="hidden xl:flex items-baseline space-x-4">
+                <div className="hidden 2xl:flex items-baseline space-x-2">
                   {overflowNav.map((item) => (
                     <NavLink key={item.name} item={item} pathname={pathname} />
                   ))}

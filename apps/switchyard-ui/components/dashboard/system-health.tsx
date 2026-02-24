@@ -336,7 +336,7 @@ export function SystemHealthBadge({ className }: { className?: string }) {
                 : "bg-muted-foreground"
         )}
       />
-      <span className="text-xs text-muted-foreground hidden sm:inline">
+      <span className="text-xs text-muted-foreground hidden xl:inline">
         {status === "healthy" ? "Operational" : "Issues"}
       </span>
     </span>

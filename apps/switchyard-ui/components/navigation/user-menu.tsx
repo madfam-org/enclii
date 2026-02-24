@@ -31,7 +31,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
           <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
             <User className="h-4 w-4 text-primary" />
           </div>
-          <span className="hidden sm:block text-muted-foreground max-w-[100px] truncate">
+          <span className="hidden xl:block text-muted-foreground max-w-[100px] truncate">
             {user?.name || user?.email?.split('@')[0] || 'User'}
           </span>
         </button>

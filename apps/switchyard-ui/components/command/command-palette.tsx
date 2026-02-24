@@ -212,7 +212,7 @@ export function CommandPalette() {
         className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground border border-border rounded-md hover:bg-accent transition-colors"
       >
         <Search className="h-3.5 w-3.5" />
-        <span>Search...</span>
+        <span className="hidden xl:inline">Search...</span>
         <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-muted rounded border border-border font-mono">
           ⌘K
         </kbd>
