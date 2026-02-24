@@ -730,9 +730,9 @@ jobs:
 
             FULL_IMAGE="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
             # Use buildx imagetools which correctly reports the OCI index digest
-            # Exponential backoff: 5s, 10s, 20s, 30s (GHCR propagation can take 30s+)
+            # Exponential backoff: 10s, 20s, 30s, 40s, 50s (GHCR propagation can take 60-120s for large images)
             DIGEST=""
-            for WAIT in 0 5 10 20 30; do
+            for WAIT in 0 10 20 30 40 50; do
               if [ "$WAIT" -gt 0 ]; then
                 echo "Digest not available yet for ${IMAGE}, retrying in ${WAIT}s..."
                 sleep "$WAIT"
@@ -760,9 +760,14 @@ jobs:
           echo "UPDATED=$UPDATED" >> $GITHUB_ENV
           echo "MODIFIED_FILES=$MODIFIED_FILES" >> $GITHUB_ENV
 
+          EXPECTED=$(echo "$BUILT_NAMES" | wc -l | tr -d ' ')
+          if [ "$UPDATED" -lt "$EXPECTED" ]; then
+            echo "WARNING: Only $UPDATED/$EXPECTED service digests resolved"
+          fi
+
           if [ "$UPDATED" -eq 0 ]; then
-            echo "No services changed — skipping commit"
-            exit 0
+            echo "ERROR: No digests resolved despite $EXPECTED services built — GHCR propagation failure"
+            exit 1
           fi
 
           # Save modified kustomization files for retry
