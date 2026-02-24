@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { usePolling } from "@/hooks/use-polling";
-import { POLLING_SLOW } from "@/lib/constants";
+import { POLLING_FAST, POLLING_SLOW } from "@/lib/constants";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RefreshCw, Activity } from "lucide-react";
@@ -149,7 +149,8 @@ export default function DeploymentsPage() {
     fetchDeployments();
   }, []);
 
-  usePolling(fetchDeployments, POLLING_SLOW);
+  const pollingInterval = activeDeployments.length > 0 ? POLLING_FAST : POLLING_SLOW;
+  usePolling(fetchDeployments, pollingInterval);
 
   const formatTimeAgo = useCallback((timestamp: string) => {
     const now = new Date();

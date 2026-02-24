@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -166,10 +165,9 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 
 	// Use a simpler approach - collect service IDs first, then batch query
 	var (
-		allServiceIDs    []string
-		serviceToProject = make(map[string]string) // serviceID -> projectSlug
-		serviceMap       = make(map[string]*types.Service)
-		mu               sync.Mutex
+		allServiceIDs []string
+		serviceMap    = make(map[string]*types.Service)
+		mu            sync.Mutex
 	)
 
 	// Parallel service fetching per project
@@ -185,7 +183,6 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 			for _, svc := range services {
 				svcCopy := svc
 				allServiceIDs = append(allServiceIDs, svc.ID.String())
-				serviceToProject[svc.ID.String()] = project.Slug
 				serviceMap[svc.ID.String()] = svcCopy
 			}
 			mu.Unlock()
@@ -211,7 +208,6 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 
 	for _, svcID := range allServiceIDs {
 		svcID := svcID
-		projectSlug := serviceToProject[svcID]
 		g2.Go(func() error {
 			svc := serviceMap[svcID]
 
@@ -247,26 +243,6 @@ func (h *Handler) getDashboardStatsOptimized(ctx context.Context) (DashboardStat
 					healthyCount++
 				}
 				countMu.Unlock()
-				return nil
-			}
-
-			// Phase 3: K8s API fallback with CORRECT namespace
-			var namespace string
-			if svc != nil && svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
-				namespace = *svc.K8sNamespace // Use stored namespace
-			} else {
-				namespace = strings.ToLower(projectSlug) // Original fallback
-			}
-
-			if svc != nil {
-				k8sStatus, err := h.k8sClient.GetDeploymentStatusInfo(g2Ctx, namespace, svc.Name)
-				if err == nil && k8sStatus != nil {
-					countMu.Lock()
-					if k8sStatus.AvailableReplicas == k8sStatus.Replicas && k8sStatus.Replicas > 0 {
-						healthyCount++
-					}
-					countMu.Unlock()
-				}
 			}
 			return nil
 		})
@@ -464,8 +440,6 @@ func (h *Handler) getProjectServicesOverview(ctx context.Context, project *types
 		return overview, err
 	}
 
-	namespace := strings.ToLower(project.Slug)
-
 	// Process services in parallel within the project
 	var (
 		svcMu sync.Mutex
@@ -510,27 +484,6 @@ func (h *Handler) getProjectServicesOverview(ctx context.Context, project *types
 					release, err := h.repos.Releases.GetByID(deployment.ReleaseID)
 					if err == nil {
 						version = release.Version
-					}
-				} else {
-					// Phase 3: K8s API fallback with CORRECT namespace
-					var k8sNamespace string
-					if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
-						k8sNamespace = *svc.K8sNamespace // Use stored namespace
-					} else {
-						k8sNamespace = namespace // Original fallback (project slug)
-					}
-
-					k8sStatus, err := h.k8sClient.GetDeploymentStatusInfo(ctx, k8sNamespace, svc.Name)
-					if err == nil && k8sStatus != nil {
-						if k8sStatus.AvailableReplicas == k8sStatus.Replicas && k8sStatus.Replicas > 0 {
-							status = "healthy"
-						} else if k8sStatus.AvailableReplicas > 0 {
-							status = "unhealthy"
-						}
-						replicas = fmt.Sprintf("%d/%d", k8sStatus.AvailableReplicas, k8sStatus.Replicas)
-						if k8sStatus.ImageTag != "" {
-							version = k8sStatus.ImageTag
-						}
 					}
 				}
 			}

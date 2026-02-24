@@ -311,6 +311,35 @@ func (r *DeploymentRepository) FindDeployingByServiceAndSHA(ctx context.Context,
 	return deployment, nil
 }
 
+// FindDeployingByServiceAndReleaseSHA finds the most recent deployment with status 'deploying'
+// for a given service where the associated release has the specified git SHA.
+// This bridges the SHA mismatch between CI push (SHA=A) and digest-commit (SHA=B).
+// Returns nil, nil if no match is found.
+func (r *DeploymentRepository) FindDeployingByServiceAndReleaseSHA(ctx context.Context, serviceID uuid.UUID, gitSHA string) (*types.Deployment, error) {
+	deployment := &types.Deployment{}
+	query := `
+		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
+		       d.error_message, d.created_at, d.updated_at
+		FROM deployments d
+		JOIN releases r ON d.release_id = r.id
+		WHERE r.service_id = $1 AND r.git_sha = $2 AND d.status = 'deploying'
+		ORDER BY d.created_at DESC
+		LIMIT 1
+	`
+	err := r.db.QueryRowContext(ctx, query, serviceID, gitSHA).Scan(
+		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
+		&deployment.Replicas, &deployment.Status, &deployment.Health,
+		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+	)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return deployment, nil
+}
+
 // FindRecentDeployingByService finds the most recent deployment with status 'deploying'
 // for a given service within a time window. Used as a fallback when the ArgoCD sync SHA
 // differs from the CI push SHA (e.g., due to digest-commit creating a new commit).
@@ -341,13 +370,15 @@ func (r *DeploymentRepository) FindRecentDeployingByService(ctx context.Context,
 	return deployment, nil
 }
 
-// CleanupStaleDeploying marks orphaned "deploying" records as "cancelled" for a given service.
-// This handles race conditions where the CI goroutine creates a deploying record after ArgoCD
-// has already synced and created a running deployment.
+// CleanupStaleDeploying marks orphaned "deploying" records as "failed" for a given service.
+// This handles race conditions where the CI creates a deploying record but no ArgoCD sync
+// ever arrives (e.g., sync failure, manifest error, or digest never committed).
 func (r *DeploymentRepository) CleanupStaleDeploying(ctx context.Context, serviceID uuid.UUID, maxAge time.Duration) error {
 	cutoff := time.Now().Add(-maxAge)
 	_, err := r.db.ExecContext(ctx, `
-		UPDATE deployments SET status = 'cancelled', updated_at = NOW()
+		UPDATE deployments SET status = 'failed',
+		       error_message = 'Deployment timed out (no sync received within 30 minutes)',
+		       updated_at = NOW()
 		WHERE id IN (
 			SELECT d.id FROM deployments d
 			JOIN releases r ON d.release_id = r.id
@@ -356,6 +387,22 @@ func (r *DeploymentRepository) CleanupStaleDeploying(ctx context.Context, servic
 			AND d.created_at < $2
 		)`, serviceID, cutoff)
 	return err
+}
+
+// CleanupAllStaleDeploying marks orphaned "deploying" records as "failed" across ALL services.
+// Called periodically by the reconciler to catch deployments that never received an ArgoCD sync.
+func (r *DeploymentRepository) CleanupAllStaleDeploying(ctx context.Context, maxAge time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-maxAge)
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE deployments SET status = 'failed',
+		       error_message = 'Deployment timed out (no sync received within 30 minutes)',
+		       updated_at = NOW()
+		WHERE status = 'deploying'
+		AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // ListByGroup retrieves all deployments for a deployment group

@@ -88,6 +88,14 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 			c.syncDeploymentToDatabase(ctx, ns, dep, logger)
 		}
 	}
+
+	// Clean up stale "deploying" records that never received an ArgoCD sync
+	cleaned, err := c.repositories.Deployments.CleanupAllStaleDeploying(ctx, 30*time.Minute)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to cleanup stale deploying records")
+	} else if cleaned > 0 {
+		logger.WithField("count", cleaned).Info("Cleaned up stale deploying records (timed out)")
+	}
 }
 
 // syncDeploymentToDatabase checks if a K8s deployment has corresponding DB records.
