@@ -53,7 +53,7 @@ export default function ModulesLayout({
       <AdminHeader />
       <div className="flex">
         <Sidebar />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-3 sm:p-6 min-w-0">{children}</main>
       </div>
     </div>
   )

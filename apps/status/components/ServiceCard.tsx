@@ -101,13 +101,13 @@ interface ServiceCardCompactProps {
 
 export function ServiceCardCompact({ service }: ServiceCardCompactProps) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between gap-2 py-3 border-b border-border last:border-0">
+      <div className="flex items-center gap-3 min-w-0">
         <StatusBadge status={service.status} showLabel={false} />
-        <div>
-          <span className="font-medium">{service.service}</span>
+        <div className="min-w-0">
+          <span className="font-medium truncate block">{service.service}</span>
           {service.description && (
-            <span className="text-muted-foreground ml-2">— {service.description}</span>
+            <span className="text-muted-foreground text-sm truncate block">— {service.description}</span>
           )}
         </div>
       </div>

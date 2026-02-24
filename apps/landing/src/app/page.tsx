@@ -13,22 +13,22 @@ export default function Home() {
               </div>
               <span className="font-bold text-xl text-gray-900 dark:text-white">Enclii</span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <a
                 href="https://docs.enclii.dev"
-                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                className="hidden sm:inline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm"
               >
                 Docs
               </a>
               <a
                 href="https://github.com/madfam-org/enclii"
-                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                className="hidden sm:inline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm"
               >
                 GitHub
               </a>
               <a
                 href="https://app.enclii.dev"
-                className="inline-flex items-center gap-2 bg-solarpunk-green text-solarpunk-slate px-4 py-2 rounded-lg font-medium hover:bg-solarpunk-green-dim transition-colors"
+                className="inline-flex items-center gap-2 bg-solarpunk-green text-solarpunk-slate px-3 py-2 sm:px-4 rounded-lg font-medium hover:bg-solarpunk-green-dim transition-colors text-sm sm:text-base"
               >
                 Get Started
                 <ArrowRight className="w-4 h-4" />
@@ -355,7 +355,7 @@ function PricingCard({ icon, name, price, priceNote, description, features, cta,
   return (
     <div className={`relative rounded-2xl p-8 ${
       highlighted
-        ? 'bg-solarpunk-deep text-white ring-4 ring-solarpunk-green/20 shadow-xl scale-105'
+        ? 'bg-solarpunk-deep text-white ring-4 ring-solarpunk-green/20 shadow-xl md:scale-105'
         : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
     }`}>
       {highlighted && (

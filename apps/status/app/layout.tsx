@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
@@ -6,6 +6,12 @@ import { Header, Footer } from '@/components/Header'
 import { getSiteConfig } from '@/lib/config'
 
 const siteConfig = getSiteConfig()
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+}
 
 export const metadata: Metadata = {
   title: siteConfig.name,
