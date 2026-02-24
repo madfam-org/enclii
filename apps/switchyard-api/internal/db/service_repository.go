@@ -323,6 +323,14 @@ func (r *ServiceRepository) Update(ctx context.Context, service *types.Service) 
 	return nil
 }
 
+// UpdateHealthStatus updates the health and replica status of a service.
+// Called by the reconciler to propagate K8s deployment health to the parent service.
+func (r *ServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32) error {
+	query := `UPDATE services SET health = $1, status = $2, desired_replicas = $3, ready_replicas = $4, last_health_check = NOW(), updated_at = NOW() WHERE id = $5`
+	_, err := r.db.ExecContext(ctx, query, health, status, desiredReplicas, readyReplicas, id)
+	return err
+}
+
 // Delete removes a service by ID
 func (r *ServiceRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM services WHERE id = $1`

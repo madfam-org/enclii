@@ -125,7 +125,7 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 	existingDep, err := c.repositories.Deployments.GetLatestByService(ctx, service.ID.String())
 	if err == nil && existingDep != nil {
 		// Deployment record exists, update health status if needed
-		c.updateDeploymentHealth(ctx, existingDep, &k8sDep, logger)
+		c.updateDeploymentHealth(ctx, service, existingDep, &k8sDep, logger)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 }
 
 // updateDeploymentHealth updates the health status of an existing deployment based on K8s state
-func (c *Controller) updateDeploymentHealth(ctx context.Context, deployment *types.Deployment, k8sDep *appsv1.Deployment, logger *logrus.Entry) {
+func (c *Controller) updateDeploymentHealth(ctx context.Context, service *types.Service, deployment *types.Deployment, k8sDep *appsv1.Deployment, logger *logrus.Entry) {
 	replicas := int32(1)
 	if k8sDep.Spec.Replicas != nil {
 		replicas = *k8sDep.Spec.Replicas
@@ -206,6 +206,11 @@ func (c *Controller) updateDeploymentHealth(ctx context.Context, deployment *typ
 				"new_status":    newStatus,
 			}).Debug("Updated deployment status")
 		}
+	}
+
+	// Propagate health to parent service
+	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, expectedHealth, string(newStatus), replicas, availableReplicas); err != nil {
+		logger.WithError(err).Warn("Failed to propagate health to service")
 	}
 }
 
@@ -276,6 +281,11 @@ func (c *Controller) createMissingRecords(ctx context.Context, service *types.Se
 		"deployment_id": deployment.ID,
 		"version":       version,
 	}).Info("Created missing deployment record from K8s state")
+
+	// Propagate health to parent service
+	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, health, string(types.DeploymentStatusRunning), replicas, availableReplicas); err != nil {
+		logger.WithError(err).Warn("Failed to propagate health to service")
+	}
 }
 
 // extractVersionFromImage extracts version string from an image URI
