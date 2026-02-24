@@ -99,14 +99,14 @@ export function ProjectCardCompact({
         {/* Row 3b: GitHub repo */}
         {project.gitRepo && (
           <a
-            href={`https://github.com/${project.gitRepo}`}
+            href={project.gitRepo.startsWith('http') ? project.gitRepo : `https://github.com/${project.gitRepo}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-muted-foreground hover:text-foreground mt-1.5 flex items-center gap-1.5 truncate text-xs transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
             <Github className="h-3 w-3 shrink-0" />
-            <span className="truncate">{project.gitRepo}</span>
+            <span className="truncate">{project.gitRepo.replace(/^https?:\/\/github\.com\//, '')}</span>
           </a>
         )}
 
