@@ -39,7 +39,7 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
 
       - name: Auto-discover and lint Go modules
         run: |
@@ -915,8 +915,7 @@ jobs:
     if: |
       always() &&
       needs.docker-build.result == 'success' &&
-      github.ref == 'refs/heads/main' &&
-      needs.detect-changes.outputs.has_changes == 'true'
+      github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
 
