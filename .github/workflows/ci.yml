@@ -620,7 +620,16 @@ jobs:
       - name: Collect build info
         id: collect
         run: |
-          echo "built_services=${{ matrix.name }}:${{ matrix.image }}:${{ matrix.kustomization }}:${{ matrix.kustomize_image }}:${{ steps.docker-build.outputs.digest }}" >> $GITHUB_OUTPUT
+          DIGEST="${{ steps.docker-build.outputs.digest }}"
+          echo "${{ matrix.name }}|${{ matrix.image }}|${{ matrix.kustomization }}|${{ matrix.kustomize_image }}|${DIGEST}" > /tmp/digest-${{ matrix.name }}.txt
+          echo "built_services=${{ matrix.name }}:${{ matrix.image }}:${{ matrix.kustomization }}:${{ matrix.kustomize_image }}:${DIGEST}" >> $GITHUB_OUTPUT
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: digest-${{ matrix.name }}
+          path: /tmp/digest-${{ matrix.name }}.txt
+          retention-days: 1
 
   # =============================================================================
   # IMAGE VULNERABILITY SCANNING: Trivy scan after Docker build
@@ -697,7 +706,14 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
-      - name: Login to GHCR (for digest lookup)
+      - name: Download all digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Login to GHCR (for digest fallback)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -707,54 +723,70 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Update all service digests from services.json
+      - name: Update all service digests from build artifacts
         run: |
           UPDATED=0
           MODIFIED_FILES=""
-          SERVICES_JSON=$(cat services.json)
           MATRIX='${{ needs.detect-changes.outputs.matrix }}'
 
           # Get list of services that were actually built (from the matrix)
           BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
 
-          while IFS= read -r line; do
-            NAME=$(echo "$line" | jq -r '.name')
-            IMAGE=$(echo "$line" | jq -r '.image')
-            KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
-            KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
+          # Build a lookup map from digest artifacts (primary source — no GHCR delay)
+          declare -A ARTIFACT_DIGESTS
+          if [ -d /tmp/digests ]; then
+            for f in /tmp/digests/digest-*.txt; do
+              [ -f "$f" ] || continue
+              IFS='|' read -r A_NAME A_IMAGE A_KUST A_KUST_IMAGE A_DIGEST < "$f"
+              ARTIFACT_DIGESTS["$A_NAME"]="$A_IMAGE|$A_KUST|$A_KUST_IMAGE|$A_DIGEST"
+              echo "Loaded artifact digest for ${A_NAME}: ${A_DIGEST}"
+            done
+          fi
 
-            # Skip if not in the built matrix
-            if ! echo "$BUILT_NAMES" | grep -q "^${NAME}$"; then
-              continue
+          for NAME in $BUILT_NAMES; do
+            DIGEST=""
+            IMAGE=""
+            KUSTOMIZATION=""
+            KUSTOMIZE_IMAGE=""
+
+            # Primary: use digest from build artifact (instant, no network)
+            if [ -n "${ARTIFACT_DIGESTS[$NAME]:-}" ]; then
+              IFS='|' read -r IMAGE KUSTOMIZATION KUSTOMIZE_IMAGE DIGEST <<< "${ARTIFACT_DIGESTS[$NAME]}"
+              echo "Using artifact digest for ${NAME}: ${DIGEST}"
             fi
 
-            FULL_IMAGE="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
-            # Use buildx imagetools which correctly reports the OCI index digest
-            # Exponential backoff: 10s, 20s, 30s, 40s, 50s (GHCR propagation can take 60-120s for large images)
-            DIGEST=""
-            for WAIT in 0 10 20 30 40 50; do
-              if [ "$WAIT" -gt 0 ]; then
-                echo "Digest not available yet for ${IMAGE}, retrying in ${WAIT}s..."
-                sleep "$WAIT"
-              fi
-              DIGEST=$(docker buildx imagetools inspect "$FULL_IMAGE" 2>/dev/null | awk '/^Digest:/{print $2; exit}')
-              if [ -n "$DIGEST" ]; then
-                break
-              fi
-            done
+            # Fallback: resolve from GHCR (only if artifact missing)
+            if [ -z "$DIGEST" ]; then
+              echo "No artifact for ${NAME}, falling back to GHCR lookup..."
+              # Get image/kustomization info from services.json
+              SVC_INFO=$(cat services.json | jq -r --arg name "$NAME" '.services[] | select(.name == $name) | "\(.image)|\(.kustomization)|\(.kustomize_image)"')
+              IFS='|' read -r IMAGE KUSTOMIZATION KUSTOMIZE_IMAGE <<< "$SVC_INFO"
+
+              FULL_IMAGE="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
+              for WAIT in 0 10 20 30 40 50; do
+                if [ "$WAIT" -gt 0 ]; then
+                  echo "Digest not available yet for ${IMAGE}, retrying in ${WAIT}s..."
+                  sleep "$WAIT"
+                fi
+                DIGEST=$(docker buildx imagetools inspect "$FULL_IMAGE" 2>/dev/null | awk '/^Digest:/{print $2; exit}')
+                if [ -n "$DIGEST" ]; then
+                  break
+                fi
+              done
+            fi
+
             if [ -n "$DIGEST" ]; then
               echo "Updating ${NAME} in ${KUSTOMIZATION}: digest=${DIGEST}"
               (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
               UPDATED=$((UPDATED + 1))
-              # Track modified kustomization files
               KUST_FILE="${KUSTOMIZATION}/kustomization.yaml"
               if ! echo "$MODIFIED_FILES" | grep -q "$KUST_FILE"; then
                 MODIFIED_FILES="$MODIFIED_FILES $KUST_FILE"
               fi
             else
-              echo "Could not resolve ${IMAGE} digest for :${{ github.sha }}"
+              echo "ERROR: Could not resolve ${NAME} digest from artifact or GHCR"
             fi
-          done < <(echo "$SERVICES_JSON" | jq -c '.services[]')
+          done
 
           echo "Updated $UPDATED service digest(s)"
           echo "UPDATED=$UPDATED" >> $GITHUB_ENV
@@ -766,7 +798,7 @@ jobs:
           fi
 
           if [ "$UPDATED" -eq 0 ]; then
-            echo "ERROR: No digests resolved despite $EXPECTED services built — GHCR propagation failure"
+            echo "ERROR: No digests resolved despite $EXPECTED services built"
             exit 1
           fi
 

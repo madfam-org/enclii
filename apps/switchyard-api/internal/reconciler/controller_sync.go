@@ -91,29 +91,31 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 }
 
 // syncDeploymentToDatabase checks if a K8s deployment has corresponding DB records.
-// IMPORTANT: Only syncs deployments that Enclii created (have enclii.dev/managed-by: switchyard label).
-// This prevents auto-importing external services that happen to share names with registered services.
+// Health propagation is label-agnostic (updates any service matching by name),
+// while deployment record management is label-gated (only for enclii.dev/managed-by: switchyard).
 func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace string, k8sDep appsv1.Deployment, logger *logrus.Entry) {
 	deploymentName := k8sDep.Name
 
-	// PRIMARY GATE: Only sync deployments that Enclii created.
-	// This prevents importing external services (Janua, ingress, etc.) that happen to
-	// have a matching name in the services table.
-	if !isEncliiManagedDeployment(&k8sDep) {
-		// Not managed by Enclii - skip silently (expected for most deployments)
-		return
-	}
-
-	// Secondary check: respect opt-out annotation (for temporarily disabling reconciliation)
+	// Respect opt-out annotation (label-agnostic)
 	if val, ok := k8sDep.Annotations["enclii.dev/reconcile"]; ok && val == "disabled" {
 		logger.WithField("deployment", deploymentName).Debug("Deployment has reconciliation disabled, skipping")
 		return
 	}
 
-	// Find matching service by name
+	// STEP 1: Service health propagation (label-agnostic).
+	// Dashboard health should reflect K8s reality regardless of who created the deployment.
 	service, err := c.repositories.Services.GetByName(deploymentName)
-	if err != nil {
-		// Orphaned Enclii deployment - service record may have been deleted
+	if err == nil && service != nil {
+		c.propagateServiceHealth(ctx, service, &k8sDep, logger)
+	}
+
+	// STEP 2: Deployment record management (label-gated).
+	// Only Enclii-managed deployments get release/deployment records created/updated.
+	if !isEncliiManagedDeployment(&k8sDep) {
+		return
+	}
+
+	if service == nil {
 		logger.WithFields(logrus.Fields{
 			"deployment": deploymentName,
 			"namespace":  namespace,
@@ -121,7 +123,7 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 		return
 	}
 
-	// 2. Check if deployment record already exists
+	// Check if deployment record already exists
 	existingDep, err := c.repositories.Deployments.GetLatestByService(ctx, service.ID.String())
 	if err == nil && existingDep != nil {
 		// Deployment record exists, update health status if needed
@@ -129,7 +131,7 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 		return
 	}
 
-	// 3. No deployment record exists - create missing release + deployment records
+	// No deployment record exists - create missing release + deployment records
 	if len(k8sDep.Spec.Template.Spec.Containers) == 0 {
 		logger.WithField("deployment", deploymentName).Warn("K8s deployment has no containers, skipping")
 		return
@@ -143,6 +145,34 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 	availableReplicas := k8sDep.Status.AvailableReplicas
 
 	c.createMissingRecords(ctx, service, namespace, imageURI, replicas, availableReplicas, logger)
+}
+
+// propagateServiceHealth updates the service's health fields based on K8s deployment state.
+// Called for ALL deployments matching a registered service, regardless of labels.
+func (c *Controller) propagateServiceHealth(ctx context.Context, service *types.Service, k8sDep *appsv1.Deployment, logger *logrus.Entry) {
+	replicas := int32(1)
+	if k8sDep.Spec.Replicas != nil {
+		replicas = *k8sDep.Spec.Replicas
+	}
+	availableReplicas := k8sDep.Status.AvailableReplicas
+
+	var health types.HealthStatus
+	if availableReplicas == replicas && replicas > 0 {
+		health = types.HealthStatusHealthy
+	} else if availableReplicas > 0 {
+		health = types.HealthStatusUnhealthy
+	} else {
+		health = types.HealthStatusUnknown
+	}
+
+	status := "unknown"
+	if availableReplicas > 0 {
+		status = string(types.DeploymentStatusRunning)
+	}
+
+	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, health, status, replicas, availableReplicas); err != nil {
+		logger.WithError(err).Warn("Failed to propagate health to service")
+	}
 }
 
 // updateDeploymentHealth updates the health status of an existing deployment based on K8s state
@@ -208,10 +238,6 @@ func (c *Controller) updateDeploymentHealth(ctx context.Context, service *types.
 		}
 	}
 
-	// Propagate health to parent service
-	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, expectedHealth, string(newStatus), replicas, availableReplicas); err != nil {
-		logger.WithError(err).Warn("Failed to propagate health to service")
-	}
 }
 
 // createMissingRecords creates release and deployment records for a K8s deployment
@@ -281,11 +307,6 @@ func (c *Controller) createMissingRecords(ctx context.Context, service *types.Se
 		"deployment_id": deployment.ID,
 		"version":       version,
 	}).Info("Created missing deployment record from K8s state")
-
-	// Propagate health to parent service
-	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, health, string(types.DeploymentStatusRunning), replicas, availableReplicas); err != nil {
-		logger.WithError(err).Warn("Failed to propagate health to service")
-	}
 }
 
 // extractVersionFromImage extracts version string from an image URI
