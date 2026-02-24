@@ -873,10 +873,19 @@ jobs:
           FAILED=0
           for url in https://api.enclii.dev/health https://app.enclii.dev https://auth.madfam.io/health; do
             echo "Checking $url..."
-            if curl -sf --max-time 10 "$url" > /dev/null; then
+            SUCCESS=0
+            for attempt in 1 2 3; do
+              if curl -sf --max-time 10 "$url" > /dev/null; then
+                SUCCESS=1
+                break
+              fi
+              echo "  ⏳ Attempt $attempt failed, retrying in 10s..."
+              sleep 10
+            done
+            if [ $SUCCESS -eq 1 ]; then
               echo "  ✅ $url"
             else
-              echo "  ❌ FAILED: $url"
+              echo "  ❌ FAILED: $url (after 3 attempts)"
               FAILED=1
             fi
           done
