@@ -108,6 +108,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Skip stale token processing on the OAuth callback page —
+        // the callback will provide fresh tokens via storeTokensFromRedirect()
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/auth/callback')) {
+          return;
+        }
+
         const storedTokens = storage.getTokens();
         const storedUser = storage.getUser();
 
@@ -276,9 +282,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem("auth_return_url", window.location.pathname);
     }
 
-    // Clear stale tokens before redirect so that when the callback page loads,
-    // initAuth() won't find expired tokens and race with storeTokensFromRedirect()
+    // Clear stale tokens and any auth error before redirect so that when the
+    // callback page loads, initAuth() won't find expired tokens and race with
+    // storeTokensFromRedirect()
     storage.clear();
+    setAuthError(null);
+    refreshFailCountRef.current = 0;
 
     // Redirect to backend OIDC login endpoint
     // The backend will redirect to the OIDC provider (Janua)
@@ -351,6 +360,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   ): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
+    refreshFailCountRef.current = 0;
 
     try {
       const tokenInfo: TokenInfo = {
