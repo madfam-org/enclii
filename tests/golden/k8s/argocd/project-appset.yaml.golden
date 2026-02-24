@@ -20,6 +20,8 @@ spec:
   preservedFields:
     annotations:
       - notifications.argoproj.io/subscribe.on-sync-succeeded.enclii
+      - notifications.argoproj.io/subscribe.on-sync-failed.enclii
+      - notifications.argoproj.io/subscribe.on-health-degraded.enclii
   generators:
     - git:
         repoURL: https://github.com/madfam-org/enclii.git
@@ -35,6 +37,8 @@ spec:
         app.kubernetes.io/managed-by: enclii-platform
       annotations:
         notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
+        notifications.argoproj.io/subscribe.on-sync-failed.enclii: ""
+        notifications.argoproj.io/subscribe.on-health-degraded.enclii: ""
         argocd.argoproj.io/compare-options: IgnoreExtraneous=true
       finalizers:
         - resources-finalizer.argocd.argoproj.io

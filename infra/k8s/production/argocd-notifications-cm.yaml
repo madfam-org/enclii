@@ -12,6 +12,12 @@ data:
   trigger.on-sync-succeeded: |
     - when: app.status.operationState.phase in ['Succeeded']
       send: [enclii-sync-notification]
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [enclii-sync-failure-notification]
+  trigger.on-health-degraded: |
+    - when: app.status.health.status in ['Degraded']
+      send: [enclii-sync-failure-notification]
   template.enclii-sync-notification: |
     webhook:
       enclii:
@@ -25,4 +31,19 @@ data:
             "images": {{toJson .app.status.summary.images}},
             "started_at": "{{.app.status.operationState.startedAt}}",
             "finished_at": "{{.app.status.operationState.finishedAt}}"
+          }
+  template.enclii-sync-failure-notification: |
+    webhook:
+      enclii:
+        method: POST
+        body: |
+          {
+            "app_name": "{{.app.metadata.name}}",
+            "sync_status": "{{.app.status.sync.status}}",
+            "health_status": "{{.app.status.health.status}}",
+            "revision": "{{.app.status.sync.revision}}",
+            "images": {{toJson .app.status.summary.images}},
+            "started_at": "{{.app.status.operationState.startedAt}}",
+            "finished_at": "{{.app.status.operationState.finishedAt}}",
+            "error_message": "{{.app.status.operationState.message}}"
           }

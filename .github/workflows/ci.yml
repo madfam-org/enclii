@@ -957,10 +957,11 @@ jobs:
   report-lifecycle:
     name: Report Lifecycle Events
     runs-on: ubuntu-latest
-    needs: [docker-build, detect-changes]
+    needs: [docker-build, detect-changes, commit-digests]
     if: |
       always() &&
       needs.docker-build.result == 'success' &&
+      needs.commit-digests.result == 'success' &&
       github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -971,7 +972,8 @@ jobs:
           BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
 
           for SERVICE in $BUILT_NAMES; do
-            echo "Reporting lifecycle event for $SERVICE..."
+            # Report image_pushed event
+            echo "Reporting image_pushed for $SERVICE..."
             curl -sf -X POST "https://api.enclii.dev/v1/callbacks/lifecycle-event" \
               -H "Authorization: Bearer ${{ secrets.ENCLII_CALLBACK_TOKEN }}" \
               -H "Content-Type: application/json" \
@@ -986,7 +988,71 @@ jobs:
                 "metadata": {
                   "image": "ghcr.io/madfam-org/enclii/'"$SERVICE"'",
                   "workflow": "ci",
+                  "service": "'"$SERVICE"'",
+                  "commit_digests_result": "${{ needs.commit-digests.result }}"
+                }
+              }' || true
+
+            # Report digest_committed event
+            echo "Reporting digest_committed for $SERVICE..."
+            curl -sf -X POST "https://api.enclii.dev/v1/callbacks/lifecycle-event" \
+              -H "Authorization: Bearer ${{ secrets.ENCLII_CALLBACK_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "repo_full_name": "madfam-org/enclii",
+                "commit_sha": "${{ github.sha }}",
+                "branch": "${{ github.ref_name }}",
+                "ref": "${{ github.ref }}",
+                "event_type": "digest_committed",
+                "source": "ci_callback",
+                "message": "'"$SERVICE"' digest committed to kustomization",
+                "metadata": {
+                  "image": "ghcr.io/madfam-org/enclii/'"$SERVICE"'",
+                  "workflow": "ci",
                   "service": "'"$SERVICE"'"
+                }
+              }' || true
+          done
+
+  # =============================================================================
+  # BUILD FAILURE REPORTING: Report failed builds to lifecycle tracking
+  # =============================================================================
+  report-build-failure:
+    name: Report Build Failures
+    runs-on: ubuntu-latest
+    needs: [docker-build, detect-changes]
+    if: |
+      always() &&
+      needs.docker-build.result == 'failure' &&
+      github.ref == 'refs/heads/main' &&
+      needs.detect-changes.outputs.has_changes == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Report build failure events
+        run: |
+          MATRIX='${{ needs.detect-changes.outputs.matrix }}'
+          BUILT_NAMES=$(echo "$MATRIX" | jq -r '.include[].name')
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          for SERVICE in $BUILT_NAMES; do
+            echo "Reporting build_failed for $SERVICE..."
+            curl -sf -X POST "https://api.enclii.dev/v1/callbacks/lifecycle-event" \
+              -H "Authorization: Bearer ${{ secrets.ENCLII_CALLBACK_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "repo_full_name": "madfam-org/enclii",
+                "commit_sha": "${{ github.sha }}",
+                "branch": "${{ github.ref_name }}",
+                "ref": "${{ github.ref }}",
+                "event_type": "build_failed",
+                "source": "ci_callback",
+                "message": "'"$SERVICE"' build failed",
+                "metadata": {
+                  "image": "ghcr.io/madfam-org/enclii/'"$SERVICE"'",
+                  "workflow": "ci",
+                  "service": "'"$SERVICE"'",
+                  "run_url": "'"$RUN_URL"'"
                 }
               }' || true
           done
