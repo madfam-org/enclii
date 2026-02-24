@@ -23,32 +23,32 @@ patchesStrategicMerge:
 - security-patch.yaml
 - anti-affinity-patch.yaml
 configMapGenerator:
-- name: env-config
-  literals:
+- literals:
   - ENCLII_ENV=production
   - ENCLII_LOG_LEVEL=warn
   - ENCLII_METRICS_ENABLED=true
   - ENCLII_RATE_LIMIT_REQUESTS_PER_MINUTE=10000
   - ENCLII_ENABLE_PROFILING=false
+  name: env-config
 images:
-- name: switchyard-api
-  newName: ghcr.io/madfam-org/enclii/switchyard-api
-  digest: sha256:942ac57eb201677ef3d65e96dcd4b9d12827dfd41f2b8f6270cfe35c841723f5
-- name: switchyard-ui
-  newName: ghcr.io/madfam-org/enclii/switchyard-ui
-  digest: sha256:bc76d032ac82a722bca97c67cb99aa01d0ddf9df00e76946feb936fb0cbb2105
-- name: landing-page
-  newName: ghcr.io/madfam-org/enclii/landing-page
-  digest: sha256:df4a8251ebe3ebeb0245394f3b07ae872a50a6b91dee8dd68315e14404df2ebd
-- name: docs-site
+- digest: sha256:cc0b55ca096a72ce0033bf822566da4e4f2ae934079ad11be1b0ab40637e0cf1
+  name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
-  digest: sha256:cc0b55ca096a72ce0033bf822566da4e4f2ae934079ad11be1b0ab40637e0cf1
-- name: roundhouse
+- digest: sha256:df4a8251ebe3ebeb0245394f3b07ae872a50a6b91dee8dd68315e14404df2ebd
+  name: landing-page
+  newName: ghcr.io/madfam-org/enclii/landing-page
+- digest: sha256:3263a94baa4b18d3baa4f455e9c78efcb394b65c3753b259c0d22d648d022965
+  name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-  digest: sha256:3263a94baa4b18d3baa4f455e9c78efcb394b65c3753b259c0d22d648d022965
-- name: waybill
+- digest: sha256:57645672a28f5cd029122b7958d6fa86f6a657475ec90c500b9c9f90d50b4952
+  name: switchyard-api
+  newName: ghcr.io/madfam-org/enclii/switchyard-api
+- digest: sha256:bc76d032ac82a722bca97c67cb99aa01d0ddf9df00e76946feb936fb0cbb2105
+  name: switchyard-ui
+  newName: ghcr.io/madfam-org/enclii/switchyard-ui
+- digest: sha256:4e8d48545f9899e0cc89bd7b2fc9a2531e1121e35523a73f01e6f7cc4d42c27a
+  name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
-  digest: sha256:4e8d48545f9899e0cc89bd7b2fc9a2531e1121e35523a73f01e6f7cc4d42c27a
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 
