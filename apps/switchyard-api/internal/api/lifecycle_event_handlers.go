@@ -291,12 +291,16 @@ func (h *Handler) createDeploymentFromLifecycleEvent(req types.LifecycleEventCre
 	}
 
 	// Try candidate service names (same pattern as ArgoCD callback for nested images)
+	// Always include the explicit service name first, then image-derived candidates (deduped)
 	candidates := []string{serviceName}
-	// If metadata has an image, extract candidates from it
 	if imageURI, ok := req.Metadata["image"].(string); ok && imageURI != "" {
-		candidates = extractServiceCandidates(imageURI)
-		if len(candidates) == 0 {
-			candidates = []string{serviceName}
+		imageCandidates := extractServiceCandidates(imageURI)
+		seen := map[string]bool{serviceName: true}
+		for _, c := range imageCandidates {
+			if !seen[c] {
+				candidates = append(candidates, c)
+				seen[c] = true
+			}
 		}
 	}
 
@@ -340,6 +344,20 @@ func (h *Handler) createDeploymentFromLifecycleEvent(req types.LifecycleEventCre
 			logging.String("env_name", envName),
 			logging.Error("db_error", err))
 		return
+	}
+
+	// Before creating deploying record, check if ArgoCD already created a running deployment
+	// (race condition: ArgoCD can sync before this goroutine runs)
+	if deployStatus == types.DeploymentStatusDeploying {
+		latestDeployment, _ := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
+		if latestDeployment != nil &&
+			latestDeployment.Status == types.DeploymentStatusRunning &&
+			time.Since(latestDeployment.CreatedAt) < 5*time.Minute {
+			h.logger.Info(ctx, "Skipping deploying record — ArgoCD already created running deployment",
+				logging.String("service_name", service.Name),
+				logging.String("existing_deployment_id", latestDeployment.ID.String()))
+			return
+		}
 	}
 
 	// Create deployment record

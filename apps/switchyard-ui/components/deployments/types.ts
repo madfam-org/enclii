@@ -3,7 +3,7 @@ export interface Deployment {
   release_id: string;
   environment_id: string;
   replicas: number;
-  status: 'pending' | 'deploying' | 'running' | 'failed' | 'stopped';
+  status: 'pending' | 'deploying' | 'running' | 'failed' | 'stopped' | 'cancelled';
   health: 'healthy' | 'unhealthy' | 'unknown';
   created_at: string;
   updated_at: string;

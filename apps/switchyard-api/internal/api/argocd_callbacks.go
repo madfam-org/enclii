@@ -235,6 +235,14 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 				"service":       serviceName,
 			},
 		})
+
+		// Clean up any orphaned deploying records for this service
+		// (from race conditions where CI goroutine ran after ArgoCD sync)
+		if err := h.repos.Deployments.CleanupStaleDeploying(ctx, service.ID, 30*time.Minute); err != nil {
+			h.logger.Warn(ctx, "Failed to cleanup stale deploying records",
+				logging.String("service_name", serviceName),
+				logging.Error("error", err))
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

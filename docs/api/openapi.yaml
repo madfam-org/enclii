@@ -4248,7 +4248,7 @@ components:
           enum: [blue-green, canary, rolling]
         status:
           type: string
-          enum: [pending, in_progress, success, failed, rolled_back]
+          enum: [pending, deploying, running, failed, cancelled]
         replicas:
           type: integer
         ready_replicas:

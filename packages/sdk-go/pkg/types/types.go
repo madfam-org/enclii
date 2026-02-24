@@ -177,6 +177,7 @@ const (
 	DeploymentStatusDeploying DeploymentStatus = "deploying"
 	DeploymentStatusRunning   DeploymentStatus = "running"
 	DeploymentStatusFailed    DeploymentStatus = "failed"
+	DeploymentStatusCancelled DeploymentStatus = "cancelled"
 )
 
 type HealthStatus string

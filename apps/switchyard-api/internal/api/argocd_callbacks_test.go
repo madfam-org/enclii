@@ -192,6 +192,16 @@ func TestArgocdEventType(t *testing.T) {
 	}
 }
 
+func TestDeploymentStatusCancelledConstant(t *testing.T) {
+	// Verify the cancelled status constant exists and has the expected value.
+	// This guards against accidental removal or renaming of the constant
+	// used by CleanupStaleDeploying.
+	if types.DeploymentStatusCancelled != "cancelled" {
+		t.Errorf("DeploymentStatusCancelled = %q, want %q",
+			types.DeploymentStatusCancelled, "cancelled")
+	}
+}
+
 func TestRepoFullNameFromImage(t *testing.T) {
 	tests := []struct {
 		name     string

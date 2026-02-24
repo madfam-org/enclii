@@ -341,6 +341,23 @@ func (r *DeploymentRepository) FindRecentDeployingByService(ctx context.Context,
 	return deployment, nil
 }
 
+// CleanupStaleDeploying marks orphaned "deploying" records as "cancelled" for a given service.
+// This handles race conditions where the CI goroutine creates a deploying record after ArgoCD
+// has already synced and created a running deployment.
+func (r *DeploymentRepository) CleanupStaleDeploying(ctx context.Context, serviceID uuid.UUID, maxAge time.Duration) error {
+	cutoff := time.Now().Add(-maxAge)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE deployments SET status = 'cancelled', updated_at = NOW()
+		WHERE id IN (
+			SELECT d.id FROM deployments d
+			JOIN releases r ON d.release_id = r.id
+			WHERE r.service_id = $1
+			AND d.status = 'deploying'
+			AND d.created_at < $2
+		)`, serviceID, cutoff)
+	return err
+}
+
 // ListByGroup retrieves all deployments for a deployment group
 // Note: This feature is not yet implemented - group_id and deploy_order columns
 // don't exist in the database. Returns empty slice until feature is migrated.

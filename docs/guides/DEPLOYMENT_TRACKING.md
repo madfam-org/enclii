@@ -237,19 +237,26 @@ The **Deployments** page at `app.enclii.dev/deployments` shows two views:
 ```
 CI reports image_pushed  → Deployment created as "deploying"
 ArgoCD syncs             → Deployment updated to "running" (healthy)
+                         → Stale "deploying" records cleaned up as "cancelled"
 
 CI reports build_failed  → Deployment created as "failed"
 ```
 
+Valid deployment statuses: `pending`, `deploying`, `running`, `failed`, `cancelled`.
+
 The `LifecycleEventCallback` handler creates Deployment records automatically for `image_pushed` and `build_failed` events. When ArgoCD later syncs, the `ArgocdSyncCallback` finds the existing `deploying` record and updates it to `running` instead of creating a duplicate.
 
+**Race guard (CI → ArgoCD):** The lifecycle handler runs async (goroutine). If ArgoCD syncs before the goroutine completes, ArgoCD creates a `running` record directly. The goroutine then checks whether a `running` deployment already exists for the service within the last 5 minutes — if so, it skips creating the `deploying` record entirely. This prevents orphaned "deploying" records from the race condition.
+
 **SHA mismatch fallback:** The CI `commit-digests` job creates a new commit (B) after the original push (A). CI lifecycle events use SHA=A, but ArgoCD syncs with SHA=B. If `FindDeployingByServiceAndSHA` doesn't find a match, the callback falls back to `FindRecentDeployingByService` — finding any `deploying` deployment for the service within a 30-minute window, regardless of SHA. This prevents "stuck deploying" records.
+
+**Stale deploying cleanup (server-side):** After each ArgoCD sync processes a service, `CleanupStaleDeploying` marks any `deploying` records older than 30 minutes as `cancelled`. This catches orphaned records from race conditions where the CI goroutine ran after ArgoCD already synced. The `cancelled` status is a terminal state — these records appear in Deployment History (not Active Deployments).
 
 **Deduplication:** The ArgoCD callback also checks whether the service's latest deployment already points to the same Release (same git SHA + image). If so, it skips creating a new record. This prevents deployment record explosion when ArgoCD syncs an Application containing multiple images but only some actually changed.
 
 **Release enrichment:** The ArgoCD callback enriches Releases with git metadata (commit message, author, branch, repo URL) from lifecycle events — both when creating new Releases AND when finding existing ones with empty metadata fields. This handles the race condition where CI creates the release first (without commit metadata) and ArgoCD later finds it. The `"actor"` metadata key is also accepted as a fallback for `"author"` since some CI workflows use GitHub's `actor` field. **Event source preference:** `enrichReleaseFields` prefers CI/webhook events (`ci_callback`, `github_webhook`) over ArgoCD events when populating metadata. ArgoCD status messages like "ArgoCD sync Synced: ..." are never stored as `commit_message` — only genuine CI commit messages are used.
 
-**Stale deploying filter (UI):** The Active Deployments card is always visible on the deployments page. It filters out `deploying`/`pending` records older than 30 minutes (these are almost certainly orphaned records from before the SHA-fallback fix and will never transition). When no active deployments exist, the card shows a green "No active deployments" idle state. The full deployment history (including stale records) remains in the database and in the Deployment History section.
+**Stale deploying filter (UI):** The Active Deployments card is always visible on the deployments page. It filters out `deploying`/`pending` records older than 30 minutes — these are shown in Deployment History instead, rendered as "Timed Out" badges. Records marked `cancelled` by server-side cleanup also appear in history as "Cancelled". When no active deployments exist, the card shows a green "No active deployments" idle state.
 
 ### Service Name Resolution
 
@@ -263,7 +270,7 @@ When a lifecycle event or ArgoCD callback arrives with an image URI like `ghcr.i
 
 For nested GHCR paths (3+ segments after the registry), the prefixed form (`{project}-{service}`) is tried first. This ensures services registered as `tezca-api` in the DB are correctly matched.
 
-The `metadata.service` field in CI callbacks provides an explicit service name and is preferred when present. ArgoCD lifecycle events also include the resolved `service` name in their metadata. When neither `metadata.service` is set, the Pipeline Activity UI extracts the service name from `metadata.image` (last path segment without tag/digest) — e.g. `ghcr.io/madfam-org/enclii/switchyard-api:sha-abc` → "switchyard-api". The full fallback chain is: `metadata.service` → image URI extraction → repo name.
+The `metadata.service` field in CI callbacks provides an explicit service name. In the lifecycle handler, this explicit name is always preserved as the first candidate — image-derived candidates are appended (deduped) rather than overwriting the explicit name. This ensures CI can control service matching by setting `metadata.service` to the exact DB name. ArgoCD lifecycle events also include the resolved `service` name in their metadata. When neither `metadata.service` is set, the Pipeline Activity UI extracts the service name from `metadata.image` (last path segment without tag/digest) — e.g. `ghcr.io/madfam-org/enclii/switchyard-api:sha-abc` → "switchyard-api". The full fallback chain is: `metadata.service` → image URI extraction → repo name.
 
 ## Key Files
 

@@ -109,7 +109,12 @@ export default function DeploymentsPage() {
         const age = now - new Date(d.created_at).getTime();
         return age < STALE_DEPLOYING_MS;
       });
-      const history = allDeployments.filter((d) => d.status !== 'deploying' && d.status !== 'pending');
+      const history = allDeployments.filter((d) => {
+        if (d.status !== 'deploying' && d.status !== 'pending') return true;
+        // Stale deploying/pending records go to history (not active)
+        const age = now - new Date(d.created_at).getTime();
+        return age >= STALE_DEPLOYING_MS;
+      });
 
       setActiveDeployments(active);
       setDeployments(history);
@@ -165,16 +170,26 @@ export default function DeploymentsPage() {
       pending: 'secondary',
       deploying: 'secondary',
       failed: 'destructive',
+      cancelled: 'outline',
       stopped: 'outline',
     };
     return variants[status] || 'outline';
   };
+
+  // Deployment records in history with deploying/pending status are stale by definition
+  // (active records are filtered out separately). Show them as "Timed Out".
+  const getStatusLabel = useCallback((deployment: Deployment): string => {
+    if (deployment.status === 'deploying' || deployment.status === 'pending') return 'Timed Out';
+    if (deployment.status === 'cancelled') return 'Cancelled';
+    return deployment.status;
+  }, []);
 
   const getStatusDotClass = (status: string) => {
     switch (status) {
       case "running": return "bg-status-success";
       case "deploying": case "pending": return "bg-status-info animate-pulse";
       case "failed": return "bg-status-error";
+      case "cancelled": return "bg-muted-foreground";
       default: return "bg-status-warning";
     }
   };
@@ -426,7 +441,7 @@ export default function DeploymentsPage() {
                     </div>
                   </div>
                   <Badge variant={getStatusVariant(deployment.status)} className="flex-shrink-0 ml-4">
-                    {deployment.status}
+                    {getStatusLabel(deployment)}
                   </Badge>
                 </div>
               ))}
