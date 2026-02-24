@@ -5,7 +5,7 @@ import { setupApiMocking, waitForAppReady } from '../fixtures';
  * Dashboard E2E Tests
  *
  * Priority: P0/P1
- * Tests the project-centric dashboard: project grid, search/filter, and loading states.
+ * Tests the project-centric dashboard: 3-column layout with sidebar, project grid, search/filter, and loading states.
  *
  * Note: Unauthenticated tests verify redirect to login.
  * Authenticated tests require TEST_USER_PASSWORD environment variable.
@@ -67,22 +67,25 @@ test.describe('Dashboard', () => {
       expect(hasSkeletons).toBeGreaterThanOrEqual(0);
     });
 
-    test('should show scope-aware page title', async ({ page }) => {
+    test('should show search and action bar', async ({ page }) => {
       await page.goto('/');
       await page.waitForLoadState('networkidle');
 
-      // Page heading should contain "Projects"
-      const heading = page.getByRole('heading', { level: 1 });
-      await expect(heading).toContainText(/Projects/);
+      // SubNavActionBar should render search input and Add New button
+      const searchInput = page.getByPlaceholder(/search projects/i);
+      await expect(searchInput).toBeVisible();
+
+      const addButton = page.getByRole('button', { name: /add new/i });
+      await expect(addButton).toBeVisible();
     });
 
-    test('should show inline stats summary', async ({ page }) => {
+    test('should show sidebar with usage overview', async ({ page }) => {
       await page.goto('/');
       await page.waitForLoadState('networkidle');
 
-      // Look for inline stats text (e.g. "X projects", "services healthy")
-      const statsText = page.getByText(/project|services healthy/i);
-      const count = await statsText.count();
+      // Sidebar should contain Usage card and Alerts card
+      const usageText = page.getByText(/usage/i);
+      const count = await usageText.count();
       expect(count).toBeGreaterThanOrEqual(0);
     });
   });

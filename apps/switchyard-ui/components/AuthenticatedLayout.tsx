@@ -60,17 +60,13 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const { currentScope, scopes, switchScope } = useScope();
   const { theme, setTheme } = useTheme();
 
-  // Primary navigation - always visible at lg+ breakpoint
-  const primaryNav: NavItem[] = [
+  // All navigation items for the bottom bar
+  const allNav: NavItem[] = [
     { name: 'Dashboard', href: '/', tourId: 'dashboard' },
     { name: 'Projects', href: '/projects', tourId: 'projects' },
     { name: 'Services', href: '/services', tourId: 'services' },
     { name: 'Deployments', href: '/deployments', tourId: 'deployments' },
     { name: 'Observability', href: '/observability', tourId: 'observability' },
-  ];
-
-  // Overflow navigation - in dropdown at lg-xl, visible inline at 2xl+
-  const overflowNav: NavItem[] = [
     { name: 'Templates', href: '/templates' },
     { name: 'Databases', href: '/databases' },
     { name: 'Functions', href: '/functions' },
@@ -78,16 +74,17 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     { name: 'Activity', href: '/activity' },
   ];
 
-  // Combined navigation for mobile menu
-  const navigation = [...primaryNav, ...overflowNav];
+  // At lg: first 7 inline, last 3 in "More" dropdown
+  const inlineNav = allNav.slice(0, 7);
+  const moreNav = allNav.slice(7);
 
   const secondaryNav: NavItem[] = [
     { name: 'Usage', href: '/usage' },
     { name: 'Settings', href: '/settings' },
   ];
 
-  // Check if any overflow item is active (for "More" button highlighting)
-  const isOverflowActive = overflowNav.some(
+  // Check if any "More" item is active
+  const isMoreActive = moreNav.some(
     (item) => pathname === item.href || pathname.startsWith(item.href)
   );
 
@@ -124,9 +121,12 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     <div className="min-h-screen flex flex-col">
       {/* Auth Error Banner - shows session expiry, auth failures, etc. */}
       <AuthErrorBanner />
-      <nav className={`bg-background border-b border-border sticky top-0 z-50 transition-shadow duration-200 overflow-x-hidden ${isScrolled ? shadowClass : ''}`}>
+
+      {/* Two-Level Navbar */}
+      <header className={`bg-background border-b border-border sticky top-0 z-50 transition-shadow duration-200 overflow-x-hidden ${isScrolled ? shadowClass : ''}`}>
+        {/* Top bar: Logo + scope + actions */}
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 min-w-0">
+          <div className="flex justify-between h-14 min-w-0">
             <div className="flex items-center min-w-0 flex-1">
               <div className="flex-shrink-0 flex items-center gap-2">
                 <Link href="/" className="flex items-center">
@@ -148,65 +148,13 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                   </>
                 )}
               </div>
-              {/* Desktop Navigation - Hidden on mobile/tablet */}
-              <div className="hidden lg:flex ml-6 items-baseline space-x-1 xl:space-x-2 2xl:space-x-4 relative z-10">
-                {/* Primary nav items - always visible at lg+ */}
-                {primaryNav.map((item) => (
-                  <NavLink key={item.name} item={item} pathname={pathname} />
-                ))}
-
-                {/* More dropdown - visible at lg, hidden at xl */}
-                <div className="2xl:hidden">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className={`px-3 py-2 text-sm font-medium transition-colors duration-150 flex items-center gap-1 ${
-                          isOverflowActive
-                            ? 'text-enclii-blue'
-                            : 'text-muted-foreground hover:text-enclii-blue'
-                        }`}
-                      >
-                        More
-                        <ChevronDown className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-40">
-                      {overflowNav.map((item) => {
-                        const isActive = pathname === item.href || pathname.startsWith(item.href);
-                        return (
-                          <DropdownMenuItem key={item.name} asChild>
-                            <Link
-                              href={item.href}
-                              className={isActive ? 'text-enclii-blue bg-accent' : ''}
-                            >
-                              {item.name}
-                            </Link>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                {/* Overflow items - visible at xl+ */}
-                <div className="hidden 2xl:flex items-baseline space-x-2">
-                  {overflowNav.map((item) => (
-                    <NavLink key={item.name} item={item} pathname={pathname} />
-                  ))}
-                </div>
-              </div>
             </div>
             <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
-              {/* Command Palette - Always visible */}
+              {/* Command Palette */}
               <CommandPalette />
 
-              {/* Notifications - Always visible */}
+              {/* Notifications */}
               <NotificationBell />
-
-              {/* System Health - Hidden on mobile/tablet, visible at lg+ */}
-              <div className="hidden lg:block">
-                <SystemHealthBadge />
-              </div>
 
               {/* User Menu - visible at lg+ (desktop) */}
               <div className="hidden lg:block">
@@ -252,7 +200,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                         Navigation
                       </p>
-                      {navigation.map((item) => {
+                      {allNav.map((item) => {
                         const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
                         return (
                           <Link
@@ -373,18 +321,120 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
             </div>
           </div>
         </div>
-      </nav>
-      <main className="flex-grow">{children}</main>
-      <footer className="bg-background border-t border-border">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-muted-foreground text-center sm:text-left">
-              © {new Date().getFullYear()} Enclii Platform. Built with ❤️ for developers.
+
+        {/* Bottom bar: Navigation links */}
+        <div className="hidden lg:block border-t border-border/50">
+          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center h-10 space-x-1">
+              {/* At xl+: all 10 items inline */}
+              <div className="hidden xl:flex items-center space-x-1">
+                {allNav.map((item) => (
+                  <NavLink key={item.name} item={item} pathname={pathname} />
+                ))}
+              </div>
+
+              {/* At lg (below xl): first 7 inline + "More" dropdown for last 3 */}
+              <div className="flex xl:hidden items-center space-x-1">
+                {inlineNav.map((item) => (
+                  <NavLink key={item.name} item={item} pathname={pathname} />
+                ))}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`px-3 py-2 text-sm font-medium transition-colors duration-150 flex items-center gap-1 ${
+                        isMoreActive
+                          ? 'text-enclii-blue'
+                          : 'text-muted-foreground hover:text-enclii-blue'
+                      }`}
+                    >
+                      More
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-40">
+                    {moreNav.map((item) => {
+                      const isActive = pathname === item.href || pathname.startsWith(item.href);
+                      return (
+                        <DropdownMenuItem key={item.name} asChild>
+                          <Link
+                            href={item.href}
+                            className={isActive ? 'text-enclii-blue bg-accent' : ''}
+                          >
+                            {item.name}
+                          </Link>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-              <a href="https://docs.enclii.dev" className="hover:text-foreground">Documentation</a>
-              <a href="https://api.enclii.dev/docs" className="hover:text-foreground">API</a>
-              <a href="https://status.enclii.dev" className="hover:text-foreground">Status</a>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-grow">{children}</main>
+
+      {/* Persistent Footer */}
+      <footer className="bg-background border-t border-border">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            {/* Left: Links */}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <a href="https://docs.enclii.dev" className="hover:text-foreground transition-colors">
+                Docs
+              </a>
+              <a href="https://docs.enclii.dev/sdks" className="hover:text-foreground transition-colors">
+                SDKs
+              </a>
+              <a href="https://enclii.dev/contact" className="hover:text-foreground transition-colors">
+                Contact
+              </a>
+              <a href="https://enclii.dev/legal" className="hover:text-foreground transition-colors">
+                Legal
+              </a>
+            </div>
+
+            {/* Right: System health + theme toggle */}
+            <div className="flex items-center gap-4">
+              <SystemHealthBadge />
+
+              {/* Inline theme toggle */}
+              <div className="hidden sm:flex items-center rounded-md border border-border bg-muted/50 p-0.5">
+                <button
+                  onClick={() => setTheme('light')}
+                  className={`p-1.5 rounded transition-colors ${
+                    theme === 'light'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  aria-label="Light theme"
+                >
+                  <Sun className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setTheme('dark')}
+                  className={`p-1.5 rounded transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  aria-label="Dark theme"
+                >
+                  <Moon className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setTheme('system')}
+                  className={`p-1.5 rounded transition-colors ${
+                    theme === 'system'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  aria-label="Auto theme"
+                >
+                  <Monitor className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

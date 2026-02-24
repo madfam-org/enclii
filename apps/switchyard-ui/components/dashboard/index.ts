@@ -23,3 +23,10 @@ export type { ViewMode } from "./view-toggle";
 
 // Usage Overview (CircularGauge integration)
 export { UsageOverview, UsageGauges } from "./usage-overview";
+
+// Sub-Nav Action Bar
+export { SubNavActionBar } from "./sub-nav-action-bar";
+
+// Sidebar Widgets
+export { SidebarAlerts } from "./sidebar-alerts";
+export { SidebarRecentPreviews } from "./sidebar-recent-previews";

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, GitBranch } from "lucide-react";
+import { ExternalLink, GitBranch, Github } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/formatting";
@@ -48,7 +48,7 @@ export function ProjectCardCompact({
     <Link href={`/projects/${project.slug}`} className="block">
       <Card
         className={cn(
-          "hover:border-primary/50 group relative flex h-[180px] flex-col justify-between p-4 transition-all duration-200 hover:shadow-lg",
+          "hover:border-primary/50 group relative flex min-h-[180px] flex-col justify-between p-4 transition-all duration-200 hover:shadow-lg",
           className,
         )}
       >
@@ -94,6 +94,20 @@ export function ProjectCardCompact({
           </a>
         ) : (
           <div className="mt-2 h-4" />
+        )}
+
+        {/* Row 3b: GitHub repo */}
+        {project.gitRepo && (
+          <a
+            href={`https://github.com/${project.gitRepo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground mt-1.5 flex items-center gap-1.5 truncate text-xs transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Github className="h-3 w-3 shrink-0" />
+            <span className="truncate">{project.gitRepo}</span>
+          </a>
         )}
 
         {/* Row 4: Git branch + relative time */}

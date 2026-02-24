@@ -230,22 +230,23 @@ test.describe('Responsive Design', () => {
     test.describe('Project Grid - Desktop', () => {
       test.use({ viewport: viewports.desktop });
 
-      test('project cards should display in 3-column grid', async ({ page }) => {
+      test('project cards should display in 2-column grid with sidebar', async ({ page }) => {
         await page.goto('/');
 
         const cards = page.locator('[class*="Card"]');
         const count = await cards.count();
 
-        if (count >= 3) {
-          const card1Box = await cards.nth(0).boundingBox();
-          const card2Box = await cards.nth(1).boundingBox();
-          const card3Box = await cards.nth(2).boundingBox();
+        if (count >= 2) {
+          // Find project cards specifically (inside the main 9-col area)
+          const projectCards = page.locator('[class*="ProjectCard"], [class*="Card"]');
+          const card1Box = await projectCards.nth(0).boundingBox();
+          const card2Box = await projectCards.nth(1).boundingBox();
 
-          if (card1Box && card2Box && card3Box) {
-            // All 3 cards should be in same row (similar Y)
-            const sameRow =
-              Math.abs(card1Box.y - card2Box.y) < 50 && Math.abs(card2Box.y - card3Box.y) < 50;
-            expect(sameRow).toBeTruthy();
+          if (card1Box && card2Box) {
+            // First 2 project cards should be side by side (similar Y, different X)
+            const sameRow = Math.abs(card1Box.y - card2Box.y) < 50;
+            const differentX = Math.abs(card1Box.x - card2Box.x) > 50;
+            expect(sameRow && differentX).toBeTruthy();
           }
         }
       });
