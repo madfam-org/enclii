@@ -31,9 +31,12 @@ jobs:
           echo "pkg_name=$PKG_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Configure npm registry auth
+        run: |
+          echo "@enclii:registry=https://npm.madfam.io" >> ~/.npmrc
+          echo "//npm.madfam.io/:_authToken=${{ secrets.NPM_MADFAM_TOKEN }}" >> ~/.npmrc
+
       - name: Install dependencies
-        env:
-          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
         run: pnpm install
         working-directory: packages
 
@@ -42,8 +45,6 @@ jobs:
         working-directory: packages/${{ steps.extract.outputs.pkg_name }}
 
       - name: Publish to npm.madfam.io
-        env:
-          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
         run: pnpm publish --no-git-checks --access public
         working-directory: packages/${{ steps.extract.outputs.pkg_name }}
 
