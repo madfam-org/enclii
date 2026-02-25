@@ -11,6 +11,8 @@ jobs:
   publish:
     name: Publish @enclii SDK
     runs-on: ubuntu-latest
+    env:
+      NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,11 +32,6 @@ jobs:
           VERSION=${TAG#*-v}
           echo "pkg_name=$PKG_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Configure npm registry auth
-        run: |
-          echo "@enclii:registry=https://npm.madfam.io" >> ~/.npmrc
-          echo "//npm.madfam.io/:_authToken=${{ secrets.NPM_MADFAM_TOKEN }}" >> ~/.npmrc
 
       - name: Install dependencies
         run: pnpm install
