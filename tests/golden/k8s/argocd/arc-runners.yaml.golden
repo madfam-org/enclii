@@ -1,10 +1,17 @@
 # GitHub Actions Runner Controller Application
 # Deploys: ARC controller + runner scale sets
 #
-# ArgoCD v3.2.5 multi-source OCI workaround: chart name embedded in
-# repoURL to avoid revision resolution bug (resolves at repo level
-# instead of chart level, causing 403 on GHCR).
-# Auto-sync re-enabled (Feb 2026).
+# Auto-sync DISABLED — ArgoCD v3.2.5 has a bug in multi-source OCI Helm
+# revision resolution: it sends HEAD requests to the base repo URL
+# (ghcr.io/.../actions-runner-controller-charts) instead of the full
+# chart path (ghcr.io/.../gha-runner-scale-set-controller), causing
+# ComparisonError (403 from GHCR). Pods are Healthy and functional.
+# Bug filed: https://github.com/argoproj/argo-cd/issues — re-enable
+# auto-sync when ArgoCD fixes multi-source OCI Helm revision resolution.
+#
+# To upgrade ARC charts, use Helm CLI directly:
+#   helm upgrade arc-controller oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+#     --namespace arc-system --version 0.10.1 -f infra/helm/arc/values-controller.yaml
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -21,7 +28,8 @@ spec:
 
   # ARC Controller
   sources:
-    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
+    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set-controller
       targetRevision: 0.10.1
       helm:
         releaseName: arc-controller
@@ -37,9 +45,7 @@ spec:
     namespace: arc-system
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+    # Auto-sync DISABLED — see header comment (ArgoCD OCI multi-source bug)
     syncOptions:
       - CreateNamespace=true
 ---
@@ -56,7 +62,8 @@ spec:
   project: default
 
   sources:
-    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set
       targetRevision: 0.10.1
       helm:
         releaseName: arc-runner-blue
@@ -72,8 +79,6 @@ spec:
     namespace: arc-runners
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+    # Auto-sync DISABLED — see header comment (ArgoCD OCI multi-source bug)
     syncOptions:
       - CreateNamespace=true

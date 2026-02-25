@@ -216,7 +216,7 @@ tags: [production, deployment, checklist, operations]
 
 ## Known Issues / Future Work
 
-- [x] ~~ArgoCD v2.13 OCI Helm chart bug~~ — Fixed: upgraded to v3.2.5, auto-sync re-enabled (Feb 2026)
+- [ ] ArgoCD multi-source OCI Helm revision resolution bug — persists in v3.2.5 (2 ARC apps show Unknown/Healthy, pods functional)
 - [x] ~~Image Updater ConfigMap OutOfSync~~ — Fixed: removed from cluster (unused, CI handles digests)
 - [ ] Janua Database Backup workflow failing (separate from platform backups)
 - [ ] PostgreSQL HA (Patroni/CloudNativePG) — when SLA > 99.9%
