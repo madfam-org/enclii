@@ -63,7 +63,7 @@ tags: [production, deployment, checklist, operations]
 - [x] Longhorn backup to Cloudflare R2
 
 ### GitOps & CI/CD
-- [x] ArgoCD App-of-Apps (16 apps)
+- [x] ArgoCD App-of-Apps (17 apps)
 - [x] ArgoCD self-heal enabled
 - [x] GitHub webhook CI/CD operational
 - [x] Auto-deploy pipeline (enclii, dhanam, janua)
@@ -216,8 +216,8 @@ tags: [production, deployment, checklist, operations]
 
 ## Known Issues / Future Work
 
-- [ ] ArgoCD v2.13 OCI Helm chart bug (2 apps show Unknown — Healthy)
-- [ ] Image Updater ConfigMap OutOfSync (cosmetic, dual-ownership)
+- [x] ~~ArgoCD v2.13 OCI Helm chart bug~~ — Fixed: upgraded to v3.2.5, auto-sync re-enabled (Feb 2026)
+- [x] ~~Image Updater ConfigMap OutOfSync~~ — Fixed: removed from cluster (unused, CI handles digests)
 - [ ] Janua Database Backup workflow failing (separate from platform backups)
 - [ ] PostgreSQL HA (Patroni/CloudNativePG) — when SLA > 99.9%
 - [ ] Redis Sentinel — manifests staged

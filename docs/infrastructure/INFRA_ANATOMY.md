@@ -4,7 +4,7 @@
 >
 > **Live Status Check** (2026-02-06, session 10):
 > - Disk usage: 67% (62G/98G) — cleaned orphaned ReplicaSets + pruned images
-> - ArgoCD: 18 apps — 14 Synced, 1 OutOfSync (cosmetic), 2 Unknown + 2 new (npm-registry, platform-infra)
+> - ArgoCD: 17 apps — 17 Synced/Healthy (image-updater removed, ARC auto-sync re-enabled)
 > - core-services: ✅ Synced/Healthy
 > - Endpoints: 12/12 public endpoints healthy, all <1s
 > - Dhanam API: ✅ /health returns 200 (probes switched to httpGet)
@@ -29,7 +29,7 @@
 | **CPU** | core: 12% (1504m), builder: 1% (35m) | ✅ HEALTHY |
 | **Memory** | core: 27% (17.7GB/64GB), builder: 33% (1.2GB/4GB) | ✅ HEALTHY |
 | **Disk** | core: 67% (62G/98G) | ✅ HEALTHY |
-| **ArgoCD** | 18 apps: 14 Synced, 1 OutOfSync (cosmetic), 2 Unknown, 2 new (npm-registry, platform-infra) | ✅ HEALTHY |
+| **ArgoCD** | 17 apps: 17 Synced/Healthy | ✅ HEALTHY |
 | **Storage** | 10/10 PVCs bound | ✅ HEALTHY |
 | **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
 | **TLS Certs** | All valid | ✅ HEALTHY |
@@ -321,7 +321,6 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | enclii-infrastructure | ✅ Synced | Healthy | |
 | external-secrets | ✅ Synced | Healthy | |
 | external-secrets-config | ✅ Synced | Healthy | |
-| image-updater-config | ✅ Synced | Healthy | |
 | ingress | ✅ Synced | Healthy | |
 | kyverno | ✅ Synced | Healthy | |
 | longhorn | ✅ Synced | Healthy | |
@@ -329,11 +328,12 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | **janua-services** | ✅ Synced | Healthy | auto-sync enabled; Image Updater disabled (was thrashing, Session 6) |
 | **dhanam-services** | ✅ Synced | Healthy | 3-way merge; probes switched to httpGet /health (Session 10) |
 | kyverno-policies | ✅ Synced | Healthy | |
-| arc-runners | ⚠️ Unknown | Healthy | auto-sync disabled (ArgoCD v2.13 OCI Helm bug) |
-| arc-runners-blue | ⚠️ Unknown | Healthy | auto-sync disabled (ArgoCD v2.13 OCI Helm bug) |
-| argocd-image-updater | ⚠️ OutOfSync | Healthy | Cosmetic — ConfigMap dual-ownership (Helm chart + git app) |
+| arc-runners | ✅ Synced | Healthy | auto-sync re-enabled (ArgoCD v3.2.5, OCI bug fixed) |
+| arc-runners-blue | ✅ Synced | Healthy | auto-sync re-enabled (ArgoCD v3.2.5, OCI bug fixed) |
+| **npm-registry-services** | ✅ Synced | Healthy | Verdaccio private npm registry |
+| **platform-infra-services** | ✅ Synced | Healthy | Adopted existing data namespace resources |
 
-**Summary:** 16 apps total. 14 Synced/Healthy, 2 Unknown/Healthy (ARC OCI bug), 1 OutOfSync/Healthy (cosmetic).
+**Summary:** 17 apps total. 17 Synced/Healthy. Image Updater removed (unused, CI handles digest commits).
 
 ---
 
