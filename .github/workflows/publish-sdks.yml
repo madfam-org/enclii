@@ -17,7 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          registry-url: "https://npm.madfam.io"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -33,6 +32,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Install dependencies
+        env:
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
         run: pnpm install
         working-directory: packages
 
@@ -42,7 +43,7 @@ jobs:
 
       - name: Publish to npm.madfam.io
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
         run: pnpm publish --no-git-checks --access public
         working-directory: packages/${{ steps.extract.outputs.pkg_name }}
 
