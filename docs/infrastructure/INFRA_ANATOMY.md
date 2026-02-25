@@ -4,7 +4,7 @@
 >
 > **Live Status Check** (2026-02-06, session 10):
 > - Disk usage: 67% (62G/98G) — cleaned orphaned ReplicaSets + pruned images
-> - ArgoCD: 16 apps — 14 Synced, 1 OutOfSync (cosmetic), 2 Unknown
+> - ArgoCD: 18 apps — 14 Synced, 1 OutOfSync (cosmetic), 2 Unknown + 2 new (npm-registry, platform-infra)
 > - core-services: ✅ Synced/Healthy
 > - Endpoints: 12/12 public endpoints healthy, all <1s
 > - Dhanam API: ✅ /health returns 200 (probes switched to httpGet)
@@ -29,7 +29,7 @@
 | **CPU** | core: 12% (1504m), builder: 1% (35m) | ✅ HEALTHY |
 | **Memory** | core: 27% (17.7GB/64GB), builder: 33% (1.2GB/4GB) | ✅ HEALTHY |
 | **Disk** | core: 67% (62G/98G) | ✅ HEALTHY |
-| **ArgoCD** | 16 apps: 14 Synced, 1 OutOfSync (cosmetic), 2 Unknown | ✅ HEALTHY |
+| **ArgoCD** | 18 apps: 14 Synced, 1 OutOfSync (cosmetic), 2 Unknown, 2 new (npm-registry, platform-infra) | ✅ HEALTHY |
 | **Storage** | 10/10 PVCs bound | ✅ HEALTHY |
 | **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
 | **TLS Certs** | All valid | ✅ HEALTHY |

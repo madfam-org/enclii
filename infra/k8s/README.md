@@ -26,7 +26,15 @@ infra/k8s/
 │   ├── cert-manager.yaml      # TLS automation
 │   ├── secrets.dev.yaml       # Dev credentials
 │   ├── secrets.yaml.TEMPLATE  # Prod template
-│   └── verdaccio/             # NPM registry (optional)
+│   └── verdaccio/             # NPM registry (ArgoCD-managed)
+├── platform-infra/     # Infrastructure umbrella (ArgoCD visibility)
+│   ├── kustomization.yaml
+│   ├── postgres.yaml          # → symlink to base/postgres.yaml
+│   ├── redis.yaml             # → symlink to production/data/redis.yaml
+│   ├── postgres-backup.yaml   # → symlink to production/backup/
+│   ├── backup-verify-cronjob.yaml
+│   ├── postgres-restore-drill.yaml
+│   └── postgres-exporter.yaml
 ├── staging/            # Staging overlay
 │   ├── kustomization.yaml
 │   ├── replicas-patch.yaml

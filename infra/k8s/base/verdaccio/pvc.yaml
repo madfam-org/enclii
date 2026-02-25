@@ -9,7 +9,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: hetzner-volumes
+  storageClassName: longhorn
   resources:
     requests:
       storage: 50Gi

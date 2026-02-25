@@ -1,0 +1,8 @@
+{
+  "name": "npm-registry",
+  "repoURL": "https://github.com/madfam-org/enclii.git",
+  "branch": "main",
+  "manifestPath": "infra/k8s/base/verdaccio",
+  "namespace": "npm-registry",
+  "partOf": "enclii-platform"
+}

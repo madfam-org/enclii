@@ -16,7 +16,6 @@ resources:
   - secret.yaml
   - deployment.yaml
   - service.yaml
-  - ingress.yaml
   - networkpolicy.yaml
   - hpa.yaml
 

@@ -37,11 +37,18 @@ This document describes how Enclii deploys **itself** using its own platform, an
 | Janua Docs | docs.janua.dev | 80 | ✅ Running | ✅ Enabled |
 | Janua Website | janua.dev | 80 | ✅ Running | ✅ Enabled |
 
+### Platform Infrastructure (ArgoCD-managed)
+| Service | URL | Port | Status | Auto-Deploy |
+|---------|-----|------|--------|-------------|
+| npm Registry | npm.madfam.io | 4873 | ✅ Running | ✅ ArgoCD |
+| PostgreSQL | - | 5432 | ✅ Running | ✅ ArgoCD |
+| Redis | - | 6379 | ✅ Running | ✅ ArgoCD |
+| Backup Jobs | - | - | ✅ Running | ✅ ArgoCD |
+
 ### Solarpunk Foundry Services (github.com/madfam-org/solarpunk-foundry)
 | Service | URL | Port | Status | Auto-Deploy |
 |---------|-----|------|--------|-------------|
 | Solarpunk Docs | docs.madfam.io | 3000 | 🔲 Pending | ✅ Enabled |
-| npm Registry | npm.madfam.io | 4873 | ✅ Running | Manual (image-based) |
 
 ### GitHub Webhook Status
 

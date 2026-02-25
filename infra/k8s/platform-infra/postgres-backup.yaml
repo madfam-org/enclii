@@ -1,0 +1,212 @@
+---
+# PostgreSQL Backup to Cloudflare R2
+#
+# Architecture: initContainer (postgres:16) dumps → main container (aws-cli) uploads
+# This avoids needing awscli in the postgres image or python3 for S3 signing.
+#
+# Usage:
+#   1. Create the R2 bucket: enclii-backups
+#   2. Create R2 API tokens with write access
+#   3. Create the secret (see backup-secrets.yaml.template)
+#   4. Apply this manifest
+
+# Backup Script ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-backup-script
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+data:
+  dump.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="/backup/backup_${TIMESTAMP}.sql.gz"
+
+    echo "[$(date)] Starting PostgreSQL backup..."
+    echo "[$(date)] Running pg_dumpall..."
+
+    PGPASSWORD="${POSTGRES_PASSWORD}" pg_dumpall \
+      -h "${POSTGRES_HOST}" \
+      -U "${POSTGRES_USER}" \
+      --no-owner \
+      --no-role-passwords \
+      | gzip > "${BACKUP_FILE}"
+
+    BACKUP_SIZE=$(du -h "${BACKUP_FILE}" | cut -f1)
+    echo "[$(date)] Dump complete: ${BACKUP_FILE} (${BACKUP_SIZE})"
+
+    # Write timestamp for upload script
+    echo "${TIMESTAMP}" > /backup/TIMESTAMP
+
+  upload.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
+    BACKUP_PREFIX="${BACKUP_PREFIX:-postgres}"
+    R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+    TIMESTAMP=$(cat /backup/TIMESTAMP)
+    BACKUP_FILE="/backup/backup_${TIMESTAMP}.sql.gz"
+    BACKUP_KEY="${BACKUP_PREFIX}/${TIMESTAMP}.sql.gz"
+
+    echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
+    aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_KEY}" \
+      --endpoint-url "${R2_ENDPOINT}"
+
+    # Maintain a 'latest' copy for easy access
+    aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest.sql.gz" \
+      --endpoint-url "${R2_ENDPOINT}"
+
+    echo "[$(date)] Upload complete"
+
+    # Cleanup old backups (keep last RETENTION_DAYS days)
+    RETENTION_DAYS="${RETENTION_DAYS:-30}"
+    echo "[$(date)] Cleaning up backups older than ${RETENTION_DAYS} days..."
+    CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
+
+    aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/" \
+      --endpoint-url "${R2_ENDPOINT}" 2>/dev/null \
+      | while read -r line; do
+        FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1 || echo "")
+        FILE_NAME=$(echo "$line" | awk '{print $4}')
+
+        if [[ -n "${FILE_DATE}" && "${FILE_DATE}" < "${CUTOFF_DATE}" && "${FILE_NAME}" != "latest.sql.gz" ]]; then
+          echo "[$(date)] Deleting old backup: ${FILE_NAME}"
+          aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${FILE_NAME}" \
+            --endpoint-url "${R2_ENDPOINT}"
+        fi
+      done
+
+    echo "[$(date)] Backup pipeline complete: ${BACKUP_KEY}"
+---
+# CronJob for daily backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+spec:
+  # Run daily at 3 AM UTC
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800  # 30 minute timeout
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          # Step 1: pg_dumpall writes to shared /backup volume
+          initContainers:
+            - name: dump
+              image: docker.io/library/postgres:16
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/bash
+                - /scripts/dump.sh
+              env:
+                - name: POSTGRES_HOST
+                  value: postgres.data.svc.cluster.local
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: username
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: password
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          # Step 2: aws-cli uploads from shared /backup volume to R2
+          containers:
+            - name: upload
+              image: docker.io/amazon/aws-cli:2.33.16
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/bash
+                - /scripts/upload.sh
+              env:
+                - name: R2_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: account-id
+                - name: R2_BUCKET
+                  value: enclii-backups
+                - name: BACKUP_PREFIX
+                  value: postgres
+                - name: RETENTION_DAYS
+                  value: "30"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: postgres-backup-script
+                defaultMode: 0755
+            - name: backup-data
+              emptyDir:
+                sizeLimit: 2Gi

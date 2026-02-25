@@ -1,0 +1,178 @@
+---
+# Weekly backup verification CronJob
+# Downloads latest postgres backup from R2 (init container with aws-cli),
+# then restores to a temp postgres instance and validates data.
+# Exit code indicates success/failure for Prometheus kube_job_status scraping.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-verify
+  namespace: data
+  labels:
+    app: backup-verify
+    app.kubernetes.io/name: backup-verify
+    app.kubernetes.io/component: disaster-recovery
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "0 4 * * 0"  # Sunday 4am UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800  # 30 min max
+      template:
+        metadata:
+          labels:
+            app: backup-verify
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999   # postgres user
+            runAsGroup: 999
+            fsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: download-backup
+              image: docker.io/amazon/aws-cli:latest
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: R2_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: account-id
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  value: "auto"
+              command:
+                - /bin/bash
+                - -euo
+                - pipefail
+                - -c
+                - |
+                  ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+                  echo "Downloading latest backup from R2..."
+
+                  # Find latest backup file
+                  LATEST=$(aws s3 ls "s3://enclii-backups/postgres/" --endpoint-url "${ENDPOINT}" | sort | tail -1 | awk '{print $4}')
+                  if [ -z "$LATEST" ]; then
+                    echo "ERROR: No backups found in s3://enclii-backups/postgres/"
+                    exit 1
+                  fi
+                  echo "Latest backup: ${LATEST}"
+
+                  aws s3 cp "s3://enclii-backups/postgres/${LATEST}" /shared/backup.sql.gz \
+                    --endpoint-url "${ENDPOINT}" --quiet
+
+                  BACKUP_SIZE=$(stat -c%s /shared/backup.sql.gz 2>/dev/null || stat -f%z /shared/backup.sql.gz)
+                  echo "Backup size: ${BACKUP_SIZE} bytes"
+
+                  if [ "${BACKUP_SIZE}" -lt 1000 ]; then
+                    echo "ERROR: Backup file suspiciously small (${BACKUP_SIZE} bytes)"
+                    exit 1
+                  fi
+                  echo "Download complete."
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
+          containers:
+            - name: verify
+              image: docker.io/library/postgres:16
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: PGDATA
+                  value: /var/lib/postgresql/data/pgdata
+                - name: POSTGRES_PASSWORD
+                  value: "verify-temp"
+              command:
+                - /bin/bash
+                - -euo
+                - pipefail
+                - -c
+                - |
+                  echo "=== Backup Verification Started ==="
+
+                  # Start temporary postgres
+                  echo "Starting temporary PostgreSQL..."
+                  initdb -D "${PGDATA}" --auth=trust > /dev/null
+                  pg_ctl -D "${PGDATA}" -l /tmp/pg.log start
+
+                  # Wait for postgres to be ready
+                  for i in $(seq 1 30); do
+                    pg_isready -U postgres && break
+                    sleep 1
+                  done
+
+                  # Create database and restore
+                  echo "Restoring backup..."
+                  createdb -U postgres enclii_verify
+                  gunzip -c /shared/backup.sql.gz | psql -U postgres -d enclii_verify -q 2>/dev/null
+
+                  # Validate
+                  echo "Validating restored data..."
+                  TABLE_COUNT=$(psql -U postgres -d enclii_verify -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+                  PROJECT_COUNT=$(psql -U postgres -d enclii_verify -t -c "SELECT count(*) FROM projects;" 2>/dev/null | tr -d ' ')
+
+                  echo "=== Verification Result ==="
+                  echo "Tables: ${TABLE_COUNT}"
+                  echo "Project count: ${PROJECT_COUNT:-unknown}"
+
+                  if [ -z "${TABLE_COUNT}" ] || [ "${TABLE_COUNT}" = "0" ]; then
+                    echo "ERROR: No tables found after restore"
+                    pg_ctl -D "${PGDATA}" stop -m fast
+                    exit 1
+                  fi
+
+                  # Cleanup
+                  pg_ctl -D "${PGDATA}" stop -m fast
+                  echo "Status: SUCCESS"
+                  echo "=== Backup Verification Complete ==="
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+              volumeMounts:
+                - name: temp-data
+                  mountPath: /var/lib/postgresql/data
+                - name: shared
+                  mountPath: /shared
+          volumes:
+            - name: temp-data
+              emptyDir:
+                sizeLimit: 2Gi
+            - name: shared
+              emptyDir:
+                sizeLimit: 1Gi

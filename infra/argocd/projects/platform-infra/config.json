@@ -1,0 +1,8 @@
+{
+  "name": "platform-infra",
+  "repoURL": "https://github.com/madfam-org/enclii.git",
+  "branch": "main",
+  "manifestPath": "infra/k8s/platform-infra",
+  "namespace": "data",
+  "partOf": "enclii-platform"
+}

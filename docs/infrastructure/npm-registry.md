@@ -34,9 +34,9 @@ This document outlines the complete implementation plan for deploying Verdaccio 
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │                    ENCLII WORKLOADS NAMESPACE                │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │   │
-│  │  │  VERDACCIO  │  │  VERDACCIO  │  │   PERSISTENT        │  │   │
-│  │  │  Pod 1      │  │  Pod 2      │  │   VOLUME            │  │   │
-│  │  │  (Primary)  │  │  (Replica)  │  │   (Hetzner SSD)     │  │   │
+│  │  │  VERDACCIO  │  │             │  │   PERSISTENT        │  │   │
+│  │  │  Pod 1      │  │             │  │   VOLUME            │  │   │
+│  │  │  (Single)   │  │             │  │   (Longhorn)        │  │   │
 │  │  └──────┬──────┘  └──────┬──────┘  │   50Gi              │  │   │
 │  │         │                │         └─────────────────────┘  │   │
 │  │         └────────┬───────┘                                  │   │
@@ -139,7 +139,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: hetzner-ssd
+  storageClassName: longhorn
   resources:
     requests:
       storage: 50Gi
@@ -232,7 +232,7 @@ metadata:
     app: verdaccio
     service: npm-registry
 spec:
-  replicas: 2
+  replicas: 1  # Single replica (RWO PVC)
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -362,7 +362,7 @@ spec:
     - name: storage
       mountPath: /verdaccio/storage
       size: 50Gi
-      storageClassName: hetzner-ssd
+      storageClassName: longhorn
     - name: config
       mountPath: /verdaccio/conf/config.yaml
       subPath: config.yaml
@@ -388,7 +388,7 @@ spec:
 
   autoscaling:
     enabled: true
-    minReplicas: 2
+    minReplicas: 1
     maxReplicas: 5
     targetCPUUtilizationPercentage: 70
 
