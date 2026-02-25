@@ -41,11 +41,11 @@ spec:
           image: switchyard-api
           imagePullPolicy: IfNotPresent
           env:
-            - name: ENCLII_DB_URL
+            - name: ENCLII_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: postgres-credentials
-                  key: database-url
+                  name: switchyard-api-secrets
+                  key: ENCLII_DATABASE_URL
             - name: ENCLII_REDIS_HOST
               value: "redis"
             - name: ENCLII_REDIS_PORT

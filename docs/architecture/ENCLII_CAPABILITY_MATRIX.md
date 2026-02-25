@@ -732,6 +732,8 @@ DELETE /auth/keys/{id}                🔴 Not started
 
 **Phase 2: Core Services (15-20 min)**
 ```bash
+# For local dev, apply dev-only manifests first:
+kubectl apply -f infra/k8s/base/secrets.dev.yaml
 kubectl apply -f infra/k8s/base/postgres.yaml
 kubectl apply -f infra/k8s/base/redis.yaml
 kubectl apply -f infra/k8s/base/switchyard-api.yaml

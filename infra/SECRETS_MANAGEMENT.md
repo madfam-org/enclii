@@ -2,7 +2,7 @@
 
 ## ⚠️ CRITICAL SECURITY NOTICE
 
-The secrets in `infra/k8s/base/secrets.yaml` are **DEVELOPMENT ONLY** and must **NEVER** be used in production.
+The secrets in `infra/k8s/base/secrets.dev.yaml` are **DEVELOPMENT ONLY** and must **NEVER** be used in production. Production uses `secrets.production.yaml` which contains `jwt-secrets` and `postgres-credentials` (pointing to the real database in the `data` namespace).
 
 ## Production Secret Management
 

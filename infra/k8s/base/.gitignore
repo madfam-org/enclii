@@ -5,6 +5,7 @@
 secrets.yaml
 secrets.*.yaml
 !secrets.dev.yaml
+!secrets.production.yaml
 !secrets.yaml.TEMPLATE
 
 # Ignore any local overrides

@@ -83,7 +83,7 @@ PostgreSQL → CronJob (daily 2AM UTC) → pg_dump → gzip → Cloudflare R2
 
 5. **Verify restoration**
    ```bash
-   kubectl exec -n enclii deploy/postgres -- psql -U postgres -d enclii -c "SELECT COUNT(*) FROM projects;"
+   kubectl exec -n data postgres-0 -- psql -U enclii -d enclii -c "SELECT COUNT(*) FROM projects;"
    ```
 
 6. **Scale up applications**
@@ -156,10 +156,11 @@ PostgreSQL → CronJob (daily 2AM UTC) → pg_dump → gzip → Cloudflare R2
    ./scripts/deploy-production.sh post-deploy
    ```
 
-2. **Deploy core services**
+2. **Deploy database (data namespace)**
    ```bash
-   kubectl apply -f infra/k8s/base/postgres.yaml
-   kubectl wait --for=condition=ready pod -l app=postgres -n enclii --timeout=300s
+   # Production postgres runs in the data namespace, not enclii namespace
+   kubectl apply -k infra/k8s/production/data/
+   kubectl wait --for=condition=ready pod -l app=postgres -n data --timeout=300s
    ```
 
 3. **Configure R2 credentials**

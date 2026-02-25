@@ -17,19 +17,20 @@ infra/k8s/
 │   ├── landing-page.yaml      # enclii.dev website
 │   ├── roundhouse.yaml        # Build worker
 │   ├── waybill.yaml           # Cost tracking
-│   ├── postgres.yaml          # Database (dev only)
 │   ├── redis.yaml             # Cache/sessions
 │   ├── monitoring.yaml        # Prometheus/Grafana
 │   ├── network-policies.yaml  # Pod isolation rules
 │   ├── rbac.yaml              # Roles and bindings
-│   ├── ingress-nginx.yaml     # Ingress controller
+│   ├── ingress-nginx.yaml     # Ingress controller (dev only)
 │   ├── cert-manager.yaml      # TLS automation
-│   ├── secrets.dev.yaml       # Dev credentials
+│   ├── secrets.production.yaml # Production secrets (jwt + postgres-credentials)
+│   ├── secrets.dev.yaml       # Dev credentials (not in production kustomization)
+│   ├── postgres.yaml          # Database (dev only, not in production kustomization)
 │   ├── secrets.yaml.TEMPLATE  # Prod template
 │   └── verdaccio/             # NPM registry (ArgoCD-managed)
 ├── platform-infra/     # Infrastructure umbrella (ArgoCD visibility)
 │   ├── kustomization.yaml
-│   ├── postgres.yaml          # → symlink to base/postgres.yaml
+│   ├── postgres.yaml          # → data namespace postgres (not base/postgres.yaml)
 │   ├── redis.yaml             # → symlink to production/data/redis.yaml
 │   ├── postgres-backup.yaml   # → symlink to production/backup/
 │   ├── backup-verify-cronjob.yaml
@@ -109,7 +110,7 @@ kubectl port-forward svc/switchyard-api 4200:4200
 
 | Resource | Kind | Purpose |
 |----------|------|---------|
-| postgres | StatefulSet | Development database |
+| postgres | StatefulSet | Database (data namespace; base/postgres.yaml for dev only) |
 | redis | StatefulSet | Session/cache storage |
 | redis-sentinel | StatefulSet | Production HA Redis |
 | cloudflared | Deployment | Zero-trust ingress tunnel |
@@ -191,8 +192,9 @@ labels:
 
 Uses plaintext secrets for convenience:
 ```bash
-# Already committed (dev credentials only)
+# Dev secrets (not included in production kustomization)
 kubectl apply -f base/secrets.dev.yaml
+kubectl apply -f base/postgres.yaml
 ```
 
 ### Production
@@ -308,13 +310,19 @@ spec:
         - port: 4200
   egress:
     - to:
-        - podSelector:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
             matchLabels:
               app: postgres
       ports:
         - port: 5432
     - to:
-        - podSelector:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
             matchLabels:
               app: redis
       ports:
@@ -432,4 +440,4 @@ kubectl get configmap cloudflared-config -n enclii-production -o yaml
 
 ---
 
-*Last Updated: January 11, 2026*
+*Last Updated: February 25, 2026*

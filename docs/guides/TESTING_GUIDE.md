@@ -43,7 +43,7 @@ Expected: Data persists after pod restart
 
 **Manual Test Steps**:
 ```bash
-# 1. Apply PostgreSQL with PVC
+# 1. Apply PostgreSQL with PVC (dev-only manifest, not used in production)
 kubectl apply -f infra/k8s/base/postgres.yaml
 
 # 2. Write test data
@@ -347,7 +347,10 @@ go get -u sigs.k8s.io/controller-runtime/pkg/client
 # Set up test cluster
 kind create cluster --name enclii-test
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
-kubectl apply -f infra/k8s/base/
+# Apply dev-only manifests (not in production kustomization)
+kubectl apply -f infra/k8s/base/secrets.dev.yaml
+kubectl apply -f infra/k8s/base/postgres.yaml
+kubectl apply -k infra/k8s/base/
 ```
 
 ### Run Integration Tests

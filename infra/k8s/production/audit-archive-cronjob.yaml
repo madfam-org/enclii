@@ -53,31 +53,11 @@ spec:
                   value: "90"
                 - name: ARCHIVE_FORMAT
                   value: "jsonl.gz"
-                - name: ENCLII_DB_HOST
+                - name: ENCLII_DATABASE_URL
                   valueFrom:
                     secretKeyRef:
-                      name: postgres-credentials
-                      key: host
-                - name: ENCLII_DB_PORT
-                  valueFrom:
-                    secretKeyRef:
-                      name: postgres-credentials
-                      key: port
-                - name: ENCLII_DB_USER
-                  valueFrom:
-                    secretKeyRef:
-                      name: postgres-credentials
-                      key: username
-                - name: ENCLII_DB_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: postgres-credentials
-                      key: password
-                - name: ENCLII_DB_NAME
-                  valueFrom:
-                    secretKeyRef:
-                      name: postgres-credentials
-                      key: database
+                      name: switchyard-api-secrets
+                      key: ENCLII_DATABASE_URL
                 - name: R2_ENDPOINT
                   valueFrom:
                     secretKeyRef:
