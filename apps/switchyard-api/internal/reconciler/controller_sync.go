@@ -87,6 +87,17 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 		for _, dep := range deployments {
 			c.syncDeploymentToDatabase(ctx, ns, dep, logger)
 		}
+
+		// Also scan StatefulSets for health propagation (databases, caches)
+		statefulSets, err := c.k8sClient.ListStatefulSets(ctx, ns)
+		if err != nil {
+			logger.WithFields(logrus.Fields{"namespace": ns}).
+				WithError(err).Warn("Failed to list K8s statefulsets")
+		} else {
+			for _, ss := range statefulSets {
+				c.syncStatefulSetHealth(ctx, ss, logger)
+			}
+		}
 	}
 
 	// Clean up stale "deploying" records that never received an ArgoCD sync
@@ -315,6 +326,45 @@ func (c *Controller) createMissingRecords(ctx context.Context, service *types.Se
 		"deployment_id": deployment.ID,
 		"version":       version,
 	}).Info("Created missing deployment record from K8s state")
+}
+
+// syncStatefulSetHealth propagates health from a K8s StatefulSet to a matching DB service.
+// Health-only — no deployment/release record creation (StatefulSets are infrastructure, not app deploys).
+func (c *Controller) syncStatefulSetHealth(ctx context.Context, ss appsv1.StatefulSet, logger *logrus.Entry) {
+	// Respect opt-out annotation
+	if val, ok := ss.Annotations["enclii.dev/reconcile"]; ok && val == "disabled" {
+		return
+	}
+
+	service, err := c.repositories.Services.GetByName(ss.Name)
+	if err != nil || service == nil {
+		return // Silent skip — most StatefulSets won't have a matching DB service
+	}
+
+	replicas := int32(1)
+	if ss.Spec.Replicas != nil {
+		replicas = *ss.Spec.Replicas
+	}
+	ready := ss.Status.ReadyReplicas
+
+	var health types.HealthStatus
+	switch {
+	case ready == replicas && replicas > 0:
+		health = types.HealthStatusHealthy
+	case ready > 0:
+		health = types.HealthStatusUnhealthy
+	default:
+		health = types.HealthStatusUnknown
+	}
+
+	status := "unknown"
+	if ready > 0 {
+		status = string(types.DeploymentStatusRunning)
+	}
+
+	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, health, status, replicas, ready); err != nil {
+		logger.WithError(err).WithField("statefulset", ss.Name).Warn("Failed to propagate StatefulSet health")
+	}
 }
 
 // extractVersionFromImage extracts version string from an image URI

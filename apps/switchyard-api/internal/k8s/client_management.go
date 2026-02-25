@@ -10,6 +10,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ListStatefulSets returns all statefulsets in a namespace
+func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]appsv1.StatefulSet, error) {
+	list, err := c.Clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list statefulsets in namespace %s: %w", namespace, err)
+	}
+	return list.Items, nil
+}
+
 // ListDeployments returns all deployments in a namespace
 func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv1.Deployment, error) {
 	list, err := c.Clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
