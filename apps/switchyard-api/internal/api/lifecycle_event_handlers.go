@@ -311,6 +311,15 @@ func (h *Handler) createDeploymentFromLifecycleEvent(ctx context.Context, req ty
 			break
 		}
 	}
+	// Fallback: look up by git repo URL (handles mono-service repos like yantra4d
+	// where the DB service name doesn't match image-derived candidates)
+	if service == nil && req.RepoFullName != "" {
+		repoURL := "https://github.com/" + req.RepoFullName
+		services, err := h.repos.Services.ListByGitRepo(repoURL)
+		if err == nil && len(services) > 0 {
+			service = services[0]
+		}
+	}
 	if service == nil {
 		h.logger.Warn(ctx, "No matching service for lifecycle event deployment",
 			logging.String("service_name", serviceName),

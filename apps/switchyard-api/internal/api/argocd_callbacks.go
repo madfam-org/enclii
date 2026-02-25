@@ -89,6 +89,20 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 					logging.Error("db_error", err))
 			}
 		}
+		// Fallback: derive repo URL from image and look up by git repo
+		// (handles mono-service repos like yantra4d where DB service name
+		// doesn't match image-derived candidates)
+		if service == nil {
+			repoName := repoFullNameFromImage(imageURI)
+			if repoName != "" {
+				repoURL := "https://github.com/" + repoName
+				services, lookupErr := h.repos.Services.ListByGitRepo(repoURL)
+				if lookupErr == nil && len(services) > 0 {
+					service = services[0]
+					serviceName = service.Name
+				}
+			}
+		}
 		if service == nil {
 			h.logger.Debug(ctx, "No matching service for image",
 				logging.String("candidates", strings.Join(candidateNames, ",")),

@@ -281,6 +281,8 @@ Examples:
 
 Enclii resolves GHCR image paths to registered service names using a candidate strategy. For nested paths like `ghcr.io/madfam-org/tezca/api`, it tries `tezca-api` first, then `api`. This means your DB service names should use the `{project}-{service}` pattern (e.g. `tezca-api`, `dhanam-admin`) for reliable matching.
 
+**Git repo URL fallback:** If no candidate name matches, both the lifecycle and ArgoCD callbacks fall back to looking up services by git repo URL — derived from the image URI (e.g. `ghcr.io/madfam-org/yantra4d/backend` → `https://github.com/madfam-org/yantra4d`). This handles mono-service repos where the DB service name (e.g. `"yantra4d"`) doesn't match any image-derived candidate.
+
 The `metadata.service` field in lifecycle event callbacks provides an explicit override — set it to the exact service name registered in Enclii (e.g. `"service": "dhanam-api"`).
 
 ## Disabling Provenance Attestations
