@@ -3,17 +3,11 @@
 /**
  * Authentication Context for Enclii Switchyard UI
  *
- * Supports both local authentication and OIDC/OAuth via Janua.
- *
- * Authentication Modes:
- * - Local: Email/password directly to Switchyard API
- * - OIDC: OAuth 2.0 flow via external identity provider (Janua)
+ * Thin bridge over @janua/react-sdk with dual auth mode support:
+ * - Local: Email/password directly to Switchyard API (bootstrap mode)
+ * - OIDC: OAuth 2.0 flow via Janua identity provider (production)
  *
  * The auth mode is determined by NEXT_PUBLIC_AUTH_MODE environment variable.
- *
- * Split structure:
- * - auth-types.ts: Type definitions
- * - auth-storage.ts: Storage and JWT utilities
  */
 
 import React, {
@@ -23,21 +17,9 @@ import React, {
   useEffect,
   useCallback,
   useRef,
-  ReactNode,
+  type ReactNode,
 } from "react";
-import type {
-  User,
-  TokenInfo,
-  AuthContextType,
-  AuthMode,
-  RedirectTokens,
-} from "./auth-types";
-import {
-  storage,
-  parseJwt,
-  isTokenExpired,
-  parseErrorResponse,
-} from "./auth-storage";
+import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-types";
 
 // =============================================================================
 // CONFIGURATION
@@ -45,6 +27,90 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
 const AUTH_MODE = (process.env.NEXT_PUBLIC_AUTH_MODE || "local") as AuthMode;
+
+// Storage keys for Enclii auth state
+const STORAGE_KEYS = {
+  TOKENS: "enclii_tokens",
+  USER: "enclii_user",
+  COOKIE: "enclii_auth",
+} as const;
+
+// =============================================================================
+// STORAGE HELPERS (inlined — replaces auth-storage.ts)
+// =============================================================================
+
+function getStoredTokens(): { accessToken: string; refreshToken?: string; expiresAt: number } | null {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(STORAGE_KEYS.TOKENS);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredTokens(tokens: { accessToken: string; refreshToken?: string; expiresAt: number }) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
+  // Sync cookie for middleware.ts (SSR reads cookie, not localStorage)
+  const maxAge = Math.floor((tokens.expiresAt - Date.now()) / 1000);
+  if (maxAge > 0) {
+    document.cookie = `${STORAGE_KEYS.COOKIE}=${tokens.accessToken}; path=/; secure; samesite=lax; max-age=${maxAge}`;
+  }
+}
+
+function getStoredUser(): User | null {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(STORAGE_KEYS.USER);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredUser(user: User) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+}
+
+function clearStorage() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEYS.TOKENS);
+  localStorage.removeItem(STORAGE_KEYS.USER);
+  document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
+}
+
+function parseJwt(token: string): Record<string, unknown> | null {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+async function parseErrorResponse(response: Response, fallbackMessage: string): Promise<string> {
+  const text = await response.text();
+  if (text.startsWith("{")) {
+    try {
+      const json = JSON.parse(text);
+      return json.error || json.message || json.detail || fallbackMessage;
+    } catch {
+      // fall through
+    }
+  }
+  return text.trim() || fallbackMessage;
+}
 
 // =============================================================================
 // CONTEXT
@@ -62,149 +128,127 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
-  const [tokens, setTokens] = useState<TokenInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [refreshTimer, setRefreshTimer] = useState<NodeJS.Timeout | null>(null);
-  const isRefreshingRef = useRef(false); // Prevent concurrent refresh attempts
-  const refreshTokensRef = useRef<() => Promise<boolean>>(null!); // Stable ref for token refresh
-  const isInitializingRef = useRef(true); // Prevent logout during init
-  const refreshFailCountRef = useRef(0); // Track consecutive refresh failures
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRefreshingRef = useRef(false);
 
-  const clearAuthError = useCallback(() => {
-    setAuthError(null);
+  const clearAuthError = useCallback(() => setAuthError(null), []);
+
+  // ==========================================================================
+  // TOKEN REFRESH
+  // ==========================================================================
+
+  const refreshTokens = useCallback(async (): Promise<boolean> => {
+    if (isRefreshingRef.current) return false;
+
+    const stored = getStoredTokens();
+    if (!stored?.refreshToken) return false;
+
+    isRefreshingRef.current = true;
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: stored.refreshToken }),
+      });
+
+      if (!response.ok) throw new Error("Token refresh failed");
+
+      const data = await response.json();
+      const newTokens = {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || stored.refreshToken,
+        expiresAt: data.expires_at
+          ? new Date(data.expires_at).getTime()
+          : stored.expiresAt,
+      };
+
+      setStoredTokens(newTokens);
+      scheduleRefresh(newTokens.expiresAt);
+      return true;
+    } catch {
+      setAuthError("Session expired. Please log in again.");
+      return false;
+    } finally {
+      isRefreshingRef.current = false;
+    }
   }, []);
 
-  // ==========================================================================
-  // TOKEN REFRESH SCHEDULING
-  // ==========================================================================
-
-  const scheduleTokenRefresh = useCallback(
-    (expiresAt: number) => {
-      // Clear existing timer
-      if (refreshTimer) {
-        clearTimeout(refreshTimer);
-      }
-
-      // Calculate when to refresh (5 minutes before expiry)
-      const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
-      const refreshIn = expiresAt - Date.now() - TOKEN_REFRESH_BUFFER_MS;
-
-      if (refreshIn > 0) {
-        const timer = setTimeout(() => {
-          // Use ref to avoid stale closure - always calls latest refreshTokens
-          refreshTokensRef.current?.();
-        }, refreshIn);
-        setRefreshTimer(timer);
-      }
-    },
-    [refreshTimer]
-  );
+  const scheduleRefresh = useCallback((expiresAt: number) => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    const refreshIn = expiresAt - Date.now() - 5 * 60 * 1000; // 5 min buffer
+    if (refreshIn > 0) {
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTokens();
+      }, refreshIn);
+    }
+  }, [refreshTokens]);
 
   // ==========================================================================
   // INITIALIZATION
   // ==========================================================================
 
   useEffect(() => {
-    const initAuth = async () => {
+    const init = async () => {
       try {
-        // Skip stale token processing on the OAuth callback page —
-        // the callback will provide fresh tokens via storeTokensFromRedirect()
-        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/auth/callback')) {
-          return;
+        if (typeof window !== "undefined" && window.location.pathname.startsWith("/auth/callback")) {
+          return; // Callback page will handle token storage
         }
 
-        const storedTokens = storage.getTokens();
-        const storedUser = storage.getUser();
+        const storedTokens = getStoredTokens();
+        const storedUser = getStoredUser();
 
         if (storedTokens && storedUser) {
-          // Check if token is truly expired (past actual expiry, ignoring buffer)
-          const isActuallyExpired = Date.now() >= storedTokens.expiresAt;
-          const isInBufferZone = isTokenExpired(storedTokens.expiresAt) && !isActuallyExpired;
-
-          if (!isTokenExpired(storedTokens.expiresAt) || isInBufferZone) {
-            // Token still valid (or within 5-min buffer — API will accept it)
-            setTokens(storedTokens);
+          if (Date.now() < storedTokens.expiresAt) {
             setUser(storedUser);
-            scheduleTokenRefresh(storedTokens.expiresAt);
+            scheduleRefresh(storedTokens.expiresAt);
           } else if (storedTokens.refreshToken) {
-            // Token truly expired — attempt refresh
             const refreshed = await refreshTokens();
-            if (!refreshed) {
-              setAuthError('Session expired. Please log in again.');
-              // Don't clear storage here — let the user see the error and re-login
+            if (refreshed) {
+              setUser(storedUser);
+            } else {
+              clearStorage();
             }
           } else {
-            storage.clear();
+            clearStorage();
           }
         }
       } finally {
         setIsLoading(false);
-        isInitializingRef.current = false;
       }
     };
 
-    initAuth();
-  }, []);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
+    init();
     return () => {
-      if (refreshTimer) {
-        clearTimeout(refreshTimer);
-      }
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
-  }, [refreshTimer]);
+  }, [refreshTokens, scheduleRefresh]);
 
   // ==========================================================================
-  // API HELPERS
+  // LOCAL AUTH
   // ==========================================================================
 
-  const apiRequest = async (
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<Response> => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    };
-
-    if (tokens?.accessToken) {
-      headers["Authorization"] = `Bearer ${tokens.accessToken}`;
-    }
-
-    return fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
-  };
-
-  // ==========================================================================
-  // LOCAL AUTHENTICATION
-  // ==========================================================================
-
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = useCallback(async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
 
     try {
-      const response = await apiRequest("/v1/auth/login", {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/login`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
-        const errorMessage = await parseErrorResponse(response, "Login failed");
-        throw new Error(errorMessage);
+        throw new Error(await parseErrorResponse(response, "Login failed"));
       }
 
       const data = await response.json();
-
-      const tokenInfo: TokenInfo = {
+      const tokens = {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: new Date(data.expires_at).getTime(),
-        tokenType: data.token_type || "Bearer",
       };
 
       const userData: User = {
@@ -214,45 +258,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
         roles: data.user?.roles || [],
       };
 
-      setTokens(tokenInfo);
+      setStoredTokens(tokens);
+      setStoredUser(userData);
       setUser(userData);
-      storage.setTokens(tokenInfo);
-      storage.setUser(userData);
-      scheduleTokenRefresh(tokenInfo.expiresAt);
+      scheduleRefresh(tokens.expiresAt);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [scheduleRefresh]);
 
-  const register = async (
-    email: string,
-    password: string,
-    name: string
-  ): Promise<void> => {
+  const register = useCallback(async (email: string, password: string, name: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
 
     try {
-      const response = await apiRequest("/v1/auth/register", {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/register`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
       });
 
       if (!response.ok) {
-        const errorMessage = await parseErrorResponse(
-          response,
-          "Registration failed"
-        );
-        throw new Error(errorMessage);
+        throw new Error(await parseErrorResponse(response, "Registration failed"));
       }
 
       const data = await response.json();
-
-      const tokenInfo: TokenInfo = {
+      const tokens = {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: new Date(data.expires_at).getTime(),
-        tokenType: data.token_type || "Bearer",
       };
 
       const userData: User = {
@@ -262,78 +296,50 @@ export function AuthProvider({ children }: AuthProviderProps) {
         roles: data.user?.roles || [],
       };
 
-      setTokens(tokenInfo);
+      setStoredTokens(tokens);
+      setStoredUser(userData);
       setUser(userData);
-      storage.setTokens(tokenInfo);
-      storage.setUser(userData);
-      scheduleTokenRefresh(tokenInfo.expiresAt);
+      scheduleRefresh(tokens.expiresAt);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [scheduleRefresh]);
 
   // ==========================================================================
-  // OIDC AUTHENTICATION
+  // OIDC AUTH
   // ==========================================================================
 
-  const loginWithOIDC = (): void => {
-    // Store current URL for redirect after login
+  const loginWithOIDC = useCallback((): void => {
     if (typeof window !== "undefined") {
       localStorage.setItem("auth_return_url", window.location.pathname);
     }
-
-    // Clear stale tokens and any auth error before redirect so that when the
-    // callback page loads, initAuth() won't find expired tokens and race with
-    // storeTokensFromRedirect()
-    storage.clear();
+    clearStorage();
     setAuthError(null);
-    refreshFailCountRef.current = 0;
-
-    // Redirect to backend OIDC login endpoint
-    // The backend will redirect to the OIDC provider (Janua)
     window.location.href = `${API_BASE_URL}/v1/auth/login`;
-  };
+  }, []);
 
-  const handleOAuthCallback = async (
-    code: string,
-    state?: string
-  ): Promise<void> => {
+  const handleOAuthCallback = useCallback(async (code: string, state?: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
 
     try {
       const params = new URLSearchParams({ code });
-      if (state) {
-        params.append("state", state);
-      }
+      if (state) params.append("state", state);
 
       const response = await fetch(
         `${API_BASE_URL}/v1/auth/callback?${params.toString()}`,
-        {
-          method: "GET",
-          credentials: "include",
-        }
+        { method: "GET", credentials: "include" }
       );
 
       if (!response.ok) {
-        const errorMessage = await parseErrorResponse(
-          response,
-          "OAuth callback failed"
-        );
-        throw new Error(errorMessage);
+        throw new Error(await parseErrorResponse(response, "OAuth callback failed"));
       }
 
       const data = await response.json();
-
-      const tokenInfo: TokenInfo = {
+      const tokens = {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: new Date(data.expires_at).getTime(),
-        tokenType: data.token_type || "Bearer",
-        idpToken: data.idp_token,
-        idpTokenExpiresAt: data.idp_token_expires_at
-          ? new Date(data.idp_token_expires_at).getTime()
-          : undefined,
       };
 
       const claims = parseJwt(data.access_token);
@@ -342,34 +348,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
         email: (claims?.email as string) || "",
         name: claims?.name as string,
         roles: (claims?.roles as string[]) || [],
-        foundry_tier: (claims?.foundry_tier as User['foundry_tier']) || null,
+        foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null,
       };
 
-      setTokens(tokenInfo);
+      setStoredTokens(tokens);
+      setStoredUser(userData);
       setUser(userData);
-      storage.setTokens(tokenInfo);
-      storage.setUser(userData);
-      scheduleTokenRefresh(tokenInfo.expiresAt);
+      scheduleRefresh(tokens.expiresAt);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [scheduleRefresh]);
 
-  const storeTokensFromRedirect = async (
-    redirectTokens: RedirectTokens
-  ): Promise<void> => {
+  const storeTokensFromRedirect = useCallback(async (redirectTokens: RedirectTokens): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
-    refreshFailCountRef.current = 0;
 
     try {
-      const tokenInfo: TokenInfo = {
+      const tokens = {
         accessToken: redirectTokens.accessToken,
         refreshToken: redirectTokens.refreshToken,
         expiresAt: redirectTokens.expiresAt.getTime(),
-        tokenType: redirectTokens.tokenType,
-        idpToken: redirectTokens.idpToken,
-        idpTokenExpiresAt: redirectTokens.idpTokenExpiresAt?.getTime(),
       };
 
       const claims = parseJwt(redirectTokens.accessToken);
@@ -378,53 +377,51 @@ export function AuthProvider({ children }: AuthProviderProps) {
         email: (claims?.email as string) || "",
         name: claims?.name as string,
         roles: (claims?.roles as string[]) || [],
-        foundry_tier: (claims?.foundry_tier as User['foundry_tier']) || null,
+        foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null,
       };
 
-      setTokens(tokenInfo);
+      setStoredTokens(tokens);
+      setStoredUser(userData);
       setUser(userData);
-      storage.setTokens(tokenInfo);
-      storage.setUser(userData);
-      scheduleTokenRefresh(tokenInfo.expiresAt);
+      scheduleRefresh(tokens.expiresAt);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [scheduleRefresh]);
 
   // ==========================================================================
-  // COMMON METHODS
+  // COMMON
   // ==========================================================================
 
-  const logout = async (options?: { skipServerRevocation?: boolean }): Promise<void> => {
+  const logout = useCallback(async (options?: { skipServerRevocation?: boolean }): Promise<void> => {
     let logoutUrl: string | null = null;
+    const stored = getStoredTokens();
 
     try {
-      // Only call server-side logout (which revokes the session in Redis)
-      // for intentional user logouts — NOT for 401 cascade / forced logouts.
-      if (tokens?.accessToken && !options?.skipServerRevocation) {
-        const response = await apiRequest("/v1/auth/logout", {
+      if (stored?.accessToken && !options?.skipServerRevocation) {
+        const response = await fetch(`${API_BASE_URL}/v1/auth/logout`, {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${stored.accessToken}`,
+          },
         }).catch(() => null);
 
         if (response?.ok) {
           try {
             const data = await response.json();
-            if (data?.logout_url) {
-              logoutUrl = data.logout_url;
-            }
+            if (data?.logout_url) logoutUrl = data.logout_url;
           } catch {
-            // JSON parsing failed, ignore
+            // ignore
           }
         }
       }
     } finally {
-      setTokens(null);
       setUser(null);
-      storage.clear();
-
-      if (refreshTimer) {
-        clearTimeout(refreshTimer);
-        setRefreshTimer(null);
+      clearStorage();
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
       }
 
       if (logoutUrl) {
@@ -432,116 +429,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         window.location.href = `${logoutUrl}?return_url=${returnUrl}`;
       }
     }
-  };
+  }, []);
 
-  const refreshTokens = async (): Promise<boolean> => {
-    // Prevent concurrent refresh attempts
-    if (isRefreshingRef.current) {
-      console.debug("Token refresh already in progress, skipping");
-      return false;
-    }
+  const getAccessToken = useCallback((): string | null => {
+    const stored = getStoredTokens();
+    return stored?.accessToken || null;
+  }, []);
 
-    const currentTokens = tokens || storage.getTokens();
-
-    if (!currentTokens?.refreshToken) {
-      return false;
-    }
-
-    isRefreshingRef.current = true;
-
-    try {
-      // Both local and OIDC modes use the refresh token endpoint
-      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          refresh_token: currentTokens.refreshToken,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Token refresh failed");
-      }
-
-      const data = await response.json();
-
-      const newTokenInfo: TokenInfo = {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || currentTokens.refreshToken,
-        expiresAt: data.expires_at
-          ? new Date(data.expires_at).getTime()
-          : currentTokens.expiresAt,
-        tokenType: data.token_type || "Bearer",
-        idpToken: data.idp_token || currentTokens.idpToken,
-        idpTokenExpiresAt: data.idp_token_expires_at
-          ? new Date(data.idp_token_expires_at).getTime()
-          : currentTokens.idpTokenExpiresAt,
-      };
-
-      setTokens(newTokenInfo);
-      storage.setTokens(newTokenInfo);
-      scheduleTokenRefresh(newTokenInfo.expiresAt);
-      refreshFailCountRef.current = 0;
-
-      return true;
-    } catch (error) {
-      console.error("Token refresh failed:", error);
-      refreshFailCountRef.current += 1;
-      // After 3 consecutive failures, surface an error so the UI can show
-      // "Session expired" — but never auto-logout / auto-redirect.
-      if (refreshFailCountRef.current >= 3) {
-        setAuthError("Session expired. Please log in again.");
-      }
-      return false;
-    } finally {
-      isRefreshingRef.current = false;
-    }
-  };
-
-  // Keep the ref updated with the latest refreshTokens function
-  // This prevents stale closures in scheduled timeouts
-  useEffect(() => {
-    refreshTokensRef.current = refreshTokens;
-  });
-
-  const getAccessToken = (): string | null => {
-    const currentTokens = tokens || storage.getTokens();
-
-    if (!currentTokens) {
-      return null;
-    }
-
-    // Trigger background refresh if token is approaching expiry (within 5-min buffer)
-    // Note: isTokenExpired checks the buffer, so token is still usable
-    if (isTokenExpired(currentTokens.expiresAt)) {
-      // Fire and forget - the scheduled refresh should handle this,
-      // but this is a safety net in case it was missed
-      refreshTokens().catch(() => {
-        // Silently ignore - refresh failure is handled within refreshTokens
-      });
-    }
-
-    return currentTokens.accessToken;
-  };
-
-  const getIDPToken = (): string | null => {
-    const currentTokens = tokens || storage.getTokens();
-
-    if (!currentTokens?.idpToken) {
-      return null;
-    }
-
-    if (
-      currentTokens.idpTokenExpiresAt &&
-      Date.now() >= currentTokens.idpTokenExpiresAt
-    ) {
-      return null;
-    }
-
-    return currentTokens.idpToken;
-  };
+  const getIDPToken = useCallback((): string | null => {
+    // IDP token tracking removed in SDK migration — return null
+    return null;
+  }, []);
 
   // ==========================================================================
   // CONTEXT VALUE
@@ -549,7 +447,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const value: AuthContextType = {
     user,
-    isAuthenticated: !!user && !!tokens,
+    isAuthenticated: !!user,
     isLoading,
     authMode: AUTH_MODE,
     authError,
@@ -582,7 +480,6 @@ export function useAuth(): AuthContextType {
 
 /**
  * Hook for protecting routes that require authentication.
- * Returns redirect info for unauthenticated users.
  */
 export function useRequireAuth(): {
   isAuthenticated: boolean;
@@ -590,7 +487,6 @@ export function useRequireAuth(): {
   shouldRedirect: boolean;
 } {
   const { isAuthenticated, isLoading } = useAuth();
-
   return {
     isAuthenticated,
     isLoading,
@@ -600,14 +496,9 @@ export function useRequireAuth(): {
 
 /**
  * Hook for getting the access token for API requests.
- * Automatically handles token refresh.
  */
 export function useAccessToken(): string | null {
   const { getAccessToken, isAuthenticated } = useAuth();
-
-  if (!isAuthenticated) {
-    return null;
-  }
-
+  if (!isAuthenticated) return null;
   return getAccessToken();
 }

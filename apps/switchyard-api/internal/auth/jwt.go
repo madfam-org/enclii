@@ -38,6 +38,7 @@ type JWTManager struct {
 	// External JWKS validation (for CLI/API direct access with external tokens)
 	externalJWKSURL   string
 	externalIssuer    string
+	externalAudience  string
 	externalJWKSCache *jwksCache
 
 	// Admin email mapping for external tokens (grants admin role based on email)
@@ -131,6 +132,10 @@ func NewJWTManagerWithExternalJWKS(
 	if externalJWKSURL != "" {
 		manager.externalJWKSURL = externalJWKSURL
 		manager.externalIssuer = externalIssuer
+		manager.externalAudience = os.Getenv("ENCLII_JANUA_AUDIENCE")
+		if manager.externalAudience == "" {
+			manager.externalAudience = "enclii-api"
+		}
 		manager.externalJWKSCache = &jwksCache{
 			keys:           make(map[string]*rsa.PublicKey),
 			cacheTTL:       jwksCacheTTL,
@@ -139,6 +144,7 @@ func NewJWTManagerWithExternalJWKS(
 		logrus.WithFields(logrus.Fields{
 			"jwks_url": externalJWKSURL,
 			"issuer":   externalIssuer,
+			"audience": manager.externalAudience,
 		}).Info("External JWKS validation enabled")
 	}
 

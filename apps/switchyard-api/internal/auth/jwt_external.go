@@ -73,6 +73,20 @@ func (j *JWTManager) ValidateExternalToken(tokenString string) (*ExternalClaims,
 		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", j.externalIssuer, claims.Issuer)
 	}
 
+	// Verify audience if configured (per-client token isolation)
+	if j.externalAudience != "" {
+		audValid := false
+		for _, aud := range claims.Audience {
+			if aud == j.externalAudience {
+				audValid = true
+				break
+			}
+		}
+		if !audValid {
+			return nil, fmt.Errorf("invalid audience: expected %s, got %v", j.externalAudience, claims.Audience)
+		}
+	}
+
 	logrus.WithFields(logrus.Fields{
 		"email":  claims.Email,
 		"issuer": claims.Issuer,

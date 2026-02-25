@@ -97,7 +97,22 @@ kubectl apply -f dogfooding/janua.yaml
    - **Grant Types**: `authorization_code`, `refresh_token`
    - **Scopes**: `openid`, `profile`, `email`
 
-### 3. Configure API
+### 3. Configure Audience Validation
+
+Enclii validates the `aud` (audience) claim on all external Janua tokens. This
+ensures tokens issued for other MADFAM apps (e.g., Dhanam, Tezca) cannot be used
+to access Enclii's API.
+
+```bash
+# Set in environment or .env
+ENCLII_JANUA_AUDIENCE=enclii-api
+```
+
+The audience is validated in `apps/switchyard-api/internal/auth/jwt_external.go`.
+If the `aud` claim does not contain `enclii-api`, the token is rejected with a
+`401 Unauthorized` response.
+
+### 4. Configure API
 
 Set environment variables in Kubernetes:
 ```yaml

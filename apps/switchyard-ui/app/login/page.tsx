@@ -3,16 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { SignIn } from "@janua/ui";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, loginWithOIDC, isAuthenticated, isLoading, authMode } = useAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -20,21 +18,6 @@ export default function LoginPage() {
       router.push("/");
     }
   }, [isAuthenticated, isLoading, router]);
-
-  const handleLocalLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      await login(email, password);
-      router.push("/");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleOIDCLogin = () => {
     loginWithOIDC();
@@ -61,11 +44,8 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-enclii-blue mb-2">🚂 Enclii</h1>
+          <h1 className="text-4xl font-bold text-enclii-blue mb-2">Enclii</h1>
           <p className="text-muted-foreground text-sm mb-6">Switchyard Platform</p>
-          <h2 className="text-2xl font-semibold text-foreground">
-            Sign in to your account
-          </h2>
         </div>
 
         {/* Error message */}
@@ -113,75 +93,20 @@ export default function LoginPage() {
             </div>
           </div>
         ) : (
-          /* Local Login Form (Bootstrap mode) */
-          <form className="mt-8 space-y-6" onSubmit={handleLocalLogin}>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-foreground">
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-input bg-background placeholder:text-muted-foreground text-foreground rounded-md focus:outline-none focus:ring-primary focus:border-primary focus:z-10 sm:text-sm"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-foreground">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-input bg-background placeholder:text-muted-foreground text-foreground rounded-md focus:outline-none focus:ring-primary focus:border-primary focus:z-10 sm:text-sm"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-enclii-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Spinner size="sm" className="-ml-1 mr-3 text-white" />
-                    Signing in...
-                  </>
-                ) : (
-                  "Sign in"
-                )}
-              </button>
-            </div>
-
-            <div className="text-center">
-              <a
-                href="/register"
-                className="text-sm text-enclii-blue hover:text-blue-700"
-              >
-                Don't have an account? Register
-              </a>
-            </div>
-          </form>
+          /* Local Login Form (Bootstrap mode) — uses shared SignIn component */
+          <SignIn
+            apiUrl={process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200"}
+            afterSignIn={() => router.push("/")}
+            onError={(err) => setError(err.message)}
+            socialProviders={{ google: false, github: false, microsoft: false, apple: false }}
+            showRememberMe={false}
+            signUpUrl="/register"
+          />
         )}
 
         {/* Footer */}
         <div className="text-center text-xs text-muted-foreground mt-8">
-          <p>© {new Date().getFullYear()} Enclii Platform. Built with ❤️ for developers.</p>
+          <p>&copy; {new Date().getFullYear()} Enclii Platform. Built for developers.</p>
         </div>
       </div>
     </div>

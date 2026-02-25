@@ -14,22 +14,12 @@ export interface User {
   roles?: string[];
   avatarUrl?: string;
   /** Foundry tier from Janua JWT claims (after Dhanam purchase) */
-  foundry_tier?: 'community' | 'sovereign' | 'ecosystem' | null;
+  foundry_tier?: "community" | "sovereign" | "ecosystem" | null;
 }
 
 // =============================================================================
 // TOKEN TYPES
 // =============================================================================
-
-export interface TokenInfo {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt: number; // Unix timestamp
-  tokenType: string;
-  // IDP token from identity provider (e.g., Janua) for calling IDP-specific APIs
-  idpToken?: string;
-  idpTokenExpiresAt?: number; // Unix timestamp
-}
 
 export interface RedirectTokens {
   accessToken: string;
@@ -52,9 +42,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   authMode: AuthMode;
-  /** Error message from auth operations (token refresh, logout, etc.) */
   authError: string | null;
-  /** Clear the current auth error */
   clearAuthError: () => void;
 
   // Local auth methods
@@ -67,11 +55,10 @@ export interface AuthContextType {
   storeTokensFromRedirect: (tokens: RedirectTokens) => Promise<void>;
 
   // Common methods
-  logout: () => Promise<void>;
+  logout: (options?: { skipServerRevocation?: boolean }) => Promise<void>;
   refreshTokens: () => Promise<boolean>;
 
-  // Token access (for API calls)
+  // Token access
   getAccessToken: () => string | null;
-  // IDP token access (for calling IDP-specific APIs like OAuth account linking)
   getIDPToken: () => string | null;
 }
