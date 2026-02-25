@@ -22,6 +22,7 @@ data:
         body: |
           {
             "app_name": "{{.app.metadata.name}}",
+            "trigger": "sync-succeeded",
             "sync_status": "{{.app.status.sync.status}}",
             "health_status": "{{.app.status.health.status}}",
             "revision": "{{.app.status.sync.revision}}",
@@ -36,6 +37,7 @@ data:
         body: |
           {
             "app_name": "{{.app.metadata.name}}",
+            "trigger": "sync-failed",
             "sync_status": "{{.app.status.sync.status}}",
             "health_status": "{{.app.status.health.status}}",
             "revision": "{{.app.status.sync.revision}}",

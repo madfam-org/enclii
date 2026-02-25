@@ -127,28 +127,29 @@ func TestShortSHA(t *testing.T) {
 func TestIsArgocdSyncFailure(t *testing.T) {
 	tests := []struct {
 		name       string
+		trigger    string
 		syncStatus string
 		want       bool
 	}{
-		// Successful sync — NOT a failure
-		{name: "Synced is not a failure", syncStatus: "Synced", want: false},
-		// Empty status (e.g. health-only callback) — NOT a failure
-		{name: "empty status is not a failure", syncStatus: "", want: false},
-		// Actual sync failures
-		{name: "OutOfSync is a failure", syncStatus: "OutOfSync", want: true},
-		{name: "Unknown is a failure", syncStatus: "Unknown", want: true},
-		// Previously these were included but ArgoCD never sends them as sync.status:
-		// "Error" and "Failed" are operationState.phase values, not sync.status.
-		// The current logic still correctly treats them as failures if they somehow appear.
-		{name: "Error is a failure", syncStatus: "Error", want: true},
-		{name: "Failed is a failure", syncStatus: "Failed", want: true},
+		// With trigger field (primary signal)
+		{name: "trigger sync-succeeded is not a failure", trigger: "sync-succeeded", syncStatus: "Synced", want: false},
+		{name: "trigger sync-succeeded with OutOfSync is still not a failure", trigger: "sync-succeeded", syncStatus: "OutOfSync", want: false},
+		{name: "trigger sync-succeeded with Degraded health (via syncStatus) is not a failure", trigger: "sync-succeeded", syncStatus: "Degraded", want: false},
+		{name: "trigger sync-failed is a failure", trigger: "sync-failed", syncStatus: "OutOfSync", want: true},
+		{name: "trigger sync-failed even with Synced status is a failure", trigger: "sync-failed", syncStatus: "Synced", want: true},
+
+		// Without trigger field (backward compat fallback)
+		{name: "no trigger + Synced is not a failure", trigger: "", syncStatus: "Synced", want: false},
+		{name: "no trigger + empty status is not a failure", trigger: "", syncStatus: "", want: false},
+		{name: "no trigger + OutOfSync is not a failure (normal in GitOps)", trigger: "", syncStatus: "OutOfSync", want: false},
+		{name: "no trigger + Unknown is a failure", trigger: "", syncStatus: "Unknown", want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isArgocdSyncFailure(tt.syncStatus)
+			got := isArgocdSyncFailure(tt.trigger, tt.syncStatus)
 			if got != tt.want {
-				t.Errorf("isArgocdSyncFailure(%q) = %v, want %v", tt.syncStatus, got, tt.want)
+				t.Errorf("isArgocdSyncFailure(%q, %q) = %v, want %v", tt.trigger, tt.syncStatus, got, tt.want)
 			}
 		})
 	}
@@ -158,10 +159,13 @@ func TestIsArgocdSyncFailure(t *testing.T) {
 	// included req.HealthStatus == "Degraded" in isSyncFailure, which meant any
 	// ArgoCD Application with a single unhealthy service would mark ALL services as failed.
 	t.Run("Degraded health is NOT a sync failure (regression)", func(t *testing.T) {
-		// isArgocdSyncFailure only takes syncStatus, not healthStatus.
-		// A "Synced" sync with "Degraded" health should NOT be a failure.
-		if isArgocdSyncFailure("Synced") {
-			t.Error("Synced status should not be a failure, even when health is Degraded")
+		// isArgocdSyncFailure doesn't take healthStatus at all.
+		// A successful sync with degraded health must not be a failure.
+		if isArgocdSyncFailure("sync-succeeded", "OutOfSync") {
+			t.Error("sync-succeeded trigger should never be a failure")
+		}
+		if isArgocdSyncFailure("", "Synced") {
+			t.Error("Synced status without trigger should not be a failure")
 		}
 	})
 }

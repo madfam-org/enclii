@@ -19,6 +19,7 @@ import (
 // ArgocdSyncRequest represents the callback payload from ArgoCD Notifications
 type ArgocdSyncRequest struct {
 	AppName      string   `json:"app_name" binding:"required"`
+	Trigger      string   `json:"trigger"`
 	SyncStatus   string   `json:"sync_status"`
 	HealthStatus string   `json:"health_status"`
 	Revision     string   `json:"revision"`
@@ -53,12 +54,13 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 
 	h.logger.Info(ctx, "Received ArgoCD sync callback",
 		logging.String("app_name", req.AppName),
+		logging.String("trigger", req.Trigger),
 		logging.String("sync_status", req.SyncStatus),
 		logging.String("health_status", req.HealthStatus),
 		logging.String("revision", req.Revision),
 		logging.Int("image_count", len(req.Images)))
 
-	isSyncFailure := isArgocdSyncFailure(req.SyncStatus)
+	isSyncFailure := isArgocdSyncFailure(req.Trigger, req.SyncStatus)
 
 	deploymentsCreated := 0
 
@@ -425,11 +427,29 @@ func repoFullNameFromImage(imageURI string) string {
 	return ref
 }
 
-// isArgocdSyncFailure returns true only when the sync itself didn't succeed.
+// isArgocdSyncFailure returns true only when the sync operation itself failed.
 // Health degradation is NOT a sync failure — the reconciler tracks health separately.
+//
+// The "trigger" field (added to notification templates) is the primary signal:
+//   - "sync-succeeded" → success (operationState.phase == Succeeded)
+//   - "sync-failed"    → failure (operationState.phase in [Error, Failed])
+//
+// Fallback for callbacks without a trigger field (backward compat):
 // ArgoCD sync.status values: "Synced", "OutOfSync", "Unknown"
-func isArgocdSyncFailure(syncStatus string) bool {
-	return syncStatus != "" && syncStatus != "Synced"
+// Note: "OutOfSync" is NOT a failure — it means new changes arrived during/after sync.
+// Without a trigger field, only empty syncStatus is ambiguous (treated as non-failure).
+func isArgocdSyncFailure(trigger, syncStatus string) bool {
+	switch trigger {
+	case "sync-succeeded":
+		return false
+	case "sync-failed":
+		return true
+	default:
+		// No trigger field (old notification format) — fall back to syncStatus.
+		// Only treat explicitly non-success statuses that aren't "OutOfSync" as failures,
+		// since OutOfSync is normal in GitOps (new commits arrive constantly).
+		return syncStatus == "Unknown"
+	}
 }
 
 // argocdEventType determines the lifecycle event type from ArgoCD sync/health status.
