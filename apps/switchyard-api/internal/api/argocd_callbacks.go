@@ -58,10 +58,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		logging.String("revision", req.Revision),
 		logging.Int("image_count", len(req.Images)))
 
-	// Detect sync failure/degradation
-	isSyncFailure := req.SyncStatus == "OutOfSync" || req.SyncStatus == "Unknown" ||
-		req.SyncStatus == "Error" || req.SyncStatus == "Failed" ||
-		req.HealthStatus == "Degraded" || req.HealthStatus == "Missing"
+	isSyncFailure := isArgocdSyncFailure(req.SyncStatus)
 
 	deploymentsCreated := 0
 
@@ -123,7 +120,8 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		// (happens when ArgoCD syncs an Application but not all images changed)
 		latestDeployment, _ := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
 		if latestDeployment != nil && latestDeployment.ReleaseID == release.ID &&
-			latestDeployment.Status == types.DeploymentStatusRunning {
+			(latestDeployment.Status == types.DeploymentStatusRunning ||
+				latestDeployment.Status == types.DeploymentStatusFailed) {
 			h.logger.Debug(ctx, "Service already deployed with this release, skipping",
 				logging.String("service_name", serviceName),
 				logging.String("release_id", release.ID.String()))
@@ -425,6 +423,13 @@ func repoFullNameFromImage(imageURI string) string {
 		return parts[0] + "/" + parts[1]
 	}
 	return ref
+}
+
+// isArgocdSyncFailure returns true only when the sync itself didn't succeed.
+// Health degradation is NOT a sync failure — the reconciler tracks health separately.
+// ArgoCD sync.status values: "Synced", "OutOfSync", "Unknown"
+func isArgocdSyncFailure(syncStatus string) bool {
+	return syncStatus != "" && syncStatus != "Synced"
 }
 
 // argocdEventType determines the lifecycle event type from ArgoCD sync/health status.

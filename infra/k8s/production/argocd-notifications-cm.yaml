@@ -15,9 +15,6 @@ data:
   trigger.on-sync-failed: |
     - when: app.status.operationState.phase in ['Error', 'Failed']
       send: [enclii-sync-failure-notification]
-  trigger.on-health-degraded: |
-    - when: app.status.health.status in ['Degraded']
-      send: [enclii-sync-failure-notification]
   template.enclii-sync-notification: |
     webhook:
       enclii:
