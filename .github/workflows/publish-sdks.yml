@@ -11,6 +11,8 @@ jobs:
   publish:
     name: Publish @enclii SDK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
     steps:
@@ -36,6 +38,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install
         working-directory: packages
+
+      - name: Build workspace dependencies
+        if: steps.extract.outputs.pkg_name != 'shared-lib' && steps.extract.outputs.pkg_name != 'config'
+        run: pnpm run --if-present build
+        working-directory: packages/shared-lib
 
       - name: Build
         run: pnpm run --if-present build
