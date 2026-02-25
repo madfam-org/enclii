@@ -6,8 +6,9 @@
 # (ghcr.io/.../actions-runner-controller-charts) instead of the full
 # chart path (ghcr.io/.../gha-runner-scale-set-controller), causing
 # ComparisonError (403 from GHCR). Pods are Healthy and functional.
-# Bug filed: https://github.com/argoproj/argo-cd/issues — re-enable
-# auto-sync when ArgoCD fixes multi-source OCI Helm revision resolution.
+# See docs/infrastructure/ARGOCD_KNOWN_ISSUES.md for full analysis,
+# reproduction steps, and proposed upstream fix. Re-enable auto-sync
+# when ArgoCD fixes multi-source OCI Helm revision resolution.
 #
 # To upgrade ARC charts, use Helm CLI directly:
 #   helm upgrade arc-controller oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \

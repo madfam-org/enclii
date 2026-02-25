@@ -247,12 +247,14 @@ Enclii uses MADFAM's private npm registry for internal packages. Configure your 
 @madfam:registry=https://npm.madfam.io
 @enclii:registry=https://npm.madfam.io
 @janua:registry=https://npm.madfam.io
+
+# Auth token only needed for publishing (not for installing @enclii/* or @janua/* packages)
 //npm.madfam.io/:_authToken=${NPM_MADFAM_TOKEN}
 ```
 
-Set the `NPM_MADFAM_TOKEN` environment variable with your registry token.
+`@enclii/*` and `@janua/*` packages have public read access — no token required for `npm install`. The `NPM_MADFAM_TOKEN` is only needed for publishing or installing private scopes (`@madfam/*`, `@dhanam/*`, etc.).
 
-**Note:** Enclii also hosts the npm.madfam.io registry via Verdaccio. See [NPM Registry Implementation](./docs/NPM_REGISTRY_IMPLEMENTATION.md) for details.
+**Note:** Enclii hosts the npm.madfam.io registry via Verdaccio. See [NPM Registry](./docs/infrastructure/npm-registry.md) for details.
 
 ### Local Development (10 minutes)
 

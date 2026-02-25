@@ -259,7 +259,7 @@ kubectl get application <app-name> -n argocd -o yaml | \
 ### Known Sync Issues
 
 - **OutOfSync/Healthy**: These are cosmetic. SSA (ServerSideApply) adds metadata that doesn't match Git source. All resources function correctly.
-- **Unknown sync**: ArgoCD cannot fetch OCI Helm charts for status comparison. The ARC runners work correctly despite the Unknown status.
+- **Unknown sync**: ArgoCD v3.2.5 has a bug in multi-source OCI Helm revision resolution — see [ArgoCD Known Issues](./ARGOCD_KNOWN_ISSUES.md) for full analysis, reproduction steps, and proposed upstream fix. The ARC runners work correctly despite the Unknown status.
 - **Degraded health**: external-secrets-config references a Doppler SecretStore that hasn't been provisioned yet.
 
 ## Lessons Learned (Jan 2026 Audit)

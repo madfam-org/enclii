@@ -21,6 +21,7 @@ This section documents Enclii's production infrastructure components deployed in
 | [Storage with Longhorn](./STORAGE.md) | Block storage (single-node; prepared for multi-node scaling) |
 | [Cloudflare Integration](./CLOUDFLARE.md) | Zero-trust ingress, tunnel route automation, DNS |
 | [External Secrets](./EXTERNAL_SECRETS.md) | Secret synchronization from external providers |
+| [ArgoCD Known Issues](./ARGOCD_KNOWN_ISSUES.md) | Known bugs, workarounds, and upstream fix proposals |
 
 ## Quick Reference
 

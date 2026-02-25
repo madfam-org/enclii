@@ -184,7 +184,7 @@ data:
         access: $authenticated
         publish: $authenticated
       '@janua/*':
-        access: $authenticated
+        access: $all              # public read for SDK consumers
         publish: $authenticated
       '@dhanam/*':
         access: $authenticated
@@ -208,7 +208,7 @@ data:
         access: $authenticated
         publish: $authenticated
       '@enclii/*':
-        access: $authenticated
+        access: $all              # public read for SDK consumers
         publish: $authenticated
       '**':
         access: $all

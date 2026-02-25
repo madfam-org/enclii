@@ -68,9 +68,9 @@ data:
         publish: $authenticated
         unpublish: $authenticated
 
-      # Janua - Auth platform
+      # Janua - Auth platform (public read for SDK consumers)
       '@janua/*':
-        access: $authenticated
+        access: $all
         publish: $authenticated
         unpublish: $authenticated
 
@@ -110,9 +110,9 @@ data:
         publish: $authenticated
         unpublish: $authenticated
 
-      # Enclii - Platform as a Service
+      # Enclii - Platform as a Service (public read for SDK consumers)
       '@enclii/*':
-        access: $authenticated
+        access: $all
         publish: $authenticated
         unpublish: $authenticated
 
