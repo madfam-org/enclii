@@ -6,3 +6,4 @@ metadata:
     app.kubernetes.io/name: verdaccio
     app.kubernetes.io/component: npm-registry
     app.kubernetes.io/part-of: enclii-platform
+    enclii.dev/type: platform

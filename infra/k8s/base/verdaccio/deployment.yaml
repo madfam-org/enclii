@@ -35,7 +35,7 @@ spec:
 
       containers:
         - name: verdaccio
-          image: verdaccio/verdaccio:5
+          image: docker.io/verdaccio/verdaccio:5
           imagePullPolicy: IfNotPresent
 
           ports:
