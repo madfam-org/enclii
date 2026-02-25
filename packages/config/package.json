@@ -8,6 +8,11 @@
     "./tailwind/switchyard": "./tailwind/switchyard.js",
     "./tailwind/dispatch": "./tailwind/dispatch.js"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.madfam.io/"
+  },
+  "files": ["tailwind"],
   "peerDependencies": {
     "tailwindcss": "^3.0.0"
   }

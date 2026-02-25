@@ -404,53 +404,76 @@ spec:
     destination: r2://madfam-backups/npm-registry
 ```
 
-### GitHub Actions Workflow Template
+### GitHub Actions Workflow (Enclii)
 
-#### .github/workflows/npm-publish.yml (template for all repos)
+#### .github/workflows/publish-sdks.yml
+
+Tag-triggered workflow that publishes individual `@enclii/*` packages. Push a tag like `shared-lib-v0.1.0` to trigger.
+
 ```yaml
-name: Publish to npm.madfam.io
+name: Publish SDKs
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'packages/*/package.json'
-      - 'packages/*/src/**'
-  workflow_dispatch:
+    tags:
+      - "shared-lib-v*"
+      - "ui-components-v*"
+      - "config-v*"
 
 jobs:
   publish:
+    name: Publish @enclii SDK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9
-          
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
-          
-      - name: Configure npm registry
+          node-version: "20"
+          registry-url: "https://npm.madfam.io"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Extract package name and version
+        id: extract
         run: |
-          echo "@madfam:registry=https://npm.madfam.io" >> ~/.npmrc
-          echo "@janua:registry=https://npm.madfam.io" >> ~/.npmrc
-          echo "@dhanam:registry=https://npm.madfam.io" >> ~/.npmrc
-          echo "//npm.madfam.io/:_authToken=${{ secrets.NPM_MADFAM_TOKEN }}" >> ~/.npmrc
-          
+          TAG=${GITHUB_REF#refs/tags/}
+          PKG_NAME=${TAG%-v*}
+          VERSION=${TAG#*-v}
+          echo "pkg_name=$PKG_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        
-      - name: Build packages
-        run: pnpm build
-        
-      - name: Publish changed packages
-        run: pnpm publish -r --no-git-checks --access restricted
+        run: pnpm install
+        working-directory: packages
+      - name: Build
+        run: pnpm run --if-present build
+        working-directory: packages/${{ steps.extract.outputs.pkg_name }}
+      - name: Publish to npm.madfam.io
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public
+        working-directory: packages/${{ steps.extract.outputs.pkg_name }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "@enclii/${{ steps.extract.outputs.pkg_name }} v${{ steps.extract.outputs.version }}"
 ```
+
+**Publishing a new version:**
+```bash
+# 1. Bump version in packages/<name>/package.json
+# 2. Commit and push
+# 3. Tag and push
+git tag shared-lib-v0.2.0
+git push origin shared-lib-v0.2.0
+```
+
+#### Publishable packages
+
+| Package | Tag Pattern | Build | Notes |
+|---------|-------------|-------|-------|
+| `@enclii/shared-lib` | `shared-lib-v*` | TypeScript → dist/ | Utilities (clsx, tailwind-merge) |
+| `@enclii/ui-components` | `ui-components-v*` | TypeScript → dist/ | React components, depends on shared-lib |
+| `@enclii/config` | `config-v*` | None (plain JS) | Tailwind config presets |
 
 ### .npmrc Template (for all MADFAM repos)
 ```ini
@@ -466,8 +489,8 @@ jobs:
 @forj:registry=https://npm.madfam.io
 @enclii:registry=https://npm.madfam.io
 
-# For CI: auth token is set via NPM_MADFAM_TOKEN env var
-# //npm.madfam.io/:_authToken=${NPM_MADFAM_TOKEN}
+# Auth token for CI (locally: set NPM_MADFAM_TOKEN env var or run `npm login --registry https://npm.madfam.io`)
+//npm.madfam.io/:_authToken=${NPM_MADFAM_TOKEN}
 ```
 
 ---
@@ -475,29 +498,31 @@ jobs:
 ## Deployment Checklist
 
 ### Pre-deployment
-- [ ] Porkbun DNS: Add CNAME for npm.madfam.io
-- [ ] Cloudflare: Configure tunnel ingress
-- [ ] Cloudflare: SSL settings configured
-- [ ] k3s cluster: Verify storage class exists
-- [ ] Secrets: Generate initial htpasswd
+- [x] Porkbun DNS: Add CNAME for npm.madfam.io
+- [x] Cloudflare: Configure tunnel ingress
+- [x] Cloudflare: SSL settings configured
+- [x] k3s cluster: Verify storage class exists
+- [x] Secrets: Generate initial htpasswd
 
 ### Deployment
-- [ ] Apply PVC: `kubectl apply -f verdaccio-pvc.yaml`
-- [ ] Apply ConfigMap: `kubectl apply -f verdaccio-config.yaml`
-- [ ] Apply Secret: `kubectl apply -f verdaccio-secret.yaml`
-- [ ] Apply Deployment: `kubectl apply -f verdaccio-deployment.yaml`
-- [ ] Apply Service: `kubectl apply -f verdaccio-service.yaml`
-- [ ] Verify pods running: `kubectl get pods -l app=verdaccio`
-- [ ] Test health endpoint: `curl https://npm.madfam.io/-/ping`
+- [x] Apply PVC: `kubectl apply -f verdaccio-pvc.yaml`
+- [x] Apply ConfigMap: `kubectl apply -f verdaccio-config.yaml`
+- [x] Apply Secret: `kubectl apply -f verdaccio-secret.yaml`
+- [x] Apply Deployment: `kubectl apply -f verdaccio-deployment.yaml`
+- [x] Apply Service: `kubectl apply -f verdaccio-service.yaml`
+- [x] Verify pods running: `kubectl get pods -l app=verdaccio`
+- [x] Test health endpoint: `curl https://npm.madfam.io/-/ping`
 
 ### Post-deployment
-- [ ] Create admin user
-- [ ] Create CI bot user (for GitHub Actions)
-- [ ] Add NPM_MADFAM_TOKEN to GitHub org secrets
-- [ ] Update .npmrc in all repos
-- [ ] Publish initial packages
+- [x] Create admin user
+- [x] Create CI bot user (for GitHub Actions)
+- [x] Add NPM_MADFAM_TOKEN to GitHub org secrets
+- [x] Update .npmrc in all repos
+- [x] Publish initial @enclii packages (shared-lib, ui-components, config)
 - [ ] Test package installation
 - [ ] Set up monitoring alerts
+
+> **Status (Feb 2026):** Verdaccio is running and healthy. ArgoCD-managed as `npm-registry-services` app. PVC reduced from 50Gi to 5Gi (Session 44). @janua packages published. @enclii packages publish via `.github/workflows/publish-sdks.yml` (tag-triggered).
 
 ---
 
@@ -570,7 +595,7 @@ kubectl scale deploy/verdaccio --replicas=2 -n enclii-workloads
 
 | Component | Monthly Cost |
 |-----------|--------------|
-| Hetzner storage (50Gi) | ~$2.50 |
+| Hetzner storage (5Gi) | ~$0.25 |
 | Cloudflare R2 backups | ~$0.50 |
 | Cloudflare Tunnel | $0 |
 | CPU/Memory (shared) | ~$2 |

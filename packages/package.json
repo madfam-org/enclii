@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "name": "@enclii/packages",
+  "description": "Workspace root for publishable @enclii packages"
+}
