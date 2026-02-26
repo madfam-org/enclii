@@ -7,7 +7,7 @@
 Enclii is MADFAM's production DevOps platform running on a 2-node k3s cluster on Hetzner +
 Cloudflare. It dogfoods itself — the control plane runs on Enclii. Authentication
 is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
-16 managed applications.
+17 managed applications (10 ApplicationSet + 7 static).
 
 ## Core Documentation
 

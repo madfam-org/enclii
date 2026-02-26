@@ -16,7 +16,7 @@
 | Terraform | `infra/terraform/` |
 | K8s Manifests | `infra/k8s/production/` |
 | ArgoCD Root | `infra/argocd/root-application.yaml` |
-| ArgoCD Apps | `infra/argocd/apps/*.yaml` (16 apps) |
+| ArgoCD Apps | `infra/argocd/apps/*.yaml` (7 manifests: 1 ApplicationSet + 6 static, generating 17 total apps) |
 | Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (28 domains) |
 | Kyverno Policies | `infra/k8s/base/kyverno/policies/` |
 | Golden Tests | `tests/golden/` (pre-commit validation) |

@@ -293,8 +293,9 @@ spec:
 | 2026-01-15 | Initial roadmap created |
 | 2026-01-15 | SMS MFA, Adaptive MFA, Breach Detection added to Q1 |
 | 2026-01-15 | Sovereign Serverless study initiated |
+| 2026-02-25 | Q1 progress update: ArgoCD remediation (17 apps stable), npm-registry operational, Longhorn single-replica, monitoring exporters deployed. Identity rebranded from "Railway-style PaaS" to "open source DevOps platform". Waybill, Timetable, Junctions, Signal, Lockbox remain planned/unimplemented |
 
 ---
 
 *Roadmap is subject to change based on community feedback and strategic priorities.*
-*Last updated: January 15, 2026*
+*Last updated: February 25, 2026*

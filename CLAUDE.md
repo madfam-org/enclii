@@ -11,7 +11,7 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Dogfooding:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
-**GitOps:** ArgoCD App-of-Apps (18 apps) with self-heal - **Operational** (Jan 2026)
+**GitOps:** ArgoCD App-of-Apps (17 apps: 10 ApplicationSet + 7 static) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (single-replica; ready for multi-node) - **Operational** (Jan 2026)
 **Last Audit:** Feb 6, 2026 — 82 pods, 0 errors, 12 endpoints 100% healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
 
@@ -23,7 +23,7 @@ Per [PORT_ALLOCATION.md](https://github.com/madfam-org/solarpunk-foundry/blob/ma
 |---------|------|-----------|---------------|
 | Switchyard API | 4200 | enclii-api | api.enclii.dev |
 | Web UI | 4201 | enclii-ui | app.enclii.dev |
-| Agent | 4202 | enclii-agent | - |
+| Agent (Planned) | 4202 | enclii-agent | - |
 | Dispatch | 4203 | dispatch | admin.enclii.dev |
 | Status Page | 4204 | enclii-status | status.enclii.dev, status.madfam.io |
 | Metrics | 4290 | enclii-metrics | - |
@@ -51,13 +51,14 @@ The project follows a monorepo structure with these key components:
 - **Switchyard**: Control plane API (Go) - manages projects, environments, services, deployments
 - **Conductor (CLI)**: Developer interface (`enclii` command) (Go)
 - **Roundhouse**: Build/provenance/signing workers (Go)
-- **Reconcilers**: Kubernetes operators/controllers (Go)
+- **Reconcilers**: Kubernetes operators/controllers (Go) - **Planned** (stub only)
 - **UI**: Web interface (Next.js)
-- **Junctions**: Routing/ingress + certs + DNS
-- **Timetable**: Cron and one-off jobs
-- **Lockbox**: Secrets management (Vault/1Password)
-- **Signal**: Observability stack (logs/metrics/traces)
-- **Waybill**: Cost tracking and budget alerts
+- **Dispatch**: Admin control platform (Next.js) - fleet management, topology visualization
+- **Waybill**: Cost tracking and budget alerts (Go)
+- **Junctions**: Routing/ingress + certs + DNS - **Planned**
+- **Timetable**: Cron and one-off jobs - **Planned**
+- **Lockbox**: Secrets management (Vault/1Password) - **Planned** (internal lockbox pkg exists in switchyard-api)
+- **Signal**: Observability stack (logs/metrics/traces) - **Planned**
 
 ## Common Development Commands
 
