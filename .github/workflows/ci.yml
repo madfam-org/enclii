@@ -309,6 +309,8 @@ jobs:
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
     # Serialize with lint to avoid resource contention on self-hosted runners
     needs: lint
+    env:
+      NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
 
     steps:
       - uses: actions/checkout@v6
@@ -585,17 +587,23 @@ jobs:
 
       - name: Prepare build args
         id: prep
+        env:
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
         run: |
           # Convert build_args JSON to Docker build-arg format
           BUILD_ARGS_JSON='${{ toJSON(matrix.build_args) }}'
           if [ "$BUILD_ARGS_JSON" != "{}" ] && [ "$BUILD_ARGS_JSON" != "null" ] && [ -n "$BUILD_ARGS_JSON" ]; then
             BUILD_ARGS=$(echo "$BUILD_ARGS_JSON" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"')
-            echo "build_args<<EOF" >> $GITHUB_OUTPUT
-            echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
           else
-            echo "build_args=" >> $GITHUB_OUTPUT
+            BUILD_ARGS=""
           fi
+          # Append private registry token for @janua packages (switchyard-ui)
+          if [ -n "$NPM_MADFAM_TOKEN" ]; then
+            BUILD_ARGS=$(printf '%s\nNPM_MADFAM_TOKEN=%s' "$BUILD_ARGS" "$NPM_MADFAM_TOKEN")
+          fi
+          echo "build_args<<EOF" >> $GITHUB_OUTPUT
+          echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build and push ${{ matrix.name }}
         id: docker-build

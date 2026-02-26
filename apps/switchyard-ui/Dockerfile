@@ -9,8 +9,11 @@ WORKDIR /app
 # Install dependencies
 FROM base AS deps
 WORKDIR /app/switchyard-ui
+ARG NPM_MADFAM_TOKEN
 COPY apps/switchyard-ui/package.json apps/switchyard-ui/package-lock.json ./
+COPY apps/switchyard-ui/.npmrc ./
 RUN npm install --legacy-peer-deps
+RUN rm -f .npmrc
 
 # Build the application
 FROM base AS builder

@@ -110,6 +110,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:latest
             ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
+          build-args: |
+            NPM_MADFAM_TOKEN=${{ secrets.NPM_MADFAM_TOKEN }}
           cache-from: type=gha,scope=emergency-${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=emergency-${{ matrix.name }}
 
