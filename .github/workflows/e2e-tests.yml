@@ -41,6 +41,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -48,6 +50,7 @@ jobs:
       - name: Build application
         run: pnpm run build
         env:
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
           NEXT_PUBLIC_API_URL: https://api.enclii.dev
           NEXT_PUBLIC_OIDC_ISSUER: https://auth.madfam.io
 
