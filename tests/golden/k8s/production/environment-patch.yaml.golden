@@ -10,11 +10,11 @@ spec:
       - name: switchyard-api
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "200m"
           limits:
-            memory: "2Gi"
-            cpu: "2000m"
+            memory: "1Gi"
+            cpu: "1000m"
         env:
         # Redis - K8s internal DNS (locked from external access)
         # Config reads ENCLII_REDIS_HOST/PORT, not URL (see config/config.go:165-167)

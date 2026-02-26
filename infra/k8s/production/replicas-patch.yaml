@@ -4,7 +4,7 @@ kind: Deployment
 metadata:
   name: switchyard-api
 spec:
-  replicas: 5
+  replicas: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:

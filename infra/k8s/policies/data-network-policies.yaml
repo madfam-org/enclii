@@ -69,7 +69,7 @@ spec:
         - protocol: TCP
           port: 5432
 
-# Allow enclii, janua, data (exporters) -> Redis (port 6379)
+# Allow enclii, janua, dhanam, tezca, data (exporters) -> Redis (port 6379)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -94,6 +94,8 @@ spec:
                 values:
                   - enclii
                   - janua
+                  - dhanam
+                  - tezca
                   - data
       ports:
         - protocol: TCP
