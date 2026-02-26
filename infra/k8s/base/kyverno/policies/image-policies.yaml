@@ -54,8 +54,11 @@ metadata:
     policies.kyverno.io/description: >-
       Verifies that container images are signed with Cosign.
       All production namespaces require signed images.
+      NOTE: Set to Audit because no namespace has the opt-in label
+      (enclii.dev/verify-signatures: "true") yet. The webhook was
+      blocking ArgoCD syncs cluster-wide despite being dormant.
 spec:
-  validationFailureAction: Enforce
+  validationFailureAction: Audit
   background: true
   rules:
     - name: check-signature

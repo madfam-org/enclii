@@ -47,6 +47,34 @@
     }
   },
   {
+    "hostname": "4d.madfam.io",
+    "service": "http://yantra4d-landing.yantra4d.svc.cluster.local:80",
+    "originRequest": {
+      "httpHostHeader": "4d.madfam.io"
+    }
+  },
+  {
+    "hostname": "4d-api.madfam.io",
+    "service": "http://yantra4d-backend.yantra4d.svc.cluster.local:80",
+    "originRequest": {
+      "httpHostHeader": "4d-api.madfam.io"
+    }
+  },
+  {
+    "hostname": "4d-app.madfam.io",
+    "service": "http://yantra4d-studio.yantra4d.svc.cluster.local:80",
+    "originRequest": {
+      "httpHostHeader": "4d-app.madfam.io"
+    }
+  },
+  {
+    "hostname": "4d-admin.madfam.io",
+    "service": "http://yantra4d-admin.yantra4d.svc.cluster.local:80",
+    "originRequest": {
+      "httpHostHeader": "4d-admin.madfam.io"
+    }
+  },
+  {
     "service": "http_status:404"
   }
 ]
