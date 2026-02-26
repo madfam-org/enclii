@@ -98,7 +98,7 @@ export default function LoginPage() {
             apiUrl={process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200"}
             afterSignIn={() => router.push("/")}
             onError={(err) => setError(err.message)}
-            socialProviders={{ google: false, github: false, microsoft: false, apple: false }}
+            socialProviders={{ google: true, github: true, microsoft: true, apple: true }}
             showRememberMe={false}
             signUpUrl="/register"
           />
