@@ -58,12 +58,14 @@ spec:
           - RespectIgnoreDifferences=true
       ignoreDifferences:
         # ArgoCD tracking label conflicts with kustomize commonLabels
+        # Kyverno verify-images annotations (both deployment and pod template level)
         - group: apps
           kind: Deployment
           jsonPointers:
             - /spec/replicas
             - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
             - /metadata/annotations/kyverno.io~1verify-images
+            - /spec/template/metadata/annotations/kyverno.io~1verify-images
             - /metadata/labels/app.kubernetes.io~1instance
         - group: ""
           kind: Service
