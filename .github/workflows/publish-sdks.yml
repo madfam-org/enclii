@@ -48,6 +48,17 @@ jobs:
         run: pnpm run --if-present build
         working-directory: packages/${{ steps.extract.outputs.pkg_name }}
 
+      - name: Check version not already published
+        run: |
+          PKG_NAME=$(jq -r '.name' package.json)
+          VERSION=$(jq -r '.version' package.json)
+          if npm view "${PKG_NAME}@${VERSION}" version --registry https://npm.madfam.io 2>/dev/null; then
+            echo "ERROR: ${PKG_NAME}@${VERSION} already published. Bump the version first."
+            exit 1
+          fi
+          echo "OK: ${PKG_NAME}@${VERSION} not yet published"
+        working-directory: packages/${{ steps.extract.outputs.pkg_name }}
+
       - name: Publish to npm.madfam.io
         run: pnpm publish --no-git-checks --access public
         working-directory: packages/${{ steps.extract.outputs.pkg_name }}

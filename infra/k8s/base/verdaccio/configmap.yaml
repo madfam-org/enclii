@@ -60,67 +60,67 @@ data:
       '@madfam/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Dhanam - Finance platform
       '@dhanam/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Janua - Auth platform (public read for SDK consumers)
       '@janua/*':
         access: $all
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Cotiza - Quoting platform
       '@cotiza/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Fortuna - Lottery platform
       '@fortuna/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Avala - Insurance platform
       '@avala/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Forgesight - Analytics platform
       '@forgesight/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Coforma - Form builder
       '@coforma/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Forj - Workflow automation
       '@forj/*':
         access: $authenticated
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # Enclii - Platform as a Service (public read for SDK consumers)
       '@enclii/*':
         access: $all
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
 
       # All other packages - proxy to npmjs
       '**':
         access: $all
         publish: $authenticated
-        unpublish: $authenticated
+        unpublish: false  # IMMUTABLE: prevents overwriting published versions
         proxy: npmjs
 
     # Server settings
