@@ -73,7 +73,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/madfam-org/*"
-          mutateDigest: true
+          mutateDigest: false
           verifyDigest: true
           required: true
           useCache: true
