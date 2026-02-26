@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -16,7 +17,7 @@ func (h *Handler) ListAdminClusters(c *gin.Context) {
 	}
 	clusters, err := h.repos.Clusters.List(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"clusters": clusters})
@@ -35,7 +36,7 @@ func (h *Handler) GetAdminCluster(c *gin.Context) {
 	}
 	cluster, err := h.repos.Clusters.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	if cluster == nil {
@@ -57,7 +58,7 @@ func (h *Handler) RegisterCluster(c *gin.Context) {
 		return
 	}
 	if err := h.clusterAdminService.Register(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, req)
@@ -81,7 +82,7 @@ func (h *Handler) UpdateCluster(c *gin.Context) {
 	}
 	req.ID = id
 	if err := h.clusterAdminService.Update(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, req)
@@ -99,7 +100,7 @@ func (h *Handler) DeregisterCluster(c *gin.Context) {
 		return
 	}
 	if err := h.clusterAdminService.Deregister(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusNoContent, nil)

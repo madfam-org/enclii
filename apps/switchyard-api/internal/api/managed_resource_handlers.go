@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -18,7 +19,7 @@ func (h *Handler) ListManagedResources(c *gin.Context) {
 	status := types.SyncStatus(c.Query("status"))
 	resources, err := h.repos.ManagedResources.List(c.Request.Context(), provider, kind, status)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"resources": resources})
@@ -36,7 +37,7 @@ func (h *Handler) GetManagedResource(c *gin.Context) {
 	}
 	resource, err := h.repos.ManagedResources.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	if resource == nil {
@@ -57,7 +58,7 @@ func (h *Handler) CreateManagedResource(c *gin.Context) {
 		return
 	}
 	if err := h.infrastructureService.CreateComposition(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, req)
@@ -81,7 +82,7 @@ func (h *Handler) UpdateResourcePolicy(c *gin.Context) {
 		return
 	}
 	if err := h.infrastructureService.SwitchPolicy(c.Request.Context(), id, req.Policy); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "policy updated"})
@@ -98,7 +99,7 @@ func (h *Handler) DeleteManagedResource(c *gin.Context) {
 		return
 	}
 	if err := h.repos.ManagedResources.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusNoContent, nil)

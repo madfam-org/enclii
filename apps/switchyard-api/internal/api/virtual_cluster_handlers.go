@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -15,7 +16,7 @@ func (h *Handler) ListVirtualClusters(c *gin.Context) {
 	}
 	vcs, err := h.repos.VirtualClusters.List(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"vclusters": vcs})
@@ -33,7 +34,7 @@ func (h *Handler) GetVirtualCluster(c *gin.Context) {
 	}
 	vc, err := h.repos.VirtualClusters.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	if vc == nil {
@@ -54,7 +55,7 @@ func (h *Handler) ProvisionVirtualCluster(c *gin.Context) {
 		return
 	}
 	if err := h.vclusterService.Provision(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, req)
@@ -71,7 +72,7 @@ func (h *Handler) TeardownVirtualCluster(c *gin.Context) {
 		return
 	}
 	if err := h.vclusterService.Teardown(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusNoContent, nil)
@@ -89,7 +90,7 @@ func (h *Handler) GetVClusterKubeconfig(c *gin.Context) {
 	}
 	kubeconfig, err := h.vclusterService.GetKubeconfig(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"kubeconfig": kubeconfig})

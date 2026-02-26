@@ -1,0 +1,21 @@
+---
+# ServiceMonitor for Waybill (cost tracking service)
+# Scrapes metrics from the waybill service on port 4290
+# NOTE: Requires Prometheus Operator (monitoring.coreos.com CRDs) to be installed
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: waybill
+  labels:
+    app.kubernetes.io/name: waybill
+    app.kubernetes.io/component: cost-tracking
+    app.kubernetes.io/part-of: enclii
+spec:
+  selector:
+    matchLabels:
+      app: waybill
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

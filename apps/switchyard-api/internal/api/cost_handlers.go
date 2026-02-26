@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -18,7 +19,7 @@ func (h *Handler) GetCostAllocations(c *gin.Context) {
 	end, _ := time.Parse(time.RFC3339, c.DefaultQuery("end", time.Now().Format(time.RFC3339)))
 	allocations, err := h.repos.CostAllocations.ListByTenant(c.Request.Context(), tenantID, start, end)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"allocations": allocations})
@@ -33,7 +34,7 @@ func (h *Handler) GetCostSummary(c *gin.Context) {
 	end, _ := time.Parse(time.RFC3339, c.DefaultQuery("end", time.Now().Format(time.RFC3339)))
 	summary, err := h.repos.CostAllocations.GetSummary(c.Request.Context(), start, end)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"summary": summary})
@@ -50,7 +51,7 @@ func (h *Handler) AllocateCost(c *gin.Context) {
 		return
 	}
 	if err := h.repos.CostAllocations.Create(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, req)

@@ -1,0 +1,24 @@
+---
+# ServiceMonitor for Cloudflare Tunnel (cloudflared)
+# Scrapes tunnel metrics from the cloudflared pods
+# NOTE: Requires Prometheus Operator (monitoring.coreos.com CRDs) to be installed
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cloudflared
+  labels:
+    app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: enclii
+spec:
+  namespaceSelector:
+    matchNames:
+      - cloudflare
+  selector:
+    matchLabels:
+      app: cloudflared
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

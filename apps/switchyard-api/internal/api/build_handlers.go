@@ -15,6 +15,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/clients"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -35,7 +36,7 @@ func (h *Handler) BuildService(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		middleware.AbortBadRequest(c, "Invalid request body")
 		return
 	}
 
@@ -97,7 +98,8 @@ func (h *Handler) triggerBuildAsync(service *types.Service, release *types.Relea
 		// Enqueue to Roundhouse for fault-tolerant, scalable builds
 		// Run in goroutine to avoid blocking webhook response
 		go func() {
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
 			h.enqueueToRoundhouse(ctx, service, release, gitSHA, gitBranch)
 		}()
 	} else {

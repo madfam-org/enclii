@@ -1,0 +1,247 @@
+---
+# Platform Infrastructure Alerting Rules
+# Covers: Postgres, Redis, Switchyard API, Cloudflare Tunnel, Node Health, Pod Health, Backups
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-infrastructure-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-platform-rules
+    app.kubernetes.io/part-of: enclii
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    # =========================================================================
+    # Database (PostgreSQL)
+    # =========================================================================
+    - name: postgres
+      interval: 30s
+      rules:
+        - alert: PostgresDown
+          expr: pg_up == 0
+          for: 1m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "PostgreSQL is down"
+            description: "PostgreSQL exporter reports pg_up == 0 for more than 1 minute."
+
+        - alert: PostgresHighConnections
+          expr: |
+            sum(pg_stat_activity_count) / on() pg_settings_max_connections > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "PostgreSQL connection usage above 80%"
+            description: "Active connections at {{ $value | humanizePercentage }} of max_connections for 5m."
+
+        - alert: PostgresSlowQueries
+          expr: |
+            pg_stat_activity_max_tx_duration_seconds > 300
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "PostgreSQL has long-running transactions"
+            description: "Transaction running for {{ $value | humanizeDuration }} (threshold: 5m)."
+
+    # =========================================================================
+    # Cache (Redis)
+    # =========================================================================
+    - name: redis
+      interval: 30s
+      rules:
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 1m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "Redis is down"
+            description: "Redis exporter reports redis_up == 0 for more than 1 minute."
+
+        - alert: RedisHighMemory
+          expr: |
+            redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Redis memory usage above 80%"
+            description: "Redis memory at {{ $value | humanizePercentage }} of maxmemory for 5m."
+
+        - alert: RedisRejectedConnections
+          expr: |
+            increase(redis_rejected_connections_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Redis is rejecting connections"
+            description: "{{ $value }} connections rejected in the last 5 minutes."
+
+    # =========================================================================
+    # Switchyard API
+    # =========================================================================
+    - name: switchyard-api
+      interval: 30s
+      rules:
+        - alert: SwitchyardAPIDown
+          expr: up{job="switchyard-api"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "Switchyard API is down"
+            description: "Switchyard API target is unreachable for more than 1 minute."
+
+        - alert: SwitchyardAPIErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{code=~"5..",job="switchyard-api"}[5m]))
+              /
+              sum(rate(http_requests_total{job="switchyard-api"}[5m]))
+            ) > 0.02
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Switchyard API error rate above 2%"
+            description: "5xx error rate at {{ $value | humanizePercentage }} for 5m."
+
+        - alert: SwitchyardAPILatencyP95
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{job="switchyard-api"}[5m]))
+            ) > 5
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Switchyard API P95 latency above 5s"
+            description: "P95 latency at {{ $value | humanizeDuration }} for 5m."
+
+    # =========================================================================
+    # Cloudflare Tunnel
+    # =========================================================================
+    - name: cloudflared
+      interval: 30s
+      rules:
+        - alert: CloudflaredTunnelDown
+          expr: |
+            absent(up{job="cloudflared"}) or up{job="cloudflared"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "Cloudflare tunnel is down"
+            description: "All cloudflared instances are unreachable for more than 2 minutes. External traffic cannot reach the cluster."
+
+    # =========================================================================
+    # Node Health
+    # =========================================================================
+    - name: node-health
+      interval: 30s
+      rules:
+        - alert: NodeNotReady
+          expr: |
+            kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "Node {{ $labels.node }} is not ready"
+            description: "Node {{ $labels.node }} has been in NotReady state for more than 2 minutes."
+
+        - alert: NodeHighCPU
+          expr: |
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Node {{ $labels.instance }} CPU above 90%"
+            description: "CPU usage at {{ $value | humanizePercentage }} for 10m."
+
+        - alert: NodeHighMemory
+          expr: |
+            (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Node {{ $labels.instance }} memory above 90%"
+            description: "Memory usage at {{ $value | humanizePercentage }} for 10m."
+
+        - alert: NodeDiskPressure
+          expr: |
+            (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Node {{ $labels.instance }} disk usage above 85%"
+            description: "Root filesystem at {{ $value | humanizePercentage }} capacity."
+
+    # =========================================================================
+    # Pod & Deployment Health
+    # =========================================================================
+    - name: pod-health
+      interval: 30s
+      rules:
+        - alert: PodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace=~"enclii|data|monitoring"}[1h]) > 3
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash-looping"
+            description: "Container {{ $labels.container }} restarted {{ $value }} times in the last hour."
+
+        - alert: DeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_available{namespace="enclii"}
+            < kube_deployment_spec_replicas{namespace="enclii"}
+          for: 5m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} has unavailable replicas"
+            description: "{{ $labels.deployment }} has {{ $value }} available replicas vs desired spec."
+
+    # =========================================================================
+    # Backup Health
+    # =========================================================================
+    - name: backup-health
+      interval: 60s
+      rules:
+        - alert: BackupJobFailed
+          expr: |
+            kube_job_status_failed{namespace="data",job_name=~"postgres-backup.*"} > 0
+          for: 0m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "Postgres backup job failed"
+            description: "Backup job {{ $labels.job_name }} in namespace {{ $labels.namespace }} has failed."

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -16,7 +17,7 @@ func (h *Handler) ListBareMetalHosts(c *gin.Context) {
 	}
 	hosts, err := h.repos.BareMetalHosts.List(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"hosts": hosts})
@@ -35,7 +36,7 @@ func (h *Handler) GetBareMetalHost(c *gin.Context) {
 	}
 	host, err := h.repos.BareMetalHosts.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	if host == nil {
@@ -58,7 +59,7 @@ func (h *Handler) RegisterBareMetalHost(c *gin.Context) {
 	}
 	host, err := h.bareMetalService.RegisterHost(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, host)
@@ -83,7 +84,7 @@ func (h *Handler) UpdateFirmware(c *gin.Context) {
 		return
 	}
 	if err := h.bareMetalService.UpdateFirmware(c.Request.Context(), id, req.Settings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "firmware update initiated"})
@@ -109,7 +110,7 @@ func (h *Handler) ConfigurePartition(c *gin.Context) {
 		return
 	}
 	if err := h.bareMetalService.ConfigureRAID(c.Request.Context(), id, req.RootDeviceHints, req.RAIDConfig); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "partition configured"})
@@ -127,7 +128,7 @@ func (h *Handler) SecureWipe(c *gin.Context) {
 		return
 	}
 	if err := h.bareMetalService.SecureWipe(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "secure wipe initiated"})
@@ -152,7 +153,7 @@ func (h *Handler) SetPowerState(c *gin.Context) {
 		return
 	}
 	if err := h.bareMetalService.SetPower(c.Request.Context(), id, req.Action); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "power " + req.Action + " initiated"})

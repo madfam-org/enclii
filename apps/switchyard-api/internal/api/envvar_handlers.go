@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -591,7 +592,7 @@ func (h *Handler) SyncEnvVarsFromPod(c *gin.Context) {
 			logging.String("namespace", req.Namespace),
 			logging.String("pod", req.PodName),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read pod environment variables: " + err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 

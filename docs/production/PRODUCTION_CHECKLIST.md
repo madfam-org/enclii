@@ -9,7 +9,7 @@ tags: [production, deployment, checklist, operations]
 
 **Status:** Production Beta v0.1.0
 **Last Updated:** February 2026
-**Last Audit:** Wave 15 Session 13 (Feb 6, 2026)
+**Last Audit:** Wave 15 Session 45 (Feb 26, 2026)
 
 ---
 
@@ -111,6 +111,12 @@ tags: [production, deployment, checklist, operations]
 - [x] ENCLII_CALLBACK_TOKEN in all 3 repos
 - [ ] HashiCorp Vault / ExternalSecrets (future)
 
+### API Error Handling
+- [x] Internal errors (500) return generic message, never leak `err.Error()`
+- [x] Recovery middleware strips panic details from responses
+- [x] 39 error leakage sites sealed with `middleware.AbortInternal`
+- [x] Error handler test coverage: 18 tests in `error_handler_test.go`
+
 ### Pod Security
 - [x] PostgreSQL: seccompProfile, capability restrictions
 - [x] Redis: runAsNonRoot, read-only where possible
@@ -150,6 +156,9 @@ tags: [production, deployment, checklist, operations]
 - [x] Redis-exporter (data namespace)
 - [x] Postgres-exporter (data namespace)
 - [x] Alerting rules for disk, CPU, memory (node-exporter based)
+- [x] Platform infrastructure PrometheusRules (Postgres, Redis, API, tunnel, nodes, pods, backups)
+- [x] ServiceMonitor for cloudflared tunnel metrics
+- [x] ServiceMonitor for waybill cost tracking metrics
 - [ ] PagerDuty/Opsgenie integration
 
 ### Endpoints (12/12 Healthy)
@@ -175,6 +184,7 @@ tags: [production, deployment, checklist, operations]
 - [x] Rolling update strategy on all services
 - [x] HPA configured for key services
 - [x] PDB on stateful workloads
+- [x] docs-site, roundhouse-worker, roundhouse-api bumped to 2 replicas (zero-downtime updates)
 
 ### Resource Management
 - [x] ResourceQuota on enclii namespace
@@ -227,5 +237,5 @@ tags: [production, deployment, checklist, operations]
 ---
 
 **Document Version:** 2.0
-**Last Audit:** Wave 15 Session 13 (Feb 6, 2026)
+**Last Audit:** Wave 15 Session 45 (Feb 26, 2026)
 **Maintained By:** Platform Team

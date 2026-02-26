@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 )
 
 func (h *Handler) ListDriftEvents(c *gin.Context) {
@@ -19,7 +20,7 @@ func (h *Handler) ListDriftEvents(c *gin.Context) {
 	}
 	events, err := h.repos.DriftEvents.List(c.Request.Context(), resolved)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"events": events})
@@ -37,7 +38,7 @@ func (h *Handler) GetDriftEvent(c *gin.Context) {
 	}
 	event, err := h.repos.DriftEvents.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	if event == nil {
@@ -58,7 +59,7 @@ func (h *Handler) ResolveDrift(c *gin.Context) {
 		return
 	}
 	if err := h.driftService.ResolveDrift(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "drift resolved"})

@@ -9,6 +9,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -144,7 +145,7 @@ func (h *Handler) CreateAddon(c *gin.Context) {
 			logging.String("project_slug", slug),
 			logging.String("addon_name", req.Name),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 
@@ -235,7 +236,7 @@ func (h *Handler) GetAddonCredentials(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to get addon credentials",
 			logging.String("addon_id", addonID),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 
@@ -260,7 +261,7 @@ func (h *Handler) RefreshAddonStatus(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to refresh addon status",
 			logging.String("addon_id", addonID),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 
@@ -284,7 +285,7 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to delete addon",
 			logging.String("addon_id", addonID),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 
@@ -352,7 +353,7 @@ func (h *Handler) CreateAddonBinding(c *gin.Context) {
 			logging.String("addon_id", addonID),
 			logging.String("service_id", req.ServiceID),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 
@@ -393,7 +394,7 @@ func (h *Handler) DeleteAddonBinding(c *gin.Context) {
 			logging.String("addon_id", addonID),
 			logging.String("service_id", serviceID),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 

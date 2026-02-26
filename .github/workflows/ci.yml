@@ -674,7 +674,6 @@ jobs:
           output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
           exit-code: '1'
-        continue-on-error: true
 
       - name: Skip scan (not configured)
         if: matrix.scan != true

@@ -239,17 +239,10 @@ func RecoveryMiddleware(logger logging.Logger) gin.HandlerFunc {
 					}).Error("Panic recovered in request handler")
 				}
 
-				// Return a proper JSON error response
+				// Return a proper JSON error response (panic details logged above, not exposed to client)
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 					"error":   "internal_server_error",
 					"message": "An unexpected error occurred",
-					"details": gin.H{
-						"path":   c.Request.URL.Path,
-						"method": c.Request.Method,
-						// Include panic message in non-production for debugging
-						// In production, this could be conditionally hidden
-						"panic": fmt.Sprintf("%v", err),
-					},
 				})
 			}
 		}()

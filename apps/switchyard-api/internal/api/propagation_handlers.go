@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -15,7 +16,7 @@ func (h *Handler) ListPropagationPolicies(c *gin.Context) {
 	}
 	policies, err := h.repos.PropagationPolicies.List(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"policies": policies})
@@ -33,7 +34,7 @@ func (h *Handler) GetPropagationPolicy(c *gin.Context) {
 	}
 	policy, err := h.repos.PropagationPolicies.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	if policy == nil {
@@ -54,7 +55,7 @@ func (h *Handler) CreatePropagationPolicy(c *gin.Context) {
 		return
 	}
 	if err := h.placementService.CreatePolicy(c.Request.Context(), &req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, req)
@@ -71,7 +72,7 @@ func (h *Handler) DeletePropagationPolicy(c *gin.Context) {
 		return
 	}
 	if err := h.repos.PropagationPolicies.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.AbortInternal(c, err)
 		return
 	}
 	c.JSON(http.StatusNoContent, nil)
