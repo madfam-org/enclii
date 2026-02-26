@@ -5,16 +5,16 @@ metadata:
   name: status-base
 
 resources:
-  - deployment.yaml
-  - service.yaml
+- deployment.yaml
+- service.yaml
 
 # Common labels applied to all resources
 commonLabels:
+  app.kubernetes.io/managed-by: kustomize
   app.kubernetes.io/name: status
   app.kubernetes.io/part-of: enclii
-  app.kubernetes.io/managed-by: kustomize
 
 images:
-  - name: ghcr.io/madfam-org/enclii/enclii-status
-    newName: ghcr.io/madfam-org/enclii/enclii-status
-    digest: sha256:8e65f56c766dcea6d9f6cf7c43834c8739ebfde4de60f8035ef135b0651abbf6
+- digest: sha256:dc34888cb26e6da729910120db334be66ce4de8ac26f49bbea110a0130b1cc56
+  name: ghcr.io/madfam-org/enclii/enclii-status
+  newName: ghcr.io/madfam-org/enclii/enclii-status
