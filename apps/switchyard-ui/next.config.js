@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  transpilePackages: ['@janua/ui'],
   env: {
     ENCLII_API_URL: process.env.ENCLII_API_URL || "http://localhost:4200",
     // Theme skin default (enterprise or solarpunk)
