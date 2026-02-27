@@ -75,6 +75,39 @@
     }
   },
   {
+    "hostname": "tezca.mx",
+    "service": "http://tezca-web.tezca.svc.cluster.local:3000",
+    "originRequest": {
+      "connectTimeout": "10s",
+      "httpHostHeader": "tezca.mx"
+    }
+  },
+  {
+    "hostname": "www.tezca.mx",
+    "service": "http://tezca-web.tezca.svc.cluster.local:3000",
+    "originRequest": {
+      "connectTimeout": "10s",
+      "httpHostHeader": "www.tezca.mx"
+    }
+  },
+  {
+    "hostname": "api.tezca.mx",
+    "service": "http://tezca-api.tezca.svc.cluster.local:8000",
+    "originRequest": {
+      "connectTimeout": "30s",
+      "keepAliveTimeout": "90s",
+      "httpHostHeader": "api.tezca.mx"
+    }
+  },
+  {
+    "hostname": "admin.tezca.mx",
+    "service": "http://tezca-admin.tezca.svc.cluster.local:3001",
+    "originRequest": {
+      "connectTimeout": "10s",
+      "httpHostHeader": "admin.tezca.mx"
+    }
+  },
+  {
     "service": "http_status:404"
   }
 ]
