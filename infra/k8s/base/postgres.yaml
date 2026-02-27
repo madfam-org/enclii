@@ -58,7 +58,7 @@ spec:
                 - SETUID
           env:
             - name: POSTGRES_DB
-              value: "enclii_dev"
+              value: "enclii"
             - name: POSTGRES_USER
               value: "postgres"
             - name: POSTGRES_PASSWORD

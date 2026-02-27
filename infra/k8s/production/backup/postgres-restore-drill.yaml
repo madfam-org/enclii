@@ -37,6 +37,7 @@ spec:
         - name: restore-drill
           image: docker.io/amazon/aws-cli:latest
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             capabilities:

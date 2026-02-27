@@ -9,7 +9,7 @@ resources:
   # Backup infrastructure (data namespace)
   - postgres-backup.yaml
   - backup-verify-cronjob.yaml
-  - postgres-restore-drill.yaml
+  # postgres-restore-drill.yaml is intentionally excluded — run manually via kubectl apply
 
   # Monitoring exporters (data namespace)
   - postgres-exporter.yaml

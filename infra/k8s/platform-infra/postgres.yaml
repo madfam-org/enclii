@@ -1,5 +1,24 @@
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: enclii
+data:
+  init-enclii.sh: |
+    #!/bin/bash
+    set -e
+    psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='enclii'" | grep -q 1 || \
+      psql -U postgres -c "CREATE ROLE enclii WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD '${POSTGRES_PASSWORD}';"
+    psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='enclii'" | grep -q 1 || \
+      psql -U postgres -c "CREATE DATABASE enclii OWNER enclii;"
+    echo "Init complete"
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-pvc
@@ -58,7 +77,7 @@ spec:
                 - SETUID
           env:
             - name: POSTGRES_DB
-              value: "enclii_dev"
+              value: "enclii"
             - name: POSTGRES_USER
               value: "postgres"
             - name: POSTGRES_PASSWORD
@@ -72,6 +91,8 @@ spec:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
               subPath: postgres
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
           resources:
             requests:
               memory: "256Mi"
@@ -112,6 +133,9 @@ spec:
         - name: postgres-storage
           persistentVolumeClaim:
             claimName: postgres-pvc
+        - name: init-scripts
+          configMap:
+            name: postgres-init
 ---
 apiVersion: v1
 kind: Service
