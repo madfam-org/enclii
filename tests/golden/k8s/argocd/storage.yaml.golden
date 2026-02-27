@@ -53,6 +53,10 @@ spec:
 
   # Longhorn creates many resources dynamically
   ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jsonPointers:
+        - /spec
     - group: longhorn.io
       kind: "*"
       jsonPointers:

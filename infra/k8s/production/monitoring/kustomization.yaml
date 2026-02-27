@@ -11,7 +11,7 @@ resources:
   - network-policies.yaml
   - monitoring-policy-exception.yaml
   # prometheus-client-slo-rules.yaml removed: requires PrometheusRule CRD (Prometheus Operator not installed)
-  - prometheus-platform-rules.yaml
+  # prometheus-platform-rules.yaml removed: requires PrometheusRule CRD (Prometheus Operator not installed)
   - dashboards/
 
 # Note: commonLabels are NOT used here because kustomize adds them to service
