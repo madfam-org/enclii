@@ -50,10 +50,10 @@ data:
 
   # All allowed origins for cross-origin requests
   # Format: comma-separated list of full URLs
-  CORS_ORIGINS: "https://admin.janua.dev,https://app.janua.dev,https://api.enclii.dev,https://app.enclii.dev,https://admin.enclii.dev,https://auth.madfam.io"
+  CORS_ORIGINS: "https://admin.janua.dev,https://app.janua.dev,https://api.enclii.dev,https://app.enclii.dev,https://admin.enclii.dev,https://auth.madfam.io,https://admin.tezca.mx,https://tezca.mx"
 
   # CSRF trusted origins (for form submissions)
-  CSRF_TRUSTED_ORIGINS: "https://app.enclii.dev,https://admin.enclii.dev,https://app.janua.dev,https://admin.janua.dev,https://auth.madfam.io"
+  CSRF_TRUSTED_ORIGINS: "https://app.enclii.dev,https://admin.enclii.dev,https://app.janua.dev,https://admin.janua.dev,https://auth.madfam.io,https://admin.tezca.mx,https://tezca.mx"
 
   # ===========================================================================
   # Redis Configuration
