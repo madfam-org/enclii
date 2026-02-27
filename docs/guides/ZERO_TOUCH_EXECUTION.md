@@ -1,7 +1,7 @@
 # Zero-Touch Deployment Execution Guide
 
-> **Client**: SuLuna (suluna.mx@gmail.com)
-> **Workload**: LinkStack (links.suluna.mx)
+> **Client**: ${CLIENT_NAME} (admin@example.com)
+> **Workload**: LinkStack (links.example-app.dev)
 > **Model**: Agency (MADFAM manages client infrastructure)
 
 ---
@@ -10,7 +10,7 @@
 
 ### 1. Porkbun Nameserver Configuration ✅
 
-The user must point `suluna.mx` nameservers to Cloudflare:
+The user must point `example-app.dev` nameservers to Cloudflare:
 
 ```
 Nameserver 1: adam.ns.cloudflare.com
@@ -19,7 +19,7 @@ Nameserver 2: debbie.ns.cloudflare.com
 
 **Porkbun Steps:**
 1. Login to [porkbun.com](https://porkbun.com)
-2. Navigate to Domain Management → `suluna.mx`
+2. Navigate to Domain Management → `example-app.dev`
 3. Click "Edit" next to Nameservers
 4. Select "Custom nameservers"
 5. Enter the Cloudflare nameservers above
@@ -105,18 +105,18 @@ cd ~/labspace/enclii
 # Make scripts executable (first time only)
 chmod +x scripts/deploy-client.sh
 chmod +x scripts/provision-domain.sh
-chmod +x scripts/onboard-suluna.sh
+chmod +x scripts/onboard-${APP_NAME}.sh
 
 # Execute the full deployment chain
-./scripts/deploy-client.sh suluna
+./scripts/deploy-client.sh ${APP_NAME}
 ```
 
 ### What It Does (4 Phases)
 
 | Phase | Action | Script |
 |-------|--------|--------|
-| 1. Identity | Create SuLuna org, roles, invites in Janua | `onboard-suluna.sh` |
-| 2. Namespace | Create `suluna-production` K8s namespace | `kubectl create ns` |
+| 1. Identity | Create ${CLIENT_NAME} org, roles, invites in Janua | `onboard-${APP_NAME}.sh` |
+| 2. Namespace | Create `${APP_NAME}-production` K8s namespace | `kubectl create ns` |
 | 3. Network | Cloudflare Zone, DNS, Tunnel ConfigMap | `provision-domain.sh` |
 | 4. Application | Deploy LinkStack pods, service, PVC | `kubectl apply -f` |
 
@@ -126,34 +126,34 @@ chmod +x scripts/onboard-suluna.sh
 
 ### Phase 1: Identity Only
 ```bash
-./scripts/onboard-suluna.sh
+./scripts/onboard-${APP_NAME}.sh
 ```
 
 ### Phase 2: Namespace Only
 ```bash
-kubectl create namespace suluna-production --dry-run=client -o yaml | kubectl apply -f -
-kubectl label namespace suluna-production client=suluna managed-by=madfam
+kubectl create namespace ${APP_NAME}-production --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace ${APP_NAME}-production client=${APP_NAME} managed-by=madfam
 ```
 
 ### Phase 3: Network Only
 ```bash
 ./scripts/provision-domain.sh \
-  --domain "suluna.mx" \
+  --domain "example-app.dev" \
   --subdomain "links" \
   --service "linkstack" \
-  --namespace "suluna-production"
+  --namespace "${APP_NAME}-production"
 ```
 
 ### Phase 4: Application Only
 ```bash
 # First, update the APP_KEY secret
 kubectl create secret generic linkstack-secrets \
-  --namespace suluna-production \
+  --namespace ${APP_NAME}-production \
   --from-literal=APP_KEY="base64:${LINKSTACK_APP_KEY}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy the application
-kubectl apply -f dogfooding/clients/suluna-linkstack.k8s.yaml
+kubectl apply -f dogfooding/clients/${APP_NAME}-linkstack.k8s.yaml
 ```
 
 ---
@@ -163,19 +163,19 @@ kubectl apply -f dogfooding/clients/suluna-linkstack.k8s.yaml
 ### Check Deployment Status
 ```bash
 # All resources in namespace
-kubectl get all -n suluna-production
+kubectl get all -n ${APP_NAME}-production
 
 # Pod logs
-kubectl logs -n suluna-production -l app=linkstack -f
+kubectl logs -n ${APP_NAME}-production -l app=linkstack -f
 
 # Detailed pod status
-kubectl describe pod -n suluna-production -l app=linkstack
+kubectl describe pod -n ${APP_NAME}-production -l app=linkstack
 ```
 
 ### Check Cloudflare Tunnel
 ```bash
 # Verify ConfigMap has new ingress
-kubectl get configmap cloudflared-config -n foundry -o yaml | grep -A5 "links.suluna.mx"
+kubectl get configmap cloudflared-config -n foundry -o yaml | grep -A5 "links.example-app.dev"
 
 # Check cloudflared logs
 kubectl logs -n foundry -l app=cloudflared --tail=50
@@ -184,23 +184,23 @@ kubectl logs -n foundry -l app=cloudflared --tail=50
 ### Check DNS Propagation
 ```bash
 # DNS lookup
-dig links.suluna.mx CNAME +short
+dig links.example-app.dev CNAME +short
 
 # Expected output: ${TUNNEL_ID}.cfargotunnel.com.
 
 # HTTP test (after propagation)
-curl -I https://links.suluna.mx
+curl -I https://links.example-app.dev
 ```
 
 ### Check Janua RBAC
 ```bash
 # List organizations
 curl -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
-  "$JANUA_API/api/v1/organizations/" | jq '.[] | select(.slug=="suluna")'
+  "$JANUA_API/api/v1/organizations/" | jq '.[] | select(.slug=="${APP_NAME}")'
 
 # List org members
 ORG_ID=$(curl -s -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
-  "$JANUA_API/api/v1/organizations/" | jq -r '.[] | select(.slug=="suluna") | .id')
+  "$JANUA_API/api/v1/organizations/" | jq -r '.[] | select(.slug=="${APP_NAME}") | .id')
 
 curl -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
   "$JANUA_API/api/v1/organizations/$ORG_ID/members" | jq
@@ -213,16 +213,16 @@ curl -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
 ### Pod Not Starting
 ```bash
 # Check events
-kubectl get events -n suluna-production --sort-by='.lastTimestamp'
+kubectl get events -n ${APP_NAME}-production --sort-by='.lastTimestamp'
 
 # Check PVC status (Longhorn must be available)
-kubectl get pvc -n suluna-production
+kubectl get pvc -n ${APP_NAME}-production
 ```
 
 ### DNS Not Resolving
 ```bash
 # Check zone status in Cloudflare
-curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=suluna.mx" \
+curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=example-app.dev" \
   -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq '.result[0].status'
 
 # Should return: "active"
@@ -254,17 +254,17 @@ curl -s -H "Authorization: Bearer $JANUA_ADMIN_TOKEN" \
 
 ### 1. Client Onboarding Email
 
-Send to `suluna.mx@gmail.com`:
+Send to `example-app.dev@gmail.com`:
 
 ```
 Subject: Your LinkStack Instance is Ready!
 
-Hi SuLuna,
+Hi ${CLIENT_NAME},
 
 Your self-hosted LinkStack is now live at:
-https://links.suluna.mx
+https://links.example-app.dev
 
-You've been invited to the SuLuna organization in our management portal.
+You've been invited to the ${CLIENT_NAME} organization in our management portal.
 Check your email for the invitation link.
 
 Login to manage your account:
@@ -280,7 +280,7 @@ Support: admin@madfam.io
 ### 2. Agency Model Verification
 
 Login as `admin@madfam.io` and verify:
-- [ ] Can access SuLuna organization
+- [ ] Can access ${CLIENT_NAME} organization
 - [ ] Has Admin role via `Managed_Services`
 - [ ] Can view infrastructure without client credentials
 
@@ -293,7 +293,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: linkstack
-  namespace: suluna-production
+  namespace: ${APP_NAME}-production
   labels:
     app: linkstack
 spec:
@@ -315,9 +315,9 @@ EOF
 |------|---------|
 | `scripts/provision-domain.sh` | Cloudflare Zone/DNS/Tunnel automation |
 | `scripts/deploy-client.sh` | Master deployment orchestrator |
-| `scripts/onboard-suluna.sh` | Janua RBAC setup |
-| `dogfooding/clients/suluna-linkstack.yaml` | Enclii service spec |
-| `dogfooding/clients/suluna-linkstack.k8s.yaml` | Raw K8s manifest |
+| `scripts/onboard-${APP_NAME}.sh` | Janua RBAC setup |
+| `dogfooding/clients/${APP_NAME}-linkstack.yaml` | Enclii service spec |
+| `dogfooding/clients/${APP_NAME}-linkstack.k8s.yaml` | Raw K8s manifest |
 | `docs/guides/AGENCY_MODEL_DEPLOYMENT.md` | Full deployment guide |
 | `docs/guides/ZERO_TOUCH_EXECUTION.md` | This file |
 

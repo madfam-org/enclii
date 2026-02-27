@@ -1,6 +1,6 @@
 # External Repository Deployment Guide
 
-How to set up auto-deploy and deployment tracking for repositories outside the Enclii monorepo (e.g. dhanam, janua, client repos).
+How to set up auto-deploy and deployment tracking for repositories outside the Enclii monorepo (e.g. client repos, external services).
 
 ## Architecture
 
@@ -80,7 +80,7 @@ spec:
 
 ### 4. CI Workflow Pattern
 
-Here's the complete CI workflow pattern used by dhanam and janua:
+Here's the complete CI workflow pattern:
 
 ```yaml
 name: Deploy to K8s (GHCR)
@@ -260,7 +260,7 @@ paths:
 Alternatively, if using only `paths-ignore` (no `paths` filter), you can exclude broadly:
 ```yaml
 paths-ignore:
-  - 'k8s/**'                                # janua pattern
+  - 'k8s/**'                                # broad exclusion pattern
 ```
 
 ## GHCR Image Naming
@@ -272,18 +272,18 @@ ghcr.io/madfam-org/{repo}/{service}
 ```
 
 Examples:
-- `ghcr.io/madfam-org/dhanam/api`
-- `ghcr.io/madfam-org/dhanam/admin`
-- `ghcr.io/madfam-org/dhanam/web`
-- `ghcr.io/madfam-org/janua-api`
+- `ghcr.io/myorg/myapp/api`
+- `ghcr.io/myorg/myapp/admin`
+- `ghcr.io/myorg/myapp/web`
+- `ghcr.io/myorg/myapp-api` (flat naming)
 
 ### Service Name Resolution
 
-Enclii resolves GHCR image paths to registered service names using a candidate strategy. For nested paths like `ghcr.io/madfam-org/tezca/api`, it tries `tezca-api` first, then `api`. This means your DB service names should use the `{project}-{service}` pattern (e.g. `tezca-api`, `dhanam-admin`) for reliable matching.
+Enclii resolves GHCR image paths to registered service names using a candidate strategy. For nested paths like `ghcr.io/myorg/myapp/api`, it tries `myapp-api` first, then `api`. This means your DB service names should use the `{project}-{service}` pattern (e.g. `myapp-api`, `myapp-admin`) for reliable matching.
 
-**Git repo URL fallback:** If no candidate name matches, both the lifecycle and ArgoCD callbacks fall back to looking up services by git repo URL — derived from the image URI (e.g. `ghcr.io/madfam-org/yantra4d/backend` → `https://github.com/madfam-org/yantra4d`). This handles mono-service repos where the DB service name (e.g. `"yantra4d"`) doesn't match any image-derived candidate.
+**Git repo URL fallback:** If no candidate name matches, both the lifecycle and ArgoCD callbacks fall back to looking up services by git repo URL — derived from the image URI (e.g. `ghcr.io/myorg/myapp/backend` → `https://github.com/myorg/myapp`). This handles mono-service repos where the DB service name (e.g. `"myapp"`) doesn't match any image-derived candidate.
 
-The `metadata.service` field in lifecycle event callbacks provides an explicit override — set it to the exact service name registered in Enclii (e.g. `"service": "dhanam-api"`).
+The `metadata.service` field in lifecycle event callbacks provides an explicit override — set it to the exact service name registered in Enclii (e.g. `"service": "myapp-api"`).
 
 ## Disabling Provenance Attestations
 
@@ -298,23 +298,23 @@ Always set `provenance: false` and `sbom: false` in `docker/build-push-action`:
 
 Without this, GHCR creates attestation manifests alongside images. ArgoCD Image Updater can pick up attestation SHAs instead of image SHAs, causing 403 errors on pull.
 
-## Existing Repos
+## Example Repo Layout
 
-### Dhanam (dhan.am)
+### Multi-Service Repo
 
-- **Repo**: `madfam-org/dhanam`
-- **Services**: dhanam-api, dhanam-admin, dhanam-web
-- **Manifests**: `infra/k8s/production/`
-- **Workflows**: `deploy-k8s.yml`, `deploy-admin-k8s.yml`, `deploy-web-k8s.yml`
-- **ArgoCD app**: `infra/argocd/apps/dhanam.yaml`
+- **Repo**: `myorg/myapp`
+- **Services**: myapp-api, myapp-admin, myapp-web
+- **Manifests**: `infra/k8s/production/` or `k8s/production/`
+- **Workflows**: One per service (`deploy-api.yml`, `deploy-admin.yml`, `deploy-web.yml`) or consolidated with change detection
+- **ArgoCD app**: `infra/argocd/apps/myapp.yaml` (in the enclii repo)
 
-### Janua (auth.madfam.io)
+### Single-Service Repo
 
-- **Repo**: `madfam-org/janua`
-- **Services**: janua-api, janua-admin, janua-dashboard, janua-docs, janua-website
-- **Manifests**: `k8s/base/deployments/`
-- **Workflow**: `docker-publish.yml` (consolidated — builds all 5 services with change detection)
-- **ArgoCD app**: `infra/argocd/apps/janua.yaml`
+- **Repo**: `myorg/my-service`
+- **Services**: my-service
+- **Manifests**: `k8s/production/`
+- **Workflow**: `deploy-k8s.yml`
+- **ArgoCD app**: `infra/argocd/apps/my-service.yaml` (in the enclii repo)
 
 ## Troubleshooting
 
@@ -327,7 +327,7 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 | Lifecycle events not appearing | Missing/wrong callback token | Check `ENCLII_CALLBACK_TOKEN` secret |
 | Concurrent digest commit fails | Multiple workflows push same file | Use fetch/reset/re-apply retry loop (see CI workflow pattern above) |
 | New image not pulled by K8s | `imagePullPolicy: IfNotPresent` with tag | Set `imagePullPolicy: Always` or use digest refs |
-| Lifecycle events exist but no deployment record | Service name in DB doesn't match image path | Ensure DB service name follows `{project}-{service}` pattern (e.g. `tezca-api`), or set explicit `metadata.service` in CI callback |
+| Lifecycle events exist but no deployment record | Service name in DB doesn't match image path | Ensure DB service name follows `{project}-{service}` pattern (e.g. `myapp-api`), or set explicit `metadata.service` in CI callback |
 | Duplicate deployment records on ArgoCD sync | ArgoCD syncs all images in the Application, not just changed ones | Fixed: callback now skips services whose latest deployment already has the same Release |
 | External repo deployments lack git metadata | ArgoCD callback creates bare Releases (`argocd-{sha}`) | Fixed: callback enriches both new AND existing Releases with metadata from lifecycle events (commit message, author/actor, branch) |
 | Active deployments stuck "Deploying" forever | CI commit SHA (A) differs from ArgoCD sync SHA (B) due to digest-commit creating a new commit; also race condition where CI goroutine runs after ArgoCD sync | Fixed: (1) callback falls back to time-window lookup (30 min) when SHA match fails, (2) lifecycle handler skips deploying record if ArgoCD already created a running deployment within 5 min, (3) ArgoCD callback cleans up stale deploying records (>30 min → `cancelled`), (4) UI shows stale records as "Timed Out" in history |

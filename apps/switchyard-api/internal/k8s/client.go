@@ -119,6 +119,7 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 					"managed-by":                   "enclii",
 					"enclii.dev/type":              "application",
 					"enclii.dev/verify-signatures": "true",
+					"enclii.dev/data-access":       "true",
 				},
 			},
 		}
@@ -138,6 +139,7 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 		"managed-by":                   "enclii",
 		"enclii.dev/type":              "application",
 		"enclii.dev/verify-signatures": "true",
+		"enclii.dev/data-access":       "true",
 	}
 	for k, v := range requiredLabels {
 		if existing.Labels[k] != v {

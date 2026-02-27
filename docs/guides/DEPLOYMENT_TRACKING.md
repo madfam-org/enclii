@@ -51,7 +51,7 @@ Events are automatically tagged with a `target_env` derived from the branch name
 
 ## Callback API
 
-External CI workflows (dhanam, janua, any repo) report events via:
+External CI workflows (any repo) report events via:
 
 ```
 POST https://api.enclii.dev/v1/callbacks/lifecycle-event
@@ -63,18 +63,18 @@ Content-Type: application/json
 
 ```json
 {
-  "repo_full_name": "madfam-org/dhanam",
+  "repo_full_name": "myorg/myapp",
   "commit_sha": "abc1234567890",
   "branch": "main",
   "ref": "refs/heads/main",
   "event_type": "image_pushed",
   "source": "ci_callback",
-  "message": "dhanam-api build image_pushed",
+  "message": "myapp-api build image_pushed",
   "metadata": {
-    "image": "ghcr.io/madfam-org/dhanam/api",
+    "image": "ghcr.io/myorg/myapp/api",
     "digest": "sha256:abc123...",
     "workflow": "deploy-k8s",
-    "service": "dhanam-api"
+    "service": "myapp-api"
   }
 }
 ```
@@ -83,7 +83,7 @@ Content-Type: application/json
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `repo_full_name` | string | GitHub `owner/repo` (e.g. `madfam-org/dhanam`) |
+| `repo_full_name` | string | GitHub `owner/repo` (e.g. `myorg/myapp`) |
 | `commit_sha` | string | Full git commit SHA |
 | `branch` | string | Branch name (e.g. `main`, `feature/foo`) |
 | `ref` | string | Full git ref (e.g. `refs/heads/main`) |
@@ -149,7 +149,7 @@ Query parameters:
 Example:
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.enclii.dev/v1/lifecycle/timeline/madfam-org/dhanam?branch=main&limit=20"
+  "https://api.enclii.dev/v1/lifecycle/timeline/myorg/myapp?branch=main&limit=20"
 ```
 
 ### Events by Branch
@@ -163,7 +163,7 @@ Returns all events for a specific branch, most recent first.
 Example:
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://api.enclii.dev/v1/lifecycle/branch/madfam-org/dhanam/feature/new-api"
+  "https://api.enclii.dev/v1/lifecycle/branch/myorg/myapp/feature/new-api"
 ```
 
 ### Events by Commit
@@ -217,9 +217,8 @@ The `ENCLII_CALLBACK_TOKEN` secret must be configured in each repo that reports 
 ssh foundry-core "sudo kubectl get secret enclii-argocd-webhook -n enclii -o jsonpath='{.data.secret}' | base64 -d"
 
 # Set in each repo:
-gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/dhanam --body "<token>"
-gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/janua --body "<token>"
-gh secret set ENCLII_CALLBACK_TOKEN --repo madfam-org/enclii --body "<token>"
+gh secret set ENCLII_CALLBACK_TOKEN --repo myorg/myapp --body "<token>"
+# Repeat for each repo that reports lifecycle events
 ```
 
 The ArgoCD Notifications webhook uses the same token value (stored in `argocd-notifications-secret` in the `argocd` namespace as `argocd-webhook-secret`).
@@ -260,19 +259,19 @@ The `LifecycleEventCallback` handler creates Deployment records automatically fo
 
 ### Service Name Resolution
 
-When a lifecycle event or ArgoCD callback arrives with an image URI like `ghcr.io/madfam-org/tezca/api`, Enclii needs to match it to a registered service. The `extractServiceCandidates` function generates candidate names:
+When a lifecycle event or ArgoCD callback arrives with an image URI like `ghcr.io/myorg/myapp/api`, Enclii needs to match it to a registered service. The `extractServiceCandidates` function generates candidate names:
 
 | Image URI | Candidates (tried in order) |
 |-----------|-----------------------------|
-| `ghcr.io/madfam-org/tezca/api` | `tezca-api`, `api` |
-| `ghcr.io/madfam-org/dhanam/admin` | `dhanam-admin`, `admin` |
-| `ghcr.io/madfam-org/enclii/switchyard-api` | `enclii-switchyard-api`, `switchyard-api` |
+| `ghcr.io/myorg/myapp/api` | `myapp-api`, `api` |
+| `ghcr.io/myorg/myapp/admin` | `myapp-admin`, `admin` |
+| `ghcr.io/myorg/myapp/switchyard-api` | `myapp-switchyard-api`, `switchyard-api` |
 
-For nested GHCR paths (3+ segments after the registry), the prefixed form (`{project}-{service}`) is tried first. This ensures services registered as `tezca-api` in the DB are correctly matched.
+For nested GHCR paths (3+ segments after the registry), the prefixed form (`{project}-{service}`) is tried first. This ensures services registered as `myapp-api` in the DB are correctly matched.
 
-**Git repo URL fallback:** If no candidate name matches a registered service, both callbacks fall back to `ListByGitRepo()` — deriving the GitHub repo URL from the image URI (e.g. `ghcr.io/madfam-org/yantra4d/backend` → `https://github.com/madfam-org/yantra4d`) or from the lifecycle event's `repo_full_name` field. This handles mono-service repos like Yantra4D where the DB service is named `"yantra4d"` but image-derived candidates are `["yantra4d-backend", "backend"]`.
+**Git repo URL fallback:** If no candidate name matches a registered service, both callbacks fall back to `ListByGitRepo()` — deriving the GitHub repo URL from the image URI (e.g. `ghcr.io/myorg/myapp/backend` → `https://github.com/myorg/myapp`) or from the lifecycle event's `repo_full_name` field. This handles mono-service repos where the DB service is named `"myapp"` but image-derived candidates are `["myapp-backend", "backend"]`.
 
-The `metadata.service` field in CI callbacks provides an explicit service name. In the lifecycle handler, this explicit name is always preserved as the first candidate — image-derived candidates are appended (deduped) rather than overwriting the explicit name. This ensures CI can control service matching by setting `metadata.service` to the exact DB name. ArgoCD lifecycle events also include the resolved `service` name in their metadata. When neither `metadata.service` is set, the Pipeline Activity UI extracts the service name from `metadata.image` (last path segment without tag/digest) — e.g. `ghcr.io/madfam-org/enclii/switchyard-api:sha-abc` → "switchyard-api". The full fallback chain is: `metadata.service` → image-derived candidates → git repo URL → repo name.
+The `metadata.service` field in CI callbacks provides an explicit service name. In the lifecycle handler, this explicit name is always preserved as the first candidate — image-derived candidates are appended (deduped) rather than overwriting the explicit name. This ensures CI can control service matching by setting `metadata.service` to the exact DB name. ArgoCD lifecycle events also include the resolved `service` name in their metadata. When neither `metadata.service` is set, the Pipeline Activity UI extracts the service name from `metadata.image` (last path segment without tag/digest) — e.g. `ghcr.io/myorg/myapp/my-service:sha-abc` → "my-service". The full fallback chain is: `metadata.service` → image-derived candidates → git repo URL → repo name.
 
 ## Key Files
 

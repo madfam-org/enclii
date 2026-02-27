@@ -311,7 +311,7 @@ func (h *Handler) createDeploymentFromLifecycleEvent(ctx context.Context, req ty
 			break
 		}
 	}
-	// Fallback: look up by git repo URL (handles mono-service repos like yantra4d
+	// Fallback: look up by git repo URL (handles mono-service repos
 	// where the DB service name doesn't match image-derived candidates)
 	if service == nil && req.RepoFullName != "" {
 		repoURL := "https://github.com/" + req.RepoFullName

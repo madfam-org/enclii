@@ -3,7 +3,7 @@
 # =============================================================================
 # Default-deny + explicit allow rules for the shared data namespace.
 # Contains: PostgreSQL (5432), Redis (6379), backup CronJobs.
-# Accessed by: enclii, janua, dhanam, tezca namespaces.
+# Accessed by: any namespace with label enclii.dev/data-access=true
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
 
@@ -37,7 +37,8 @@ spec:
   policyTypes:
     - Egress
 
-# Allow enclii, janua, dhanam, tezca, data (exporters/backups) -> PostgreSQL (port 5432)
+# Allow namespaces with enclii.dev/data-access=true -> PostgreSQL (port 5432)
+# Label new namespaces: kubectl label ns <name> enclii.dev/data-access=true
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -56,20 +57,13 @@ spec:
   ingress:
     - from:
         - namespaceSelector:
-            matchExpressions:
-              - key: kubernetes.io/metadata.name
-                operator: In
-                values:
-                  - enclii
-                  - janua
-                  - dhanam
-                  - tezca
-                  - data
+            matchLabels:
+              enclii.dev/data-access: "true"
       ports:
         - protocol: TCP
           port: 5432
 
-# Allow enclii, janua, dhanam, tezca, data (exporters) -> Redis (port 6379)
+# Allow namespaces with enclii.dev/data-access=true -> Redis (port 6379)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -88,15 +82,8 @@ spec:
   ingress:
     - from:
         - namespaceSelector:
-            matchExpressions:
-              - key: kubernetes.io/metadata.name
-                operator: In
-                values:
-                  - enclii
-                  - janua
-                  - dhanam
-                  - tezca
-                  - data
+            matchLabels:
+              enclii.dev/data-access: "true"
       ports:
         - protocol: TCP
           port: 6379

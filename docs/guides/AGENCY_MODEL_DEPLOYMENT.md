@@ -1,11 +1,11 @@
-# Agency Model Deployment Guide: SuLuna LinkStack
+# Agency Model Deployment Guide: Client Application Template
 
 > **First Multi-Tenant Customer Deployment**
 > This guide validates the Agency Model where MADFAM manages client infrastructure without sharing credentials.
 
-**Client:** SuLuna (suluna.mx@gmail.com)
+**Client:** ${CLIENT_NAME} (admin@example.com)
 **Service:** LinkStack (self-hosted Linktree alternative)
-**Domain:** links.suluna.mx
+**Domain:** links.example-app.dev
 
 ---
 
@@ -21,12 +21,12 @@
 │  │  (Platform Admin)│     │   (auth.madfam.io)             │
 │  └────────┬────────┘     └─────────────────┘              │
 │           │                                                │
-│           │ "Switch Scope" to SuLuna Org                  │
+│           │ "Switch Scope" to ${CLIENT_NAME} Org                  │
 │           ▼                                                │
 │  ┌────────────────────────────────────────────────────────┐│
-│  │                SuLuna Organization                      ││
+│  │                ${CLIENT_NAME} Organization                      ││
 │  │  ┌─────────────────┐   ┌─────────────────┐            ││
-│  │  │ admin@madfam.io │   │ suluna.mx@gmail │            ││
+│  │  │ admin@madfam.io │   │ admin@example │            ││
 │  │  │ (Managed_Services│   │ (Owner)         │            ││
 │  │  │  Team - Admin)   │   │                 │            ││
 │  │  └────────┬────────┘   └────────┬────────┘            ││
@@ -34,14 +34,14 @@
 │  │           ▼                      ▼                      ││
 │  │  ┌─────────────────────────────────────────────┐       ││
 │  │  │           LinkStack Container               │       ││
-│  │  │  namespace: suluna-production               │       ││
-│  │  │  domain: links.suluna.mx                    │       ││
+│  │  │  namespace: ${APP_NAME}-production               │       ││
+│  │  │  domain: links.example-app.dev                    │       ││
 │  │  └─────────────────────────────────────────────┘       ││
 │  └────────────────────────────────────────────────────────┘│
 └────────────────────────────────────────────────────────────┘
 ```
 
-**Key Insight:** admin@madfam.io can manage SuLuna's infrastructure through the `Managed_Services` custom role without needing their login credentials.
+**Key Insight:** admin@madfam.io can manage ${CLIENT_NAME}'s infrastructure through the `Managed_Services` custom role without needing their login credentials.
 
 ---
 
@@ -60,7 +60,7 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
 # Should return: "admin@madfam.io"
 ```
 
-### Step 1: Create SuLuna Organization
+### Step 1: Create ${CLIENT_NAME} Organization
 
 ```bash
 # Create the organization
@@ -68,21 +68,21 @@ curl -X POST "$JANUA_API/api/v1/organizations/" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "SuLuna",
-    "slug": "suluna",
-    "description": "SuLuna - Managed Services Client",
-    "billing_email": "suluna.mx@gmail.com"
+    "name": "${CLIENT_NAME}",
+    "slug": "${APP_NAME}",
+    "description": "${CLIENT_NAME} - Managed Services Client",
+    "billing_email": "admin@example.com"
   }' | jq
 
 # Response includes organization ID - save it
-export SULUNA_ORG_ID="<organization-id-from-response>"
+export CLIENT_ORG_ID="<organization-id-from-response>"
 ```
 
 ### Step 2: Create Managed_Services Custom Role
 
 ```bash
 # Create custom role with admin permissions for managed services
-curl -X POST "$JANUA_API/api/v1/organizations/$SULUNA_ORG_ID/roles" \
+curl -X POST "$JANUA_API/api/v1/organizations/$CLIENT_ORG_ID/roles" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -110,14 +110,14 @@ export MANAGED_SERVICES_ROLE_ID="<role-id-from-response>"
 
 ```bash
 # Invite the client as Organization Owner
-curl -X POST "$JANUA_API/api/v1/organizations/$SULUNA_ORG_ID/invite" \
+curl -X POST "$JANUA_API/api/v1/organizations/$CLIENT_ORG_ID/invite" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "suluna.mx@gmail.com",
+    "email": "admin@example.com",
     "role": "owner",
     "permissions": [],
-    "message": "Welcome to your SuLuna dashboard! You have full ownership of your organization. MADFAM provides managed services for your infrastructure."
+    "message": "Welcome to your ${CLIENT_NAME} dashboard! You have full ownership of your organization. MADFAM provides managed services for your infrastructure."
   }' | jq
 
 # Note: Client receives email to accept invitation
@@ -135,7 +135,7 @@ export ADMIN_USER_ID=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
 # Update role to use custom Managed_Services role
 # Note: The API uses built-in roles (admin, member, viewer)
 # For custom roles, we use the permissions system
-curl -X PUT "$JANUA_API/api/v1/organizations/$SULUNA_ORG_ID/members/$ADMIN_USER_ID/role?role=admin" \
+curl -X PUT "$JANUA_API/api/v1/organizations/$CLIENT_ORG_ID/members/$ADMIN_USER_ID/role?role=admin" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq
 
 # This gives admin@madfam.io full admin access to manage the org
@@ -143,23 +143,23 @@ curl -X PUT "$JANUA_API/api/v1/organizations/$SULUNA_ORG_ID/members/$ADMIN_USER_
 
 ### Complete RBAC Setup Script
 
-Save this as `scripts/onboard-suluna.sh`:
+Save this as `scripts/onboard-${APP_NAME}.sh`:
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 # =============================================================================
-# SuLuna Client Onboarding Script
+# ${CLIENT_NAME} Client Onboarding Script
 # Agency Model: MADFAM manages client infrastructure
 # =============================================================================
 
 JANUA_API="${JANUA_API:-https://auth.madfam.io}"
-CLIENT_EMAIL="suluna.mx@gmail.com"
-CLIENT_ORG_NAME="SuLuna"
-CLIENT_ORG_SLUG="suluna"
+CLIENT_EMAIL="admin@example.com"
+CLIENT_ORG_NAME="${CLIENT_NAME}"
+CLIENT_ORG_SLUG="${APP_NAME}"
 
-echo "🔐 SuLuna Client Onboarding"
+echo "🔐 ${CLIENT_NAME} Client Onboarding"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Check for admin token
@@ -236,7 +236,7 @@ echo "✅ Invitation sent: $INVITE_ID"
 # Summary
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🎉 SuLuna Onboarding Complete!"
+echo "🎉 ${CLIENT_NAME} Onboarding Complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Organization ID: $ORG_ID"
@@ -246,45 +246,45 @@ echo "Client Invitation ID: $INVITE_ID"
 echo ""
 echo "Next Steps:"
 echo "1. Client accepts invitation at their email"
-echo "2. Deploy LinkStack with: enclii service create --file dogfooding/clients/suluna-linkstack.yaml"
-echo "3. Configure domain: links.suluna.mx"
+echo "2. Deploy LinkStack with: enclii service create --file dogfooding/clients/${APP_NAME}-linkstack.yaml"
+echo "3. Configure domain: links.example-app.dev"
 echo ""
 echo "Environment variables for deployment:"
-echo "export SULUNA_ORG_ID=$ORG_ID"
-echo "export SULUNA_NAMESPACE=suluna-production"
+echo "export CLIENT_ORG_ID=$ORG_ID"
+echo "export CLIENT_NAMESPACE=${APP_NAME}-production"
 ```
 
 ---
 
 ## Deliverable 2: LinkStack Deployment Manifest
 
-Save as `dogfooding/clients/suluna-linkstack.yaml`:
+Save as `dogfooding/clients/${APP_NAME}-linkstack.yaml`:
 
 ```yaml
-# LinkStack Service Specification for SuLuna
+# LinkStack Service Specification for ${CLIENT_NAME}
 # Self-hosted Linktree alternative for client deployment
 #
 # Repository: https://github.com/LinkStackOrg/linkstack-docker
 # License: AGPL-3.0
 #
 # Agency Model: Deployed in client namespace, managed by MADFAM
-# Client: SuLuna (suluna.mx@gmail.com)
+# Client: ${CLIENT_NAME} (admin@example.com)
 
 apiVersion: enclii.io/v1
 kind: Service
 metadata:
   name: linkstack
-  namespace: suluna-production  # Client-scoped namespace
+  namespace: ${APP_NAME}-production  # Client-scoped namespace
   labels:
     app: linkstack
     tier: client-application
-    client: suluna
+    client: ${APP_NAME}
     criticality: medium
   annotations:
-    enclii.dev/description: "LinkStack - Self-hosted link sharing for SuLuna"
+    enclii.dev/description: "LinkStack - Self-hosted link sharing for ${CLIENT_NAME}"
     enclii.dev/owner: managed-services
-    enclii.dev/client: suluna
-    enclii.dev/billing: suluna-org
+    enclii.dev/client: ${APP_NAME}
+    enclii.dev/billing: ${APP_NAME}-org
 
 spec:
   # ==========================================================================
@@ -351,7 +351,7 @@ spec:
     pod:
       labels:
         app: linkstack
-        client: suluna
+        client: ${APP_NAME}
 
   # ==========================================================================
   # NETWORKING
@@ -359,7 +359,7 @@ spec:
   networking:
     # Client domain
     domains:
-      - name: links.suluna.mx
+      - name: links.example-app.dev
         primary: true
         tls:
           enabled: true
@@ -397,10 +397,10 @@ spec:
 
     # LinkStack specific
     - name: HTTP_SERVER_NAME
-      value: "links.suluna.mx"
+      value: "links.example-app.dev"
 
     - name: HTTPS_SERVER_NAME
-      value: "links.suluna.mx"
+      value: "links.example-app.dev"
 
     - name: LOG_CHANNEL
       value: "stderr"
@@ -427,7 +427,7 @@ spec:
         accessMode: ReadWriteOnce
         size: 5Gi
         labels:
-          client: suluna
+          client: ${APP_NAME}
           backup: enabled
 
   # ==========================================================================
@@ -447,12 +447,12 @@ spec:
         - url: "${SLACK_WEBHOOK_URL}"
           payload: |
             {
-              "text": "✅ LinkStack deployed for SuLuna",
+              "text": "✅ LinkStack deployed for ${CLIENT_NAME}",
               "attachments": [{
                 "color": "good",
                 "fields": [
-                  {"title": "Client", "value": "SuLuna", "short": true},
-                  {"title": "Domain", "value": "links.suluna.mx", "short": true}
+                  {"title": "Client", "value": "${CLIENT_NAME}", "short": true},
+                  {"title": "Domain", "value": "links.example-app.dev", "short": true}
                 ]
               }]
             }
@@ -468,13 +468,13 @@ spec:
       interval: 60
 
     alerts:
-      - name: LinkStackSuLunaDown
-        condition: up{service="linkstack",namespace="suluna-production"} == 0
+      - name: LinkStack${CLIENT_NAME}Down
+        condition: up{service="linkstack",namespace="${APP_NAME}-production"} == 0
         duration: 5m
         severity: warning
         annotations:
-          summary: "SuLuna LinkStack is down"
-          description: "LinkStack instance for SuLuna has been unavailable for 5 minutes"
+          summary: "${CLIENT_NAME} LinkStack is down"
+          description: "LinkStack instance for ${CLIENT_NAME} has been unavailable for 5 minutes"
 
   # ==========================================================================
   # BACKUP CONFIGURATION
@@ -485,7 +485,7 @@ spec:
     retention: 7  # Keep 7 days of backups
     destination:
       type: r2
-      bucket: suluna-backups
+      bucket: ${APP_NAME}-backups
       path: linkstack/
 
   # ==========================================================================
@@ -522,15 +522,15 @@ Add to `infra/k8s/production/cloudflared-unified.yaml`:
 # In the ingress section, add:
 
       # ============================================
-      # Client Services (namespace: suluna-production)
+      # Client Services (namespace: ${APP_NAME}-production)
       # ============================================
 
-      # SuLuna LinkStack
-      - hostname: links.suluna.mx
-        service: http://linkstack.suluna-production.svc.cluster.local:80
+      # ${CLIENT_NAME} LinkStack
+      - hostname: links.example-app.dev
+        service: http://linkstack.${APP_NAME}-production.svc.cluster.local:80
         originRequest:
           connectTimeout: 10s
-          httpHostHeader: links.suluna.mx
+          httpHostHeader: links.example-app.dev
 ```
 
 ---
@@ -542,33 +542,33 @@ Add to `infra/k8s/production/cloudflared-unified.yaml`:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                 AGENCY MODEL ONBOARDING                         │
-│                    SuLuna LinkStack                             │
+│                    ${CLIENT_NAME} LinkStack                             │
 └─────────────────────────────────────────────────────────────────┘
 
 □ STEP 1: JANUA CONFIGURATION (5 minutes)
-  ├─ □ Run: ./scripts/onboard-suluna.sh
+  ├─ □ Run: ./scripts/onboard-${APP_NAME}.sh
   ├─ □ Verify org created: curl $JANUA_API/api/v1/organizations/
-  ├─ □ Confirm invitation sent to suluna.mx@gmail.com
+  ├─ □ Confirm invitation sent to admin@example.com
   └─ □ Document org ID: _____________________
 
 □ STEP 2: ENCLII DEPLOYMENT (10 minutes)
-  ├─ □ Create namespace: kubectl create ns suluna-production
-  ├─ □ Deploy service: enclii service create --file dogfooding/clients/suluna-linkstack.yaml
+  ├─ □ Create namespace: kubectl create ns ${APP_NAME}-production
+  ├─ □ Deploy service: enclii service create --file dogfooding/clients/${APP_NAME}-linkstack.yaml
   ├─ □ Add tunnel route: Update cloudflared-unified.yaml
   ├─ □ Apply tunnel: kubectl apply -f infra/k8s/production/cloudflared-unified.yaml
-  └─ □ Verify pod running: kubectl get pods -n suluna-production
+  └─ □ Verify pod running: kubectl get pods -n ${APP_NAME}-production
 
 □ STEP 3: VERIFICATION (5 minutes)
-  ├─ □ Visit https://links.suluna.mx - should show LinkStack setup
+  ├─ □ Visit https://links.example-app.dev - should show LinkStack setup
   ├─ □ Log into app.enclii.dev as admin@madfam.io
-  ├─ □ Switch scope to "SuLuna" organization
+  ├─ □ Switch scope to "${CLIENT_NAME}" organization
   ├─ □ Verify ONLY LinkStack appears (no MADFAM services)
   └─ □ Document: Client can see their own services only
 
 ═══════════════════════════════════════════════════════════════════
 COMPLETION CRITERIA:
   ✓ Client received invitation email
-  ✓ LinkStack accessible at links.suluna.mx
+  ✓ LinkStack accessible at links.example-app.dev
   ✓ admin@madfam.io can manage via dashboard scope switch
   ✓ Client cannot see MADFAM internal services
 ═══════════════════════════════════════════════════════════════════
@@ -584,16 +584,16 @@ COMPLETION CRITERIA:
 
 1. **Login** to https://app.enclii.dev
 2. **Default Scope**: Should show MADFAM internal services (Janua, Enclii, etc.)
-3. **Switch Scope**: Click organization dropdown → Select "SuLuna"
-4. **SuLuna View**: Should show ONLY:
-   - `linkstack` service in `suluna-production` namespace
+3. **Switch Scope**: Click organization dropdown → Select "${CLIENT_NAME}"
+4. **${CLIENT_NAME} View**: Should show ONLY:
+   - `linkstack` service in `${APP_NAME}-production` namespace
    - No Janua, Enclii, or other MADFAM services
 
-#### Scenario B: Client View (suluna.mx@gmail.com)
+#### Scenario B: Client View (admin@example.com)
 
 1. **Accept Invitation** via email
 2. **Login** to https://app.enclii.dev (or app.janua.dev)
-3. **Default Scope**: Only "SuLuna" organization available
+3. **Default Scope**: Only "${CLIENT_NAME}" organization available
 4. **Dashboard**: Shows ONLY their LinkStack service
 5. **No Access**: Cannot see or switch to MADFAM organization
 
@@ -603,11 +603,11 @@ COMPLETION CRITERIA:
 # As admin@madfam.io - List orgs (should see multiple)
 curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
   "$JANUA_API/api/v1/organizations/" | jq '.[].name'
-# Expected: "MADFAM", "SuLuna", ...
+# Expected: "MADFAM", "${CLIENT_NAME}", ...
 
-# As admin@madfam.io - List SuLuna services only
+# As admin@madfam.io - List ${CLIENT_NAME} services only
 curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
-  "$ENCLII_API/api/v1/organizations/$SULUNA_ORG_ID/services" | jq '.[].name'
+  "$ENCLII_API/api/v1/organizations/$CLIENT_ORG_ID/services" | jq '.[].name'
 # Expected: "linkstack"
 
 # As client - List services (should only see their own)
@@ -636,7 +636,7 @@ curl -s -H "Authorization: Bearer $CLIENT_TOKEN" \
 
 ### Next Steps
 
-1. ✅ Create SuLuna organization in Janua
+1. ✅ Create ${CLIENT_NAME} organization in Janua
 2. ✅ Deploy LinkStack to Enclii
 3. ⏳ Client accepts invitation and configures LinkStack
 4. ⏳ Document in client success stories for sales

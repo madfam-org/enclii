@@ -149,7 +149,7 @@ export interface CloudflareError {
 // DISPATCH DOMAIN TYPES (Unified View)
 // =============================================================================
 
-export type EcosystemTenant = 'madfam' | 'suluna' | 'primavera' | 'janua' | 'enclii' | 'other'
+export type EcosystemTenant = 'madfam' | 'janua' | 'enclii' | 'other'
 
 export interface DispatchDomain {
   id: string

@@ -7,8 +7,8 @@ set -euo pipefail
 # =============================================================================
 #
 # Usage:
-#   ./provision-domain.sh --domain suluna.mx --subdomain links \
-#                         --service linkstack --namespace suluna-production
+#   ./provision-domain.sh --domain example-app.dev --subdomain links \
+#                         --service my-service --namespace my-app-production
 #
 # Credential Loading (in order of priority):
 #   1. Environment variables (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TUNNEL_ID)
@@ -98,10 +98,10 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Options:
-  --domain DOMAIN         Root domain (e.g., suluna.mx)
+  --domain DOMAIN         Root domain (e.g., example-app.dev)
   --subdomain SUBDOMAIN   Subdomain (e.g., links) - use "@" for apex
-  --service SERVICE       K8s service name (e.g., linkstack)
-  --namespace NAMESPACE   K8s namespace (e.g., suluna-production)
+  --service SERVICE       K8s service name (e.g., my-service)
+  --namespace NAMESPACE   K8s namespace (e.g., my-app-production)
   --port PORT             Service port (default: 80)
   --dry-run               Preview changes without applying
   --help                  Show this help message
@@ -116,7 +116,7 @@ Example:
   export CLOUDFLARE_ACCOUNT_ID="your-account-id"
   export TUNNEL_ID="your-tunnel-uuid"
   
-  $0 --domain suluna.mx --subdomain links --service linkstack --namespace suluna-production
+  $0 --domain example-app.dev --subdomain links --service my-service --namespace my-app-production
 EOF
     exit 1
 }

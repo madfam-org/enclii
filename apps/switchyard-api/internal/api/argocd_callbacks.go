@@ -89,7 +89,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			}
 		}
 		// Fallback: derive repo URL from image and look up by git repo
-		// (handles mono-service repos like yantra4d where DB service name
+		// (handles mono-service repos where DB service name
 		// doesn't match image-derived candidates)
 		if service == nil {
 			repoName := repoFullNameFromImage(imageURI)
@@ -350,11 +350,11 @@ func (h *Handler) findOrCreateRelease(ctx interface{ Value(any) any }, service *
 }
 
 // extractServiceCandidates returns candidate service names from a container image URI.
-// For nested image paths like "ghcr.io/madfam-org/tezca/api", it returns both the
-// simple name ("api") and the prefixed name ("tezca-api") so the caller can try both.
-// e.g., "ghcr.io/madfam-org/enclii/switchyard-api:latest" → ["switchyard-api"]
-// e.g., "ghcr.io/madfam-org/tezca/api@sha256:..." → ["tezca-api", "api"]
-// e.g., "ghcr.io/madfam-org/dhanam/admin:main" → ["dhanam-admin", "admin"]
+// For nested image paths like "ghcr.io/org/project/service", it returns both the
+// simple name ("service") and the prefixed name ("project-service") so the caller can try both.
+// e.g., "ghcr.io/org/myplatform/switchyard-api:latest" → ["myplatform-switchyard-api", "switchyard-api"]
+// e.g., "ghcr.io/org/myproject/api@sha256:..." → ["myproject-api", "api"]
+// e.g., "ghcr.io/org/myproject/admin:main" → ["myproject-admin", "admin"]
 func extractServiceCandidates(imageURI string) []string {
 	// Remove tag/digest
 	ref := imageURI
@@ -373,7 +373,7 @@ func extractServiceCandidates(imageURI string) []string {
 	simpleName := path.Base(ref)
 
 	// For paths like org/project/service (3+ segments after registry),
-	// try project-service first (e.g., "tezca-api"), then simple name ("api")
+	// try project-service first (e.g., "myproject-api"), then simple name ("api")
 	if len(parts) >= 3 {
 		project := parts[len(parts)-2]
 		prefixed := project + "-" + simpleName

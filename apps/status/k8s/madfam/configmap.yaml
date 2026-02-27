@@ -77,39 +77,9 @@ data:
         "description": "Landing page"
       },
       {
-        "name": "Tezca Web",
-        "url": "https://tezca.mx",
-        "group": "Tezca",
-        "description": "Legal tech platform"
-      },
-      {
-        "name": "Tezca Admin",
-        "url": "https://admin.tezca.mx",
-        "group": "Tezca",
-        "description": "Admin dashboard"
-      },
-      {
-        "name": "Tezca API",
-        "url": "https://api.tezca.mx",
-        "group": "Tezca",
-        "description": "Django API"
-      },
-      {
-        "name": "Yantra4D Landing",
-        "url": "https://4d.madfam.io",
-        "group": "Yantra4D",
-        "description": "Landing page"
-      },
-      {
-        "name": "Yantra4D Studio",
-        "url": "https://4d-app.madfam.io",
-        "group": "Yantra4D",
-        "description": "4D visualization studio"
-      },
-      {
-        "name": "Yantra4D API",
-        "url": "https://4d-api.madfam.io/api/health",
-        "group": "Yantra4D",
-        "description": "Flask API"
+        "name": "Dhanam App",
+        "url": "https://app.dhan.am",
+        "group": "Dhanam",
+        "description": "User application"
       }
     ]

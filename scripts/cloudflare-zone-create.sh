@@ -11,7 +11,7 @@ set -euo pipefail
 # For full tunnel routing, use provision-domain.sh (requires kubectl).
 #
 # Usage:
-#   ./cloudflare-zone-create.sh --domain suluna.mx --subdomain links
+#   ./cloudflare-zone-create.sh --domain example-app.dev --subdomain links
 #
 # Credential Loading (in order of priority):
 #   1. Environment variables (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TUNNEL_ID)
@@ -84,7 +84,7 @@ Usage: $0 [OPTIONS]
 Creates Cloudflare zone and DNS records (NO kubectl required).
 
 Options:
-  --domain DOMAIN         Root domain (e.g., suluna.mx)
+  --domain DOMAIN         Root domain (e.g., example-app.dev)
   --subdomain SUBDOMAIN   Subdomain (e.g., links) - use "@" for apex
   --skip-dns              Only create zone, skip DNS record creation
   --dry-run               Preview changes without applying
@@ -95,10 +95,10 @@ Options:
 
 Examples:
   # Create zone and DNS record
-  $0 --domain suluna.mx --subdomain links
+  $0 --domain example-app.dev --subdomain links
 
   # Create zone only
-  $0 --domain suluna.mx --subdomain @ --skip-dns
+  $0 --domain example-app.dev --subdomain @ --skip-dns
 
   # Test credentials
   $0 --test

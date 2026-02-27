@@ -18,9 +18,9 @@ func TestExtractServiceCandidates(t *testing.T) {
 			want:     []string{"enclii-switchyard-api", "switchyard-api"},
 		},
 		{
-			name:     "nested tezca image with digest",
-			imageURI: "ghcr.io/madfam-org/tezca/api@sha256:abc123",
-			want:     []string{"tezca-api", "api"},
+			name:     "nested project image with digest",
+			imageURI: "ghcr.io/madfam-org/myproject/api@sha256:abc123",
+			want:     []string{"myproject-api", "api"},
 		},
 		{
 			name:     "nested dhanam image with tag",
@@ -33,9 +33,9 @@ func TestExtractServiceCandidates(t *testing.T) {
 			want:     []string{"dhanam-web", "web"},
 		},
 		{
-			name:     "nested tezca web image no tag",
-			imageURI: "ghcr.io/madfam-org/tezca/web",
-			want:     []string{"tezca-web", "web"},
+			name:     "nested project web image no tag",
+			imageURI: "ghcr.io/madfam-org/myproject/web",
+			want:     []string{"myproject-web", "web"},
 		},
 		{
 			name:     "docker.io image",
@@ -85,8 +85,8 @@ func TestExtractServiceName(t *testing.T) {
 	}{
 		{
 			name:     "returns first candidate for nested path",
-			imageURI: "ghcr.io/madfam-org/tezca/api@sha256:abc",
-			want:     "tezca-api",
+			imageURI: "ghcr.io/madfam-org/myproject/api@sha256:abc",
+			want:     "myproject-api",
 		},
 		{
 			name:     "returns prefixed name for 3-segment path",
@@ -265,9 +265,9 @@ func TestRepoFullNameFromImage(t *testing.T) {
 			want:     "madfam-org/dhanam",
 		},
 		{
-			name:     "tezca image",
-			imageURI: "ghcr.io/madfam-org/tezca/web:main",
-			want:     "madfam-org/tezca",
+			name:     "nested project image",
+			imageURI: "ghcr.io/madfam-org/myproject/web:main",
+			want:     "madfam-org/myproject",
 		},
 	}
 

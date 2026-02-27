@@ -2,6 +2,8 @@
 
 How to add a new repository to the Enclii platform for auto-deploy, deployment tracking, and domain provisioning.
 
+> **Zero-Touch Policy**: Onboarding a new app must NOT require modifying enclii, janua, or dhanam repos. All deployment configs live in the provisioned repo itself. See [ZERO_TOUCH_CONTRACT.md](./ZERO_TOUCH_CONTRACT.md) for the full contract.
+
 ## Prerequisites
 
 - GitHub repository under `madfam-org` (or with webhook access)
