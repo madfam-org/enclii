@@ -3,13 +3,18 @@
  *
  * Defines the foundry tier system for RBAC and feature gating.
  * The `foundry_tier` claim comes from Janua SSO after Dhanam purchase.
+ *
+ * Community/Essentials have identical feature limits — essentials value is
+ * the managed hosting service, not extra features. Only pro+ is gated.
+ *
+ * Legacy tier names (sovereign/ecosystem) are supported for old JWTs.
  */
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-export type FoundryTier = 'community' | 'sovereign' | 'ecosystem' | null;
+export type FoundryTier = 'community' | 'essentials' | 'pro' | 'madfam' | 'sovereign' | 'ecosystem' | null;
 
 export interface TierConfig {
   name: string;
@@ -34,7 +39,7 @@ export type BlockedAction = 'project' | 'deploy' | 'custom-domain' | 'team';
 // TIER CONFIGURATION
 // =============================================================================
 
-export const TIER_CONFIG: Record<NonNullable<FoundryTier> | 'null', TierConfig> = {
+export const TIER_CONFIG: Record<string, TierConfig> = {
   null: {
     name: 'Guest',
     description: 'Sign in to start building',
@@ -59,30 +64,45 @@ export const TIER_CONFIG: Record<NonNullable<FoundryTier> | 'null', TierConfig> 
     canManageTeams: false,
     projectLimit: 1,
     serviceLimit: 3,
-    price: 'Free',
+    price: 'Free (self-hosted)',
     cta: {
       label: 'View on GitHub',
       href: 'https://github.com/madfam-org/enclii',
     },
   },
-  sovereign: {
-    name: 'Sovereign',
-    description: 'Managed hosting with auto SSL',
+  essentials: {
+    name: 'Essentials',
+    description: 'Managed hosting with SLA',
     canCreateProject: true,
     canDeploy: true,
-    canUseCustomDomains: true,
+    canUseCustomDomains: false,
     canManageTeams: false,
-    projectLimit: 10,
-    serviceLimit: -1,
+    projectLimit: 1,
+    serviceLimit: 3,
     price: '$20/mo',
     cta: {
       label: 'Start Building',
       href: 'https://app.enclii.dev',
     },
   },
-  ecosystem: {
-    name: 'Ecosystem',
-    description: 'Full bundle with team management',
+  pro: {
+    name: 'Pro',
+    description: 'Managed hosting with auto SSL & custom domains',
+    canCreateProject: true,
+    canDeploy: true,
+    canUseCustomDomains: true,
+    canManageTeams: false,
+    projectLimit: 10,
+    serviceLimit: -1,
+    price: '$49/mo',
+    cta: {
+      label: 'Upgrade to Pro',
+      href: '#checkout',
+    },
+  },
+  madfam: {
+    name: 'MADFAM Bundle',
+    description: 'Full ecosystem with team management',
     canCreateProject: true,
     canDeploy: true,
     canUseCustomDomains: true,
@@ -96,6 +116,37 @@ export const TIER_CONFIG: Record<NonNullable<FoundryTier> | 'null', TierConfig> 
       disabled: true,
     },
   },
+  // Legacy compat — old JWTs during transition
+  sovereign: {
+    name: 'Pro',
+    description: 'Managed hosting with auto SSL & custom domains',
+    canCreateProject: true,
+    canDeploy: true,
+    canUseCustomDomains: true,
+    canManageTeams: false,
+    projectLimit: 10,
+    serviceLimit: -1,
+    price: '$49/mo',
+    cta: {
+      label: 'Current Plan',
+      href: '#',
+    },
+  },
+  ecosystem: {
+    name: 'MADFAM Bundle',
+    description: 'Full ecosystem with team management',
+    canCreateProject: true,
+    canDeploy: true,
+    canUseCustomDomains: true,
+    canManageTeams: true,
+    projectLimit: -1,
+    serviceLimit: -1,
+    price: 'Coming Soon',
+    cta: {
+      label: 'Current Plan',
+      href: '#',
+    },
+  },
 };
 
 // =============================================================================
@@ -103,17 +154,27 @@ export const TIER_CONFIG: Record<NonNullable<FoundryTier> | 'null', TierConfig> 
 // =============================================================================
 
 /**
- * Get the tier config for a given foundry_tier claim
+ * Normalize legacy tier names to new names
  */
-export function getTierConfig(tier: FoundryTier): TierConfig {
-  return TIER_CONFIG[tier ?? 'null'];
+function normalizeTier(tier: FoundryTier): string {
+  if (tier === 'sovereign') return 'pro';
+  if (tier === 'ecosystem') return 'madfam';
+  return tier ?? 'null';
 }
 
 /**
- * Check if a tier is a paid tier (sovereign or ecosystem)
+ * Get the tier config for a given foundry_tier claim
+ */
+export function getTierConfig(tier: FoundryTier): TierConfig {
+  return TIER_CONFIG[tier ?? 'null'] ?? TIER_CONFIG['null'];
+}
+
+/**
+ * Check if a tier is a paid tier (pro or madfam)
  */
 export function isPaidTier(tier: FoundryTier): boolean {
-  return tier === 'sovereign' || tier === 'ecosystem';
+  const n = normalizeTier(tier);
+  return n === 'pro' || n === 'madfam';
 }
 
 /**
@@ -145,19 +206,19 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
       if (!config.canCreateProject) {
         return 'Sign in to create projects';
       }
-      return `You've reached your limit of ${config.projectLimit} project${config.projectLimit !== 1 ? 's' : ''}. Upgrade to create more.`;
+      return `You've reached your limit of ${config.projectLimit} project${config.projectLimit !== 1 ? 's' : ''}. Upgrade to Pro to create more.`;
 
     case 'deploy':
       if (!config.canDeploy) {
         return 'Sign in to deploy services';
       }
-      return `You've reached your limit of ${config.serviceLimit} service${config.serviceLimit !== 1 ? 's' : ''}. Upgrade to deploy more.`;
+      return `You've reached your limit of ${config.serviceLimit} service${config.serviceLimit !== 1 ? 's' : ''}. Upgrade to Pro to deploy more.`;
 
     case 'custom-domain':
-      return 'Custom domains are available on Sovereign tier and above.';
+      return 'Custom domains are available on Pro tier and above.';
 
     case 'team':
-      return 'Team management is available on Ecosystem tier.';
+      return 'Team management is available on the MADFAM bundle.';
 
     default:
       return 'Upgrade your plan to access this feature.';
@@ -165,12 +226,13 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
 }
 
 /**
- * Get the checkout URL for upgrading
+ * Get the checkout URL for upgrading to Pro via Dhanam
  */
 export function getCheckoutUrl(userId?: string, returnUrl?: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL || 'https://dhanam.madfam.io/checkout';
   const params = new URLSearchParams();
-  params.set('plan', 'enclii_sovereign');
+  params.set('plan', 'enclii_pro');
+  params.set('product', 'enclii');
   if (userId) {
     params.set('user_id', userId);
   }

@@ -17,16 +17,23 @@ type tierLimit struct {
 }
 
 // tierLimits mirrors the UI configuration in apps/switchyard-ui/lib/tiers.ts.
+// community/essentials have identical feature limits — essentials value = managed hosting.
+// Only pro+ features are gated. Legacy tier names kept for old JWTs during transition.
 var tierLimits = map[string]tierLimit{
-	"":          {ProjectLimit: 0, ServiceLimit: 0},
-	"community": {ProjectLimit: 1, ServiceLimit: 3},
+	// No claim = community self-hosted (same limits as essentials)
+	"":           {ProjectLimit: 1, ServiceLimit: 3},
+	"community":  {ProjectLimit: 1, ServiceLimit: 3},
+	"essentials": {ProjectLimit: 1, ServiceLimit: 3},
+	"pro":        {ProjectLimit: 10, ServiceLimit: -1},
+	"madfam":     {ProjectLimit: -1, ServiceLimit: -1},
+	// Legacy compat (old JWTs during transition)
 	"sovereign": {ProjectLimit: 10, ServiceLimit: -1},
 	"ecosystem": {ProjectLimit: -1, ServiceLimit: -1},
 }
 
 var tierPaymentRequired = gin.H{
 	"error":       "tier_limit_exceeded",
-	"upgrade_url": "https://dhanam.madfam.io/checkout?plan=enclii_sovereign",
+	"upgrade_url": "https://dhanam.madfam.io/checkout?plan=enclii_pro&product=enclii",
 }
 
 // limitsForTier returns the resource limits for the given tier string.

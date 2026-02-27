@@ -29,7 +29,7 @@ interface PricingModalProps {
 // =============================================================================
 
 interface TierCardProps {
-  tier: FoundryTier | 'null';
+  tier: string;
   isCurrentTier: boolean;
   isRecommended: boolean;
 }
@@ -38,11 +38,18 @@ interface TierCardPropsInternal extends TierCardProps {
   checkoutUrl?: string;
 }
 
+/** Normalize legacy tier names for comparison */
+function normalizeTier(tier: FoundryTier): string {
+  if (tier === 'sovereign') return 'pro';
+  if (tier === 'ecosystem') return 'madfam';
+  return tier ?? 'null';
+}
+
 function TierCard({ tier, isCurrentTier, isRecommended, checkoutUrl }: TierCardPropsInternal) {
-  const config = TIER_CONFIG[tier ?? 'null'];
-  const Icon = tier === 'ecosystem' ? Crown : tier === 'sovereign' ? Zap : Sparkles;
-  // Inside the modal, paid tiers should link to Dhanam checkout, not app.enclii.dev
-  const effectiveHref = (tier === 'sovereign' && checkoutUrl) ? checkoutUrl : config.cta.href;
+  const config = TIER_CONFIG[tier] ?? TIER_CONFIG['null'];
+  const Icon = tier === 'madfam' ? Crown : tier === 'pro' ? Zap : Sparkles;
+  // Inside the modal, pro tier should link to Dhanam checkout
+  const effectiveHref = (tier === 'pro' && checkoutUrl) ? checkoutUrl : config.cta.href;
 
   return (
     <div
@@ -137,6 +144,8 @@ export function PricingModal({
   checkoutUrl,
   currentTier,
 }: PricingModalProps) {
+  const normalizedTier = normalizeTier(currentTier);
+
   const getTitle = () => {
     switch (blockedAction) {
       case 'project':
@@ -162,19 +171,19 @@ export function PricingModal({
 
         <div className="grid sm:grid-cols-3 gap-4 mt-4">
           <TierCard
-            tier="community"
-            isCurrentTier={currentTier === 'community'}
+            tier="essentials"
+            isCurrentTier={normalizedTier === 'essentials' || normalizedTier === 'community'}
             isRecommended={false}
           />
           <TierCard
-            tier="sovereign"
-            isCurrentTier={currentTier === 'sovereign'}
-            isRecommended={currentTier !== 'sovereign' && currentTier !== 'ecosystem'}
+            tier="pro"
+            isCurrentTier={normalizedTier === 'pro'}
+            isRecommended={normalizedTier !== 'pro' && normalizedTier !== 'madfam'}
             checkoutUrl={checkoutUrl}
           />
           <TierCard
-            tier="ecosystem"
-            isCurrentTier={currentTier === 'ecosystem'}
+            tier="madfam"
+            isCurrentTier={normalizedTier === 'madfam'}
             isRecommended={false}
           />
         </div>

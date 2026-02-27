@@ -6,8 +6,8 @@ import { setupApiMocking, waitForAppReady } from '../fixtures';
  *
  * Validates that the monetization paywall (requireTier + PricingModal) is correctly wired:
  * - Free/community users hitting service limits see the PricingModal
- * - Sovereign users can proceed without being blocked
- * - The modal checkout URL points to Dhanam with correct params
+ * - Pro users (including legacy 'sovereign' tier name) can proceed without being blocked
+ * - The modal checkout URL points to Dhanam with correct params (plan=enclii_pro&product=enclii)
  */
 
 // Fake JWT token (just needs valid base64 structure for parseJwt)
@@ -92,8 +92,8 @@ test.describe('Paywall — requireTier + PricingModal', () => {
     await expect(dialog).toContainText('Deploy More Services');
   });
 
-  test('sovereign user can submit without paywall', async ({ page }) => {
-    // For sovereign tier, service limit is -1 (unlimited), so no block
+  test('pro user can submit without paywall', async ({ page }) => {
+    // For pro tier, service limit is -1 (unlimited), so no block
     await setupApiMocking(page, {
       ...apiMocks,
       // Mock the POST to succeed
@@ -117,7 +117,7 @@ test.describe('Paywall — requireTier + PricingModal', () => {
       }
     });
 
-    const { user, tokens } = injectAuth('sovereign');
+    const { user, tokens } = injectAuth('sovereign'); // Legacy tier name still works
 
     await page.addInitScript(({ user, tokens }) => {
       localStorage.setItem('enclii_user', JSON.stringify(user));
@@ -158,12 +158,13 @@ test.describe('Paywall — requireTier + PricingModal', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    // Find the Sovereign tier's CTA link
-    const sovereignLink = dialog.locator('a').filter({ hasText: 'Start Building' });
-    const href = await sovereignLink.getAttribute('href');
+    // Find the Pro tier's CTA link
+    const proLink = dialog.locator('a').filter({ hasText: 'Upgrade to Pro' });
+    const href = await proLink.getAttribute('href');
 
     // Should point to Dhanam checkout with correct params
-    expect(href).toContain('plan=enclii_sovereign');
+    expect(href).toContain('plan=enclii_pro');
+    expect(href).toContain('product=enclii');
     expect(href).toContain('user_id=test-user-id');
     expect(href).toContain('return_url=');
   });

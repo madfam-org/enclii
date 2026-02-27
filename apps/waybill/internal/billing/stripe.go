@@ -13,6 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// Deprecated: StripeClient is superseded by Dhanam billing SDK.
+// Checkout, subscription, and invoice operations are now handled by Dhanam.
+// This client remains for backwards compatibility during the migration period.
+// Remove once all billing flows are verified through Dhanam.
 // StripeClient handles Stripe integration
 type StripeClient struct {
 	logger *zap.Logger

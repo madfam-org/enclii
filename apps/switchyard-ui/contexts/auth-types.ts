@@ -14,7 +14,7 @@ export interface User {
   roles?: string[];
   avatarUrl?: string;
   /** Foundry tier from Janua JWT claims (after Dhanam purchase) */
-  foundry_tier?: "community" | "sovereign" | "ecosystem" | null;
+  foundry_tier?: "community" | "essentials" | "pro" | "madfam" | "sovereign" | "ecosystem" | null;
 }
 
 // =============================================================================
