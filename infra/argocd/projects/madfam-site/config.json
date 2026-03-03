@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "k8s",
+  "name": "madfam-site",
+  "namespace": "madfam-site",
+  "partOf": "madfam-site",
+  "repoURL": "https://github.com/madfam-org/madfam-site.git"
+}
