@@ -98,6 +98,7 @@ make precommit         # Run all checks before committing
 ./bin/enclii deploy --env prod     # Deploy to production
 ./bin/enclii logs <service> -f     # Tail service logs
 ./bin/enclii rollback <service>    # Rollback to previous release
+./bin/enclii onboard --repo org/name --db-name mydb --secrets-file .env  # Full project onboarding
 ```
 
 ## Key Technical Details
@@ -489,6 +490,8 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Admin migrations | `apps/switchyard-api/internal/db/migrations/002_admin_foundation.*.sql` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
 | Domain provisioner | `apps/switchyard-api/internal/api/domain_provisioner.go` |
+| Provisioning services | `apps/switchyard-api/internal/provisioning/` |
+| Provisioning handlers | `apps/switchyard-api/internal/api/provisioning_handlers.go` |
 | Migrations | `apps/switchyard-api/migrations/` |
 
 ### CLI (Go)

@@ -170,6 +170,65 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		}
 	}
 
+	// Step 9: Provision Postgres database + PgBouncer (optional)
+	var provisionWarnings []string
+	if req.ProvisionPostgres != nil {
+		if h.postgresProvisioner != nil {
+			if err := h.postgresProvisioner.Provision(ctx, req.ProvisionPostgres); err != nil {
+				provisionWarnings = append(provisionWarnings, "postgres: "+err.Error())
+				h.logger.Warn(ctx, "Postgres provisioning failed (non-fatal)",
+					logging.Error("error", err))
+			} else {
+				// Update PgBouncer
+				roleName := req.ProvisionPostgres.RoleName
+				if roleName == "" {
+					roleName = req.ProvisionPostgres.DatabaseName
+				}
+				if h.pgbouncerUpdater != nil {
+					if err := h.pgbouncerUpdater.AddDatabase(ctx, req.ProvisionPostgres.DatabaseName, roleName, req.ProvisionPostgres.RolePassword); err != nil {
+						provisionWarnings = append(provisionWarnings, "pgbouncer: "+err.Error())
+						h.logger.Warn(ctx, "PgBouncer update failed (non-fatal)",
+							logging.Error("error", err))
+					}
+				}
+			}
+		} else {
+			provisionWarnings = append(provisionWarnings, "postgres: not configured (POSTGRES_ADMIN_URL not set)")
+		}
+	}
+
+	// Step 10: Create K8s secrets (optional)
+	if len(req.ProvisionSecrets) > 0 {
+		if h.secretsProvisioner != nil {
+			if err := h.secretsProvisioner.Create(ctx, namespace, req.ProjectName, req.ProvisionSecrets); err != nil {
+				provisionWarnings = append(provisionWarnings, "secrets: "+err.Error())
+				h.logger.Warn(ctx, "Secrets provisioning failed (non-fatal)",
+					logging.Error("error", err))
+			}
+		} else {
+			provisionWarnings = append(provisionWarnings, "secrets: not configured (K8s client unavailable)")
+		}
+	}
+
+	// Step 11: Create R2 bucket (optional)
+	if req.ProvisionR2 != nil {
+		if h.r2Provisioner != nil {
+			r2Entries, err := h.r2Provisioner.CreateBucket(ctx, req.ProvisionR2.BucketName)
+			if err != nil {
+				provisionWarnings = append(provisionWarnings, "r2: "+err.Error())
+				h.logger.Warn(ctx, "R2 provisioning failed (non-fatal)",
+					logging.Error("error", err))
+			} else if h.secretsProvisioner != nil {
+				// Append R2 creds to the project's K8s secret
+				if err := h.secretsProvisioner.AppendEntries(ctx, namespace, req.ProjectName, r2Entries); err != nil {
+					provisionWarnings = append(provisionWarnings, "r2-creds: "+err.Error())
+				}
+			}
+		} else {
+			provisionWarnings = append(provisionWarnings, "r2: not configured (Cloudflare credentials not set)")
+		}
+	}
+
 	// Step 8: Register onboarding
 	configSnapshot := map[string]interface{}{
 		"manifest_path": manifestPath,
@@ -183,6 +242,9 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	}
 	if argocdCommitSHA != "" {
 		configSnapshot["argocd_commit"] = argocdCommitSHA
+	}
+	if len(provisionWarnings) > 0 {
+		configSnapshot["provision_warnings"] = provisionWarnings
 	}
 
 	reg := &types.OnboardingRegistration{
@@ -217,7 +279,7 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		"4. Check lifecycle events: GET /v1/lifecycle/timeline/"+req.RepoFullName,
 	)
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"status":         "completed",
 		"repo":           req.RepoFullName,
 		"project":        req.ProjectName,
@@ -230,7 +292,20 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		"manifest_path":  manifestPath,
 		"services":       serviceNames,
 		"domains":        domainResults,
-	})
+	}
+	if req.ProvisionPostgres != nil {
+		response["postgres_database"] = req.ProvisionPostgres.DatabaseName
+	}
+	if len(req.ProvisionSecrets) > 0 {
+		response["secrets_count"] = len(req.ProvisionSecrets)
+	}
+	if req.ProvisionR2 != nil {
+		response["r2_bucket"] = req.ProvisionR2.BucketName
+	}
+	if len(provisionWarnings) > 0 {
+		response["provision_warnings"] = provisionWarnings
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // ensureOnboardingNamespace creates the target namespace with required labels,

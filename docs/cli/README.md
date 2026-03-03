@@ -77,6 +77,7 @@ enclii deploy --env production
 | [`rollback`](./commands/rollback.md) | Rollback to a previous deployment |
 | [`services sync`](./commands/services-sync.md) | Synchronize service configuration |
 | [`local`](./commands/local.md) | Local development environment commands |
+| [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
 | [`version`](./commands/version.md) | Display CLI version information |
 
 ## Global Flags

@@ -66,7 +66,7 @@ metadata:
     app.kubernetes.io/part-of: enclii
     enclii.dev/managed-by: switchyard
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -223,7 +223,7 @@ metadata:
     app.kubernetes.io/part-of: enclii
     enclii.dev/managed-by: switchyard
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -336,7 +336,7 @@ metadata:
     app.kubernetes.io/name: roundhouse-api
     app.kubernetes.io/part-of: enclii
 spec:
-  minAvailable: 1
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: roundhouse-api

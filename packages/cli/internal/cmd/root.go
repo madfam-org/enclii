@@ -57,6 +57,9 @@ Learn more at https://enclii.dev`,
 	rootCmd.AddCommand(NewLogoutCommand(cfg))
 	rootCmd.AddCommand(NewWhoamiCommand(cfg))
 
+	// Admin commands
+	rootCmd.AddCommand(NewOnboardCommand(cfg))
+
 	return rootCmd
 }
 

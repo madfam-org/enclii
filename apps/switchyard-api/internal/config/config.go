@@ -98,6 +98,9 @@ type Config struct {
 	CloudflareZoneID    string
 	CloudflareTunnelID  string
 
+	// Provisioning (for onboarding pipeline)
+	PostgresAdminURL string // Superuser connection string for provisioning databases
+
 	// Serverless Functions
 	FunctionBaseDomain string // Base domain for functions (default: fn.enclii.dev)
 
@@ -272,6 +275,7 @@ func Load() (*Config, error) {
 		CloudflareAccountID:        viper.GetString("cloudflare-account-id"),
 		CloudflareZoneID:           viper.GetString("cloudflare-zone-id"),
 		CloudflareTunnelID:         viper.GetString("cloudflare-tunnel-id"),
+		PostgresAdminURL:           viper.GetString("postgres-admin-url"),
 		FunctionBaseDomain:         viper.GetString("function-base-domain"),
 		DBPoolSize:                 viper.GetInt("db-pool-size"),
 		CacheTTLSeconds:            viper.GetInt("cache-ttl-seconds"),

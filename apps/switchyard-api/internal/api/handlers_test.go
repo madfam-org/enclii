@@ -62,6 +62,9 @@ func TestAdminServiceSetters(t *testing.T) {
 	if h.costTrackingService == nil {
 		t.Error("expected costTrackingService to be set")
 	}
+
+	// Verify SetProvisioners doesn't panic with nil values
+	h.SetProvisioners(nil, nil, nil, nil)
 }
 
 func TestAdminServiceSettersNil(t *testing.T) {
@@ -75,4 +78,5 @@ func TestAdminServiceSettersNil(t *testing.T) {
 	h.SetPlacementService(nil)
 	h.SetDriftService(nil)
 	h.SetCostTrackingService(nil)
+	h.SetProvisioners(nil, nil, nil, nil)
 }

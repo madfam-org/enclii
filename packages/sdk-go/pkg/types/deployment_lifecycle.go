@@ -104,6 +104,48 @@ type OnboardingRequest struct {
 	Namespace    string  `json:"namespace,omitempty"`
 	ManifestPath string  `json:"manifest_path,omitempty"`
 	Branch       *string `json:"branch,omitempty"`
+
+	// Inline provisioning (all optional)
+	ProvisionPostgres *PostgresProvisionSpec `json:"provision_postgres,omitempty"`
+	ProvisionSecrets  []SecretEntry          `json:"provision_secrets,omitempty"`
+	ProvisionR2       *R2ProvisionSpec       `json:"provision_r2,omitempty"`
+}
+
+// PostgresProvisionSpec defines parameters for creating a Postgres database and role
+type PostgresProvisionSpec struct {
+	DatabaseName string   `json:"database_name" binding:"required"`
+	RoleName     string   `json:"role_name,omitempty"`
+	RolePassword string   `json:"role_password" binding:"required"`
+	Extensions   []string `json:"extensions,omitempty"`
+}
+
+// SecretEntry is a key-value pair for K8s secret provisioning
+type SecretEntry struct {
+	Key   string `json:"key" binding:"required"`
+	Value string `json:"value" binding:"required"`
+}
+
+// R2ProvisionSpec defines parameters for creating a Cloudflare R2 bucket
+type R2ProvisionSpec struct {
+	BucketName string `json:"bucket_name" binding:"required"`
+}
+
+// ProvisionPostgresRequest is the standalone request for Postgres provisioning
+type ProvisionPostgresRequest struct {
+	Namespace string                `json:"namespace" binding:"required"`
+	Spec      PostgresProvisionSpec `json:"spec" binding:"required"`
+}
+
+// ProvisionSecretsRequest is the standalone request for K8s secret provisioning
+type ProvisionSecretsRequest struct {
+	Namespace string        `json:"namespace" binding:"required"`
+	Secrets   []SecretEntry `json:"secrets" binding:"required"`
+}
+
+// ProvisionR2Request is the standalone request for R2 bucket provisioning
+type ProvisionR2Request struct {
+	Namespace  string `json:"namespace" binding:"required"`
+	BucketName string `json:"bucket_name" binding:"required"`
 }
 
 // DeriveTargetEnv maps a branch name to a target environment

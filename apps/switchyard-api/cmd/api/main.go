@@ -30,6 +30,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
@@ -483,6 +484,34 @@ func main() {
 	costTrackingService := services.NewCostTrackingService(repos, logrus.StandardLogger())
 	apiHandler.SetCostTrackingService(costTrackingService)
 	logrus.Info("✓ Admin control plane services wired (fleet, clusters, infrastructure, vclusters, placement, drift, costs)")
+
+	// Wire up provisioning services (for onboarding pipeline)
+	{
+		var pgProv *provisioning.PostgresProvisioner
+		var pgbUpdater *provisioning.PgBouncerUpdater
+		var secProv *provisioning.SecretsProvisioner
+		var r2Prov *provisioning.R2Provisioner
+
+		if cfg.PostgresAdminURL != "" {
+			pgProv = provisioning.NewPostgresProvisioner(cfg.PostgresAdminURL, logger)
+			logrus.Info("✓ Postgres provisioner configured")
+		} else {
+			logrus.Warn("⚠ Postgres provisioner not configured (ENCLII_POSTGRES_ADMIN_URL not set)")
+		}
+
+		if k8sClient != nil && k8sClient.IsValid() {
+			pgbUpdater = provisioning.NewPgBouncerUpdater(k8sClient.Clientset, logger)
+			secProv = provisioning.NewSecretsProvisioner(k8sClient.Clientset, logger)
+			logrus.Info("✓ PgBouncer updater and secrets provisioner configured")
+		}
+
+		if cfg.CloudflareAPIToken != "" && cfg.CloudflareAccountID != "" {
+			r2Prov = provisioning.NewR2Provisioner(cfg.CloudflareAPIToken, cfg.CloudflareAccountID, logger)
+			logrus.Info("✓ R2 provisioner configured")
+		}
+
+		apiHandler.SetProvisioners(pgProv, pgbUpdater, secProv, r2Prov)
+	}
 
 	// Start admin reconciler (syncs cluster status, fleet, ArgoCD drift, costs every 60s)
 	adminReconciler := reconciler.NewAdminReconciler(repos, k8sClient, logrus.StandardLogger())

@@ -43,7 +43,32 @@ environments:
     auto_deploy: true
 ```
 
-## Step 2: Call the Onboarding API
+## Step 2: Onboard via CLI or API
+
+### Option A: CLI (Recommended)
+
+The `enclii onboard` command handles the complete provisioning pipeline:
+
+```bash
+# Basic onboarding
+enclii onboard --repo madfam-org/my-project --project my-project
+
+# Full provisioning with database, secrets, and R2 storage
+enclii onboard --repo madfam-org/my-project \
+  --project my-project \
+  --manifest-path k8s/production \
+  --db-name my_project \
+  --db-password "$(openssl rand -base64 32)" \
+  --secrets-file ./my-project.env \
+  --r2-bucket my-project-uploads
+
+# Preview what would be provisioned
+enclii onboard --repo madfam-org/my-project --db-name my_project --dry-run
+```
+
+See [`docs/cli/commands/onboard.md`](../cli/commands/onboard.md) for all flags and examples.
+
+### Option B: API
 
 ```bash
 curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
@@ -51,56 +76,50 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
   -H "Content-Type: application/json" \
   -d '{
     "repo_full_name": "madfam-org/my-project",
-    "branch": "main"
+    "project_name": "my-project",
+    "manifest_path": "k8s/production",
+    "branch": "main",
+    "provision_postgres": {
+      "database_name": "my_project",
+      "role_password": "secure-password",
+      "extensions": ["pgcrypto"]
+    },
+    "provision_secrets": [
+      {"key": "JANUA_CLIENT_ID", "value": "jnc_abc123"},
+      {"key": "DATABASE_URL", "value": "postgresql://my_project:pass@pgbouncer.data.svc.cluster.local:6432/my_project"}
+    ],
+    "provision_r2": {
+      "bucket_name": "my-project-uploads"
+    }
   }'
 ```
 
-The onboarding endpoint:
+### What Happens
+
+The onboarding pipeline executes 11 steps:
 1. Fetches and validates `enclii.yaml` from the repo
 2. Creates project and service records in the Enclii DB
-3. Sets up a GitHub webhook for push events
-4. Generates an ArgoCD Application YAML
-5. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
-   - If the domain's zone doesn't exist in Cloudflare (e.g., `tezca.mx`), it is created automatically
-   - Nameservers must be delegated to Cloudflare for the zone to activate
+3. Creates service records from `enclii.yaml` metadata
+4. Generates ArgoCD `config.json` for the ApplicationSet
+5. **Auto-commits** `config.json` to `infra/argocd/projects/<name>/` in the enclii repo (no manual step)
+6. Creates K8s namespace with labels + copies GHCR credentials
+7. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
+8. Registers onboarding in DB
+9. Creates Postgres database + role, updates PgBouncer *(if requested)*
+10. Creates K8s Secret from `.env` entries *(if requested)*
+11. Creates R2 bucket + appends R2 credentials to K8s Secret *(if requested)*
 
-### Response
+Steps 9-11 are optional and independent — failure in one does not block others.
 
-```json
-{
-  "registration": {
-    "id": "uuid",
-    "project_id": "uuid",
-    "repo_full_name": "madfam-org/my-project",
-    "webhook_id": 12345,
-    "argocd_app_name": "my-project",
-    "onboard_status": "completed"
-  },
-  "argocd_yaml": "apiVersion: argoproj.io/v1alpha1\nkind: Application\n...",
-  "next_steps": [
-    "Commit the ArgoCD Application YAML to infra/argocd/apps/my-project.yaml",
-    "Add ENCLII_CALLBACK_TOKEN secret to your GitHub repo",
-    "Add lifecycle event callback to your CI workflows"
-  ]
-}
-```
+### Standalone Provisioning (Ad-Hoc)
 
-## Step 3: Commit the ArgoCD Application
-
-Take the `argocd_yaml` from the response and commit it:
+For already-onboarded projects, use the standalone provision endpoints:
 
 ```bash
-# In the enclii repo
-cat > infra/argocd/apps/my-project.yaml << 'EOF'
-# Paste the argocd_yaml content here
-EOF
-
-git add infra/argocd/apps/my-project.yaml
-git commit -m "feat(argocd): add my-project application"
-git push
+POST /v1/admin/provision/postgres   # Create DB + role + PgBouncer update
+POST /v1/admin/provision/secrets    # Create K8s secret in namespace
+POST /v1/admin/provision/r2         # Create R2 bucket
 ```
-
-ArgoCD will pick up the new application on its next sync cycle.
 
 ## Step 4: Set Up CI Auto-Deploy
 
@@ -233,7 +252,15 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 | Purpose | Path |
 |---------|------|
+| CLI onboard command | `packages/cli/internal/cmd/onboard.go` |
 | Onboarding handlers | `apps/switchyard-api/internal/api/onboarding_handlers.go` |
+| Provisioning handlers | `apps/switchyard-api/internal/api/provisioning_handlers.go` |
+| Postgres provisioner | `apps/switchyard-api/internal/provisioning/postgres.go` |
+| PgBouncer updater | `apps/switchyard-api/internal/provisioning/pgbouncer.go` |
+| Secrets provisioner | `apps/switchyard-api/internal/provisioning/secrets.go` |
+| R2 provisioner | `apps/switchyard-api/internal/provisioning/r2.go` |
+| Input validation | `apps/switchyard-api/internal/provisioning/validate.go` |
+| RBAC manifest | `infra/k8s/base/switchyard-rbac.yaml` |
 | ArgoCD template generator | `apps/switchyard-api/internal/api/argocd_template.go` |
 | Onboarding repository | `apps/switchyard-api/internal/db/onboarding_repository.go` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |

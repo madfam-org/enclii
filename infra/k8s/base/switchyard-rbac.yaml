@@ -1,0 +1,83 @@
+---
+# ClusterRole: allows switchyard-api to create/update secrets in project namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: switchyard-provisioner
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  # Create/update K8s Secrets in any project namespace
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update"]
+  # Create namespaces (already needed for onboarding, listed for completeness)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create", "patch"]
+---
+# ClusterRoleBinding: binds the ClusterRole to switchyard-api ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: switchyard-provisioner
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: switchyard-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii
+---
+# Role: allows switchyard-api to manage PgBouncer config in data namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-pgbouncer-manager
+  namespace: data
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  # Read and update PgBouncer ConfigMap
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch", "update"]
+    resourceNames: ["pgbouncer-config"]
+  # Read and update PgBouncer userlist Secret
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "update"]
+    resourceNames: ["pgbouncer-userlist"]
+  # Patch PgBouncer Deployment for rollout restart
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+    resourceNames: ["pgbouncer"]
+---
+# RoleBinding: binds the Role to switchyard-api ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-pgbouncer-manager
+  namespace: data
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-pgbouncer-manager
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii

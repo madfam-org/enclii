@@ -18,6 +18,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
@@ -62,6 +63,12 @@ type Handler struct {
 
 	// Roundhouse client for async builds (optional - only used in "roundhouse" build mode)
 	roundhouseClient *clients.RoundhouseClient
+
+	// Provisioning services (optional — set via SetProvisioners)
+	postgresProvisioner *provisioning.PostgresProvisioner
+	pgbouncerUpdater    *provisioning.PgBouncerUpdater
+	secretsProvisioner  *provisioning.SecretsProvisioner
+	r2Provisioner       *provisioning.R2Provisioner
 
 	// Admin Control Plane services (optional)
 	bareMetalService      *services.BareMetalService
@@ -199,6 +206,20 @@ func (h *Handler) SetCostTrackingService(svc *services.CostTrackingService) {
 // Accepts either TunnelRoutesService (ConfigMap-based) or TunnelRoutesServiceCloudflare (API-based)
 func (h *Handler) SetTunnelRoutesService(svc services.TunnelRoutesManager) {
 	h.tunnelRoutesService = svc
+}
+
+// SetProvisioners sets all provisioning services for the onboarding pipeline.
+// Each is optional — if nil, the corresponding provisioning step is skipped.
+func (h *Handler) SetProvisioners(
+	pg *provisioning.PostgresProvisioner,
+	pgb *provisioning.PgBouncerUpdater,
+	sec *provisioning.SecretsProvisioner,
+	r2 *provisioning.R2Provisioner,
+) {
+	h.postgresProvisioner = pg
+	h.pgbouncerUpdater = pgb
+	h.secretsProvisioner = sec
+	h.r2Provisioner = r2
 }
 
 // SetupRoutes configures all API routes
@@ -575,6 +596,11 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 				admin.POST("/onboard", h.OnboardRepo)
 				admin.GET("/onboard", h.ListOnboardings)
 				admin.GET("/onboard/:owner/:repo", h.GetOnboarding)
+
+				// Standalone Provisioning (ad-hoc for already-onboarded projects)
+				admin.POST("/provision/postgres", h.ProvisionPostgres)
+				admin.POST("/provision/secrets", h.ProvisionSecrets)
+				admin.POST("/provision/r2", h.ProvisionR2)
 
 				// Topology (admin-level)
 				admin.GET("/topology", h.GetAdminTopology)

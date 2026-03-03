@@ -3167,6 +3167,80 @@ paths:
           description: Repository not onboarded
 
   # ============================================
+  # PROVISIONING ENDPOINTS
+  # ============================================
+
+  /v1/admin/provision/postgres:
+    post:
+      summary: Provision a Postgres database and role
+      description: |
+        Creates a database and role in the shared Postgres instance, grants privileges,
+        enables extensions, and updates PgBouncer configuration.
+      tags: [onboarding]
+      operationId: provisionPostgres
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionPostgresRequest'
+      responses:
+        '200':
+          description: Database provisioned
+        '400':
+          description: Invalid request (bad identifier or missing fields)
+        '503':
+          description: Postgres provisioning not configured
+
+  /v1/admin/provision/secrets:
+    post:
+      summary: Create K8s secrets in a namespace
+      description: |
+        Creates or updates a K8s Secret named <project>-credentials in the given namespace.
+        Rejects placeholder values.
+      tags: [onboarding]
+      operationId: provisionSecrets
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionSecretsRequest'
+      responses:
+        '200':
+          description: Secrets provisioned
+        '400':
+          description: Invalid request (placeholder values or missing fields)
+        '503':
+          description: Secrets provisioning not configured
+
+  /v1/admin/provision/r2:
+    post:
+      summary: Create a Cloudflare R2 bucket
+      description: Creates an R2 bucket and optionally appends R2 credentials to the project's K8s secret.
+      tags: [onboarding]
+      operationId: provisionR2
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionR2Request'
+      responses:
+        '200':
+          description: R2 bucket provisioned
+        '400':
+          description: Invalid request
+        '503':
+          description: R2 provisioning not configured
+
+  # ============================================
   # ADMIN CONTROL PLANE ENDPOINTS
   # ============================================
 
@@ -5229,15 +5303,94 @@ components:
 
     OnboardingRequest:
       type: object
-      required: [repo_full_name]
+      required: [repo_full_name, project_name]
       properties:
         repo_full_name:
           type: string
           description: GitHub owner/repo (e.g. madfam-org/my-project)
+        project_name:
+          type: string
+          description: Project name for Enclii registration
+        namespace:
+          type: string
+          description: K8s namespace (defaults to project_name)
+        manifest_path:
+          type: string
+          description: Path to K8s manifests in the repo (default k8s/production)
         branch:
           type: string
           default: main
-          description: Branch to read enclii.yaml from
+          description: Branch to track
+        provision_postgres:
+          $ref: '#/components/schemas/PostgresProvisionSpec'
+        provision_secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretEntry'
+        provision_r2:
+          $ref: '#/components/schemas/R2ProvisionSpec'
+
+    PostgresProvisionSpec:
+      type: object
+      required: [database_name, role_password]
+      properties:
+        database_name:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,62}$'
+        role_name:
+          type: string
+          description: Defaults to database_name
+        role_password:
+          type: string
+        extensions:
+          type: array
+          items:
+            type: string
+
+    SecretEntry:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+
+    R2ProvisionSpec:
+      type: object
+      required: [bucket_name]
+      properties:
+        bucket_name:
+          type: string
+
+    ProvisionPostgresRequest:
+      type: object
+      required: [namespace, spec]
+      properties:
+        namespace:
+          type: string
+        spec:
+          $ref: '#/components/schemas/PostgresProvisionSpec'
+
+    ProvisionSecretsRequest:
+      type: object
+      required: [namespace, secrets]
+      properties:
+        namespace:
+          type: string
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretEntry'
+
+    ProvisionR2Request:
+      type: object
+      required: [namespace, bucket_name]
+      properties:
+        namespace:
+          type: string
+        bucket_name:
+          type: string
 
     OnboardingRegistration:
       type: object
