@@ -170,15 +170,15 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 			switch latestDep.Status {
 			case types.DeploymentStatusRunning:
 				health.Status = "healthy"
-				health.Uptime = 99.9
+				health.Uptime = computeUptime(ctx, h, svc.ID.String())
 				response.HealthySvcs++
 			case types.DeploymentStatusPending:
 				health.Status = "degraded"
-				health.Uptime = 95.0
+				health.Uptime = computeUptime(ctx, h, svc.ID.String())
 				response.DegradedSvcs++
 			case types.DeploymentStatusFailed:
 				health.Status = "unhealthy"
-				health.Uptime = 0
+				health.Uptime = computeUptime(ctx, h, svc.ID.String())
 				response.UnhealthySvcs++
 			default:
 				health.Status = "unknown"
@@ -435,5 +435,44 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// Ensure context is used to avoid unused import warning
-var _ = context.Background
+// computeUptime calculates the uptime percentage for a service over the last 30 days
+// by summing the time the latest deployment spent in "running" status relative to
+// the total observation window. Falls back to 0 on any query error.
+func computeUptime(ctx context.Context, h *Handler, serviceID string) float64 {
+	window := 30 * 24 * time.Hour
+	since := time.Now().Add(-window)
+
+	deployments, err := h.repos.Deployments.GetByServiceSince(ctx, serviceID, since)
+	if err != nil || len(deployments) == 0 {
+		return 0
+	}
+
+	var runningDuration time.Duration
+	now := time.Now()
+	for i, dep := range deployments {
+		if dep.Status != types.DeploymentStatusRunning {
+			continue
+		}
+		start := dep.CreatedAt
+		if start.Before(since) {
+			start = since
+		}
+		// The "end" is when the next deployment started, or now if it's the latest
+		end := now
+		if i+1 < len(deployments) {
+			end = deployments[i+1].CreatedAt
+		}
+		if end.After(now) {
+			end = now
+		}
+		if end.After(start) {
+			runningDuration += end.Sub(start)
+		}
+	}
+
+	uptime := float64(runningDuration) / float64(window) * 100
+	if uptime > 100 {
+		uptime = 100
+	}
+	return float64(int(uptime*100)) / 100 // round to 2 decimal places
+}

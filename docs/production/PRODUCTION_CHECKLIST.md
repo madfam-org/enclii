@@ -8,8 +8,8 @@ tags: [production, deployment, checklist, operations]
 # Enclii Production Deployment Checklist
 
 **Status:** Production Beta v0.1.0
-**Last Updated:** February 2026
-**Last Audit:** Wave 15 Session 45 (Feb 26, 2026)
+**Last Updated:** March 2026
+**Last Audit:** Production Hardening Wave 1+2 (Mar 2, 2026)
 
 ---
 
@@ -116,6 +116,13 @@ tags: [production, deployment, checklist, operations]
 - [x] Recovery middleware strips panic details from responses
 - [x] 39 error leakage sites sealed with `middleware.AbortInternal`
 - [x] Error handler test coverage: 18 tests in `error_handler_test.go`
+
+### Authentication & Authorization Hardening
+- [x] CSRF stateless double-submit cookie (multi-replica safe)
+- [x] Global IP-based rate limiter on all public endpoints
+- [x] CORS startup validation (fatal if ENCLII_ALLOWED_ORIGINS empty in production, SEC-003)
+- [x] Admin email RBAC restricted to configured OIDC issuer only (SEC-007)
+- [x] Dispatch admin JWT verification via Janua JWKS (replaces cookie trust)
 
 ### Pod Security
 - [x] PostgreSQL: seccompProfile, capability restrictions
@@ -224,6 +231,20 @@ tags: [production, deployment, checklist, operations]
 
 ---
 
+## Production Hardening (Wave 1+2, Mar 2026)
+
+### Stub Implementations Replaced
+- [x] Backup checksum — SHA256 (was placeholder string)
+- [x] Backup S3 upload/download — aws CLI exec (was no-op)
+- [x] Cloudflare Access policy CRUD — real CF API calls (was fake policy IDs)
+- [x] Function invocation proxy — HTTP reverse proxy (was curl hint)
+- [x] Status page incident database — Postgres-backed CRUD (was in-memory `[]`)
+- [x] Observability uptime — computed from deployment history (was hardcoded 99.9/95/0)
+- [x] Billing page — fetches live data from API (was hardcoded "Pro Plan" / fake dates)
+- [x] Preview cleanup — CF tunnel route removal on PR close
+
+---
+
 ## Known Issues / Future Work
 
 - [ ] ArgoCD multi-source OCI Helm revision resolution bug — persists in v3.2.5 (2 ARC apps show Unknown/Healthy, pods functional)
@@ -236,6 +257,6 @@ tags: [production, deployment, checklist, operations]
 
 ---
 
-**Document Version:** 2.0
-**Last Audit:** Wave 15 Session 45 (Feb 26, 2026)
+**Document Version:** 3.0
+**Last Audit:** Production Hardening Wave 1+2 (Mar 2, 2026)
 **Maintained By:** Platform Team

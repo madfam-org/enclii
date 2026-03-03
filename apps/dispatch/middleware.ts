@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { jwtVerify, createRemoteJWKSet } from 'jose'
 
 /**
  * Dispatch Middleware - Infrastructure Operator Access Control
@@ -7,14 +8,21 @@ import type { NextRequest } from 'next/server'
  * SECURITY: This middleware enforces strict access control for Dispatch.
  * Only authorized infrastructure operators can access the Control Tower.
  *
- * Authorization is based on:
- * 1. Email domain - must be from an allowed domain (configurable via env)
- * 2. User role - must have an operator-level role (superadmin, admin, operator)
+ * Authorization is verified from the JWT token (not client-writable cookies):
+ * 1. JWT is verified against Janua JWKS endpoint
+ * 2. Email domain must be from an allowed domain (configurable via env)
+ * 3. User role must be an operator-level role (superadmin, admin, operator)
  *
  * Configure via environment variables:
- * - ALLOWED_ADMIN_DOMAINS: Comma-separated list of allowed email domains (e.g., @yourcompany.com)
- * - ALLOWED_ADMIN_ROLES: Comma-separated list of allowed roles (default: superadmin,admin,operator)
+ * - JANUA_ISSUER: OIDC issuer URL (e.g., https://auth.madfam.io)
+ * - ALLOWED_ADMIN_DOMAINS: Comma-separated list of allowed email domains
+ * - ALLOWED_ADMIN_ROLES: Comma-separated list of allowed roles
  */
+
+// Janua OIDC configuration
+const JANUA_ISSUER = process.env.JANUA_ISSUER || process.env.NEXT_PUBLIC_JANUA_URL || 'https://auth.madfam.io'
+const JWKS_URL = new URL('/.well-known/jwks.json', JANUA_ISSUER)
+const jwks = createRemoteJWKSet(JWKS_URL)
 
 // Allowed email domains (configurable via env, fallback to example.org for OSS deployments)
 const DEFAULT_DOMAINS = ['@example.org']
@@ -28,28 +36,19 @@ const ALLOWED_ROLES = process.env.ALLOWED_ADMIN_ROLES
   ? process.env.ALLOWED_ADMIN_ROLES.split(',').map((r) => r.trim())
   : DEFAULT_ROLES
 
-/**
- * Check if an email is from an allowed domain
- */
 function isAllowedDomain(email: string): boolean {
   return ALLOWED_DOMAINS.some((domain) => email.toLowerCase().endsWith(domain.toLowerCase()))
 }
 
-/**
- * Check if user has an allowed role
- * Roles are stored as comma-separated string in cookie
- */
-function hasAllowedRole(rolesString: string | undefined): boolean {
-  if (!rolesString) return false
-  const userRoles = rolesString.split(',').map((r) => r.trim())
-  return userRoles.some((role) => ALLOWED_ROLES.includes(role))
+function hasAllowedRole(roles: string[]): boolean {
+  return roles.some((role) => ALLOWED_ROLES.includes(role))
 }
 
 // Public paths that don't require authentication
 const publicPaths = [
   '/login',
   '/auth/callback',
-  '/api/auth', // Includes /api/auth/session for cookie setting
+  '/api/auth',
   '/api/health',
   '/_next',
   '/favicon.ico',
@@ -63,7 +62,22 @@ function isPublicPath(pathname: string): boolean {
   )
 }
 
-export function middleware(request: NextRequest) {
+/**
+ * Extract roles from verified JWT payload.
+ * Supports both array and comma-separated string formats.
+ */
+function extractRoles(payload: Record<string, unknown>): string[] {
+  const rolesRaw = payload.roles || payload.role || payload['enclii_roles']
+  if (Array.isArray(rolesRaw)) {
+    return rolesRaw.filter((r): r is string => typeof r === 'string')
+  }
+  if (typeof rolesRaw === 'string') {
+    return rolesRaw.split(',').map((r) => r.trim())
+  }
+  return []
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Skip middleware for public paths
@@ -71,12 +85,9 @@ export function middleware(request: NextRequest) {
     return addSecurityHeaders(NextResponse.next())
   }
 
-  // Check for authentication token and user info
+  // Extract JWT from auth cookie (set by the auth callback, NOT user-writable role cookies)
   const token = request.cookies.get('dispatch_auth')?.value || request.cookies.get('admin_auth')?.value
-  const userEmail = request.cookies.get('dispatch_user_email')?.value || request.cookies.get('admin_user_email')?.value
-  const userRoles = request.cookies.get('dispatch_user_roles')?.value || request.cookies.get('admin_user_roles')?.value
 
-  // If no token, redirect to login
   if (!token) {
     if (pathname.startsWith('/api/')) {
       return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
@@ -87,14 +98,42 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // OPERATOR CHECK: Must have allowed domain AND allowed role
-  const domainAllowed = userEmail ? isAllowedDomain(userEmail) : false
-  const roleAllowed = hasAllowedRole(userRoles)
+  // Verify the JWT against Janua JWKS — this is the security-critical check.
+  // We no longer trust client-writable cookies for email/roles.
+  let email: string | undefined
+  let roles: string[] = []
+
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: JANUA_ISSUER,
+    })
+
+    email = payload.email as string | undefined
+    roles = extractRoles(payload as Record<string, unknown>)
+  } catch (err) {
+    console.warn(`[DISPATCH SECURITY] JWT verification failed: ${err}`)
+
+    if (pathname.startsWith('/api/')) {
+      return new NextResponse(JSON.stringify({ error: 'Invalid or expired token' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    // Clear stale auth cookie and redirect to login
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.delete('dispatch_auth')
+    response.cookies.delete('admin_auth')
+    return response
+  }
+
+  // OPERATOR CHECK: Must have allowed domain AND allowed role (from verified JWT)
+  const domainAllowed = email ? isAllowedDomain(email) : false
+  const roleAllowed = hasAllowedRole(roles)
 
   if (!domainAllowed || !roleAllowed) {
     const reason = !domainAllowed
-      ? `email domain not allowed: ${userEmail}`
-      : `insufficient role: ${userRoles || 'none'}`
+      ? `email domain not allowed: ${email}`
+      : `insufficient role: ${roles.join(',') || 'none'}`
     console.warn(`[DISPATCH SECURITY] Unauthorized access attempt - ${reason}`)
 
     if (pathname.startsWith('/api/')) {
@@ -110,7 +149,6 @@ export function middleware(request: NextRequest) {
       )
     }
 
-    // Redirect unauthorized users to access denied page
     return NextResponse.redirect(new URL('/access-denied', request.url))
   }
 
@@ -119,19 +157,10 @@ export function middleware(request: NextRequest) {
 
 function addSecurityHeaders(response: NextResponse): NextResponse {
   const securityHeaders = {
-    // Prevent clickjacking attacks
     'X-Frame-Options': 'DENY',
-
-    // Prevent MIME type sniffing
     'X-Content-Type-Options': 'nosniff',
-
-    // Enable XSS protection
     'X-XSS-Protection': '1; mode=block',
-
-    // Control referrer information
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-
-    // Strict Content Security Policy for Dispatch
     'Content-Security-Policy': [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com",
@@ -141,8 +170,6 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
       `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? 'http://localhost:4200 ' : ''}https://api.enclii.dev https://api.cloudflare.com ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://api.janua.dev'}`,
       "frame-ancestors 'none'",
     ].join('; '),
-
-    // Restrict browser features
     'Permissions-Policy': [
       'geolocation=()',
       'microphone=()',
@@ -150,8 +177,6 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
       'payment=()',
       'usb=()',
     ].join(', '),
-
-    // HSTS in production
     ...(process.env.NODE_ENV === 'production' && {
       'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
     }),

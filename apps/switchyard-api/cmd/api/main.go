@@ -402,6 +402,10 @@ func main() {
 	router.Use(securityMiddleware.CORSMiddleware())
 	logrus.Info("✓ CORS middleware enabled")
 
+	// Global IP-based rate limiting (complements per-endpoint auth rate limits)
+	router.Use(securityMiddleware.RateLimitMiddleware())
+	logrus.Info("✓ Global rate limiter enabled")
+
 	// Setup API routes with all dependencies
 	apiHandler := api.NewHandler(
 		repos,
@@ -557,6 +561,10 @@ func main() {
 	// Stop function reconciler
 	functionReconciler.Stop()
 	logrus.Info("Function reconciler stopped")
+
+	// Stop security middleware cleanup goroutine
+	securityMiddleware.Stop()
+	logrus.Info("Security middleware stopped")
 
 	if cacheService != nil {
 		if err := cacheService.Close(); err != nil {

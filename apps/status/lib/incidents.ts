@@ -1,40 +1,11 @@
 /**
  * Incident Management Library
  *
- * This module will handle database operations for incidents in Phase 3.
- * Currently provides type-safe interfaces and mock implementations.
- *
- * Database Schema (for Phase 3):
- *
- * CREATE TABLE incidents (
- *   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
- *   title VARCHAR(255) NOT NULL,
- *   status VARCHAR(20) NOT NULL DEFAULT 'investigating',
- *   severity VARCHAR(20) NOT NULL,
- *   affected_services TEXT[] NOT NULL DEFAULT '{}',
- *   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
- *   resolved_at TIMESTAMP WITH TIME ZONE
- * );
- *
- * CREATE TABLE incident_updates (
- *   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
- *   incident_id UUID REFERENCES incidents(id) ON DELETE CASCADE,
- *   message TEXT NOT NULL,
- *   status VARCHAR(20),
- *   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
- * );
- *
- * CREATE TABLE scheduled_maintenance (
- *   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
- *   title VARCHAR(255) NOT NULL,
- *   description TEXT,
- *   affected_services TEXT[] NOT NULL DEFAULT '{}',
- *   scheduled_start TIMESTAMP WITH TIME ZONE NOT NULL,
- *   scheduled_end TIMESTAMP WITH TIME ZONE NOT NULL,
- *   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
- * );
+ * Database-backed incident CRUD operations for the status page.
+ * Falls back to no-op behavior when DATABASE_URL is not configured.
  */
 
+import { query } from './db'
 import { getDatabaseUrl } from './config'
 import type {
   Incident,
@@ -64,6 +35,99 @@ export interface IncidentQueryOptions {
   until?: Date
 }
 
+// -- Row types for pg results --
+
+interface IncidentRow {
+  id: string
+  title: string
+  status: IncidentStatus
+  severity: IncidentSeverity
+  affected_services: string[]
+  created_at: string
+  resolved_at: string | null
+}
+
+interface UpdateRow {
+  id: string
+  incident_id: string
+  message: string
+  status: IncidentStatus | null
+  created_at: string
+}
+
+interface MaintenanceRow {
+  id: string
+  title: string
+  description: string | null
+  affected_services: string[]
+  scheduled_start: string
+  scheduled_end: string
+  created_at: string
+}
+
+// -- Helpers --
+
+function rowToIncident(row: IncidentRow, updates: IncidentUpdate[] = []): Incident {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    severity: row.severity,
+    affectedServices: row.affected_services,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? undefined,
+    updates,
+  }
+}
+
+function rowToUpdate(row: UpdateRow): IncidentUpdate {
+  return {
+    id: row.id,
+    incidentId: row.incident_id,
+    message: row.message,
+    status: row.status ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
+function rowToMaintenance(row: MaintenanceRow): ScheduledMaintenance {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? undefined,
+    affectedServices: row.affected_services,
+    scheduledStart: row.scheduled_start,
+    scheduledEnd: row.scheduled_end,
+    createdAt: row.created_at,
+  }
+}
+
+/**
+ * Fetch updates for a set of incident IDs, grouped by incident.
+ */
+async function fetchUpdatesForIncidents(ids: string[]): Promise<Map<string, IncidentUpdate[]>> {
+  const map = new Map<string, IncidentUpdate[]>()
+  if (ids.length === 0) return map
+
+  const res = await query<UpdateRow>(
+    `SELECT id, incident_id, message, status, created_at
+     FROM incident_updates
+     WHERE incident_id = ANY($1)
+     ORDER BY created_at ASC`,
+    [ids],
+  )
+  if (!res) return map
+
+  for (const row of res.rows) {
+    const list = map.get(row.incident_id) ?? []
+    list.push(rowToUpdate(row))
+    map.set(row.incident_id, list)
+  }
+  return map
+}
+
+// -- Public API --
+
 /**
  * Create a new incident
  */
@@ -73,27 +137,25 @@ export async function createIncident(data: {
   affectedServices: string[]
   initialMessage?: string
 }): Promise<Incident> {
-  // Phase 3: Replace with actual database insert
+  const res = await query<IncidentRow>(
+    `INSERT INTO incidents (title, severity, affected_services)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [data.title, data.severity, data.affectedServices],
+  )
 
-  const now = new Date().toISOString()
-  const incident: Incident = {
-    id: crypto.randomUUID(),
-    title: data.title,
-    status: 'investigating',
-    severity: data.severity,
-    affectedServices: data.affectedServices,
-    createdAt: now,
-    updates: [],
+  if (!res || res.rows.length === 0) {
+    throw new Error('Failed to create incident (database may not be configured)')
   }
 
+  const incident = rowToIncident(res.rows[0])
+
   if (data.initialMessage) {
-    incident.updates.push({
-      id: crypto.randomUUID(),
-      incidentId: incident.id,
+    const upd = await addIncidentUpdate(incident.id, {
       message: data.initialMessage,
       status: 'investigating',
-      createdAt: now,
     })
+    if (upd) incident.updates.push(upd)
   }
 
   return incident
@@ -106,21 +168,68 @@ export async function getIncidents(options: IncidentQueryOptions = {}): Promise<
   incidents: Incident[]
   total: number
 }> {
-  // Phase 3: Replace with actual database query
+  const conditions: string[] = []
+  const params: unknown[] = []
+  let idx = 1
 
-  // Currently returns empty array
-  return {
-    incidents: [],
-    total: 0,
+  if (options.status) {
+    conditions.push(`status = $${idx++}`)
+    params.push(options.status)
   }
+  if (options.severity) {
+    conditions.push(`severity = $${idx++}`)
+    params.push(options.severity)
+  }
+  if (options.affectedService) {
+    conditions.push(`$${idx++} = ANY(affected_services)`)
+    params.push(options.affectedService)
+  }
+  if (options.since) {
+    conditions.push(`created_at >= $${idx++}`)
+    params.push(options.since.toISOString())
+  }
+  if (options.until) {
+    conditions.push(`created_at <= $${idx++}`)
+    params.push(options.until.toISOString())
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const limit = options.limit ?? 50
+  const offset = options.offset ?? 0
+
+  // Count total
+  const countRes = await query<{ count: string }>(`SELECT count(*) FROM incidents ${where}`, params)
+  const total = countRes ? parseInt(countRes.rows[0].count, 10) : 0
+
+  // Fetch page
+  const dataRes = await query<IncidentRow>(
+    `SELECT * FROM incidents ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
+    [...params, limit, offset],
+  )
+
+  if (!dataRes || dataRes.rows.length === 0) {
+    return { incidents: [], total }
+  }
+
+  const ids = dataRes.rows.map((r) => r.id)
+  const updatesMap = await fetchUpdatesForIncidents(ids)
+
+  const incidents = dataRes.rows.map((row) =>
+    rowToIncident(row, updatesMap.get(row.id) ?? []),
+  )
+
+  return { incidents, total }
 }
 
 /**
  * Get a single incident by ID
  */
 export async function getIncident(id: string): Promise<Incident | null> {
-  // Phase 3: Replace with actual database query
-  return null
+  const res = await query<IncidentRow>(`SELECT * FROM incidents WHERE id = $1`, [id])
+  if (!res || res.rows.length === 0) return null
+
+  const updatesMap = await fetchUpdatesForIncidents([id])
+  return rowToIncident(res.rows[0], updatesMap.get(id) ?? [])
 }
 
 /**
@@ -131,18 +240,32 @@ export async function updateIncident(
   data: {
     status?: IncidentStatus
     message?: string
-  }
+  },
 ): Promise<Incident | null> {
-  // Phase 3: Replace with actual database update
-  return null
+  if (data.status) {
+    const resolvedClause = data.status === 'resolved' ? ', resolved_at = NOW()' : ''
+    await query(
+      `UPDATE incidents SET status = $1${resolvedClause} WHERE id = $2`,
+      [data.status, id],
+    )
+  }
+
+  if (data.message) {
+    await addIncidentUpdate(id, {
+      message: data.message,
+      status: data.status,
+    })
+  }
+
+  return getIncident(id)
 }
 
 /**
  * Delete an incident
  */
 export async function deleteIncident(id: string): Promise<boolean> {
-  // Phase 3: Replace with actual database delete
-  return false
+  const res = await query(`DELETE FROM incidents WHERE id = $1`, [id])
+  return res ? res.rowCount !== null && res.rowCount > 0 : false
 }
 
 /**
@@ -152,7 +275,6 @@ export async function getActiveIncidents(): Promise<Incident[]> {
   const { incidents } = await getIncidents({
     limit: 100,
   })
-
   return incidents.filter((i) => i.status !== 'resolved')
 }
 
@@ -181,43 +303,54 @@ export async function createScheduledMaintenance(data: {
   scheduledStart: Date
   scheduledEnd: Date
 }): Promise<ScheduledMaintenance> {
-  // Phase 3: Replace with actual database insert
+  const res = await query<MaintenanceRow>(
+    `INSERT INTO scheduled_maintenance (title, description, affected_services, scheduled_start, scheduled_end)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [data.title, data.description ?? null, data.affectedServices, data.scheduledStart.toISOString(), data.scheduledEnd.toISOString()],
+  )
 
-  return {
-    id: crypto.randomUUID(),
-    title: data.title,
-    description: data.description,
-    affectedServices: data.affectedServices,
-    scheduledStart: data.scheduledStart.toISOString(),
-    scheduledEnd: data.scheduledEnd.toISOString(),
-    createdAt: new Date().toISOString(),
+  if (!res || res.rows.length === 0) {
+    throw new Error('Failed to create maintenance (database may not be configured)')
   }
+
+  return rowToMaintenance(res.rows[0])
 }
 
 /**
  * Get upcoming and ongoing maintenance
  */
 export async function getActiveMaintenances(): Promise<ScheduledMaintenance[]> {
-  // Phase 3: Replace with actual database query
-
-  // Currently returns empty array
-  return []
+  const res = await query<MaintenanceRow>(
+    `SELECT * FROM scheduled_maintenance
+     WHERE scheduled_end >= NOW()
+     ORDER BY scheduled_start ASC`,
+  )
+  if (!res) return []
+  return res.rows.map(rowToMaintenance)
 }
 
 /**
  * Get scheduled maintenances for the next N days
  */
 export async function getUpcomingMaintenances(days: number = 7): Promise<ScheduledMaintenance[]> {
-  // Phase 3: Replace with actual database query
-  return []
+  const res = await query<MaintenanceRow>(
+    `SELECT * FROM scheduled_maintenance
+     WHERE scheduled_start <= NOW() + $1 * INTERVAL '1 day'
+       AND scheduled_end >= NOW()
+     ORDER BY scheduled_start ASC`,
+    [days],
+  )
+  if (!res) return []
+  return res.rows.map(rowToMaintenance)
 }
 
 /**
  * Delete scheduled maintenance
  */
 export async function deleteScheduledMaintenance(id: string): Promise<boolean> {
-  // Phase 3: Replace with actual database delete
-  return false
+  const res = await query(`DELETE FROM scheduled_maintenance WHERE id = $1`, [id])
+  return res ? res.rowCount !== null && res.rowCount > 0 : false
 }
 
 /**
@@ -228,11 +361,16 @@ export async function addIncidentUpdate(
   data: {
     message: string
     status?: IncidentStatus
-  }
+  },
 ): Promise<IncidentUpdate | null> {
-  // Phase 3: Replace with actual database insert
-
-  return null
+  const res = await query<UpdateRow>(
+    `INSERT INTO incident_updates (incident_id, message, status)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [incidentId, data.message, data.status ?? null],
+  )
+  if (!res || res.rows.length === 0) return null
+  return rowToUpdate(res.rows[0])
 }
 
 /**
@@ -244,16 +382,49 @@ export async function getIncidentMetrics(days: number = 90): Promise<{
   averageResolutionTime: number | null
   incidentsBySeverity: Record<IncidentSeverity, number>
 }> {
-  // Phase 3: Replace with actual database aggregation
+  const since = new Date()
+  since.setDate(since.getDate() - days)
 
+  const res = await query<{
+    total: string
+    resolved: string
+    avg_resolution_seconds: string | null
+    minor: string
+    major: string
+    critical: string
+  }>(
+    `SELECT
+       count(*) AS total,
+       count(*) FILTER (WHERE status = 'resolved') AS resolved,
+       EXTRACT(EPOCH FROM avg(resolved_at - created_at)) FILTER (WHERE resolved_at IS NOT NULL) AS avg_resolution_seconds,
+       count(*) FILTER (WHERE severity = 'minor') AS minor,
+       count(*) FILTER (WHERE severity = 'major') AS major,
+       count(*) FILTER (WHERE severity = 'critical') AS critical
+     FROM incidents
+     WHERE created_at >= $1`,
+    [since.toISOString()],
+  )
+
+  if (!res || res.rows.length === 0) {
+    return {
+      totalIncidents: 0,
+      resolvedIncidents: 0,
+      averageResolutionTime: null,
+      incidentsBySeverity: { minor: 0, major: 0, critical: 0 },
+    }
+  }
+
+  const row = res.rows[0]
   return {
-    totalIncidents: 0,
-    resolvedIncidents: 0,
-    averageResolutionTime: null,
+    totalIncidents: parseInt(row.total, 10),
+    resolvedIncidents: parseInt(row.resolved, 10),
+    averageResolutionTime: row.avg_resolution_seconds
+      ? parseFloat(row.avg_resolution_seconds)
+      : null,
     incidentsBySeverity: {
-      minor: 0,
-      major: 0,
-      critical: 0,
+      minor: parseInt(row.minor, 10),
+      major: parseInt(row.major, 10),
+      critical: parseInt(row.critical, 10),
     },
   }
 }

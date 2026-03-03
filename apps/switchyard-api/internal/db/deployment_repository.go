@@ -142,6 +142,36 @@ func (r *DeploymentRepository) GetByStatus(ctx context.Context, status types.Dep
 	return deployments, nil
 }
 
+// GetByServiceSince returns deployments for a service created after a given time, ordered by created_at ASC.
+func (r *DeploymentRepository) GetByServiceSince(ctx context.Context, serviceID string, since time.Time) ([]*types.Deployment, error) {
+	query := `SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health, d.error_message, d.created_at, d.updated_at
+	          FROM deployments d
+	          JOIN releases r ON d.release_id = r.id
+	          WHERE r.service_id = $1 AND d.created_at >= $2
+	          ORDER BY d.created_at ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, serviceID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []*types.Deployment
+	for rows.Next() {
+		deployment := &types.Deployment{}
+		err := rows.Scan(
+			&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
+			&deployment.Replicas, &deployment.Status, &deployment.Health,
+			&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		deployments = append(deployments, deployment)
+	}
+	return deployments, nil
+}
+
 // ListAll retrieves all deployments across services, optionally filtered by a since time
 func (r *DeploymentRepository) ListAll(ctx context.Context, since *time.Time, limit int) ([]*types.Deployment, error) {
 	var query string

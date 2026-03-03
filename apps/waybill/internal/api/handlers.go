@@ -143,12 +143,28 @@ func (h *Handlers) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	// Get Stripe customer ID from database (simplified - would query subscriptions table)
-	// For now, return mock data structure
+	// Try to retrieve invoices from Stripe if configured
+	if h.stripe != nil && h.stripe.IsEnabled() {
+		customerID, err := h.stripe.GetCustomerIDForProject(c.Request.Context(), projectID.String())
+		if err == nil && customerID != "" {
+			invoices, err := h.stripe.ListInvoices(c.Request.Context(), customerID, 20)
+			if err != nil {
+				h.logger.Error("failed to list invoices from Stripe", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list invoices"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"project_id": projectID,
+				"invoices":   invoices,
+			})
+			return
+		}
+	}
+
+	// No Stripe customer for this project — return empty list
 	c.JSON(http.StatusOK, gin.H{
 		"project_id": projectID,
 		"invoices":   []interface{}{},
-		"message":    "Stripe integration required for invoice listing",
 	})
 }
 

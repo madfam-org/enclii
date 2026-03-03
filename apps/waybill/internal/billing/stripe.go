@@ -191,3 +191,26 @@ func (s *StripeClient) ListInvoices(ctx context.Context, customerID string, limi
 
 	return invoices, nil
 }
+
+// IsEnabled returns true if the Stripe API key is configured.
+func (s *StripeClient) IsEnabled() bool {
+	return stripe.Key != ""
+}
+
+// GetCustomerIDForProject looks up the Stripe customer associated with a project
+// by searching customer metadata. Returns empty string if no customer is found.
+func (s *StripeClient) GetCustomerIDForProject(ctx context.Context, projectID string) (string, error) {
+	params := &stripe.CustomerSearchParams{
+		SearchParams: stripe.SearchParams{
+			Query: fmt.Sprintf("metadata['project_id']:'%s'", projectID),
+		},
+	}
+	iter := customer.Search(params)
+	if iter.Next() {
+		return iter.Customer().ID, nil
+	}
+	if err := iter.Err(); err != nil {
+		return "", fmt.Errorf("stripe customer search: %w", err)
+	}
+	return "", nil
+}

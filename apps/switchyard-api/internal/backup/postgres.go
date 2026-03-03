@@ -2,6 +2,8 @@ package backup
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/url"
@@ -442,35 +444,82 @@ func (bm *BackupManager) createDatabase(databaseName string) error {
 }
 
 func (bm *BackupManager) calculateChecksum(filePath string) (string, error) {
-	// In a real implementation, calculate SHA256 checksum
-	return "checksum-placeholder", nil
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open file for checksum: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("hash file: %w", err)
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// S3 operations (simplified - would use AWS SDK in production)
+// s3Env returns the environment variables needed for aws CLI S3 operations.
+// The backup pod already has aws-cli installed (same image used for pg_dump).
+func (bm *BackupManager) s3Env() []string {
+	env := os.Environ()
+	if bm.config.S3AccessKey != "" {
+		env = append(env, "AWS_ACCESS_KEY_ID="+bm.config.S3AccessKey)
+	}
+	if bm.config.S3SecretKey != "" {
+		env = append(env, "AWS_SECRET_ACCESS_KEY="+bm.config.S3SecretKey)
+	}
+	if bm.config.S3Region != "" {
+		env = append(env, "AWS_DEFAULT_REGION="+bm.config.S3Region)
+	}
+	return env
+}
+
 func (bm *BackupManager) uploadToS3(localPath, key string) error {
+	s3URI := fmt.Sprintf("s3://%s/%s", bm.config.S3Bucket, key)
 	logrus.WithFields(logrus.Fields{
 		"local_path": localPath,
-		"s3_key":     key,
-		"bucket":     bm.config.S3Bucket,
+		"s3_uri":     s3URI,
 	}).Info("Uploading backup to S3")
 
-	// Implementation would use AWS SDK to upload file
+	cmd := exec.Command("aws", "s3", "cp", localPath, s3URI)
+	cmd.Env = bm.s3Env()
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("s3 upload failed: %w (output: %s)", err, string(output))
+	}
+	logrus.WithField("s3_uri", s3URI).Info("Backup uploaded to S3")
 	return nil
 }
 
 func (bm *BackupManager) downloadFromS3(key, localPath string) error {
+	s3URI := fmt.Sprintf("s3://%s/%s", bm.config.S3Bucket, key)
 	logrus.WithFields(logrus.Fields{
-		"s3_key":     key,
+		"s3_uri":     s3URI,
 		"local_path": localPath,
-		"bucket":     bm.config.S3Bucket,
 	}).Info("Downloading backup from S3")
 
-	// Implementation would use AWS SDK to download file
+	cmd := exec.Command("aws", "s3", "cp", s3URI, localPath)
+	cmd.Env = bm.s3Env()
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("s3 download failed: %w (output: %s)", err, string(output))
+	}
+	logrus.WithField("local_path", localPath).Info("Backup downloaded from S3")
 	return nil
 }
 
 func (bm *BackupManager) deleteFromS3(key string) error {
-	// Implementation would use AWS SDK to delete file
+	s3URI := fmt.Sprintf("s3://%s/%s", bm.config.S3Bucket, key)
+	logrus.WithField("s3_uri", s3URI).Info("Deleting backup from S3")
+
+	cmd := exec.Command("aws", "s3", "rm", s3URI)
+	cmd.Env = bm.s3Env()
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("s3 delete failed: %w (output: %s)", err, string(output))
+	}
 	return nil
 }
 

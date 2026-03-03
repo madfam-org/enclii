@@ -77,6 +77,7 @@ type DeploymentRepositoryInterface interface {
 	ListByRelease(ctx context.Context, releaseID string) ([]*types.Deployment, error)
 	GetLatestByService(ctx context.Context, serviceID string) (*types.Deployment, error)
 	GetByStatus(ctx context.Context, status types.DeploymentStatus) ([]*types.Deployment, error)
+	GetByServiceSince(ctx context.Context, serviceID string, since time.Time) ([]*types.Deployment, error)
 }
 
 // UserRepositoryInterface defines operations for users

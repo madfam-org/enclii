@@ -29,6 +29,7 @@ type AuthMiddleware struct {
 	publicPaths    map[string]bool
 	requiredRoles  map[string][]string // path -> required roles
 	adminEmails    map[string]bool     // email -> is admin (for OIDC fallback)
+	oidcIssuer     string              // configured OIDC issuer URL for SEC-007 check
 }
 
 // NewAuthMiddleware creates a new authentication middleware
@@ -40,6 +41,7 @@ func NewAuthMiddleware(publicKey *rsa.PublicKey) *AuthMiddleware {
 		publicPaths:    make(map[string]bool),
 		requiredRoles:  make(map[string][]string),
 		adminEmails:    make(map[string]bool),
+		oidcIssuer:     os.Getenv("ENCLII_OIDC_ISSUER"),
 	}
 	// Load admin emails from environment variable (comma-separated)
 	// Example: ENCLII_ADMIN_EMAILS=admin@madfam.io,superuser@example.com
@@ -265,14 +267,18 @@ func (a *AuthMiddleware) Middleware() gin.HandlerFunc {
 			}
 		}
 
-		// If no roles in JWT but email matches admin list, grant admin+developer roles
-		// This enables OIDC providers (like Janua) that don't include roles in tokens
-		if len(rolesStr) == 0 && userEmail != "" && a.adminEmails[userEmail] {
+		// SEC-007: If no roles in JWT but email matches admin list, grant admin+developer roles.
+		// Restricted to tokens issued by our configured OIDC issuer only — prevents
+		// foreign JWTs from escalating privileges via email-matching.
+		issuer, _ := claims["iss"].(string)
+		if len(rolesStr) == 0 && userEmail != "" && a.adminEmails[userEmail] && a.isConfiguredIssuer(issuer) {
 			rolesStr = []string{"admin", "developer"}
 			logrus.WithFields(logrus.Fields{
-				"email": userEmail,
-				"roles": rolesStr,
-			}).Debug("Applied admin roles based on email mapping")
+				"email":  userEmail,
+				"roles":  rolesStr,
+				"issuer": issuer,
+				"audit":  "SEC-007",
+			}).Info("Applied admin roles based on email mapping (issuer verified)")
 		} else if len(rolesStr) == 0 {
 			// Default to developer role for authenticated users
 			rolesStr = []string{"developer"}
@@ -307,6 +313,16 @@ func (a *AuthMiddleware) Middleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// isConfiguredIssuer returns true if the given issuer matches the configured OIDC issuer.
+// SEC-007: Prevents email-based admin escalation from foreign JWT issuers.
+func (a *AuthMiddleware) isConfiguredIssuer(issuer string) bool {
+	if a.oidcIssuer == "" {
+		// No OIDC issuer configured — allow fallback for local/dev mode
+		return true
+	}
+	return strings.TrimRight(issuer, "/") == strings.TrimRight(a.oidcIssuer, "/")
 }
 
 // hasRequiredRole checks if user has at least one of the required roles

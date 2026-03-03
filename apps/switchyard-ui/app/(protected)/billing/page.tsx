@@ -1,4 +1,6 @@
-import { Metadata } from "next";
+"use client";
+
+import { useEffect, useState } from "react";
 import { UsageMeters } from "@/components/billing/usage-meters";
 import { CostBreakdown } from "@/components/billing/cost-breakdown";
 import { InvoiceTable } from "@/components/billing/invoice-table";
@@ -6,14 +8,65 @@ import { PlanSelector } from "@/components/billing/plan-selector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CreditCard, Receipt, Settings } from "lucide-react";
+import { CreditCard, Receipt, Settings, Loader2 } from "lucide-react";
+import { apiGet } from "@/lib/api";
+import { useTier } from "@/hooks/use-tier";
 
-export const metadata: Metadata = {
-  title: "Billing | Enclii",
-  description: "Manage your billing and subscription",
-};
+interface BillingInfo {
+  plan_name: string;
+  plan_base: number;
+  period_start: string;
+  period_end: string;
+  grand_total: number;
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function nextInvoiceDate(periodEnd: string): string {
+  try {
+    const d = new Date(periodEnd);
+    d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "—";
+  }
+}
 
 export default function BillingPage() {
+  const { tierName, config } = useTier();
+  const [billing, setBilling] = useState<BillingInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiGet<BillingInfo>("/v1/usage")
+      .then(setBilling)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const planName = billing?.plan_name ?? tierName ?? "Community";
+  const planPrice = config?.price ?? "Free";
+  const periodLabel =
+    billing?.period_start && billing?.period_end
+      ? `${formatDate(billing.period_start)} - ${formatDate(billing.period_end)}`
+      : "Current period";
+  const nextInvoice =
+    billing?.period_end ? nextInvoiceDate(billing.period_end) : "—";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -42,10 +95,16 @@ export default function BillingPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Pro Plan</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  $20/month + usage
-                </p>
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                ) : (
+                  <>
+                    <CardTitle>{planName} Plan</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      {planPrice}/month + usage
+                    </p>
+                  </>
+                )}
               </div>
               <Button variant="outline" size="sm">
                 <Settings className="h-4 w-4 mr-2" />
@@ -56,11 +115,11 @@ export default function BillingPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Billing Period</p>
-                  <p className="font-medium">Dec 1 - Dec 31, 2024</p>
+                  <p className="font-medium">{periodLabel}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Next Invoice</p>
-                  <p className="font-medium">Jan 1, 2025</p>
+                  <p className="font-medium">{nextInvoice}</p>
                 </div>
               </div>
             </CardContent>
@@ -107,7 +166,7 @@ export default function BillingPage() {
         </TabsContent>
 
         <TabsContent value="plan" className="space-y-6">
-          <PlanSelector currentPlanId="pro" />
+          <PlanSelector currentPlanId={tierName?.toLowerCase() ?? "community"} />
         </TabsContent>
       </Tabs>
     </div>

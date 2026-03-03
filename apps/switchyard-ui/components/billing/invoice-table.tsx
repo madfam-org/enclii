@@ -36,39 +36,8 @@ const statusConfig = {
   draft: { label: "Draft", variant: "outline" as const },
 };
 
-const defaultInvoices: Invoice[] = [
-  {
-    id: "inv_001",
-    number: "INV-2024-001",
-    date: "Dec 1, 2024",
-    dueDate: "Dec 15, 2024",
-    amount: 24.50,
-    status: "paid",
-    pdfUrl: "#",
-    stripeUrl: "#",
-  },
-  {
-    id: "inv_002",
-    number: "INV-2024-002",
-    date: "Nov 1, 2024",
-    dueDate: "Nov 15, 2024",
-    amount: 22.30,
-    status: "paid",
-    pdfUrl: "#",
-  },
-  {
-    id: "inv_003",
-    number: "INV-2024-003",
-    date: "Oct 1, 2024",
-    dueDate: "Oct 15, 2024",
-    amount: 20.00,
-    status: "paid",
-    pdfUrl: "#",
-  },
-];
-
 export function InvoiceTable({
-  invoices = defaultInvoices,
+  invoices,
   className
 }: InvoiceTableProps) {
   return (

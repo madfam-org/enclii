@@ -374,14 +374,32 @@ func (h *Handler) ToggleZeroTrust(c *gin.Context) {
 	// Update Zero Trust setting
 	domain.ZeroTrustEnabled = req.ZeroTrustEnabled
 
-	// TODO: Create/delete Cloudflare Access policy
-	// For now, just update the database
-	if req.ZeroTrustEnabled {
-		// Would create Access policy and store ID
-		domain.AccessPolicyID = fmt.Sprintf("policy-%s", domain.ID.String()[:8])
+	// Create or delete Cloudflare Access application for this domain
+	if h.domainSyncService != nil {
+		cfClient := h.domainSyncService.GetCloudflareClient()
+		if cfClient != nil {
+			if req.ZeroTrustEnabled {
+				app, err := cfClient.CreateAccessApplication(ctx,
+					fmt.Sprintf("enclii-%s", domain.Domain), domain.Domain)
+				if err != nil {
+					h.logger.Error(ctx, "Failed to create Access application",
+						logging.Error("error", err))
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create Access application"})
+					return
+				}
+				domain.AccessPolicyID = app.ID
+			} else if domain.AccessPolicyID != "" {
+				if err := cfClient.DeleteAccessApplication(ctx, domain.AccessPolicyID); err != nil {
+					h.logger.Warn(ctx, "Failed to delete Access application (may already be deleted)",
+						logging.Error("error", err))
+				}
+				domain.AccessPolicyID = ""
+			}
+		} else {
+			h.logger.Warn(ctx, "Cloudflare client not available, skipping Access policy management")
+		}
 	} else {
-		// Would delete Access policy
-		domain.AccessPolicyID = ""
+		h.logger.Warn(ctx, "Domain sync service not configured, skipping Access policy management")
 	}
 
 	if err := h.repos.CustomDomains.Update(ctx, domain); err != nil {

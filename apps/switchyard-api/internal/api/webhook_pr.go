@@ -531,6 +531,19 @@ func (h *Handler) cleanupPreviewResources(preview *types.PreviewEnvironment) {
 			logging.Error("error", err))
 	}
 
+	// Remove Cloudflare tunnel route for the preview subdomain
+	if h.tunnelRoutesService != nil && preview.PreviewSubdomain != "" {
+		hostname := preview.PreviewSubdomain + ".enclii.dev"
+		if err := h.tunnelRoutesService.RemoveRoute(ctx, hostname); err != nil {
+			h.logger.Warn(ctx, "Failed to remove CF tunnel route for preview",
+				logging.String("hostname", hostname),
+				logging.Error("error", err))
+		} else {
+			h.logger.Info(ctx, "Removed CF tunnel route for preview",
+				logging.String("hostname", hostname))
+		}
+	}
+
 	h.logger.Info(ctx, "Preview environment cleanup completed",
 		logging.String("preview_id", preview.ID.String()),
 		logging.String("namespace", previewNamespace))

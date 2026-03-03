@@ -159,6 +159,82 @@ func TestAuthMiddleware_RoleRequirement(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
+func TestAuthMiddleware_SEC007_IssuerRestrictedAdminFallback(t *testing.T) {
+	// When ENCLII_OIDC_ISSUER is set, admin email fallback should only
+	// apply to tokens from that issuer.
+	gin.SetMode(gin.TestMode)
+	privateKey, publicKey := generateTestRSAKeys(t)
+
+	t.Setenv("ENCLII_OIDC_ISSUER", "https://auth.madfam.io")
+	t.Setenv("ENCLII_ADMIN_EMAILS", "admin@madfam.io")
+
+	// Token from a different issuer — should NOT get admin role via fallback
+	foreignToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"sub":   "user-foreign",
+		"email": "admin@madfam.io",
+		"iss":   "https://evil-issuer.example.com",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+	foreignStr, err := foreignToken.SignedString(privateKey)
+	assert.NoError(t, err)
+
+	// Token from the configured issuer — should get admin role via fallback
+	trustedToken := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"sub":   "user-trusted",
+		"email": "admin@madfam.io",
+		"iss":   "https://auth.madfam.io",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+	trustedStr, err := trustedToken.SignedString(privateKey)
+	assert.NoError(t, err)
+
+	auth := NewAuthMiddleware(publicKey)
+
+	// Setup router with admin-only route
+	router := gin.New()
+	router.Use(auth.Middleware())
+	router.GET("/admin", RequireRole("admin"), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	// Foreign issuer should be denied admin
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+foreignStr)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code, "foreign issuer should not get admin fallback")
+
+	// Trusted issuer should be granted admin
+	req2 := httptest.NewRequest("GET", "/admin", nil)
+	req2.Header.Set("Authorization", "Bearer "+trustedStr)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code, "trusted issuer should get admin fallback")
+}
+
+func TestAuthMiddleware_IsConfiguredIssuer_EmptyAllowsAll(t *testing.T) {
+	// When no OIDC issuer is configured, isConfiguredIssuer should return true
+	// (permissive for local/dev mode)
+	gin.SetMode(gin.TestMode)
+	_, publicKey := generateTestRSAKeys(t)
+
+	t.Setenv("ENCLII_OIDC_ISSUER", "")
+	auth := NewAuthMiddleware(publicKey)
+	assert.True(t, auth.isConfiguredIssuer("https://any-issuer.example.com"))
+	assert.True(t, auth.isConfiguredIssuer(""))
+}
+
+func TestAuthMiddleware_IsConfiguredIssuer_TrailingSlashTolerant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, publicKey := generateTestRSAKeys(t)
+
+	t.Setenv("ENCLII_OIDC_ISSUER", "https://auth.madfam.io/")
+	auth := NewAuthMiddleware(publicKey)
+	assert.True(t, auth.isConfiguredIssuer("https://auth.madfam.io"))
+	assert.True(t, auth.isConfiguredIssuer("https://auth.madfam.io/"))
+	assert.False(t, auth.isConfiguredIssuer("https://evil.example.com"))
+}
+
 func TestAuthMiddleware_WrongSigningMethod(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)

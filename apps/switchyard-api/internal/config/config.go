@@ -296,6 +296,13 @@ func Load() (*Config, error) {
 			"  Production:  export ENCLII_DATABASE_URL='postgres://user:pass@host:5432/enclii?sslmode=require'")
 	}
 
+	// SEC-003: Require explicit CORS origins in production
+	if config.Environment == "production" && os.Getenv("ENCLII_ALLOWED_ORIGINS") == "" {
+		return nil, fmt.Errorf("SEC-003: ENCLII_ALLOWED_ORIGINS is required in production.\n" +
+			"  Set a comma-separated list of allowed origins, e.g.:\n" +
+			"  export ENCLII_ALLOWED_ORIGINS='https://app.enclii.dev,https://admin.enclii.dev'")
+	}
+
 	// SEC-002: Warn about insecure SSL mode in production
 	if config.Environment == "production" && strings.Contains(config.DatabaseURL, "sslmode=disable") {
 		logrus.Warn("SEC-002: Database SSL is disabled in production. This is a security risk. " +

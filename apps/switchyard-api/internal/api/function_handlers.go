@@ -3,7 +3,9 @@ package api
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -406,16 +408,69 @@ func (h *Handler) InvokeFunction(c *gin.Context) {
 		return
 	}
 
-	// For now, return a placeholder response indicating the endpoint
-	// The actual invocation would go through the KEDA HTTP add-on interceptor
+	// Proxy the invocation to the function's KEDA HTTP add-on endpoint
 	requestID := uuid.New().String()
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":    "Function invocation should be sent to the endpoint directly",
-		"endpoint":   fn.Endpoint,
-		"request_id": requestID,
-		"hint":       "Use curl -X POST " + fn.Endpoint + " -d '{...}' to invoke the function",
-	})
+	method := http.MethodPost
+	if req.Method != "" {
+		method = strings.ToUpper(req.Method)
+	}
+
+	timeout := 30 * time.Second
+	if fn.Config.Timeout > 0 {
+		timeout = time.Duration(fn.Config.Timeout) * time.Second
+	}
+
+	httpClient := &http.Client{Timeout: timeout}
+
+	var body io.Reader
+	if req.Body != "" {
+		body = strings.NewReader(req.Body)
+	}
+
+	proxyReq, err := http.NewRequestWithContext(ctx, method, fn.Endpoint, body)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to create proxy request", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create invocation request"})
+		return
+	}
+
+	// Forward caller-specified headers
+	for k, v := range req.Headers {
+		proxyReq.Header.Set(k, v)
+	}
+	proxyReq.Header.Set("X-Request-ID", requestID)
+	proxyReq.Header.Set("X-Enclii-Function-ID", fn.ID.String())
+
+	// Default content type if body is present
+	if body != nil && proxyReq.Header.Get("Content-Type") == "" {
+		proxyReq.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := httpClient.Do(proxyReq)
+	if err != nil {
+		h.logger.Error(ctx, "Function invocation failed",
+			logging.String("function_id", fnID),
+			logging.String("endpoint", fn.Endpoint),
+			logging.Error("error", err))
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error":      "function invocation failed",
+			"request_id": requestID,
+			"detail":     err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Stream the function's response back to the caller
+	for k, vals := range resp.Header {
+		for _, v := range vals {
+			c.Writer.Header().Add(k, v)
+		}
+	}
+	c.Writer.Header().Set("X-Request-ID", requestID)
+	c.Writer.WriteHeader(resp.StatusCode)
+	io.Copy(c.Writer, resp.Body) //nolint:errcheck
 }
 
 // GetFunctionLogs retrieves logs for a function
