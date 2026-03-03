@@ -80,29 +80,6 @@ spec:
               value: "true"
             - name: ENCLII_RATE_LIMIT_REQUESTS_PER_MINUTE
               value: "1000"
-            # Provisioning: Postgres admin connection (for DB/role creation)
-            - name: ENCLII_POSTGRES_ADMIN_URL
-              valueFrom:
-                secretKeyRef:
-                  name: switchyard-api-secrets
-                  key: ENCLII_POSTGRES_ADMIN_URL
-            # Provisioning: Cloudflare (for domain DNS + R2 bucket creation)
-            - name: ENCLII_CLOUDFLARE_API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: switchyard-api-secrets
-                  key: ENCLII_CLOUDFLARE_API_TOKEN
-            - name: ENCLII_CLOUDFLARE_ACCOUNT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: switchyard-api-secrets
-                  key: ENCLII_CLOUDFLARE_ACCOUNT_ID
-            # Provisioning: GitHub (for ArgoCD config commits)
-            - name: ENCLII_GITHUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: switchyard-api-secrets
-                  key: ENCLII_GITHUB_TOKEN
           ports:
             - containerPort: 4200
               name: http

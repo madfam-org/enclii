@@ -5,6 +5,7 @@ resources:
   # Shared data services (data namespace)
   - postgres.yaml
   - redis.yaml
+  - pgbouncer.yaml
 
   # Backup infrastructure (data namespace)
   - postgres-backup.yaml

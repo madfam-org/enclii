@@ -113,6 +113,13 @@ spec:
               name: enclii-argocd-webhook
               key: secret
               optional: true
+        # Provisioning: Postgres admin connection (for DB/role creation during onboarding)
+        - name: ENCLII_POSTGRES_ADMIN_URL
+          valueFrom:
+            secretKeyRef:
+              name: enclii-postgres-admin
+              key: url
+              optional: true
         # GitHub Token (for auto-committing ArgoCD apps during onboarding)
         - name: ENCLII_GITHUB_TOKEN
           valueFrom:

@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: enclii
     enclii.dev/managed-by: switchyard
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
@@ -110,7 +110,7 @@ kind: PodDisruptionBudget
 metadata:
   name: landing-page-pdb
 spec:
-  minAvailable: 1
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: landing-page
