@@ -93,17 +93,12 @@ spec:
           type: RuntimeDefault
       containers:
         - name: pgbouncer
-          image: docker.io/bitnami/pgbouncer:1.23.1
+          image: docker.io/edoburu/pgbouncer:v1.25.1-p0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 6432
               name: pgbouncer
               protocol: TCP
-          env:
-            - name: PGBOUNCER_CONF_FILE
-              value: /etc/pgbouncer/pgbouncer.ini
-            - name: PGBOUNCER_AUTH_FILE
-              value: /etc/pgbouncer/userlist.txt
           resources:
             requests:
               memory: "64Mi"
