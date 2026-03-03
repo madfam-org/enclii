@@ -5,9 +5,9 @@
  *
  * Thin bridge over @janua/react-sdk with dual auth mode support:
  * - Local: Email/password directly to Switchyard API (bootstrap mode)
- * - OIDC: OAuth 2.0 flow via Janua identity provider (production)
+ * - OIDC: Delegates to JanuaProvider from @janua/nextjs (production)
  *
- * The auth mode is determined by NEXT_PUBLIC_AUTH_MODE environment variable.
+ * All consumers use the same useAuth() interface regardless of mode.
  */
 
 import React, {
@@ -19,6 +19,7 @@ import React, {
   useRef,
   type ReactNode,
 } from "react";
+import { JanuaProvider, useJanua, useAuth as useJanuaAuth } from "@janua/nextjs";
 import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-types";
 
 // =============================================================================
@@ -27,8 +28,8 @@ import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-typ
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
 const AUTH_MODE = (process.env.NEXT_PUBLIC_AUTH_MODE || "local") as AuthMode;
+const JANUA_BASE_URL = process.env.NEXT_PUBLIC_JANUA_URL || "https://auth.madfam.io";
 
-// Storage keys for Enclii auth state
 const STORAGE_KEYS = {
   TOKENS: "enclii_tokens",
   USER: "enclii_user",
@@ -36,7 +37,7 @@ const STORAGE_KEYS = {
 } as const;
 
 // =============================================================================
-// STORAGE HELPERS (inlined — replaces auth-storage.ts)
+// STORAGE HELPERS (still needed for cookie sync with middleware)
 // =============================================================================
 
 function getStoredTokens(): { accessToken: string; refreshToken?: string; expiresAt: number } | null {
@@ -53,11 +54,15 @@ function getStoredTokens(): { accessToken: string; refreshToken?: string; expire
 function setStoredTokens(tokens: { accessToken: string; refreshToken?: string; expiresAt: number }) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
-  // Sync cookie for middleware.ts (SSR reads cookie, not localStorage)
   const maxAge = Math.floor((tokens.expiresAt - Date.now()) / 1000);
   if (maxAge > 0) {
     document.cookie = `${STORAGE_KEYS.COOKIE}=${tokens.accessToken}; path=/; secure; samesite=lax; max-age=${maxAge}`;
   }
+}
+
+function setStoredUser(user: User) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
 }
 
 function getStoredUser(): User | null {
@@ -69,11 +74,6 @@ function getStoredUser(): User | null {
   } catch {
     return null;
   }
-}
-
-function setStoredUser(user: User) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
 }
 
 function clearStorage() {
@@ -105,9 +105,7 @@ async function parseErrorResponse(response: Response, fallbackMessage: string): 
     try {
       const json = JSON.parse(text);
       return json.error || json.message || json.detail || fallbackMessage;
-    } catch {
-      // fall through
-    }
+    } catch { /* fall through */ }
   }
   return text.trim() || fallbackMessage;
 }
@@ -119,32 +117,84 @@ async function parseErrorResponse(response: Response, fallbackMessage: string): 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // =============================================================================
-// PROVIDER
+// OIDC MODE BRIDGE — delegates to Janua SDK
 // =============================================================================
 
-interface AuthProviderProps {
-  children: ReactNode;
+function OIDCAuthBridge({ children }: { children: ReactNode }) {
+  const janua = useJanua();
+  const januaAuth = useJanuaAuth();
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Sync Janua token to cookie for middleware compatibility
+  useEffect(() => {
+    if (januaAuth.isAuthenticated && janua.client) {
+      const token = janua.client.getAccessToken?.();
+      if (token) {
+        const maxAge = 15 * 60; // 15 minutes
+        document.cookie = `${STORAGE_KEYS.COOKIE}=${token}; path=/; secure; samesite=lax; max-age=${maxAge}`;
+      }
+    } else if (!januaAuth.isAuthenticated && !januaAuth.isLoading) {
+      document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
+    }
+  }, [januaAuth.isAuthenticated, januaAuth.isLoading, janua.client]);
+
+  // Map Janua user to Enclii User type
+  const user: User | null = januaAuth.user
+    ? {
+        id: januaAuth.user.id || "",
+        email: januaAuth.user.email || "",
+        name: januaAuth.user.name || januaAuth.user.display_name,
+        roles: (januaAuth.user as Record<string, unknown>).roles as string[] || [],
+        foundry_tier: (januaAuth.user as Record<string, unknown>).foundry_tier as User["foundry_tier"] || null,
+      }
+    : null;
+
+  const value: AuthContextType = {
+    user,
+    isAuthenticated: januaAuth.isAuthenticated,
+    isLoading: januaAuth.isLoading,
+    authMode: "oidc",
+    authError,
+    clearAuthError: () => setAuthError(null),
+    // Local auth methods are no-ops in OIDC mode
+    login: async () => { throw new Error("Local login not available in OIDC mode"); },
+    register: async () => { throw new Error("Registration not available in OIDC mode"); },
+    // OIDC methods delegate to Janua SDK
+    loginWithOIDC: () => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("auth_return_url", window.location.pathname);
+      }
+      window.location.href = `${API_BASE_URL}/v1/auth/login`;
+    },
+    handleOAuthCallback: async () => { /* Handled by Janua SDK */ },
+    storeTokensFromRedirect: async () => { /* Handled by Janua SDK */ },
+    logout: async () => {
+      await janua.signOut();
+      clearStorage();
+    },
+    refreshTokens: async () => true, // SDK handles refresh automatically
+    getAccessToken: () => janua.client?.getAccessToken?.() || null,
+    getIDPToken: () => null,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
+// =============================================================================
+// LOCAL MODE PROVIDER — kept for dev bootstrap
+// =============================================================================
+
+function LocalAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
 
-  const clearAuthError = useCallback(() => setAuthError(null), []);
-
-  // ==========================================================================
-  // TOKEN REFRESH
-  // ==========================================================================
-
   const refreshTokens = useCallback(async (): Promise<boolean> => {
     if (isRefreshingRef.current) return false;
-
     const stored = getStoredTokens();
     if (!stored?.refreshToken) return false;
-
     isRefreshingRef.current = true;
     try {
       const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
@@ -152,18 +202,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: stored.refreshToken }),
       });
-
       if (!response.ok) throw new Error("Token refresh failed");
-
       const data = await response.json();
       const newTokens = {
         accessToken: data.access_token,
         refreshToken: data.refresh_token || stored.refreshToken,
-        expiresAt: data.expires_at
-          ? new Date(data.expires_at).getTime()
-          : stored.expiresAt,
+        expiresAt: data.expires_at ? new Date(data.expires_at).getTime() : stored.expiresAt,
       };
-
       setStoredTokens(newTokens);
       scheduleRefresh(newTokens.expiresAt);
       return true;
@@ -177,39 +222,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const scheduleRefresh = useCallback((expiresAt: number) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    const refreshIn = expiresAt - Date.now() - 5 * 60 * 1000; // 5 min buffer
+    const refreshIn = expiresAt - Date.now() - 5 * 60 * 1000;
     if (refreshIn > 0) {
-      refreshTimerRef.current = setTimeout(() => {
-        refreshTokens();
-      }, refreshIn);
+      refreshTimerRef.current = setTimeout(() => { refreshTokens(); }, refreshIn);
     }
   }, [refreshTokens]);
-
-  // ==========================================================================
-  // INITIALIZATION
-  // ==========================================================================
 
   useEffect(() => {
     const init = async () => {
       try {
-        if (typeof window !== "undefined" && window.location.pathname.startsWith("/auth/callback")) {
-          return; // Callback page will handle token storage
-        }
-
+        if (typeof window !== "undefined" && window.location.pathname.startsWith("/auth/callback")) return;
         const storedTokens = getStoredTokens();
         const storedUser = getStoredUser();
-
         if (storedTokens && storedUser) {
           if (Date.now() < storedTokens.expiresAt) {
             setUser(storedUser);
             scheduleRefresh(storedTokens.expiresAt);
           } else if (storedTokens.refreshToken) {
             const refreshed = await refreshTokens();
-            if (refreshed) {
-              setUser(storedUser);
-            } else {
-              clearStorage();
-            }
+            if (refreshed) setUser(storedUser);
+            else clearStorage();
           } else {
             clearStorage();
           }
@@ -218,46 +250,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false);
       }
     };
-
     init();
-    return () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    };
+    return () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); };
   }, [refreshTokens, scheduleRefresh]);
-
-  // ==========================================================================
-  // LOCAL AUTH
-  // ==========================================================================
 
   const login = useCallback(async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
-
     try {
       const response = await fetch(`${API_BASE_URL}/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
-      if (!response.ok) {
-        throw new Error(await parseErrorResponse(response, "Login failed"));
-      }
-
+      if (!response.ok) throw new Error(await parseErrorResponse(response, "Login failed"));
       const data = await response.json();
-      const tokens = {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: new Date(data.expires_at).getTime(),
-      };
-
-      const userData: User = {
-        id: data.user?.id || "",
-        email: data.user?.email || email,
-        name: data.user?.name,
-        roles: data.user?.roles || [],
-      };
-
+      const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
+      const userData: User = { id: data.user?.id || "", email: data.user?.email || email, name: data.user?.name, roles: data.user?.roles || [] };
       setStoredTokens(tokens);
       setStoredUser(userData);
       setUser(userData);
@@ -270,32 +279,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const register = useCallback(async (email: string, password: string, name: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
-
     try {
       const response = await fetch(`${API_BASE_URL}/v1/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
       });
-
-      if (!response.ok) {
-        throw new Error(await parseErrorResponse(response, "Registration failed"));
-      }
-
+      if (!response.ok) throw new Error(await parseErrorResponse(response, "Registration failed"));
       const data = await response.json();
-      const tokens = {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: new Date(data.expires_at).getTime(),
-      };
-
-      const userData: User = {
-        id: data.user?.id || "",
-        email: data.user?.email || email,
-        name: data.user?.name || name,
-        roles: data.user?.roles || [],
-      };
-
+      const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
+      const userData: User = { id: data.user?.id || "", email: data.user?.email || email, name: data.user?.name || name, roles: data.user?.roles || [] };
       setStoredTokens(tokens);
       setStoredUser(userData);
       setUser(userData);
@@ -305,52 +298,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [scheduleRefresh]);
 
-  // ==========================================================================
-  // OIDC AUTH
-  // ==========================================================================
-
-  const loginWithOIDC = useCallback((): void => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("auth_return_url", window.location.pathname);
-    }
-    clearStorage();
-    setAuthError(null);
-    window.location.href = `${API_BASE_URL}/v1/auth/login`;
-  }, []);
-
   const handleOAuthCallback = useCallback(async (code: string, state?: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
-
     try {
       const params = new URLSearchParams({ code });
       if (state) params.append("state", state);
-
-      const response = await fetch(
-        `${API_BASE_URL}/v1/auth/callback?${params.toString()}`,
-        { method: "GET", credentials: "include" }
-      );
-
-      if (!response.ok) {
-        throw new Error(await parseErrorResponse(response, "OAuth callback failed"));
-      }
-
+      const response = await fetch(`${API_BASE_URL}/v1/auth/callback?${params.toString()}`, { method: "GET", credentials: "include" });
+      if (!response.ok) throw new Error(await parseErrorResponse(response, "OAuth callback failed"));
       const data = await response.json();
-      const tokens = {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: new Date(data.expires_at).getTime(),
-      };
-
+      const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
       const claims = parseJwt(data.access_token);
-      const userData: User = {
-        id: (claims?.sub as string) || (claims?.user_id as string) || "",
-        email: (claims?.email as string) || "",
-        name: claims?.name as string,
-        roles: (claims?.roles as string[]) || [],
-        foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null,
-      };
-
+      const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: (claims?.roles as string[]) || [], foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
       setStoredTokens(tokens);
       setStoredUser(userData);
       setUser(userData);
@@ -363,23 +322,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const storeTokensFromRedirect = useCallback(async (redirectTokens: RedirectTokens): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
-
     try {
-      const tokens = {
-        accessToken: redirectTokens.accessToken,
-        refreshToken: redirectTokens.refreshToken,
-        expiresAt: redirectTokens.expiresAt.getTime(),
-      };
-
+      const tokens = { accessToken: redirectTokens.accessToken, refreshToken: redirectTokens.refreshToken, expiresAt: redirectTokens.expiresAt.getTime() };
       const claims = parseJwt(redirectTokens.accessToken);
-      const userData: User = {
-        id: (claims?.sub as string) || (claims?.user_id as string) || "",
-        email: (claims?.email as string) || "",
-        name: claims?.name as string,
-        roles: (claims?.roles as string[]) || [],
-        foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null,
-      };
-
+      const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: (claims?.roles as string[]) || [], foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
       setStoredTokens(tokens);
       setStoredUser(userData);
       setUser(userData);
@@ -389,41 +335,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [scheduleRefresh]);
 
-  // ==========================================================================
-  // COMMON
-  // ==========================================================================
-
   const logout = useCallback(async (options?: { skipServerRevocation?: boolean }): Promise<void> => {
     let logoutUrl: string | null = null;
     const stored = getStoredTokens();
-
     try {
       if (stored?.accessToken && !options?.skipServerRevocation) {
         const response = await fetch(`${API_BASE_URL}/v1/auth/logout`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${stored.accessToken}`,
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${stored.accessToken}` },
         }).catch(() => null);
-
         if (response?.ok) {
-          try {
-            const data = await response.json();
-            if (data?.logout_url) logoutUrl = data.logout_url;
-          } catch {
-            // ignore
-          }
+          try { const data = await response.json(); if (data?.logout_url) logoutUrl = data.logout_url; } catch { /* ignore */ }
         }
       }
     } finally {
       setUser(null);
       clearStorage();
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-
+      if (refreshTimerRef.current) { clearTimeout(refreshTimerRef.current); refreshTimerRef.current = null; }
       if (logoutUrl) {
         const returnUrl = encodeURIComponent(`${window.location.origin}/login`);
         window.location.href = `${logoutUrl}?return_url=${returnUrl}`;
@@ -431,44 +359,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  const getAccessToken = useCallback((): string | null => {
-    const stored = getStoredTokens();
-    return stored?.accessToken || null;
-  }, []);
-
-  const getIDPToken = useCallback((): string | null => {
-    // IDP token tracking removed in SDK migration — return null
-    return null;
-  }, []);
-
-  // ==========================================================================
-  // CONTEXT VALUE
-  // ==========================================================================
-
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
     isLoading,
-    authMode: AUTH_MODE,
+    authMode: "local",
     authError,
-    clearAuthError,
+    clearAuthError: () => setAuthError(null),
     login,
     register,
-    loginWithOIDC,
+    loginWithOIDC: () => {
+      if (typeof window !== "undefined") localStorage.setItem("auth_return_url", window.location.pathname);
+      clearStorage();
+      window.location.href = `${API_BASE_URL}/v1/auth/login`;
+    },
     handleOAuthCallback,
     storeTokensFromRedirect,
     logout,
     refreshTokens,
-    getAccessToken,
-    getIDPToken,
+    getAccessToken: () => getStoredTokens()?.accessToken || null,
+    getIDPToken: () => null,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // =============================================================================
-// HOOKS
+// PUBLIC API — AuthProvider + Hooks
 // =============================================================================
+
+const januaConfig = {
+  baseURL: JANUA_BASE_URL,
+};
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  if (AUTH_MODE === "oidc") {
+    return (
+      <JanuaProvider config={januaConfig}>
+        <OIDCAuthBridge>{children}</OIDCAuthBridge>
+      </JanuaProvider>
+    );
+  }
+  return <LocalAuthProvider>{children}</LocalAuthProvider>;
+}
 
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
@@ -478,25 +411,15 @@ export function useAuth(): AuthContextType {
   return context;
 }
 
-/**
- * Hook for protecting routes that require authentication.
- */
 export function useRequireAuth(): {
   isAuthenticated: boolean;
   isLoading: boolean;
   shouldRedirect: boolean;
 } {
   const { isAuthenticated, isLoading } = useAuth();
-  return {
-    isAuthenticated,
-    isLoading,
-    shouldRedirect: !isLoading && !isAuthenticated,
-  };
+  return { isAuthenticated, isLoading, shouldRedirect: !isLoading && !isAuthenticated };
 }
 
-/**
- * Hook for getting the access token for API requests.
- */
 export function useAccessToken(): string | null {
   const { getAccessToken, isAuthenticated } = useAuth();
   if (!isAuthenticated) return null;
