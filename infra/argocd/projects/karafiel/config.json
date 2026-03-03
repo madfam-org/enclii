@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "karafiel",
+  "namespace": "karafiel",
+  "partOf": "karafiel",
+  "repoURL": "https://github.com/madfam-org/karafiel.git"
+}
