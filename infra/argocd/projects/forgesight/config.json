@@ -1,6 +1,6 @@
 {
   "branch": "main",
-  "manifestPath": "k8s",
+  "manifestPath": "k8s/production",
   "name": "forgesight",
   "namespace": "forgesight",
   "partOf": "forgesight",
