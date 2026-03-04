@@ -21,6 +21,8 @@ enclii onboard --repo <org/repo> [flags]
 | `--db-extensions` | No | — | Comma-separated Postgres extensions |
 | `--secrets-file` | No | — | Path to `.env` file with K8s secret entries |
 | `--r2-bucket` | No | — | R2 bucket name to create |
+| `--secret-name` | No | `<project>-credentials` | K8s Secret name for provisioned secrets |
+| `--preflight` | No | `false` | Run manifest preflight validation before onboarding |
 | `--dry-run` | No | `false` | Preview what would be provisioned |
 | `--skip-postgres` | No | `false` | Skip Postgres provisioning |
 | `--skip-secrets` | No | `false` | Skip secrets provisioning |
@@ -28,21 +30,27 @@ enclii onboard --repo <org/repo> [flags]
 
 ## What It Does
 
-The command executes an 11-step provisioning pipeline via `POST /v1/admin/onboard`:
+The command executes a multi-step provisioning pipeline via `POST /v1/admin/onboard`:
 
 1. Validate `enclii.yaml` from the target repo
 2. Create project record in Enclii DB
 3. Create service record(s) from `enclii.yaml`
-4. Generate ArgoCD `config.json`
-5. Auto-commit `config.json` to `infra/argocd/projects/<name>/` in the enclii repo
-6. Create K8s namespace with required labels + copy GHCR credentials
-7. Provision domains from `enclii.yaml` (Cloudflare tunnel routes + DNS CNAMEs)
-8. Register onboarding in DB
-9. Create Postgres database + role, grant privileges, update PgBouncer (if `--db-name`)
-10. Create K8s Secret with entries from `.env` file (if `--secrets-file`)
-11. Create R2 bucket + append R2 credentials to K8s Secret (if `--r2-bucket`)
+4. **Validate manifest path** — checks the path exists in the repo and contains YAML files
+5. Generate ArgoCD `config.json`
+6. Auto-commit `config.json` to `infra/argocd/projects/<name>/` in the enclii repo
+7. Create K8s namespace with required labels, **default-deny NetworkPolicy**, and GHCR credentials
+8. Provision domains from `enclii.yaml` (Cloudflare tunnel routes + DNS CNAMEs)
+9. Register onboarding in DB
+10. Create Postgres database + role, grant privileges, update PgBouncer (if `--db-name`)
+11. Create K8s Secret with entries from `.env` file (if `--secrets-file`)
+12. Create R2 bucket + append R2 credentials to K8s Secret (if `--r2-bucket`)
 
-Steps 9-11 are optional and independent — failure in one does not block others.
+**Status reporting**: The response includes a `step_results` array and an overall status:
+- `completed` — all steps succeeded
+- `partial` — non-critical steps failed (e.g., domain provisioning, R2)
+- `failed` — a critical step failed (namespace creation or ArgoCD config commit)
+
+If `--preflight` is set, manifest validation runs first via `POST /v1/admin/onboard/preflight`. Violations (Kyverno policy failures, YAML parse errors) are printed and the command exits without onboarding.
 
 ## Examples
 
@@ -63,6 +71,25 @@ enclii onboard --repo madfam-org/karafiel \
   --db-extensions "pgcrypto,uuid-ossp" \
   --secrets-file ./karafiel.env \
   --r2-bucket karafiel-uploads
+```
+
+### Custom secret name
+
+```bash
+enclii onboard --repo madfam-org/karafiel \
+  --project karafiel \
+  --secret-name karafiel-secrets \
+  --secrets-file ./karafiel.env
+```
+
+### Preflight validation before onboarding
+
+```bash
+enclii onboard --repo madfam-org/forgesight \
+  --project forgesight \
+  --preflight \
+  --db-name forgesight \
+  --secrets-file ./forgesight.env
 ```
 
 ### Dry run
@@ -89,7 +116,7 @@ DJANGO_SECRET_KEY=random-secret-key
 SENTRY_DSN=https://abc@sentry.io/123
 ```
 
-The secret is created as `<project>-credentials` in the project's namespace.
+The secret is created as `<project>-credentials` in the project's namespace (or the name specified by `--secret-name`).
 
 ## Standalone Provisioning
 

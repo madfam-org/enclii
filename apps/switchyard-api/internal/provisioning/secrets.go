@@ -27,9 +27,10 @@ func NewSecretsProvisioner(clientset kubernetes.Interface, logger logging.Logger
 	}
 }
 
-// Create creates or updates a K8s Secret named <project>-credentials in the given namespace.
+// Create creates or updates a K8s Secret in the given namespace.
+// If secretName is empty, defaults to <project>-credentials.
 // Rejects placeholder values.
-func (p *SecretsProvisioner) Create(ctx context.Context, namespace, project string, entries []types.SecretEntry) error {
+func (p *SecretsProvisioner) Create(ctx context.Context, namespace, project, secretName string, entries []types.SecretEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -44,7 +45,9 @@ func (p *SecretsProvisioner) Create(ctx context.Context, namespace, project stri
 		}
 	}
 
-	secretName := project + "-credentials"
+	if secretName == "" {
+		secretName = project + "-credentials"
+	}
 	data := make(map[string][]byte, len(entries))
 	for _, e := range entries {
 		data[e.Key] = []byte(e.Value)
@@ -105,7 +108,8 @@ func (p *SecretsProvisioner) Create(ctx context.Context, namespace, project stri
 }
 
 // AppendEntries adds additional key-value pairs to an existing secret.
-func (p *SecretsProvisioner) AppendEntries(ctx context.Context, namespace, project string, entries []types.SecretEntry) error {
+// If secretName is empty, defaults to <project>-credentials.
+func (p *SecretsProvisioner) AppendEntries(ctx context.Context, namespace, project, secretName string, entries []types.SecretEntry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -117,14 +121,16 @@ func (p *SecretsProvisioner) AppendEntries(ctx context.Context, namespace, proje
 		}
 	}
 
-	secretName := project + "-credentials"
+	if secretName == "" {
+		secretName = project + "-credentials"
+	}
 	secretClient := p.clientset.CoreV1().Secrets(namespace)
 
 	existing, err := secretClient.Get(ctx, secretName, k8smetav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Create from scratch
-			return p.Create(ctx, namespace, project, entries)
+			return p.Create(ctx, namespace, project, secretName, entries)
 		}
 		return fmt.Errorf("get secret %s/%s: %w", namespace, secretName, err)
 	}

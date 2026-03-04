@@ -28,6 +28,59 @@ type gitHubCommitResponse struct {
 	} `json:"commit"`
 }
 
+// gitHubDirEntry represents a single item in a GitHub directory listing.
+type gitHubDirEntry struct {
+	Name string `json:"name"`
+	Type string `json:"type"` // "file" or "dir"
+}
+
+// listGitHubDirectory lists files in a directory of a GitHub repo.
+// Returns file names, or error if directory doesn't exist.
+func listGitHubDirectory(ctx context.Context, token, owner, repo, path, ref string) ([]string, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+	if ref != "" {
+		apiURL += "?ref=" + ref
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("directory not found: %s/%s:%s", owner, repo, path)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("GitHub API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var entries []gitHubDirEntry
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return nil, fmt.Errorf("failed to decode directory listing: %w", err)
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name)
+	}
+	return names, nil
+}
+
 // getGitHubFileSHA retrieves the current SHA of a file in a GitHub repo.
 // Returns empty string (not error) if the file doesn't exist (404).
 func getGitHubFileSHA(ctx context.Context, token, owner, repo, path, ref string) (string, error) {

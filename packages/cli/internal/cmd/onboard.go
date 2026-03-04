@@ -21,12 +21,14 @@ func NewOnboardCommand(cfg *config.Config) *cobra.Command {
 		project      string
 		manifestPath string
 		branch       string
+		secretName   string
 		dbName       string
 		dbPassword   string
 		dbExtensions string
 		secretsFile  string
 		r2Bucket     string
 		dryRun       bool
+		preflight    bool
 		skipPostgres bool
 		skipSecrets  bool
 		skipR2       bool
@@ -73,12 +75,14 @@ This command handles the complete onboarding pipeline:
 				project:      project,
 				manifestPath: manifestPath,
 				branch:       branch,
+				secretName:   secretName,
 				dbName:       dbName,
 				dbPassword:   dbPassword,
 				dbExtensions: dbExtensions,
 				secretsFile:  secretsFile,
 				r2Bucket:     r2Bucket,
 				dryRun:       dryRun,
+				preflight:    preflight,
 				skipPostgres: skipPostgres,
 				skipSecrets:  skipSecrets,
 				skipR2:       skipR2,
@@ -90,6 +94,8 @@ This command handles the complete onboarding pipeline:
 	cmd.Flags().StringVar(&project, "project", "", "Project name (defaults to repo name)")
 	cmd.Flags().StringVar(&manifestPath, "manifest-path", "k8s/production", "K8s manifest path in repo")
 	cmd.Flags().StringVar(&branch, "branch", "main", "Branch to track")
+	cmd.Flags().StringVar(&secretName, "secret-name", "", "K8s Secret name (default: <project>-credentials)")
+	cmd.Flags().BoolVar(&preflight, "preflight", false, "Validate manifests against cluster before onboarding")
 	cmd.Flags().StringVar(&dbName, "db-name", "", "Postgres database name to create")
 	cmd.Flags().StringVar(&dbPassword, "db-password", "", "Postgres role password (prompted if --db-name set)")
 	cmd.Flags().StringVar(&dbExtensions, "db-extensions", "", "Comma-separated Postgres extensions")
@@ -110,12 +116,14 @@ type onboardOpts struct {
 	project      string
 	manifestPath string
 	branch       string
+	secretName   string
 	dbName       string
 	dbPassword   string
 	dbExtensions string
 	secretsFile  string
 	r2Bucket     string
 	dryRun       bool
+	preflight    bool
 	skipPostgres bool
 	skipSecrets  bool
 	skipR2       bool
@@ -139,6 +147,7 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 		RepoFullName: opts.repo,
 		ProjectName:  opts.project,
 		ManifestPath: opts.manifestPath,
+		SecretName:   opts.secretName,
 	}
 	if opts.branch != "" {
 		req.Branch = &opts.branch
@@ -193,9 +202,27 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 	}
 
 	// Execute
+	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+
+	// Preflight validation (opt-in)
+	if opts.preflight {
+		fmt.Printf("Running preflight validation for %s...\n", opts.repo)
+		var pfResult types.PreflightResult
+		if err := apiClient.PreflightOnboard(ctx, &req, &pfResult); err != nil {
+			return fmt.Errorf("preflight check failed: %w", err)
+		}
+		if !pfResult.Pass {
+			fmt.Printf("\nPreflight FAILED — %d violation(s):\n", len(pfResult.Violations))
+			for _, v := range pfResult.Violations {
+				fmt.Printf("  %s %s/%s: %s\n", v.File, v.Kind, v.Name, v.Message)
+			}
+			return fmt.Errorf("fix violations and retry")
+		}
+		fmt.Println("Preflight passed.")
+	}
+
 	fmt.Printf("Onboarding %s as project %q...\n", opts.repo, opts.project)
 
-	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
 	var result map[string]interface{}
 	if err := apiClient.OnboardProject(ctx, &req, &result); err != nil {
 		return fmt.Errorf("onboarding failed: %w", err)
@@ -214,6 +241,11 @@ func printDryRun(opts onboardOpts, req types.OnboardingRequest) {
 	fmt.Printf("  Project:       %s\n", opts.project)
 	fmt.Printf("  Manifest path: %s\n", opts.manifestPath)
 	fmt.Printf("  Branch:        %s\n", opts.branch)
+	if opts.secretName != "" {
+		fmt.Printf("  Secret name:   %s\n", opts.secretName)
+	} else {
+		fmt.Printf("  Secret name:   %s-credentials (default)\n", opts.project)
+	}
 	fmt.Println()
 
 	fmt.Println("  Provisioning steps:")

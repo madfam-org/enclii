@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	k8scorev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -110,9 +112,33 @@ func (u *PgBouncerUpdater) updateConfigMap(ctx context.Context, dbName string) e
 }
 
 // updateUserlist adds a role entry to the PgBouncer userlist secret.
+// If the secret doesn't exist, it bootstraps it with the given role.
 func (u *PgBouncerUpdater) updateUserlist(ctx context.Context, roleName, rolePassword string) error {
 	secretClient := u.clientset.CoreV1().Secrets(pgbouncerNamespace)
 	secret, err := secretClient.Get(ctx, pgbouncerUserlistName, k8smetav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		// Bootstrap: create the secret with just this role
+		entry := fmt.Sprintf("\"%s\" \"%s\"\n", roleName, rolePassword)
+		newSecret := &k8scorev1.Secret{
+			ObjectMeta: k8smetav1.ObjectMeta{
+				Name:      pgbouncerUserlistName,
+				Namespace: pgbouncerNamespace,
+				Labels: map[string]string{
+					"enclii.dev/managed-by": "provisioning-api",
+				},
+			},
+			Data: map[string][]byte{
+				pgbouncerUserKey: []byte(entry),
+			},
+		}
+		_, createErr := secretClient.Create(ctx, newSecret, k8smetav1.CreateOptions{})
+		if createErr != nil {
+			return fmt.Errorf("bootstrap secret %s/%s: %w", pgbouncerNamespace, pgbouncerUserlistName, createErr)
+		}
+		u.logger.Info(ctx, "Bootstrapped PgBouncer userlist secret",
+			logging.String("role", roleName))
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("get secret %s/%s: %w", pgbouncerNamespace, pgbouncerUserlistName, err)
 	}

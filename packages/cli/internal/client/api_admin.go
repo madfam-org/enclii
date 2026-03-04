@@ -126,3 +126,7 @@ func (c *APIClient) GetFunctionLogs(ctx context.Context, nameOrID string, lines 
 func (c *APIClient) OnboardProject(ctx context.Context, req *types.OnboardingRequest, result interface{}) error {
 	return c.post(ctx, "/v1/admin/onboard", req, result)
 }
+
+func (c *APIClient) PreflightOnboard(ctx context.Context, req *types.OnboardingRequest, result *types.PreflightResult) error {
+	return c.post(ctx, "/v1/admin/onboard/preflight", req, result)
+}

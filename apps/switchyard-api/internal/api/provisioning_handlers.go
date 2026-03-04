@@ -88,7 +88,7 @@ func (h *Handler) ProvisionSecrets(c *gin.Context) {
 		logging.String("namespace", req.Namespace),
 		logging.String("count", fmt.Sprintf("%d", len(req.Secrets))))
 
-	if err := h.secretsProvisioner.Create(ctx, req.Namespace, project, req.Secrets); err != nil {
+	if err := h.secretsProvisioner.Create(ctx, req.Namespace, project, "", req.Secrets); err != nil {
 		h.logger.Error(ctx, "Secrets provisioning failed",
 			logging.String("namespace", req.Namespace),
 			logging.Error("error", err))
@@ -135,7 +135,7 @@ func (h *Handler) ProvisionR2(c *gin.Context) {
 	// Optionally add R2 creds to the K8s secret
 	if h.secretsProvisioner != nil && req.Namespace != "" {
 		project := req.Namespace
-		if err := h.secretsProvisioner.AppendEntries(ctx, req.Namespace, project, r2Entries); err != nil {
+		if err := h.secretsProvisioner.AppendEntries(ctx, req.Namespace, project, "", r2Entries); err != nil {
 			h.logger.Warn(ctx, "Failed to append R2 creds to K8s secret (non-fatal)",
 				logging.String("namespace", req.Namespace),
 				logging.Error("error", err))

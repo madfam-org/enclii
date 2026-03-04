@@ -104,11 +104,26 @@ type OnboardingRequest struct {
 	Namespace    string  `json:"namespace,omitempty"`
 	ManifestPath string  `json:"manifest_path,omitempty"`
 	Branch       *string `json:"branch,omitempty"`
+	SecretName   string  `json:"secret_name,omitempty"` // K8s Secret name (default: <project>-credentials)
 
 	// Inline provisioning (all optional)
 	ProvisionPostgres *PostgresProvisionSpec `json:"provision_postgres,omitempty"`
 	ProvisionSecrets  []SecretEntry          `json:"provision_secrets,omitempty"`
 	ProvisionR2       *R2ProvisionSpec       `json:"provision_r2,omitempty"`
+}
+
+// PreflightResult is the response from the preflight validation endpoint
+type PreflightResult struct {
+	Pass       bool             `json:"pass"`
+	Violations []PreflightIssue `json:"violations,omitempty"`
+}
+
+// PreflightIssue describes a single manifest validation failure
+type PreflightIssue struct {
+	File    string `json:"file"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Message string `json:"message"`
 }
 
 // PostgresProvisionSpec defines parameters for creating a Postgres database and role

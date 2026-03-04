@@ -3,11 +3,16 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -127,6 +132,11 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 		}
+		// Apply default-deny NetworkPolicy to new namespaces
+		if npErr := c.ensureDefaultDenyPolicy(ctx, namespace); npErr != nil {
+			// Log but don't fail namespace creation
+			fmt.Printf("warning: failed to create default-deny NetworkPolicy in %s: %v\n", namespace, npErr)
+		}
 		return nil
 	}
 
@@ -153,7 +163,100 @@ func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 			return fmt.Errorf("failed to update namespace labels for %s: %w", namespace, err)
 		}
 	}
+
+	// Ensure default-deny policy exists even on existing namespaces
+	_ = c.ensureDefaultDenyPolicy(ctx, namespace)
+
 	return nil
+}
+
+// ensureDefaultDenyPolicy creates a default-deny NetworkPolicy that blocks all
+// ingress and egress traffic except DNS. Service-specific allow rules are added
+// by the reconciler when services are deployed.
+func (c *Client) ensureDefaultDenyPolicy(ctx context.Context, namespace string) error {
+	npClient := c.Clientset.NetworkingV1().NetworkPolicies(namespace)
+	const policyName = "default-deny"
+
+	_, err := npClient.Get(ctx, policyName, metav1.GetOptions{})
+	if err == nil {
+		return nil // Already exists
+	}
+	if !k8serrors.IsNotFound(err) {
+		return fmt.Errorf("check existing NetworkPolicy: %w", err)
+	}
+
+	dnsPort53 := intstr.FromInt(53)
+	protocolUDP := corev1.ProtocolUDP
+	protocolTCP := corev1.ProtocolTCP
+
+	policy := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policyName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"enclii.dev/managed-by": "onboarding-api",
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{}, // Selects all pods
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{
+					Ports: []networkingv1.NetworkPolicyPort{
+						{Port: &dnsPort53, Protocol: &protocolUDP},
+						{Port: &dnsPort53, Protocol: &protocolTCP},
+					},
+				},
+			},
+		},
+	}
+
+	_, err = npClient.Create(ctx, policy, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("create default-deny NetworkPolicy in %s: %w", namespace, err)
+	}
+	return nil
+}
+
+// DryRunApply validates a manifest against the cluster using server-side dry-run.
+// Returns nil if the manifest would be accepted, or an error with admission violation details.
+func (c *Client) DryRunApply(ctx context.Context, namespace string, obj map[string]interface{}) error {
+	gvk, ok := obj["apiVersion"].(string)
+	if !ok {
+		return fmt.Errorf("manifest missing apiVersion")
+	}
+	kind, ok := obj["kind"].(string)
+	if !ok {
+		return fmt.Errorf("manifest missing kind")
+	}
+
+	// Build GVR from apiVersion and kind
+	gvr, err := resolveGVR(c, gvk, kind)
+	if err != nil {
+		return fmt.Errorf("resolve resource for %s/%s: %w", gvk, kind, err)
+	}
+
+	// Convert to unstructured
+	unstructuredObj := &unstructured.Unstructured{Object: obj}
+	if namespace != "" && unstructuredObj.GetNamespace() == "" {
+		unstructuredObj.SetNamespace(namespace)
+	}
+
+	// Server-side dry-run
+	var resource dynamic.ResourceInterface
+	if namespace != "" {
+		resource = c.DynamicClient.Resource(gvr).Namespace(namespace)
+	} else {
+		resource = c.DynamicClient.Resource(gvr)
+	}
+
+	_, err = resource.Create(ctx, unstructuredObj, metav1.CreateOptions{
+		DryRun: []string{metav1.DryRunAll},
+	})
+	return err
 }
 
 func (c *Client) createOrUpdateDeployment(ctx context.Context, spec *DeploymentSpec) error {
@@ -346,6 +449,31 @@ func (c *Client) RollbackDeployment(ctx context.Context, name, namespace string)
 	}
 
 	return nil
+}
+
+// resolveGVR maps an apiVersion + kind to a GroupVersionResource using the discovery API.
+func resolveGVR(c *Client, apiVersion, kind string) (schema.GroupVersionResource, error) {
+	gv, err := schema.ParseGroupVersion(apiVersion)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("parse apiVersion %q: %w", apiVersion, err)
+	}
+
+	resources, err := c.Clientset.Discovery().ServerResourcesForGroupVersion(apiVersion)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("discover resources for %s: %w", apiVersion, err)
+	}
+
+	for _, r := range resources.APIResources {
+		if r.Kind == kind && !strings.Contains(r.Name, "/") {
+			return schema.GroupVersionResource{
+				Group:    gv.Group,
+				Version:  gv.Version,
+				Resource: r.Name,
+			}, nil
+		}
+	}
+
+	return schema.GroupVersionResource{}, fmt.Errorf("no resource found for %s/%s", apiVersion, kind)
 }
 
 // getPreviousImage finds the image from the previous ReplicaSet revision

@@ -15,6 +15,47 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
+// stepResult tracks the outcome of an onboarding step.
+type stepResult struct {
+	Name     string `json:"name"`
+	Critical bool   `json:"-"`
+	Err      error  `json:"-"`
+	Status   string `json:"status"` // "ok", "failed", "skipped"
+	Detail   string `json:"detail,omitempty"`
+}
+
+// computeOnboardStatus determines overall status from step results.
+func computeOnboardStatus(steps []stepResult) string {
+	for _, s := range steps {
+		if s.Err != nil && s.Critical {
+			return "failed"
+		}
+	}
+	for _, s := range steps {
+		if s.Err != nil {
+			return "partial"
+		}
+	}
+	return "completed"
+}
+
+// recordStep appends a step result and logs appropriately.
+func (h *Handler) recordStep(ctx context.Context, steps *[]stepResult, name string, critical bool, err error) {
+	s := stepResult{Name: name, Critical: critical, Err: err, Status: "ok"}
+	if err != nil {
+		s.Status = "failed"
+		s.Detail = err.Error()
+		if critical {
+			h.logger.Error(ctx, "Onboarding step failed (critical)",
+				logging.String("step", name), logging.Error("error", err))
+		} else {
+			h.logger.Warn(ctx, "Onboarding step failed (non-critical)",
+				logging.String("step", name), logging.Error("error", err))
+		}
+	}
+	*steps = append(*steps, s)
+}
+
 // OnboardRepo handles self-service repo onboarding
 // POST /v1/admin/onboard
 func (h *Handler) OnboardRepo(c *gin.Context) {
@@ -42,20 +83,65 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Validate enclii.yaml from target repo
+	// Validate repo format
 	parts := strings.SplitN(req.RepoFullName, "/", 2)
 	if len(parts) != 2 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "repo_full_name must be in owner/repo format"})
 		return
 	}
 
+	// Resolve defaults
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = req.ProjectName
+	}
+	manifestPath := req.ManifestPath
+	if manifestPath == "" {
+		manifestPath = "infra/k8s/production"
+	}
+	branch := "main"
+	if req.Branch != nil {
+		branch = *req.Branch
+	}
+	appName := req.ProjectName + "-services"
+	repoURL := "https://github.com/" + req.RepoFullName + ".git"
+
+	// Validate manifest path exists in target repo before proceeding
+	if h.config.GitHubToken != "" {
+		files, pathErr := listGitHubDirectory(ctx, h.config.GitHubToken, parts[0], parts[1], manifestPath, branch)
+		if pathErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":         fmt.Sprintf("manifest_path %q not found in %s (branch: %s)", manifestPath, req.RepoFullName, branch),
+				"detail":        pathErr.Error(),
+				"manifest_path": manifestPath,
+			})
+			return
+		}
+		hasYAML := false
+		for _, f := range files {
+			if strings.HasSuffix(f, ".yaml") || strings.HasSuffix(f, ".yml") {
+				hasYAML = true
+				break
+			}
+		}
+		if !hasYAML {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":         fmt.Sprintf("manifest_path %q exists but contains no .yaml/.yml files", manifestPath),
+				"files_found":   files,
+				"manifest_path": manifestPath,
+			})
+			return
+		}
+	}
+
+	var steps []stepResult
+
 	encliiConfig := h.fetchAndParseEncliiYAML(ctx, req.RepoFullName, "HEAD")
 
-	// Step 2: Find or create project
+	// Step: Find or create project
 	project, err := h.repos.Projects.GetBySlug(req.ProjectName)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Create project
 			project = &types.Project{
 				Name: req.ProjectName,
 				Slug: req.ProjectName,
@@ -76,11 +162,10 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		}
 	}
 
-	// Step 3: Create service from enclii.yaml metadata if available
+	// Step: Create service from enclii.yaml metadata if available
 	var serviceNames []string
 	if encliiConfig != nil && encliiConfig.Metadata.Name != "" {
 		svcName := encliiConfig.Metadata.Name
-		// Check if service already exists
 		_, lookupErr := h.repos.Services.GetByName(svcName)
 		if lookupErr == nil {
 			serviceNames = append(serviceNames, svcName+" (existing)")
@@ -102,30 +187,20 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		}
 	}
 
-	// Step 4: Build project config for ArgoCD ApplicationSet
-	namespace := req.Namespace
-	if namespace == "" {
-		namespace = req.ProjectName
-	}
-	manifestPath := req.ManifestPath
-	if manifestPath == "" {
-		manifestPath = "infra/k8s/production"
-	}
-	branch := "main"
-	if req.Branch != nil {
-		branch = *req.Branch
-	}
-	appName := req.ProjectName + "-services"
-	repoURL := "https://github.com/" + req.RepoFullName + ".git"
-
 	// Generate config.json for the ApplicationSet generator
 	projectConfig := generateProjectConfig(req.ProjectName, repoURL, branch, manifestPath, namespace)
-
-	// Also generate the legacy YAML for the response body (informational)
 	argocdYAML := generateArgocdApp(repoURL, manifestPath, namespace, appName, branch)
 
-	// Step 5: Auto-commit config.json to infra/argocd/projects/<name>/config.json
-	// The ApplicationSet auto-generates the Application CR from this file
+	// Step: Ensure namespace (critical)
+	var nsErr error
+	if h.k8sClient != nil && h.k8sClient.IsValid() {
+		nsErr = h.k8sClient.EnsureNamespace(ctx, namespace)
+	} else {
+		nsErr = fmt.Errorf("k8s client not available")
+	}
+	h.recordStep(ctx, &steps, "namespace", true, nsErr)
+
+	// Step: ArgoCD config commit (critical)
 	var argocdCommitSHA string
 	var argocdCommitErr error
 	if h.config.GitHubToken != "" && h.config.EncliiRepoOwner != "" && h.config.EncliiRepoName != "" {
@@ -133,34 +208,22 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		commitMsg := fmt.Sprintf("feat(argocd): auto-onboard %s\n\nGenerated by POST /v1/admin/onboard for %s\nApplicationSet auto-generates the ArgoCD Application from this config.", req.ProjectName, req.RepoFullName)
 
 		argocdCommitSHA, argocdCommitErr = createOrUpdateGitHubFile(
-			ctx,
-			h.config.GitHubToken,
-			h.config.EncliiRepoOwner,
-			h.config.EncliiRepoName,
-			configFilePath,
-			[]byte(projectConfig),
-			commitMsg,
-			"main",
+			ctx, h.config.GitHubToken, h.config.EncliiRepoOwner, h.config.EncliiRepoName,
+			configFilePath, []byte(projectConfig), commitMsg, "main",
 		)
-		if argocdCommitErr != nil {
-			h.logger.Warn(ctx, "Failed to auto-commit project config (non-fatal, config returned in response)",
-				logging.String("project", req.ProjectName),
-				logging.Error("error", argocdCommitErr))
-		} else {
-			h.logger.Info(ctx, "Auto-committed project config to Enclii repo",
-				logging.String("project", req.ProjectName),
-				logging.String("commit", argocdCommitSHA))
-		}
+	} else {
+		argocdCommitErr = fmt.Errorf("GitHub token or enclii repo not configured")
 	}
+	h.recordStep(ctx, &steps, "argocd_config", true, argocdCommitErr)
 
-	// Step 6: Ensure namespace with required labels + registry credentials
-	h.ensureOnboardingNamespace(ctx, namespace)
+	// Step: Copy registry credentials (important, not critical)
 	h.copyRegistryCredentials(ctx, namespace)
+	// copyRegistryCredentials logs internally; record as non-critical ok
+	h.recordStep(ctx, &steps, "registry_credentials", false, nil)
 
-	// Step 7: Provision domains from enclii.yaml (if available)
+	// Step: Provision domains from enclii.yaml (if available)
 	var domainResults []string
 	if encliiConfig != nil && len(encliiConfig.Spec.Domains) > 0 {
-		// Get the first service to associate domains with
 		svcList, _ := h.repos.Services.ListByProject(project.ID)
 		if len(svcList) > 0 {
 			go h.provisionDomainsFromYAML(context.Background(), svcList[0], encliiConfig)
@@ -168,68 +231,62 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 				domainResults = append(domainResults, d.Name+" (provisioning)")
 			}
 		}
+		h.recordStep(ctx, &steps, "domain_provisioning", false, nil)
 	}
 
-	// Step 9: Provision Postgres database + PgBouncer (optional)
-	var provisionWarnings []string
+	// Step: Provision Postgres database + PgBouncer (optional, important)
 	if req.ProvisionPostgres != nil {
+		var pgErr error
 		if h.postgresProvisioner != nil {
-			if err := h.postgresProvisioner.Provision(ctx, req.ProvisionPostgres); err != nil {
-				provisionWarnings = append(provisionWarnings, "postgres: "+err.Error())
-				h.logger.Warn(ctx, "Postgres provisioning failed (non-fatal)",
-					logging.Error("error", err))
-			} else {
-				// Update PgBouncer
+			pgErr = h.postgresProvisioner.Provision(ctx, req.ProvisionPostgres)
+			if pgErr == nil {
 				roleName := req.ProvisionPostgres.RoleName
 				if roleName == "" {
 					roleName = req.ProvisionPostgres.DatabaseName
 				}
 				if h.pgbouncerUpdater != nil {
-					if err := h.pgbouncerUpdater.AddDatabase(ctx, req.ProvisionPostgres.DatabaseName, roleName, req.ProvisionPostgres.RolePassword); err != nil {
-						provisionWarnings = append(provisionWarnings, "pgbouncer: "+err.Error())
-						h.logger.Warn(ctx, "PgBouncer update failed (non-fatal)",
-							logging.Error("error", err))
+					if pbErr := h.pgbouncerUpdater.AddDatabase(ctx, req.ProvisionPostgres.DatabaseName, roleName, req.ProvisionPostgres.RolePassword); pbErr != nil {
+						h.recordStep(ctx, &steps, "pgbouncer", false, pbErr)
 					}
 				}
 			}
 		} else {
-			provisionWarnings = append(provisionWarnings, "postgres: not configured (POSTGRES_ADMIN_URL not set)")
+			pgErr = fmt.Errorf("not configured (POSTGRES_ADMIN_URL not set)")
 		}
+		h.recordStep(ctx, &steps, "postgres", false, pgErr)
 	}
 
-	// Step 10: Create K8s secrets (optional)
+	// Step: Create K8s secrets (optional, important)
 	if len(req.ProvisionSecrets) > 0 {
+		var secErr error
 		if h.secretsProvisioner != nil {
-			if err := h.secretsProvisioner.Create(ctx, namespace, req.ProjectName, req.ProvisionSecrets); err != nil {
-				provisionWarnings = append(provisionWarnings, "secrets: "+err.Error())
-				h.logger.Warn(ctx, "Secrets provisioning failed (non-fatal)",
-					logging.Error("error", err))
-			}
+			secErr = h.secretsProvisioner.Create(ctx, namespace, req.ProjectName, req.SecretName, req.ProvisionSecrets)
 		} else {
-			provisionWarnings = append(provisionWarnings, "secrets: not configured (K8s client unavailable)")
+			secErr = fmt.Errorf("not configured (K8s client unavailable)")
 		}
+		h.recordStep(ctx, &steps, "secrets", false, secErr)
 	}
 
-	// Step 11: Create R2 bucket (optional)
+	// Step: Create R2 bucket (optional, important)
 	if req.ProvisionR2 != nil {
+		var r2Err error
 		if h.r2Provisioner != nil {
-			r2Entries, err := h.r2Provisioner.CreateBucket(ctx, req.ProvisionR2.BucketName)
-			if err != nil {
-				provisionWarnings = append(provisionWarnings, "r2: "+err.Error())
-				h.logger.Warn(ctx, "R2 provisioning failed (non-fatal)",
-					logging.Error("error", err))
+			r2Entries, bucketErr := h.r2Provisioner.CreateBucket(ctx, req.ProvisionR2.BucketName)
+			if bucketErr != nil {
+				r2Err = bucketErr
 			} else if h.secretsProvisioner != nil {
-				// Append R2 creds to the project's K8s secret
-				if err := h.secretsProvisioner.AppendEntries(ctx, namespace, req.ProjectName, r2Entries); err != nil {
-					provisionWarnings = append(provisionWarnings, "r2-creds: "+err.Error())
-				}
+				r2Err = h.secretsProvisioner.AppendEntries(ctx, namespace, req.ProjectName, req.SecretName, r2Entries)
 			}
 		} else {
-			provisionWarnings = append(provisionWarnings, "r2: not configured (Cloudflare credentials not set)")
+			r2Err = fmt.Errorf("not configured (Cloudflare credentials not set)")
 		}
+		h.recordStep(ctx, &steps, "r2", false, r2Err)
 	}
 
-	// Step 8: Register onboarding
+	// Compute overall status
+	onboardStatus := computeOnboardStatus(steps)
+
+	// Register onboarding
 	configSnapshot := map[string]interface{}{
 		"manifest_path": manifestPath,
 		"namespace":     namespace,
@@ -243,30 +300,26 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	if argocdCommitSHA != "" {
 		configSnapshot["argocd_commit"] = argocdCommitSHA
 	}
-	if len(provisionWarnings) > 0 {
-		configSnapshot["provision_warnings"] = provisionWarnings
-	}
 
 	reg := &types.OnboardingRegistration{
 		ProjectID:      project.ID,
 		RepoFullName:   req.RepoFullName,
 		ArgocdAppName:  &appName,
-		OnboardStatus:  "completed",
+		OnboardStatus:  onboardStatus,
 		ConfigSnapshot: configSnapshot,
 	}
 	if err := h.repos.Onboardings.Create(ctx, reg); err != nil {
 		h.logger.Error(ctx, "Failed to register onboarding",
 			logging.String("repo", req.RepoFullName),
 			logging.Error("db_error", err))
-		// Non-fatal — continue with response
 	}
 
-	h.logger.Info(ctx, "Repo onboarding completed",
+	h.logger.Info(ctx, "Repo onboarding finished",
 		logging.String("repo", req.RepoFullName),
 		logging.String("project", req.ProjectName),
-		logging.String("app_name", appName))
+		logging.String("status", onboardStatus))
 
-	// Build next_steps based on what was auto-provisioned
+	// Build next_steps
 	nextSteps := []string{}
 	if argocdCommitSHA != "" {
 		nextSteps = append(nextSteps, fmt.Sprintf("1. Project config auto-committed (%s) — ApplicationSet generates ArgoCD app", argocdCommitSHA[:8]))
@@ -279,8 +332,19 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		"4. Check lifecycle events: GET /v1/lifecycle/timeline/"+req.RepoFullName,
 	)
 
+	// Build step_results for response
+	stepResults := make([]gin.H, len(steps))
+	for i, s := range steps {
+		sr := gin.H{"name": s.Name, "status": s.Status}
+		if s.Detail != "" {
+			sr["detail"] = s.Detail
+		}
+		stepResults[i] = sr
+	}
+
 	response := gin.H{
-		"status":         "completed",
+		"status":         onboardStatus,
+		"step_results":   stepResults,
 		"repo":           req.RepoFullName,
 		"project":        req.ProjectName,
 		"next_steps":     nextSteps,
@@ -302,29 +366,12 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	if req.ProvisionR2 != nil {
 		response["r2_bucket"] = req.ProvisionR2.BucketName
 	}
-	if len(provisionWarnings) > 0 {
-		response["provision_warnings"] = provisionWarnings
-	}
-	c.JSON(http.StatusOK, response)
-}
 
-// ensureOnboardingNamespace creates the target namespace with required labels,
-// or patches an existing namespace to add missing labels.
-func (h *Handler) ensureOnboardingNamespace(ctx context.Context, namespace string) {
-	if h.k8sClient == nil || !h.k8sClient.IsValid() {
-		h.logger.Warn(ctx, "K8s client not available, skipping namespace creation",
-			logging.String("namespace", namespace))
-		return
+	httpStatus := http.StatusOK
+	if onboardStatus == "failed" {
+		httpStatus = http.StatusInternalServerError
 	}
-
-	if err := h.k8sClient.EnsureNamespace(ctx, namespace); err != nil {
-		h.logger.Warn(ctx, "Failed to ensure onboarding namespace (non-fatal)",
-			logging.String("namespace", namespace),
-			logging.Error("error", err))
-	} else {
-		h.logger.Info(ctx, "Ensured namespace for onboarding",
-			logging.String("namespace", namespace))
-	}
+	c.JSON(httpStatus, response)
 }
 
 // copyRegistryCredentials copies ghcr-credentials from the enclii namespace to a target namespace.
@@ -338,7 +385,7 @@ func (h *Handler) copyRegistryCredentials(ctx context.Context, targetNamespace s
 
 	// The reconciler already has ensureRegistryCredentials — leverage it indirectly
 	// by calling EnsureNamespace on the k8s client (which the reconciler's ensureNamespace does)
-	// Since we already called ensureOnboardingNamespace above, and the reconciler's
+	// Since the namespace is already created, and the reconciler's
 	// ensureNamespace handles credential copying, we can use the reconciler directly
 	if h.k8sClient == nil || !h.k8sClient.IsValid() {
 		return

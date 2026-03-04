@@ -316,6 +316,74 @@ func TestAPIClient_Authentication(t *testing.T) {
 	assert.Equal(t, 401, apiErr.StatusCode)
 }
 
+func TestAPIClient_OnboardProject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/v1/admin/onboard", r.URL.Path)
+
+		var req types.OnboardingRequest
+		err := json.NewDecoder(r.Body).Decode(&req)
+		require.NoError(t, err)
+		assert.Equal(t, "madfam-org/test", req.RepoFullName)
+		assert.Equal(t, "test", req.ProjectName)
+		assert.Equal(t, "test-secrets", req.SecretName)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "completed",
+			"repo":      req.RepoFullName,
+			"project":   req.ProjectName,
+			"namespace": "test",
+		})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	ctx := context.Background()
+
+	branch := "main"
+	var result map[string]interface{}
+	err := client.OnboardProject(ctx, &types.OnboardingRequest{
+		RepoFullName: "madfam-org/test",
+		ProjectName:  "test",
+		SecretName:   "test-secrets",
+		Branch:       &branch,
+	}, &result)
+
+	require.NoError(t, err)
+	assert.Equal(t, "completed", result["status"])
+}
+
+func TestAPIClient_PreflightOnboard(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/v1/admin/onboard/preflight", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(types.PreflightResult{
+			Pass: false,
+			Violations: []types.PreflightIssue{
+				{File: "deployment.yaml", Kind: "Deployment", Name: "test", Message: "image not qualified"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	ctx := context.Background()
+
+	var result types.PreflightResult
+	err := client.PreflightOnboard(ctx, &types.OnboardingRequest{
+		RepoFullName: "madfam-org/test",
+		ProjectName:  "test",
+	}, &result)
+
+	require.NoError(t, err)
+	assert.False(t, result.Pass)
+	assert.Len(t, result.Violations, 1)
+	assert.Equal(t, "deployment.yaml", result.Violations[0].File)
+}
+
 // Benchmark tests
 func BenchmarkAPIClient_GetProject(b *testing.B) {
 	projectID := uuid.New()

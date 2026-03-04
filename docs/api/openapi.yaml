@@ -3108,14 +3108,31 @@ paths:
               $ref: '#/components/schemas/OnboardingRequest'
       responses:
         '200':
-          description: Onboarding completed
+          description: Onboarding completed (or partially completed)
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  status:
+                    type: string
+                    enum: [completed, partial, failed]
+                    description: Overall onboarding outcome
                   registration:
                     $ref: '#/components/schemas/OnboardingRegistration'
+                  step_results:
+                    type: array
+                    description: Per-step outcome details
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum: [ok, failed, skipped]
+                        detail:
+                          type: string
                   argocd_yaml:
                     type: string
                   next_steps:
@@ -3123,9 +3140,9 @@ paths:
                     items:
                       type: string
         '400':
-          description: Invalid request or enclii.yaml
+          description: Invalid request, enclii.yaml, or manifest path not found
         '500':
-          description: Onboarding step failed
+          description: Critical onboarding step failed
     get:
       summary: List all onboarded repositories
       tags: [onboarding]
@@ -3165,6 +3182,33 @@ paths:
                 $ref: '#/components/schemas/OnboardingRegistration'
         '404':
           description: Repository not onboarded
+
+  /v1/admin/onboard/preflight:
+    post:
+      summary: Preflight manifest validation
+      description: |
+        Validates K8s manifests from a repository against the cluster's admission policies
+        (Kyverno, OPA) using server-side dry-run. Use this before onboarding to catch
+        issues like unqualified images, missing security context, or policy violations.
+      tags: [onboarding]
+      operationId: preflightOnboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingRequest'
+      responses:
+        '200':
+          description: Preflight validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreflightResult'
+        '400':
+          description: Invalid request or manifest path not found
+        '503':
+          description: GitHub token or K8s client not available
 
   # ============================================
   # PROVISIONING ENDPOINTS
@@ -5321,6 +5365,9 @@ components:
           type: string
           default: main
           description: Branch to track
+        secret_name:
+          type: string
+          description: K8s Secret name (default <project>-credentials)
         provision_postgres:
           $ref: '#/components/schemas/PostgresProvisionSpec'
         provision_secrets:
@@ -5411,7 +5458,7 @@ components:
           nullable: true
         onboard_status:
           type: string
-          enum: [pending, in_progress, completed, failed]
+          enum: [pending, in_progress, completed, partial, failed]
         error_message:
           type: string
           nullable: true
@@ -5421,6 +5468,33 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    PreflightResult:
+      type: object
+      properties:
+        pass:
+          type: boolean
+          description: Whether all manifests passed validation
+        violations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreflightIssue'
+
+    PreflightIssue:
+      type: object
+      properties:
+        file:
+          type: string
+          description: Manifest filename
+        kind:
+          type: string
+          description: K8s resource kind (e.g. Deployment, Service)
+        name:
+          type: string
+          description: Resource name from metadata
+        message:
+          type: string
+          description: Validation error or policy violation message
 
     # ===== Errors =====
     Error:

@@ -57,10 +57,14 @@ enclii onboard --repo madfam-org/my-project --project my-project
 enclii onboard --repo madfam-org/my-project \
   --project my-project \
   --manifest-path k8s/production \
+  --secret-name my-project-secrets \
   --db-name my_project \
   --db-password "$(openssl rand -base64 32)" \
   --secrets-file ./my-project.env \
   --r2-bucket my-project-uploads
+
+# Preflight validation (checks manifests against cluster admission policies)
+enclii onboard --repo madfam-org/my-project --project my-project --preflight
 
 # Preview what would be provisioned
 enclii onboard --repo madfam-org/my-project --db-name my_project --dry-run
@@ -79,6 +83,7 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
     "project_name": "my-project",
     "manifest_path": "k8s/production",
     "branch": "main",
+    "secret_name": "my-project-secrets",
     "provision_postgres": {
       "database_name": "my_project",
       "role_password": "secure-password",
@@ -96,20 +101,41 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
 
 ### What Happens
 
-The onboarding pipeline executes 11 steps:
+The onboarding pipeline executes a multi-step provisioning workflow:
 1. Fetches and validates `enclii.yaml` from the repo
 2. Creates project and service records in the Enclii DB
 3. Creates service records from `enclii.yaml` metadata
-4. Generates ArgoCD `config.json` for the ApplicationSet
-5. **Auto-commits** `config.json` to `infra/argocd/projects/<name>/` in the enclii repo (no manual step)
-6. Creates K8s namespace with labels + copies GHCR credentials
-7. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
-8. Registers onboarding in DB
-9. Creates Postgres database + role, updates PgBouncer *(if requested)*
-10. Creates K8s Secret from `.env` entries *(if requested)*
-11. Creates R2 bucket + appends R2 credentials to K8s Secret *(if requested)*
+4. **Validates manifest path** — checks the directory exists in the repo and contains YAML files
+5. Generates ArgoCD `config.json` for the ApplicationSet
+6. **Auto-commits** `config.json` to `infra/argocd/projects/<name>/` in the enclii repo (no manual step)
+7. Creates K8s namespace with labels, **default-deny NetworkPolicy** (DNS-only egress), and copies GHCR credentials
+8. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
+9. Registers onboarding in DB
+10. Creates Postgres database + role, updates PgBouncer *(if requested)* — PgBouncer userlist is bootstrapped automatically if absent
+11. Creates K8s Secret (name configurable via `secret_name`, default: `<project>-credentials`) from `.env` entries *(if requested)*
+12. Creates R2 bucket + appends R2 credentials to K8s Secret *(if requested)*
 
-Steps 9-11 are optional and independent — failure in one does not block others.
+**Status reporting**: The response includes `step_results` and an overall `status`:
+- `completed` — all steps succeeded
+- `partial` — non-critical steps failed (domain provisioning, secrets, R2, postgres)
+- `failed` — a critical step failed (namespace creation or ArgoCD config commit)
+
+### Preflight Validation
+
+Before onboarding, you can validate manifests against the cluster's admission policies (Kyverno):
+
+```bash
+# Via CLI
+enclii onboard --repo madfam-org/my-project --project my-project --preflight
+
+# Via API
+curl -X POST "https://api.enclii.dev/v1/admin/onboard/preflight" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"repo_full_name": "madfam-org/my-project", "project_name": "my-project"}'
+```
+
+This fetches YAML manifests from the repo, runs server-side dry-run against the cluster, and reports any violations (unqualified images, missing security context, etc.).
 
 ### Standalone Provisioning (Ad-Hoc)
 
@@ -254,6 +280,8 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 |---------|------|
 | CLI onboard command | `packages/cli/internal/cmd/onboard.go` |
 | Onboarding handlers | `apps/switchyard-api/internal/api/onboarding_handlers.go` |
+| Preflight validation | `apps/switchyard-api/internal/api/preflight.go` |
+| GitHub directory listing | `apps/switchyard-api/internal/api/github_file_writer.go` |
 | Provisioning handlers | `apps/switchyard-api/internal/api/provisioning_handlers.go` |
 | Postgres provisioner | `apps/switchyard-api/internal/provisioning/postgres.go` |
 | PgBouncer updater | `apps/switchyard-api/internal/provisioning/pgbouncer.go` |
