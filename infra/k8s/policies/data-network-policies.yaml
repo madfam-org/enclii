@@ -2,8 +2,9 @@
 # Data Namespace NetworkPolicies
 # =============================================================================
 # Default-deny + explicit allow rules for the shared data namespace.
-# Contains: PostgreSQL (5432), Redis (6379), backup CronJobs.
-# Accessed by: any namespace with label enclii.dev/data-access=true
+# Contains: PostgreSQL (5432), PgBouncer (6432), Redis (6379), backup CronJobs.
+# Accessed by: enclii, janua, dhanam, tezca, data, forgesight, karafiel,
+#              pravara-mes, madfam-site, yantra4d
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
 
@@ -37,8 +38,9 @@ spec:
   policyTypes:
     - Egress
 
-# Allow namespaces with enclii.dev/data-access=true -> PostgreSQL (port 5432)
-# Label new namespaces: kubectl label ns <name> enclii.dev/data-access=true
+# Allow application namespaces -> PostgreSQL (port 5432)
+# When adding a new namespace, add a namespaceSelector entry below AND apply live:
+#   kubectl apply -f infra/k8s/policies/data-network-policies.yaml
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -58,12 +60,39 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              enclii.dev/data-access: "true"
+              kubernetes.io/metadata.name: enclii
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: janua
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dhanam
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tezca
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgesight
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: karafiel
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pravara-mes
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: madfam-site
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: yantra4d
       ports:
         - protocol: TCP
           port: 5432
 
-# Allow namespaces with enclii.dev/data-access=true -> Redis (port 6379)
+# Allow application namespaces -> Redis (port 6379)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -83,10 +112,121 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              enclii.dev/data-access: "true"
+              kubernetes.io/metadata.name: enclii
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: janua
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dhanam
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tezca
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgesight
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: karafiel
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pravara-mes
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: madfam-site
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: yantra4d
       ports:
         - protocol: TCP
           port: 6379
+
+# Allow application namespaces -> PgBouncer (port 6432)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-ingress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: pgbouncer
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: enclii
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: janua
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dhanam
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tezca
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgesight
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: karafiel
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pravara-mes
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: madfam-site
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: yantra4d
+      ports:
+        - protocol: TCP
+          port: 6432
+
+# Allow pgbouncer egress to DNS + postgres
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-egress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: pgbouncer
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Connect to postgres
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
 
 # Allow postgres egress (DNS only — database is a sink)
 ---
