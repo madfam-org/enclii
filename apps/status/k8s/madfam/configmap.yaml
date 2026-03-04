@@ -81,5 +81,101 @@ data:
         "url": "https://app.dhan.am",
         "group": "Dhanam",
         "description": "User application"
+      },
+      {
+        "name": "Tezca Web",
+        "url": "https://tezca.mx",
+        "group": "Tezca",
+        "description": "Legal intelligence platform"
+      },
+      {
+        "name": "Tezca API",
+        "url": "https://api.tezca.mx",
+        "group": "Tezca",
+        "description": "Legal data API"
+      },
+      {
+        "name": "Tezca Admin",
+        "url": "https://admin.tezca.mx",
+        "group": "Tezca",
+        "description": "Administration dashboard"
+      },
+      {
+        "name": "Yantra4D Landing",
+        "url": "https://4d.madfam.io",
+        "group": "Yantra4D",
+        "description": "3D printing platform"
+      },
+      {
+        "name": "Yantra4D Studio",
+        "url": "https://4d-app.madfam.io",
+        "group": "Yantra4D",
+        "description": "3D design studio"
+      },
+      {
+        "name": "Yantra4D Admin",
+        "url": "https://4d-admin.madfam.io",
+        "group": "Yantra4D",
+        "description": "Admin dashboard"
+      },
+      {
+        "name": "Yantra4D API",
+        "url": "https://4d-api.madfam.io",
+        "group": "Yantra4D",
+        "description": "Backend API"
+      },
+      {
+        "name": "Forgesight WWW",
+        "url": "https://forgesight.quest",
+        "group": "Forgesight",
+        "description": "Marketing site"
+      },
+      {
+        "name": "Forgesight App",
+        "url": "https://app.forgesight.quest",
+        "group": "Forgesight",
+        "description": "Pricing intelligence app"
+      },
+      {
+        "name": "Forgesight Admin",
+        "url": "https://admin.forgesight.quest",
+        "group": "Forgesight",
+        "description": "Admin dashboard"
+      },
+      {
+        "name": "Karafiel Web",
+        "url": "https://kf.madfam.io",
+        "group": "Karafiel",
+        "description": "Karafiel platform"
+      },
+      {
+        "name": "Karafiel Admin",
+        "url": "https://kf-admin.madfam.io",
+        "group": "Karafiel",
+        "description": "Admin dashboard"
+      },
+      {
+        "name": "MADFAM",
+        "url": "https://madfam.io",
+        "group": "MADFAM Site",
+        "description": "Corporate website"
+      },
+      {
+        "name": "Pravara MES API",
+        "url": "https://mes-api.madfam.io",
+        "group": "Pravara MES",
+        "description": "Manufacturing API"
+      },
+      {
+        "name": "Pravara MES Web",
+        "url": "https://mes.madfam.io",
+        "group": "Pravara MES",
+        "description": "Manufacturing dashboard"
+      },
+      {
+        "name": "Pravara MES Admin",
+        "url": "https://mes-admin.madfam.io",
+        "group": "Pravara MES",
+        "description": "Admin dashboard"
       }
     ]
