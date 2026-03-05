@@ -144,21 +144,39 @@ data:
       },
       {
         "name": "Karafiel Web",
-        "url": "https://kf.madfam.io",
+        "url": "https://karafiel.mx",
         "group": "Karafiel",
         "description": "Karafiel platform"
       },
       {
         "name": "Karafiel Admin",
-        "url": "https://kf-admin.madfam.io",
+        "url": "https://admin.karafiel.mx",
         "group": "Karafiel",
         "description": "Admin dashboard"
+      },
+      {
+        "name": "Karafiel API",
+        "url": "https://api.karafiel.mx",
+        "group": "Karafiel",
+        "description": "Backend API"
+      },
+      {
+        "name": "Forgesight API",
+        "url": "https://api.forgesight.quest",
+        "group": "Forgesight",
+        "description": "Backend API"
       },
       {
         "name": "MADFAM",
         "url": "https://madfam.io",
         "group": "MADFAM Site",
         "description": "Corporate website"
+      },
+      {
+        "name": "MADFAM CMS",
+        "url": "https://cms.madfam.io",
+        "group": "MADFAM Site",
+        "description": "Content management"
       },
       {
         "name": "Pravara MES API",
