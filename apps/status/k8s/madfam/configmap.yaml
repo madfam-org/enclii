@@ -144,19 +144,19 @@ data:
       },
       {
         "name": "Karafiel Web",
-        "url": "https://karafiel.mx",
+        "url": "https://kf.madfam.io",
         "group": "Karafiel",
         "description": "Karafiel platform"
       },
       {
         "name": "Karafiel Admin",
-        "url": "https://admin.karafiel.mx",
+        "url": "https://kf-admin.madfam.io",
         "group": "Karafiel",
         "description": "Admin dashboard"
       },
       {
         "name": "Karafiel API",
-        "url": "https://api.karafiel.mx",
+        "url": "https://kf-api.madfam.io",
         "group": "Karafiel",
         "description": "Backend API"
       },
