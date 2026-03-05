@@ -1,52 +1,151 @@
 [
   {
+    "_comment": "=== ENCLII CORE SERVICES ===",
     "hostname": "api.enclii.dev",
-    "service": "http://switchyard-api.enclii.svc.cluster.local:80",
-    "originRequest": {
-      "connectTimeout": "30s",
-      "keepAliveTimeout": "90s",
-      "httpHostHeader": "api.enclii.dev"
-    }
+    "service": "http://switchyard-api.enclii.svc.cluster.local:80"
   },
   {
     "hostname": "app.enclii.dev",
-    "service": "http://switchyard-ui.enclii.svc.cluster.local:80",
-    "originRequest": {
-      "connectTimeout": "10s",
-      "httpHostHeader": "app.enclii.dev"
-    }
+    "service": "http://switchyard-ui.enclii.svc.cluster.local:80"
   },
   {
     "hostname": "enclii.dev",
-    "service": "http://landing-page.enclii.svc.cluster.local:80",
-    "originRequest": {
-      "httpHostHeader": "enclii.dev"
-    }
+    "service": "http://landing-page.enclii.svc.cluster.local:80"
   },
   {
     "hostname": "www.enclii.dev",
-    "service": "http://landing-page.enclii.svc.cluster.local:80",
-    "originRequest": {
-      "httpHostHeader": "www.enclii.dev"
-    }
+    "service": "http://landing-page.enclii.svc.cluster.local:80"
   },
   {
     "hostname": "docs.enclii.dev",
-    "service": "http://docs-site.enclii.svc.cluster.local:80",
-    "originRequest": {
-      "httpHostHeader": "docs.enclii.dev"
-    }
+    "service": "http://docs-site.enclii.svc.cluster.local:80"
   },
   {
+    "hostname": "admin.enclii.dev",
+    "service": "http://dispatch.enclii.svc.cluster.local:80"
+  },
+  {
+    "hostname": "status.enclii.dev",
+    "service": "http://status-enclii.status.svc.cluster.local:80"
+  },
+  {
+    "hostname": "status.madfam.io",
+    "service": "http://status-madfam.status.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== JANUA AUTH ===",
     "hostname": "auth.madfam.io",
-    "service": "http://janua-api.janua.svc.cluster.local:4100",
-    "originRequest": {
-      "connectTimeout": "30s",
-      "keepAliveTimeout": "90s",
-      "httpHostHeader": "auth.madfam.io"
-    }
+    "service": "http://janua-api.janua.svc.cluster.local:4100"
   },
   {
+    "_comment": "=== DHANAM ===",
+    "hostname": "dhan.am",
+    "service": "http://dhanam-web.dhanam.svc.cluster.local:80"
+  },
+  {
+    "hostname": "app.dhan.am",
+    "service": "http://dhanam-web.dhanam.svc.cluster.local:80"
+  },
+  {
+    "hostname": "admin.dhan.am",
+    "service": "http://dhanam-admin.dhanam.svc.cluster.local:80"
+  },
+  {
+    "hostname": "api.dhan.am",
+    "service": "http://dhanam-api.dhanam.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== TEZCA ===",
+    "hostname": "tezca.mx",
+    "service": "http://tezca-web.tezca.svc.cluster.local:80"
+  },
+  {
+    "hostname": "api.tezca.mx",
+    "service": "http://tezca-api.tezca.svc.cluster.local:80"
+  },
+  {
+    "hostname": "admin.tezca.mx",
+    "service": "http://tezca-admin.tezca.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== YANTRA4D ===",
+    "hostname": "4d.madfam.io",
+    "service": "http://yantra4d-landing.yantra4d.svc.cluster.local:80"
+  },
+  {
+    "hostname": "4d-api.madfam.io",
+    "service": "http://yantra4d-backend.yantra4d.svc.cluster.local:80"
+  },
+  {
+    "hostname": "4d-app.madfam.io",
+    "service": "http://yantra4d-studio.yantra4d.svc.cluster.local:80"
+  },
+  {
+    "hostname": "4d-admin.madfam.io",
+    "service": "http://yantra4d-admin.yantra4d.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== FORGESIGHT ===",
+    "hostname": "forgesight.quest",
+    "service": "http://forgesight-www.forgesight.svc.cluster.local:80"
+  },
+  {
+    "hostname": "app.forgesight.quest",
+    "service": "http://forgesight-app.forgesight.svc.cluster.local:80"
+  },
+  {
+    "hostname": "admin.forgesight.quest",
+    "service": "http://forgesight-admin.forgesight.svc.cluster.local:80"
+  },
+  {
+    "hostname": "api.forgesight.quest",
+    "service": "http://forgesight-api.forgesight.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== KARAFIEL ===",
+    "hostname": "karafiel.mx",
+    "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
+  },
+  {
+    "hostname": "app.karafiel.mx",
+    "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
+  },
+  {
+    "hostname": "admin.karafiel.mx",
+    "service": "http://karafiel-admin.karafiel.svc.cluster.local:80"
+  },
+  {
+    "hostname": "api.karafiel.mx",
+    "service": "http://karafiel-api.karafiel.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== MADFAM SITE ===",
+    "hostname": "madfam.io",
+    "service": "http://madfam-web.madfam-site.svc.cluster.local:80"
+  },
+  {
+    "hostname": "www.madfam.io",
+    "service": "http://madfam-web.madfam-site.svc.cluster.local:80"
+  },
+  {
+    "hostname": "cms.madfam.io",
+    "service": "http://madfam-cms.madfam-site.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== PRAVARA MES ===",
+    "hostname": "mes.madfam.io",
+    "service": "http://pravara-ui.pravara-mes.svc.cluster.local:80"
+  },
+  {
+    "hostname": "mes-api.madfam.io",
+    "service": "http://pravara-api.pravara-mes.svc.cluster.local:80"
+  },
+  {
+    "hostname": "mes-admin.madfam.io",
+    "service": "http://pravara-gateway.pravara-mes.svc.cluster.local:80"
+  },
+  {
+    "_comment": "=== CATCH-ALL ===",
     "service": "http_status:404"
   }
 ]
