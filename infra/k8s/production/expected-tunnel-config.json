@@ -102,6 +102,10 @@
     "service": "http://forgesight-api.forgesight.svc.cluster.local:80"
   },
   {
+    "hostname": "www.forgesight.quest",
+    "service": "http://forgesight-www.forgesight.svc.cluster.local:80"
+  },
+  {
     "_comment": "=== KARAFIEL ===",
     "hostname": "karafiel.mx",
     "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
