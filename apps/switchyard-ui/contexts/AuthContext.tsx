@@ -124,16 +124,20 @@ function OIDCAuthBridge({ children }: { children: ReactNode }) {
   const janua = useJanua();
   const januaAuth = useJanuaAuth();
   const [authError, setAuthError] = useState<string | null>(null);
+  const cachedTokenRef = useRef<string | null>(null);
 
   // Sync Janua token to cookie for middleware compatibility
   useEffect(() => {
     if (januaAuth.isAuthenticated && janua.client) {
-      const token = janua.client.getAccessToken?.();
-      if (token) {
-        const maxAge = 15 * 60; // 15 minutes
-        document.cookie = `${STORAGE_KEYS.COOKIE}=${token}; path=/; secure; samesite=lax; max-age=${maxAge}`;
-      }
+      janua.client.getAccessToken().then((token) => {
+        if (token) {
+          cachedTokenRef.current = token;
+          const maxAge = 15 * 60; // 15 minutes
+          document.cookie = `${STORAGE_KEYS.COOKIE}=${token}; path=/; secure; samesite=lax; max-age=${maxAge}`;
+        }
+      });
     } else if (!januaAuth.isAuthenticated && !januaAuth.isLoading) {
+      cachedTokenRef.current = null;
       document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
     }
   }, [januaAuth.isAuthenticated, januaAuth.isLoading, janua.client]);
@@ -144,8 +148,8 @@ function OIDCAuthBridge({ children }: { children: ReactNode }) {
         id: januaAuth.user.id || "",
         email: januaAuth.user.email || "",
         name: januaAuth.user.name || januaAuth.user.display_name,
-        roles: (januaAuth.user as unknown as Record<string, unknown>).roles as string[] || [],
-        foundry_tier: (januaAuth.user as unknown as Record<string, unknown>).foundry_tier as User["foundry_tier"] || null,
+        roles: januaAuth.user.roles || [],
+        foundry_tier: (januaAuth.user.user_metadata?.foundry_tier as User["foundry_tier"]) || null,
       }
     : null;
 
@@ -173,7 +177,7 @@ function OIDCAuthBridge({ children }: { children: ReactNode }) {
       clearStorage();
     },
     refreshTokens: async () => true, // SDK handles refresh automatically
-    getAccessToken: () => (janua.client?.getAccessToken?.() as unknown as string) || null,
+    getAccessToken: () => cachedTokenRef.current,
     getIDPToken: () => null,
   };
 
