@@ -144,8 +144,8 @@ function OIDCAuthBridge({ children }: { children: ReactNode }) {
         id: januaAuth.user.id || "",
         email: januaAuth.user.email || "",
         name: januaAuth.user.name || januaAuth.user.display_name,
-        roles: (januaAuth.user as Record<string, unknown>).roles as string[] || [],
-        foundry_tier: (januaAuth.user as Record<string, unknown>).foundry_tier as User["foundry_tier"] || null,
+        roles: (januaAuth.user as unknown as Record<string, unknown>).roles as string[] || [],
+        foundry_tier: (januaAuth.user as unknown as Record<string, unknown>).foundry_tier as User["foundry_tier"] || null,
       }
     : null;
 
@@ -173,7 +173,7 @@ function OIDCAuthBridge({ children }: { children: ReactNode }) {
       clearStorage();
     },
     refreshTokens: async () => true, // SDK handles refresh automatically
-    getAccessToken: () => janua.client?.getAccessToken?.() || null,
+    getAccessToken: () => (janua.client?.getAccessToken?.() as unknown as string) || null,
     getIDPToken: () => null,
   };
 
