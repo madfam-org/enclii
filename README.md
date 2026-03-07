@@ -149,8 +149,7 @@ enclii/
 ├── apps/
 │   ├── switchyard-api/        # Control plane API (Go)
 │   ├── switchyard-ui/         # Web dashboard (Next.js)
-│   ├── roundhouse/            # Build workers (Go)
-│   └── reconcilers/           # Kubernetes controllers (Go)
+│   └── roundhouse/            # Build workers (Go)
 ├── packages/
 │   └── cli/                   # `enclii` CLI (Go)
 ├── infra/
@@ -179,9 +178,9 @@ enclii/
 - **Roundhouse** - Build/provenance/signing workers
 - **Junctions** - Ingress/routing/DNS/TLS
 - **Timetable** - Cron jobs and scheduled tasks
-- **Lockbox** - Secrets management
-- **Signal** - Observability (logs/metrics/traces)
-- **Waybill** - Cost tracking and showback
+- **Lockbox** - Secrets management (Vault client + ESO in production)
+- **Signal** - Observability (implemented: `/v1/observability/*`, Prometheus + Grafana)
+- **Waybill** - Infrastructure cost metering and usage showback
 
 ---
 
@@ -272,7 +271,6 @@ make dns-dev         # Configure dev DNS
 # 3. Run the platform
 make run-switchyard  # Control plane API on :8001
 make run-ui          # Web UI on http://localhost:8030
-make run-reconcilers # Kubernetes controllers
 
 # 4. Try the CLI
 make build-cli
@@ -425,7 +423,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 - ✅ JWT authentication (RS256)
 - ✅ RBAC (admin/developer/viewer)
 - ✅ Preview environments
-- ✅ Kubernetes reconcilers
+- ✅ Kubernetes reconciliation (embedded in control plane)
 - ✅ Cloudflare Tunnel integration
 - ✅ Redis caching
 
@@ -454,7 +452,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 
 - Multi-region deployments
 - KEDA autoscaling (custom metrics)
-- Cost showback and budget alerts
+- Infrastructure cost showback and budget alerts
 - Policy-as-code gates (OPA)
 - Cron jobs and scheduled tasks
 - SOC 2 compliance documentation
@@ -465,7 +463,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 
 ## Contributing
 
-**Internal only** for now. Before contributing:
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide. Quick checklist:
 
 1. Read [CLAUDE.md](./CLAUDE.md) for project conventions
 2. Run `make precommit` before pushing

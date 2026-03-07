@@ -23,15 +23,13 @@ type UsageMetric struct {
 	Cost     float64 `json:"cost"`
 }
 
-// UsageSummary represents the complete usage data for billing
+// UsageSummary represents infrastructure usage metering data.
+// Customer billing is handled by Dhanam.
 type UsageSummary struct {
 	PeriodStart string        `json:"period_start"`
 	PeriodEnd   string        `json:"period_end"`
 	Metrics     []UsageMetric `json:"metrics"`
 	TotalCost   float64       `json:"total_cost"`
-	PlanBase    float64       `json:"plan_base"`
-	GrandTotal  float64       `json:"grand_total"`
-	PlanName    string        `json:"plan_name"`
 }
 
 // CostCategory represents a cost breakdown category
@@ -41,27 +39,24 @@ type CostCategory struct {
 	Color string  `json:"color"`
 }
 
-// CostBreakdown represents the billing cost breakdown
+// CostBreakdown represents infrastructure cost breakdown.
+// Customer billing is handled by Dhanam.
 type CostBreakdown struct {
 	PeriodStart string         `json:"period_start"`
 	PeriodEnd   string         `json:"period_end"`
-	PlanBase    float64        `json:"plan_base"`
-	PlanName    string         `json:"plan_name"`
 	Categories  []CostCategory `json:"categories"`
 	TotalUsage  float64        `json:"total_usage"`
-	GrandTotal  float64        `json:"grand_total"`
 }
 
-// Plan pricing constants (in a real system, these would come from a billing service)
+// Infrastructure cost metering rates. Customer billing handled by Dhanam.
 const (
-	proPlanBase      = 20.00
 	computePerGBHour = 0.05
 	buildPerMinute   = 0.01
 	storagePerGB     = 0.25
 	bandwidthPerGB   = 0.10
 )
 
-// Included resources per plan
+// Resource allocation baselines for usage tracking
 const (
 	includedCompute   = 500.0 // GB-hours
 	includedBuild     = 500.0 // minutes
@@ -213,9 +208,6 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 		PeriodEnd:   periodEnd.Format("2006-01-02"),
 		Metrics:     metrics,
 		TotalCost:   roundToTwoDecimals(totalCost),
-		PlanBase:    proPlanBase,
-		GrandTotal:  roundToTwoDecimals(proPlanBase + totalCost),
-		PlanName:    "Pro",
 	}, nil
 }
 
@@ -441,11 +433,8 @@ func (h *Handler) calculateCostBreakdown(ctx context.Context, periodStart, perio
 	return &CostBreakdown{
 		PeriodStart: usage.PeriodStart,
 		PeriodEnd:   usage.PeriodEnd,
-		PlanBase:    proPlanBase,
-		PlanName:    "Pro",
 		Categories:  categories,
 		TotalUsage:  usage.TotalCost,
-		GrandTotal:  usage.GrandTotal,
 	}, nil
 }
 

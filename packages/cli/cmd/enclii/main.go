@@ -7,6 +7,7 @@ import (
 
 	"github.com/madfam-org/enclii/packages/cli/internal/cmd"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 )
 
 func main() {
@@ -26,6 +27,6 @@ func main() {
 	rootCmd := cmd.NewRootCommand(cfg)
 
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+		os.Exit(exitcodes.FromError(err))
 	}
 }

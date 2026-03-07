@@ -267,7 +267,6 @@ func (h *Handler) closePreviewEnvironment(c *gin.Context, ctx context.Context, s
 		logging.Int("pr_number", event.Number),
 		logging.String("reason", statusMessage))
 
-	// TODO: Trigger cleanup of preview resources (deployment, ingress, etc.)
 	go h.cleanupPreviewResources(preview)
 
 	c.JSON(http.StatusOK, gin.H{

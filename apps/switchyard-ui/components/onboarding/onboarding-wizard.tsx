@@ -6,13 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { PlanSelector } from "@/components/billing/plan-selector";
 import {
   ArrowRight,
   ArrowLeft,
   Check,
   Rocket,
-  CreditCard,
   FolderPlus,
   User
 } from "lucide-react";
@@ -27,19 +25,14 @@ interface OnboardingData {
     name: string;
     company?: string;
   };
-  plan: string;
   project: {
     name: string;
     slug: string;
-  };
-  payment?: {
-    completed: boolean;
   };
 }
 
 const steps = [
   { id: "profile", title: "Your Profile", icon: User },
-  { id: "plan", title: "Choose Plan", icon: CreditCard },
   { id: "project", title: "First Project", icon: FolderPlus },
   { id: "complete", title: "Ready!", icon: Rocket },
 ];
@@ -48,7 +41,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [data, setData] = useState<OnboardingData>({
     profile: { name: "" },
-    plan: "hobby",
     project: { name: "", slug: "" },
   });
 
@@ -89,8 +81,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     switch (steps[currentStep].id) {
       case "profile":
         return data.profile.name.length >= 2;
-      case "plan":
-        return !!data.plan;
       case "project":
         return data.project.name.length >= 2;
       default:
@@ -183,19 +173,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             </div>
           )}
 
-          {/* Plan Step */}
-          {steps[currentStep].id === "plan" && (
-            <div className="space-y-4">
-              <p className="text-muted-foreground">
-                Select a plan that fits your needs. You can change anytime.
-              </p>
-              <PlanSelector
-                currentPlanId=""
-                onSelectPlan={(planId) => setData({ ...data, plan: planId })}
-              />
-            </div>
-          )}
-
           {/* Project Step */}
           {steps[currentStep].id === "project" && (
             <div className="space-y-4">
@@ -242,7 +219,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               <div className="bg-muted p-4 rounded-lg text-left">
                 <p className="text-sm font-medium mb-2">Summary:</p>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Plan: {data.plan.charAt(0).toUpperCase() + data.plan.slice(1)}</li>
                   <li>• Project: {data.project.name}</li>
                   <li>• URL: enclii.dev/{data.project.slug}</li>
                 </ul>

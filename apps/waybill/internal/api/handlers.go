@@ -7,30 +7,27 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/madfam-org/enclii/apps/waybill/internal/billing"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
+	"github.com/madfam-org/enclii/apps/waybill/internal/metering"
 	"go.uber.org/zap"
 )
 
 // Handlers contains all API handlers
 type Handlers struct {
 	collector  *events.Collector
-	calculator *billing.Calculator
-	stripe     *billing.StripeClient
+	calculator *metering.Calculator
 	logger     *zap.Logger
 }
 
 // NewHandlers creates new API handlers
 func NewHandlers(
 	collector *events.Collector,
-	calculator *billing.Calculator,
-	stripe *billing.StripeClient,
+	calculator *metering.Calculator,
 	logger *zap.Logger,
 ) *Handlers {
 	return &Handlers{
 		collector:  collector,
 		calculator: calculator,
-		stripe:     stripe,
 		logger:     logger,
 	}
 }
@@ -125,7 +122,7 @@ func (h *Handlers) GetUsageHistory(c *gin.Context) {
 
 // EstimateCost returns a cost estimate for given specs
 func (h *Handlers) EstimateCost(c *gin.Context) {
-	var specs billing.ResourceSpecs
+	var specs metering.ResourceSpecs
 	if err := c.ShouldBindJSON(&specs); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -135,7 +132,8 @@ func (h *Handlers) EstimateCost(c *gin.Context) {
 	c.JSON(http.StatusOK, estimate)
 }
 
-// GetInvoices lists invoices for a project
+// GetInvoices lists invoices for a project.
+// Invoice management is handled by Dhanam. This endpoint returns an empty list.
 func (h *Handlers) GetInvoices(c *gin.Context) {
 	projectID, err := uuid.Parse(c.Param("project_id"))
 	if err != nil {
@@ -143,25 +141,6 @@ func (h *Handlers) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	// Try to retrieve invoices from Stripe if configured
-	if h.stripe != nil && h.stripe.IsEnabled() {
-		customerID, err := h.stripe.GetCustomerIDForProject(c.Request.Context(), projectID.String())
-		if err == nil && customerID != "" {
-			invoices, err := h.stripe.ListInvoices(c.Request.Context(), customerID, 20)
-			if err != nil {
-				h.logger.Error("failed to list invoices from Stripe", zap.Error(err))
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list invoices"})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{
-				"project_id": projectID,
-				"invoices":   invoices,
-			})
-			return
-		}
-	}
-
-	// No Stripe customer for this project — return empty list
 	c.JSON(http.StatusOK, gin.H{
 		"project_id": projectID,
 		"invoices":   []interface{}{},

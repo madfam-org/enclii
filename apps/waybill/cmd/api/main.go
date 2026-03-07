@@ -7,9 +7,9 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/madfam-org/enclii/apps/waybill/internal/api"
-	"github.com/madfam-org/enclii/apps/waybill/internal/billing"
 	"github.com/madfam-org/enclii/apps/waybill/internal/config"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
+	"github.com/madfam-org/enclii/apps/waybill/internal/metering"
 	"go.uber.org/zap"
 )
 
@@ -47,22 +47,16 @@ func main() {
 	// Initialize services
 	collector := events.NewCollector(db, logger)
 
-	pricing := &billing.Pricing{
+	pricing := &metering.Pricing{
 		ComputePerGBHour:  cfg.PriceComputePerGBHour,
 		BuildPerMinute:    cfg.PriceBuildPerMinute,
 		StoragePerGBMonth: cfg.PriceStoragePerGBMonth,
 		BandwidthPerGB:    cfg.PriceBandwidthPerGB,
 	}
-	calculator := billing.NewCalculator(db, pricing, logger)
-
-	var stripeClient *billing.StripeClient
-	if cfg.StripeSecretKey != "" {
-		stripeClient = billing.NewStripeClient(cfg.StripeSecretKey, logger)
-		logger.Info("Stripe integration enabled")
-	}
+	calculator := metering.NewCalculator(db, pricing, logger)
 
 	// Create handlers
-	handlers := api.NewHandlers(collector, calculator, stripeClient, logger)
+	handlers := api.NewHandlers(collector, calculator, logger)
 
 	// Create API server
 	server := api.NewServer(handlers, &api.ServerConfig{

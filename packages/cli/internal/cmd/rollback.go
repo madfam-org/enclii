@@ -8,6 +8,7 @@ import (
 
 	"github.com/madfam-org/enclii/packages/cli/internal/client"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -37,7 +38,7 @@ func NewRollbackCommand(cfg *config.Config) *cobra.Command {
 
 func rollbackService(cfg *config.Config, serviceName, environment, releaseID string) error {
 	if serviceName == "" {
-		return fmt.Errorf("service name is required")
+		return &exitcodes.ValidationError{Err: fmt.Errorf("service name is required")}
 	}
 
 	fmt.Printf("🔄 Rolling back %s in %s environment", serviceName, environment)
@@ -108,7 +109,7 @@ func rollbackService(cfg *config.Config, serviceName, environment, releaseID str
 	err = apiClient.RollbackDeployment(ctx, currentDeployment.Deployment.ID.String(), req)
 	if err != nil {
 		fmt.Printf("❌ Rollback failed: %v\n", err)
-		return err
+		return &exitcodes.DeployError{Err: err}
 	}
 
 	fmt.Println("✅ Rollback initiated successfully!")

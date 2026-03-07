@@ -51,14 +51,14 @@ The project follows a monorepo structure with these key components:
 - **Switchyard**: Control plane API (Go) - manages projects, environments, services, deployments
 - **Conductor (CLI)**: Developer interface (`enclii` command) (Go)
 - **Roundhouse**: Build/provenance/signing workers (Go)
-- **Reconcilers**: Kubernetes operators/controllers (Go) - **Planned** (stub only)
 - **UI**: Web interface (Next.js)
 - **Dispatch**: Admin control platform (Next.js) - fleet management, topology visualization
-- **Waybill**: Cost tracking and budget alerts (Go)
+- **Waybill**: Infrastructure cost metering and usage showback (Go). Customer billing handled by Dhanam.
+- **Functions**: Serverless functions with scale-to-zero - **API + UI complete**, KEDA runtime pending deployment
 - **Junctions**: Routing/ingress + certs + DNS - **Planned**
 - **Timetable**: Cron and one-off jobs - **Planned**
-- **Lockbox**: Secrets management (Vault/1Password) - **Planned** (internal lockbox pkg exists in switchyard-api)
-- **Signal**: Observability stack (logs/metrics/traces) - **Planned**
+- **Lockbox**: Internal — Vault client + rotation controller in switchyard-api; ESO handles K8s secrets in production
+- **Signal**: Implemented — `/v1/observability/*` endpoints, Prometheus + Grafana deployed
 
 ## Common Development Commands
 
@@ -74,7 +74,6 @@ make dns-dev           # Configure dev DNS entries
 ```bash
 make run-switchyard    # Start control plane API on :8080
 make run-ui            # Start web UI on :3000
-make run-reconcilers   # Start Kubernetes controllers
 ```
 
 ### Building
@@ -649,6 +648,19 @@ pnpm test:e2e
 | Deploy timeout | `kubectl describe deploy` | Check resource limits, probes |
 | Preview not created | Webhook logs | Verify GitHub integration |
 | SSL errors | Cert-manager logs | Check issuer, DNS |
+
+---
+
+## Deferred Items (Not Implemented — Tracked Here)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| ESO CRD migration (0.9.11 to 0.16.2) | Deferred | Requires maintenance window, CRD v1beta1 to v1 migration. Current version stable |
+| Digest pinning for ecosystem repos | Out of scope | Changes go in external repos (forgesight, karafiel, pravara-mes, madfam-site) |
+| Timetable (user cron jobs) | Deferred | ~2 week feature effort. Q2 2026 per roadmap |
+| Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
+| Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
+| Test coverage enforcement | Deferred | Add `-coverprofile` and threshold gate to CI in separate PR |
 
 ---
 

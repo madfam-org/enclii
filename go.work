@@ -1,7 +1,6 @@
 go 1.24.0
 
 use (
-	./apps/reconcilers
 	./apps/roundhouse
 	./apps/switchyard-api
 	./apps/waybill

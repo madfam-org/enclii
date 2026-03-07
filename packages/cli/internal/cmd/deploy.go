@@ -12,6 +12,7 @@ import (
 
 	"github.com/madfam-org/enclii/packages/cli/internal/client"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 	"github.com/madfam-org/enclii/packages/cli/internal/spec"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -83,14 +84,14 @@ func deployService(cfg *config.Config, environment string, wait bool, specFile s
 	fmt.Println("🏗️  Building service...")
 	release, err := apiClient.BuildService(ctx, service.ID.String(), gitSHA)
 	if err != nil {
-		return fmt.Errorf("failed to build service: %w", err)
+		return &exitcodes.BuildError{Err: fmt.Errorf("failed to build service: %w", err)}
 	}
 
 	fmt.Printf("📦 Build initiated: %s\n", release.Version)
 
 	// 7. Wait for build completion (simplified polling)
 	if err := waitForBuild(ctx, apiClient, service.ID.String(), release.ID.String()); err != nil {
-		return fmt.Errorf("build failed: %w", err)
+		return &exitcodes.BuildError{Err: fmt.Errorf("build failed: %w", err)}
 	}
 
 	// 8. Deploy to environment
@@ -103,13 +104,13 @@ func deployService(cfg *config.Config, environment string, wait bool, specFile s
 
 	_, err = apiClient.DeployService(ctx, service.ID.String(), deployReq)
 	if err != nil {
-		return fmt.Errorf("failed to deploy service: %w", err)
+		return &exitcodes.DeployError{Err: fmt.Errorf("failed to deploy service: %w", err)}
 	}
 
 	if wait {
 		fmt.Println("⏳ Waiting for deployment...")
 		if err := waitForDeployment(ctx, apiClient, service.ID.String()); err != nil {
-			return fmt.Errorf("deployment failed: %w", err)
+			return &exitcodes.DeployError{Err: fmt.Errorf("deployment failed: %w", err)}
 		}
 		fmt.Println("✅ Deployment successful!")
 		fmt.Printf("🌐 Service available at: https://%s.%s.%s.enclii.dev\n",
@@ -217,7 +218,7 @@ func waitForBuild(ctx context.Context, apiClient *client.APIClient, serviceID, r
 	for {
 		select {
 		case <-timeout:
-			return fmt.Errorf("build timeout after 10 minutes")
+			return &exitcodes.TimeoutError{Err: fmt.Errorf("build timeout after 10 minutes")}
 		case <-ticker.C:
 			releases, err := apiClient.ListReleases(ctx, serviceID)
 			if err != nil {
@@ -252,7 +253,7 @@ func waitForDeployment(ctx context.Context, apiClient *client.APIClient, service
 	for {
 		select {
 		case <-timeout:
-			return fmt.Errorf("deployment timeout after 5 minutes")
+			return &exitcodes.TimeoutError{Err: fmt.Errorf("deployment timeout after 5 minutes")}
 		case <-ticker.C:
 			status, err := apiClient.GetServiceStatus(ctx, serviceID)
 			if err != nil {

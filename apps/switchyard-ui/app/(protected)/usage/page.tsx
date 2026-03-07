@@ -36,9 +36,6 @@ interface UsageSummary {
   period_end: string;
   metrics: UsageMetric[];
   total_cost: number;
-  plan_base: number;
-  grand_total: number;
-  plan_name: string;
 }
 
 interface CostCategory {
@@ -50,11 +47,8 @@ interface CostCategory {
 interface CostBreakdown {
   period_start: string;
   period_end: string;
-  plan_base: number;
-  plan_name: string;
   categories: CostCategory[];
   total_usage: number;
-  grand_total: number;
 }
 
 interface ServiceMetrics {
@@ -194,9 +188,9 @@ export default function UsagePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Usage Analytics</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Infrastructure Usage</h1>
           <p className="text-muted-foreground">
-            Monitor your resource usage and billing for the current period
+            Monitor your resource usage and infrastructure costs for the current period
           </p>
         </div>
         <Button variant="outline" onClick={fetchData}>
@@ -207,8 +201,8 @@ export default function UsagePage() {
         </Button>
       </div>
 
-      {/* Billing Period & Summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      {/* Period & Usage Summary */}
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Current Period</CardTitle>
@@ -220,43 +214,19 @@ export default function UsagePage() {
             <div className="text-lg font-bold">
               {usage?.period_start} - {usage?.period_end}
             </div>
-            <p className="text-xs text-muted-foreground">{usage?.plan_name} Plan</p>
+            <p className="text-xs text-muted-foreground">Metering period</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Plan Base</CardTitle>
-            <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${usage?.plan_base.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">Monthly subscription</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usage Charges</CardTitle>
+            <CardTitle className="text-sm font-medium">Infrastructure Cost</CardTitle>
             <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">${usage?.total_cost.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">Overage this period</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-primary/5 to-primary/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Estimated Total</CardTitle>
-            <svg aria-hidden="true" className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-primary">${usage?.grand_total.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">Due at period end</p>
+            <p className="text-xs text-muted-foreground">Resource usage this period</p>
           </CardContent>
         </Card>
       </div>
@@ -526,7 +496,7 @@ export default function UsagePage() {
       <Card>
         <CardHeader>
           <CardTitle>Detailed Cost Summary</CardTitle>
-          <CardDescription>Breakdown of all charges for the current billing period</CardDescription>
+          <CardDescription>Breakdown of infrastructure costs for the current period</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -574,13 +544,9 @@ export default function UsagePage() {
                     </tr>
                   );
                 })}
-                <tr className="bg-muted/50">
-                  <td colSpan={4} className="py-3 px-4 font-medium">Plan Base ({usage?.plan_name})</td>
-                  <td className="text-right py-3 px-4 font-mono font-medium">${usage?.plan_base.toFixed(2)}</td>
-                </tr>
                 <tr className="bg-primary/5">
-                  <td colSpan={4} className="py-3 px-4 font-bold">Estimated Total</td>
-                  <td className="text-right py-3 px-4 font-mono font-bold text-primary">${usage?.grand_total.toFixed(2)}</td>
+                  <td colSpan={4} className="py-3 px-4 font-bold">Total Infrastructure Cost</td>
+                  <td className="text-right py-3 px-4 font-mono font-bold text-primary">${usage?.total_cost.toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
@@ -590,7 +556,7 @@ export default function UsagePage() {
 
       {/* Footer Note */}
       <p className="text-sm text-muted-foreground text-center">
-        Final invoice will be generated on the 1st of each month. Usage estimates are updated hourly.
+        Infrastructure usage estimates are updated hourly. Customer billing is handled by Dhanam.
       </p>
     </div>
   );

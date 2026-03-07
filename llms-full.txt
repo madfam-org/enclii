@@ -316,9 +316,8 @@ Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Lo
 - [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
 - [packages/sdk-go/](./packages/sdk-go/): Go SDK and type definitions
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
-- [apps/reconcilers/](./apps/reconcilers/): Kubernetes controllers
 - [apps/status/](./apps/status/): Status page (port 4204)
-- [apps/waybill/](./apps/waybill/): Cost tracking and billing
+- [apps/waybill/](./apps/waybill/): Infrastructure cost metering (customer billing via Dhanam)
 - [apps/docs-site/](./apps/docs-site/): Documentation (Docusaurus)
 - [apps/landing/](./apps/landing/): Landing page (Next.js)
 

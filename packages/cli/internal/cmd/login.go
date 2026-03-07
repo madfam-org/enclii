@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 )
 
 // OAuth configuration for Janua
@@ -237,10 +238,10 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID string) e
 		// Success
 	case err := <-errChan:
 		server.Shutdown(ctx)
-		return fmt.Errorf("authentication failed: %w", err)
+		return &exitcodes.AuthenticationError{Err: fmt.Errorf("authentication failed: %w", err)}
 	case <-ctx.Done():
 		server.Shutdown(ctx)
-		return fmt.Errorf("authentication timed out after 5 minutes")
+		return &exitcodes.TimeoutError{Err: fmt.Errorf("authentication timed out after 5 minutes")}
 	}
 
 	// Shutdown server
@@ -252,7 +253,7 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID string) e
 	// Exchange code for tokens
 	tokens, err := exchangeCodeForTokens(issuer, code, redirectURI, codeVerifier, clientID)
 	if err != nil {
-		return fmt.Errorf("failed to exchange code for tokens: %w", err)
+		return &exitcodes.AuthenticationError{Err: fmt.Errorf("failed to exchange code for tokens: %w", err)}
 	}
 
 	// Save credentials
