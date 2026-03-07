@@ -235,6 +235,7 @@ jobs:
           echo "🔍 Auto-discovering Go modules for testing..."
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
           COVERAGE_FILES=""
+          TEST_FAILED=0
           for mod in $MODULES; do
             # Skip modules with no Go source files
             if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
@@ -242,17 +243,36 @@ jobs:
               continue
             fi
             echo "▶ Testing $mod"
-            (cd "$mod" && go test -v -race -coverprofile=coverage.out -covermode=atomic ./...) || true
+            (cd "$mod" && go test -v -race -coverprofile=coverage.out -covermode=atomic ./...) || TEST_FAILED=1
             if [ -f "$mod/coverage.out" ]; then
               COVERAGE_FILES="$COVERAGE_FILES,$mod/coverage.out"
             fi
           done
           echo "COVERAGE_FILES=${COVERAGE_FILES#,}" >> $GITHUB_ENV
+          exit $TEST_FAILED
         env:
           DATABASE_URL: postgres://enclii:enclii_test@localhost:5432/enclii_test?sslmode=disable
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET: test-secret-key
           ENV: test
+
+      - name: Enforce coverage thresholds
+        if: always()
+        run: |
+          MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
+          FAILED=0
+          for mod in $MODULES; do
+            [ ! -f "$mod/coverage.out" ] && continue
+            COV=$(go tool cover -func="$mod/coverage.out" | grep "total:" | awk '{print $NF}' | sed 's/%//')
+            [ -z "$COV" ] && continue
+            echo "$mod: ${COV}%"
+            if [ "$(echo "$COV < 30" | bc -l)" -eq 1 ]; then
+              echo "::error::$mod coverage ${COV}% below 30% threshold"
+              FAILED=1
+            fi
+          done
+          [ "${FAILED}" -eq 1 ] && exit 1
+          echo "All modules meet 30% coverage threshold"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
