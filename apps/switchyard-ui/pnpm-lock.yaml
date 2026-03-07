@@ -8,11 +8,14 @@ importers:
 
   .:
     dependencies:
+      '@janua/nextjs':
+        specifier: ^0.1.2
+        version: 0.1.2(next@16.1.1(@babel/core@7.28.5)(@playwright/test@1.57.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@janua/react-sdk':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@janua/ui':
-        specifier: ^0.1.0
+        specifier: ^0.1.1
         version: 0.1.1(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.17)(use-sync-external-store@1.6.0(react@18.3.1))
       '@radix-ui/react-checkbox':
         specifier: ^1.3.3
@@ -521,6 +524,14 @@ packages:
   '@istanbuljs/schema@0.1.3':
     resolution: {integrity: sha512-ZXRY4jNvVgSVQ8DL3LTcakaAtXwTVUxE81hslsyD2AtoXW/wVob10HkOJ1X/pAlcI7D+2YoZKg5do8G/w6RYgA==}
     engines: {node: '>=8'}
+
+  '@janua/nextjs@0.1.2':
+    resolution: {integrity: sha512-6rU3/Fcvf1Qt3lJwxg5plbLmVLdfLqte+n3Vxot/p6UeeAale8B8mQnfRakYZj0DX3KVnH5u6yCouSue1eJKbQ==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      next: '>=14.0.0'
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
 
   '@janua/react-sdk@0.1.1':
     resolution: {integrity: sha512-SyezNtV3YyjtYheR0KvQPpnikU1zL+o2EJw1iKd8gzx5q+RdtY3knryk9AOGl2JUf3JkSY9KTBJ25LOqmKaEBw==}
@@ -2664,6 +2675,9 @@ packages:
     resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
+  jose@5.10.0:
+    resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
+
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
@@ -4097,6 +4111,19 @@ snapshots:
       resolve-from: 5.0.0
 
   '@istanbuljs/schema@0.1.3': {}
+
+  '@janua/nextjs@0.1.2(next@16.1.1(@babel/core@7.28.5)(@playwright/test@1.57.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@janua/typescript-sdk': 0.1.1
+      jose: 5.10.0
+      next: 16.1.1(@babel/core@7.28.5)(@playwright/test@1.57.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    transitivePeerDependencies:
+      - '@apollo/client'
+      - axios
+      - graphql
+      - graphql-ws
 
   '@janua/react-sdk@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -6718,6 +6745,8 @@ snapshots:
       - ts-node
 
   jiti@1.21.7: {}
+
+  jose@5.10.0: {}
 
   js-tokens@4.0.0: {}
 

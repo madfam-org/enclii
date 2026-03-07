@@ -94,4 +94,4 @@ patches:
 images:
   - name: ghcr.io/madfam-org/enclii-status
     newName: ghcr.io/madfam-org/enclii/enclii-status
-    digest: sha256:05a31e7a123574c73136c100db79b3cc7670c45bf59957b94e5dc06746bbd5db
+    digest: sha256:f563a8a1121db96dd8e2c0f48e013c30fbfd48ba154474c4981fbc2a69479ed6
