@@ -4,8 +4,8 @@
 # Default-deny + explicit allow rules for the shared data namespace.
 # Contains: PostgreSQL (5432), PgBouncer (6432), Redis (6379), backup CronJobs.
 # Accessed by: enclii, janua, dhanam, tezca, data, forgesight, karafiel,
-#              pravara-mes, madfam-site, yantra4d
-# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+#              pravara-mes, madfam-site, yantra4d, posthog
+# Managed by enclii repo, synced via ArgoCD network-policies Application.
 # =============================================================================
 
 # Default deny all ingress to data namespace
@@ -88,6 +88,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: yantra4d
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: posthog
       ports:
         - protocol: TCP
           port: 5432
@@ -140,6 +143,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: yantra4d
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: posthog
       ports:
         - protocol: TCP
           port: 6379
@@ -192,6 +198,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: yantra4d
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: posthog
       ports:
         - protocol: TCP
           port: 6432
