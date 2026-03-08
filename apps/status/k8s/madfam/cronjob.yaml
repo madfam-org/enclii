@@ -22,7 +22,7 @@ spec:
         spec:
           containers:
             - name: recorder
-              image: curlimages/curl:8.5.0
+              image: docker.io/curlimages/curl:8.5.0
               command:
                 - curl
                 - -sf
@@ -37,6 +37,14 @@ spec:
                     secretKeyRef:
                       name: status-secrets
                       key: cron-secret
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 100
+                capabilities:
+                  drop:
+                    - ALL
               resources:
                 requests:
                   cpu: 10m
