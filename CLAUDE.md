@@ -665,7 +665,7 @@ pnpm test:e2e
 | Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold at 40%. Tests in db/, reconciler/, services/ packages |
+| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse, waybill, CLI, SDK |
 | Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore in repo. Needs cluster deploy |
 | PostHog (analytics) | Planned | Self-hosted Community Edition. Helm values + integration planned |
 

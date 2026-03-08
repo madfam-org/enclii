@@ -343,3 +343,175 @@ func TestParseContainerPort_WhitespaceOnlyPort(t *testing.T) {
 	assert.Error(t, err, "whitespace-only port value should produce an error")
 	assert.Equal(t, int32(4200), port, "should fall back to default on parse failure")
 }
+
+// ---------------------------------------------------------------------------
+// extractVersionFromImage (controller_sync.go)
+// ---------------------------------------------------------------------------
+
+func TestExtractVersionFromImage(t *testing.T) {
+	tests := []struct {
+		name     string
+		imageURI string
+		want     string
+	}{
+		{
+			name:     "standard GHCR image with short SHA tag",
+			imageURI: "ghcr.io/madfam-org/enclii/waybill:1ead1b30fdb4",
+			want:     "1ead1b30fdb4",
+		},
+		{
+			name:     "truncates tags longer than 12 chars",
+			imageURI: "ghcr.io/org/repo:abcdef1234567890",
+			want:     "abcdef123456",
+		},
+		{
+			name:     "semantic version tag preserved",
+			imageURI: "docker.io/library/nginx:1.25.3",
+			want:     "1.25.3",
+		},
+		{
+			name:     "latest tag",
+			imageURI: "nginx:latest",
+			want:     "latest",
+		},
+		{
+			name:     "no tag returns unknown",
+			imageURI: "ghcr.io/madfam-org/enclii/api",
+			want:     "unknown",
+		},
+		{
+			name:     "empty string returns unknown",
+			imageURI: "",
+			want:     "unknown",
+		},
+		{
+			name:     "tag with exactly 12 chars is not truncated",
+			imageURI: "repo:123456789012",
+			want:     "123456789012",
+		},
+		{
+			name:     "trailing colon with no tag returns unknown",
+			imageURI: "repo:",
+			want:     "unknown",
+		},
+		{
+			name:     "digest-style image (sha256 prefix)",
+			imageURI: "ghcr.io/org/repo:sha256-abc123def456789",
+			want:     "sha256-abc12",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractVersionFromImage(tt.imageURI)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// extractGitSHAFromImage (controller_sync.go)
+// ---------------------------------------------------------------------------
+
+func TestExtractGitSHAFromImage(t *testing.T) {
+	tests := []struct {
+		name     string
+		imageURI string
+		want     string
+	}{
+		{
+			name:     "standard GHCR image with SHA tag",
+			imageURI: "ghcr.io/madfam-org/enclii/waybill:1ead1b30fdb4",
+			want:     "1ead1b30fdb4",
+		},
+		{
+			name:     "full SHA tag is preserved",
+			imageURI: "ghcr.io/org/repo:abcdef1234567890abcdef1234567890abcdef12",
+			want:     "abcdef1234567890abcdef1234567890abcdef12",
+		},
+		{
+			name:     "semver tag preserved as-is",
+			imageURI: "nginx:1.25.3",
+			want:     "1.25.3",
+		},
+		{
+			name:     "no tag returns empty",
+			imageURI: "ghcr.io/madfam-org/enclii/api",
+			want:     "",
+		},
+		{
+			name:     "empty string returns empty",
+			imageURI: "",
+			want:     "",
+		},
+		{
+			name:     "trailing colon with no tag returns empty",
+			imageURI: "repo:",
+			want:     "",
+		},
+		{
+			name:     "latest tag",
+			imageURI: "nginx:latest",
+			want:     "latest",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractGitSHAFromImage(tt.imageURI)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// nodeNames (admin_reconciler.go)
+// ---------------------------------------------------------------------------
+
+func TestNodeNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		nodes   map[string]corev1.Node
+		wantLen int
+	}{
+		{
+			name:    "nil map returns empty slice",
+			nodes:   nil,
+			wantLen: 0,
+		},
+		{
+			name:    "empty map returns empty slice",
+			nodes:   map[string]corev1.Node{},
+			wantLen: 0,
+		},
+		{
+			name: "single node",
+			nodes: map[string]corev1.Node{
+				"foundry-core": {},
+			},
+			wantLen: 1,
+		},
+		{
+			name: "multiple nodes",
+			nodes: map[string]corev1.Node{
+				"foundry-core":       {},
+				"foundry-builder-01": {},
+				"foundry-gpu-01":     {},
+			},
+			wantLen: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := nodeNames(tt.nodes)
+			assert.Len(t, got, tt.wantLen)
+
+			// Verify every returned name exists as a key in the input map
+			for _, name := range got {
+				_, exists := tt.nodes[name]
+				assert.True(t, exists, "returned name %q should exist in input map", name)
+			}
+		})
+	}
+}

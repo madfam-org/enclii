@@ -166,7 +166,7 @@ func addClusterRow(rows *sqlmock.Rows, id uuid.UUID, name, slug string) *sqlmock
 	now := time.Now()
 	return rows.AddRow(
 		id, name, slug, "k3s", "https://10.0.0.1:6443",
-		"", "us-east-1", "ready", nil,
+		"", "us-east-1", "ready", []byte("{}"),
 		now, now,
 	)
 }
@@ -217,6 +217,42 @@ func mockApprovalRecordRows() *sqlmock.Rows {
 		"approver_email", "approver_name", "approved_at",
 		"ci_status", "change_ticket_url", "compliance_receipt",
 		"created_at",
+	})
+}
+
+// mockManagedResourceRows returns sqlmock.Rows configured for ManagedResource queries.
+func mockManagedResourceRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "name", "api_version", "kind", "provider",
+		"cluster_id", "management_policy", "sync_status",
+		"conditions", "spec_hash", "metadata",
+		"created_at", "updated_at",
+	})
+}
+
+// mockVirtualClusterRows returns sqlmock.Rows configured for VirtualCluster queries.
+func mockVirtualClusterRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "name", "host_cluster_id", "tenant_id", "namespace",
+		"k8s_version", "status", "helm_release_name", "resource_quota",
+		"created_at", "updated_at",
+	})
+}
+
+// mockPropagationPolicyRows returns sqlmock.Rows configured for PropagationPolicy queries.
+func mockPropagationPolicyRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "name", "cluster_ids", "resource_selectors",
+		"placement_strategy", "gpu_required", "priority",
+		"created_at", "updated_at",
+	})
+}
+
+// mockProjectAccessRows returns sqlmock.Rows configured for ProjectAccess queries.
+func mockProjectAccessRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "user_id", "project_id", "environment_id",
+		"role", "granted_by", "granted_at", "expires_at",
 	})
 }
 

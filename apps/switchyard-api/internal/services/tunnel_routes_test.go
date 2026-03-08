@@ -2,6 +2,8 @@ package services
 
 import (
 	"testing"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/cloudflare"
 )
 
 // =============================================================================
@@ -180,5 +182,156 @@ func TestTunnelRoutesConstants(t *testing.T) {
 	}
 	if DefaultCatchAllService != "http_status:404" {
 		t.Errorf("DefaultCatchAllService = %q, want %q", DefaultCatchAllService, "http_status:404")
+	}
+}
+
+// =============================================================================
+// isCatchAllServiceCF (Cloudflare API variant)
+// =============================================================================
+
+func TestIsCatchAllServiceCF(t *testing.T) {
+	tests := []struct {
+		name    string
+		service string
+		want    bool
+	}{
+		{"default catch-all", DefaultCatchAllService, true},
+		{"http_status:500", "http_status:500", true},
+		{"http_status:503", "http_status:503", true},
+		{"localhost catch-all", "http://localhost:8080", true},
+		{"regular service URL", "http://api.enclii.svc.cluster.local:80", false},
+		{"empty string", "", false},
+		{"random service", "http://some-service:3000", false},
+		{"https localhost is not catch-all", "https://localhost:8080", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isCatchAllServiceCF(tt.service)
+			if got != tt.want {
+				t.Errorf("isCatchAllServiceCF(%q) = %v, want %v", tt.service, got, tt.want)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// insertBeforeCatchAllCF (Cloudflare API variant)
+// =============================================================================
+
+func TestInsertBeforeCatchAllCF(t *testing.T) {
+	tests := []struct {
+		name     string
+		rules    []cloudflare.TunnelIngressRule
+		newRule  cloudflare.TunnelIngressRule
+		wantLen  int
+		wantLast string // expected Service of the last rule
+		wantNew  int    // expected index of the new rule
+	}{
+		{
+			name: "insert before catch-all",
+			rules: []cloudflare.TunnelIngressRule{
+				{Hostname: "api.enclii.dev", Service: "http://api:80"},
+				{Service: DefaultCatchAllService},
+			},
+			newRule:  cloudflare.TunnelIngressRule{Hostname: "app.enclii.dev", Service: "http://app:80"},
+			wantLen:  3,
+			wantLast: DefaultCatchAllService,
+			wantNew:  1,
+		},
+		{
+			name:     "empty rules - appends new rule and adds catch-all",
+			rules:    []cloudflare.TunnelIngressRule{},
+			newRule:  cloudflare.TunnelIngressRule{Hostname: "api.enclii.dev", Service: "http://api:80"},
+			wantLen:  2,
+			wantLast: DefaultCatchAllService,
+			wantNew:  0,
+		},
+		{
+			name: "no catch-all found - appends and adds default",
+			rules: []cloudflare.TunnelIngressRule{
+				{Hostname: "api.enclii.dev", Service: "http://api:80"},
+			},
+			newRule:  cloudflare.TunnelIngressRule{Hostname: "app.enclii.dev", Service: "http://app:80"},
+			wantLen:  3,
+			wantLast: DefaultCatchAllService,
+			wantNew:  1,
+		},
+		{
+			name: "insert before http_status:500 catch-all",
+			rules: []cloudflare.TunnelIngressRule{
+				{Service: "http_status:500"},
+			},
+			newRule:  cloudflare.TunnelIngressRule{Hostname: "test.dev", Service: "http://test:80"},
+			wantLen:  2,
+			wantLast: "http_status:500",
+			wantNew:  0,
+		},
+		{
+			name: "multiple routes - insert before catch-all at end",
+			rules: []cloudflare.TunnelIngressRule{
+				{Hostname: "api.enclii.dev", Service: "http://api:80"},
+				{Hostname: "app.enclii.dev", Service: "http://app:80"},
+				{Service: DefaultCatchAllService},
+			},
+			newRule:  cloudflare.TunnelIngressRule{Hostname: "status.enclii.dev", Service: "http://status:80"},
+			wantLen:  4,
+			wantLast: DefaultCatchAllService,
+			wantNew:  2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := insertBeforeCatchAllCF(tt.rules, tt.newRule)
+
+			if len(got) != tt.wantLen {
+				t.Errorf("insertBeforeCatchAllCF() returned %d rules, want %d", len(got), tt.wantLen)
+				return
+			}
+
+			lastRule := got[len(got)-1]
+			if lastRule.Service != tt.wantLast {
+				t.Errorf("last rule service = %q, want %q", lastRule.Service, tt.wantLast)
+			}
+
+			if got[tt.wantNew].Hostname != tt.newRule.Hostname {
+				t.Errorf("new rule at index %d has hostname %q, want %q",
+					tt.wantNew, got[tt.wantNew].Hostname, tt.newRule.Hostname)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// ConfigMap and Cloudflare variants produce consistent behavior
+// =============================================================================
+
+func TestInsertBeforeCatchAll_ConfigMapAndCF_Consistent(t *testing.T) {
+	// Verify that both implementations behave the same way for equivalent inputs
+	cmRules := []IngressRule{
+		{Hostname: "api.enclii.dev", Service: "http://api:80"},
+		{Service: DefaultCatchAllService},
+	}
+	cfRules := []cloudflare.TunnelIngressRule{
+		{Hostname: "api.enclii.dev", Service: "http://api:80"},
+		{Service: DefaultCatchAllService},
+	}
+
+	cmResult := insertBeforeCatchAll(cmRules, IngressRule{Hostname: "new.dev", Service: "http://new:80"})
+	cfResult := insertBeforeCatchAllCF(cfRules, cloudflare.TunnelIngressRule{Hostname: "new.dev", Service: "http://new:80"})
+
+	if len(cmResult) != len(cfResult) {
+		t.Errorf("ConfigMap variant returned %d rules, CF variant returned %d", len(cmResult), len(cfResult))
+		return
+	}
+
+	for i := range cmResult {
+		if cmResult[i].Hostname != cfResult[i].Hostname {
+			t.Errorf("index %d: CM hostname=%q, CF hostname=%q", i, cmResult[i].Hostname, cfResult[i].Hostname)
+		}
+		if cmResult[i].Service != cfResult[i].Service {
+			t.Errorf("index %d: CM service=%q, CF service=%q", i, cmResult[i].Service, cfResult[i].Service)
+		}
 	}
 }

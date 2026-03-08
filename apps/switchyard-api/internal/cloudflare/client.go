@@ -62,7 +62,7 @@ func NewClient(cfg *Config) (*Client, error) {
 // doRequest performs an authenticated HTTP request to the Cloudflare API
 func (c *Client) doRequest(ctx context.Context, method, path string, query url.Values, body io.Reader) (*http.Response, error) {
 	reqURL := c.baseURL + path
-	if query != nil && len(query) > 0 {
+	if len(query) > 0 {
 		reqURL += "?" + query.Encode()
 	}
 

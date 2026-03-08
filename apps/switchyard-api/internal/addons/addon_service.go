@@ -133,7 +133,7 @@ func (s *AddonService) provisionAddon(ctx context.Context, addon *types.Database
 
 	if err != nil {
 		logger.WithError(err).Error("Addon provisioning failed")
-		s.repos.DatabaseAddons.UpdateStatus(ctx, addon.ID, types.DatabaseAddonStatusFailed, err.Error())
+		_ = s.repos.DatabaseAddons.UpdateStatus(ctx, addon.ID, types.DatabaseAddonStatusFailed, err.Error())
 		return
 	}
 
@@ -230,7 +230,7 @@ func (s *AddonService) DeleteAddon(ctx context.Context, addonID uuid.UUID) error
 	// Deprovision from K8s
 	if err := provisioner.Deprovision(ctx, addon); err != nil {
 		logger.WithError(err).Error("Failed to deprovision addon")
-		s.repos.DatabaseAddons.UpdateStatus(ctx, addonID, types.DatabaseAddonStatusFailed, fmt.Sprintf("Deprovision failed: %s", err))
+		_ = s.repos.DatabaseAddons.UpdateStatus(ctx, addonID, types.DatabaseAddonStatusFailed, fmt.Sprintf("Deprovision failed: %s", err))
 		return fmt.Errorf("failed to deprovision addon: %w", err)
 	}
 

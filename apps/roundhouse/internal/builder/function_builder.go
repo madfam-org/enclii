@@ -313,7 +313,7 @@ func (e *Executor) buildFunction(ctx context.Context, job *queue.BuildJob, build
 	args = append(args,
 		"--label", fmt.Sprintf("org.opencontainers.image.revision=%s", job.GitSHA),
 		"--label", fmt.Sprintf("org.opencontainers.image.source=%s", job.GitRepo),
-		"--label", fmt.Sprintf("io.enclii.function=true"),
+		"--label", "io.enclii.function=true",
 		"--label", fmt.Sprintf("io.enclii.function.runtime=%s", fnConfig.Runtime),
 		"--label", fmt.Sprintf("io.enclii.function.handler=%s", fnConfig.Handler),
 		"--label", fmt.Sprintf("io.enclii.service-id=%s", job.ServiceID.String()),

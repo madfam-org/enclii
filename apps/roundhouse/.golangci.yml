@@ -12,9 +12,7 @@ linters:
     - ineffassign
     - unused
     - errcheck
-    # NOTE: Additional linters disabled due to existing technical debt.
-    # Enable incrementally after fixing issues:
-    # - staticcheck   # Style/deprecation warnings
+    - staticcheck
   exclusions:
     presets:
       - std-error-handling

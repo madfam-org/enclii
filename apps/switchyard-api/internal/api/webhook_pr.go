@@ -324,7 +324,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 		logging.String("preview_id", preview.ID.String()))
 
 	// Update preview status
-	h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusBuilding, "Building image from commit "+gitSHA[:7])
+	_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusBuilding, "Building image from commit "+gitSHA[:7])
 
 	// Execute the build synchronously within this goroutine
 	buildResult := h.builder.BuildFromGit(ctx, service, gitSHA)
@@ -334,8 +334,8 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 			logging.String("preview_id", preview.ID.String()),
 			logging.Error("build_error", buildResult.Error))
 
-		h.repos.Releases.UpdateStatus(release.ID, types.ReleaseStatusFailed)
-		h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Build failed: "+buildResult.Error.Error())
+		_ = h.repos.Releases.UpdateStatus(release.ID, types.ReleaseStatusFailed)
+		_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Build failed: "+buildResult.Error.Error())
 		return
 	}
 
@@ -343,7 +343,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 	release.ImageURI = buildResult.ImageURI
 	if err := h.repos.Releases.UpdateStatus(release.ID, types.ReleaseStatusReady); err != nil {
 		h.logger.Error(ctx, "Failed to update preview release status", logging.Error("db_error", err))
-		h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Failed to update release")
+		_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Failed to update release")
 		return
 	}
 
@@ -352,7 +352,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 		logging.String("image_uri", buildResult.ImageURI))
 
 	// Update preview status to deploying
-	h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusDeploying, "Deploying to Kubernetes")
+	_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusDeploying, "Deploying to Kubernetes")
 
 	// Create preview-specific environment/namespace
 	previewNamespace := "enclii-preview-" + preview.PreviewSubdomain
@@ -373,7 +373,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 		h.logger.Error(ctx, "Failed to create preview deployment",
 			logging.Error("db_error", err),
 			logging.String("preview_id", preview.ID.String()))
-		h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Failed to create deployment")
+		_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Failed to create deployment")
 		return
 	}
 
@@ -404,14 +404,14 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 		h.logger.Error(ctx, "Failed to reconcile preview deployment",
 			logging.String("preview_id", preview.ID.String()),
 			logging.String("error", result.Message))
-		h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Deploy failed: "+result.Message)
-		h.repos.Deployments.UpdateStatus(deployment.ID, types.DeploymentStatusFailed, types.HealthStatusUnhealthy)
+		_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Deploy failed: "+result.Message)
+		_ = h.repos.Deployments.UpdateStatus(deployment.ID, types.DeploymentStatusFailed, types.HealthStatusUnhealthy)
 		return
 	}
 
 	// Update statuses to active
-	h.repos.Deployments.UpdateStatus(deployment.ID, types.DeploymentStatusRunning, types.HealthStatusHealthy)
-	h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusActive, "Preview deployed successfully")
+	_ = h.repos.Deployments.UpdateStatus(deployment.ID, types.DeploymentStatusRunning, types.HealthStatusHealthy)
+	_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusActive, "Preview deployed successfully")
 
 	h.logger.Info(ctx, "Preview environment deployed successfully",
 		logging.String("preview_id", preview.ID.String()),

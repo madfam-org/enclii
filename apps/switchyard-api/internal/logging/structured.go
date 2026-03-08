@@ -65,7 +65,12 @@ type LogConfig struct {
 	TracingSampler float64 `json:"tracing_sampler"`
 }
 
-// Request ID middleware key
+// contextKey is a custom type for context.WithValue keys to avoid collisions
+type contextKey string
+
+const requestIDCtxKey contextKey = "request_id"
+
+// Request ID middleware key (string for gin context)
 const RequestIDKey = "request_id"
 const UserIDKey = "user_id"
 const TraceIDKey = "trace_id"
@@ -198,7 +203,7 @@ func (l *StructuredLogger) log(ctx context.Context, level logrus.Level, msg stri
 
 	// Add context fields
 	if ctx != nil {
-		if requestID, ok := ctx.Value(RequestIDKey).(string); ok {
+		if requestID, ok := ctx.Value(requestIDCtxKey).(string); ok {
 			entry = entry.WithField("request_id", requestID)
 		}
 
@@ -327,7 +332,7 @@ func RequestIDMiddleware() gin.HandlerFunc {
 		c.Header("X-Request-ID", requestID)
 
 		// Add to context
-		ctx := context.WithValue(c.Request.Context(), RequestIDKey, requestID)
+		ctx := context.WithValue(c.Request.Context(), requestIDCtxKey, requestID)
 		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()

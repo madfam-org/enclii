@@ -399,7 +399,7 @@ func (h *Handler) WakePreview(c *gin.Context) {
 					logging.String("preview_id", previewID),
 					logging.Error("error", err))
 				// Revert database status
-				h.repos.PreviewEnvironments.UpdateStatus(ctx, previewUUID, types.PreviewStatusSleeping, "Failed to scale up deployment")
+				_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, previewUUID, types.PreviewStatusSleeping, "Failed to scale up deployment")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to scale up preview deployment"})
 				return
 			}

@@ -120,13 +120,13 @@ func (s *Service) deliverToWebhook(ctx context.Context, webhook *types.WebhookDe
 		logger.WithError(sendErr).Error("Webhook delivery failed")
 
 		// Update webhook failure tracking
-		s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "failed", sendErr.Error(), true)
+		_ = s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "failed", sendErr.Error(), true)
 	} else {
 		delivery.Status = types.WebhookDeliveryStatusSuccess
 		logger.Info("Webhook delivery succeeded")
 
 		// Reset failure count on success
-		s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "success", "", false)
+		_ = s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "success", "", false)
 	}
 
 	if err := s.repo.UpdateDelivery(ctx, delivery); err != nil {
@@ -237,11 +237,11 @@ func (s *Service) RetryDelivery(ctx context.Context, webhook *types.WebhookDesti
 	if sendErr != nil {
 		delivery.Status = types.WebhookDeliveryStatusFailed
 		delivery.ErrorMessage = sendErr.Error()
-		s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "failed", sendErr.Error(), true)
+		_ = s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "failed", sendErr.Error(), true)
 	} else {
 		delivery.Status = types.WebhookDeliveryStatusSuccess
 		delivery.ErrorMessage = ""
-		s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "success", "", false)
+		_ = s.repo.UpdateDeliveryStatus(ctx, webhook.ID, "success", "", false)
 	}
 
 	if err := s.repo.UpdateDelivery(ctx, delivery); err != nil {
