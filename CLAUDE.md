@@ -285,8 +285,8 @@ Access to Dispatch requires BOTH:
 - ✅ `janua` → auth.madfam.io (SSO authentication)
 - ✅ `docs-site` → docs.enclii.dev (documentation)
 - ✅ `landing-page` → enclii.dev (deployed)
-- ✅ `status-page` → status.enclii.dev (implemented, pending deployment)
-- ✅ `status-page-madfam` → status.madfam.io (implemented, pending deployment)
+- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline history)
+- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline history)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification

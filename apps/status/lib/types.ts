@@ -117,6 +117,53 @@ export interface SiteConfig {
 }
 
 /**
+ * Raw status check record (stored in status_checks table)
+ */
+export interface StatusCheckRecord {
+  id: number
+  service: string
+  url: string
+  groupName: string
+  status: ServiceStatus
+  responseMs: number | null
+  statusCode: number | null
+  error: string | null
+  checkedAt: string
+}
+
+/**
+ * A single time window in the 24h timeline
+ */
+export interface TimelineSlot {
+  start: string           // ISO timestamp of window start
+  end: string             // ISO timestamp of window end
+  status: ServiceStatus   // worst status in window
+  checks: number          // number of checks in window
+  avgResponseMs: number | null
+}
+
+/**
+ * Timeline data for one service
+ */
+export interface ServiceTimeline {
+  service: string
+  group: string
+  url: string
+  slots: TimelineSlot[]
+  uptime24h: number       // percentage
+}
+
+/**
+ * Full timeline API response
+ */
+export interface TimelineResponse {
+  services: ServiceTimeline[]
+  from: string
+  to: string
+  windowMinutes: number
+}
+
+/**
  * Response time thresholds for visual indicators
  */
 export const RESPONSE_TIME_THRESHOLDS = {

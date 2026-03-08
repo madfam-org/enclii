@@ -3,6 +3,7 @@ import { OverallStatusBadge } from '@/components/StatusBadge'
 import { ServiceList } from '@/components/ServiceGroup'
 import { UptimeLegend } from '@/components/UptimeBar'
 import { ScheduledMaintenanceCard, IncidentCard } from '@/components/IncidentCard'
+import { Timeline } from '@/components/Timeline'
 import { checkAllServices } from '@/lib/health-checker'
 import { getAllServicesUptime, isPrometheusAvailable } from '@/lib/prometheus'
 import { getSiteConfig } from '@/lib/config'
@@ -112,6 +113,11 @@ async function StatusContent() {
           groupBy="group"
           variant="card"
         />
+      </section>
+
+      {/* 24-Hour Timeline */}
+      <section>
+        <Timeline />
       </section>
 
       {/* Auto-refresh indicator */}
