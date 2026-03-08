@@ -519,6 +519,21 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/functions/:id/logs", h.GetFunctionLogs)
 			protected.GET("/functions/:id/metrics", h.GetFunctionMetrics)
 
+			// Timetable — Cron Jobs & One-Off Jobs (NOT IMPLEMENTED — stubs return 501)
+			protected.POST("/projects/:slug/cron-jobs", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateCronJob)
+			protected.GET("/projects/:slug/cron-jobs", h.ListCronJobs)
+			protected.GET("/cron-jobs/:id", h.GetCronJob)
+			protected.PATCH("/cron-jobs/:id", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateCronJob)
+			protected.DELETE("/cron-jobs/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteCronJob)
+			protected.GET("/cron-jobs/:id/runs", h.ListCronJobRuns)
+			protected.POST("/projects/:slug/one-off-jobs", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateOneOffJob)
+
+			// Junctions — Routing & Ingress (NOT IMPLEMENTED — stubs return 501)
+			protected.POST("/projects/:slug/junctions", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateJunction)
+			protected.GET("/projects/:slug/junctions", h.ListJunctions)
+			protected.GET("/junctions/:id", h.GetJunction)
+			protected.DELETE("/junctions/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteJunction)
+
 			// Notification Webhooks (Slack/Discord/Telegram/Custom)
 			protected.POST("/projects/:slug/webhooks", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateWebhook)
 			protected.GET("/projects/:slug/webhooks", h.ListWebhooks)

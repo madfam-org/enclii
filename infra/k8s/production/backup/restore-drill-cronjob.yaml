@@ -1,0 +1,148 @@
+---
+# Monthly Postgres Backup Restore Drill (CronJob)
+#
+# Non-destructive: creates a temporary database, restores the latest R2 backup,
+# validates table count, then drops the temp database.
+#
+# Schedule: 1st of each month at 5 AM UTC
+# Results: `kubectl logs -n data job/<job-name>`
+# Log drill results in: docs/runbooks/RESTORE_DRILL_LOG.md
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-restore-drill
+  namespace: data
+  labels:
+    app: postgres-restore-drill
+    app.kubernetes.io/name: postgres-restore-drill
+    app.kubernetes.io/component: backup-validation
+    app.kubernetes.io/part-of: enclii
+spec:
+  # 1st of every month at 5 AM UTC
+  schedule: "0 5 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800  # 30 minute timeout
+      ttlSecondsAfterFinished: 86400  # clean up after 24h
+      template:
+        metadata:
+          labels:
+            app: postgres-restore-drill
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: restore-drill
+              image: docker.io/amazon/aws-cli:2.33.16
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: PGHOST
+                  value: "postgres.data.svc.cluster.local"
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: password
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: secret-access-key
+                - name: R2_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: account-id
+                - name: R2_BUCKET
+                  value: "enclii-backups"
+                - name: AWS_DEFAULT_REGION
+                  value: "auto"
+              command:
+                - /bin/bash
+                - -euo
+                - pipefail
+                - -c
+                - |
+                  DRILL_DB="enclii_restore_test"
+                  BUCKET="${R2_BUCKET}"
+                  R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+                  echo "=== Postgres Restore Drill — $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+
+                  # Install psql (aws-cli image is Amazon Linux)
+                  yum install -y -q postgresql15 2>/dev/null || yum install -y -q postgresql 2>/dev/null
+
+                  # Step 1: Find latest backup
+                  echo "[1/5] Finding latest backup in R2..."
+                  LATEST=$(aws s3 ls "s3://${BUCKET}/postgres/" --endpoint-url "${R2_ENDPOINT}" | sort | tail -1 | awk '{print $4}')
+                  if [ -z "$LATEST" ]; then
+                    echo "FAIL: No backups found in s3://${BUCKET}/postgres/"
+                    exit 1
+                  fi
+                  echo "  Found: ${LATEST}"
+
+                  # Step 2: Download backup
+                  echo "[2/5] Downloading backup..."
+                  aws s3 cp "s3://${BUCKET}/postgres/${LATEST}" /tmp/restore-drill.sql.gz \
+                    --endpoint-url "${R2_ENDPOINT}"
+                  echo "  Downloaded: $(du -h /tmp/restore-drill.sql.gz | cut -f1)"
+
+                  # Step 3: Create temp database and restore
+                  echo "[3/5] Creating temp database '${DRILL_DB}' and restoring..."
+                  psql -c "DROP DATABASE IF EXISTS ${DRILL_DB};"
+                  psql -c "CREATE DATABASE ${DRILL_DB};"
+                  gunzip -c /tmp/restore-drill.sql.gz | psql -d "${DRILL_DB}" -q 2>&1 | tail -5
+
+                  # Step 4: Validate
+                  echo "[4/5] Validating restore..."
+                  TABLE_COUNT=$(psql -d "${DRILL_DB}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+                  echo "  Tables found: ${TABLE_COUNT}"
+                  if [ "${TABLE_COUNT}" -lt 1 ]; then
+                    echo "FAIL: No tables found after restore"
+                    psql -c "DROP DATABASE IF EXISTS ${DRILL_DB};"
+                    exit 1
+                  fi
+
+                  # Step 5: Cleanup
+                  echo "[5/5] Dropping temp database..."
+                  psql -c "DROP DATABASE IF EXISTS ${DRILL_DB};"
+                  rm -f /tmp/restore-drill.sql.gz
+
+                  echo ""
+                  echo "=== RESTORE DRILL PASSED ==="
+                  echo "  Backup: ${LATEST}"
+                  echo "  Tables: ${TABLE_COUNT}"
+                  echo "  Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"

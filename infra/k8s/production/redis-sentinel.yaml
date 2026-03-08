@@ -1,11 +1,17 @@
 ---
 # Redis Sentinel High Availability Configuration for Enclii
 # Provides automatic failover and high availability for session/cache storage
+#
+# DEPLOYMENT BLOCKED: Do NOT deploy until a 3rd node is added to the cluster.
+# The 2-node k3s cluster (foundry-core + foundry-builder-01) cannot satisfy
+# the 3-replica quorum required for Sentinel HA. The builder node has a
+# NoSchedule taint (builder=true) so only 1 node is schedulable for Redis.
+# Once a 3rd general-purpose node is provisioned, update replicas and deploy.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
-  namespace: enclii-production
+  namespace: data
   labels:
     app: redis
 data:
@@ -46,7 +52,7 @@ data:
     port 26379
 
     # Monitor the master (name, host, port, quorum)
-    sentinel monitor enclii-master redis-0.redis-headless.enclii-production.svc.cluster.local 6379 2
+    sentinel monitor enclii-master redis-0.redis-headless.data.svc.cluster.local 6379 2
 
     # Auth (set via environment)
     # sentinel auth-pass enclii-master ${REDIS_PASSWORD}
@@ -64,7 +70,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: redis-credentials
-  namespace: enclii-production
+  namespace: data
   labels:
     app: redis
 type: Opaque
@@ -76,7 +82,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
-  namespace: enclii-production
+  namespace: data
   labels:
     app: redis
 spec:
@@ -97,7 +103,14 @@ spec:
       initContainers:
         # Copy config files and set correct permissions
         - name: config-init
-          image: redis:7-alpine
+          image: docker.io/library/redis:7-alpine
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           command:
             - sh
             - -c
@@ -112,7 +125,7 @@ spec:
 
               # Set replica config if not first pod
               if [ "$(hostname)" != "redis-0" ]; then
-                echo "replicaof redis-0.redis-headless.enclii-production.svc.cluster.local 6379" >> /etc/redis/redis.conf
+                echo "replicaof redis-0.redis-headless.data.svc.cluster.local 6379" >> /etc/redis/redis.conf
               fi
           env:
             - name: REDIS_PASSWORD
@@ -128,7 +141,7 @@ spec:
       containers:
         # Redis server
         - name: redis
-          image: redis:7-alpine
+          image: docker.io/library/redis:7-alpine
           command:
             - redis-server
             - /etc/redis/redis.conf
@@ -176,14 +189,18 @@ spec:
             - name: data
               mountPath: /data
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             runAsNonRoot: true
             runAsUser: 999
+            capabilities:
+              drop:
+                - ALL
 
         # Redis Sentinel
         - name: sentinel
-          image: redis:7-alpine
+          image: docker.io/library/redis:7-alpine
           command:
             - redis-sentinel
             - /etc/redis/sentinel.conf
@@ -222,13 +239,17 @@ spec:
             - name: config
               mountPath: /etc/redis
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             runAsNonRoot: true
             runAsUser: 999
+            capabilities:
+              drop:
+                - ALL
 
         # Redis Exporter for Prometheus metrics
         - name: redis-exporter
-          image: oliver006/redis_exporter:v1.55.0
+          image: docker.io/oliver006/redis_exporter:v1.55.0
           ports:
             - containerPort: 9121
               name: metrics
@@ -248,10 +269,14 @@ spec:
               memory: "64Mi"
               cpu: "50m"
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 65534
+            capabilities:
+              drop:
+                - ALL
 
       volumes:
         - name: config-template
@@ -260,14 +285,16 @@ spec:
         - name: config
           emptyDir: {}
 
-      # Spread pods across nodes
+      # Spread pods across nodes (preferred, not required — allows degraded HA on 2-node cluster)
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: redis
-              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: redis
+                topologyKey: kubernetes.io/hostname
 
       terminationGracePeriodSeconds: 30
 
@@ -279,7 +306,7 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        storageClassName: standard
+        storageClassName: longhorn
         resources:
           requests:
             storage: 5Gi
@@ -288,7 +315,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis
-  namespace: enclii-production
+  namespace: data
   labels:
     app: redis
 spec:
@@ -307,7 +334,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis-headless
-  namespace: enclii-production
+  namespace: data
   labels:
     app: redis
 spec:
@@ -327,7 +354,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: redis
-  namespace: enclii-production
+  namespace: data
   labels:
     app: redis
 ---
@@ -335,7 +362,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: redis-pdb
-  namespace: enclii-production
+  namespace: data
 spec:
   minAvailable: 2
   selector:
@@ -347,7 +374,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: redis-network-policy
-  namespace: enclii-production
+  namespace: data
 spec:
   podSelector:
     matchLabels:

@@ -1,0 +1,134 @@
+# HashiCorp Vault Application
+# Deploys: Vault secrets management (via Helm)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: secrets-management
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: 0.29.1  # Pin to specific stable version
+    helm:
+      valueFiles: []
+      # Reference values from the enclii repo
+      # ArgoCD Helm sources don't support external valueFiles,
+      # so values are inlined here matching infra/helm/vault/values.yaml
+      values: |
+        server:
+          standalone:
+            enabled: true
+            config: |
+              ui = true
+
+              listener "tcp" {
+                tls_disable = 1
+                address     = "[::]:8200"
+                cluster_address = "[::]:8201"
+
+                telemetry {
+                  unauthenticated_metrics_access = true
+                }
+              }
+
+              storage "file" {
+                path = "/vault/data"
+              }
+
+          dataStorage:
+            enabled: true
+            storageClass: longhorn
+            size: 5Gi
+
+          auditStorage:
+            enabled: true
+            storageClass: longhorn
+            size: 2Gi
+
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+
+          ingress:
+            enabled: false
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 1000
+            fsGroup: 1000
+
+          containerSecurityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+
+          readinessProbe:
+            enabled: true
+            path: "/v1/sys/health?standbyok=true"
+          livenessProbe:
+            enabled: true
+            path: "/v1/sys/health?standbyok=true"
+            initialDelaySeconds: 60
+
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
+
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: Exists
+
+        ui:
+          enabled: true
+
+        injector:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  # Vault controller manages status fields and internal state dynamically
+  ignoreDifferences:
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data
+        - /stringData

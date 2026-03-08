@@ -1,0 +1,110 @@
+# HashiCorp Vault - Standalone Deployment
+# Install: Managed by ArgoCD (infra/argocd/apps/vault.yaml)
+# Chart: hashicorp/vault from https://helm.releases.hashicorp.com
+#
+# Prerequisites:
+# - Longhorn CSI installed (StorageClass: longhorn)
+# - ArgoCD syncing infra/argocd/apps/vault.yaml
+#
+# After install:
+# - Initialize Vault: kubectl exec -n vault vault-0 -- vault operator init
+# - Unseal Vault: kubectl exec -n vault vault-0 -- vault operator unseal <key>
+# - UI available via: kubectl port-forward -n vault svc/vault 8200:8200
+# - Production UI via Cloudflare Tunnel (vault.enclii.dev)
+
+server:
+  # Standalone mode for single-node k3s cluster
+  # Switch to HA (Raft) when scaling to multi-node
+  standalone:
+    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address     = "[::]:8200"
+        cluster_address = "[::]:8201"
+
+        # Enable Prometheus metrics
+        telemetry {
+          unauthenticated_metrics_access = true
+        }
+      }
+
+      storage "file" {
+        path = "/vault/data"
+      }
+
+  # Persistent storage on Longhorn CSI
+  dataStorage:
+    enabled: true
+    storageClass: longhorn
+    size: 5Gi
+
+  # Audit log storage (separate PVC for compliance)
+  auditStorage:
+    enabled: true
+    storageClass: longhorn
+    size: 2Gi
+
+  # Resource limits (right-sized for single-node)
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  # Ingress disabled — access via Cloudflare Tunnel
+  ingress:
+    enabled: false
+
+  # Kyverno compliance: Pod Security Standards (restricted)
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000
+
+  # Kyverno compliance: Container Security Context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+  # Readiness/liveness probes
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+  livenessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+    initialDelaySeconds: 60
+
+  # Tolerate GPU nodes (don't schedule on them)
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+  # Prefer scheduling on control plane node
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+
+# Vault UI enabled (accessed via Cloudflare Tunnel or port-forward)
+ui:
+  enabled: true
+
+# Disable sidecar injector — use External Secrets Operator (ESO) instead
+# ESO pulls secrets from Vault into K8s Secrets via ClusterSecretStore
+injector:
+  enabled: false

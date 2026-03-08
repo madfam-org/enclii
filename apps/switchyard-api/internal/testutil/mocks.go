@@ -2,13 +2,17 @@ package testutil
 
 import (
 	"context"
-	"database/sql"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+// ============================================================================
+// CORE ENTITY MOCKS (existing)
+// ============================================================================
 
 // MockProjectRepository is a mock implementation of ProjectRepositoryInterface
 type MockProjectRepository struct {
@@ -70,9 +74,12 @@ func (m *MockProjectRepository) List() ([]*types.Project, error) {
 
 // MockServiceRepository is a mock implementation of ServiceRepositoryInterface
 type MockServiceRepository struct {
-	mu       sync.RWMutex
-	services map[uuid.UUID]*types.Service
-	CreateFn func(*types.Service) error
+	mu                   sync.RWMutex
+	services             map[uuid.UUID]*types.Service
+	CreateFn             func(*types.Service) error
+	UpdateFn             func(context.Context, *types.Service) error
+	DeleteFn             func(context.Context, uuid.UUID) error
+	UpdateHealthStatusFn func(context.Context, uuid.UUID, types.HealthStatus, string, int32, int32) error
 }
 
 func NewMockServiceRepository() *MockServiceRepository {
@@ -120,6 +127,49 @@ func (m *MockServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Ser
 		}
 	}
 	return result, nil
+}
+
+func (m *MockServiceRepository) Update(ctx context.Context, service *types.Service) error {
+	if m.UpdateFn != nil {
+		return m.UpdateFn(ctx, service)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.services[service.ID]; !ok {
+		return errors.ErrNotFound
+	}
+	m.services[service.ID] = service
+	return nil
+}
+
+func (m *MockServiceRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(ctx, id)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.services[id]; !ok {
+		return errors.ErrNotFound
+	}
+	delete(m.services, id)
+	return nil
+}
+
+func (m *MockServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32) error {
+	if m.UpdateHealthStatusFn != nil {
+		return m.UpdateHealthStatusFn(ctx, id, health, status, desiredReplicas, readyReplicas)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.services[id]
+	if !ok {
+		return errors.ErrNotFound
+	}
+	s.Health = health
+	s.Status = status
+	s.DesiredReplicas = int(desiredReplicas)
+	s.ReadyReplicas = int(readyReplicas)
+	return nil
 }
 
 // MockUserRepository is a mock implementation of UserRepositoryInterface
@@ -257,8 +307,9 @@ func (m *MockReleaseRepository) ListByService(serviceID uuid.UUID) ([]*types.Rel
 
 // MockDeploymentRepository is a mock implementation of DeploymentRepositoryInterface
 type MockDeploymentRepository struct {
-	mu          sync.RWMutex
-	deployments map[string]*types.Deployment
+	mu                  sync.RWMutex
+	deployments         map[string]*types.Deployment
+	GetByServiceSinceFn func(context.Context, string, time.Time) ([]*types.Deployment, error)
 }
 
 func NewMockDeploymentRepository() *MockDeploymentRepository {
@@ -322,6 +373,21 @@ func (m *MockDeploymentRepository) GetByStatus(ctx context.Context, status types
 	return result, nil
 }
 
+func (m *MockDeploymentRepository) GetByServiceSince(ctx context.Context, serviceID string, since time.Time) ([]*types.Deployment, error) {
+	if m.GetByServiceSinceFn != nil {
+		return m.GetByServiceSinceFn(ctx, serviceID, since)
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*types.Deployment, 0)
+	for _, d := range m.deployments {
+		if d.CreatedAt.After(since) {
+			result = append(result, d)
+		}
+	}
+	return result, nil
+}
+
 // MockEnvironmentRepository is a mock implementation of EnvironmentRepositoryInterface
 type MockEnvironmentRepository struct {
 	mu           sync.RWMutex
@@ -350,6 +416,17 @@ func (m *MockEnvironmentRepository) GetByID(ctx context.Context, id uuid.UUID) (
 	return nil, errors.ErrNotFound
 }
 
+func (m *MockEnvironmentRepository) GetByProjectAndName(projectID uuid.UUID, name string) (*types.Environment, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, e := range m.environments {
+		if e.ProjectID == projectID && e.Name == name {
+			return e, nil
+		}
+	}
+	return nil, errors.ErrNotFound
+}
+
 func (m *MockEnvironmentRepository) ListByProject(projectID uuid.UUID) ([]*types.Environment, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -364,58 +441,55 @@ func (m *MockEnvironmentRepository) ListByProject(projectID uuid.UUID) ([]*types
 
 // MockProjectAccessRepository is a mock implementation of ProjectAccessRepositoryInterface
 type MockProjectAccessRepository struct {
-	access map[string]bool
+	mu     sync.RWMutex
+	access map[string]*types.ProjectAccess
 }
 
 func NewMockProjectAccessRepository() *MockProjectAccessRepository {
 	return &MockProjectAccessRepository{
-		access: make(map[string]bool),
+		access: make(map[string]*types.ProjectAccess),
 	}
 }
 
 func (m *MockProjectAccessRepository) Grant(access *types.ProjectAccess) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := access.UserID.String() + ":" + access.ProjectID.String()
+	m.access[key] = access
 	return nil
 }
 
 func (m *MockProjectAccessRepository) Revoke(ctx context.Context, userID, projectID uuid.UUID, environmentID *uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := userID.String() + ":" + projectID.String()
+	delete(m.access, key)
 	return nil
 }
 
 func (m *MockProjectAccessRepository) GetByUserAndProject(ctx context.Context, userID, projectID uuid.UUID) ([]*types.ProjectAccess, error) {
-	return nil, nil
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*types.ProjectAccess, 0)
+	key := userID.String() + ":" + projectID.String()
+	if a, ok := m.access[key]; ok {
+		result = append(result, a)
+	}
+	return result, nil
 }
 
 func (m *MockProjectAccessRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*types.ProjectAccess, error) {
-	return nil, nil
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*types.ProjectAccess, 0)
+	for _, a := range m.access {
+		if a.UserID == userID {
+			result = append(result, a)
+		}
+	}
+	return result, nil
 }
 
 func (m *MockProjectAccessRepository) HasAccess(ctx context.Context, userID, projectID uuid.UUID, environmentID *uuid.UUID, requiredRole types.Role) (bool, error) {
 	return true, nil // Default to allow for testing
 }
-
-// MockRepositories is a struct that holds mock repository implementations
-type MockRepositories struct {
-	Projects      *MockProjectRepository
-	Services      *MockServiceRepository
-	Users         *MockUserRepository
-	Releases      *MockReleaseRepository
-	Deployments   *MockDeploymentRepository
-	Environments  *MockEnvironmentRepository
-	ProjectAccess *MockProjectAccessRepository
-}
-
-// NewMockRepositories creates a new set of mock repositories for testing
-func NewMockRepositories() *MockRepositories {
-	return &MockRepositories{
-		Projects:      NewMockProjectRepository(),
-		Services:      NewMockServiceRepository(),
-		Users:         NewMockUserRepository(),
-		Releases:      NewMockReleaseRepository(),
-		Deployments:   NewMockDeploymentRepository(),
-		Environments:  NewMockEnvironmentRepository(),
-		ProjectAccess: NewMockProjectAccessRepository(),
-	}
-}
-
-// ErrNotFound is a sentinel error for not found
-var ErrNotFound = sql.ErrNoRows
