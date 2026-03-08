@@ -56,6 +56,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 - [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
 - [packages/sdk-go/](./packages/sdk-go/): Go SDK and type definitions
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
+- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks + 24h historical timeline (PostgreSQL-backed, 15-min windows)
 
 ## Optional
 

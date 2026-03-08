@@ -75,6 +75,20 @@ spec:
               name: status-config
               key: prometheus-url
               optional: true
+        # Database for incidents and status history
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: status-secrets
+              key: database-url
+              optional: true
+        # Cron secret for status recording endpoint
+        - name: CRON_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: status-secrets
+              key: cron-secret
+              optional: true
         securityContext:
           privileged: false
           allowPrivilegeEscalation: false

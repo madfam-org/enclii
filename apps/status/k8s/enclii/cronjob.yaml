@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: status-recorder-enclii
+  namespace: enclii
+  labels:
+    app: status-recorder-enclii
+    app.kubernetes.io/component: status-recorder
+    app.kubernetes.io/instance: status-enclii
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 55
+      template:
+        metadata:
+          labels:
+            app: status-recorder-enclii
+        spec:
+          containers:
+            - name: recorder
+              image: curlimages/curl:8.5.0
+              command:
+                - curl
+                - -sf
+                - -X
+                - POST
+                - -H
+                - "Authorization: Bearer $(CRON_SECRET)"
+                - "http://status-enclii.enclii.svc.cluster.local/api/status/record"
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: status-secrets
+                      key: cron-secret
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi
+          restartPolicy: OnFailure

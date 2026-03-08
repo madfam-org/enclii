@@ -9,6 +9,7 @@ namespace: enclii
 resources:
   - ../base
   - configmap.yaml
+  - cronjob.yaml
 
 # Instance-specific labels
 commonLabels:

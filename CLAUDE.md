@@ -526,6 +526,8 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Longhorn values | `infra/helm/longhorn/` |
 | GPU setup | `infra/k8s/base/gpu/` |
 | Kaniko builds | `apps/roundhouse/k8s/kaniko-job-template.yaml` |
+| Status K8s (base) | `apps/status/k8s/base/` (deployment, service, secret template) |
+| Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
 
 ### Documentation
 

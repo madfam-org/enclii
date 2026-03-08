@@ -136,6 +136,9 @@ Key routes in `cloudflared-unified.yaml`:
 | `switchyard-api` | enclii | Control plane API |
 | `switchyard-ui` | enclii | User dashboard |
 | `dispatch` | enclii | Admin interface |
+| `status-enclii` | enclii | Status page (status.enclii.dev) |
+| `status-madfam` | enclii | Status page (status.madfam.io) |
+| `status-recorder-*` | enclii | CronJob — records status history every 60s |
 | `cloudflared` | cloudflare-tunnel | Ingress tunnel |
 
 ### Authentication
