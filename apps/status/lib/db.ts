@@ -35,7 +35,7 @@ export function getPool(): Pool | null {
 /**
  * Execute a parameterized query. Returns null if DB is not configured.
  */
-export async function query<T extends Record<string, unknown> = Record<string, unknown>>(
+export async function query<T extends object = Record<string, unknown>>(
   text: string,
   params?: unknown[],
 ): Promise<QueryResult<T> | null> {
