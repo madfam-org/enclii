@@ -4,13 +4,13 @@
 
 FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
 WORKDIR /app/switchyard-ui
 ARG NPM_MADFAM_TOKEN
-RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY apps/switchyard-ui/package.json ./
 COPY apps/switchyard-ui/.npmrc ./
 RUN pnpm install --frozen-lockfile=false

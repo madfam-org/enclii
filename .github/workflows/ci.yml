@@ -743,7 +743,7 @@ jobs:
     needs: [docker-build, detect-changes]
     if: |
       always() &&
-      needs.docker-build.result == 'success' &&
+      (needs.docker-build.result == 'success' || needs.docker-build.result == 'failure') &&
       github.ref == 'refs/heads/main' &&
       needs.detect-changes.outputs.has_changes == 'true'
     permissions:
