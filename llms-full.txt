@@ -317,7 +317,7 @@ Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Lo
 - [apps/switchyard-ui/](./apps/switchyard-ui/): Web dashboard (Next.js, port 4201)
 - [apps/dispatch/](./apps/dispatch/): Admin platform (Next.js, port 4203)
 - [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
-- [packages/sdk-go/](./packages/sdk-go/): Go SDK and type definitions
+- [packages/sdk-go/](./packages/sdk-go/): Go SDK — API client (`pkg/client/`) and type definitions (`pkg/types/`)
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
 - [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks + 24h historical timeline (PostgreSQL-backed, 15-min windows)
 - [apps/waybill/](./apps/waybill/): Infrastructure cost metering (customer billing via Dhanam)
