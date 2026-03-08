@@ -110,3 +110,6 @@ test-results/
 
 # Audit screenshots
 screenshots/
+
+# Docusaurus build cache
+.docusaurus/
