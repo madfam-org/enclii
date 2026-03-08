@@ -3,6 +3,9 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -98,17 +101,35 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 		tlsIssuer = req.CustomDomains[0].TLSIssuer
 	}
 
+	annotations := map[string]string{
+		"kubernetes.io/ingress.class":                    "nginx",
+		"cert-manager.io/cluster-issuer":                 tlsIssuer,
+		"nginx.ingress.kubernetes.io/ssl-redirect":       "true",
+		"nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
+	}
+
+	// Inject per-service custom response headers via nginx configuration snippet
+	if len(req.Service.Headers) > 0 {
+		var snippetLines []string
+		for key, value := range req.Service.Headers {
+			safeKey := sanitizeHeaderName(key)
+			safeValue := sanitizeHeaderValue(value)
+			if safeKey != "" && safeValue != "" {
+				snippetLines = append(snippetLines, fmt.Sprintf("more_set_headers \"%s: %s\";", safeKey, safeValue))
+			}
+		}
+		sort.Strings(snippetLines) // Deterministic output for idempotent reconciliation
+		if len(snippetLines) > 0 {
+			annotations["nginx.ingress.kubernetes.io/configuration-snippet"] = strings.Join(snippetLines, "\n")
+		}
+	}
+
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      req.Service.Name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				"kubernetes.io/ingress.class":                    "nginx",
-				"cert-manager.io/cluster-issuer":                 tlsIssuer,
-				"nginx.ingress.kubernetes.io/ssl-redirect":       "true",
-				"nginx.ingress.kubernetes.io/force-ssl-redirect": "true",
-			},
+			Name:        req.Service.Name,
+			Namespace:   namespace,
+			Labels:      labels,
+			Annotations: annotations,
 		},
 		Spec: networkingv1.IngressSpec{
 			IngressClassName: stringPtr("nginx"),
@@ -416,4 +437,28 @@ func extractNetworkPolicyPort(np *networkingv1.NetworkPolicy) int32 {
 		}
 	}
 	return 0
+}
+
+// headerNameRegex matches valid HTTP header name characters (RFC 7230: token characters)
+var headerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+// sanitizeHeaderName validates that a header name contains only safe characters.
+// Returns empty string if the name is invalid.
+func sanitizeHeaderName(name string) string {
+	if name == "" || !headerNameRegex.MatchString(name) {
+		return ""
+	}
+	return name
+}
+
+// headerValueUnsafeRegex matches characters that could cause nginx config injection
+var headerValueUnsafeRegex = regexp.MustCompile(`[\r\n\x00;"\\]`)
+
+// sanitizeHeaderValue rejects values containing characters that could cause nginx config injection.
+// Returns empty string if the value contains unsafe characters.
+func sanitizeHeaderValue(value string) string {
+	if headerValueUnsafeRegex.MatchString(value) {
+		return ""
+	}
+	return value
 }

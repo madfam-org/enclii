@@ -178,6 +178,57 @@ spec:
 			},
 		},
 		{
+			name: "valid config with custom headers",
+			input: `
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: ws-service
+  project: nuit
+spec:
+  runtime:
+    port: 6001
+  headers:
+    Cross-Origin-Opener-Policy: same-origin
+    Cross-Origin-Embedder-Policy: require-corp
+    Access-Control-Allow-Origin: "https://nuit.one"
+`,
+			wantErr: false,
+			checkFn: func(t *testing.T, cfg *EncliiYAML) {
+				if len(cfg.Spec.Headers) != 3 {
+					t.Fatalf("len(Headers) = %d, want 3", len(cfg.Spec.Headers))
+				}
+				if cfg.Spec.Headers["Cross-Origin-Opener-Policy"] != "same-origin" {
+					t.Errorf("Headers[COOP] = %q, want same-origin", cfg.Spec.Headers["Cross-Origin-Opener-Policy"])
+				}
+				if cfg.Spec.Headers["Cross-Origin-Embedder-Policy"] != "require-corp" {
+					t.Errorf("Headers[COEP] = %q, want require-corp", cfg.Spec.Headers["Cross-Origin-Embedder-Policy"])
+				}
+				if cfg.Spec.Headers["Access-Control-Allow-Origin"] != "https://nuit.one" {
+					t.Errorf("Headers[ACAO] = %q, want https://nuit.one", cfg.Spec.Headers["Access-Control-Allow-Origin"])
+				}
+			},
+		},
+		{
+			name: "config without headers has nil map",
+			input: `
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: no-headers
+  project: proj
+spec:
+  runtime:
+    port: 3000
+`,
+			wantErr: false,
+			checkFn: func(t *testing.T, cfg *EncliiYAML) {
+				if cfg.Spec.Headers != nil && len(cfg.Spec.Headers) != 0 {
+					t.Errorf("expected nil or empty Headers, got %v", cfg.Spec.Headers)
+				}
+			},
+		},
+		{
 			name:        "invalid YAML",
 			input:       `{{{not valid yaml`,
 			wantErr:     true,

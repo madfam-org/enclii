@@ -4094,6 +4094,14 @@ components:
           type: string
         build_config:
           $ref: '#/components/schemas/BuildConfig'
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom HTTP response headers injected via nginx ingress annotations
+          example:
+            Cross-Origin-Opener-Policy: same-origin
+            Cross-Origin-Embedder-Policy: require-corp
         status:
           type: string
           enum: [running, stopped, building]
@@ -4135,6 +4143,11 @@ components:
           default: main
         build_config:
           $ref: '#/components/schemas/BuildConfig'
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom HTTP response headers injected via nginx ingress annotations
 
     UpdateServiceRequest:
       type: object
@@ -4153,6 +4166,11 @@ components:
           type: string
         build_config:
           $ref: '#/components/schemas/BuildConfig'
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom HTTP response headers injected via nginx ingress annotations
 
     BulkCreateServicesRequest:
       type: object

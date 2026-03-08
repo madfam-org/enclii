@@ -1,0 +1,57 @@
+# Example: WebSocket Service (Soketi)
+# Pusher-compatible WebSocket server for real-time features.
+# WebSocket upgrades are handled transparently by Cloudflare Tunnel and nginx-ingress.
+
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: soketi
+  project: nuit
+
+spec:
+  domains:
+    - name: ws.nuit.one
+      environment: production
+
+  runtime:
+    port: 6001
+    healthCheck: /
+
+  # Custom response headers injected via nginx ingress annotations
+  headers:
+    Access-Control-Allow-Origin: "https://nuit.one"
+
+  env:
+    - name: SOKETI_DEFAULT_APP_ID
+      value: nuit
+    - name: SOKETI_DEFAULT_APP_KEY
+      value: app-key
+    - name: SOKETI_DEFAULT_APP_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: soketi-secrets
+          key: app-secret
+    - name: SOKETI_PORT
+      value: "6001"
+
+---
+# Deployment Instructions:
+#
+# 1. Create the secret:
+#    enclii env set soketi SOKETI_DEFAULT_APP_SECRET=<secret> --secret --env production
+#
+# 2. Deploy:
+#    enclii deploy --service soketi --env production
+#
+# 3. Verify WebSocket connectivity:
+#    wscat -c wss://ws.nuit.one/app/app-key
+#
+# 4. Client-side usage (Pusher SDK):
+#    const pusher = new Pusher('app-key', {
+#      wsHost: 'ws.nuit.one',
+#      wsPort: 443,
+#      wssPort: 443,
+#      forceTLS: true,
+#      enabledTransports: ['ws', 'wss'],
+#      disableStats: true,
+#    });

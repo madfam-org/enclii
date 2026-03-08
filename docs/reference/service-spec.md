@@ -430,6 +430,59 @@ volumes:
 
 ---
 
+## Custom Response Headers
+
+Define custom HTTP response headers injected via nginx ingress annotations.
+
+```yaml
+spec:
+  headers:
+    Cross-Origin-Opener-Policy: same-origin
+    Cross-Origin-Embedder-Policy: require-corp
+    Access-Control-Allow-Origin: "https://app.example.com"
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `headers` | map[string]string | No | Key-value pairs of HTTP response headers |
+
+Headers are injected via nginx `configuration-snippet` annotations during reconciliation. Each header becomes a `more_set_headers` directive.
+
+### Use Cases
+
+- **SharedArrayBuffer**: Requires `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`
+- **CORS**: Set `Access-Control-Allow-Origin` for cross-origin API access
+- **Security**: Add `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`
+- **Caching**: Set `Cache-Control` for static assets
+
+### Validation Rules
+
+- Header names: alphanumeric characters, hyphens (`-`), and underscores (`_`) only
+- Header values: no newlines, carriage returns, null bytes, semicolons, double quotes, or backslashes (to prevent nginx config injection)
+- Invalid headers are silently skipped
+
+### Example: WebSocket with COOP/COEP
+
+```yaml
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: soketi
+  project: my-project
+spec:
+  runtime:
+    port: 6001
+  headers:
+    Cross-Origin-Opener-Policy: same-origin
+    Cross-Origin-Embedder-Policy: require-corp
+  domains:
+    - name: ws.example.com
+```
+
+**See Also:** [WebSocket Services Guide](../guides/websocket-services.md)
+
+---
+
 ## Auto-Deploy Configuration
 
 Automatically deploy on git push.

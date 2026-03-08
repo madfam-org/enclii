@@ -39,6 +39,9 @@ type Service struct {
 	HealthCheck *HealthCheckConfig `json:"health_check,omitempty" db:"health_check"`
 	// Resource configuration for container limits
 	Resources *ResourceConfig `json:"resources,omitempty" db:"resources"`
+	// Headers defines custom HTTP response headers injected via nginx ingress annotations.
+	// Keys are header names, values are header values (e.g., {"Cross-Origin-Opener-Policy": "same-origin"}).
+	Headers map[string]string `json:"headers,omitempty" db:"headers"`
 	// AutoDeploy configuration for webhook-triggered deployments
 	AutoDeploy       bool   `json:"auto_deploy" db:"auto_deploy"`               // Enable auto-deploy on successful build
 	AutoDeployBranch string `json:"auto_deploy_branch" db:"auto_deploy_branch"` // Branch to auto-deploy (e.g., "main", "master")

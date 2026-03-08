@@ -32,6 +32,7 @@ type EncliiYAMLMeta struct {
 type EncliiYAMLSpec struct {
 	Domains []EncliiYAMLDomain `yaml:"domains,omitempty"`
 	Runtime EncliiYAMLRuntime  `yaml:"runtime,omitempty"`
+	Headers map[string]string  `yaml:"headers,omitempty"`
 }
 
 // EncliiYAMLDomain represents a custom domain declared in enclii.yaml
@@ -130,6 +131,12 @@ func (h *Handler) fetchAndParseEncliiYAML(ctx context.Context, repoFullName, git
 		h.logger.Info(ctx, "Parsed domains from enclii.yaml",
 			logging.String("repo", repoFullName),
 			logging.Int("domain_count", len(config.Spec.Domains)))
+	}
+
+	if len(config.Spec.Headers) > 0 {
+		h.logger.Info(ctx, "Parsed custom headers from enclii.yaml",
+			logging.String("repo", repoFullName),
+			logging.Int("header_count", len(config.Spec.Headers)))
 	}
 
 	return config

@@ -179,6 +179,13 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		go h.provisionDomainsFromYAML(context.Background(), services[0], encliiConfig)
 	}
 
+	// Sync custom response headers from enclii.yaml to service record
+	if encliiConfig != nil && len(encliiConfig.Spec.Headers) > 0 {
+		for i := range services {
+			services[i].Headers = encliiConfig.Spec.Headers
+		}
+	}
+
 	for _, service := range services {
 		// Check if service should be rebuilt based on changed files and WatchPaths
 		if len(service.WatchPaths) > 0 && !shouldRebuildService(service.WatchPaths, changedFiles) {
