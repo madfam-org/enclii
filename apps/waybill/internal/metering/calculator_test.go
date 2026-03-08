@@ -1,11 +1,17 @@
 package metering
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -385,6 +391,102 @@ func TestEstimateCost_CustomPricing(t *testing.T) {
 	if !floatEqual(est.BuildCost, expectedBuild) {
 		t.Errorf("custom pricing build: got %f, want %f", est.BuildCost, expectedBuild)
 	}
+}
+
+func TestCalculateUsageSummary_Success(t *testing.T) {
+	db, mock := newTestDB(t)
+	logger, _ := zap.NewDevelopment()
+	calc := NewCalculator(db, DefaultPricing(), logger)
+
+	projectID := uuid.New()
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	rows := sqlmock.NewRows([]string{"metric_type", "total"}).
+		AddRow("compute_gb_hours", 100.0).
+		AddRow("build_minutes", 30.0).
+		AddRow("bandwidth_gb", 5.0)
+
+	mock.ExpectQuery(`SELECT metric_type, SUM\(value\) as total`).
+		WithArgs(projectID, start, end).
+		WillReturnRows(rows)
+
+	summary, err := calc.CalculateUsageSummary(context.Background(), projectID, start, end)
+	require.NoError(t, err)
+
+	assert.Equal(t, projectID, summary.ProjectID)
+	assert.Equal(t, start, summary.PeriodStart)
+	assert.Equal(t, end, summary.PeriodEnd)
+
+	// Verify metrics stored correctly
+	assert.InDelta(t, 100.0, summary.Metrics[events.MetricComputeGBHours], 1e-9)
+	assert.InDelta(t, 30.0, summary.Metrics[events.MetricBuildMinutes], 1e-9)
+	assert.InDelta(t, 5.0, summary.Metrics[events.MetricBandwidthGB], 1e-9)
+
+	// Verify costs calculated
+	expectedComputeCost := 100.0 * 0.000463
+	expectedBuildCost := 30.0 * 0.01
+	expectedBandwidthCost := 5.0 * 0.10
+	expectedTotal := expectedComputeCost + expectedBuildCost + expectedBandwidthCost
+
+	assert.InDelta(t, expectedComputeCost, summary.Costs[events.MetricComputeGBHours], 1e-9)
+	assert.InDelta(t, expectedBuildCost, summary.Costs[events.MetricBuildMinutes], 1e-9)
+	assert.InDelta(t, expectedBandwidthCost, summary.Costs[events.MetricBandwidthGB], 1e-9)
+	assert.InDelta(t, expectedTotal, summary.TotalCost, 1e-9)
+
+	// Verify estimated monthly: 24 hours period -> monthly factor = 720/24 = 30
+	assert.InDelta(t, expectedTotal*30, summary.EstimatedMonthly, 1e-6)
+
+	assertExpectations(t, mock)
+}
+
+func TestCalculateUsageSummary_NoUsage(t *testing.T) {
+	db, mock := newTestDB(t)
+	logger, _ := zap.NewDevelopment()
+	calc := NewCalculator(db, DefaultPricing(), logger)
+
+	projectID := uuid.New()
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	// Return empty result set
+	rows := sqlmock.NewRows([]string{"metric_type", "total"})
+	mock.ExpectQuery(`SELECT metric_type, SUM\(value\) as total`).
+		WithArgs(projectID, start, end).
+		WillReturnRows(rows)
+
+	summary, err := calc.CalculateUsageSummary(context.Background(), projectID, start, end)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0.0, summary.TotalCost)
+	assert.Equal(t, 0.0, summary.EstimatedMonthly)
+	assert.Empty(t, summary.Metrics)
+	assert.Empty(t, summary.Costs)
+
+	assertExpectations(t, mock)
+}
+
+func TestCalculateUsageSummary_QueryError(t *testing.T) {
+	db, mock := newTestDB(t)
+	logger, _ := zap.NewDevelopment()
+	calc := NewCalculator(db, DefaultPricing(), logger)
+
+	projectID := uuid.New()
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`SELECT metric_type, SUM\(value\) as total`).
+		WithArgs(projectID, start, end).
+		WillReturnError(fmt.Errorf("connection refused"))
+
+	summary, err := calc.CalculateUsageSummary(context.Background(), projectID, start, end)
+
+	assert.Nil(t, summary)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to query usage")
+	assert.Contains(t, err.Error(), "connection refused")
+
+	assertExpectations(t, mock)
 }
 
 // floatEqual compares two floats within a small epsilon for floating-point precision.

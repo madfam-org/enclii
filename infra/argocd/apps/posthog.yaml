@@ -1,0 +1,184 @@
+# PostHog Product Analytics Application
+# Deploys: PostHog (via Helm) — self-hosted product analytics
+# Namespace: posthog
+# External deps: PostgreSQL (data ns), Redis (data ns)
+# Ingress: Cloudflare Tunnel (analytics.enclii.dev)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: posthog
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: posthog
+    app.kubernetes.io/part-of: enclii
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://posthog.github.io/charts-clickhouse/
+    chart: posthog
+    targetRevision: "*"  # Track latest; pin after initial validation
+    helm:
+      valueFiles: []
+      # Values inlined from infra/helm/posthog/values.yaml for ArgoCD.
+      # The canonical reference file is infra/helm/posthog/values.yaml;
+      # keep this block in sync with that file.
+      values: |
+        cloud: "private"
+
+        web:
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containerSecurityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+        worker:
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containerSecurityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+        plugins:
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containerSecurityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+        ingress:
+          enabled: false
+
+        clickhouse:
+          enabled: true
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          persistence:
+            enabled: true
+            storageClassName: longhorn
+            size: 20Gi
+          layout:
+            shardsCount: 1
+            replicasCount: 1
+
+        kafka:
+          enabled: false
+
+        redpanda:
+          enabled: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          persistence:
+            enabled: true
+            storageClassName: longhorn
+            size: 10Gi
+
+        postgresql:
+          enabled: false
+
+        externalPostgresql:
+          postgresqlHost: postgres.data.svc.cluster.local
+          postgresqlPort: 5432
+          postgresqlDatabase: posthog
+          postgresqlUsername: posthog
+          existingSecret: posthog-secrets
+          existingSecretPasswordKey: POSTHOG_DB_PASSWORD
+
+        redis:
+          enabled: false
+
+        externalRedis:
+          host: redis.data.svc.cluster.local
+          port: 6379
+
+        zookeeper:
+          enabled: false
+
+        env:
+          - name: SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: posthog-secrets
+                key: POSTHOG_SECRET_KEY
+          - name: POSTHOG_PERSONAL_API_KEY
+            value: ""
+          - name: DISABLE_SECURE_SSL_REDIRECT
+            value: "1"
+          - name: IS_BEHIND_PROXY
+            value: "1"
+          - name: TRUST_ALL_PROXIES
+            value: "1"
+
+        serviceAccount:
+          create: true
+          name: posthog
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: posthog
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+
+  # ClickHouse operator creates dynamic resources; ignore status drift
+  ignoreDifferences:
+    - group: "clickhouse.altinity.com"
+      kind: "*"
+      jsonPointers:
+        - /status
