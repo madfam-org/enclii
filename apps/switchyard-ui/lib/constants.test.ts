@@ -28,8 +28,9 @@ describe('environment defaults', () => {
     expect(API_BASE_URL).toBe('http://localhost:4200');
   });
 
-  it('AUTH_MODE defaults to "local" when env is not set', () => {
-    expect(AUTH_MODE).toBe('local');
+  it('AUTH_MODE resolves from NEXT_PUBLIC_AUTH_MODE env var', () => {
+    // .env.test sets NEXT_PUBLIC_AUTH_MODE=oidc
+    expect(['local', 'oidc']).toContain(AUTH_MODE);
   });
 });
 

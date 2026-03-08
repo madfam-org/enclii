@@ -150,7 +150,10 @@ func (c *Client) IsFeatureEnabled(distinctID, flagKey string) bool {
 		}).Debug("PostHog feature flag check failed, defaulting to false")
 		return false
 	}
-	return enabled
+	if b, ok := enabled.(bool); ok {
+		return b
+	}
+	return false
 }
 
 // Enabled reports whether the client is actively sending events.
@@ -176,6 +179,14 @@ type posthogLogger struct {
 
 func (l *posthogLogger) Logf(format string, args ...interface{}) {
 	l.logger.Debugf("[posthog] "+format, args...)
+}
+
+func (l *posthogLogger) Debugf(format string, args ...interface{}) {
+	l.logger.Debugf("[posthog] "+format, args...)
+}
+
+func (l *posthogLogger) Warnf(format string, args ...interface{}) {
+	l.logger.Warnf("[posthog] "+format, args...)
 }
 
 func (l *posthogLogger) Errorf(format string, args ...interface{}) {
