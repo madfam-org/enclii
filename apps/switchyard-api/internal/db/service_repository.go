@@ -118,7 +118,7 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var services []*types.Service
 	for rows.Next() {
@@ -165,7 +165,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var services []*types.Service
 	for rows.Next() {
@@ -277,7 +277,7 @@ func (r *ServiceRepository) ListByGitRepo(gitRepoURL string) ([]*types.Service, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var services []*types.Service
 	for rows.Next() {

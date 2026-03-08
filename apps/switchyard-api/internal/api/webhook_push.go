@@ -238,26 +238,28 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 			logging.String("release_id", release.ID.String()))
 
 		// Log webhook event to Activity feed for dashboard visibility (async to not block response)
-		go h.repos.AuditLogs.Log(context.Background(), &types.AuditLog{
-			ActorID:      nil, // System action (webhook)
-			ActorEmail:   "github-webhook@system.enclii.dev",
-			ActorRole:    types.RoleSystem,
-			Action:       "webhook.build_triggered",
-			ResourceType: "service",
-			ResourceID:   service.ID.String(),
-			ResourceName: service.Name,
-			ProjectID:    &service.ProjectID,
-			Outcome:      "success",
-			Context: map[string]interface{}{
-				"event_type": "push",
-				"commit_sha": gitSHA,
-				"branch":     branch,
-				"repository": event.Repository.FullName,
-				"release_id": release.ID.String(),
-				"pusher":     event.Pusher.Name,
-				"trigger":    "github_push",
-			},
-		})
+		go func() {
+			_ = h.repos.AuditLogs.Log(context.Background(), &types.AuditLog{
+				ActorID:      nil, // System action (webhook)
+				ActorEmail:   "github-webhook@system.enclii.dev",
+				ActorRole:    types.RoleSystem,
+				Action:       "webhook.build_triggered",
+				ResourceType: "service",
+				ResourceID:   service.ID.String(),
+				ResourceName: service.Name,
+				ProjectID:    &service.ProjectID,
+				Outcome:      "success",
+				Context: map[string]interface{}{
+					"event_type": "push",
+					"commit_sha": gitSHA,
+					"branch":     branch,
+					"repository": event.Repository.FullName,
+					"release_id": release.ID.String(),
+					"pusher":     event.Pusher.Name,
+					"trigger":    "github_push",
+				},
+			})
+		}()
 
 		results = append(results, buildResult{
 			Service:   service.Name,

@@ -108,7 +108,7 @@ func (g *GitHubClient) GetPullRequest(ctx context.Context, owner, repo string, p
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch PR: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
@@ -138,7 +138,7 @@ func (g *GitHubClient) GetPRReviews(ctx context.Context, owner, repo string, prN
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch reviews: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
@@ -168,7 +168,7 @@ func (g *GitHubClient) GetCheckStatus(ctx context.Context, owner, repo, sha stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch check status: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
@@ -200,7 +200,7 @@ func (g *GitHubClient) FindPRByCommit(ctx context.Context, owner, repo, commitSH
 	if err != nil {
 		return nil, fmt.Errorf("failed to search for PR: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)

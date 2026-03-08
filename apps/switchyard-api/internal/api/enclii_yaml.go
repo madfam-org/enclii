@@ -167,7 +167,7 @@ func fetchGitHubRawFile(ctx context.Context, token, owner, repo, path, ref strin
 	if err != nil {
 		return nil, fmt.Errorf("GitHub API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil // File doesn't exist

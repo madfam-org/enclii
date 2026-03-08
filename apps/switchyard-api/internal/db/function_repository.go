@@ -178,7 +178,7 @@ func (r *FunctionRepository) ListByProject(ctx context.Context, projectID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanFunctions(rows)
 }
@@ -203,7 +203,7 @@ func (r *FunctionRepository) ListByProjects(ctx context.Context, projectIDs []uu
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanFunctions(rows)
 }
@@ -234,7 +234,7 @@ func (r *FunctionRepository) ListByStatus(ctx context.Context, statuses ...types
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanFunctions(rows)
 }
@@ -556,7 +556,7 @@ func (r *FunctionRepository) GetInvocationsByFunction(ctx context.Context, funct
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invocations []*types.FunctionInvocation
 	for rows.Next() {
@@ -611,7 +611,7 @@ func (r *FunctionRepository) GetMetrics(ctx context.Context, functionID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var metrics []*types.FunctionMetrics
 	for rows.Next() {

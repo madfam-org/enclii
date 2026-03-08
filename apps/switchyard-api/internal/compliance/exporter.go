@@ -161,13 +161,13 @@ func (e *Exporter) SendWebhook(ctx context.Context, url string, payload interfac
 			}
 			continue
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		result.ResponseCode = resp.StatusCode
 
 		// Read response body
 		buf := new(bytes.Buffer)
-		buf.ReadFrom(resp.Body)
+		_, _ = buf.ReadFrom(resp.Body)
 		result.ResponseBody = buf.String()
 
 		// Check status code

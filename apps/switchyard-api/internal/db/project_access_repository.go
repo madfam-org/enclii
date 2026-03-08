@@ -104,7 +104,7 @@ func (r *ProjectAccessRepository) ListByUser(ctx context.Context, userID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var accesses []*types.ProjectAccess
 	for rows.Next() {
@@ -134,7 +134,7 @@ func (r *ProjectAccessRepository) ListByProject(ctx context.Context, projectID u
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var accesses []*types.ProjectAccess
 	for rows.Next() {

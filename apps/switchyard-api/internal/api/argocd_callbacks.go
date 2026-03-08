@@ -249,7 +249,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		deploymentsCreated++
 
 		// Log to audit trail
-		h.repos.AuditLogs.Log(ctx, &types.AuditLog{
+		_ = h.repos.AuditLogs.Log(ctx, &types.AuditLog{
 			ActorEmail:   "argocd@system.enclii.dev",
 			ActorRole:    types.RoleSystem,
 			Action:       "deployment.argocd_sync",
@@ -383,16 +383,6 @@ func extractServiceCandidates(imageURI string) []string {
 	}
 
 	return []string{simpleName}
-}
-
-// extractServiceName extracts a service name from a container image URI (simple version).
-// Kept for backward compatibility.
-func extractServiceName(imageURI string) string {
-	candidates := extractServiceCandidates(imageURI)
-	if len(candidates) == 0 {
-		return ""
-	}
-	return candidates[0]
 }
 
 // shortSHA returns the first 7 characters of a SHA

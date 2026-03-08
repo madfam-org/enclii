@@ -266,13 +266,13 @@ jobs:
             COV=$(go tool cover -func="$mod/coverage.out" | grep "total:" | awk '{print $NF}' | sed 's/%//')
             [ -z "$COV" ] && continue
             echo "$mod: ${COV}%"
-            if [ "$(echo "$COV < 30" | bc -l)" -eq 1 ]; then
-              echo "::error::$mod coverage ${COV}% below 30% threshold"
+            if [ "$(echo "$COV < 40" | bc -l)" -eq 1 ]; then
+              echo "::error::$mod coverage ${COV}% below 40% threshold"
               FAILED=1
             fi
           done
           [ "${FAILED}" -eq 1 ] && exit 1
-          echo "All modules meet 30% coverage threshold"
+          echo "All modules meet 40% coverage threshold"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -454,6 +454,33 @@ jobs:
             echo "▶ Vulnerability check: $mod"
             (cd "$mod" && govulncheck ./...) || true
           done
+
+  # =============================================================================
+  # LOAD TESTING: k6 smoke test against production API
+  # =============================================================================
+  load-test:
+    name: Load Test (Smoke)
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run k6 smoke test
+        env:
+          ENCLII_BASE_URL: https://api.enclii.dev
+        run: |
+          k6 run tests/load/health.js
 
   # =============================================================================
   # CONSERVATION LAW (ADR-001 Law 6): Differential Builds

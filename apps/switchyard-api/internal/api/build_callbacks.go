@@ -189,7 +189,7 @@ func (h *Handler) processBuildCallback(ctx context.Context, req *BuildCallbackRe
 					logging.String("target_env", service.AutoDeployEnv))
 
 				// Log auto-deploy to Activity feed for dashboard visibility
-				h.repos.AuditLogs.Log(ctx, &types.AuditLog{
+				_ = h.repos.AuditLogs.Log(ctx, &types.AuditLog{
 					ActorID:      nil, // System action (auto-deploy)
 					ActorEmail:   "auto-deploy@system.enclii.dev",
 					ActorRole:    types.RoleSystem,

@@ -10,29 +10,72 @@ linters:
   enable:
     - govet
     - ineffassign
+    - unused
+    - errcheck
     # NOTE: Additional linters disabled due to existing technical debt.
     # Enable incrementally after fixing issues:
-    # - errcheck      # ~20 unchecked error returns to fix
     # - staticcheck   # ~15 style/deprecation warnings to fix
-    # - unused        # Remove unused code
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # staticcheck style suggestions
+      - linters:
+          - staticcheck
+        text: "QF"
+      - linters:
+          - staticcheck
+        text: "ST1005"
+      - linters:
+          - staticcheck
+        text: "SA6005"
+      # errcheck: best-effort operations where error is non-blocking
+      - linters:
+          - errcheck
+        text: "RegisterValidation"
+      - linters:
+          - errcheck
+        text: "AuditLogs\\.Log"
+      - linters:
+          - errcheck
+        text: "LogAudit"
+      - linters:
+          - errcheck
+        text: "UpdateStatus"
+      - linters:
+          - errcheck
+        text: "UpdateDeliveryStatus"
+      - linters:
+          - errcheck
+        text: "WriteJSON"
+      - linters:
+          - errcheck
+        text: "\\.Del\\b"
+      - linters:
+          - errcheck
+        text: "json\\.Unmarshal"
+      - linters:
+          - errcheck
+        text: "\\.Close"
+      - linters:
+          - errcheck
+        text: "\\.Write"
+      - linters:
+          - errcheck
+        text: "Sscanf"
+      - linters:
+          - errcheck
+        text: "Decode"
 
 formatters:
   enable:
     - gofmt
 
 issues:
-  # Exclude staticcheck style suggestions - these are suggestions, not blocking errors
-  exclude-rules:
-    - linters:
-        - staticcheck
-      text: "QF"
-    - linters:
-        - staticcheck
-      text: "ST1005"  # error strings should not be capitalized
-    - linters:
-        - staticcheck
-      text: "SA6005"  # should use strings.EqualFold
-
-  # Limit issues to avoid overwhelming output - will still catch new problems
   max-issues-per-linter: 20
   max-same-issues: 5
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false

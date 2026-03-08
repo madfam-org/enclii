@@ -84,7 +84,7 @@ func (c *CustomSender) Send(ctx context.Context, webhookURL string, event *types
 	if err != nil {
 		return 0, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Accept any 2xx status as success
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

@@ -119,7 +119,7 @@ func (r *UserRepository) List(ctx context.Context) ([]*types.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []*types.User
 	for rows.Next() {

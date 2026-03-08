@@ -180,7 +180,7 @@ func (r *DeploymentGroupRepository) ListByProject(ctx context.Context, projectID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanGroups(rows)
 }
@@ -205,7 +205,7 @@ func (r *DeploymentGroupRepository) ListByProjectAndEnvironment(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanGroups(rows)
 }
@@ -230,7 +230,7 @@ func (r *DeploymentGroupRepository) ListByStatus(ctx context.Context, status Dep
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanGroups(rows)
 }
@@ -368,7 +368,7 @@ func (r *ServiceDependencyRepository) GetByService(ctx context.Context, serviceI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanDependencies(rows)
 }
@@ -386,7 +386,7 @@ func (r *ServiceDependencyRepository) GetDependents(ctx context.Context, service
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanDependencies(rows)
 }
@@ -419,7 +419,7 @@ func (r *ServiceDependencyRepository) GetProjectDependencyGraph(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	graph := make(map[uuid.UUID][]uuid.UUID)
 	for rows.Next() {

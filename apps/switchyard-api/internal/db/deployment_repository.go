@@ -70,7 +70,7 @@ func (r *DeploymentRepository) ListByRelease(ctx context.Context, releaseID stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deployments []*types.Deployment
 	for rows.Next() {
@@ -122,7 +122,7 @@ func (r *DeploymentRepository) GetByStatus(ctx context.Context, status types.Dep
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deployments []*types.Deployment
 	for rows.Next() {
@@ -154,7 +154,7 @@ func (r *DeploymentRepository) GetByServiceSince(ctx context.Context, serviceID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deployments []*types.Deployment
 	for rows.Next() {
@@ -195,7 +195,7 @@ func (r *DeploymentRepository) ListAll(ctx context.Context, since *time.Time, li
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deployments []*types.Deployment
 	for rows.Next() {
@@ -253,7 +253,7 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deployments []*types.DeploymentEnriched
 	for rows.Next() {

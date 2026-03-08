@@ -145,7 +145,7 @@ func (a *AuthAuditor) LogJSON(log *AuthAuditLog) {
 		return
 	}
 	// Write raw JSON to stdout for log aggregators
-	logrus.StandardLogger().Out.Write(append(data, '\n'))
+	_, _ = logrus.StandardLogger().Out.Write(append(data, '\n'))
 }
 
 // isFailureEvent checks if the event represents a failure

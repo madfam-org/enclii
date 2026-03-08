@@ -486,6 +486,8 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` (bare_metal, cluster_admin, cost, drift, managed_resource, propagation, virtual_cluster, admin_topology) |
 | Admin services | `apps/switchyard-api/internal/services/` (bare_metal, cluster_admin, infrastructure, vcluster, placement, drift, cost_tracking) |
 | Admin types | `packages/sdk-go/pkg/types/admin.go` |
+| SDK client | `packages/sdk-go/pkg/client/` (projects, services, deployments, envvars, logs) |
+| Stub types | `packages/sdk-go/pkg/types/timetable.go`, `junction.go` |
 | Admin migrations | `apps/switchyard-api/internal/db/migrations/002_admin_foundation.*.sql` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
 | Domain provisioner | `apps/switchyard-api/internal/api/domain_provisioner.go` |
@@ -659,10 +661,13 @@ pnpm test:e2e
 |------|--------|-------|
 | ESO CRD migration (0.9.11 to 0.16.2) | Deferred | Requires maintenance window, CRD v1beta1 to v1 migration. Current version stable |
 | Digest pinning for ecosystem repos | Out of scope | Changes go in external repos (forgesight, karafiel, pravara-mes, madfam-site) |
-| Timetable (user cron jobs) | Deferred | ~2 week feature effort. Q2 2026 per roadmap |
+| Timetable (user cron jobs) | Stub (501) | API stubs returning 501 with ETA Q2 2026. Types in `sdk-go/pkg/types/timetable.go` |
+| Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Deferred | Add `-coverprofile` and threshold gate to CI in separate PR |
+| Test coverage enforcement | Active | CI threshold at 40%. Tests in db/, reconciler/, services/ packages |
+| Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore in repo. Needs cluster deploy |
+| PostHog (analytics) | Planned | Self-hosted Community Edition. Helm values + integration planned |
 
 ---
 

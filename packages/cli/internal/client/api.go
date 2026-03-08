@@ -74,7 +74,7 @@ func (c *APIClient) get(ctx context.Context, path string, result interface{}) er
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.handleResponse(resp, result)
 }
@@ -93,7 +93,7 @@ func (c *APIClient) post(ctx context.Context, path string, payload interface{}, 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.handleResponse(resp, result)
 }
@@ -210,7 +210,7 @@ func (c *APIClient) DeleteService(ctx context.Context, serviceID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete service: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
@@ -534,7 +534,7 @@ func (c *APIClient) DeleteEnvVar(ctx context.Context, serviceID, envVarID string
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)

@@ -53,7 +53,7 @@ func (r *DriftEventRepository) List(ctx context.Context, resolved *bool) ([]*typ
 	if err != nil {
 		return nil, fmt.Errorf("failed to list drift events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var events []*types.DriftEvent
 	for rows.Next() {
 		de := &types.DriftEvent{}

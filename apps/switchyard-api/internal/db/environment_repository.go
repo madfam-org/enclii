@@ -67,7 +67,7 @@ func (r *EnvironmentRepository) ListByProject(projectID uuid.UUID) ([]*types.Env
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var environments []*types.Environment
 	for rows.Next() {
@@ -90,7 +90,7 @@ func (r *EnvironmentRepository) ListAll() ([]*types.Environment, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var environments []*types.Environment
 	for rows.Next() {

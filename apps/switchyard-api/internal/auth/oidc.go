@@ -511,12 +511,6 @@ func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// getOrCreateUserFromExternalToken creates or updates a user from external token claims
-func (o *OIDCManager) getOrCreateUserFromExternalToken(ctx context.Context, claims *ExternalClaims) (*User, error) {
-	user, _, err := o.getOrCreateUserFromExternalTokenWithStatus(ctx, claims)
-	return user, err
-}
-
 // getOrCreateUserFromExternalTokenWithStatus creates or updates a user from external token claims
 // Returns the user, whether a new user was created, and any error
 func (o *OIDCManager) getOrCreateUserFromExternalTokenWithStatus(ctx context.Context, claims *ExternalClaims) (*User, bool, error) {

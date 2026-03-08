@@ -53,11 +53,10 @@ type DashboardResponse struct {
 
 // dashboardCache provides in-memory caching for dashboard data
 type dashboardCache struct {
-	mu         sync.RWMutex
-	data       *DashboardResponse
-	expiry     time.Time
-	ttl        time.Duration
-	inProgress bool
+	mu     sync.RWMutex
+	data   *DashboardResponse
+	expiry time.Time
+	ttl    time.Duration
 }
 
 var dashboardStatsCache = &dashboardCache{

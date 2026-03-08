@@ -201,7 +201,7 @@ func (r *APITokenRepository) ListByUser(ctx context.Context, userID uuid.UUID) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tokens []*types.APIToken
 	for rows.Next() {
@@ -242,7 +242,7 @@ func (r *APITokenRepository) ListActiveByUser(ctx context.Context, userID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tokens []*types.APIToken
 	for rows.Next() {

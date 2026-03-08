@@ -48,7 +48,7 @@ func (a *HourlyAggregator) Run(ctx context.Context, hour time.Time) error {
 	if err != nil {
 		return fmt.Errorf("failed to get projects: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var projectIDs []uuid.UUID
 	for rows.Next() {
@@ -92,7 +92,7 @@ func (a *HourlyAggregator) aggregateProject(ctx context.Context, projectID uuid.
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // no-op after successful commit
 
 	insertQuery := `
 		INSERT INTO hourly_usage (id, project_id, metric_type, value, hour, created_at)

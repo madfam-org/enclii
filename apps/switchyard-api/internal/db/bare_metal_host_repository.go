@@ -57,7 +57,7 @@ func (r *BareMetalHostRepository) List(ctx context.Context) ([]*types.BareMetalH
 	if err != nil {
 		return nil, fmt.Errorf("failed to list bare metal hosts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var hosts []*types.BareMetalHost
 	for rows.Next() {
 		h := &types.BareMetalHost{}

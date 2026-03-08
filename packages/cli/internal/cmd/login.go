@@ -148,7 +148,7 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID string) e
 	if listener == nil {
 		return fmt.Errorf("failed to start callback server on ports 8080 or 3000: %w", listenErr)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 
@@ -186,7 +186,7 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID string) e
 				errDesc := r.URL.Query().Get("error_description")
 				errChan <- fmt.Errorf("OAuth error: %s - %s", errMsg, errDesc)
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				fmt.Fprintf(w, `<!DOCTYPE html>
+				_, _ = fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Login Failed</title></head>
 <body style="font-family: system-ui, sans-serif; text-align: center; padding: 50px;">
@@ -210,7 +210,7 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID string) e
 
 			// Success response
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, `<!DOCTYPE html>
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Login Success</title></head>
 <body style="font-family: system-ui, sans-serif; text-align: center; padding: 50px;">
@@ -237,15 +237,15 @@ func runLogin(cmd *cobra.Command, cfg *config.Config, issuer, clientID string) e
 	case code = <-codeChan:
 		// Success
 	case err := <-errChan:
-		server.Shutdown(ctx)
+		_ = server.Shutdown(ctx)
 		return &exitcodes.AuthenticationError{Err: fmt.Errorf("authentication failed: %w", err)}
 	case <-ctx.Done():
-		server.Shutdown(ctx)
+		_ = server.Shutdown(ctx)
 		return &exitcodes.TimeoutError{Err: fmt.Errorf("authentication timed out after 5 minutes")}
 	}
 
 	// Shutdown server
-	server.Shutdown(ctx)
+	_ = server.Shutdown(ctx)
 
 	cmd.Println("✓ Authorization code received")
 	cmd.Println("Exchanging for access token...")
@@ -388,7 +388,7 @@ func exchangeCodeForTokens(issuer, code, redirectURI, codeVerifier, clientID str
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var tokens TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokens); err != nil {

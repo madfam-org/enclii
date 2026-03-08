@@ -126,7 +126,7 @@ func main() {
 	if err != nil {
 		logrus.Fatal("Failed to connect to database:", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// Configure connection pool (matches db.DefaultDatabaseConfig() settings)
 	database.SetMaxOpenConns(25)

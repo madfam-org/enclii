@@ -180,11 +180,11 @@ func (s *EmailService) send(ctx context.Context, to, subject, htmlBody, textBody
 		logger.WithError(err).Error("Failed to send email")
 		return fmt.Errorf("failed to send email: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		var errResp map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&errResp)
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
 		logger.WithFields(logrus.Fields{
 			"status_code": resp.StatusCode,
 			"response":    errResp,

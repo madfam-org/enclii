@@ -294,7 +294,7 @@ func (l *AsyncLogger) replayFallbackFile() {
 	}
 
 	// Close current handle so we can read the file
-	l.fileFallback.Close()
+	_ = l.fileFallback.Close()
 
 	f, err := os.Open(l.fallbackPath)
 	if err != nil {
@@ -316,7 +316,7 @@ func (l *AsyncLogger) replayFallbackFile() {
 		}
 		entries = append(entries, &entry)
 	}
-	f.Close()
+	_ = f.Close()
 
 	if len(entries) == 0 {
 		l.reopenFallbackFile()

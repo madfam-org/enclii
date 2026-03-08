@@ -55,7 +55,7 @@ func (r *ClusterRepository) List(ctx context.Context) ([]*types.Cluster, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list clusters: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var clusters []*types.Cluster
 	for rows.Next() {
 		c := &types.Cluster{}

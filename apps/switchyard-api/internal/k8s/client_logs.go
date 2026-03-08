@@ -22,7 +22,7 @@ func (c *Client) GetPodLogs(ctx context.Context, podName, namespace string) (str
 	if err != nil {
 		return "", fmt.Errorf("failed to get log stream: %w", err)
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 
 	buf := make([]byte, 1024)
 	n, err := logs.Read(buf)
@@ -79,7 +79,7 @@ func (c *Client) GetLogs(ctx context.Context, namespace, labelSelector string, l
 			allLogs.WriteString(scanner.Text())
 			allLogs.WriteString("\n")
 		}
-		logs.Close()
+		_ = logs.Close()
 
 		if err := scanner.Err(); err != nil {
 			allLogs.WriteString(fmt.Sprintf("Error reading logs for pod %s: %v\n", pod.Name, err))
@@ -162,7 +162,7 @@ func (c *Client) streamPodLogs(ctx context.Context, opts LogStreamOptions, podNa
 		errChan <- fmt.Errorf("failed to get log stream for pod %s: %w", podName, err)
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	scanner := bufio.NewScanner(stream)
 	for scanner.Scan() {

@@ -148,7 +148,7 @@ func (r *WebhookRepository) ListByProject(ctx context.Context, projectID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var webhooks []*types.WebhookDestination
 	for rows.Next() {
@@ -175,7 +175,7 @@ func (r *WebhookRepository) ListByProject(ctx context.Context, projectID uuid.UU
 			return nil, fmt.Errorf("failed to unmarshal events: %w", err)
 		}
 		if len(headersJSON) > 0 {
-			json.Unmarshal(headersJSON, &webhook.CustomHeaders)
+			_ = json.Unmarshal(headersJSON, &webhook.CustomHeaders) // best-effort: optional field
 		}
 
 		// Parse nullable fields
@@ -237,7 +237,7 @@ func (r *WebhookRepository) ListEnabledByEvent(ctx context.Context, projectID uu
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var webhooks []*types.WebhookDestination
 	for rows.Next() {
@@ -260,9 +260,9 @@ func (r *WebhookRepository) ListEnabledByEvent(ctx context.Context, projectID uu
 		}
 
 		// Parse JSON fields
-		json.Unmarshal(eventsJSON, &webhook.Events)
+		_ = json.Unmarshal(eventsJSON, &webhook.Events) // best-effort: optional field
 		if len(headersJSON) > 0 {
-			json.Unmarshal(headersJSON, &webhook.CustomHeaders)
+			_ = json.Unmarshal(headersJSON, &webhook.CustomHeaders) // best-effort: optional field
 		}
 
 		// Parse nullable fields
@@ -453,7 +453,7 @@ func (r *WebhookRepository) ListDeliveries(ctx context.Context, webhookID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deliveries []*types.WebhookDelivery
 	for rows.Next() {
@@ -475,7 +475,7 @@ func (r *WebhookRepository) ListDeliveries(ctx context.Context, webhookID uuid.U
 		}
 
 		// Parse JSON payload
-		json.Unmarshal(payloadJSON, &delivery.Payload)
+		_ = json.Unmarshal(payloadJSON, &delivery.Payload) // best-effort: optional field
 
 		// Parse nullable fields
 		if eventID.Valid {

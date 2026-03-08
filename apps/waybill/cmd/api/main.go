@@ -19,7 +19,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to connect to database", zap.Error(err))
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Ping(); err != nil {
 		logger.Fatal("failed to ping database", zap.Error(err))

@@ -3,16 +3,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies
-# Support both repo root context (apps/landing/) and local context (.)
-COPY apps/landing/package*.json ./
-RUN npm ci
+# Install pnpm and dependencies
+RUN corepack enable && corepack prepare pnpm@latest --activate
+COPY apps/landing/package.json ./
+RUN pnpm install --frozen-lockfile=false
 
 # Copy source files
 COPY apps/landing/ .
 
 # Build static site
-RUN npm run build
+RUN pnpm run build
 
 # Production stage — unprivileged nginx (runs as uid 101, no root required)
 FROM nginxinc/nginx-unprivileged:alpine

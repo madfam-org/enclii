@@ -33,15 +33,15 @@ type Validator struct {
 func NewValidator() *Validator {
 	validate := validator.New()
 
-	// Register custom validators
-	validate.RegisterValidation("dnsname", validateDNSName)
-	validate.RegisterValidation("envvar", validateEnvVarName)
-	validate.RegisterValidation("gitrepo", validateGitRepo)
-	validate.RegisterValidation("k8sname", validateK8sName)
-	validate.RegisterValidation("project_slug", validateProjectSlug)
-	validate.RegisterValidation("service_name", validateServiceName)
-	validate.RegisterValidation("safe_string", validateSafeString)
-	validate.RegisterValidation("port_number", validatePortNumber)
+	// Register custom validators (errors indicate programming bugs, not runtime failures)
+	_ = validate.RegisterValidation("dnsname", validateDNSName)
+	_ = validate.RegisterValidation("envvar", validateEnvVarName)
+	_ = validate.RegisterValidation("gitrepo", validateGitRepo)
+	_ = validate.RegisterValidation("k8sname", validateK8sName)
+	_ = validate.RegisterValidation("project_slug", validateProjectSlug)
+	_ = validate.RegisterValidation("service_name", validateServiceName)
+	_ = validate.RegisterValidation("safe_string", validateSafeString)
+	_ = validate.RegisterValidation("port_number", validatePortNumber)
 
 	return &Validator{validate: validate}
 }

@@ -161,7 +161,7 @@ func (s *DeploymentGroupService) CreateGroupDeployment(ctx context.Context, req 
 	}
 
 	// Audit log
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),

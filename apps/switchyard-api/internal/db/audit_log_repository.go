@@ -90,7 +90,7 @@ func (r *AuditLogRepository) Query(ctx context.Context, filters map[string]inter
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []*types.AuditLog
 	for rows.Next() {

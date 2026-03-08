@@ -244,7 +244,7 @@ func runLocalDown(keepInfra bool) error {
 	}
 
 	for _, proc := range stopProcesses {
-		exec.Command("pkill", "-f", proc).Run()
+		_ = exec.Command("pkill", "-f", proc).Run() // best-effort: process may not exist
 	}
 
 	if !keepInfra {
@@ -276,7 +276,7 @@ func runLocalStatus() error {
 	cmd := exec.Command("docker", "compose", "-f", composeFile, "ps", "--format", "table {{.Name}}\t{{.Status}}\t{{.Ports}}")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Run()
+	_ = cmd.Run() // best-effort status display
 
 	// Check service ports
 	fmt.Println("\n🔌 Service Ports:")

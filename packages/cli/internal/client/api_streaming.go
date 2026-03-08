@@ -91,7 +91,7 @@ func (c *APIClient) DeleteCustomDomain(ctx context.Context, serviceID, domainID 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
@@ -171,7 +171,7 @@ func (c *APIClient) StreamLogs(ctx context.Context, serviceID string, envName st
 	go func() {
 		defer close(logChan)
 		defer close(errChan)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		for {
 			select {
@@ -303,7 +303,7 @@ func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID strin
 	go func() {
 		defer close(logChan)
 		defer close(errChan)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		for {
 			select {

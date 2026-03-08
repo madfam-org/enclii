@@ -246,7 +246,7 @@ func (r *DatabaseAddonRepository) ListByProject(ctx context.Context, projectID u
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanAddons(rows)
 }
@@ -273,7 +273,7 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanAddons(rows)
 }
@@ -295,7 +295,7 @@ func (r *DatabaseAddonRepository) ListByType(ctx context.Context, projectID uuid
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanAddons(rows)
 }
@@ -317,7 +317,7 @@ func (r *DatabaseAddonRepository) ListPending(ctx context.Context) ([]*types.Dat
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanAddons(rows)
 }
@@ -562,7 +562,7 @@ func (r *DatabaseAddonRepository) GetBindingsByAddon(ctx context.Context, addonI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var bindings []*types.DatabaseAddonBinding
 	for rows.Next() {
@@ -590,7 +590,7 @@ func (r *DatabaseAddonRepository) GetBindingsByService(ctx context.Context, serv
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var bindings []*types.DatabaseAddonBinding
 	for rows.Next() {
@@ -709,7 +709,7 @@ func (r *DatabaseAddonRepository) GetBackupsByAddon(ctx context.Context, addonID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var backups []*types.DatabaseAddonBackup
 	for rows.Next() {

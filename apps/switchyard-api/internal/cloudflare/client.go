@@ -89,7 +89,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, result 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.handleResponse(resp, result)
 }
@@ -100,7 +100,7 @@ func (c *Client) put(ctx context.Context, path string, body io.Reader, result in
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.handleResponse(resp, result)
 }
@@ -111,7 +111,7 @@ func (c *Client) post(ctx context.Context, path string, body io.Reader, result i
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.handleResponse(resp, result)
 }
@@ -122,7 +122,7 @@ func (c *Client) httpDelete(ctx context.Context, path string, result interface{}
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.handleResponse(resp, result)
 }

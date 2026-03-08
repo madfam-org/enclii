@@ -90,7 +90,7 @@ func (r *TemplateRepository) List(ctx context.Context, filters *types.TemplateLi
 	if err != nil {
 		return nil, fmt.Errorf("failed to list templates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanTemplates(rows)
 }
@@ -144,7 +144,7 @@ func (r *TemplateRepository) GetFeatured(ctx context.Context, limit int) ([]*typ
 	if err != nil {
 		return nil, fmt.Errorf("failed to get featured templates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanTemplates(rows)
 }
@@ -163,7 +163,7 @@ func (r *TemplateRepository) GetCategories(ctx context.Context) (map[string]int,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get categories: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	categories := make(map[string]int)
 	for rows.Next() {
@@ -192,7 +192,7 @@ func (r *TemplateRepository) GetFrameworks(ctx context.Context) (map[string]int,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get frameworks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	frameworks := make(map[string]int)
 	for rows.Next() {
@@ -349,7 +349,7 @@ func (r *TemplateRepository) Search(ctx context.Context, query string, limit int
 	if err != nil {
 		return nil, fmt.Errorf("failed to search templates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanTemplates(rows)
 }

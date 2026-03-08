@@ -321,7 +321,7 @@ func (bm *BackupManager) VerifyBackup(backupFile string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open backup file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Basic verification - check if it's a valid SQL dump
 	buffer := make([]byte, 1024)
@@ -448,7 +448,7 @@ func (bm *BackupManager) calculateChecksum(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open file for checksum: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {

@@ -283,9 +283,9 @@ func runSecretsList(cfg *config.Config, envName, specFile string, showAll bool) 
 	// Print as table
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if showAll {
-		fmt.Fprintln(w, "KEY\tVALUE\tSECRET\tENVIRONMENT\tUPDATED")
+		_, _ = fmt.Fprintln(w, "KEY\tVALUE\tSECRET\tENVIRONMENT\tUPDATED")
 	} else {
-		fmt.Fprintln(w, "KEY\tVALUE\tSECRET")
+		_, _ = fmt.Fprintln(w, "KEY\tVALUE\tSECRET")
 	}
 
 	for _, ev := range envVars {
@@ -299,14 +299,14 @@ func runSecretsList(cfg *config.Config, envName, specFile string, showAll bool) 
 			if ev.EnvironmentID != nil {
 				envLabel = ev.EnvironmentID.String()[:8] + "..."
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 				ev.Key, ev.Value, secretIcon, envLabel, ev.UpdatedAt.Format("2006-01-02 15:04"))
 		} else {
-			fmt.Fprintf(w, "%s\t%s\t%s\n", ev.Key, ev.Value, secretIcon)
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", ev.Key, ev.Value, secretIcon)
 		}
 	}
 
-	w.Flush()
+	_ = w.Flush()
 
 	return nil
 }
@@ -348,7 +348,7 @@ func runSecretsDelete(cfg *config.Config, keys []string, specFile string, force 
 		fmt.Printf("About to delete: %s\n", strings.Join(keys, ", "))
 		fmt.Print("Continue? [y/N]: ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 			fmt.Println("Aborted")
 			return nil

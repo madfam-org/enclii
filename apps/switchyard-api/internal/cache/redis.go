@@ -476,7 +476,7 @@ func (r *RedisCache) InvalidateTags(ctx context.Context, tags ...string) error {
 		}
 
 		// Clean up the tag set
-		r.Del(ctx, tagKey)
+		_ = r.Del(ctx, tagKey)
 	}
 
 	return nil

@@ -56,7 +56,7 @@ func (r *ManagedResourceRepository) List(ctx context.Context, provider, kind str
 	if err != nil {
 		return nil, fmt.Errorf("failed to list managed resources: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var resources []*types.ManagedResource
 	for rows.Next() {
 		mr := &types.ManagedResource{}

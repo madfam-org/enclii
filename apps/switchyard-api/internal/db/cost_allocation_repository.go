@@ -37,7 +37,7 @@ func (r *CostAllocationRepository) ListByTenant(ctx context.Context, tenantID st
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cost allocations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var allocations []*types.CostAllocation
 	for rows.Next() {
 		ca := &types.CostAllocation{}
@@ -56,7 +56,7 @@ func (r *CostAllocationRepository) ListByHost(ctx context.Context, hostID uuid.U
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cost allocations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var allocations []*types.CostAllocation
 	for rows.Next() {
 		ca := &types.CostAllocation{}
@@ -84,7 +84,7 @@ func (r *CostAllocationRepository) GetSummary(ctx context.Context, start, end ti
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cost summary: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var allocations []*types.CostAllocation
 	for rows.Next() {
 		ca := &types.CostAllocation{}

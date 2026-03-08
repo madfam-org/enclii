@@ -32,8 +32,8 @@ Learn more at https://enclii.dev`,
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 
 	// Bind flags to viper for environment variable support
-	viper.BindPFlag("api-endpoint", rootCmd.PersistentFlags().Lookup("api-endpoint"))
-	viper.BindPFlag("api-token", rootCmd.PersistentFlags().Lookup("api-token"))
+	_ = viper.BindPFlag("api-endpoint", rootCmd.PersistentFlags().Lookup("api-endpoint"))
+	_ = viper.BindPFlag("api-token", rootCmd.PersistentFlags().Lookup("api-token"))
 
 	// Add subcommands
 	rootCmd.AddCommand(NewInitCommand(cfg))

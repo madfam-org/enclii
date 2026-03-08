@@ -53,7 +53,7 @@ func (m *Middleware) AuditMiddleware() gin.HandlerFunc {
 				c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 				// Parse JSON body (ignore errors for non-JSON)
-				json.Unmarshal(bodyBytes, &requestBody)
+				_ = json.Unmarshal(bodyBytes, &requestBody)
 			}
 		}
 

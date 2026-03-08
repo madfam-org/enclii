@@ -70,7 +70,7 @@ func (c *Calculator) CalculateUsageSummary(ctx context.Context, projectID uuid.U
 	if err != nil {
 		return nil, fmt.Errorf("failed to query usage: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var metricType string

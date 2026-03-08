@@ -55,7 +55,7 @@ func (r *VirtualClusterRepository) List(ctx context.Context) ([]*types.VirtualCl
 	if err != nil {
 		return nil, fmt.Errorf("failed to list virtual clusters: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var vcs []*types.VirtualCluster
 	for rows.Next() {
 		vc := &types.VirtualCluster{}

@@ -103,7 +103,7 @@ func runFunctionsList(cfg *config.Config, projectSlug string) error {
 
 	// Print table
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tRUNTIME\tSTATUS\tINVOCATIONS\tAVG MS\tLAST INVOKED")
+	_, _ = fmt.Fprintln(w, "NAME\tRUNTIME\tSTATUS\tINVOCATIONS\tAVG MS\tLAST INVOKED")
 
 	for _, fn := range functions {
 		status := getStatusIcon(fn.Status)
@@ -112,7 +112,7 @@ func runFunctionsList(cfg *config.Config, projectSlug string) error {
 			lastInvoked = timeAgo(*fn.LastInvokedAt)
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%.0fms\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%.0fms\t%s\n",
 			fn.Name,
 			fn.Config.Runtime,
 			status,
@@ -122,7 +122,7 @@ func runFunctionsList(cfg *config.Config, projectSlug string) error {
 		)
 	}
 
-	w.Flush()
+	_ = w.Flush()
 	return nil
 }
 
@@ -200,7 +200,7 @@ Examples:
 	cmd.Flags().StringVarP(&projectSlug, "project", "p", "", "Project slug (required)")
 	cmd.Flags().StringVarP(&name, "name", "n", "", "Function name (defaults to directory name)")
 	cmd.Flags().StringVarP(&runtime, "runtime", "r", "", "Runtime (go, python, node, rust) - auto-detected if not specified")
-	cmd.MarkFlagRequired("project")
+	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
 }
@@ -438,7 +438,7 @@ func runFunctionsDelete(cfg *config.Config, functionName string, force bool) err
 	if !force {
 		fmt.Printf("Are you sure you want to delete function '%s'? [y/N]: ", functionName)
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if strings.ToLower(confirm) != "y" && strings.ToLower(confirm) != "yes" {
 			fmt.Println("Aborted.")
 			return nil

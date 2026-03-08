@@ -213,7 +213,7 @@ func (r *LifecycleEventRepository) scanEvents(ctx context.Context, query string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []types.DeploymentLifecycleEvent
 	for rows.Next() {

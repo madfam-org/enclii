@@ -91,7 +91,7 @@ func (c *Client) CreatePreview(ctx context.Context, req *CreatePreviewRequest) (
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -142,7 +142,7 @@ func (c *Client) ClosePreviewByPR(ctx context.Context, serviceID string, prNumbe
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		logger.Info("No preview found to close")
@@ -196,7 +196,7 @@ func (c *Client) closePreview(ctx context.Context, previewID string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -222,7 +222,7 @@ func (c *Client) GetServicesByRepo(ctx context.Context, repoURL string) (*Servic
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -89,7 +89,7 @@ func (e *KanikoExecutor) streamJobLogs(ctx context.Context, buildID uuid.UUID, j
 		e.logger.Warn("could not stream logs", zap.Error(err))
 		return
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 
 	// Read and emit logs
 	buf := make([]byte, 4096)
@@ -140,7 +140,7 @@ func (e *KanikoExecutor) getJobOutput(ctx context.Context, jobName string) (stri
 	if err != nil {
 		return "", fmt.Errorf("could not stream logs: %w", err)
 	}
-	defer logs.Close()
+	defer func() { _ = logs.Close() }()
 
 	// Read all output
 	var output strings.Builder

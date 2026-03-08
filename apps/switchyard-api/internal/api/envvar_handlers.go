@@ -172,7 +172,7 @@ func (h *Handler) CreateEnvVar(c *gin.Context) {
 	}
 
 	// Log audit
-	h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
+	_ = h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
 		EnvVarID:      ev.ID,
 		ServiceID:     svcID,
 		EnvironmentID: envID,
@@ -274,7 +274,7 @@ func (h *Handler) UpdateEnvVar(c *gin.Context) {
 	}
 
 	// Log audit
-	h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
+	_ = h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
 		EnvVarID:      ev.ID,
 		ServiceID:     ev.ServiceID,
 		EnvironmentID: ev.EnvironmentID,
@@ -327,7 +327,7 @@ func (h *Handler) DeleteEnvVar(c *gin.Context) {
 	}
 
 	// Log audit
-	h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
+	_ = h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
 		EnvVarID:      ev.ID,
 		ServiceID:     ev.ServiceID,
 		EnvironmentID: ev.EnvironmentID,
@@ -457,7 +457,7 @@ func (h *Handler) RevealEnvVar(c *gin.Context) {
 	}
 
 	// Log audit (important for security compliance)
-	h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
+	_ = h.repos.EnvVars.LogAudit(ctx, &types.EnvVarAuditLog{
 		EnvVarID:      ev.ID,
 		ServiceID:     ev.ServiceID,
 		EnvironmentID: ev.EnvironmentID,

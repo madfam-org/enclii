@@ -349,7 +349,7 @@ func (r *PreviewEnvironmentRepository) queryPreviews(ctx context.Context, query 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var previews []*types.PreviewEnvironment
 	for rows.Next() {
@@ -456,7 +456,7 @@ func (r *PreviewCommentRepository) ListByPreview(ctx context.Context, previewID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var comments []*types.PreviewComment
 	for rows.Next() {
@@ -577,7 +577,7 @@ func (r *PreviewAccessLogRepository) GetRecentByPreview(ctx context.Context, pre
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []*types.PreviewAccessLog
 	for rows.Next() {

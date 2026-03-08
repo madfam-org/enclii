@@ -255,9 +255,9 @@ func runDomainsList(cfg *config.Config, serviceName, envName, specFile string, s
 	// Print as table
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if showAll {
-		fmt.Fprintln(w, "DOMAIN\tSTATUS\tTLS\tVERIFIED\tCNAME\tCREATED")
+		_, _ = fmt.Fprintln(w, "DOMAIN\tSTATUS\tTLS\tVERIFIED\tCNAME\tCREATED")
 	} else {
-		fmt.Fprintln(w, "DOMAIN\tSTATUS\tTLS\tVERIFIED")
+		_, _ = fmt.Fprintln(w, "DOMAIN\tSTATUS\tTLS\tVERIFIED")
 	}
 
 	for _, d := range domains {
@@ -281,15 +281,15 @@ func runDomainsList(cfg *config.Config, serviceName, envName, specFile string, s
 			if cname == "" {
 				cname = "-"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				d.Domain, status, tlsStatus, verifiedIcon, cname, d.CreatedAt.Format("2006-01-02"))
 		} else {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 				d.Domain, status, tlsStatus, verifiedIcon)
 		}
 	}
 
-	w.Flush()
+	_ = w.Flush()
 
 	return nil
 }
@@ -359,7 +359,7 @@ func runDomainsRemove(cfg *config.Config, domain, serviceName, envName, specFile
 		fmt.Printf("About to remove domain: %s\n", domain)
 		fmt.Print("Continue? [y/N]: ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 			fmt.Println("Aborted")
 			return nil

@@ -177,7 +177,7 @@ func (s *DeploymentGroupService) AddServiceDependency(ctx context.Context, req *
 	}
 
 	// Audit log
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),
 		Action:       "service_dependency_added",
@@ -210,7 +210,7 @@ func (s *DeploymentGroupService) RemoveServiceDependency(ctx context.Context, se
 	}
 
 	// Audit log
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorEmail:   userEmail,
 		ActorRole:    types.Role(userRole),
 		Action:       "service_dependency_removed",

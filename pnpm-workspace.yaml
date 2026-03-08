@@ -1,0 +1,8 @@
+packages:
+  - "packages/shared-lib"
+  - "packages/ui-components"
+  - "packages/config"
+  - "apps/switchyard-ui"
+  - "apps/dispatch"
+  - "apps/status"
+  - "apps/landing"

@@ -203,7 +203,7 @@ func (r *TeamRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*T
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var teams []*Team
 	for rows.Next() {
@@ -323,7 +323,7 @@ func (r *TeamMemberRepository) ListByTeam(ctx context.Context, teamID uuid.UUID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var members []*TeamMemberWithUser
 	for rows.Next() {
@@ -496,7 +496,7 @@ func (r *TeamInvitationRepository) ListPendingByTeam(ctx context.Context, teamID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invitations []*TeamInvitation
 	for rows.Next() {
@@ -532,7 +532,7 @@ func (r *TeamInvitationRepository) ListPendingByEmail(ctx context.Context, email
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invitations []*TeamInvitationWithDetails
 	for rows.Next() {

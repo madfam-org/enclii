@@ -52,7 +52,7 @@ func NewProcessor(cfg *config.Config, q *queue.RedisQueue, logger *zap.Logger) (
 	logFunc := func(jobID uuid.UUID, line string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		q.AppendLog(ctx, jobID, line)
+		_ = q.AppendLog(ctx, jobID, line) // best-effort log streaming
 	}
 
 	// Initialize the appropriate builder based on build mode
@@ -292,7 +292,7 @@ func (p *Processor) sendCallback(ctx context.Context, url string, result *queue.
 	if err != nil {
 		return fmt.Errorf("callback request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("callback returned status %d", resp.StatusCode)
@@ -379,7 +379,7 @@ func (p *Processor) retryCallback(ctx context.Context, callback *queue.FailedCal
 	err := p.sendCallback(ctx, callback.URL, callback.Result)
 	if err == nil {
 		logger.Info("callback retry succeeded")
-		p.queue.RemoveCallback(ctx, callback.ID)
+		_ = p.queue.RemoveCallback(ctx, callback.ID)
 		return
 	}
 
@@ -390,7 +390,7 @@ func (p *Processor) retryCallback(ctx context.Context, callback *queue.FailedCal
 		logger.Error("callback permanently failed after max retries",
 			zap.String("last_error", callback.LastError),
 		)
-		p.queue.RemoveCallback(ctx, callback.ID)
+		_ = p.queue.RemoveCallback(ctx, callback.ID)
 		return
 	}
 

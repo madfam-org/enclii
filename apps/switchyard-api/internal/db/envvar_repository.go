@@ -5,10 +5,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -106,13 +104,6 @@ func (r *EnvVarRepository) decrypt(ciphertext string) (string, error) {
 	}
 
 	return string(plaintext), nil
-}
-
-// hashValue creates a SHA-256 hash of a value for audit logging
-func hashValue(value string) string {
-	h := sha256.New()
-	h.Write([]byte(value))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // Create creates a new environment variable
@@ -273,7 +264,7 @@ func (r *EnvVarRepository) List(ctx context.Context, serviceID uuid.UUID, enviro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var envVars []*types.EnvironmentVariable
 	for rows.Next() {
@@ -434,7 +425,7 @@ func (r *EnvVarRepository) GetDecryptedWithMeta(ctx context.Context, serviceID, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Use a map to handle overrides, then convert to slice
 	resultMap := make(map[string]EnvVarWithMeta)
@@ -488,7 +479,7 @@ func (r *EnvVarRepository) GetDecrypted(ctx context.Context, serviceID, environm
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string]string)
 	for rows.Next() {
@@ -553,7 +544,7 @@ func (r *EnvVarRepository) GetAuditLogs(ctx context.Context, serviceID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []*types.EnvVarAuditLog
 	for rows.Next() {

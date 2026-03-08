@@ -58,7 +58,7 @@ func listGitHubDirectory(ctx context.Context, token, owner, repo, path, ref stri
 	if err != nil {
 		return nil, fmt.Errorf("GitHub API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("directory not found: %s/%s:%s", owner, repo, path)
@@ -105,7 +105,7 @@ func getGitHubFileSHA(ctx context.Context, token, owner, repo, path, ref string)
 	if err != nil {
 		return "", fmt.Errorf("GitHub API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return "", nil // File doesn't exist
@@ -174,7 +174,7 @@ func createOrUpdateGitHubFile(ctx context.Context, token, owner, repo, path stri
 	if err != nil {
 		return "", fmt.Errorf("GitHub API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -213,7 +213,7 @@ func getGitHubFileContent(ctx context.Context, token, owner, repo, path, ref str
 	if err != nil {
 		return "", "", fmt.Errorf("GitHub API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return "", "", fmt.Errorf("file not found: %s/%s:%s", owner, repo, path)
@@ -283,7 +283,7 @@ func createOrUpdateGitHubFileWithSHA(ctx context.Context, token, owner, repo, pa
 	if err != nil {
 		return "", fmt.Errorf("GitHub API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

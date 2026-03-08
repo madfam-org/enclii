@@ -460,7 +460,7 @@ func (h *Handler) InvokeFunction(c *gin.Context) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Stream the function's response back to the caller
 	for k, vals := range resp.Header {

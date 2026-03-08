@@ -100,7 +100,7 @@ func (c *RoundhouseClient) Enqueue(ctx context.Context, req *EnqueueRequest) (*E
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request to roundhouse: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -134,7 +134,7 @@ func (c *RoundhouseClient) GetJobStatus(ctx context.Context, jobID uuid.UUID) (s
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("roundhouse returned status %d", resp.StatusCode)
@@ -165,7 +165,7 @@ func (c *RoundhouseClient) CancelJob(ctx context.Context, jobID uuid.UUID) error
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("roundhouse returned status %d", resp.StatusCode)
@@ -185,7 +185,7 @@ func (c *RoundhouseClient) HealthCheck(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to roundhouse: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("roundhouse health check failed with status %d", resp.StatusCode)

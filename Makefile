@@ -13,7 +13,7 @@ KIND_CLUSTER_NAME ?= enclii
 bootstrap:
 	@echo "🚂 Bootstrapping Enclii development environment..."
 	go mod download
-	cd apps/switchyard-ui && npm install
+	cd apps/switchyard-ui && pnpm install
 	@echo "🔐 Installing git hooks..."
 	@cp scripts/hooks/pre-commit .git/hooks/pre-commit 2>/dev/null || true
 	@chmod +x .git/hooks/pre-commit 2>/dev/null || true
@@ -49,7 +49,7 @@ build-cli:
 
 build-ui:
 	@echo "🏗️ Building UI..."
-	cd apps/switchyard-ui && npm run build
+	cd apps/switchyard-ui && pnpm run build
 
 build-reconcilers:
 	@echo "🏗️ Building Reconcilers..."
@@ -60,7 +60,7 @@ test:
 	@echo "🧪 Running unit tests..."
 	cd apps/switchyard-api && go test -v -race -cover ./...
 	cd packages/cli && go test -v -race -cover ./...
-	cd apps/switchyard-ui && npm test
+	cd apps/switchyard-ui && pnpm test
 
 test-integration:
 	@echo "🧪 Running integration tests..."
@@ -86,7 +86,7 @@ test-all: test test-integration test-coverage
 lint:
 	@echo "🔍 Linting code..."
 	golangci-lint run ./...
-	cd apps/switchyard-ui && npm run lint
+	cd apps/switchyard-ui && pnpm run lint
 
 # Run services locally
 run-switchyard: build-api
@@ -95,7 +95,7 @@ run-switchyard: build-api
 
 run-ui: build-ui
 	@echo "🌐 Starting UI on :3000..."
-	cd apps/switchyard-ui && npm run dev
+	cd apps/switchyard-ui && pnpm run dev
 
 run-reconcilers: build-reconcilers
 	@echo "🔄 Starting Reconcilers..."
@@ -153,7 +153,7 @@ run-all: build-api build-ui
 	@echo "Starting Switchyard API on :8080..."
 	@./bin/switchyard-api &
 	@echo "Starting UI on :3000..."
-	@cd apps/switchyard-ui && npm run dev
+	@cd apps/switchyard-ui && pnpm run dev
 
 # Configure development DNS entries (requires /etc/hosts or local DNS)
 dns-dev:
@@ -173,7 +173,7 @@ precommit: lint test build-all
 # End-to-end tests
 e2e:
 	@echo "🧪 Running E2E tests..."
-	cd apps/switchyard-ui && npm run test:e2e
+	cd apps/switchyard-ui && pnpm run test:e2e
 
 # Clean build artifacts
 clean:

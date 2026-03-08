@@ -295,7 +295,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 	case <-ctx.Done():
 		h.logger.Error(ctx, "Preview build timed out waiting for semaphore",
 			logging.String("preview_id", preview.ID.String()))
-		h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Build timed out waiting for slot")
+		_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Build timed out waiting for slot")
 		return
 	}
 
@@ -315,7 +315,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 		h.logger.Error(ctx, "Failed to create preview release",
 			logging.Error("db_error", err),
 			logging.String("preview_id", preview.ID.String()))
-		h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Failed to create release: "+err.Error())
+		_ = h.repos.PreviewEnvironments.UpdateStatus(ctx, preview.ID, types.PreviewStatusFailed, "Failed to create release: "+err.Error())
 		return
 	}
 

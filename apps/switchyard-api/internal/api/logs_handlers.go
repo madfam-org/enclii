@@ -17,17 +17,6 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
-// defaultWebSocketUpgrader is initialized at startup
-// For configurable origins, use Handler.getWebSocketUpgrader()
-var defaultWebSocketUpgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		// Default: allow all origins (will be restricted by handler-level config)
-		return true
-	},
-}
-
 // getWebSocketUpgrader returns an upgrader configured with allowed origins from config
 func (h *Handler) getWebSocketUpgrader() *websocket.Upgrader {
 	allowedOrigins := h.config.WebSocketAllowedOrigins
@@ -112,7 +101,7 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to upgrade to WebSocket", logging.Error("error", err))
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Parse query parameters
 	tailLines := int64(100)
@@ -177,7 +166,7 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 				Timestamp: time.Now(),
 				Message:   "Log stream disconnected",
 			}
-			conn.WriteJSON(disconnMsg)
+			_ = conn.WriteJSON(disconnMsg)
 			return
 
 		case logLine, ok := <-logChan:
@@ -250,7 +239,7 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to upgrade to WebSocket", logging.Error("error", err))
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Parse query parameters
 	tailLines := int64(100)
@@ -314,7 +303,7 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 				Timestamp: time.Now(),
 				Message:   "Log stream disconnected",
 			}
-			conn.WriteJSON(disconnMsg)
+			_ = conn.WriteJSON(disconnMsg)
 			return
 
 		case logLine, ok := <-logChan:
@@ -516,7 +505,7 @@ func (h *Handler) StreamBuildLogsWS(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to upgrade to WebSocket", logging.Error("error", err))
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send connected message
 	connMsg := LogStreamMessage{
@@ -569,7 +558,7 @@ func (h *Handler) StreamBuildLogsWS(c *gin.Context) {
 					Timestamp: time.Now(),
 					Message:   "Build log stream disconnected",
 				}
-				conn.WriteJSON(disconnMsg)
+				_ = conn.WriteJSON(disconnMsg)
 				return
 
 			case logLine, ok := <-logChan:
@@ -580,7 +569,7 @@ func (h *Handler) StreamBuildLogsWS(c *gin.Context) {
 						Timestamp: time.Now(),
 						Message:   "Build process ended",
 					}
-					conn.WriteJSON(statusMsg)
+					_ = conn.WriteJSON(statusMsg)
 					return
 				}
 				msg := LogStreamMessage{
@@ -618,7 +607,7 @@ func (h *Handler) StreamBuildLogsWS(c *gin.Context) {
 		Timestamp: time.Now(),
 		Message:   fmt.Sprintf("Build completed with status: %s. Use GET endpoint for historical logs.", release.Status),
 	}
-	conn.WriteJSON(statusMsg)
+	_ = conn.WriteJSON(statusMsg)
 }
 
 // LogSearchRequest represents a log search request

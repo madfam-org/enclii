@@ -124,7 +124,7 @@ func (h *Handler) getJanuaToken(ctx context.Context, provider, jwtToken string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to call Janua API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -165,7 +165,7 @@ func (h *Handler) getJanuaIntegrationStatus(ctx context.Context, provider, jwtTo
 	if err != nil {
 		return nil, fmt.Errorf("failed to call Janua API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -199,7 +199,7 @@ func (h *Handler) listGitHubRepos(ctx context.Context, accessToken string) ([]Gi
 	if err != nil {
 		return nil, fmt.Errorf("failed to call GitHub API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -421,7 +421,7 @@ func (h *Handler) initiateJanuaGitHubLink(ctx context.Context, jwtToken, redirec
 	if err != nil {
 		return nil, fmt.Errorf("failed to call Janua API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -604,7 +604,7 @@ func (h *Handler) listGitHubBranches(ctx context.Context, accessToken, owner, re
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

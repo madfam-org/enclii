@@ -88,7 +88,7 @@ func (v *VaultClient) GetSecret(ctx context.Context, path string) (*Secret, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve secret: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -149,7 +149,7 @@ func (v *VaultClient) GetSecretMetadata(ctx context.Context, path string) (*Secr
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve metadata: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -253,7 +253,7 @@ func (v *VaultClient) ValidateConnection(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to Vault: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Vault health endpoint returns 200 for healthy, 429/503 for sealed/standby
 	if resp.StatusCode >= 500 {

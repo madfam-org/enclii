@@ -43,15 +43,15 @@ func Load() (*Config, error) {
 
 	// Explicitly bind environment variables for Unmarshal to work correctly
 	// viper.AutomaticEnv() only works with Get() calls, not Unmarshal()
-	viper.BindEnv("API_PORT")
-	viper.BindEnv("DATABASE_URL")
-	viper.BindEnv("AGGREGATION_INTERVAL")
-	viper.BindEnv("RETENTION_DAYS")
-	viper.BindEnv("PRICE_COMPUTE_GB_HOUR")
-	viper.BindEnv("PRICE_BUILD_MINUTE")
-	viper.BindEnv("PRICE_STORAGE_GB_MONTH")
-	viper.BindEnv("PRICE_BANDWIDTH_GB")
-	viper.BindEnv("INTERNAL_API_KEY")
+	_ = viper.BindEnv("API_PORT")
+	_ = viper.BindEnv("DATABASE_URL")
+	_ = viper.BindEnv("AGGREGATION_INTERVAL")
+	_ = viper.BindEnv("RETENTION_DAYS")
+	_ = viper.BindEnv("PRICE_COMPUTE_GB_HOUR")
+	_ = viper.BindEnv("PRICE_BUILD_MINUTE")
+	_ = viper.BindEnv("PRICE_STORAGE_GB_MONTH")
+	_ = viper.BindEnv("PRICE_BANDWIDTH_GB")
+	_ = viper.BindEnv("INTERNAL_API_KEY")
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

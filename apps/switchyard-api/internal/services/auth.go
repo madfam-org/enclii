@@ -259,7 +259,7 @@ func (s *AuthService) Logout(ctx context.Context, req *LogoutRequest) error {
 	}
 
 	// Log logout event - OIDC users may not have local user row, use nil
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),

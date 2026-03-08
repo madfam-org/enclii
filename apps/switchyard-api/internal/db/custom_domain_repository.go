@@ -101,7 +101,7 @@ func (r *CustomDomainRepository) GetByServiceID(ctx context.Context, serviceID s
 	if err != nil {
 		return nil, fmt.Errorf("failed to query custom domains: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var domains []types.CustomDomain
 	for rows.Next() {
@@ -141,7 +141,7 @@ func (r *CustomDomainRepository) GetByServiceAndEnvironment(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to query custom domains: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var domains []types.CustomDomain
 	for rows.Next() {
@@ -283,7 +283,7 @@ func (r *CustomDomainRepository) ListAll(ctx context.Context, filters map[string
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to query custom domains: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var domains []types.CustomDomain
 	for rows.Next() {

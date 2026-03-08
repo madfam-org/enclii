@@ -31,13 +31,6 @@ type FunctionReconciler struct {
 	baseDomain    string // e.g., "fn.enclii.dev"
 }
 
-// KEDA ScaledObject Group Version Resource
-var kedaScaledObjectGVR = schema.GroupVersionResource{
-	Group:    "keda.sh",
-	Version:  "v1alpha1",
-	Resource: "scaledobjects",
-}
-
 // KEDA HTTPScaledObject Group Version Resource (for HTTP add-on)
 var kedaHTTPScaledObjectGVR = schema.GroupVersionResource{
 	Group:    "http.keda.sh",

@@ -111,7 +111,7 @@ func (r *RotationAuditLogRepository) GetByServiceID(ctx context.Context, service
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []interface{}
 	for rows.Next() {

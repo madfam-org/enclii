@@ -370,7 +370,7 @@ func (r *RedisHealthChecker) Check(ctx context.Context) CheckResult {
 	}
 
 	// Clean up test key
-	r.cache.Del(ctx, testKey)
+	_ = r.cache.Del(ctx, testKey)
 
 	return CheckResult{
 		Status:    HealthStatusHealthy,

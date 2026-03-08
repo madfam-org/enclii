@@ -124,7 +124,7 @@ func (r *ReleaseRepository) ListByService(serviceID uuid.UUID) ([]*types.Release
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var releases []*types.Release
 	for rows.Next() {

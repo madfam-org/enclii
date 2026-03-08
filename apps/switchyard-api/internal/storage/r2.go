@@ -328,7 +328,7 @@ func (r *R2Client) UploadFile(ctx context.Context, localPath, r2Key string) erro
 	if err != nil {
 		return fmt.Errorf("failed to open local file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	return r.Upload(ctx, r2Key, file, "application/octet-stream")
 }
@@ -339,14 +339,14 @@ func (r *R2Client) DownloadFile(ctx context.Context, r2Key, localPath string) er
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	localPath = filepath.Clean(localPath)
 	file, err := os.Create(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to create local file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = io.Copy(file, reader)
 	if err != nil {

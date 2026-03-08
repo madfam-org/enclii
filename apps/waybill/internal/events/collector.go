@@ -97,7 +97,7 @@ func (c *Collector) RecordBatch(ctx context.Context, events []*EventRequest) err
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // no-op after successful commit
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO usage_events (
@@ -108,7 +108,7 @@ func (c *Collector) RecordBatch(ctx context.Context, events []*EventRequest) err
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	now := time.Now()
 	for _, req := range events {
@@ -161,7 +161,7 @@ func (c *Collector) GetUnprocessedEvents(ctx context.Context, limit int) ([]*Usa
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []*UsageEvent
 	for rows.Next() {
@@ -185,8 +185,8 @@ func (c *Collector) GetUnprocessedEvents(ctx context.Context, limit int) ([]*Usa
 			return nil, fmt.Errorf("failed to scan event: %w", err)
 		}
 
-		json.Unmarshal(metricsJSON, &event.Metrics)
-		json.Unmarshal(metadataJSON, &event.Metadata)
+		_ = json.Unmarshal(metricsJSON, &event.Metrics)   // best-effort: fields default to zero on error
+		_ = json.Unmarshal(metadataJSON, &event.Metadata) // best-effort: fields default to zero on error
 
 		events = append(events, &event)
 	}
@@ -229,7 +229,7 @@ func (c *Collector) GetEventsByProject(ctx context.Context, projectID uuid.UUID,
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []*UsageEvent
 	for rows.Next() {
@@ -253,8 +253,8 @@ func (c *Collector) GetEventsByProject(ctx context.Context, projectID uuid.UUID,
 			return nil, fmt.Errorf("failed to scan event: %w", err)
 		}
 
-		json.Unmarshal(metricsJSON, &event.Metrics)
-		json.Unmarshal(metadataJSON, &event.Metadata)
+		_ = json.Unmarshal(metricsJSON, &event.Metrics)   // best-effort: fields default to zero on error
+		_ = json.Unmarshal(metadataJSON, &event.Metadata) // best-effort: fields default to zero on error
 
 		events = append(events, &event)
 	}

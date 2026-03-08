@@ -98,7 +98,7 @@ func (r *RouteRepository) GetByServiceAndEnvironment(ctx context.Context, servic
 	if err != nil {
 		return nil, fmt.Errorf("failed to query routes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var routes []types.Route
 	for rows.Next() {

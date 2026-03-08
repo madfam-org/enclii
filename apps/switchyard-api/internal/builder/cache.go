@@ -20,7 +20,6 @@ import (
 type BuildCache struct {
 	registry      string // Container registry for cache images
 	cachePrefix   string // Prefix for cache image tags
-	r2Bucket      string // R2 bucket for cache metadata
 	r2Client      R2Uploader
 	localCacheDir string
 }
@@ -517,7 +516,7 @@ func CopyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+	defer func() { _ = sourceFile.Close() }()
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return err
@@ -527,7 +526,7 @@ func CopyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	_, err = io.Copy(destFile, sourceFile)
 	return err

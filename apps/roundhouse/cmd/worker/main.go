@@ -17,7 +17,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to connect to Redis", zap.Error(err))
 	}
-	defer redisQueue.Close()
+	defer func() { _ = redisQueue.Close() }()
 
 	logger.Info("connected to Redis")
 

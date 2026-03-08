@@ -87,7 +87,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, req *CreateProjectRe
 	}
 
 	// Audit log - ActorID is nil for OIDC users (no local user row)
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),
@@ -213,7 +213,7 @@ func (s *ProjectService) CreateService(ctx context.Context, req *CreateServiceRe
 	}
 
 	// Audit log - OIDC users don't have local user row, use nil
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),

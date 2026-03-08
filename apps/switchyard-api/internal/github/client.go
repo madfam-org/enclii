@@ -156,7 +156,7 @@ func (c *Client) GetInstallation(ctx context.Context, installationID int64) (*In
 	if err != nil {
 		return nil, fmt.Errorf("failed to get installation: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -202,7 +202,7 @@ func (c *Client) GetInstallationToken(ctx context.Context, installationID int64)
 	if err != nil {
 		return "", fmt.Errorf("failed to get installation token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -248,7 +248,7 @@ func (c *Client) ListInstallationRepositories(ctx context.Context, installationI
 	if err != nil {
 		return nil, fmt.Errorf("failed to list repositories: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -284,7 +284,7 @@ func (c *Client) GetRepository(ctx context.Context, installationID int64, owner,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get repository: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -368,7 +368,7 @@ func (c *Client) CreateWebhook(ctx context.Context, installationID int64, owner,
 	if err != nil {
 		return 0, fmt.Errorf("failed to create webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -459,7 +459,7 @@ func (c *Client) createCommentWithToken(ctx context.Context, token, owner, repo 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create comment: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -511,7 +511,7 @@ func (c *Client) GetFileContent(ctx context.Context, token, owner, repo, path, r
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file content: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil // File doesn't exist
@@ -556,7 +556,7 @@ func (c *Client) FindExistingPreviewComment(ctx context.Context, token, owner, r
 	if err != nil {
 		return nil, fmt.Errorf("failed to list comments: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -607,7 +607,7 @@ func (c *Client) UpdateIssueComment(ctx context.Context, token, owner, repo stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to update comment: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)

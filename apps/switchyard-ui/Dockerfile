@@ -10,9 +10,10 @@ WORKDIR /app
 FROM base AS deps
 WORKDIR /app/switchyard-ui
 ARG NPM_MADFAM_TOKEN
-COPY apps/switchyard-ui/package.json apps/switchyard-ui/package-lock.json ./
+RUN corepack enable && corepack prepare pnpm@latest --activate
+COPY apps/switchyard-ui/package.json ./
 COPY apps/switchyard-ui/.npmrc ./
-RUN npm install --legacy-peer-deps
+RUN pnpm install --frozen-lockfile=false
 RUN rm -f .npmrc
 
 # Build the application
@@ -36,7 +37,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the static site
 WORKDIR /app/switchyard-ui
-RUN npm run build
+RUN pnpm run build
 
 # Production image
 FROM base AS runner

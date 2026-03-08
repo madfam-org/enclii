@@ -49,7 +49,7 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, spec *types.Postgre
 	if err != nil {
 		return fmt.Errorf("connect to admin postgres: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping admin postgres: %w", err)
@@ -129,7 +129,7 @@ func (p *PostgresProvisioner) enableExtensions(ctx context.Context, dbName strin
 	if err != nil {
 		return fmt.Errorf("connect to target database %s: %w", dbName, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	for _, ext := range extensions {
 		// Extension name is validated via regex — safe for identifier use.

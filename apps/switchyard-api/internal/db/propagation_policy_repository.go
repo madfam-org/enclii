@@ -69,7 +69,7 @@ func (r *PropagationPolicyRepository) List(ctx context.Context) ([]*types.Propag
 	if err != nil {
 		return nil, fmt.Errorf("failed to list propagation policies: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var policies []*types.PropagationPolicy
 	for rows.Next() {
 		pp := &types.PropagationPolicy{}

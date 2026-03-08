@@ -77,7 +77,7 @@ func TestExtractServiceCandidates(t *testing.T) {
 	}
 }
 
-func TestExtractServiceName(t *testing.T) {
+func TestExtractServiceCandidatesFirstMatch(t *testing.T) {
 	tests := []struct {
 		name     string
 		imageURI string
@@ -97,9 +97,13 @@ func TestExtractServiceName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractServiceName(tt.imageURI)
+			candidates := extractServiceCandidates(tt.imageURI)
+			if len(candidates) == 0 {
+				t.Fatalf("extractServiceCandidates(%q) returned no candidates", tt.imageURI)
+			}
+			got := candidates[0]
 			if got != tt.want {
-				t.Errorf("extractServiceName(%q) = %q, want %q", tt.imageURI, got, tt.want)
+				t.Errorf("extractServiceCandidates(%q)[0] = %q, want %q", tt.imageURI, got, tt.want)
 			}
 		})
 	}

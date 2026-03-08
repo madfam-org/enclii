@@ -10,23 +10,26 @@ linters:
   enable:
     - govet
     - ineffassign
+    - unused
+    - errcheck
     # NOTE: Additional linters disabled due to existing technical debt.
     # Enable incrementally after fixing issues:
-    # - errcheck      # Unchecked error returns
     # - staticcheck   # Style/deprecation warnings
-    # - unused        # Remove unused code
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: "^QF"
+      - linters:
+          - errcheck
+        text: "\\.Close"
 
 formatters:
   enable:
     - gofmt
 
 issues:
-  # Exclude staticcheck style suggestions (QF* rules) - these are suggestions, not errors
-  exclude-rules:
-    - linters:
-        - staticcheck
-      text: "^QF"
-
-  # Limit issues to avoid overwhelming output - will still catch new problems
   max-issues-per-linter: 20
   max-same-issues: 5

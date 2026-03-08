@@ -76,7 +76,7 @@ func (c *APIClient) DeleteFunction(ctx context.Context, nameOrID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete function: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)

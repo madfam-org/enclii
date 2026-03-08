@@ -118,7 +118,7 @@ func (r *ApprovalRecordRepository) List(ctx context.Context, filters map[string]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var records []*types.ApprovalRecord
 	for rows.Next() {

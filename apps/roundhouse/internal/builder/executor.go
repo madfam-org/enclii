@@ -72,7 +72,7 @@ func (e *Executor) Execute(ctx context.Context, job *queue.BuildJob) (*queue.Bui
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		return e.failResult(result, startTime, "failed to create build directory: %v", err)
 	}
-	defer os.RemoveAll(buildDir) // Clean up after build
+	defer func() { _ = os.RemoveAll(buildDir) }() // Clean up after build
 
 	e.log(job.ID, "📦 Starting build for %s @ %s", job.GitRepo, job.GitSHA[:8])
 
@@ -365,8 +365,8 @@ func (e *Executor) getImageSize(ctx context.Context, imageURI string) (float64, 
 	}
 
 	var size int64
-	fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &size)
-	return float64(size) / (1024 * 1024), nil // Convert to MB
+	_, _ = fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &size) // best-effort parse
+	return float64(size) / (1024 * 1024), nil                         // Convert to MB
 }
 
 func (e *Executor) generateSBOMForImage(ctx context.Context, imageURI string) (string, string, error) {

@@ -86,7 +86,7 @@ func (t *TelegramSender) Send(ctx context.Context, botToken, chatID string, even
 	if err != nil {
 		return 0, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 

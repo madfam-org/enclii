@@ -125,7 +125,7 @@ func (h *Handler) findExistingPreviewComment(ctx context.Context, owner, repo st
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -173,7 +173,7 @@ func (h *Handler) createGitHubComment(ctx context.Context, owner, repo string, p
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -214,7 +214,7 @@ func (h *Handler) updateGitHubComment(ctx context.Context, owner, repo string, c
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)

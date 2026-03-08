@@ -190,7 +190,7 @@ func (a *RepositoryAnalyzer) getRepositoryTree(
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -610,7 +610,7 @@ func (a *RepositoryAnalyzer) getFileContent(
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub API error: %d", resp.StatusCode)

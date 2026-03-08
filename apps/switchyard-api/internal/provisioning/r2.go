@@ -71,7 +71,7 @@ func (p *R2Provisioner) CreateBucket(ctx context.Context, bucketName string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("R2 API call failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 

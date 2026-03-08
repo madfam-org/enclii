@@ -519,7 +519,7 @@ func (c *Client) getPreviousImage(ctx context.Context, deploymentName, namespace
 
 		// Parse revision number
 		var rev int64
-		fmt.Sscanf(rsRevision, "%d", &rev)
+		_, _ = fmt.Sscanf(rsRevision, "%d", &rev)
 
 		// Keep track of the highest revision that's not current
 		if rev > previousRevision {

@@ -100,8 +100,8 @@ func (p *LocalAuthProvider) Register(ctx context.Context, req *RegisterRequest) 
 		return nil, errors.Wrap(err, errors.ErrInternal)
 	}
 
-	// Audit log
-	p.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	// Audit log (best-effort, non-blocking)
+	_ = p.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      &user.ID,
 		ActorEmail:   user.Email,
 		ActorRole:    types.RoleViewer,
@@ -155,8 +155,8 @@ func (p *LocalAuthProvider) Login(ctx context.Context, req *LoginRequest) (*Logi
 
 	// Verify password
 	if err := ComparePassword(user.PasswordHash, req.Password); err != nil {
-		// Log failed login attempt
-		p.repos.AuditLogs.Log(ctx, &types.AuditLog{
+		// Log failed login attempt (best-effort, non-blocking)
+		_ = p.repos.AuditLogs.Log(ctx, &types.AuditLog{
 			ActorID:      &user.ID,
 			ActorEmail:   user.Email,
 			ActorRole:    types.RoleViewer,
@@ -197,8 +197,8 @@ func (p *LocalAuthProvider) Login(ctx context.Context, req *LoginRequest) (*Logi
 		p.logger.WithError(err).WithField("user_id", user.ID).Warn("Failed to update last login time")
 	}
 
-	// Log successful login
-	p.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	// Log successful login (best-effort, non-blocking)
+	_ = p.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      &user.ID,
 		ActorEmail:   user.Email,
 		ActorRole:    types.Role(userRole),

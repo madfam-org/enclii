@@ -142,7 +142,7 @@ func (r *CIRunRepository) ListByCommitSHA(ctx context.Context, commitSHA string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var runs []*types.CIRun
 	for rows.Next() {
@@ -201,7 +201,7 @@ func (r *CIRunRepository) ListByServiceAndCommit(ctx context.Context, serviceID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var runs []*types.CIRun
 	for rows.Next() {

@@ -89,7 +89,7 @@ func (s *DeploymentService) BuildService(ctx context.Context, req *BuildServiceR
 	}
 
 	// Audit log - OIDC users don't have local user row, use nil
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),
@@ -177,7 +177,7 @@ func (s *DeploymentService) DeployService(ctx context.Context, req *DeployServic
 	}
 
 	// Audit log - OIDC users don't have local user row, use nil
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),
@@ -277,7 +277,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, req *RollbackRequest) 
 	}
 
 	// Audit log - OIDC users don't have local user row, use nil
-	s.repos.AuditLogs.Log(ctx, &types.AuditLog{
+	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
 		ActorRole:    types.Role(req.UserRole),
