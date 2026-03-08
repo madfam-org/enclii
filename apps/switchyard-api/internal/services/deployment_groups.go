@@ -112,7 +112,7 @@ func (s *DeploymentGroupService) CreateGroupDeployment(ctx context.Context, req 
 	}
 
 	// Parse strategy
-	strategy := db.DeploymentGroupStrategyDependencyOrdered
+	var strategy db.DeploymentGroupStrategy
 	switch req.Strategy {
 	case "parallel":
 		strategy = db.DeploymentGroupStrategyParallel

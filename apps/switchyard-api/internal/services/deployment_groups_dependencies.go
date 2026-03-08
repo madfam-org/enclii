@@ -151,7 +151,7 @@ func (s *DeploymentGroupService) AddServiceDependency(ctx context.Context, req *
 	}
 
 	// Parse dependency type
-	depType := db.DependencyTypeRuntime
+	var depType db.DependencyType
 	switch req.DependencyType {
 	case "build":
 		depType = db.DependencyTypeBuild

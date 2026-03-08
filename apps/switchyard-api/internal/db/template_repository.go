@@ -81,7 +81,6 @@ func (r *TemplateRepository) List(ctx context.Context, filters *types.TemplateLi
 		if len(filters.Tags) > 0 {
 			query += fmt.Sprintf(" AND tags && $%d", argNum)
 			args = append(args, pq.Array(filters.Tags))
-			argNum++
 		}
 	}
 

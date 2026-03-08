@@ -1,0 +1,283 @@
+# =============================================================================
+# Yantra4D Namespace NetworkPolicies
+# =============================================================================
+# Default-deny + explicit allow rules for the yantra4d namespace.
+# Contains: yantra4d-landing (nginx frontend, cloudflare tunnel, proxies to backend),
+#           yantra4d-backend (Python API, PostgreSQL),
+#           yantra4d-studio (web app, cloudflare tunnel),
+#           yantra4d-admin (admin UI, cloudflare tunnel).
+# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# =============================================================================
+
+# Default deny all ingress to yantra4d namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Default deny all egress from yantra4d namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+# Allow Cloudflare tunnel -> yantra4d-landing (4d.madfam.io)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-landing-ingress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-landing
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 80
+
+# Allow Cloudflare tunnel -> yantra4d-studio (4d-app.madfam.io)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-studio-ingress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-studio
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 3000
+
+# Allow Cloudflare tunnel -> yantra4d-admin (4d-admin.madfam.io)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-admin-ingress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-admin
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 3000
+
+# Allow Cloudflare tunnel + nginx proxy -> yantra4d-backend (4d-api.madfam.io)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-backend-ingress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    # Direct access via Cloudflare tunnel (4d-api.madfam.io)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 5000
+    # Proxy from nginx landing within namespace
+    - from:
+        - podSelector:
+            matchLabels:
+              app: yantra4d-landing
+      ports:
+        - protocol: TCP
+          port: 5000
+
+# Allow yantra4d-landing egress (DNS + proxy to backend within namespace)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-landing-egress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-landing
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Proxy to backend within namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app: yantra4d-backend
+      ports:
+        - protocol: TCP
+          port: 5000
+
+# Allow yantra4d-backend egress (DNS + HTTPS + PostgreSQL)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-backend-egress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-backend
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for external APIs
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # PostgreSQL in data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+# Allow yantra4d-studio egress (DNS + HTTPS for SSR API calls)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-studio-egress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-studio
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for SSR API calls
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
+# Allow yantra4d-admin egress (DNS + HTTPS for SSR API calls)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-admin-egress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: yantra4d-admin
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for SSR API calls
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443

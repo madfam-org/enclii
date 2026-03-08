@@ -174,20 +174,19 @@ func (e *Executor) cloneRepo(ctx context.Context, job *queue.BuildJob, buildDir 
 	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--single-branch",
 		"--branch", job.GitBranch, job.GitRepo, buildDir)
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	if _, cloneErr := cmd.CombinedOutput(); cloneErr != nil {
 		// If branch clone fails, try fetching specific SHA
 		e.log(job.ID, "Branch clone failed, trying SHA fetch...")
 
 		cmd = exec.CommandContext(ctx, "git", "clone", job.GitRepo, buildDir)
-		if output, err = cmd.CombinedOutput(); err != nil {
+		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("clone failed: %s", string(output))
 		}
 	}
 
 	// Checkout specific SHA
 	cmd = exec.CommandContext(ctx, "git", "-C", buildDir, "checkout", job.GitSHA)
-	output, err = cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("checkout failed: %s", string(output))
 	}

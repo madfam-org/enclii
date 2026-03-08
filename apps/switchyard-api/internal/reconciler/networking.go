@@ -83,11 +83,7 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 
 		// Add TLS configuration if enabled
 		if domain.TLSEnabled {
-			tlsIssuer := domain.TLSIssuer
-			if tlsIssuer == "" {
-				tlsIssuer = "letsencrypt-prod"
-			}
-
+			// TLS issuer is configured at the ingress level below, not per-domain
 			tlsConfigs = append(tlsConfigs, networkingv1.IngressTLS{
 				Hosts:      []string{domain.Domain},
 				SecretName: fmt.Sprintf("%s-%s-tls", req.Service.Name, sanitizeDomainForSecret(domain.Domain)),

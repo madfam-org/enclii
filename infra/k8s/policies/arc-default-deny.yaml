@@ -1,0 +1,170 @@
+# =============================================================================
+# ARC (Actions Runner Controller) Namespace NetworkPolicies
+# =============================================================================
+# Default-deny + explicit allow rules for arc-system and arc-runners namespaces.
+# arc-system: ARC controller (manages runner scale sets, K8s API access).
+# arc-runners: Ephemeral GitHub Actions runner pods (HTTPS to GitHub API).
+# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# =============================================================================
+
+# ---- arc-system namespace ----
+
+# Default deny all ingress to arc-system namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: arc-system
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Default deny all egress from arc-system namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: arc-system
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+# Allow Prometheus -> ARC controller metrics (port 8080)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arc-controller-metrics-ingress
+  namespace: arc-system
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gha-rs-controller
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# Allow ARC controller egress (DNS + K8s API + HTTPS for GitHub API)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arc-controller-egress
+  namespace: arc-system
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gha-rs-controller
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # K8s API server for managing runner pods and scale sets
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # HTTPS egress for GitHub API (runner registration, webhook)
+    # Port 443 already covered above
+
+# ---- arc-runners namespace ----
+
+# Default deny all ingress to arc-runners namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Default deny all egress from arc-runners namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+# Allow runner pods egress (DNS + HTTPS for GitHub API + container registries)
+# Runners need broad HTTPS access for: GitHub API, GHCR, npm, pip, Go modules, etc.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runner-egress
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTP for package downloads (some registries use HTTP)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 80
+    # HTTPS for GitHub API, container registries, package managers
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # SSH for git operations (port 22)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 22

@@ -1,0 +1,159 @@
+# =============================================================================
+# Madfam-Site Namespace NetworkPolicies
+# =============================================================================
+# Default-deny + explicit allow rules for the madfam-site namespace.
+# Contains: madfam-web (Next.js/static site, cloudflare tunnel),
+#           madfam-cms (Payload CMS v3, cloudflare tunnel + PostgreSQL).
+# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# =============================================================================
+
+# Default deny all ingress to madfam-site namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: madfam-site
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Default deny all egress from madfam-site namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: madfam-site
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+# Allow Cloudflare tunnel -> madfam-web (madfam.io, www.madfam.io)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: madfam-web-ingress
+  namespace: madfam-site
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: madfam-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 3000
+
+# Allow Cloudflare tunnel -> madfam-cms (cms.madfam.io)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: madfam-cms-ingress
+  namespace: madfam-site
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: madfam-cms
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 3000
+
+# Allow madfam-web egress (DNS + HTTPS for SSR API calls)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: madfam-web-egress
+  namespace: madfam-site
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: madfam-web
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for SSR API calls, CMS content fetching
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
+# Allow madfam-cms egress (DNS + HTTPS + PostgreSQL)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: madfam-cms-egress
+  namespace: madfam-site
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: madfam-cms
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for external APIs, R2 media storage, OIDC
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # PostgreSQL in data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432

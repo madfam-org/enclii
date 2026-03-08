@@ -1,0 +1,204 @@
+# =============================================================================
+# Enclii Namespace — Default-Deny NetworkPolicies
+# =============================================================================
+# Default-deny ingress + egress for the enclii control plane namespace.
+# Per-pod ingress/egress rules already exist in infra/k8s/base/network-policies.yaml
+# (switchyard-api, switchyard-ui, dispatch, docs-site, landing, roundhouse, waybill)
+# and infra/k8s/policies/status-network-policies.yaml (status pods).
+#
+# This file adds:
+#   1. default-deny-ingress and default-deny-egress baselines
+#   2. Egress rules for pods NOT covered by infra/k8s/base/network-policies.yaml:
+#      - switchyard-ui (DNS + HTTPS + switchyard-api:4200)
+#      - dispatch       (DNS + HTTPS + switchyard-api:4200)
+#      - docs-site      (DNS only)
+#      - landing-page   (DNS only)
+#      - roundhouse     (DNS + HTTPS + K8s API for builds)
+#
+# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# =============================================================================
+
+# Default deny all ingress to enclii namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Default deny all egress from enclii namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+# Allow switchyard-ui egress (DNS + HTTPS for SSO/OIDC + switchyard-api)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: switchyard-ui-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: switchyard-ui
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for OIDC/SSO callbacks, external APIs
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # switchyard-api within namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app: switchyard-api
+      ports:
+        - protocol: TCP
+          port: 4200
+
+# Allow dispatch egress (DNS + HTTPS for SSO + switchyard-api)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dispatch-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: dispatch
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for SSO/OIDC, external APIs
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # switchyard-api within namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app: switchyard-api
+      ports:
+        - protocol: TCP
+          port: 4200
+
+# Allow docs-site egress (DNS only — static site)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: docs-site-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: docs-site
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+
+# Allow landing-page egress (DNS only — static site)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: landing-page-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: landing-page
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+
+# Allow roundhouse egress (DNS + HTTPS for registry push + K8s API for job management)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: roundhouse-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: roundhouse-api
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for container registry push (ghcr.io), GitHub API
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # K8s API for build job management
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 6443

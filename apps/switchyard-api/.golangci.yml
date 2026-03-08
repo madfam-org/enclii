@@ -9,11 +9,11 @@ linters:
   default: none
   enable:
     - govet
+    - ineffassign
     # NOTE: Additional linters disabled due to existing technical debt.
     # Enable incrementally after fixing issues:
     # - errcheck      # ~20 unchecked error returns to fix
     # - staticcheck   # ~15 style/deprecation warnings to fix
-    # - ineffassign   # ~4 useless assignments to fix
     # - unused        # Remove unused code
 
 formatters:
