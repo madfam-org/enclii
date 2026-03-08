@@ -631,15 +631,13 @@ tar -xzf build-cache-backup.tar.gz -C /
 ## Next Steps
 
 - [Deploy your first service](QUICKSTART.md)
-- [Configure CI/CD integration](CI_CD_INTEGRATION.md)
-- [Set up monitoring and alerting](MONITORING.md)
-- [Week 3: Add SBOM generation and image signing](SPRINT_3_PLAN.md)
+- [Testing Guide](../guides/TESTING_GUIDE.md) - Writing and running tests
 
 ## Support
 
 For issues or questions:
 - Check [Troubleshooting](#troubleshooting) section above
-- Review [Architecture docs](ARCHITECTURE.md)
+- Review [Architecture docs](../architecture/ARCHITECTURE.md)
 - Open an issue on GitHub
 - Contact the platform team
 

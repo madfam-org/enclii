@@ -325,4 +325,4 @@ kubectl delete namespace keda
 - [KEDA Documentation](https://keda.sh/docs/)
 - [KEDA HTTP Add-on](https://github.com/kedacore/http-add-on)
 - [HTTPScaledObject Spec](https://github.com/kedacore/http-add-on#readme)
-- [Enclii Functions Plan](/docs/architecture/FUNCTIONS_PLAN.md)
+- [Enclii Functions Quickstart](../functions/quickstart.md)

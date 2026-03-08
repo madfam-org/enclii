@@ -17,11 +17,16 @@ tags: [overview, documentation, getting-started]
 |-----------|--------|---------|
 | API | ✅ Running | api.enclii.dev |
 | UI | ✅ Running | app.enclii.dev |
+| Admin (Dispatch) | ✅ Running | admin.enclii.dev |
 | Auth | ✅ Janua SSO | auth.madfam.io |
 | Build Pipeline | ✅ Operational | GitHub webhooks + Buildpacks |
 | Docs | ✅ Running | docs.enclii.dev |
-| GitOps | ✅ ArgoCD | App-of-Apps pattern, auto-sync |
+| Status Page | ✅ Running | status.enclii.dev, status.madfam.io (24h timeline history) |
+| GitOps | ✅ ArgoCD | App-of-Apps (10 apps), auto-sync + self-heal |
 | Storage | ✅ Longhorn | CSI storage (single-node; ready for scaling) |
+| NetworkPolicies | ✅ ArgoCD App | Default-deny per namespace |
+| Vault | ⏳ Staged | Helm + ArgoCD app + tunnel route ready, pending cluster deploy |
+| PostHog | ⏳ Staged | Helm + ArgoCD app + tunnel route + SDKs ready, pending cluster deploy |
 | GPU Prep | ✅ Ready | Manifests staged, pending nodes |
 
 ## Quick Start
@@ -85,12 +90,12 @@ Get help with common issues and answers to frequent questions.
 Client libraries for programmatic access.
 
 - [TypeScript SDK](./sdk/typescript/) - Full TypeScript/JavaScript SDK
-- [Go SDK](../packages/sdk-go/README.md) - Go client library
+- Go SDK: `packages/sdk-go/` — Go client library
 
 ### 🚀 Production
 Production deployment, readiness, and operational guides.
 
-- [Production Readiness Audit](./production/PRODUCTION_READINESS_AUDIT.md) - Production readiness assessment
+- [Production Checklist](./production/PRODUCTION_CHECKLIST.md) - Production readiness assessment
 - [Production Deployment Roadmap](./production/PRODUCTION_DEPLOYMENT_ROADMAP.md) - Deployment timeline and milestones
 - [Gap Analysis](./production/GAP_ANALYSIS.md) - Feature comparison with Vercel and Railway
 
@@ -104,12 +109,12 @@ GitOps, storage, compute, and Kubernetes infrastructure. **[Infrastructure Index
 - [External Secrets](./infrastructure/EXTERNAL_SECRETS.md) - Secret sync from external providers
 
 **Configuration Files:**
-- [ArgoCD Apps](../infra/argocd/README.md) - GitOps App-of-Apps configuration
-- [Longhorn Values](../infra/helm/longhorn/) - Helm values for storage
-- [GPU Node Setup](../infra/k8s/base/gpu/README.md) - NVIDIA device plugin and tolerations
-- [Kaniko Builds](../apps/roundhouse/k8s/kaniko-job-template.yaml) - Secure rootless container builds
-- [Cloudflare Tunnel](../infra/k8s/production/cloudflared-unified.yaml) - Tunnel manifest
-- [ARC Runners](../infra/argocd/apps/arc-runners.yaml) - GitHub Actions self-hosted runners
+- ArgoCD Apps: `infra/argocd/` — GitOps App-of-Apps configuration
+- Longhorn Values: `infra/helm/longhorn/` — Helm values for storage
+- GPU Node Setup: `infra/k8s/base/gpu/` — NVIDIA device plugin and tolerations
+- Kaniko Builds: `apps/roundhouse/k8s/kaniko-job-template.yaml` — Secure rootless container builds
+- Cloudflare Tunnel: `infra/k8s/production/cloudflared-unified.yaml` — Tunnel manifest
+- ARC Runners: `infra/argocd/apps/arc-runners.yaml` — GitHub Actions self-hosted runners
 
 ### 🔍 Audits
 Comprehensive audit reports organized by category. **Start with the [Audit README](./audits/README.md)** for navigation.
@@ -253,9 +258,9 @@ Historical reports, completed progress tracking documents, and design artifacts.
 
 The following essential documents are located in the repository root:
 
-- [README.md](../README.md) - Main project README and overview
-- [CLAUDE.md](../CLAUDE.md) - Instructions for Claude Code AI assistant
-- [SOFTWARE_SPEC.md](../SOFTWARE_SPEC.md) - Complete software specification
+- `README.md` (repo root) — Main project README and overview
+- `CLAUDE.md` (repo root) — Instructions for Claude Code AI assistant
+- `SOFTWARE_SPEC.md` (repo root) — Complete software specification
 
 ## Contributing to Documentation
 
@@ -293,5 +298,5 @@ When adding new documentation:
 
 ---
 
-**Last Updated:** 2026-01-25
-**Documentation Version:** 3.0 (Ecosystem Update Complete)
+**Last Updated:** 2026-03-08
+**Documentation Version:** 3.1 (Docs Audit Remediation)

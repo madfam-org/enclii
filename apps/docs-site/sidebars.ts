@@ -218,6 +218,43 @@ const sidebars: SidebarsConfig = {
         'design/MONOREPO_PROJECT_MODEL',
       ],
     },
+
+    // Compliance
+    {
+      type: 'category',
+      label: 'Compliance',
+      collapsed: true,
+      items: [
+        'compliance/SOC2_CONTROLS_MAPPING',
+        'compliance/CHANGE_MANAGEMENT',
+        'compliance/VULNERABILITY_MANAGEMENT',
+        'compliance/DATA_CLASSIFICATION',
+        'compliance/VENDOR_RISK_ASSESSMENT',
+      ],
+    },
+
+    // Security
+    {
+      type: 'category',
+      label: 'Security',
+      collapsed: true,
+      items: [
+        'security/SECRET_ROTATION_LOG',
+        'infrastructure/KYVERNO_POLICIES',
+      ],
+    },
+
+    // Operations
+    {
+      type: 'category',
+      label: 'Operations',
+      collapsed: true,
+      items: [
+        'operations/INCIDENT_RESPONSE',
+        'production/POST_INCIDENT_REVIEWS',
+        'production/ANTI_FRAGILITY_SYSTEM',
+      ],
+    },
   ],
 };
 

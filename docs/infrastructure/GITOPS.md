@@ -233,7 +233,7 @@ kubectl get application <app-name> -n argocd -o yaml | \
 
 ## Related Documentation
 
-- [Deployment Guide](../../infra/DEPLOYMENT.md)
+- Deployment Guide: `infra/DEPLOYMENT.md`
 - [Storage with Longhorn](./STORAGE.md)
 - [Cloudflare Integration](./CLOUDFLARE.md)
 - [Production Checklist](../production/PRODUCTION_CHECKLIST.md)

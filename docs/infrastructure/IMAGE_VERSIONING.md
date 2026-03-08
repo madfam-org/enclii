@@ -192,4 +192,4 @@ crane digest prom/prometheus:v2.53.3
 
 - [GitOps Configuration](./GITOPS.md)
 - [ArgoCD Image Updater](https://argocd-image-updater.readthedocs.io/)
-- [Kyverno Policies](../security/KYVERNO_POLICIES.md)
+- [Kyverno Policies](../infrastructure/KYVERNO_POLICIES.md)

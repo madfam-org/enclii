@@ -791,4 +791,4 @@ func (o *Orchestrator) rollbackGroup(group *DeploymentGroup, cause error) error 
 
 - [Dogfooding Guide](../guides/DOGFOODING_GUIDE.md)
 - [Production Deployment Roadmap](../production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
-- [Service Spec Format](../specs/SERVICE_SPEC.md)
+- [Service Spec Format](../reference/service-spec.md)

@@ -661,8 +661,8 @@ apps/switchyard-api/go.mod                            +15 dependencies
 
 - [IMMEDIATE_PRIORITIES_IMPLEMENTATION.md](./IMMEDIATE_PRIORITIES_IMPLEMENTATION.md) - Overall roadmap
 - [CLI_IMPLEMENTATION_COMPLETE.md](./CLI_IMPLEMENTATION_COMPLETE.md) - CLI commands
-- [SOFTWARE_SPEC.md](../SOFTWARE_SPEC.md) - Product specification
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
+- Software Specification: `SOFTWARE_SPEC.md` (repo root)
+- [Architecture](../architecture/ARCHITECTURE.md) - System architecture
 
 ---
 

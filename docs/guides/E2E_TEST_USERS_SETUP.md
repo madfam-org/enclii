@@ -265,5 +265,4 @@ Before relying on authenticated E2E tests:
 ## Related Documentation
 
 - [E2E Testing Overview](./E2E_TESTING_REQUIREMENTS.md)
-- [Janua SSO Integration](./JANUA_INTEGRATION.md)
-- [CI/CD Configuration](./CICD_GUIDE.md)
+- [SSO Deployment](./sso-deployment.md) — Janua SSO integration
