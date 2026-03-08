@@ -33,12 +33,14 @@ describe('cn (class name merge)', () => {
 
   it('resolves Tailwind conflicts (last wins)', () => {
     // tailwind-merge should resolve p-4 vs p-2 to keep p-2
+    // eslint-disable-next-line tailwindcss/no-contradicting-classname
     const result = cn('p-4', 'p-2');
     expect(result).toBe('p-2');
     expect(result).not.toContain('p-4');
   });
 
   it('resolves conflicting text colors', () => {
+    // eslint-disable-next-line tailwindcss/no-contradicting-classname
     const result = cn('text-red-500', 'text-blue-500');
     expect(result).toBe('text-blue-500');
   });
