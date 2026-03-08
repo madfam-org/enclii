@@ -1,82 +1,96 @@
 # =============================================================================
-# Status Namespace NetworkPolicies
+# Status Pod NetworkPolicies (enclii namespace)
 # =============================================================================
-# Default-deny + explicit allow rules for the status page namespace.
-# Contains: enclii-status (port 4204) — static status page.
+# Egress rules for status page pods in the enclii namespace.
+# Pods: status-enclii (port 4204), status-madfam (port 4204)
+# CronJobs: status-recorder-enclii, status-recorder-madfam
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+#
+# NOTE: The enclii namespace does NOT have default-deny policies (too many
+# services). These are targeted policies for status pods that need cross-
+# namespace access (PostgreSQL in data namespace).
 # =============================================================================
 
-# Default deny all ingress to status namespace
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-ingress
-  namespace: status
-  labels:
-    app.kubernetes.io/managed-by: enclii
-    app.kubernetes.io/component: network-policy
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-
-# Default deny all egress from status namespace
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-egress
-  namespace: status
-  labels:
-    app.kubernetes.io/managed-by: enclii
-    app.kubernetes.io/component: network-policy
-spec:
-  podSelector: {}
-  policyTypes:
-    - Egress
-
-# Allow Cloudflare tunnel -> status page (port 4204)
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: status-ingress
-  namespace: status
-  labels:
-    app.kubernetes.io/managed-by: enclii
-    app.kubernetes.io/component: network-policy
-spec:
-  podSelector:
-    matchLabels:
-      app: enclii-status
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: cloudflare-tunnel
-      ports:
-        - protocol: TCP
-          port: 4204
-
-# Allow status page egress (DNS only — static page)
+# Allow status pods egress to DNS, HTTP/HTTPS (service checks), and PostgreSQL
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: status-egress
-  namespace: status
+  namespace: enclii
   labels:
     app.kubernetes.io/managed-by: enclii
     app.kubernetes.io/component: network-policy
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - status-enclii
+          - status-madfam
   policyTypes:
     - Egress
   egress:
-    - to: []
-      ports:
+    # DNS resolution
+    - ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 53
+    # HTTP (service health checks within cluster)
+    - ports:
+        - protocol: TCP
+          port: 80
+    # HTTPS (external service checks + Prometheus)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # PostgreSQL in data namespace (status history)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+      ports:
+        - protocol: TCP
+          port: 5432
+
+# Allow recorder CronJob pods egress to DNS + status service (HTTP)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: status-recorder-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - status-recorder-enclii
+          - status-recorder-madfam
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTP to status service within namespace (port 80 via ClusterIP)
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - status-enclii
+                  - status-madfam
+      ports:
+        - protocol: TCP
+          port: 4204
