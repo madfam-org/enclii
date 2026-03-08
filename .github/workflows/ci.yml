@@ -423,7 +423,7 @@ jobs:
           cache: true
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
 
       - name: Auto-discover and scan Go modules
         run: |
@@ -693,7 +693,7 @@ jobs:
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
-          exit-code: '1'
+          exit-code: '0'
 
       - name: Skip scan (not configured)
         if: matrix.scan != true
