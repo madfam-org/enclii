@@ -7,7 +7,7 @@
 Enclii is MADFAM's production DevOps platform running on a 2-node k3s cluster on Hetzner +
 Cloudflare. It dogfoods itself — the control plane runs on Enclii. Authentication
 is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
-16 managed applications.
+10 apps in `infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
 
 ---
 
@@ -29,8 +29,8 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 | Terraform | `infra/terraform/` |
 | K8s Manifests | `infra/k8s/production/` |
 | ArgoCD Root | `infra/argocd/root-application.yaml` |
-| ArgoCD Apps | `infra/argocd/apps/*.yaml` (16 apps) |
-| Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (28 domains, auto-provisioned via enclii.yaml) |
+| ArgoCD Apps | `infra/argocd/apps/*.yaml` (10 apps incl. network-policies, vault, posthog) |
+| Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (54 ingress rules, auto-provisioned via enclii.yaml, incl. vault.enclii.dev + analytics.enclii.dev) |
 | Kyverno Policies | `infra/k8s/base/kyverno/policies/` |
 | Golden Tests | `tests/golden/` (pre-commit validation) |
 | Enclii Config | `.enclii.yml` |
@@ -128,6 +128,8 @@ Key routes in `cloudflared-unified.yaml`:
 - `admin.enclii.dev` → `dispatch.enclii.svc.cluster.local:80`
 - `app.enclii.dev` → `switchyard-ui.enclii.svc.cluster.local:80`
 - `api.enclii.dev` → `switchyard-api.enclii.svc.cluster.local:80`
+- `vault.enclii.dev` → `vault.vault.svc.cluster.local:8200` (502 — backend pending deploy)
+- `analytics.enclii.dev` → `posthog-web.posthog.svc.cluster.local:8000` (502 — backend pending deploy)
 
 ### Kubernetes Resources
 
@@ -203,10 +205,9 @@ make precommit          # All checks before committing
 |---------|----------|
 | Entry point | `apps/switchyard-api/cmd/api/main.go` |
 | HTTP handlers | `apps/switchyard-api/internal/api/*.go` |
-| Router setup | `apps/switchyard-api/internal/api/router.go` |
-| Middleware | `apps/switchyard-api/internal/api/middleware/` |
-| Models | `apps/switchyard-api/internal/models/` |
-| Services | `apps/switchyard-api/internal/service/` |
+| Route registration | `apps/switchyard-api/internal/api/*_handlers.go` (distributed, no centralized router) |
+| Middleware | `apps/switchyard-api/internal/middleware/` |
+| Services | `apps/switchyard-api/internal/services/` |
 | Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` |
 | Admin services | `apps/switchyard-api/internal/services/` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
@@ -305,7 +306,7 @@ make precommit          # All checks before committing
 
 ## ArgoCD App-of-Apps Overview
 
-The root application at `infra/argocd/root-application.yaml` manages 16 child applications defined in `infra/argocd/apps/`:
+The root application at `infra/argocd/root-application.yaml` manages 10 child applications defined in `infra/argocd/apps/`:
 
 Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Longhorn storage, and supporting infrastructure. Each app syncs from its respective Git repository with automated self-heal.
 

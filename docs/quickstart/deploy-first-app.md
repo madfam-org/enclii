@@ -394,4 +394,4 @@ enclii logs my-app --since 10m
 - [CLI Reference](../cli/README.md)
 - [Service Specification](../reference/service-spec.md)
 - [GitHub Integration](../integrations/github.md)
-- [Custom Domains Guide](../guides/custom-domains.md)
+- [Cloudflare Integration](../infrastructure/CLOUDFLARE.md) — custom domain and tunnel route setup

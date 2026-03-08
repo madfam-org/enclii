@@ -63,7 +63,7 @@ tags: [production, deployment, checklist, operations]
 - [x] Longhorn backup to Cloudflare R2
 
 ### GitOps & CI/CD
-- [x] ArgoCD App-of-Apps (17 apps)
+- [x] ArgoCD App-of-Apps (10 apps in `infra/argocd/apps/`)
 - [x] ArgoCD self-heal enabled
 - [x] GitHub webhook CI/CD operational
 - [x] Auto-deploy pipeline (enclii, dhanam, janua)

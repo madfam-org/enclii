@@ -30,8 +30,7 @@ make bootstrap
 # 3. Start local services
 docker-compose up -d postgres redis
 
-# 4. Run database migrations
-make migrate-up
+# 4. Database is auto-migrated on API startup
 
 # 5. Start the control plane API
 make run-switchyard  # Starts on :8080

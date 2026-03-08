@@ -509,9 +509,7 @@ TOTAL: 68 hours = ~2 weeks for 1 developer
 
 ## 🔗 RELATED DOCUMENTS
 
-- [BLUE_OCEAN_ROADMAP.md](docs/BLUE_OCEAN_ROADMAP.md) - Original roadmap (outdated)
-- [ENCLII_COMPREHENSIVE_AUDIT_2025.md](ENCLII_COMPREHENSIVE_AUDIT_2025.md) - Full audit
-- [AUDIT_ISSUES_TRACKER.md](AUDIT_ISSUES_TRACKER.md) - All 327 issues tracked
+- [Blue Ocean Roadmap](../architecture/BLUE_OCEAN_ROADMAP.md) - Original roadmap
 
 ---
 

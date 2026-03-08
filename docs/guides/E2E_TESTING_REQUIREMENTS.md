@@ -329,6 +329,5 @@ test('dashboard accessibility', async ({ page }) => {
 ## References
 
 - [Playwright Documentation](https://playwright.dev/docs/intro)
-- [Enclii CLAUDE.md](../../CLAUDE.md)
-- [UI/UX Modernization Plan](~/.claude/plans/serialized-mapping-stonebraker.md)
+- Enclii development guide: `CLAUDE.md` (repo root)
 - [shadcn/ui Documentation](https://ui.shadcn.com/docs)

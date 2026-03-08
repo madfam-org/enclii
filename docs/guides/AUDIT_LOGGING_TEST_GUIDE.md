@@ -568,8 +568,8 @@ After successful testing:
 
 ## Related Documentation
 
-- [Sprint 0 Complete](./SPRINT_0_COMPLETE.md) - Authentication foundation
-- [Compliance Gap Analysis](./switchyard_compliance_gap_analysis.md) - SOC 2 requirements
+- Sprint 0 Complete (archived) — Authentication foundation
+- [SOC 2 Controls Mapping](../compliance/SOC2_CONTROLS_MAPPING.md) - SOC 2 requirements
 - Database Schema: `apps/switchyard-api/internal/db/migrations/002_compliance_schema.up.sql`
 - Middleware Implementation: `apps/switchyard-api/internal/audit/middleware.go`
 - Async Logger: `apps/switchyard-api/internal/audit/async_logger.go`

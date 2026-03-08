@@ -504,10 +504,8 @@ export function TopologyMap({ services, dependencies }) {
 
 ## 🔗 Related Documents
 
-- [SWITCHYARD_GAP_REPORT.md](SWITCHYARD_GAP_REPORT.md) - Original analysis
-- [BUILD_SETUP.md](BUILD_SETUP.md) - Build pipeline setup
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
-- [SOFTWARE_SPEC.md](SOFTWARE_SPEC.md) - Product specification
+- [Architecture](./ARCHITECTURE.md) - System architecture
+- Software Specification: `SOFTWARE_SPEC.md` (repo root)
 
 ---
 
