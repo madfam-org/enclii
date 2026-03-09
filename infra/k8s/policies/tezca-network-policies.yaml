@@ -54,7 +54,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-web
+      app.kubernetes.io/name: tezca-web
   policyTypes:
     - Ingress
   ingress:
@@ -64,7 +64,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 8000
+          port: 3000
 
 # Allow Cloudflare tunnel -> tezca-api
 ---
@@ -79,7 +79,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-api
+      app.kubernetes.io/name: tezca-api
   policyTypes:
     - Ingress
   ingress:
@@ -104,7 +104,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-admin
+      app.kubernetes.io/name: tezca-admin
   policyTypes:
     - Ingress
   ingress:
@@ -114,7 +114,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 8000
+          port: 3001
 
 # Allow tezca-web egress (DNS + HTTPS + PostgreSQL + Redis)
 ---
@@ -129,7 +129,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-web
+      app.kubernetes.io/name: tezca-web
   policyTypes:
     - Egress
   egress:
@@ -181,7 +181,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-api
+      app.kubernetes.io/name: tezca-api
   policyTypes:
     - Egress
   egress:
@@ -233,7 +233,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-admin
+      app.kubernetes.io/name: tezca-admin
   policyTypes:
     - Egress
   egress:
@@ -285,7 +285,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-beat
+      app.kubernetes.io/name: tezca-beat
   policyTypes:
     - Egress
   egress:
@@ -332,7 +332,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: tezca-worker
+      app.kubernetes.io/name: tezca-worker
   policyTypes:
     - Egress
   egress:

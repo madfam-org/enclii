@@ -61,7 +61,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 3000
+          port: 3050
 
 # Allow Cloudflare tunnel -> karafiel-api (kf-api.madfam.io)
 ---
@@ -111,7 +111,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 8000
+          port: 3051
 
 # Allow karafiel-api egress (DNS + HTTPS + PostgreSQL + Redis)
 ---

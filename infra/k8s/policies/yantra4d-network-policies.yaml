@@ -52,7 +52,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-landing
+      app.kubernetes.io/name: yantra4d-landing
   policyTypes:
     - Ingress
   ingress:
@@ -77,7 +77,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-studio
+      app.kubernetes.io/name: yantra4d-studio
   policyTypes:
     - Ingress
   ingress:
@@ -87,7 +87,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 3000
+          port: 80
 
 # Allow Cloudflare tunnel -> yantra4d-admin (4d-admin.madfam.io)
 ---
@@ -102,7 +102,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-admin
+      app.kubernetes.io/name: yantra4d-admin
   policyTypes:
     - Ingress
   ingress:
@@ -112,7 +112,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 3000
+          port: 80
 
 # Allow Cloudflare tunnel + nginx proxy -> yantra4d-backend (4d-api.madfam.io)
 ---
@@ -127,7 +127,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-backend
+      app.kubernetes.io/name: yantra4d-backend
   policyTypes:
     - Ingress
   ingress:
@@ -143,7 +143,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: yantra4d-landing
+              app.kubernetes.io/name: yantra4d-landing
       ports:
         - protocol: TCP
           port: 5000
@@ -161,7 +161,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-landing
+      app.kubernetes.io/name: yantra4d-landing
   policyTypes:
     - Egress
   egress:
@@ -176,7 +176,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app: yantra4d-backend
+              app.kubernetes.io/name: yantra4d-backend
       ports:
         - protocol: TCP
           port: 5000
@@ -194,7 +194,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-backend
+      app.kubernetes.io/name: yantra4d-backend
   policyTypes:
     - Egress
   egress:
@@ -235,7 +235,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-studio
+      app.kubernetes.io/name: yantra4d-studio
   policyTypes:
     - Egress
   egress:
@@ -265,7 +265,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: yantra4d-admin
+      app.kubernetes.io/name: yantra4d-admin
   policyTypes:
     - Egress
   egress:
