@@ -90,7 +90,7 @@ data:
       },
       {
         "name": "Tezca API",
-        "url": "https://api.tezca.mx",
+        "url": "https://api.tezca.mx/health",
         "group": "Tezca",
         "description": "Legal data API"
       },
