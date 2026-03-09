@@ -23,6 +23,25 @@ test.describe('Status Page Verification', () => {
       console.log('Page loaded. Content length:', content.length);
     });
 
+    test('should have clickable service name links', async ({ page }) => {
+      await page.goto('https://status.enclii.dev', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Service names should be rendered as <a> tags with target="_blank"
+      const serviceLinks = page.locator('a[target="_blank"].font-medium');
+      const count = await serviceLinks.count();
+      console.log('Clickable service name links found:', count);
+      expect(count).toBeGreaterThan(0);
+
+      // Verify first link has a valid href
+      const firstHref = await serviceLinks.first().getAttribute('href');
+      expect(firstHref).toBeTruthy();
+      expect(firstHref).toMatch(/^https?:\/\//);
+      console.log('First service link href:', firstHref);
+    });
+
     test('should have API health endpoint', async ({ request }) => {
       const response = await request.get('https://status.enclii.dev/api/health');
       console.log('Health endpoint status:', response.status());
@@ -33,17 +52,38 @@ test.describe('Status Page Verification', () => {
       }
     });
 
-    test('should have status API endpoint', async ({ request }) => {
+    test('should have status API endpoint with href field', async ({ request }) => {
       const response = await request.get('https://status.enclii.dev/api/status');
       console.log('Status API status:', response.status());
 
       if (response.ok()) {
         const data = await response.json();
-        console.log('Status response:', JSON.stringify(data, null, 2));
+        console.log('Status response services:', data.services?.length ?? 0);
+
+        // Validate that services with health-check URLs have href
+        if (data.services && data.services.length > 0) {
+          const switchyardApi = data.services.find(
+            (s: { service: string }) => s.service === 'Switchyard API'
+          );
+          if (switchyardApi) {
+            expect(switchyardApi.url).toContain('/health/ready');
+            expect(switchyardApi.href).toBe('https://api.enclii.dev');
+            console.log('Switchyard API href correctly set:', switchyardApi.href);
+          }
+
+          // Services without health-check URLs should not have href
+          const webDashboard = data.services.find(
+            (s: { service: string }) => s.service === 'Web Dashboard'
+          );
+          if (webDashboard) {
+            expect(webDashboard.href).toBeUndefined();
+            console.log('Web Dashboard correctly has no href (url is user-facing)');
+          }
+        }
       }
     });
 
-    test('should have timeline API endpoint', async ({ request }) => {
+    test('should have timeline API endpoint with href enrichment', async ({ request }) => {
       const response = await request.get('https://status.enclii.dev/api/status/timeline?hours=1');
       console.log('Timeline API status:', response.status());
 
@@ -68,6 +108,15 @@ test.describe('Status Page Verification', () => {
           expect(svc).toHaveProperty('slots');
           expect(svc).toHaveProperty('uptime24h');
           expect(Array.isArray(svc.slots)).toBe(true);
+
+          // Validate href enrichment for services with health-check URLs
+          const switchyardApi = data.services.find(
+            (s: { service: string }) => s.service === 'Switchyard API'
+          );
+          if (switchyardApi) {
+            expect(switchyardApi.href).toBe('https://api.enclii.dev');
+            console.log('Timeline: Switchyard API href enriched:', switchyardApi.href);
+          }
         }
       }
     });
@@ -123,6 +172,44 @@ test.describe('Status Page Verification', () => {
       console.log('Page loaded. Content length:', content.length);
     });
 
+    test('should have clickable service name links', async ({ page }) => {
+      await page.goto('https://status.madfam.io', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Service names should be rendered as <a> tags with target="_blank"
+      const serviceLinks = page.locator('a[target="_blank"].font-medium');
+      const count = await serviceLinks.count();
+      console.log('Clickable service name links found:', count);
+      expect(count).toBeGreaterThan(0);
+
+      // Verify first link has a valid href
+      const firstHref = await serviceLinks.first().getAttribute('href');
+      expect(firstHref).toBeTruthy();
+      expect(firstHref).toMatch(/^https?:\/\//);
+      console.log('First service link href:', firstHref);
+    });
+
+    test('should display domain hints below service names', async ({ page }) => {
+      await page.goto('https://status.madfam.io', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Domain hints are rendered as monospace text with the hostname
+      const domainHints = page.locator('p.font-mono.text-xs');
+      const count = await domainHints.count();
+      console.log('Domain hint elements found:', count);
+      expect(count).toBeGreaterThan(0);
+
+      // First domain hint should contain a valid hostname
+      const firstHint = await domainHints.first().textContent();
+      expect(firstHint).toBeTruthy();
+      expect(firstHint).toMatch(/\./); // Should contain a dot (hostname)
+      console.log('First domain hint:', firstHint);
+    });
+
     test('should have API health endpoint', async ({ request }) => {
       const response = await request.get('https://status.madfam.io/api/health');
       console.log('Health endpoint status:', response.status());
@@ -133,17 +220,38 @@ test.describe('Status Page Verification', () => {
       }
     });
 
-    test('should have status API endpoint', async ({ request }) => {
+    test('should have status API endpoint with href field', async ({ request }) => {
       const response = await request.get('https://status.madfam.io/api/status');
       console.log('Status API status:', response.status());
 
       if (response.ok()) {
         const data = await response.json();
-        console.log('Status response:', JSON.stringify(data, null, 2));
+        console.log('Status response services:', data.services?.length ?? 0);
+
+        // Validate that services with health-check URLs have href
+        if (data.services && data.services.length > 0) {
+          const encliiApi = data.services.find(
+            (s: { service: string }) => s.service === 'Enclii API'
+          );
+          if (encliiApi) {
+            expect(encliiApi.url).toContain('/health/ready');
+            expect(encliiApi.href).toBe('https://api.enclii.dev');
+            console.log('Enclii API href correctly set:', encliiApi.href);
+          }
+
+          const authEcosystem = data.services.find(
+            (s: { service: string }) => s.service === 'Auth (Ecosystem)'
+          );
+          if (authEcosystem) {
+            expect(authEcosystem.url).toContain('/health');
+            expect(authEcosystem.href).toBe('https://auth.madfam.io');
+            console.log('Auth (Ecosystem) href correctly set:', authEcosystem.href);
+          }
+        }
       }
     });
 
-    test('should have timeline API endpoint', async ({ request }) => {
+    test('should have timeline API endpoint with href enrichment', async ({ request }) => {
       const response = await request.get('https://status.madfam.io/api/status/timeline?hours=1');
       console.log('Timeline API status:', response.status());
 
@@ -168,6 +276,15 @@ test.describe('Status Page Verification', () => {
           expect(svc).toHaveProperty('slots');
           expect(svc).toHaveProperty('uptime24h');
           expect(Array.isArray(svc.slots)).toBe(true);
+
+          // Validate href enrichment for services with health-check URLs
+          const encliiApi = data.services.find(
+            (s: { service: string }) => s.service === 'Enclii API'
+          );
+          if (encliiApi) {
+            expect(encliiApi.href).toBe('https://api.enclii.dev');
+            console.log('Timeline: Enclii API href enriched:', encliiApi.href);
+          }
         }
       }
     });

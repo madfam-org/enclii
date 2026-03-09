@@ -42,7 +42,14 @@ function TimelineBar({ timeline }: TimelineBarProps) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium truncate">{service}</span>
+        <a
+          href={timeline.href || timeline.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm font-medium truncate hover:underline hover:text-primary transition-colors"
+        >
+          {service}
+        </a>
         <span
           className={cn(
             'text-xs font-mono',

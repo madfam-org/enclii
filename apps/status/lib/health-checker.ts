@@ -120,6 +120,7 @@ export async function checkService(service: ServiceConfig): Promise<HealthCheckR
   const result: HealthCheckResult = {
     service: service.name,
     url: service.url,
+    ...(service.href && { href: service.href }),
     group: service.group,
     description: service.description,
     status,

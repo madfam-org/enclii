@@ -13,6 +13,7 @@ data:
       {
         "name": "Enclii API",
         "url": "https://api.enclii.dev/health/ready",
+        "href": "https://api.enclii.dev",
         "group": "Enclii",
         "description": "Control plane API"
       },
@@ -20,47 +21,49 @@ data:
         "name": "Enclii Dashboard",
         "url": "https://app.enclii.dev",
         "group": "Enclii",
-        "description": "User dashboard"
+        "description": "Web management console"
       },
       {
         "name": "Enclii Admin",
         "url": "https://admin.enclii.dev",
         "group": "Enclii",
-        "description": "Infrastructure admin"
+        "description": "Infrastructure operations"
       },
       {
-        "name": "Documentation",
+        "name": "Enclii Docs",
         "url": "https://docs.enclii.dev",
         "group": "Enclii",
-        "description": "Documentation site"
+        "description": "Platform documentation"
       },
       {
         "name": "Auth (Default)",
         "url": "https://auth.madfam.io",
         "group": "Janua",
-        "description": "SSO authentication (canonical)"
+        "description": "SSO login portal"
       },
       {
         "name": "Auth (Ecosystem)",
         "url": "https://auth.madfam.io/health",
+        "href": "https://auth.madfam.io",
         "group": "Janua",
-        "description": "SSO authentication (whitelabel)"
+        "description": "SSO health check"
       },
       {
         "name": "Janua Website",
         "url": "https://janua.dev",
         "group": "Janua",
-        "description": "Janua landing page"
+        "description": "Product landing page"
       },
       {
         "name": "Janua Docs",
         "url": "https://docs.janua.dev",
         "group": "Janua",
-        "description": "Janua documentation"
+        "description": "Authentication documentation"
       },
       {
         "name": "Dhanam API",
         "url": "https://api.dhan.am/health",
+        "href": "https://api.dhan.am",
         "group": "Dhanam",
         "description": "Financial platform API"
       },
@@ -68,7 +71,7 @@ data:
         "name": "Dhanam Admin",
         "url": "https://admin.dhan.am",
         "group": "Dhanam",
-        "description": "Admin dashboard"
+        "description": "Financial operations console"
       },
       {
         "name": "Dhanam Web",
@@ -91,6 +94,7 @@ data:
       {
         "name": "Tezca API",
         "url": "https://api.tezca.mx/health",
+        "href": "https://api.tezca.mx",
         "group": "Tezca",
         "description": "Legal data API"
       },
@@ -98,10 +102,10 @@ data:
         "name": "Tezca Admin",
         "url": "https://admin.tezca.mx",
         "group": "Tezca",
-        "description": "Administration dashboard"
+        "description": "Legal ops console"
       },
       {
-        "name": "Yantra4D Landing",
+        "name": "Yantra4D Web",
         "url": "https://4d.madfam.io",
         "group": "Yantra4D",
         "description": "3D printing platform"
@@ -116,58 +120,58 @@ data:
         "name": "Yantra4D Admin",
         "url": "https://4d-admin.madfam.io",
         "group": "Yantra4D",
-        "description": "Admin dashboard"
+        "description": "Print operations console"
       },
       {
         "name": "Yantra4D API",
         "url": "https://4d-api.madfam.io",
         "group": "Yantra4D",
-        "description": "Backend API"
+        "description": "3D services API"
       },
       {
-        "name": "Forgesight WWW",
+        "name": "Forgesight Web",
         "url": "https://forgesight.quest",
         "group": "Forgesight",
-        "description": "Marketing site"
+        "description": "Pricing intelligence platform"
       },
       {
         "name": "Forgesight App",
         "url": "https://app.forgesight.quest",
         "group": "Forgesight",
-        "description": "Pricing intelligence app"
+        "description": "Price tracking dashboard"
       },
       {
         "name": "Forgesight Admin",
         "url": "https://admin.forgesight.quest",
         "group": "Forgesight",
-        "description": "Admin dashboard"
-      },
-      {
-        "name": "Karafiel Web",
-        "url": "https://kf.madfam.io",
-        "group": "Karafiel",
-        "description": "Karafiel platform"
-      },
-      {
-        "name": "Karafiel Admin",
-        "url": "https://kf-admin.madfam.io",
-        "group": "Karafiel",
-        "description": "Admin dashboard"
-      },
-      {
-        "name": "Karafiel API",
-        "url": "https://kf-api.madfam.io",
-        "group": "Karafiel",
-        "description": "Backend API"
+        "description": "Data operations console"
       },
       {
         "name": "Forgesight API",
         "url": "https://api.forgesight.quest",
         "group": "Forgesight",
-        "description": "Backend API"
+        "description": "Pricing data API"
       },
       {
-        "name": "MADFAM",
+        "name": "Karafiel Web",
+        "url": "https://kf.madfam.io",
+        "group": "Karafiel",
+        "description": "Wellness platform"
+      },
+      {
+        "name": "Karafiel Admin",
+        "url": "https://kf-admin.madfam.io",
+        "group": "Karafiel",
+        "description": "Wellness ops console"
+      },
+      {
+        "name": "Karafiel API",
+        "url": "https://kf-api.madfam.io",
+        "group": "Karafiel",
+        "description": "Wellness services API"
+      },
+      {
+        "name": "MADFAM Website",
         "url": "https://madfam.io",
         "group": "MADFAM Site",
         "description": "Corporate website"
@@ -176,24 +180,24 @@ data:
         "name": "MADFAM CMS",
         "url": "https://cms.madfam.io",
         "group": "MADFAM Site",
-        "description": "Content management"
+        "description": "Content management system"
       },
       {
-        "name": "Pravara MES API",
+        "name": "MES API",
         "url": "https://mes-api.madfam.io",
         "group": "Pravara MES",
-        "description": "Manufacturing API"
+        "description": "Manufacturing execution API"
       },
       {
-        "name": "Pravara MES Web",
+        "name": "MES Web",
         "url": "https://mes.madfam.io",
         "group": "Pravara MES",
         "description": "Manufacturing dashboard"
       },
       {
-        "name": "Pravara MES Admin",
+        "name": "MES Admin",
         "url": "https://mes-admin.madfam.io",
         "group": "Pravara MES",
-        "description": "Admin dashboard"
+        "description": "Manufacturing ops console"
       }
     ]
