@@ -88,7 +88,7 @@ export default function LoginPage() {
             </div>
           </div>
         ) : (
-          /* Local Login Form (Bootstrap mode) — uses shared SignIn component */
+          /* Local Login Form (Bootstrap mode) — uses Janua SignIn component */
           <SignIn
             apiUrl={process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200"}
             afterSignIn={() => router.push("/")}

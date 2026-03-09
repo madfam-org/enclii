@@ -1,40 +1,37 @@
 "use client";
 
 import { useEffect, useState, Suspense, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 
 /**
- * OAuth Callback Content Component
- * Separated to allow Suspense boundary for useSearchParams
+ * OAuth Callback — Direct PKCE code exchange
+ *
+ * Exchanges the authorization code for tokens via Janua's OAuth token endpoint,
+ * then calls /auth/me with Bearer header to get user data, and stores session
+ * via server-side /api/auth/session route.
+ *
+ * Uses window.location.href (not router.push) for redirect to ensure browser
+ * processes Set-Cookie headers before the next page load.
  */
+
+const JANUA_URL = process.env.NEXT_PUBLIC_JANUA_URL || "https://auth.madfam.io";
+const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || "jnc_RqeHy54KYGjVr8yQiBeUncMhnQFhS2NA";
+
 function AuthCallbackContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const { handleOAuthCallback, storeTokensFromRedirect } = useAuth();
-
-  const [status, setStatus] = useState<"processing" | "success" | "error">(
-    "processing",
-  );
+  const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Guard against duplicate callback processing (React 18 Strict Mode, etc.)
   const hasProcessedRef = useRef(false);
 
   useEffect(() => {
     async function processCallback() {
-      // Prevent duplicate processing of OAuth callback
-      // OAuth codes are single-use; processing twice causes errors
-      if (hasProcessedRef.current) {
-        return;
-      }
+      if (hasProcessedRef.current) return;
       hasProcessedRef.current = true;
 
       // Check for error from OIDC provider
       const error = searchParams.get("error");
       const errorDescription = searchParams.get("error_description");
-
       if (error) {
         console.error("OAuth error:", error, errorDescription);
         setStatus("error");
@@ -42,84 +39,91 @@ function AuthCallbackContent() {
         return;
       }
 
-      // Check for tokens in query params (backend redirect flow)
-      // This happens when the API callback redirects to UI with tokens
-      const accessToken = searchParams.get("access_token");
-      const refreshToken = searchParams.get("refresh_token");
-
-      if (accessToken && refreshToken) {
-        // Tokens provided directly via redirect - store them
-        const expiresAt = searchParams.get("expires_at");
-        const tokenType = searchParams.get("token_type");
-        const idpToken = searchParams.get("idp_token");
-        const idpTokenExpiresAt = searchParams.get("idp_token_expires_at");
-
-        try {
-          await storeTokensFromRedirect({
-            accessToken,
-            refreshToken,
-            expiresAt: expiresAt ? new Date(parseInt(expiresAt) * 1000) : new Date(Date.now() + 15 * 60 * 1000),
-            tokenType: tokenType || "Bearer",
-            idpToken: idpToken || undefined,
-            idpTokenExpiresAt: idpTokenExpiresAt ? new Date(parseInt(idpTokenExpiresAt) * 1000) : undefined,
-          });
-
-          setStatus("success");
-
-          // Redirect to dashboard after short delay
-          setTimeout(() => {
-            const returnUrl = localStorage.getItem("auth_return_url") || "/";
-            localStorage.removeItem("auth_return_url");
-            router.push(returnUrl);
-          }, 1500);
-        } catch (err) {
-          console.error("Failed to store tokens from redirect:", err);
-          setStatus("error");
-          setErrorMessage("Failed to complete authentication");
-        }
-        return;
-      }
-
-      // Get authorization code (old flow - UI calls API callback)
       const code = searchParams.get("code");
-      const state = searchParams.get("state");
-
       if (!code) {
         setStatus("error");
         setErrorMessage("No authorization code received from provider");
         return;
       }
 
+      // Retrieve PKCE code_verifier from session storage
+      const codeVerifier = sessionStorage.getItem("enclii_code_verifier");
+      if (!codeVerifier) {
+        setStatus("error");
+        setErrorMessage("PKCE verification failed — no code verifier found. Please try logging in again.");
+        return;
+      }
+      sessionStorage.removeItem("enclii_code_verifier");
+
       try {
-        // Exchange code for tokens via backend
-        await handleOAuthCallback(code, state || undefined);
+        // Step 1: Exchange code for token via Janua OAuth token endpoint (PKCE)
+        const tokenResponse = await fetch(`${JANUA_URL}/api/v1/oauth/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: `${window.location.origin}/auth/callback`,
+            client_id: OAUTH_CLIENT_ID,
+            code_verifier: codeVerifier,
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          const errorData = await tokenResponse.json().catch(() => ({}));
+          throw new Error(errorData.detail || errorData.error_description || "Failed to exchange authorization code");
+        }
+
+        const { access_token } = await tokenResponse.json();
+
+        // Step 2: Get user data with Bearer header (not cookie-based)
+        const meResponse = await fetch(`${JANUA_URL}/api/v1/auth/me`, {
+          headers: { Authorization: `Bearer ${access_token}` },
+        });
+
+        if (!meResponse.ok) {
+          throw new Error("Failed to verify user identity");
+        }
+
+        const userData = await meResponse.json();
+
+        // Step 3: Set cookies via server-side API route (avoids client-side race conditions)
+        const sessionResponse = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: access_token,
+            email: userData.email,
+          }),
+        });
+
+        if (!sessionResponse.ok) {
+          throw new Error("Failed to establish session");
+        }
 
         setStatus("success");
 
-        // Redirect to dashboard after short delay
+        // Full page navigation ensures browser processes Set-Cookie headers
         setTimeout(() => {
           const returnUrl = localStorage.getItem("auth_return_url") || "/";
           localStorage.removeItem("auth_return_url");
-          router.push(returnUrl);
-        }, 1500);
+          window.location.href = returnUrl;
+        }, 500);
       } catch (err) {
         console.error("OAuth callback error:", err);
         setStatus("error");
         setErrorMessage(
-          err instanceof Error
-            ? err.message
-            : "Failed to complete authentication",
+          err instanceof Error ? err.message : "Failed to complete authentication"
         );
       }
     }
 
     processCallback();
-  }, [searchParams, handleOAuthCallback, storeTokensFromRedirect, router]);
+  }, [searchParams]);
 
   return (
     <div className="text-center">
-      {/* Enclii Logo */}
-      <h1 className="text-3xl font-bold text-enclii-blue mb-2">🚂 Enclii</h1>
+      <h1 className="text-3xl font-bold text-enclii-blue mb-2">Enclii</h1>
       <p className="text-muted-foreground text-sm mb-8">Switchyard Platform</p>
 
       {status === "processing" && (
@@ -180,13 +184,13 @@ function AuthCallbackContent() {
 
           <div className="pt-4 space-y-2">
             <button
-              onClick={() => router.push("/auth/login")}
+              onClick={() => { window.location.href = "/login"; }}
               className="w-full bg-enclii-blue text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
             >
               Try again
             </button>
             <button
-              onClick={() => router.push("/")}
+              onClick={() => { window.location.href = "/"; }}
               className="w-full bg-muted text-foreground py-2 px-4 rounded-md hover:bg-accent transition-colors"
             >
               Return to home
@@ -198,13 +202,10 @@ function AuthCallbackContent() {
   );
 }
 
-/**
- * Loading fallback for Suspense
- */
 function AuthCallbackLoading() {
   return (
     <div className="text-center">
-      <h1 className="text-3xl font-bold text-enclii-blue mb-2">🚂 Enclii</h1>
+      <h1 className="text-3xl font-bold text-enclii-blue mb-2">Enclii</h1>
       <p className="text-muted-foreground text-sm mb-8">Switchyard Platform</p>
       <div className="space-y-4">
         <Spinner size="lg" className="mx-auto" />
@@ -214,12 +215,6 @@ function AuthCallbackLoading() {
   );
 }
 
-/**
- * OAuth Callback Page
- *
- * Handles the redirect from the OIDC provider (Janua/Janua) after authentication.
- * Exchanges the authorization code for tokens and establishes the session.
- */
 export default function AuthCallbackPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/50">

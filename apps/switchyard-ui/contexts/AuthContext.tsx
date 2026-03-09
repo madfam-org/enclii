@@ -3,9 +3,9 @@
 /**
  * Authentication Context for Enclii Switchyard UI
  *
- * Thin bridge over @janua/react-sdk with dual auth mode support:
+ * Dual auth mode support:
  * - Local: Email/password directly to Switchyard API (bootstrap mode)
- * - OIDC: Delegates to JanuaProvider from @janua/nextjs (production)
+ * - OIDC: Direct PKCE flow with Janua SSO (production)
  *
  * All consumers use the same useAuth() interface regardless of mode.
  */
@@ -19,7 +19,6 @@ import React, {
   useRef,
   type ReactNode,
 } from "react";
-import { JanuaProvider, useJanua, useAuth as useJanuaAuth } from "@janua/nextjs";
 import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-types";
 
 // =============================================================================
@@ -29,6 +28,7 @@ import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-typ
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
 const AUTH_MODE = (process.env.NEXT_PUBLIC_AUTH_MODE || "local") as AuthMode;
 const JANUA_BASE_URL = process.env.NEXT_PUBLIC_JANUA_URL || "https://auth.madfam.io";
+const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || "jnc_RqeHy54KYGjVr8yQiBeUncMhnQFhS2NA";
 
 const STORAGE_KEYS = {
   TOKENS: "enclii_tokens",
@@ -37,7 +37,25 @@ const STORAGE_KEYS = {
 } as const;
 
 // =============================================================================
-// STORAGE HELPERS (still needed for cookie sync with middleware)
+// PKCE HELPERS
+// =============================================================================
+
+function generateCodeVerifier(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// =============================================================================
+// STORAGE HELPERS
 // =============================================================================
 
 function getStoredTokens(): { accessToken: string; refreshToken?: string; expiresAt: number } | null {
@@ -81,6 +99,7 @@ function clearStorage() {
   localStorage.removeItem(STORAGE_KEYS.TOKENS);
   localStorage.removeItem(STORAGE_KEYS.USER);
   document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
+  document.cookie = `enclii_user_email=; path=/; secure; samesite=lax; max-age=0`;
 }
 
 function parseJwt(token: string): Record<string, unknown> | null {
@@ -117,67 +136,133 @@ async function parseErrorResponse(response: Response, fallbackMessage: string): 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // =============================================================================
-// OIDC MODE BRIDGE — delegates to Janua SDK
+// OIDC MODE PROVIDER — Direct PKCE flow (no SDK dependency)
 // =============================================================================
 
-function OIDCAuthBridge({ children }: { children: ReactNode }) {
-  const janua = useJanua();
-  const januaAuth = useJanuaAuth();
+function OIDCAuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const cachedTokenRef = useRef<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
 
-  // Sync Janua token to cookie for middleware compatibility
+  // Check auth on mount — single /auth/me call with Bearer token (not cookie-based polling)
   useEffect(() => {
-    if (januaAuth.isAuthenticated && janua.client) {
-      janua.client.getAccessToken().then((token) => {
-        if (token) {
-          cachedTokenRef.current = token;
-          const maxAge = 15 * 60; // 15 minutes
-          document.cookie = `${STORAGE_KEYS.COOKIE}=${token}; path=/; secure; samesite=lax; max-age=${maxAge}`;
-        }
-      });
-    } else if (!januaAuth.isAuthenticated && !januaAuth.isLoading) {
-      cachedTokenRef.current = null;
-      document.cookie = `${STORAGE_KEYS.COOKIE}=; path=/; secure; samesite=lax; max-age=0`;
-    }
-  }, [januaAuth.isAuthenticated, januaAuth.isLoading, janua.client]);
+    checkAuth();
+  }, []);
 
-  // Map Janua user to Enclii User type
-  const user: User | null = januaAuth.user
-    ? {
-        id: januaAuth.user.id || "",
-        email: januaAuth.user.email || "",
-        name: januaAuth.user.name || januaAuth.user.display_name,
-        roles: januaAuth.user.roles || [],
-        foundry_tier: (januaAuth.user.user_metadata?.foundry_tier as User["foundry_tier"]) || null,
+  const checkAuth = useCallback(async () => {
+    try {
+      // Read token from cookie (set by server-side /api/auth/session route)
+      const cookieToken = document.cookie
+        .split("; ")
+        .find((r) => r.startsWith("enclii_auth="))
+        ?.split("=")[1];
+
+      if (!cookieToken) {
+        setIsLoading(false);
+        return;
       }
-    : null;
+
+      // Verify token with Janua using Bearer header (not cookie-based session)
+      const response = await fetch(`${JANUA_BASE_URL}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${cookieToken}` },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        const userRoles: string[] = userData.roles || [];
+        if (userData.is_admin && !userRoles.includes("admin")) {
+          userRoles.push("admin");
+        }
+
+        tokenRef.current = cookieToken;
+        setUser({
+          id: userData.id || "",
+          email: userData.email || "",
+          name: userData.name || userData.display_name,
+          roles: userRoles,
+          foundry_tier: (userData.user_metadata?.foundry_tier as User["foundry_tier"]) || null,
+        });
+      } else {
+        // Token invalid — clear cookies via server-side route
+        await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
+        clearStorage();
+      }
+    } catch (err) {
+      console.error("Auth check failed:", err);
+      setAuthError("Authentication check failed");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const login = useCallback(async () => {
+    // Generate PKCE parameters
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+    // Store verifier for callback
+    sessionStorage.setItem("enclii_code_verifier", codeVerifier);
+
+    // Store return URL
+    if (typeof window !== "undefined") {
+      localStorage.setItem("auth_return_url", window.location.pathname);
+    }
+
+    // Redirect to Janua OAuth authorize endpoint with PKCE
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: OAUTH_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+      scope: "openid profile email",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+    });
+    window.location.href = `${JANUA_BASE_URL}/api/v1/oauth/authorize?${params.toString()}`;
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      const cookieToken = tokenRef.current || document.cookie
+        .split("; ")
+        .find((r) => r.startsWith("enclii_auth="))
+        ?.split("=")[1];
+
+      if (cookieToken) {
+        // Notify Janua of logout
+        await fetch(`${JANUA_BASE_URL}/api/v1/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${cookieToken}` },
+        }).catch(() => {});
+      }
+    } finally {
+      tokenRef.current = null;
+      setUser(null);
+      clearStorage();
+      // Clear cookies server-side
+      await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
+      // Redirect to login
+      window.location.href = "/login";
+    }
+  }, []);
 
   const value: AuthContextType = {
     user,
-    isAuthenticated: januaAuth.isAuthenticated,
-    isLoading: januaAuth.isLoading,
+    isAuthenticated: !!user,
+    isLoading,
     authMode: "oidc",
     authError,
     clearAuthError: () => setAuthError(null),
     // Local auth methods are no-ops in OIDC mode
     login: async () => { throw new Error("Local login not available in OIDC mode"); },
     register: async () => { throw new Error("Registration not available in OIDC mode"); },
-    // OIDC methods delegate to Janua SDK
-    loginWithOIDC: () => {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("auth_return_url", window.location.pathname);
-      }
-      window.location.href = `${API_BASE_URL}/v1/auth/login`;
-    },
-    handleOAuthCallback: async () => { /* Handled by Janua SDK */ },
-    storeTokensFromRedirect: async () => { /* Handled by Janua SDK */ },
-    logout: async () => {
-      await janua.signOut();
-      clearStorage();
-    },
-    refreshTokens: async () => true, // SDK handles refresh automatically
-    getAccessToken: () => cachedTokenRef.current,
+    // OIDC methods
+    loginWithOIDC: login,
+    handleOAuthCallback: async () => { /* Handled by callback page */ },
+    storeTokensFromRedirect: async () => { /* Not used in PKCE flow */ },
+    logout,
+    refreshTokens: async () => true,
+    getAccessToken: () => tokenRef.current,
     getIDPToken: () => null,
   };
 
@@ -258,7 +343,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     return () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); };
   }, [refreshTokens, scheduleRefresh]);
 
-  const login = useCallback(async (email: string, password: string): Promise<void> => {
+  const loginLocal = useCallback(async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
     setAuthError(null);
     try {
@@ -370,7 +455,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     authMode: "local",
     authError,
     clearAuthError: () => setAuthError(null),
-    login,
+    login: loginLocal,
     register,
     loginWithOIDC: () => {
       if (typeof window !== "undefined") localStorage.setItem("auth_return_url", window.location.pathname);
@@ -392,17 +477,9 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
 // PUBLIC API — AuthProvider + Hooks
 // =============================================================================
 
-const januaConfig = {
-  baseURL: JANUA_BASE_URL,
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   if (AUTH_MODE === "oidc") {
-    return (
-      <JanuaProvider config={januaConfig}>
-        <OIDCAuthBridge>{children}</OIDCAuthBridge>
-      </JanuaProvider>
-    );
+    return <OIDCAuthProvider>{children}</OIDCAuthProvider>;
   }
   return <LocalAuthProvider>{children}</LocalAuthProvider>;
 }
