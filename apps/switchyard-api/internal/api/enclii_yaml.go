@@ -33,6 +33,47 @@ type EncliiYAMLSpec struct {
 	Domains []EncliiYAMLDomain `yaml:"domains,omitempty"`
 	Runtime EncliiYAMLRuntime  `yaml:"runtime,omitempty"`
 	Headers map[string]string  `yaml:"headers,omitempty"`
+	Network *EncliiYAMLNetwork `yaml:"network,omitempty"`
+	Status  *EncliiYAMLStatus  `yaml:"status,omitempty"`
+}
+
+// EncliiYAMLNetwork declares the network policy requirements for a project's services.
+// During onboarding, this is used to auto-generate Kubernetes NetworkPolicy resources.
+type EncliiYAMLNetwork struct {
+	Services []EncliiYAMLNetworkService `yaml:"services,omitempty"`
+	Custom   []EncliiYAMLCustomRule     `yaml:"custom,omitempty"`
+}
+
+// EncliiYAMLNetworkService declares network requirements for a single pod/service.
+type EncliiYAMLNetworkService struct {
+	Name    string   `yaml:"name"`              // pod app label value
+	Label   string   `yaml:"label,omitempty"`   // label key, default "app"
+	Port    int      `yaml:"port"`              // container port for ingress
+	Ingress []string `yaml:"ingress,omitempty"` // ["cloudflare-tunnel"]
+	Egress  []string `yaml:"egress,omitempty"`  // ["dns","https","postgres","redis","http"]
+}
+
+// EncliiYAMLCustomRule declares a custom network policy rule (e.g., intra-namespace proxy).
+type EncliiYAMLCustomRule struct {
+	Name      string            `yaml:"name"`
+	From      map[string]string `yaml:"from,omitempty"` // pod label selector
+	To        map[string]string `yaml:"to,omitempty"`   // pod label selector
+	Port      int               `yaml:"port"`
+	Direction string            `yaml:"direction,omitempty"` // "ingress","egress","both"
+}
+
+// EncliiYAMLStatus declares status page registration entries for a project.
+type EncliiYAMLStatus struct {
+	Enabled bool                    `yaml:"enabled,omitempty"` // default: true
+	Entries []EncliiYAMLStatusEntry `yaml:"entries,omitempty"`
+}
+
+// EncliiYAMLStatusEntry represents a single service entry on the status page.
+type EncliiYAMLStatusEntry struct {
+	Name        string `yaml:"name"`
+	URL         string `yaml:"url"`
+	Group       string `yaml:"group"`
+	Description string `yaml:"description,omitempty"`
 }
 
 // EncliiYAMLDomain represents a custom domain declared in enclii.yaml

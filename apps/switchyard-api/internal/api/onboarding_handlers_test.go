@@ -53,6 +53,27 @@ func TestComputeOnboardStatus(t *testing.T) {
 			"failed",
 		},
 		{
+			"with network and status steps",
+			[]stepResult{
+				{Name: "namespace", Critical: true, Err: nil, Status: "ok"},
+				{Name: "argocd_config", Critical: true, Err: nil, Status: "ok"},
+				{Name: "network_policies", Critical: false, Err: nil, Status: "ok"},
+				{Name: "status_registration", Critical: false, Err: nil, Status: "ok"},
+				{Name: "registry_credentials", Critical: false, Err: nil, Status: "ok"},
+			},
+			"completed",
+		},
+		{
+			"network_policies failure is non-critical",
+			[]stepResult{
+				{Name: "namespace", Critical: true, Err: nil, Status: "ok"},
+				{Name: "argocd_config", Critical: true, Err: nil, Status: "ok"},
+				{Name: "network_policies", Critical: false, Err: fmt.Errorf("generation failed"), Status: "failed"},
+				{Name: "registry_credentials", Critical: false, Err: nil, Status: "ok"},
+			},
+			"partial",
+		},
+		{
 			"empty steps",
 			[]stepResult{},
 			"completed",

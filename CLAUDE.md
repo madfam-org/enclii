@@ -491,6 +491,8 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Stub types | `packages/sdk-go/pkg/types/timetable.go`, `junction.go` |
 | Admin migrations | `apps/switchyard-api/internal/db/migrations/002_admin_foundation.*.sql` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
+| NetworkPolicy generator | `apps/switchyard-api/internal/netpolicy/generator.go` |
+| Status handlers | `apps/switchyard-api/internal/api/status_handlers.go` |
 | Domain provisioner | `apps/switchyard-api/internal/api/domain_provisioner.go` |
 | Provisioning services | `apps/switchyard-api/internal/provisioning/` |
 | Provisioning handlers | `apps/switchyard-api/internal/api/provisioning_handlers.go` |

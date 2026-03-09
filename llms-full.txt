@@ -85,8 +85,10 @@ Git push → CI build → GHCR push → digest commit to kustomization.yaml → 
 - Branch→env mapping: main→production, staging/*→staging, feature/*→preview
 
 ### Self-Service Onboarding
-- POST /v1/admin/onboard — validates enclii.yaml, creates project/services, generates ArgoCD app YAML
+- POST /v1/admin/onboard — validates enclii.yaml, creates project/services, generates ArgoCD app YAML, auto-generates NetworkPolicies from `network` section, registers status page entries from `status` section
 - GET /v1/admin/onboard — list onboarded repos
+- GET /v1/admin/status/services — list all status page service entries (core + onboarded)
+- POST /v1/admin/status/regenerate — rebuild and commit complete status configmap
 - Guides: [Deployment Tracking](./docs/guides/DEPLOYMENT_TRACKING.md), [Onboarding](./docs/guides/ONBOARDING_GUIDE.md), [External Repos](./docs/guides/EXTERNAL_REPO_DEPLOY.md)
 
 ---

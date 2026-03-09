@@ -117,6 +117,17 @@ func (h *Handler) PreflightOnboard(c *gin.Context) {
 				}
 			}
 
+			// Warn if project manifests contain NetworkPolicy resources
+			// (these should be managed centrally by enclii, not by individual projects)
+			if kind == "NetworkPolicy" {
+				violations = append(violations, types.PreflightIssue{
+					File:    fileName,
+					Kind:    kind,
+					Name:    name,
+					Message: "NetworkPolicy resources should NOT be included in project manifests — they are centrally managed by enclii via the 'network' section in enclii.yaml. Remove this resource to avoid ArgoCD ownership conflicts.",
+				})
+			}
+
 			// Server-side dry-run
 			if dryErr := h.k8sClient.DryRunApply(ctx, namespace, obj); dryErr != nil {
 				violations = append(violations, types.PreflightIssue{

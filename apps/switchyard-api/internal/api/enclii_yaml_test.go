@@ -229,6 +229,105 @@ spec:
 			},
 		},
 		{
+			name: "valid config with network section",
+			input: `
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: my-api
+  project: acme
+spec:
+  runtime:
+    port: 8080
+  network:
+    services:
+      - name: my-api
+        label: app
+        port: 8080
+        ingress: [cloudflare-tunnel]
+        egress: [dns, https, postgres]
+      - name: my-worker
+        port: 0
+        egress: [dns, postgres, redis]
+    custom:
+      - name: proxy-to-backend
+        from: {app: my-proxy}
+        to: {app: my-api}
+        port: 8080
+        direction: both
+`,
+			wantErr: false,
+			checkFn: func(t *testing.T, cfg *EncliiYAML) {
+				if cfg.Spec.Network == nil {
+					t.Fatal("expected Network to be non-nil")
+				}
+				if len(cfg.Spec.Network.Services) != 2 {
+					t.Fatalf("len(Network.Services) = %d, want 2", len(cfg.Spec.Network.Services))
+				}
+				svc := cfg.Spec.Network.Services[0]
+				if svc.Name != "my-api" || svc.Label != "app" || svc.Port != 8080 {
+					t.Errorf("Service[0] = %+v, unexpected", svc)
+				}
+				if len(svc.Ingress) != 1 || svc.Ingress[0] != "cloudflare-tunnel" {
+					t.Errorf("Service[0].Ingress = %v, want [cloudflare-tunnel]", svc.Ingress)
+				}
+				if len(svc.Egress) != 3 {
+					t.Errorf("Service[0].Egress = %v, want 3 items", svc.Egress)
+				}
+				worker := cfg.Spec.Network.Services[1]
+				if worker.Name != "my-worker" || worker.Label != "" {
+					t.Errorf("Service[1] = %+v, unexpected", worker)
+				}
+				if len(cfg.Spec.Network.Custom) != 1 {
+					t.Fatalf("len(Network.Custom) = %d, want 1", len(cfg.Spec.Network.Custom))
+				}
+				rule := cfg.Spec.Network.Custom[0]
+				if rule.Name != "proxy-to-backend" || rule.Port != 8080 || rule.Direction != "both" {
+					t.Errorf("Custom[0] = %+v, unexpected", rule)
+				}
+			},
+		},
+		{
+			name: "valid config with status section",
+			input: `
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: my-project
+  project: my-project
+spec:
+  status:
+    enabled: true
+    entries:
+      - name: api.example.com
+        url: https://api.example.com/health
+        group: My Project
+        description: Main API
+      - name: app.example.com
+        url: https://app.example.com
+        group: My Project
+`,
+			wantErr: false,
+			checkFn: func(t *testing.T, cfg *EncliiYAML) {
+				if cfg.Spec.Status == nil {
+					t.Fatal("expected Status to be non-nil")
+				}
+				if !cfg.Spec.Status.Enabled {
+					t.Error("expected Status.Enabled to be true")
+				}
+				if len(cfg.Spec.Status.Entries) != 2 {
+					t.Fatalf("len(Status.Entries) = %d, want 2", len(cfg.Spec.Status.Entries))
+				}
+				e := cfg.Spec.Status.Entries[0]
+				if e.Name != "api.example.com" || e.URL != "https://api.example.com/health" {
+					t.Errorf("Entry[0] = %+v, unexpected", e)
+				}
+				if e.Group != "My Project" || e.Description != "Main API" {
+					t.Errorf("Entry[0] group/desc = %q/%q, unexpected", e.Group, e.Description)
+				}
+			},
+		},
+		{
 			name:        "invalid YAML",
 			input:       `{{{not valid yaml`,
 			wantErr:     true,

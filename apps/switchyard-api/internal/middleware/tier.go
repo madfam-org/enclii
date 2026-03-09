@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -31,9 +32,18 @@ var tierLimits = map[string]tierLimit{
 	"ecosystem": {ProjectLimit: -1, ServiceLimit: -1},
 }
 
+// getUpgradeURL returns the tier upgrade URL, preferring the ENCLII_TIER_UPGRADE_URL
+// environment variable over the hardcoded default.
+func getUpgradeURL() string {
+	if url := os.Getenv("ENCLII_TIER_UPGRADE_URL"); url != "" {
+		return url
+	}
+	return "https://dhanam.madfam.io/checkout?plan=enclii_pro&product=enclii"
+}
+
 var tierPaymentRequired = gin.H{
 	"error":       "tier_limit_exceeded",
-	"upgrade_url": "https://dhanam.madfam.io/checkout?plan=enclii_pro&product=enclii",
+	"upgrade_url": getUpgradeURL(),
 }
 
 // limitsForTier returns the resource limits for the given tier string.

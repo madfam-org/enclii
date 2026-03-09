@@ -618,6 +618,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 				admin.POST("/provision/secrets", h.ProvisionSecrets)
 				admin.POST("/provision/r2", h.ProvisionR2)
 
+				// Status Page Management
+				admin.GET("/status/services", h.ListStatusServices)
+				admin.POST("/status/regenerate", h.RegenerateStatusConfig)
+
 				// Topology (admin-level)
 				admin.GET("/topology", h.GetAdminTopology)
 			}

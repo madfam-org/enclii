@@ -15,32 +15,79 @@ How to add a new repository to the Enclii platform for auto-deploy, deployment t
     -f permission=push
   ```
 
+## Requirements
+
+Projects onboarded to Enclii **MUST** meet the following requirements:
+
+1. **Health endpoint**: Every service MUST expose a health endpoint (e.g., `/health` returning HTTP 200) for status monitoring. Services without health endpoints will show as "degraded" on the status page.
+
+2. **No NetworkPolicy resources**: Project K8s manifests MUST NOT include `kind: NetworkPolicy` resources. NetworkPolicies are centrally managed by enclii via the `network` section in `enclii.yaml`. Including them causes ArgoCD resource ownership conflicts. The preflight check (`POST /v1/admin/onboard/preflight`) will warn about this.
+
+3. **Network and status declarations**: Projects SHOULD declare `network` and `status` sections in `enclii.yaml` for auto-provisioned NetworkPolicies and status page registration.
+
 ## Step 1: Create `enclii.yaml`
 
 Add an `enclii.yaml` to your repository root:
 
 ```yaml
-version: "2"
-project: my-project
-services:
-  - name: my-api
-    type: web
-    dockerfile: ./apps/api/Dockerfile
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: my-project
+  project: my-project
+spec:
+  runtime:
     port: 8080
-    health_check: /health
-    domains:
-      - api.example.com
-  - name: my-web
-    type: web
-    dockerfile: ./apps/web/Dockerfile
-    port: 3000
-    health_check: /
-    domains:
-      - app.example.com
-environments:
-  production:
-    branch: main
-    auto_deploy: true
+  domains:
+    - name: api.example.com
+      environment: production
+    - name: app.example.com
+      environment: production
+      port: 3000
+  network:
+    services:
+      - name: my-api
+        label: app
+        port: 8080
+        ingress: [cloudflare-tunnel]
+        egress: [dns, https, postgres, redis]
+      - name: my-web
+        label: app
+        port: 3000
+        ingress: [cloudflare-tunnel]
+        egress: [dns, https]
+  status:
+    entries:
+      - name: api.example.com
+        url: https://api.example.com/health
+        group: My Project
+      - name: app.example.com
+        url: https://app.example.com
+        group: My Project
+```
+
+### Network Section Reference
+
+The `network.services` section auto-generates Kubernetes NetworkPolicies during onboarding:
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `name` | Yes | - | Pod app label value |
+| `label` | No | `app` | Label key for pod selector |
+| `port` | Yes | - | Container port for ingress |
+| `ingress` | No | `[]` | Ingress sources: `cloudflare-tunnel` |
+| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis` |
+
+For intra-namespace communication (e.g., nginx proxy → backend), use `network.custom`:
+
+```yaml
+  network:
+    custom:
+      - name: landing-to-backend
+        from: { app.kubernetes.io/name: my-landing }
+        to: { app.kubernetes.io/name: my-backend }
+        port: 5000
+        direction: both
 ```
 
 ## Step 2: Onboard via CLI or API

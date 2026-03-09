@@ -42,7 +42,10 @@ spec:
                 - -c
                 - |
                   echo "=== ReplicaSet cleanup started at $(date -u) ==="
-                  for ns in enclii dhanam janua; do
+                  MANAGED=$(kubectl get namespaces -l managed-by=enclii -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+                  ALL_NS="$MANAGED enclii"
+                  ALL_NS=$(echo "$ALL_NS" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+                  for ns in $ALL_NS; do
                     echo "--- Namespace: $ns ---"
                     kubectl get rs -n "$ns" --no-headers | \
                       awk '$2 == 0 && $3 == 0 && $4 == 0 {print $1}' | \
@@ -81,6 +84,9 @@ metadata:
   labels:
     app: replicaset-cleanup
 rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["get", "list", "delete"]

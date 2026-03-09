@@ -107,6 +107,8 @@ tags:
     description: Admin control plane - fleet, clusters, infrastructure, multi-tenancy, governance, costs
   - name: timetable
     description: "Cron jobs and one-off scheduled tasks (NOT IMPLEMENTED — ETA: Q2 2026)"
+  - name: status
+    description: Status page service registry and configmap management
   - name: junctions
     description: "Advanced routing, ingress management, and certificate automation (NOT IMPLEMENTED — ETA: Q3 2026)"
 
@@ -3126,7 +3128,10 @@ paths:
                     $ref: '#/components/schemas/OnboardingRegistration'
                   step_results:
                     type: array
-                    description: Per-step outcome details
+                    description: |
+                      Per-step outcome details. Steps include: namespace, argocd_config,
+                      network_policies, status_registration, registry_credentials,
+                      domain_provisioning, postgres, secrets, r2.
                     items:
                       type: object
                       properties:
@@ -3213,6 +3218,58 @@ paths:
           description: Invalid request or manifest path not found
         '503':
           description: GitHub token or K8s client not available
+
+  # ============================================
+  # STATUS PAGE MANAGEMENT ENDPOINTS
+  # ============================================
+
+  /v1/admin/status/services:
+    get:
+      summary: List all status page service entries
+      description: |
+        Returns the complete list of services monitored on the status page,
+        including core enclii services and auto-registered entries from onboarded projects.
+      tags: [status]
+      operationId: listStatusServices
+      responses:
+        '200':
+          description: List of status service entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  services:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StatusServiceEntry'
+
+  /v1/admin/status/regenerate:
+    post:
+      summary: Regenerate the status page configmap
+      description: |
+        Rebuilds and commits the complete status page configmap from scratch,
+        combining core enclii services with all onboarded projects' status entries.
+      tags: [status]
+      operationId: regenerateStatusConfig
+      responses:
+        '200':
+          description: Configmap regenerated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service_count:
+                    type: integer
+                  commit_sha:
+                    type: string
+        '503':
+          description: GitHub token or enclii repo not configured
 
   # ============================================
   # PROVISIONING ENDPOINTS
@@ -5556,6 +5613,11 @@ components:
 
     OnboardingRequest:
       type: object
+      description: |
+        Request body for repository onboarding. The onboarding pipeline executes
+        these steps in order: namespace, argocd_config, network_policies,
+        status_registration, registry_credentials, domain_provisioning,
+        postgres, secrets, r2. Each step reports ok/failed/skipped in step_results.
       required: [repo_full_name, project_name]
       properties:
         repo_full_name:
@@ -5704,6 +5766,18 @@ components:
         message:
           type: string
           description: Validation error or policy violation message
+
+    StatusServiceEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        group:
+          type: string
+        description:
+          type: string
 
     # ===== Errors =====
     Error:
