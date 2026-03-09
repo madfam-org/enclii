@@ -245,12 +245,6 @@ importers:
 
   apps/switchyard-ui:
     dependencies:
-      '@janua/nextjs':
-        specifier: ^0.1.2
-        version: 0.1.2(next@16.1.1(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@janua/react-sdk':
-        specifier: ^0.1.1
-        version: 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@janua/ui':
         specifier: ^0.1.1
         version: 0.1.1(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.17)(use-sync-external-store@1.6.0(react@18.3.1))
