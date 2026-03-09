@@ -67,7 +67,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 3000
+          port: 4501
 
 # Allow Cloudflare tunnel -> pravara-api (mes-api.madfam.io)
 ---
@@ -92,7 +92,7 @@ spec:
               kubernetes.io/metadata.name: cloudflare-tunnel
       ports:
         - protocol: TCP
-          port: 8000
+          port: 4500
 
 # Allow Cloudflare tunnel -> pravara-gateway (mes-admin.madfam.io)
 ---
