@@ -78,6 +78,27 @@ test.describe('Status Page Verification', () => {
       expect(response.status()).toBeGreaterThanOrEqual(400);
       console.log('Record endpoint (no auth) status:', response.status());
     });
+
+    test('should serve Atom feed at /feed.xml', async ({ request }) => {
+      const response = await request.get('https://status.enclii.dev/feed.xml');
+      console.log('Feed endpoint status:', response.status());
+
+      if (response.ok()) {
+        const body = await response.text();
+        expect(body).toContain('<?xml');
+        expect(body).toContain('<feed xmlns="http://www.w3.org/2005/Atom"');
+        expect(body).toContain('<title>');
+        console.log('Feed content length:', body.length);
+      }
+    });
+
+    test('should reject incidents POST without auth', async ({ request }) => {
+      const response = await request.post('https://status.enclii.dev/api/incidents', {
+        data: { title: 'Test', severity: 'minor', affectedServices: [] },
+      });
+      expect(response.status()).toBe(401);
+      console.log('Incidents POST (no auth) status:', response.status());
+    });
   });
 
   test.describe('status.madfam.io', () => {
@@ -156,6 +177,27 @@ test.describe('Status Page Verification', () => {
       // Should be 401 Unauthorized (no bearer token) or 500 (CRON_SECRET not configured)
       expect(response.status()).toBeGreaterThanOrEqual(400);
       console.log('Record endpoint (no auth) status:', response.status());
+    });
+
+    test('should serve Atom feed at /feed.xml', async ({ request }) => {
+      const response = await request.get('https://status.madfam.io/feed.xml');
+      console.log('Feed endpoint status:', response.status());
+
+      if (response.ok()) {
+        const body = await response.text();
+        expect(body).toContain('<?xml');
+        expect(body).toContain('<feed xmlns="http://www.w3.org/2005/Atom"');
+        expect(body).toContain('<title>');
+        console.log('Feed content length:', body.length);
+      }
+    });
+
+    test('should reject incidents POST without auth', async ({ request }) => {
+      const response = await request.post('https://status.madfam.io/api/incidents', {
+        data: { title: 'Test', severity: 'minor', affectedServices: [] },
+      });
+      expect(response.status()).toBe(401);
+      console.log('Incidents POST (no auth) status:', response.status());
     });
   });
 });

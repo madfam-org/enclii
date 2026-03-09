@@ -285,8 +285,8 @@ Access to Dispatch requires BOTH:
 - ✅ `janua` → auth.madfam.io (SSO authentication)
 - ✅ `docs-site` → docs.enclii.dev (documentation)
 - ✅ `landing-page` → enclii.dev (deployed)
-- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline history)
-- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline history)
+- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline history, Atom feed, incidents API)
+- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline history, Atom feed, incidents API)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification
@@ -531,6 +531,9 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Kaniko builds | `apps/roundhouse/k8s/kaniko-job-template.yaml` |
 | Status K8s (base) | `apps/status/k8s/base/` (deployment, service, secret template) |
 | Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
+| Status Atom feed | `apps/status/app/feed.xml/route.ts` |
+| Status incidents API | `apps/status/app/api/incidents/route.ts` (ADMIN_SECRET auth) |
+| Status E2E tests | `apps/status/tests/e2e/status-pages.spec.ts` |
 
 ### Documentation
 

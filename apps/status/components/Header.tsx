@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { Activity, Menu, X, History, Home } from 'lucide-react'
+import { Activity, Menu, X, History, Home, Rss } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
@@ -50,6 +50,13 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
                 {label}
               </Link>
             ))}
+            <Link
+              href="/feed.xml"
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-muted text-muted-foreground hover:text-foreground"
+              aria-label="RSS Feed"
+            >
+              <Rss className="size-4" />
+            </Link>
           </nav>
 
           {/* Mobile Menu Button */}
@@ -57,6 +64,8 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden p-2 -mr-2 rounded-md hover:bg-muted transition-colors"
             aria-label="Toggle menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav"
           >
             {mobileMenuOpen ? (
               <X className="size-5" />
@@ -68,7 +77,7 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <nav className="md:hidden py-4 border-t border-border">
+          <nav id="mobile-nav" className="md:hidden py-4 border-t border-border">
             {navItems.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
@@ -105,6 +114,14 @@ export function Footer({ siteName }: { siteName: string }) {
             <span>{siteName}</span>
           </div>
           <div className="flex items-center gap-4">
+            <Link
+              href="/feed.xml"
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+              aria-label="RSS Feed"
+            >
+              <Rss className="size-3.5" />
+              <span>RSS</span>
+            </Link>
             <span>&copy; {currentYear} MADFAM. All rights reserved.</span>
           </div>
         </div>

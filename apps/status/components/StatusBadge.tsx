@@ -77,6 +77,8 @@ export function StatusBadge({
 
   return (
     <div
+      role="status"
+      aria-label={`Status: ${config.label}`}
       className={cn(
         'inline-flex items-center gap-2 rounded-full font-medium',
         showLabel && sizes.padding,
@@ -85,6 +87,7 @@ export function StatusBadge({
       )}
     >
       <span
+        aria-hidden="true"
         className={cn(
           'rounded-full',
           sizes.dot,
@@ -105,14 +108,19 @@ export function StatusBadge({
 export function OverallStatusBadge({ status }: { status: ServiceStatus }) {
   const config = statusConfig[status]
 
+  const label = status === 'operational' ? 'All Systems Operational' : config.label
+
   return (
     <div
+      role="status"
+      aria-label={`Overall status: ${label}`}
       className={cn(
         'inline-flex items-center gap-3 rounded-lg px-4 py-3',
         config.bgClass
       )}
     >
       <span
+        aria-hidden="true"
         className={cn(
           'size-4 rounded-full',
           config.dotClass,
@@ -123,7 +131,7 @@ export function OverallStatusBadge({ status }: { status: ServiceStatus }) {
         }}
       />
       <span className={cn('text-lg font-semibold', config.textClass)}>
-        {status === 'operational' ? 'All Systems Operational' : config.label}
+        {label}
       </span>
     </div>
   )

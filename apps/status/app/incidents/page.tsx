@@ -1,17 +1,11 @@
 import { Suspense } from 'react'
 import { IncidentList } from '@/components/IncidentCard'
 import type { Incident } from '@/lib/types'
+import { getRecentIncidents } from '@/lib/incidents'
 import { CheckCircle, History } from 'lucide-react'
 
 // Revalidate every 5 minutes for incident history
 export const revalidate = 300
-
-// Mock data - in Phase 3, this will come from the database
-function getIncidentHistory(): Incident[] {
-  // Return empty array for now
-  // Database integration will be added in Phase 3
-  return []
-}
 
 function IncidentsSkeleton() {
   return (
@@ -24,7 +18,7 @@ function IncidentsSkeleton() {
 }
 
 async function IncidentsContent() {
-  const incidents = getIncidentHistory()
+  const incidents = await getRecentIncidents()
 
   // Group incidents by month
   const groupedByMonth: Record<string, Incident[]> = {}

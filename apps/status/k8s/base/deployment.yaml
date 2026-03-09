@@ -89,6 +89,13 @@ spec:
               name: status-secrets
               key: cron-secret
               optional: true
+        # Admin secret for incident management API
+        - name: ADMIN_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: status-secrets
+              key: admin-secret
+              optional: true
         securityContext:
           privileged: false
           allowPrivilegeEscalation: false

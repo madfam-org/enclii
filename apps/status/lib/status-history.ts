@@ -211,7 +211,7 @@ export async function getTimeline(hours: number = 24): Promise<TimelineResponse>
         entry = { url: row.url, group: row.group_name, windows: new Map() }
         serviceMap.set(row.service, entry)
       }
-      entry.windows.set(row.window_start, row)
+      entry.windows.set(new Date(row.window_start).toISOString(), row)
     }
   }
 

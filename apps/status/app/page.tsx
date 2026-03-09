@@ -61,7 +61,7 @@ async function StatusContent() {
   const lastUpdated = new Date().toISOString()
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" aria-live="polite">
       {/* Overall Status */}
       <section className="text-center">
         <OverallStatusBadge status={overallStatus} />

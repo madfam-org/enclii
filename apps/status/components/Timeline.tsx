@@ -72,8 +72,16 @@ interface SlotCellProps {
 }
 
 function SlotCell({ slot, index, total }: SlotCellProps) {
+  const timeRange = `${formatSlotTime(slot.start)} – ${formatSlotTime(slot.end)}`
+  const ariaLabel = `${timeRange}: ${statusLabels[slot.status]}${slot.checks > 0 ? `, ${slot.checks} check${slot.checks !== 1 ? 's' : ''}` : ''}`
+
   return (
-    <div className="relative flex-1 group" style={{ minWidth: '1px' }}>
+    <div
+      className="relative flex-1 group"
+      style={{ minWidth: '1px' }}
+      role="img"
+      aria-label={ariaLabel}
+    >
       <div
         className={cn(
           'h-full rounded-[1px] transition-all duration-100',

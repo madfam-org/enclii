@@ -8,6 +8,13 @@ import {
   isDatabaseConfigured,
 } from '@/lib/incidents'
 
+function isAuthorized(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization')
+  const adminSecret = process.env.ADMIN_SECRET
+  if (!adminSecret) return false
+  return authHeader === `Bearer ${adminSecret}`
+}
+
 /**
  * Get all incidents
  *
@@ -58,6 +65,10 @@ export async function GET(request: NextRequest) {
  * - message: Initial update message (optional)
  */
 export async function POST(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured' },
@@ -115,6 +126,10 @@ export async function POST(request: NextRequest) {
  * - message: Update message (optional, creates a new update)
  */
 export async function PATCH(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured' },
@@ -171,6 +186,10 @@ export async function PATCH(request: NextRequest) {
  * - id: Incident ID to delete
  */
 export async function DELETE(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured' },
