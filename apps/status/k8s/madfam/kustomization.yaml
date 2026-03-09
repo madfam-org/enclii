@@ -32,6 +32,16 @@ patches:
       kind: Deployment
       name: status
 
+  # Add configmap version annotation to trigger pod restart on config changes
+  - patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations
+        value:
+          enclii.dev/configmap-version: "2026-03-09-v2"
+    target:
+      kind: Deployment
+      name: status
+
   # Update configMapKeyRef to use overlay-specific ConfigMap
   - patch: |-
       apiVersion: apps/v1
