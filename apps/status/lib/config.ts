@@ -7,6 +7,7 @@ const DEFAULT_ENCLII_SERVICES: ServiceConfig[] = [
   {
     name: 'Switchyard API',
     url: 'https://api.enclii.dev/health/ready',
+    href: 'https://api.enclii.dev',
     group: 'Enclii',
     description: 'Control plane API',
   },

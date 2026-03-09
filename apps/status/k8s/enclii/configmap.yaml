@@ -13,6 +13,7 @@ data:
       {
         "name": "Switchyard API",
         "url": "https://api.enclii.dev/health/ready",
+        "href": "https://api.enclii.dev",
         "group": "Enclii",
         "description": "Control plane API"
       },
@@ -20,47 +21,49 @@ data:
         "name": "Web Dashboard",
         "url": "https://app.enclii.dev",
         "group": "Enclii",
-        "description": "User dashboard"
+        "description": "Web management console"
       },
       {
         "name": "Admin Console",
         "url": "https://admin.enclii.dev",
         "group": "Enclii",
-        "description": "Infrastructure admin"
+        "description": "Infrastructure operations"
       },
       {
         "name": "Documentation",
         "url": "https://docs.enclii.dev",
         "group": "Enclii",
-        "description": "Documentation site"
+        "description": "Platform documentation"
       },
       {
         "name": "Auth (Default)",
-        "url": "https://auth.janua.dev",
+        "url": "https://auth.madfam.io",
         "group": "Janua",
-        "description": "SSO authentication (canonical)"
+        "description": "SSO login portal"
       },
       {
         "name": "Auth (Ecosystem)",
         "url": "https://auth.madfam.io/health",
+        "href": "https://auth.madfam.io",
         "group": "Janua",
-        "description": "SSO authentication (whitelabel)"
+        "description": "SSO health check"
       },
       {
         "name": "Janua Website",
         "url": "https://janua.dev",
         "group": "Janua",
-        "description": "Janua landing page"
+        "description": "Product landing page"
       },
       {
         "name": "Janua Docs",
         "url": "https://docs.janua.dev",
         "group": "Janua",
-        "description": "Janua documentation"
+        "description": "Authentication documentation"
       },
       {
         "name": "Dhanam API",
         "url": "https://api.dhan.am/health",
+        "href": "https://api.dhan.am",
         "group": "Dhanam",
         "description": "Financial platform API"
       },
@@ -68,12 +71,18 @@ data:
         "name": "Dhanam Admin",
         "url": "https://admin.dhan.am",
         "group": "Dhanam",
-        "description": "Admin dashboard"
+        "description": "Financial operations console"
       },
       {
         "name": "Dhanam Web",
         "url": "https://dhan.am",
         "group": "Dhanam",
         "description": "Landing page"
+      },
+      {
+        "name": "Dhanam App",
+        "url": "https://app.dhan.am",
+        "group": "Dhanam",
+        "description": "User application"
       }
     ]

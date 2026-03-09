@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getTimeline } from '@/lib/status-history'
+import { getSiteConfig } from '@/lib/config'
 
 /**
  * GET /api/status/timeline?hours=24
@@ -16,6 +17,21 @@ export async function GET(request: Request) {
     )
 
     const timeline = await getTimeline(hours)
+
+    // Enrich timeline services with href from config (href is not stored in DB)
+    const config = getSiteConfig()
+    const hrefMap = new Map<string, string>()
+    for (const svc of config.services) {
+      if (svc.href) {
+        hrefMap.set(svc.name, svc.href)
+      }
+    }
+    for (const svc of timeline.services) {
+      const href = hrefMap.get(svc.service)
+      if (href) {
+        svc.href = href
+      }
+    }
 
     return NextResponse.json(timeline, {
       headers: {

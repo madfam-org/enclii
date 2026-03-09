@@ -7,6 +7,7 @@ import {
   deleteIncident,
   isDatabaseConfigured,
 } from '@/lib/incidents'
+import { ensureSchema } from '@/lib/status-history'
 
 function isAuthorized(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
   const offset = parseInt(searchParams.get('offset') || '0', 10)
 
   try {
+    await ensureSchema()
     const result = await getIncidents({
       status: status ?? undefined,
       limit,
@@ -100,6 +102,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    await ensureSchema()
     const incident = await createIncident({
       title: body.title,
       severity: body.severity as IncidentSeverity,

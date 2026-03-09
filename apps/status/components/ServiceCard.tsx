@@ -35,12 +35,19 @@ export function ServiceCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium truncate">{service.service}</h3>
             <a
-              href={service.url}
+              href={service.href || service.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className="font-medium truncate hover:underline hover:text-primary transition-colors"
+            >
+              {service.service}
+            </a>
+            <a
+              href={service.href || service.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
             >
               <ExternalLink className="size-3.5" />
             </a>
@@ -50,6 +57,9 @@ export function ServiceCard({
               {service.description}
             </p>
           )}
+          <p className="text-xs text-muted-foreground/60 mt-0.5 truncate font-mono">
+            {new URL(service.href || service.url).hostname}
+          </p>
         </div>
         <StatusBadge status={service.status} size="sm" />
       </div>
@@ -105,7 +115,14 @@ export function ServiceCardCompact({ service }: ServiceCardCompactProps) {
       <div className="flex items-center gap-3 min-w-0">
         <StatusBadge status={service.status} showLabel={false} />
         <div className="min-w-0">
-          <span className="font-medium truncate block">{service.service}</span>
+          <a
+            href={service.href || service.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium truncate block hover:underline hover:text-primary transition-colors"
+          >
+            {service.service}
+          </a>
           {service.description && (
             <span className="text-muted-foreground text-sm truncate block">— {service.description}</span>
           )}

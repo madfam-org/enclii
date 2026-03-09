@@ -99,6 +99,41 @@ export async function ensureSchema(): Promise<void> {
     )
   `)
 
+  // Incident management tables
+  await query(`
+    CREATE TABLE IF NOT EXISTS incidents (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'investigating',
+      severity TEXT NOT NULL DEFAULT 'minor',
+      affected_services TEXT[] NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ
+    )
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS incident_updates (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      status TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS scheduled_maintenance (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      description TEXT,
+      affected_services TEXT[] NOT NULL DEFAULT '{}',
+      scheduled_start TIMESTAMPTZ NOT NULL,
+      scheduled_end TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+
   schemaEnsured = true
 }
 

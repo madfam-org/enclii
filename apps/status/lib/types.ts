@@ -18,7 +18,8 @@ export type IncidentSeverity = 'minor' | 'major' | 'critical'
  */
 export interface ServiceConfig {
   name: string
-  url: string
+  url: string          // Health check URL (used for monitoring)
+  href?: string        // User-facing URL (used for links). Falls back to url.
   group: string
   description?: string
 }
@@ -29,6 +30,7 @@ export interface ServiceConfig {
 export interface HealthCheckResult {
   service: string
   url: string
+  href?: string        // User-facing URL for display links
   group: string
   description?: string
   status: ServiceStatus
@@ -149,6 +151,7 @@ export interface ServiceTimeline {
   service: string
   group: string
   url: string
+  href?: string           // user-facing URL for display links
   slots: TimelineSlot[]
   uptime24h: number       // percentage
 }
