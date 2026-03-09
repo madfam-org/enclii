@@ -34,19 +34,22 @@ images:
 - digest: sha256:2fc3fe4c7855c88e8e5817a6d98c8a9fa8b4c929938b81519e161a99f234c6d2
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
-- digest: sha256:381741c9868e4144016da5a21997245c4d508431be94672b4be2732269dbacda
+- digest: sha256:c9590267a422a4fe3ad534710c0bd556dbea96260df9c38594eb3405d6613065
+  name: ghcr.io/madfam-org/enclii/docs-site
+  newName: ghcr.io/madfam-org/enclii/docs-site
+- digest: sha256:72dc43d32d2da100f2bb55ad2f054aa3a9ba3e024784be4d0564ef15ebb5c474
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:f157ac9af9ceb33aa3223813a2194aad0359d892d9a321f3728dc2c0e77918ac
+- digest: sha256:328fd02f4f00e2cc25a278cc1937dcd1ef74b6be64a9f280abc7282a0e2d95a1
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:5aeca78da96d5043c4e4b22f59c0bb61a5d4947ba67e1dad2cfcf2d93085bd72
+- digest: sha256:47f9aaadd94e6b7f9ab403c3556f7b70da7233272d594b04c7375bc34ceb0acf
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:de71793d28d1d9d44e706f878ed31012851253de1efaec54b3bdebefbd4a4625
+- digest: sha256:50add123fe5b794a097c2cdaf3d986f1375ce66150b08ff3b233ecc173a238d8
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:ee8bdbe57a6fe0c4338a2900d91a008297f41f6482df2a38533c999341da52e1
+- digest: sha256:db32b4faee243e509a0b8a1c4720ed76c3fb59b63db994001297f6b24994c726
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
