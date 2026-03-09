@@ -107,19 +107,19 @@
   },
   {
     "_comment": "=== KARAFIEL ===",
-    "hostname": "karafiel.mx",
+    "hostname": "kf.madfam.io",
     "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
   },
   {
-    "hostname": "app.karafiel.mx",
+    "hostname": "kf-app.madfam.io",
     "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
   },
   {
-    "hostname": "admin.karafiel.mx",
+    "hostname": "kf-admin.madfam.io",
     "service": "http://karafiel-admin.karafiel.svc.cluster.local:80"
   },
   {
-    "hostname": "api.karafiel.mx",
+    "hostname": "kf-api.madfam.io",
     "service": "http://karafiel-api.karafiel.svc.cluster.local:80"
   },
   {

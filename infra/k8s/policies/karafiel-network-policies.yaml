@@ -38,7 +38,7 @@ spec:
   policyTypes:
     - Egress
 
-# Allow Cloudflare tunnel -> karafiel-web (karafiel.mx, app.karafiel.mx)
+# Allow Cloudflare tunnel -> karafiel-web (kf.madfam.io, kf-app.madfam.io)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -63,7 +63,7 @@ spec:
         - protocol: TCP
           port: 3000
 
-# Allow Cloudflare tunnel -> karafiel-api (api.karafiel.mx)
+# Allow Cloudflare tunnel -> karafiel-api (kf-api.madfam.io)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -88,7 +88,7 @@ spec:
         - protocol: TCP
           port: 8000
 
-# Allow Cloudflare tunnel -> karafiel-admin (admin.karafiel.mx)
+# Allow Cloudflare tunnel -> karafiel-admin (kf-admin.madfam.io)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
