@@ -61,10 +61,7 @@ cp .env.example .env
 # Start dependencies
 docker-compose up -d postgres redis
 
-# Run database migrations
-go run cmd/migrate/main.go up
-
-# Start the server
+# Start the server (migrations run automatically)
 go run cmd/api/main.go
 # Server running at http://localhost:8080
 ```
@@ -152,18 +149,16 @@ go test -tags=integration ./...
 
 ## Database Migrations
 
+Migrations are raw SQL files in two locations:
+- `internal/db/migrations/` — Core schema (genesis, admin foundation, etc.)
+- `migrations/` — Incremental migrations
+
 ```bash
-# Create new migration
-go run cmd/migrate/main.go create add_feature_table
+# Apply migrations in production (via kubectl)
+kubectl exec -n enclii deploy/switchyard-api -- psql "$DATABASE_URL" -f /path/to/migration.sql
 
-# Run migrations
-go run cmd/migrate/main.go up
-
-# Rollback last migration
-go run cmd/migrate/main.go down 1
-
-# Check migration status
-go run cmd/migrate/main.go status
+# Verify migration applied
+kubectl exec -n enclii deploy/switchyard-api -- psql "$DATABASE_URL" -c "\dt"
 ```
 
 ## Building

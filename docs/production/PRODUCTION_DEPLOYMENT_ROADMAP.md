@@ -1077,7 +1077,7 @@ spec:
 - [ ] Public status page shows Enclii services
 - [ ] Team trained on deploying via `enclii deploy` command
 
-**Why Critical:** Dogfooding provides customer confidence, validates product quality, and enables authentic sales narratives. See [DOGFOODING_GUIDE.md](./DOGFOODING_GUIDE.md) for details.
+**Why Critical:** Dogfooding provides customer confidence, validates product quality, and enables authentic sales narratives. See [DOGFOODING_GUIDE.md](../guides/DOGFOODING_GUIDE.md) for details.
 
 ---
 
@@ -1210,7 +1210,7 @@ This **research-validated architecture** provides:
 
 **5-Year Savings: $125,000+** (vs Railway + Auth0)
 
-**Confidence Signal:** "We run our entire platform on Enclii, authenticated by Janua. We're our own most demanding customer." — See [DOGFOODING_GUIDE.md](./DOGFOODING_GUIDE.md)
+**Confidence Signal:** "We run our entire platform on Enclii, authenticated by Janua. We're our own most demanding customer." — See [DOGFOODING_GUIDE.md](../guides/DOGFOODING_GUIDE.md)
 
 **Recommended Next Step:** Approve budget and start Week 1 infrastructure provisioning.
 

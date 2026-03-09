@@ -96,4 +96,4 @@ Enclii follows [Semantic Versioning](https://semver.org/):
 ## See Also
 
 - [Installation Guide](../../getting-started/QUICKSTART.md)
-- [Changelog](../../CHANGELOG.md)
+- Changelog: `CHANGELOG.md` (repo root)

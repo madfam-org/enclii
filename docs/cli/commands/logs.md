@@ -115,4 +115,4 @@ The connection automatically reconnects on network interruptions.
 
 - [`enclii ps`](./ps.md) - Check service status
 - [`enclii deploy`](./deploy.md) - Deploy a service
-- [Observability Guide](../../guides/observability.md)
+- [Troubleshooting](../../troubleshooting/index.md)

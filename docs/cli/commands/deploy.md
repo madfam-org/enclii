@@ -129,4 +129,4 @@ enclii deploy --release rel_abc123 --canary-percent 100
 - [`enclii rollback`](./rollback.md) - Revert deployment
 - [`enclii ps`](./ps.md) - Check deployment status
 - [`enclii logs`](./logs.md) - View deployment logs
-- [Deployment Strategies Guide](../../guides/deployment-strategies.md)
+- [Service Spec Reference](../../reference/service-spec.md) — deployment strategy configuration

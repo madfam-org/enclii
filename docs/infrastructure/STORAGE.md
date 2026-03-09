@@ -373,7 +373,7 @@ Redis Sentinel configuration is **staged and ready** for multi-node deployment.
 
 - [GitOps with ArgoCD](./GITOPS.md)
 - [Cloudflare Integration](./CLOUDFLARE.md)
-- [Deployment Guide](../../infra/DEPLOYMENT.md)
+- Deployment Guide: `infra/DEPLOYMENT.md`
 - [Production Checklist](../production/PRODUCTION_CHECKLIST.md)
 
 ## Verification

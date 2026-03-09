@@ -13,6 +13,8 @@ const config: Config = {
   organizationName: 'madfam-io',
   projectName: 'enclii',
 
+  // TODO: Change to 'throw' after fixing 60+ pre-existing broken links
+  // (docs/README.md audit subdirectory refs, archive exclusions, external links)
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
 

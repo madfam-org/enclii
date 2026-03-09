@@ -366,6 +366,6 @@ UI will use OIDC with JWT tokens. API already supports this; just need to wire u
 ---
 
 ## Related Documents
-- [SOFTWARE_SPEC.md](/home/user/enclii/SOFTWARE_SPEC.md) - Complete product specification
-- [MVP_IMPLEMENTATION.md](/home/user/enclii/docs/MVP_IMPLEMENTATION.md) - MVP status
-- [ARCHITECTURE.md](/home/user/enclii/docs/ARCHITECTURE.md) - System architecture
+- Software Specification: `SOFTWARE_SPEC.md` (repo root)
+- [MVP Implementation](./MVP_IMPLEMENTATION.md) - MVP status
+- [Architecture](../architecture/ARCHITECTURE.md) - System architecture

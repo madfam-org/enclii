@@ -11,7 +11,7 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Dogfooding:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
-**GitOps:** ArgoCD App-of-Apps (17 apps: 10 ApplicationSet + 7 static) with self-heal - **Operational** (Jan 2026)
+**GitOps:** ArgoCD App-of-Apps (10 apps in `infra/argocd/apps/` incl. 1 ApplicationSet for projects) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (single-replica; ready for multi-node) - **Operational** (Jan 2026)
 **Last Audit:** Feb 6, 2026 — 82 pods, 0 errors, 12 endpoints 100% healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
 
@@ -309,13 +309,12 @@ See [DOGFOODING_GUIDE.md](./docs/guides/DOGFOODING_GUIDE.md) for complete implem
 
 ### Adding a New API Endpoint
 
-1. **Define handler** in `apps/switchyard-api/internal/api/`
-2. **Add route** in `apps/switchyard-api/internal/api/router.go`
-3. **Update OpenAPI spec** in `docs/api/openapi.yaml`
-4. **Add tests** in `apps/switchyard-api/internal/api/*_test.go`
-5. **Run validation**: `make lint && make test`
+1. **Define handler** in `apps/switchyard-api/internal/api/` (routes are registered in `*_handlers.go` files — there is no centralized router file)
+2. **Update OpenAPI spec** in `docs/api/openapi.yaml`
+3. **Add tests** in `apps/switchyard-api/internal/api/*_test.go`
+4. **Run validation**: `make lint && make test`
 
-> **Note:** Domain provisioning hooks into the webhook flow (not the router). See `enclii_yaml.go` and `domain_provisioner.go` for the auto-provisioning pipeline triggered by GitHub push events.
+> **Note:** Domain provisioning hooks into the webhook flow (not the handler registration). See `enclii_yaml.go` and `domain_provisioner.go` for the auto-provisioning pipeline triggered by GitHub push events.
 
 ### Adding a New CLI Command
 
@@ -356,20 +355,23 @@ enclii deploy --env production --strategy canary --canary-percent 10
 
 ### Database Migration
 
+Migrations are raw SQL files in two locations:
+- `apps/switchyard-api/internal/db/migrations/` — Core schema (genesis, admin foundation, etc.)
+- `apps/switchyard-api/migrations/` — Incremental migrations
+
 ```bash
-# Create migration
-go run apps/switchyard-api/cmd/migrate/main.go create <name>
+# Apply to production (via kubectl exec into the API pod)
+kubectl exec -n enclii deploy/switchyard-api -- psql "$DATABASE_URL" -f /path/to/migration.sql
 
-# Apply locally
-go run apps/switchyard-api/cmd/migrate/main.go up
-
-# Apply to production (via kubectl)
-kubectl exec -n enclii deploy/switchyard-api -- /app/migrate up
+# Verify migration applied
+kubectl exec -n enclii deploy/switchyard-api -- psql "$DATABASE_URL" -c "\dt"
 ```
 
 ---
 
 ## Debugging Guide
+
+> **Canonical troubleshooting docs**: `docs/troubleshooting/` — this section is a quick reference for AI agents.
 
 ### API Issues
 
@@ -479,10 +481,9 @@ kubectl get replicas.longhorn.io -n longhorn-system
 |---------|----------|
 | Entry point | `apps/switchyard-api/cmd/api/main.go` |
 | HTTP handlers | `apps/switchyard-api/internal/api/*.go` |
-| Router setup | `apps/switchyard-api/internal/api/router.go` |
-| Middleware | `apps/switchyard-api/internal/api/middleware/` |
-| Models | `apps/switchyard-api/internal/models/` |
-| Services | `apps/switchyard-api/internal/service/` |
+| Route registration | `apps/switchyard-api/internal/api/*_handlers.go` (distributed, no centralized router) |
+| Middleware | `apps/switchyard-api/internal/middleware/` |
+| Services | `apps/switchyard-api/internal/services/` |
 | Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` (bare_metal, cluster_admin, cost, drift, managed_resource, propagation, virtual_cluster, admin_topology) |
 | Admin services | `apps/switchyard-api/internal/services/` (bare_metal, cluster_admin, infrastructure, vcluster, placement, drift, cost_tracking) |
 | Admin types | `packages/sdk-go/pkg/types/admin.go` |
@@ -565,7 +566,6 @@ make run-ui           # UI on :3000
 
 # Database
 docker-compose up -d postgres redis
-make migrate-up
 ```
 
 ### Staging Environment
@@ -666,8 +666,8 @@ pnpm test:e2e
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
 | Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse, waybill, CLI, SDK |
-| Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore in repo. Needs cluster deploy |
-| PostHog (analytics) | Planned | Self-hosted Community Edition. Helm values + integration planned |
+| Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.enclii.dev) in repo. Needs cluster deploy |
+| PostHog (analytics) | Staged | Helm values + ArgoCD app + NetworkPolicies + tunnel route (analytics.enclii.dev) + Go/frontend SDKs in repo. Needs cluster deploy |
 
 ---
 

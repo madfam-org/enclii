@@ -99,7 +99,7 @@
       "dockerfile": "apps/docs-site/Dockerfile",
       "image": "docs-site",
       "kustomization": "infra/k8s/production",
-      "kustomize_image": "docs-site",
+      "kustomize_image": "ghcr.io/madfam-org/enclii/docs-site",
       "dependencies": [],
       "scan": false,
       "deploy_check": null

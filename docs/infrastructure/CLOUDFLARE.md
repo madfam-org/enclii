@@ -361,7 +361,7 @@ Use the zone settings script to manage security-critical settings across all zon
 
 - [GitOps with ArgoCD](./GITOPS.md)
 - [Storage with Longhorn](./STORAGE.md)
-- [Deployment Guide](../../infra/DEPLOYMENT.md)
+- Deployment Guide: `infra/DEPLOYMENT.md`
 - [Production Deployment Roadmap](../production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 
 ## Verification

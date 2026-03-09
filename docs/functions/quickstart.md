@@ -235,7 +235,7 @@ When invoked again, it scales back up automatically (cold start ~500ms for Go/Ru
 
 - [Runtime Configuration](./runtimes.md) - Detailed runtime-specific guides
 - [Configuration Reference](./configuration.md) - All configuration options
-- [Scaling Configuration](./scaling.md) - KEDA and auto-scaling options
+- [KEDA Functions Infrastructure](../infrastructure/KEDA_FUNCTIONS.md) - KEDA and auto-scaling options
 
 ## Troubleshooting
 

@@ -363,7 +363,7 @@ janua/
 
 ### Step 1: Bootstrap Infrastructure (Week 1)
 
-Follow the [PRODUCTION_DEPLOYMENT_ROADMAP.md](./PRODUCTION_DEPLOYMENT_ROADMAP.md) to set up:
+Follow the [PRODUCTION_DEPLOYMENT_ROADMAP.md](../production/PRODUCTION_DEPLOYMENT_ROADMAP.md) to set up:
 
 1. **Hetzner dedicated server** (AX41-NVME, single-node k3s)
 2. **Cloudflare Tunnel** (replaces LoadBalancer)
