@@ -6,6 +6,6 @@ resources:
 - service.yaml
 
 images:
-- digest: sha256:255ffecd1cf1c57551776d158c4198399330fb5a21d272c5f29ab790bfcdbdbe
+- digest: sha256:cc704501004e3b66541e011bc407d97d8fd45f7f5e205f7fe9b540babba676f8
   name: ghcr.io/madfam-org/enclii/dispatch
   newName: ghcr.io/madfam-org/enclii/dispatch
