@@ -36,7 +36,7 @@ data:
       },
       {
         "name": "Auth (Default)",
-        "url": "https://auth.janua.dev",
+        "url": "https://auth.madfam.io",
         "group": "Janua",
         "description": "SSO authentication (canonical)"
       },
