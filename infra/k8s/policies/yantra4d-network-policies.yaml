@@ -147,6 +147,22 @@ spec:
       ports:
         - protocol: TCP
           port: 5000
+    # Proxy from studio nginx within namespace (/api/ and /static/)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: yantra4d-studio
+      ports:
+        - protocol: TCP
+          port: 5000
+    # Proxy from admin nginx within namespace (/api/)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: yantra4d-admin
+      ports:
+        - protocol: TCP
+          port: 5000
 
 # Allow yantra4d-landing egress (DNS + proxy to backend within namespace)
 ---
@@ -221,6 +237,14 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Redis within namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: yantra4d-redis
+      ports:
+        - protocol: TCP
+          port: 6379
 
 # Allow yantra4d-studio egress (DNS + HTTPS for SSR API calls)
 ---
@@ -251,6 +275,14 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Proxy to backend within namespace (nginx reverse proxy for /api/ and /static/)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: yantra4d-backend
+      ports:
+        - protocol: TCP
+          port: 5000
 
 # Allow yantra4d-admin egress (DNS + HTTPS for SSR API calls)
 ---
@@ -281,3 +313,36 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Proxy to backend within namespace (nginx reverse proxy for /api/)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: yantra4d-backend
+      ports:
+        - protocol: TCP
+          port: 5000
+
+# Allow yantra4d-backend -> yantra4d-redis ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yantra4d-redis-ingress
+  namespace: yantra4d
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: yantra4d-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: yantra4d-backend
+      ports:
+        - protocol: TCP
+          port: 6379
