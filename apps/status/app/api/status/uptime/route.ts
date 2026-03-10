@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUptimeSummary, getAllUptimeSummaries } from '@/lib/status-history'
-import { getDatabaseUrl } from '@/lib/config'
+import { getDatabaseUrl, getSiteConfig } from '@/lib/config'
 
 /**
  * GET /api/status/uptime
@@ -39,7 +39,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const summaries = await getAllUptimeSummaries(days)
+    // Filter out stale service names no longer in the configmap
+    const configNames = new Set(getSiteConfig().services.map(s => s.name))
+    const summaries = (await getAllUptimeSummaries(days))
+      .filter(s => configNames.has(s.service))
     return NextResponse.json(
       {
         services: summaries.map(s => ({ ...s, days })),
