@@ -118,8 +118,8 @@ spec:
           enabled: true
           replicaCount: 1
           image:
-            repository: docker.io/pgbouncer/pgbouncer
-            tag: "1.23.1"
+            repository: docker.io/edoburu/pgbouncer
+            tag: "v1.25.1-p0"
 
         externalPostgresql:
           postgresqlHost: postgres.data.svc.cluster.local
