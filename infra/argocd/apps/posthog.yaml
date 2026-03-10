@@ -114,6 +114,10 @@ spec:
         postgresql:
           enabled: false
 
+        pgbouncer:
+          enabled: true
+          replicaCount: 1
+
         externalPostgresql:
           postgresqlHost: postgres.data.svc.cluster.local
           postgresqlPort: 5432
