@@ -184,6 +184,42 @@ test.describe('Status Page Verification', () => {
       expect(count).toBeGreaterThan(0);
       console.log('Theme toggle buttons found:', count);
     });
+
+    test('should render with data-theme="dark" by default', async ({ page }) => {
+      await page.goto('https://status.enclii.dev', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      const dataTheme = await page.locator('html').getAttribute('data-theme');
+      expect(dataTheme).toBe('dark');
+      console.log('Default data-theme:', dataTheme);
+    });
+
+    test('should toggle theme on click', async ({ page }) => {
+      await page.goto('https://status.enclii.dev', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Should start as dark
+      expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');
+
+      // Click the desktop theme toggle
+      const toggle = page.locator('button[aria-label*="Switch to light"]').first();
+      await toggle.click();
+
+      // Should now be light
+      expect(await page.locator('html').getAttribute('data-theme')).toBe('light');
+      console.log('Theme toggled to light successfully');
+
+      // Click again to go back to dark
+      const toggleBack = page.locator('button[aria-label*="Switch to dark"]').first();
+      await toggleBack.click();
+
+      expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');
+      console.log('Theme toggled back to dark successfully');
+    });
   });
 
   test.describe('status.madfam.io', () => {
@@ -388,6 +424,35 @@ test.describe('Status Page Verification', () => {
       const count = await themeToggle.count();
       expect(count).toBeGreaterThan(0);
       console.log('Theme toggle buttons found:', count);
+    });
+
+    test('should toggle theme on click', async ({ page }) => {
+      await page.goto('https://status.madfam.io', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');
+
+      const toggle = page.locator('button[aria-label*="Switch to light"]').first();
+      await toggle.click();
+
+      expect(await page.locator('html').getAttribute('data-theme')).toBe('light');
+      console.log('Theme toggled to light successfully');
+    });
+
+    test('should show correct footer brand name', async ({ page }) => {
+      await page.goto('https://status.madfam.io', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Footer should say "MADFAM" not "MADFAM System"
+      const footer = page.locator('footer');
+      const footerText = await footer.textContent();
+      expect(footerText).toContain('MADFAM');
+      expect(footerText).not.toContain('MADFAM System.');
+      console.log('Footer text:', footerText?.trim());
     });
 
     test('should still have removed services absent (regression guard)', async ({ request }) => {

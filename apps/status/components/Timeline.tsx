@@ -245,19 +245,36 @@ export function Timeline() {
         <TimelineLegend />
       </div>
 
-      {Array.from(groups).map(([group, timelines]) => (
-        <div key={group} className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            {group}
-          </h3>
-          <div className="border rounded-lg bg-card p-4 space-y-4">
-            {timelines.map((tl) => (
-              <TimelineBar key={tl.service} timeline={tl} />
+      {(() => {
+        // Check if data is sparse (>50% unknown slots across all services)
+        const allSlots = data.services.flatMap(s => s.slots)
+        const unknownCount = allSlots.filter(s => s.status === 'unknown').length
+        const sparseData = allSlots.length > 0 && unknownCount / allSlots.length > 0.5
+
+        return (
+          <>
+            {sparseData && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Clock className="size-3.5" />
+                History is still accumulating — the timeline will fill in over the next 24 hours.
+              </p>
+            )}
+            {Array.from(groups).map(([group, timelines]) => (
+              <div key={group} className="space-y-3">
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                  {group}
+                </h3>
+                <div className="border rounded-lg bg-card p-4 space-y-4">
+                  {timelines.map((tl) => (
+                    <TimelineBar key={tl.service} timeline={tl} />
+                  ))}
+                  <TimelineTimeLabels from={data.from} to={data.to} />
+                </div>
+              </div>
             ))}
-            <TimelineTimeLabels from={data.from} to={data.to} />
-          </div>
-        </div>
-      ))}
+          </>
+        )
+      })()}
     </div>
   )
 }
