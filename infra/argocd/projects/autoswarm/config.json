@@ -1,0 +1,9 @@
+{
+  "name": "autoswarm",
+  "repoURL": "https://github.com/madfam-org/autoswarm-office.git",
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "namespace": "autoswarm",
+  "partOf": "autoswarm-office",
+  "ignoreExtraneous": true
+}

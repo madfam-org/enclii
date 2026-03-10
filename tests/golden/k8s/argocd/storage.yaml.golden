@@ -28,6 +28,9 @@ spec:
           storageMinimalAvailablePercentage: 15
           autoSalvage: true
           replicaAutoBalance: best-effort
+          # Right-sized from 12% (1440m) to 3% (360m) — actual usage ~91m
+          guaranteedEngineManagerCPU: 3
+          guaranteedReplicaManagerCPU: 3
         persistence:
           defaultClassReplicaCount: 1
           reclaimPolicy: Retain
@@ -38,6 +41,13 @@ spec:
             - key: "nvidia.com/gpu"
               operator: "Exists"
               effect: "NoSchedule"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 
   destination:
     server: https://kubernetes.default.svc
