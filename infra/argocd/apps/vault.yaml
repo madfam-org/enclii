@@ -26,6 +26,10 @@ spec:
       # so values are inlined here matching infra/helm/vault/values.yaml
       values: |
         server:
+          image:
+            repository: docker.io/hashicorp/vault
+            tag: "1.18.3"
+
           standalone:
             enabled: true
             config: |
@@ -44,6 +48,12 @@ spec:
               storage "file" {
                 path = "/vault/data"
               }
+
+          # Disable hostNetwork to avoid hostPort Kyverno violation
+          hostNetwork: false
+
+          service:
+            type: ClusterIP
 
           dataStorage:
             enabled: true
@@ -78,6 +88,8 @@ spec:
               drop:
                 - ALL
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
 
           readinessProbe:
             enabled: true

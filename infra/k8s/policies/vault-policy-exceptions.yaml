@@ -1,0 +1,28 @@
+# Kyverno PolicyExceptions for Vault namespace
+# HashiCorp Vault Helm chart uses patterns that conflict with cluster
+# security policies. Exceptions are scoped to the vault namespace only.
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: vault-helm-chart
+  namespace: vault
+spec:
+  exceptions:
+    - policyName: block-host-ports
+      ruleNames:
+        - autogen-deny-host-ports
+        - deny-host-ports
+    - policyName: restrict-image-registries
+      ruleNames:
+        - autogen-validate-registries
+        - validate-registries
+  match:
+    any:
+      - resources:
+          namespaces:
+            - vault
+          kinds:
+            - Deployment
+            - StatefulSet
+            - Pod

@@ -1,0 +1,36 @@
+# Kyverno PolicyExceptions for PostHog namespace
+# Third-party Helm sub-charts (ClickHouse operator, Redpanda) use patterns
+# that conflict with cluster security policies. These exceptions are scoped
+# to the posthog namespace only.
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: posthog-clickhouse-operator
+  namespace: posthog
+spec:
+  exceptions:
+    - policyName: block-host-ports
+      ruleNames:
+        - autogen-deny-host-ports
+        - deny-host-ports
+    - policyName: restrict-capabilities
+      ruleNames:
+        - autogen-drop-all-capabilities
+        - drop-all-capabilities
+    - policyName: restrict-image-registries
+      ruleNames:
+        - autogen-validate-registries
+        - validate-registries
+  match:
+    any:
+      - resources:
+          namespaces:
+            - posthog
+          kinds:
+            - Deployment
+            - StatefulSet
+            - Job
+            - CronJob
+            - Pod
+            - ReplicaSet
