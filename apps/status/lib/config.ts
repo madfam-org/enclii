@@ -104,16 +104,3 @@ export function getDatabaseUrl(): string | null {
   return process.env.DATABASE_URL || null
 }
 
-/**
- * Group services by their group name
- */
-export function groupServices(services: ServiceConfig[]): Record<string, ServiceConfig[]> {
-  return services.reduce((groups, service) => {
-    const group = service.group
-    if (!groups[group]) {
-      groups[group] = []
-    }
-    groups[group].push(service)
-    return groups
-  }, {} as Record<string, ServiceConfig[]>)
-}

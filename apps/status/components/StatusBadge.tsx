@@ -2,50 +2,13 @@
 
 import { cn } from '@/lib/utils'
 import type { ServiceStatus } from '@/lib/types'
+import { STATUS_CONFIG } from '@/lib/status-config'
 
 interface StatusBadgeProps {
   status: ServiceStatus
   showLabel?: boolean
   size?: 'sm' | 'md' | 'lg'
   pulse?: boolean
-}
-
-const statusConfig: Record<ServiceStatus, {
-  label: string
-  dotClass: string
-  bgClass: string
-  textClass: string
-}> = {
-  operational: {
-    label: 'Operational',
-    dotClass: 'bg-status-operational',
-    bgClass: 'bg-status-operational-muted',
-    textClass: 'text-status-operational',
-  },
-  degraded: {
-    label: 'Degraded',
-    dotClass: 'bg-status-degraded',
-    bgClass: 'bg-status-degraded-muted',
-    textClass: 'text-status-degraded',
-  },
-  outage: {
-    label: 'Major Outage',
-    dotClass: 'bg-status-outage',
-    bgClass: 'bg-status-outage-muted',
-    textClass: 'text-status-outage',
-  },
-  maintenance: {
-    label: 'Maintenance',
-    dotClass: 'bg-status-maintenance',
-    bgClass: 'bg-status-maintenance-muted',
-    textClass: 'text-status-maintenance',
-  },
-  unknown: {
-    label: 'Unknown',
-    dotClass: 'bg-muted-foreground',
-    bgClass: 'bg-muted',
-    textClass: 'text-muted-foreground',
-  },
 }
 
 const sizeConfig = {
@@ -72,7 +35,7 @@ export function StatusBadge({
   size = 'md',
   pulse = false,
 }: StatusBadgeProps) {
-  const config = statusConfig[status]
+  const config = STATUS_CONFIG[status]
   const sizes = sizeConfig[size]
 
   return (
@@ -106,7 +69,7 @@ export function StatusBadge({
 }
 
 export function OverallStatusBadge({ status }: { status: ServiceStatus }) {
-  const config = statusConfig[status]
+  const config = STATUS_CONFIG[status]
 
   const label = status === 'operational' ? 'All Systems Operational' : config.label
 

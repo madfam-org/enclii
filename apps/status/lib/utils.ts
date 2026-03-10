@@ -46,24 +46,6 @@ export function formatUptime(percent: number | null): string {
 }
 
 /**
- * Get status label text
- */
-export function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'operational':
-      return 'Operational'
-    case 'degraded':
-      return 'Degraded Performance'
-    case 'outage':
-      return 'Major Outage'
-    case 'maintenance':
-      return 'Under Maintenance'
-    default:
-      return 'Unknown'
-  }
-}
-
-/**
  * Format date to ISO date string (YYYY-MM-DD)
  */
 export function formatDate(date: Date | string): string {

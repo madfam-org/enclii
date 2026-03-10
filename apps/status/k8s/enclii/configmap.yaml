@@ -36,17 +36,11 @@ data:
         "description": "Platform documentation"
       },
       {
-        "name": "Auth (Default)",
-        "url": "https://auth.madfam.io",
-        "group": "Janua",
-        "description": "SSO login portal"
-      },
-      {
-        "name": "Auth (Ecosystem)",
+        "name": "Auth",
         "url": "https://auth.madfam.io/health",
         "href": "https://auth.madfam.io",
         "group": "Janua",
-        "description": "SSO health check"
+        "description": "SSO authentication service"
       },
       {
         "name": "Janua Website",

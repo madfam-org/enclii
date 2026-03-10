@@ -79,6 +79,16 @@ test.describe('Status Page Verification', () => {
             expect(webDashboard.href).toBeUndefined();
             console.log('Web Dashboard correctly has no href (url is user-facing)');
           }
+
+          // Auth service (formerly "Auth (Ecosystem)") should have href
+          const auth = data.services.find(
+            (s: { service: string }) => s.service === 'Auth'
+          );
+          if (auth) {
+            expect(auth.url).toContain('/health');
+            expect(auth.href).toBe('https://auth.madfam.io');
+            console.log('Auth href correctly set:', auth.href);
+          }
         }
       }
     });
@@ -239,14 +249,26 @@ test.describe('Status Page Verification', () => {
             console.log('Enclii API href correctly set:', encliiApi.href);
           }
 
-          const authEcosystem = data.services.find(
-            (s: { service: string }) => s.service === 'Auth (Ecosystem)'
+          // Auth service (formerly "Auth (Ecosystem)") renamed to "Auth"
+          const auth = data.services.find(
+            (s: { service: string }) => s.service === 'Auth'
           );
-          if (authEcosystem) {
-            expect(authEcosystem.url).toContain('/health');
-            expect(authEcosystem.href).toBe('https://auth.madfam.io');
-            console.log('Auth (Ecosystem) href correctly set:', authEcosystem.href);
+          if (auth) {
+            expect(auth.url).toContain('/health');
+            expect(auth.href).toBe('https://auth.madfam.io');
+            console.log('Auth href correctly set:', auth.href);
           }
+
+          // Verify removed services are gone
+          const authDefault = data.services.find(
+            (s: { service: string }) => s.service === 'Auth (Default)'
+          );
+          expect(authDefault).toBeUndefined();
+
+          const mesAdmin = data.services.find(
+            (s: { service: string }) => s.service === 'MES Admin'
+          );
+          expect(mesAdmin).toBeUndefined();
         }
       }
     });

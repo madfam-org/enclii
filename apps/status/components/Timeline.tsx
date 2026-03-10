@@ -4,30 +4,10 @@ import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { formatResponseTime } from '@/lib/utils'
 import type { ServiceStatus, TimelineResponse, ServiceTimeline, TimelineSlot } from '@/lib/types'
+import { STATUS_COLORS, STATUS_LABELS, groupByKey } from '@/lib/status-config'
 import { Clock, Activity } from 'lucide-react'
 
-const statusColors: Record<ServiceStatus, string> = {
-  operational: 'bg-status-operational',
-  degraded: 'bg-status-degraded',
-  outage: 'bg-status-outage',
-  maintenance: 'bg-status-maintenance',
-  unknown: 'bg-muted',
-}
-
-const statusLabels: Record<ServiceStatus, string> = {
-  operational: 'Operational',
-  degraded: 'Degraded',
-  outage: 'Outage',
-  maintenance: 'Maintenance',
-  unknown: 'No Data',
-}
-
 function formatSlotTime(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function formatHourLabel(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
@@ -80,7 +60,7 @@ interface SlotCellProps {
 
 function SlotCell({ slot, index, total }: SlotCellProps) {
   const timeRange = `${formatSlotTime(slot.start)} – ${formatSlotTime(slot.end)}`
-  const ariaLabel = `${timeRange}: ${statusLabels[slot.status]}${slot.checks > 0 ? `, ${slot.checks} check${slot.checks !== 1 ? 's' : ''}` : ''}`
+  const ariaLabel = `${timeRange}: ${STATUS_LABELS[slot.status]}${slot.checks > 0 ? `, ${slot.checks} check${slot.checks !== 1 ? 's' : ''}` : ''}`
 
   return (
     <div
@@ -93,7 +73,7 @@ function SlotCell({ slot, index, total }: SlotCellProps) {
         className={cn(
           'h-full rounded-[1px] transition-all duration-100',
           'group-hover:brightness-125 group-hover:scale-y-125',
-          statusColors[slot.status],
+          STATUS_COLORS[slot.status],
         )}
       />
       {/* Tooltip */}
@@ -109,8 +89,8 @@ function SlotCell({ slot, index, total }: SlotCellProps) {
             {formatSlotTime(slot.start)} &ndash; {formatSlotTime(slot.end)}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <div className={cn('size-2 rounded-full', statusColors[slot.status])} />
-            <span className="text-muted-foreground">{statusLabels[slot.status]}</span>
+            <div className={cn('size-2 rounded-full', STATUS_COLORS[slot.status])} />
+            <span className="text-muted-foreground">{STATUS_LABELS[slot.status]}</span>
           </div>
           {slot.checks > 0 && (
             <div className="text-muted-foreground mt-0.5">
@@ -141,12 +121,12 @@ function TimelineTimeLabels({ from, to }: TimelineTimeLabelsProps) {
   first.setHours(Math.ceil(first.getHours() / 6) * 6)
 
   for (let t = first.getTime(); t <= toDate.getTime(); t += 6 * 60 * 60 * 1000) {
-    labels.push(formatHourLabel(new Date(t).toISOString()))
+    labels.push(formatSlotTime(new Date(t).toISOString()))
   }
 
   return (
     <div className="flex justify-between text-xs text-muted-foreground mt-1.5 px-0.5">
-      <span>{formatHourLabel(from)}</span>
+      <span>{formatSlotTime(from)}</span>
       {labels.map((label, i) => (
         <span key={i}>{label}</span>
       ))}
@@ -171,7 +151,7 @@ function TimelineLegend({ className }: TimelineLegendProps) {
     <div className={cn('flex flex-wrap gap-3 text-xs', className)}>
       {items.map(({ status, label }) => (
         <div key={status} className="flex items-center gap-1.5">
-          <div className={cn('size-2.5 rounded-sm', statusColors[status])} />
+          <div className={cn('size-2.5 rounded-sm', STATUS_COLORS[status])} />
           <span className="text-muted-foreground">{label}</span>
         </div>
       ))}
@@ -248,12 +228,7 @@ export function Timeline() {
   }
 
   // Group services by their group
-  const groups = new Map<string, ServiceTimeline[]>()
-  for (const svc of data.services) {
-    const list = groups.get(svc.group) ?? []
-    list.push(svc)
-    groups.set(svc.group, list)
-  }
+  const groups = groupByKey(data.services, (s) => s.group)
 
   return (
     <div className="space-y-6">

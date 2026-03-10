@@ -3,18 +3,11 @@
 import { cn } from '@/lib/utils'
 import type { DayStatus, ServiceStatus } from '@/lib/types'
 import { formatDate, formatUptime } from '@/lib/utils'
+import { STATUS_COLORS } from '@/lib/status-config'
 
 interface UptimeBarProps {
   history: DayStatus[]
   showTooltip?: boolean
-}
-
-const statusColors: Record<ServiceStatus, string> = {
-  operational: 'bg-status-operational',
-  degraded: 'bg-status-degraded',
-  outage: 'bg-status-outage',
-  maintenance: 'bg-status-maintenance',
-  unknown: 'bg-muted',
 }
 
 export function UptimeBar({ history, showTooltip = true }: UptimeBarProps) {
@@ -34,7 +27,7 @@ export function UptimeBar({ history, showTooltip = true }: UptimeBarProps) {
               className={cn(
                 'h-full rounded-sm transition-all duration-150',
                 'hover:scale-y-110 hover:brightness-110',
-                statusColors[day.status]
+                STATUS_COLORS[day.status]
               )}
             />
             {showTooltip && (
@@ -116,7 +109,7 @@ export function UptimeLegend({ className }: UptimeLegendProps) {
     <div className={cn('flex flex-wrap gap-4 text-xs', className)}>
       {items.map(({ status, label }) => (
         <div key={status} className="flex items-center gap-1.5">
-          <div className={cn('size-3 rounded-sm', statusColors[status])} />
+          <div className={cn('size-3 rounded-sm', STATUS_COLORS[status])} />
           <span className="text-muted-foreground">{label}</span>
         </div>
       ))}

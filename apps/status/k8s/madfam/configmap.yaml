@@ -8,6 +8,10 @@ data:
   site-url: "https://status.madfam.io"
   prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
   # Services to monitor for MADFAM Ecosystem (all projects)
+  # NOTE: Only services with working health endpoints are monitored.
+  # Services without /health endpoints (Yantra4D API, Karafiel API, MADFAM CMS)
+  # and non-existent services (MES Admin) have been removed to avoid false signals.
+  # Re-add them when external repos add proper health endpoints.
   services-config: |
     [
       {
@@ -36,17 +40,11 @@ data:
         "description": "Platform documentation"
       },
       {
-        "name": "Auth (Default)",
-        "url": "https://auth.madfam.io",
-        "group": "Janua",
-        "description": "SSO login portal"
-      },
-      {
-        "name": "Auth (Ecosystem)",
+        "name": "Auth",
         "url": "https://auth.madfam.io/health",
         "href": "https://auth.madfam.io",
         "group": "Janua",
-        "description": "SSO health check"
+        "description": "SSO authentication service"
       },
       {
         "name": "Janua Website",
@@ -123,12 +121,6 @@ data:
         "description": "Print operations console"
       },
       {
-        "name": "Yantra4D API",
-        "url": "https://4d-api.madfam.io",
-        "group": "Yantra4D",
-        "description": "3D services API"
-      },
-      {
         "name": "Forgesight Web",
         "url": "https://forgesight.quest",
         "group": "Forgesight",
@@ -165,22 +157,10 @@ data:
         "description": "Wellness ops console"
       },
       {
-        "name": "Karafiel API",
-        "url": "https://kf-api.madfam.io",
-        "group": "Karafiel",
-        "description": "Wellness services API"
-      },
-      {
         "name": "MADFAM Website",
         "url": "https://madfam.io",
         "group": "MADFAM Site",
         "description": "Corporate website"
-      },
-      {
-        "name": "MADFAM CMS",
-        "url": "https://cms.madfam.io",
-        "group": "MADFAM Site",
-        "description": "Content management system"
       },
       {
         "name": "MES API",
@@ -193,11 +173,5 @@ data:
         "url": "https://mes.madfam.io",
         "group": "Pravara MES",
         "description": "Manufacturing dashboard"
-      },
-      {
-        "name": "MES Admin",
-        "url": "https://mes-admin.madfam.io",
-        "group": "Pravara MES",
-        "description": "Manufacturing ops console"
       }
     ]
