@@ -8,9 +8,9 @@ interface TimelineBreakpoint {
 }
 
 const TIERS: { query: string; windowMinutes: number; gapClass: string }[] = [
-  { query: '(min-width: 1024px)', windowMinutes: 5, gapClass: 'gap-0' },
+  { query: '(min-width: 1280px)', windowMinutes: 5, gapClass: 'gap-0' },
   { query: '(min-width: 768px)', windowMinutes: 15, gapClass: 'gap-0' },
-  { query: '(min-width: 640px)', windowMinutes: 30, gapClass: 'gap-[0.5px]' },
+  { query: '(min-width: 480px)', windowMinutes: 30, gapClass: 'gap-[0.5px]' },
 ]
 
 const FALLBACK: TimelineBreakpoint = { windowMinutes: 60, gapClass: 'gap-[0.5px]' }

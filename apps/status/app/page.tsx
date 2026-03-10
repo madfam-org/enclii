@@ -136,7 +136,7 @@ async function StatusContent() {
 
 export default function StatusPage() {
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <Suspense fallback={<StatusSkeleton />}>
         <StatusContent />
       </Suspense>
