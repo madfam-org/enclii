@@ -20,7 +20,7 @@ spec:
   source:
     repoURL: https://posthog.github.io/charts-clickhouse/
     chart: posthog
-    targetRevision: "*"  # Track latest; pin after initial validation
+    targetRevision: "30.46.0"
     helm:
       valueFiles: []
       # Values inlined from infra/helm/posthog/values.yaml for ArgoCD.
