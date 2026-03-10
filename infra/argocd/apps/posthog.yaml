@@ -145,12 +145,17 @@ spec:
     server: https://kubernetes.default.svc
     namespace: posthog
 
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  # PAUSED: PostHog chart v30.46.0 has broken dependencies:
+  # - bitnami/pgbouncer and bitnami/zookeeper images removed from Docker Hub
+  # - Redpanda subchart not generating resources
+  # - ClickHouse migrations fail without Kafka/Redpanda
+  # Re-enable after resolving chart compatibility or upgrading chart version.
+  # syncPolicy:
+  #   automated:
+  #     prune: true
+  #     selfHeal: true
+  #   syncOptions:
+  #     - CreateNamespace=true
 
   # ClickHouse operator creates dynamic resources; ignore status drift
   ignoreDifferences:
