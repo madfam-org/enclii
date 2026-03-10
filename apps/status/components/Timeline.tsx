@@ -148,49 +148,51 @@ export function Timeline() {
 
   return (
     <div
-      className="space-y-6"
+      className="w-screen relative left-1/2 -ml-[50vw] px-4 sm:px-6 lg:px-10 xl:px-16"
       role="region"
       aria-label="24-Hour Status Timeline"
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Activity className="size-5 text-muted-foreground" />
-          <h2 className="text-xl font-semibold">24-Hour Timeline</h2>
-        </div>
-        <TimelineLegend />
-      </div>
-
-      {sparseData && (
-        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <Clock className="size-3.5" />
-          History is still accumulating — the timeline will fill in over the next 24 hours.
-        </p>
-      )}
-
-      {groups && Array.from(groups).map(([group, timelines]) => (
-        <div key={group} className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            {group}
-          </h3>
-          <div className="border rounded-lg bg-card p-4 space-y-4">
-            {timelines.map((tl) => (
-              <CanvasTimelineBar
-                key={tl.service}
-                timeline={tl}
-                onSlotHover={handleSlotHover}
-                onSlotLeave={handleSlotLeave}
-              />
-            ))}
-            <TimelineTimeLabels from={data.from} to={data.to} />
+      <div className="max-w-[2400px] mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="size-5 text-muted-foreground" />
+            <h2 className="text-xl font-semibold">24-Hour Timeline</h2>
           </div>
+          <TimelineLegend />
         </div>
-      ))}
 
-      <SharedTooltip
-        visible={tooltipVisible}
-        slot={tooltipSlot}
-        anchor={tooltipAnchor}
-      />
+        {sparseData && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Clock className="size-3.5" />
+            History is still accumulating — the timeline will fill in over the next 24 hours.
+          </p>
+        )}
+
+        {groups && Array.from(groups).map(([group, timelines]) => (
+          <div key={group} className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              {group}
+            </h3>
+            <div className="border rounded-lg bg-card p-4 space-y-4">
+              {timelines.map((tl) => (
+                <CanvasTimelineBar
+                  key={tl.service}
+                  timeline={tl}
+                  onSlotHover={handleSlotHover}
+                  onSlotLeave={handleSlotLeave}
+                />
+              ))}
+              <TimelineTimeLabels from={data.from} to={data.to} />
+            </div>
+          </div>
+        ))}
+
+        <SharedTooltip
+          visible={tooltipVisible}
+          slot={tooltipSlot}
+          anchor={tooltipAnchor}
+        />
+      </div>
     </div>
   )
 }
