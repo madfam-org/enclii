@@ -8,6 +8,8 @@ data:
   site-url: "https://status.enclii.dev"
   prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
   response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
+  auto-incidents-enabled: "true"
+  auto-incident-threshold: "2"
   # Services to monitor for Enclii Platform + core ecosystem
   services-config: |
     [

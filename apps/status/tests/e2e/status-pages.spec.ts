@@ -193,6 +193,16 @@ test.describe('Status Page Verification', () => {
       console.log('Incidents POST (no auth) status:', response.status());
     });
 
+    test('should return incidents with expected shape', async ({ request }) => {
+      const response = await request.get('https://status.enclii.dev/api/incidents');
+      expect(response.ok()).toBe(true);
+      const data = await response.json();
+      expect(data).toHaveProperty('incidents');
+      expect(data).toHaveProperty('total');
+      expect(Array.isArray(data.incidents)).toBe(true);
+      console.log('Incidents count:', data.total);
+    });
+
     test('should have uptime API endpoint', async ({ request }) => {
       const response = await request.get('https://status.enclii.dev/api/status/uptime?days=7');
       console.log('Uptime API status:', response.status());
@@ -486,6 +496,16 @@ test.describe('Status Page Verification', () => {
       });
       expect(response.status()).toBe(401);
       console.log('Incidents POST (no auth) status:', response.status());
+    });
+
+    test('should return incidents with expected shape', async ({ request }) => {
+      const response = await request.get('https://status.madfam.io/api/incidents');
+      expect(response.ok()).toBe(true);
+      const data = await response.json();
+      expect(data).toHaveProperty('incidents');
+      expect(data).toHaveProperty('total');
+      expect(Array.isArray(data.incidents)).toBe(true);
+      console.log('Incidents count:', data.total);
     });
 
     test('should have uptime API endpoint', async ({ request }) => {

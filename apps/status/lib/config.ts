@@ -127,6 +127,16 @@ export function getRetryDelayMs(): number {
  * Allows per-deployment calibration (e.g. higher for Cloudflare tunnel latency).
  * Expects JSON: {"fast":1500,"normal":2500,"slow":4000}
  */
+/**
+ * Get auto-incident detection config from environment
+ */
+export function getAutoIncidentConfig(): { enabled: boolean; threshold: number } {
+  return {
+    enabled: process.env.AUTO_INCIDENTS_ENABLED !== 'false',
+    threshold: parseInt(process.env.AUTO_INCIDENT_THRESHOLD ?? '2', 10),
+  }
+}
+
 export function getResponseTimeThresholds(): ResponseTimeThresholds {
   const json = process.env.RESPONSE_TIME_THRESHOLDS
   if (json) {
