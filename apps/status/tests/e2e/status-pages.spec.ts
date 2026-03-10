@@ -131,6 +131,32 @@ test.describe('Status Page Verification', () => {
       }
     });
 
+    test('should accept valid window parameter', async ({ request }) => {
+      const response = await request.get('https://status.enclii.dev/api/status/timeline?hours=1&window=30');
+      console.log('Timeline API (window=30) status:', response.status());
+
+      if (response.ok()) {
+        const data = await response.json();
+        expect(data.windowMinutes).toBe(30);
+        // 1 hour / 30 min = 2 slots per service
+        if (data.services.length > 0) {
+          expect(data.services[0].slots.length).toBe(2);
+        }
+        console.log('Timeline window=30 validated, slot count:', data.services[0]?.slots.length);
+      }
+    });
+
+    test('should reject invalid window parameter and fall back to 5', async ({ request }) => {
+      const response = await request.get('https://status.enclii.dev/api/status/timeline?hours=1&window=7');
+      console.log('Timeline API (window=7 invalid) status:', response.status());
+
+      if (response.ok()) {
+        const data = await response.json();
+        expect(data.windowMinutes).toBe(5);
+        console.log('Invalid window=7 correctly fell back to windowMinutes:', data.windowMinutes);
+      }
+    });
+
     test('should reject record endpoint without auth', async ({ request }) => {
       const response = await request.post('https://status.enclii.dev/api/status/record');
       // Should be 401 Unauthorized (no bearer token) or 500 (CRON_SECRET not configured)
@@ -370,6 +396,32 @@ test.describe('Status Page Verification', () => {
             console.log('Timeline: Enclii API href enriched:', encliiApi.href);
           }
         }
+      }
+    });
+
+    test('should accept valid window parameter', async ({ request }) => {
+      const response = await request.get('https://status.madfam.io/api/status/timeline?hours=1&window=60');
+      console.log('Timeline API (window=60) status:', response.status());
+
+      if (response.ok()) {
+        const data = await response.json();
+        expect(data.windowMinutes).toBe(60);
+        // 1 hour / 60 min = 1 slot per service
+        if (data.services.length > 0) {
+          expect(data.services[0].slots.length).toBe(1);
+        }
+        console.log('Timeline window=60 validated');
+      }
+    });
+
+    test('should reject invalid window parameter and fall back to 5', async ({ request }) => {
+      const response = await request.get('https://status.madfam.io/api/status/timeline?hours=1&window=7');
+      console.log('Timeline API (window=7 invalid) status:', response.status());
+
+      if (response.ok()) {
+        const data = await response.json();
+        expect(data.windowMinutes).toBe(5);
+        console.log('Invalid window=7 correctly fell back to windowMinutes:', data.windowMinutes);
       }
     });
 

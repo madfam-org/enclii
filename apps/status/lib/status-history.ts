@@ -204,12 +204,11 @@ function worstStatus(counts: {
 
 /**
  * Get timeline data for all services over the given number of hours.
- * Returns data in 15-minute windows.
+ * Returns data in configurable windows (default 5 minutes).
  */
-export async function getTimeline(hours: number = 24): Promise<TimelineResponse> {
+export async function getTimeline(hours: number = 24, windowMinutes: number = 5): Promise<TimelineResponse> {
   await ensureSchema()
 
-  const windowMinutes = 5
   const now = new Date()
   const from = new Date(now.getTime() - hours * 60 * 60 * 1000)
 

@@ -285,8 +285,8 @@ Access to Dispatch requires BOTH:
 - ✅ `janua` → auth.madfam.io (SSO authentication)
 - ✅ `docs-site` → docs.enclii.dev (documentation)
 - ✅ `landing-page` → enclii.dev (deployed)
-- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline with 5-min windows, Atom feed, incidents API, uptime API, dark/light theme)
-- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline with 5-min windows, Atom feed, incidents API, uptime API, dark/light theme)
+- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, uptime API, dark/light theme)
+- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, uptime API, dark/light theme)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification
