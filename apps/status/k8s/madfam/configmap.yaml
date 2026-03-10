@@ -167,7 +167,8 @@ data:
       },
       {
         "name": "MES API",
-        "url": "https://mes-api.madfam.io",
+        "url": "https://mes-api.madfam.io/health",
+        "href": "https://mes-api.madfam.io",
         "group": "Pravara MES",
         "description": "Manufacturing execution API"
       },
