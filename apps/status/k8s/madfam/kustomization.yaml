@@ -37,7 +37,7 @@ patches:
       - op: add
         path: /spec/template/metadata/annotations
         value:
-          enclii.dev/configmap-version: "2026-03-09-v2"
+          enclii.dev/configmap-version: "2026-03-10-v1"
     target:
       kind: Deployment
       name: status
@@ -71,6 +71,18 @@ patches:
                   configMapKeyRef:
                     name: status-config-madfam
               - name: PROMETHEUS_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: RESPONSE_TIME_THRESHOLDS
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: AUTO_INCIDENTS_ENABLED
+                valueFrom:
+                  configMapKeyRef:
+                    name: status-config-madfam
+              - name: AUTO_INCIDENT_THRESHOLD
                 valueFrom:
                   configMapKeyRef:
                     name: status-config-madfam
