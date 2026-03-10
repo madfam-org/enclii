@@ -142,7 +142,7 @@ Key routes in `cloudflared-unified.yaml`:
 | `dispatch` | enclii | Admin interface |
 | `status-enclii` | enclii | Status page (status.enclii.dev) |
 | `status-madfam` | enclii | Status page (status.madfam.io) |
-| `status-recorder-*` | enclii | CronJob — records status history every 60s |
+| `status-recorder-*` | enclii | CronJob — records status history every 60s + auto-incident detection |
 | `cloudflared` | cloudflare-tunnel | Ingress tunnel |
 
 ### Authentication
@@ -322,7 +322,7 @@ Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Lo
 - [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
 - [packages/sdk-go/](./packages/sdk-go/): Go SDK — API client (`pkg/client/`) and type definitions (`pkg/types/`)
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
-- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + clickable service links (separate `href` for user-facing URL vs health-check `url`)
+- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + auto-incident detection (creates/resolves incidents from consecutive health check failures, `AUTO_INCIDENTS_ENABLED` env var) + clickable service links (separate `href` for user-facing URL vs health-check `url`)
 - [apps/waybill/](./apps/waybill/): Infrastructure cost metering (customer billing via Dhanam)
 - [apps/docs-site/](./apps/docs-site/): Documentation (Docusaurus)
 - [apps/landing/](./apps/landing/): Landing page (Next.js)

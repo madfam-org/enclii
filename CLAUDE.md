@@ -285,8 +285,8 @@ Access to Dispatch requires BOTH:
 - ✅ `janua` → auth.madfam.io (SSO authentication)
 - ✅ `docs-site` → docs.enclii.dev (documentation)
 - ✅ `landing-page` → enclii.dev (deployed)
-- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, uptime API, dark/light theme)
-- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, uptime API, dark/light theme)
+- ✅ `status-page` → status.enclii.dev (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, auto-incident detection, uptime API, dark/light theme)
+- ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, auto-incident detection, uptime API, dark/light theme)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification
@@ -535,6 +535,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
 | Status Atom feed | `apps/status/app/feed.xml/route.ts` |
 | Status incidents API | `apps/status/app/api/incidents/route.ts` (ADMIN_SECRET auth) |
+| Status auto-incidents | `apps/status/lib/auto-incidents.ts` (detects failures → creates/resolves incidents) |
 | Status uptime API | `apps/status/app/api/status/uptime/route.ts` |
 | Status shared config | `apps/status/lib/status-config.ts` (colors, labels, priority, incident config) |
 | Status E2E tests | `apps/status/tests/e2e/status-pages.spec.ts` |

@@ -103,6 +103,19 @@ spec:
               name: status-secrets
               key: admin-secret
               optional: true
+        # Auto-incident detection
+        - name: AUTO_INCIDENTS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: status-config
+              key: auto-incidents-enabled
+              optional: true
+        - name: AUTO_INCIDENT_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: status-config
+              key: auto-incident-threshold
+              optional: true
         securityContext:
           privileged: false
           allowPrivilegeEscalation: false

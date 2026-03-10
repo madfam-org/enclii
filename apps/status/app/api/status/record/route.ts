@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { checkAllServices } from '@/lib/health-checker'
-import { getSiteConfig } from '@/lib/config'
+import { getSiteConfig, getAutoIncidentConfig } from '@/lib/config'
 import {
   recordStatusSnapshot,
   aggregateHourly,
   aggregateDaily,
   pruneOldRecords,
 } from '@/lib/status-history'
+import { detectAndManageIncidents } from '@/lib/auto-incidents'
 
 /**
  * POST /api/status/record
@@ -35,6 +36,13 @@ export async function POST(request: Request) {
     const results = await checkAllServices(config.services)
     const recorded = await recordStatusSnapshot(results)
 
+    // Auto-incident detection
+    let incidents = null
+    const autoConfig = getAutoIncidentConfig()
+    if (autoConfig.enabled) {
+      incidents = await detectAndManageIncidents(results, autoConfig.threshold)
+    }
+
     // Aggregate and prune every ~15 minutes
     const minute = new Date().getMinutes()
     let pruned = null
@@ -47,6 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       recorded,
       services: results.length,
+      ...(incidents && { incidents }),
       ...(pruned && { pruned }),
     })
   } catch (error) {
