@@ -74,7 +74,16 @@ function AuthCallbackContent() {
           throw new Error(errorData.detail || errorData.error_description || "Failed to exchange authorization code");
         }
 
-        const { access_token } = await tokenResponse.json();
+        const tokenData = await tokenResponse.json();
+        const { access_token, expires_in, refresh_token } = tokenData;
+
+        // Store in localStorage so lib/api.ts can use it for API calls
+        const expiresAt = Date.now() + (expires_in || 900) * 1000;
+        localStorage.setItem("enclii_tokens", JSON.stringify({
+          accessToken: access_token,
+          refreshToken: refresh_token || null,
+          expiresAt,
+        }));
 
         // Step 2: Get user data with Bearer header (not cookie-based)
         const meResponse = await fetch(`${JANUA_URL}/api/v1/auth/me`, {

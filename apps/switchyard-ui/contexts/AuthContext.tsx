@@ -176,6 +176,16 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
         }
 
         tokenRef.current = cookieToken;
+
+        // Sync token to localStorage so lib/api.ts can use it for API calls
+        if (!localStorage.getItem(STORAGE_KEYS.TOKENS)) {
+          localStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify({
+            accessToken: cookieToken,
+            refreshToken: null,
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000, // Match cookie maxAge (24h)
+          }));
+        }
+
         setUser({
           id: userData.id || "",
           email: userData.email || "",
