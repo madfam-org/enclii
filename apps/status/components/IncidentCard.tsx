@@ -2,73 +2,16 @@
 
 import { cn } from '@/lib/utils'
 import { formatDateTimeHuman, formatRelativeTime } from '@/lib/utils'
-import type { Incident, IncidentStatus, IncidentSeverity, IncidentUpdate, ScheduledMaintenance } from '@/lib/types'
+import type { Incident, IncidentUpdate, ScheduledMaintenance } from '@/lib/types'
+import { INCIDENT_STATUS_CONFIG, INCIDENT_SEVERITY_CONFIG } from '@/lib/status-config'
 import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle,
   Clock,
-  Eye,
-  Search,
   Wrench,
   Calendar,
   ChevronDown,
+  CheckCircle,
 } from 'lucide-react'
 import { useState } from 'react'
-
-const statusConfig: Record<IncidentStatus, {
-  icon: typeof AlertCircle
-  label: string
-  color: string
-  bgColor: string
-}> = {
-  investigating: {
-    icon: Search,
-    label: 'Investigating',
-    color: 'text-status-outage',
-    bgColor: 'bg-status-outage-muted',
-  },
-  identified: {
-    icon: Eye,
-    label: 'Identified',
-    color: 'text-status-degraded',
-    bgColor: 'bg-status-degraded-muted',
-  },
-  monitoring: {
-    icon: Clock,
-    label: 'Monitoring',
-    color: 'text-status-maintenance',
-    bgColor: 'bg-status-maintenance-muted',
-  },
-  resolved: {
-    icon: CheckCircle,
-    label: 'Resolved',
-    color: 'text-status-operational',
-    bgColor: 'bg-status-operational-muted',
-  },
-}
-
-const severityConfig: Record<IncidentSeverity, {
-  icon: typeof AlertCircle
-  label: string
-  color: string
-}> = {
-  minor: {
-    icon: AlertCircle,
-    label: 'Minor',
-    color: 'text-status-degraded',
-  },
-  major: {
-    icon: AlertTriangle,
-    label: 'Major',
-    color: 'text-status-outage',
-  },
-  critical: {
-    icon: AlertTriangle,
-    label: 'Critical',
-    color: 'text-status-outage',
-  },
-}
 
 interface IncidentCardProps {
   incident: Incident
@@ -77,8 +20,8 @@ interface IncidentCardProps {
 
 export function IncidentCard({ incident, defaultExpanded = false }: IncidentCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
-  const status = statusConfig[incident.status]
-  const severity = severityConfig[incident.severity]
+  const status = INCIDENT_STATUS_CONFIG[incident.status]
+  const severity = INCIDENT_SEVERITY_CONFIG[incident.severity]
   const StatusIcon = status.icon
   const SeverityIcon = severity.icon
 
@@ -159,7 +102,7 @@ interface IncidentUpdateItemProps {
 }
 
 function IncidentUpdateItem({ update, isLast }: IncidentUpdateItemProps) {
-  const status = update.status ? statusConfig[update.status] : null
+  const status = update.status ? INCIDENT_STATUS_CONFIG[update.status] : null
   const Icon = status?.icon || Clock
 
   return (

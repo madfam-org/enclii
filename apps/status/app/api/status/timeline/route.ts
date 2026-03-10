@@ -5,7 +5,7 @@ import { getSiteConfig } from '@/lib/config'
 /**
  * GET /api/status/timeline?hours=24
  *
- * Returns per-service status in 15-minute windows for timeline visualization.
+ * Returns per-service status in 5-minute windows for timeline visualization.
  * Max 168 hours (7 days).
  */
 export async function GET(request: Request) {

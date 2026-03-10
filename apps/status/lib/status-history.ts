@@ -181,7 +181,7 @@ export async function recordStatusSnapshot(
 // -- Timeline Query --
 
 /**
- * Determine the worst status in a window.
+ * Determine the worst status in a window using priority ordering.
  */
 function worstStatus(counts: {
   operational: number
@@ -189,10 +189,16 @@ function worstStatus(counts: {
   outage: number
   maintenance: number
 }): ServiceStatus {
-  if (counts.outage > 0) return 'outage'
-  if (counts.degraded > 0) return 'degraded'
-  if (counts.maintenance > 0) return 'maintenance'
-  if (counts.operational > 0) return 'operational'
+  // Priority order: outage < degraded < maintenance < operational
+  const statusCounts: [ServiceStatus, number][] = [
+    ['outage', counts.outage],
+    ['degraded', counts.degraded],
+    ['maintenance', counts.maintenance],
+    ['operational', counts.operational],
+  ]
+  for (const [status, count] of statusCounts) {
+    if (count > 0) return status
+  }
   return 'unknown'
 }
 
@@ -203,7 +209,7 @@ function worstStatus(counts: {
 export async function getTimeline(hours: number = 24): Promise<TimelineResponse> {
   await ensureSchema()
 
-  const windowMinutes = 15
+  const windowMinutes = 5
   const now = new Date()
   const from = new Date(now.getTime() - hours * 60 * 60 * 1000)
 
@@ -463,4 +469,35 @@ export async function getUptimeSummary(
   }
 
   return parseFloat(res.rows[0].uptime_pct)
+}
+
+/**
+ * Calculate uptime percentages for all services over the given number of days.
+ * Returns a map of service name to uptime percentage.
+ */
+export async function getAllUptimeSummaries(
+  days: number = 7,
+): Promise<{ service: string; uptimePct: number | null }[]> {
+  await ensureSchema()
+
+  const res = await query<{ service: string; uptime_pct: string | null }>(
+    `SELECT
+       service,
+       ROUND(
+         SUM(operational)::numeric / NULLIF(SUM(total_checks), 0) * 100,
+         2
+       ) AS uptime_pct
+     FROM status_daily
+     WHERE day >= NOW() - ($1 || ' days')::interval
+     GROUP BY service
+     ORDER BY service`,
+    [days],
+  )
+
+  if (!res) return []
+
+  return res.rows.map(row => ({
+    service: row.service,
+    uptimePct: row.uptime_pct !== null ? parseFloat(row.uptime_pct) : null,
+  }))
 }

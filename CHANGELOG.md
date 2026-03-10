@@ -11,7 +11,13 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 - ArgoCD network-policies app for GitOps-managed NetworkPolicy enforcement
 - PostHog Helm values, ArgoCD app, Go/frontend SDKs (pending cluster deploy)
 - Vault Helm values, ArgoCD app, ESO ClusterSecretStore (pending cluster deploy)
-- Status page 24h timeline history (PostgreSQL-backed, 15-min aggregation windows)
+- Status page 24h timeline history (PostgreSQL-backed, 5-min aggregation windows)
+- Status page health check retry logic (2 retries with exponential backoff for transient failures)
+- Status page dark/light theme toggle with localStorage persistence and FOUC prevention
+- Status page uptime API endpoint (`GET /api/status/uptime?days=7`)
+- Status page expand/collapse all for service groups with localStorage persistence
+- Status page granular overall status labels ("Some Systems Experiencing Issues", "Partial System Outage", etc.)
+- Status page reduced-motion accessibility support
 - Cluster operations deployment script (`scripts/cluster-ops-deploy.sh`)
 
 ### Fixed
