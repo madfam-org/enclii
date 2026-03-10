@@ -15,6 +15,6 @@ commonLabels:
   app.kubernetes.io/part-of: enclii
 
 images:
-- digest: sha256:1d09920a1968b857dbb090e5e0745b1f90f29dfc1a5efdf0a2a7352267077049
+- digest: sha256:4bfdb4c0549895418020fb1b403b4be55dabb4fc4e67d1910f3af01b90c944ec
   name: ghcr.io/madfam-org/enclii/enclii-status
   newName: ghcr.io/madfam-org/enclii/enclii-status
