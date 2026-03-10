@@ -104,3 +104,21 @@ export function getDatabaseUrl(): string | null {
   return process.env.DATABASE_URL || null
 }
 
+/**
+ * Get health check retry count (default: 2)
+ * Retries reduce false outages from transient Cloudflare tunnel blips.
+ */
+export function getRetryCount(): number {
+  const retries = process.env.HEALTH_CHECK_RETRIES
+  return retries ? parseInt(retries, 10) : 2
+}
+
+/**
+ * Get health check retry delay in ms (default: 1000)
+ * Exponential backoff: baseDelay * 2^attempt
+ */
+export function getRetryDelayMs(): number {
+  const delay = process.env.HEALTH_CHECK_RETRY_DELAY_MS
+  return delay ? parseInt(delay, 10) : 1000
+}
+

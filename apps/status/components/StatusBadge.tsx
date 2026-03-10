@@ -68,34 +68,67 @@ export function StatusBadge({
   )
 }
 
-export function OverallStatusBadge({ status }: { status: ServiceStatus }) {
-  const config = STATUS_CONFIG[status]
+interface OverallStatusBadgeProps {
+  status: ServiceStatus
+  totalServices?: number
+  affectedServices?: number
+}
 
-  const label = status === 'operational' ? 'All Systems Operational' : config.label
+function getOverallLabel(status: ServiceStatus, total?: number, affected?: number): string {
+  if (status === 'operational') return 'All Systems Operational'
+  if (status === 'maintenance') return 'Scheduled Maintenance in Progress'
+
+  const hasContext = total !== undefined && affected !== undefined && total > 0
+  const affectedPct = hasContext ? affected! / total! : 1
+
+  if (status === 'outage') {
+    if (hasContext && affectedPct < 0.5) return 'Partial System Outage'
+    return 'Major System Outage'
+  }
+
+  if (status === 'degraded') {
+    if (hasContext && affectedPct < 0.5) return 'Some Systems Experiencing Issues'
+    return 'Major Performance Issues'
+  }
+
+  return 'Unknown'
+}
+
+export function OverallStatusBadge({ status, totalServices, affectedServices }: OverallStatusBadgeProps) {
+  const config = STATUS_CONFIG[status]
+  const label = getOverallLabel(status, totalServices, affectedServices)
+  const hasContext = totalServices !== undefined && affectedServices !== undefined && affectedServices > 0 && status !== 'operational'
 
   return (
     <div
       role="status"
       aria-label={`Overall status: ${label}`}
       className={cn(
-        'inline-flex items-center gap-3 rounded-lg px-4 py-3',
+        'inline-flex flex-col items-center gap-1 rounded-lg px-4 py-3',
         config.bgClass
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          'size-4 rounded-full',
-          config.dotClass,
-          status === 'operational' && 'animate-pulse-slow'
-        )}
-        style={{
-          boxShadow: `0 0 12px hsl(var(--status-${status}))`,
-        }}
-      />
-      <span className={cn('text-lg font-semibold', config.textClass)}>
-        {label}
-      </span>
+      <div className="inline-flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'size-4 rounded-full',
+            config.dotClass,
+            status === 'operational' && 'animate-pulse-slow'
+          )}
+          style={{
+            boxShadow: `0 0 12px hsl(var(--status-${status}))`,
+          }}
+        />
+        <span className={cn('text-lg font-semibold', config.textClass)}>
+          {label}
+        </span>
+      </div>
+      {hasContext && (
+        <span className="text-xs text-muted-foreground">
+          ({affectedServices} of {totalServices} affected)
+        </span>
+      )}
     </div>
   )
 }

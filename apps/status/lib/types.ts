@@ -188,22 +188,22 @@ export function getResponseTimeStatus(ms: number | null): 'fast' | 'normal' | 's
 }
 
 /**
- * Calculate overall status from service statuses
+ * Calculate overall status from service statuses using STATUS_PRIORITY.
+ * Returns the worst (lowest priority) status found.
  */
 export function calculateOverallStatus(services: HealthCheckResult[]): ServiceStatus {
   if (services.length === 0) return 'unknown'
 
-  const hasOutage = services.some(s => s.status === 'outage')
-  if (hasOutage) return 'outage'
+  // Inline priority to avoid circular dependency with status-config
+  const priority: Record<ServiceStatus, number> = {
+    outage: 0, degraded: 1, maintenance: 2, unknown: 3, operational: 4,
+  }
 
-  const hasDegraded = services.some(s => s.status === 'degraded')
-  if (hasDegraded) return 'degraded'
-
-  const hasMaintenance = services.some(s => s.status === 'maintenance')
-  if (hasMaintenance) return 'maintenance'
-
-  const allOperational = services.every(s => s.status === 'operational')
-  if (allOperational) return 'operational'
-
-  return 'degraded'
+  let worst: ServiceStatus = 'operational'
+  for (const s of services) {
+    if (priority[s.status] < priority[worst]) {
+      worst = s.status
+    }
+  }
+  return worst
 }

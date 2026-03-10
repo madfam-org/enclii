@@ -1,4 +1,18 @@
-import type { ServiceStatus } from './types'
+import type { ServiceStatus, IncidentStatus, IncidentSeverity } from './types'
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Eye,
+  Search,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+/**
+ * Response time status type
+ */
+export type ResponseTimeStatus = 'fast' | 'normal' | 'slow' | 'critical' | 'unknown'
 
 /**
  * Shared status color classes for bar/dot rendering
@@ -75,4 +89,108 @@ export function groupByKey<T>(items: T[], keyFn: (item: T) => string): Map<strin
     groups.set(key, list)
   }
   return groups
+}
+
+/**
+ * Status priority for determining worst status (lower = worse)
+ */
+export const STATUS_PRIORITY: Record<ServiceStatus, number> = {
+  outage: 0,
+  degraded: 1,
+  maintenance: 2,
+  unknown: 3,
+  operational: 4,
+}
+
+/**
+ * Response time color classes (text)
+ */
+export const RESPONSE_TIME_COLORS: Record<ResponseTimeStatus, string> = {
+  fast: 'text-status-operational',
+  normal: 'text-status-degraded',
+  slow: 'text-status-degraded',
+  critical: 'text-status-outage',
+  unknown: 'text-muted-foreground',
+}
+
+/**
+ * Response time labels
+ */
+export const RESPONSE_TIME_LABELS: Record<ResponseTimeStatus, string> = {
+  fast: 'Fast',
+  normal: 'Normal',
+  slow: 'Slow',
+  critical: 'Very Slow',
+  unknown: 'Unknown',
+}
+
+/**
+ * Response time bar background colors
+ */
+export const RESPONSE_TIME_BAR_COLORS: Record<ResponseTimeStatus, string> = {
+  fast: 'bg-status-operational',
+  normal: 'bg-status-degraded',
+  slow: 'bg-status-degraded',
+  critical: 'bg-status-outage',
+  unknown: 'bg-muted',
+}
+
+/**
+ * Incident status config (icon, label, colors)
+ */
+export const INCIDENT_STATUS_CONFIG: Record<IncidentStatus, {
+  icon: LucideIcon
+  label: string
+  color: string
+  bgColor: string
+}> = {
+  investigating: {
+    icon: Search,
+    label: 'Investigating',
+    color: 'text-status-outage',
+    bgColor: 'bg-status-outage-muted',
+  },
+  identified: {
+    icon: Eye,
+    label: 'Identified',
+    color: 'text-status-degraded',
+    bgColor: 'bg-status-degraded-muted',
+  },
+  monitoring: {
+    icon: Clock,
+    label: 'Monitoring',
+    color: 'text-status-maintenance',
+    bgColor: 'bg-status-maintenance-muted',
+  },
+  resolved: {
+    icon: CheckCircle,
+    label: 'Resolved',
+    color: 'text-status-operational',
+    bgColor: 'bg-status-operational-muted',
+  },
+}
+
+/**
+ * Incident severity config (icon, label, color)
+ */
+export const INCIDENT_SEVERITY_CONFIG: Record<IncidentSeverity, {
+  icon: LucideIcon
+  label: string
+  color: string
+}> = {
+  minor: {
+    icon: AlertCircle,
+    label: 'Minor',
+    color: 'text-status-degraded',
+  },
+  major: {
+    icon: AlertTriangle,
+    label: 'Major',
+    color: 'text-status-outage',
+  },
+  critical: {
+    icon: AlertTriangle,
+    label: 'Critical',
+    color: 'text-status-outage',
+  },
 }

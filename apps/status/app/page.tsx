@@ -56,6 +56,7 @@ function StatusSkeleton() {
 async function StatusContent() {
   const { services, uptimeData, hasPrometheus } = await getStatusData()
   const overallStatus = calculateOverallStatus(services)
+  const affectedCount = services.filter(s => s.status !== 'operational').length
   const activeIncidents = await fetchActiveIncidents()
   const scheduledMaintenance = await getActiveMaintenances()
   const lastUpdated = new Date().toISOString()
@@ -64,7 +65,11 @@ async function StatusContent() {
     <div className="space-y-8" aria-live="polite">
       {/* Overall Status */}
       <section className="text-center">
-        <OverallStatusBadge status={overallStatus} />
+        <OverallStatusBadge
+          status={overallStatus}
+          totalServices={services.length}
+          affectedServices={affectedCount}
+        />
         <p className="text-sm text-muted-foreground mt-3 flex items-center justify-center gap-2">
           <Clock className="size-3.5" />
           Last updated: {new Date(lastUpdated).toLocaleTimeString()}

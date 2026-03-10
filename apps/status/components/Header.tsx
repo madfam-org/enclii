@@ -5,6 +5,7 @@ import { Activity, Menu, X, History, Home, Rss } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import { ThemeToggle } from './ThemeToggle'
 
 interface HeaderProps {
   siteName: string
@@ -57,6 +58,7 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
             >
               <Rss className="size-4" />
             </Link>
+            <ThemeToggle />
           </nav>
 
           {/* Mobile Menu Button */}
@@ -95,6 +97,9 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
                 {label}
               </Link>
             ))}
+            <div className="px-3 py-2">
+              <ThemeToggle />
+            </div>
           </nav>
         )}
       </div>
@@ -122,7 +127,7 @@ export function Footer({ siteName }: { siteName: string }) {
               <Rss className="size-3.5" />
               <span>RSS</span>
             </Link>
-            <span>&copy; {currentYear} MADFAM. All rights reserved.</span>
+            <span>&copy; {currentYear} {siteName.replace(/ Status$/, '')}. All rights reserved.</span>
           </div>
         </div>
       </div>

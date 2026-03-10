@@ -43,7 +43,7 @@ function TimelineBar({ timeline }: TimelineBarProps) {
           {uptime24h.toFixed(2)}%
         </span>
       </div>
-      <div className="flex gap-[1px] h-6">
+      <div className="flex gap-px h-6">
         {slots.map((slot, index) => (
           <SlotCell key={slot.start} slot={slot} index={index} total={slots.length} />
         ))}
@@ -231,7 +231,12 @@ export function Timeline() {
   const groups = groupByKey(data.services, (s) => s.group)
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      role="region"
+      aria-label="24-Hour Status Timeline"
+      aria-busy={loading}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity className="size-5 text-muted-foreground" />

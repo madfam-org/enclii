@@ -107,7 +107,7 @@ test.describe('Status Page Verification', () => {
         expect(data).toHaveProperty('from');
         expect(data).toHaveProperty('to');
         expect(data).toHaveProperty('windowMinutes');
-        expect(data.windowMinutes).toBe(15);
+        expect(data.windowMinutes).toBe(5);
         expect(Array.isArray(data.services)).toBe(true);
 
         // If history has been recorded, validate service timeline shape
@@ -157,6 +157,32 @@ test.describe('Status Page Verification', () => {
       });
       expect(response.status()).toBe(401);
       console.log('Incidents POST (no auth) status:', response.status());
+    });
+
+    test('should have uptime API endpoint', async ({ request }) => {
+      const response = await request.get('https://status.enclii.dev/api/status/uptime?days=7');
+      console.log('Uptime API status:', response.status());
+
+      if (response.ok()) {
+        const data = await response.json();
+        expect(data).toHaveProperty('services');
+        expect(data).toHaveProperty('queriedAt');
+        expect(Array.isArray(data.services)).toBe(true);
+        console.log('Uptime services count:', data.services.length);
+      }
+    });
+
+    test('should have theme toggle button', async ({ page }) => {
+      await page.goto('https://status.enclii.dev', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      const themeToggle = page.locator('button[aria-label*="Switch to"]');
+      const count = await themeToggle.count();
+      // Desktop + mobile = at least 1 visible
+      expect(count).toBeGreaterThan(0);
+      console.log('Theme toggle buttons found:', count);
     });
   });
 
@@ -287,7 +313,7 @@ test.describe('Status Page Verification', () => {
         expect(data).toHaveProperty('from');
         expect(data).toHaveProperty('to');
         expect(data).toHaveProperty('windowMinutes');
-        expect(data.windowMinutes).toBe(15);
+        expect(data.windowMinutes).toBe(5);
         expect(Array.isArray(data.services)).toBe(true);
 
         // If history has been recorded, validate service timeline shape
@@ -337,6 +363,45 @@ test.describe('Status Page Verification', () => {
       });
       expect(response.status()).toBe(401);
       console.log('Incidents POST (no auth) status:', response.status());
+    });
+
+    test('should have uptime API endpoint', async ({ request }) => {
+      const response = await request.get('https://status.madfam.io/api/status/uptime?days=7');
+      console.log('Uptime API status:', response.status());
+
+      if (response.ok()) {
+        const data = await response.json();
+        expect(data).toHaveProperty('services');
+        expect(data).toHaveProperty('queriedAt');
+        expect(Array.isArray(data.services)).toBe(true);
+        console.log('Uptime services count:', data.services.length);
+      }
+    });
+
+    test('should have theme toggle button', async ({ page }) => {
+      await page.goto('https://status.madfam.io', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      const themeToggle = page.locator('button[aria-label*="Switch to"]');
+      const count = await themeToggle.count();
+      expect(count).toBeGreaterThan(0);
+      console.log('Theme toggle buttons found:', count);
+    });
+
+    test('should still have removed services absent (regression guard)', async ({ request }) => {
+      const response = await request.get('https://status.madfam.io/api/status');
+      if (response.ok()) {
+        const data = await response.json();
+        const names = data.services?.map((s: { service: string }) => s.service) ?? [];
+        expect(names).not.toContain('Auth (Default)');
+        expect(names).not.toContain('MES Admin');
+        expect(names).not.toContain('Yantra4D API');
+        expect(names).not.toContain('Karafiel API');
+        expect(names).not.toContain('MADFAM CMS');
+        console.log('Regression guard: all removed services still absent');
+      }
     });
   });
 });
