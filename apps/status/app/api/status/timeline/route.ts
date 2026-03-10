@@ -18,20 +18,23 @@ export async function GET(request: Request) {
 
     const timeline = await getTimeline(hours)
 
-    // Enrich timeline services with href from config (href is not stored in DB)
+    // Enrich timeline services with href and filter out stale DB entries
+    // whose service names no longer match the current configmap.
     const config = getSiteConfig()
+    const configNames = new Set(config.services.map(s => s.name))
     const hrefMap = new Map<string, string>()
     for (const svc of config.services) {
       if (svc.href) {
         hrefMap.set(svc.name, svc.href)
       }
     }
-    for (const svc of timeline.services) {
+
+    timeline.services = timeline.services.filter(svc => {
+      if (!configNames.has(svc.service)) return false
       const href = hrefMap.get(svc.service)
-      if (href) {
-        svc.href = href
-      }
-    }
+      if (href) svc.href = href
+      return true
+    })
 
     return NextResponse.json(timeline, {
       headers: {
