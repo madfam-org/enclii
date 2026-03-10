@@ -21,6 +21,30 @@ spec:
       ruleNames:
         - autogen-validate-registries
         - validate-registries
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: disallow-host-namespaces
+      ruleNames:
+        - host-namespaces
+        - autogen-host-namespaces
+    - policyName: disallow-host-path
+      ruleNames:
+        - host-path
+        - autogen-host-path
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
+    - policyName: require-health-probes
+      ruleNames:
+        - require-liveness-probe
+        - require-readiness-probe
+    - policyName: verify-image-signatures
+      ruleNames:
+        - verify-image
+        - autogen-verify-image
   match:
     any:
       - resources:
@@ -30,3 +54,5 @@ spec:
             - Deployment
             - StatefulSet
             - Pod
+            - ReplicaSet
+            - Job
