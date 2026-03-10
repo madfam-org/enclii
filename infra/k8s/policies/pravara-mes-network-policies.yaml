@@ -221,7 +221,8 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: centrifugo
+      app.kubernetes.io/name: centrifugo
+      app.kubernetes.io/part-of: pravara-mes
   policyTypes:
     - Ingress
   ingress:
@@ -291,7 +292,8 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app: centrifugo
+              app.kubernetes.io/name: centrifugo
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 8000
