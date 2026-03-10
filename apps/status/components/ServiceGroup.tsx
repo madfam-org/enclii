@@ -25,6 +25,8 @@ export function ServiceGroup({
 }: ServiceGroupProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const groupStatus = calculateOverallStatus(services)
+  const operationalCount = services.filter(s => s.status === 'operational').length
+  const operationalPct = Math.round((operationalCount / services.length) * 100)
 
   return (
     <div className="border border-border rounded-lg bg-card/50 overflow-hidden">
@@ -42,6 +44,16 @@ export function ServiceGroup({
           <h2 className="text-lg font-semibold">{name}</h2>
           <span className="text-sm text-muted-foreground">
             ({services.length} {services.length === 1 ? 'service' : 'services'})
+          </span>
+          <span className={cn(
+            'text-xs font-mono',
+            operationalPct === 100
+              ? 'text-status-operational'
+              : operationalPct >= 75
+                ? 'text-status-degraded'
+                : 'text-status-outage',
+          )}>
+            {operationalPct}% operational
           </span>
         </div>
         <ChevronDown

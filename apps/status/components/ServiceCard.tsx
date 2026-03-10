@@ -5,7 +5,7 @@ import { StatusBadge } from './StatusBadge'
 import { ResponseTime, ResponseTimeBar } from './ResponseTime'
 import { UptimeBar, UptimeStats } from './UptimeBar'
 import type { HealthCheckResult, UptimeData } from '@/lib/types'
-import { formatRelativeTime } from '@/lib/utils'
+import { formatRelativeTime, formatResponseTime } from '@/lib/utils'
 import { ExternalLink, Clock, AlertCircle } from 'lucide-react'
 
 interface ServiceCardProps {
@@ -61,7 +61,14 @@ export function ServiceCard({
             {new URL(service.href || service.url).hostname}
           </p>
         </div>
-        <StatusBadge status={service.status} size="sm" />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {service.responseTime !== null && (
+            <span className="text-xs font-mono text-muted-foreground">
+              {formatResponseTime(service.responseTime)}
+            </span>
+          )}
+          <StatusBadge status={service.status} size="sm" />
+        </div>
       </div>
 
       {/* Response Time */}
