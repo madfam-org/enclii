@@ -63,6 +63,13 @@ spec:
             configMapKeyRef:
               name: status-config
               key: services-config
+        # Response time thresholds for visualization (JSON)
+        - name: RESPONSE_TIME_THRESHOLDS
+          valueFrom:
+            configMapKeyRef:
+              name: status-config
+              key: response-time-thresholds
+              optional: true
         # Health check configuration
         - name: HEALTH_CHECK_TIMEOUT_MS
           value: "10000"

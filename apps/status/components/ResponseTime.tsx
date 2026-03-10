@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { formatResponseTime } from '@/lib/utils'
-import { getResponseTimeStatus } from '@/lib/types'
+import { getResponseTimeStatus, type ResponseTimeThresholds } from '@/lib/types'
 import {
   RESPONSE_TIME_COLORS,
   RESPONSE_TIME_LABELS,
@@ -13,10 +13,11 @@ interface ResponseTimeProps {
   ms: number | null
   showLabel?: boolean
   size?: 'sm' | 'md'
+  thresholds?: ResponseTimeThresholds
 }
 
-export function ResponseTime({ ms, showLabel = false, size = 'md' }: ResponseTimeProps) {
-  const status = getResponseTimeStatus(ms)
+export function ResponseTime({ ms, showLabel = false, size = 'md', thresholds }: ResponseTimeProps) {
+  const status = getResponseTimeStatus(ms, thresholds)
   const formatted = formatResponseTime(ms)
 
   return (
@@ -38,10 +39,11 @@ export function ResponseTime({ ms, showLabel = false, size = 'md' }: ResponseTim
 interface ResponseTimeBarProps {
   ms: number | null
   maxMs?: number
+  thresholds?: ResponseTimeThresholds
 }
 
-export function ResponseTimeBar({ ms, maxMs = 1000 }: ResponseTimeBarProps) {
-  const status = getResponseTimeStatus(ms)
+export function ResponseTimeBar({ ms, maxMs = 5000, thresholds }: ResponseTimeBarProps) {
+  const status = getResponseTimeStatus(ms, thresholds)
   const percentage = ms ? Math.min((ms / maxMs) * 100, 100) : 0
 
   return (

@@ -1,4 +1,4 @@
-import type { ServiceConfig, SiteConfig } from './types'
+import type { ServiceConfig, SiteConfig, ResponseTimeThresholds } from './types'
 
 /**
  * Default services for Enclii status page
@@ -120,5 +120,18 @@ export function getRetryCount(): number {
 export function getRetryDelayMs(): number {
   const delay = process.env.HEALTH_CHECK_RETRY_DELAY_MS
   return delay ? parseInt(delay, 10) : 1000
+}
+
+/**
+ * Get response time thresholds from environment.
+ * Allows per-deployment calibration (e.g. higher for Cloudflare tunnel latency).
+ * Expects JSON: {"fast":1500,"normal":2500,"slow":4000}
+ */
+export function getResponseTimeThresholds(): ResponseTimeThresholds {
+  const json = process.env.RESPONSE_TIME_THRESHOLDS
+  if (json) {
+    try { return JSON.parse(json) } catch { /* fall through */ }
+  }
+  return { fast: 200, normal: 500, slow: 1000 }
 }
 

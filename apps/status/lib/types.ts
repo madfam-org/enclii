@@ -62,6 +62,15 @@ export interface DayStatus {
 }
 
 /**
+ * Response time thresholds (configurable per deployment)
+ */
+export interface ResponseTimeThresholds {
+  fast: number
+  normal: number
+  slow: number
+}
+
+/**
  * Aggregated status response
  */
 export interface StatusResponse {
@@ -69,6 +78,7 @@ export interface StatusResponse {
   lastUpdated: string
   services: HealthCheckResult[]
   uptimeData?: Record<string, UptimeData>
+  responseTimeThresholds?: ResponseTimeThresholds
 }
 
 /**
@@ -177,13 +187,17 @@ export const RESPONSE_TIME_THRESHOLDS = {
 } as const
 
 /**
- * Get status from response time
+ * Get status from response time.
+ * Accepts optional thresholds to support deployment-specific calibration.
  */
-export function getResponseTimeStatus(ms: number | null): 'fast' | 'normal' | 'slow' | 'critical' | 'unknown' {
+export function getResponseTimeStatus(
+  ms: number | null,
+  thresholds: ResponseTimeThresholds = RESPONSE_TIME_THRESHOLDS
+): 'fast' | 'normal' | 'slow' | 'critical' | 'unknown' {
   if (ms === null) return 'unknown'
-  if (ms < RESPONSE_TIME_THRESHOLDS.fast) return 'fast'
-  if (ms < RESPONSE_TIME_THRESHOLDS.normal) return 'normal'
-  if (ms < RESPONSE_TIME_THRESHOLDS.slow) return 'slow'
+  if (ms < thresholds.fast) return 'fast'
+  if (ms < thresholds.normal) return 'normal'
+  if (ms < thresholds.slow) return 'slow'
   return 'critical'
 }
 

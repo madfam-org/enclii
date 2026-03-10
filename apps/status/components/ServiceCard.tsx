@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
 import { ResponseTime, ResponseTimeBar } from './ResponseTime'
 import { UptimeBar, UptimeStats } from './UptimeBar'
-import type { HealthCheckResult, UptimeData } from '@/lib/types'
+import type { HealthCheckResult, UptimeData, ResponseTimeThresholds } from '@/lib/types'
 import { formatRelativeTime, formatResponseTime } from '@/lib/utils'
 import { ExternalLink, Clock, AlertCircle } from 'lucide-react'
 
@@ -13,6 +13,8 @@ interface ServiceCardProps {
   uptimeData?: UptimeData
   showDetails?: boolean
   showUptime?: boolean
+  thresholds?: ResponseTimeThresholds
+  maxResponseTime?: number
 }
 
 export function ServiceCard({
@@ -20,6 +22,8 @@ export function ServiceCard({
   uptimeData,
   showDetails = true,
   showUptime = true,
+  thresholds,
+  maxResponseTime,
 }: ServiceCardProps) {
   const hasError = service.status === 'outage' || service.status === 'degraded'
 
@@ -62,6 +66,18 @@ export function ServiceCard({
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {service.statusCode && (
+            <span className={cn(
+              'text-xs font-mono px-1.5 py-0.5 rounded hidden sm:inline',
+              service.statusCode >= 200 && service.statusCode < 300
+                ? 'text-status-operational bg-status-operational-muted'
+                : service.statusCode >= 400
+                  ? 'text-status-outage bg-status-outage-muted'
+                  : 'text-muted-foreground bg-muted'
+            )}>
+              {service.statusCode}
+            </span>
+          )}
           {service.responseTime !== null && (
             <span className="text-xs font-mono text-muted-foreground hidden sm:inline">
               {formatResponseTime(service.responseTime)}
@@ -74,7 +90,7 @@ export function ServiceCard({
       {/* Response Time */}
       {showDetails && (
         <div className="mt-4">
-          <ResponseTimeBar ms={service.responseTime} />
+          <ResponseTimeBar ms={service.responseTime} maxMs={maxResponseTime} thresholds={thresholds} />
         </div>
       )}
 
@@ -114,9 +130,10 @@ export function ServiceCard({
 
 interface ServiceCardCompactProps {
   service: HealthCheckResult
+  thresholds?: ResponseTimeThresholds
 }
 
-export function ServiceCardCompact({ service }: ServiceCardCompactProps) {
+export function ServiceCardCompact({ service, thresholds }: ServiceCardCompactProps) {
   return (
     <div className="flex items-center justify-between gap-2 py-3 border-b border-border last:border-0">
       <div className="flex items-center gap-3 min-w-0">
@@ -135,7 +152,7 @@ export function ServiceCardCompact({ service }: ServiceCardCompactProps) {
           )}
         </div>
       </div>
-      <ResponseTime ms={service.responseTime} size="sm" />
+      <ResponseTime ms={service.responseTime} size="sm" thresholds={thresholds} />
     </div>
   )
 }

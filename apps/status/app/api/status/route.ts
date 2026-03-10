@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { checkAllServices } from '@/lib/health-checker'
 import { getAllServicesUptime, isPrometheusAvailable } from '@/lib/prometheus'
-import { getSiteConfig } from '@/lib/config'
+import { getSiteConfig, getResponseTimeThresholds } from '@/lib/config'
 import { calculateOverallStatus } from '@/lib/types'
 import type { StatusResponse } from '@/lib/types'
 
@@ -39,6 +39,7 @@ export async function GET() {
       lastUpdated: new Date().toISOString(),
       services,
       uptimeData,
+      responseTimeThresholds: getResponseTimeThresholds(),
     }
 
     return NextResponse.json(response, {

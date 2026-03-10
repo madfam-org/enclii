@@ -7,6 +7,7 @@ data:
   site-name: "MADFAM System Status"
   site-url: "https://status.madfam.io"
   prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
+  response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
   # Services to monitor for MADFAM Ecosystem (all projects)
   # NOTE: Only services with working health endpoints are monitored.
   # Services without /health endpoints (Yantra4D API, Karafiel API, MADFAM CMS)

@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils'
 import { ServiceCard, ServiceCardCompact } from './ServiceCard'
 import { StatusBadge } from './StatusBadge'
-import type { HealthCheckResult, UptimeData, ServiceStatus } from '@/lib/types'
+import type { HealthCheckResult, UptimeData, ServiceStatus, ResponseTimeThresholds } from '@/lib/types'
 import { calculateOverallStatus } from '@/lib/types'
 import { STATUS_PRIORITY } from '@/lib/status-config'
 import { ChevronDown, ChevronsUpDown } from 'lucide-react'
@@ -32,6 +32,8 @@ interface ServiceGroupProps {
   isExpanded: boolean
   onToggle: () => void
   variant?: 'card' | 'compact'
+  thresholds?: ResponseTimeThresholds
+  maxResponseTime?: number
 }
 
 export function ServiceGroup({
@@ -41,6 +43,8 @@ export function ServiceGroup({
   isExpanded,
   onToggle,
   variant = 'card',
+  thresholds,
+  maxResponseTime,
 }: ServiceGroupProps) {
   const groupStatus = calculateOverallStatus(services)
   const operationalCount = services.filter(s => s.status === 'operational').length
@@ -100,11 +104,14 @@ export function ServiceGroup({
                 service={service}
                 uptimeData={uptimeData?.[service.service]}
                 showUptime={!!uptimeData}
+                thresholds={thresholds}
+                maxResponseTime={maxResponseTime}
               />
             ) : (
               <ServiceCardCompact
                 key={service.url}
                 service={service}
+                thresholds={thresholds}
               />
             )
           ))}
@@ -119,6 +126,7 @@ interface ServiceListProps {
   uptimeData?: Record<string, UptimeData>
   groupBy?: 'group' | 'status' | 'none'
   variant?: 'card' | 'compact'
+  thresholds?: ResponseTimeThresholds
 }
 
 export function ServiceList({
@@ -126,7 +134,9 @@ export function ServiceList({
   uptimeData,
   groupBy = 'group',
   variant = 'card',
+  thresholds,
 }: ServiceListProps) {
+  const maxResponseTime = Math.max(...services.map(s => s.responseTime ?? 0), 1) * 1.2
   if (groupBy === 'none') {
     return (
       <div className={cn(
@@ -141,11 +151,14 @@ export function ServiceList({
               service={service}
               uptimeData={uptimeData?.[service.service]}
               showUptime={!!uptimeData}
+              thresholds={thresholds}
+              maxResponseTime={maxResponseTime}
             />
           ) : (
             <ServiceCardCompact
               key={service.url}
               service={service}
+              thresholds={thresholds}
             />
           )
         ))}
@@ -233,6 +246,8 @@ export function ServiceList({
           variant={variant}
           isExpanded={isExpanded(groupName)}
           onToggle={() => toggleGroup(groupName)}
+          thresholds={thresholds}
+          maxResponseTime={maxResponseTime}
         />
       ))}
     </div>

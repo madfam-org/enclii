@@ -6,7 +6,7 @@ import { ScheduledMaintenanceCard, IncidentCard } from '@/components/IncidentCar
 import { Timeline } from '@/components/Timeline'
 import { checkAllServices } from '@/lib/health-checker'
 import { getAllServicesUptime, isPrometheusAvailable } from '@/lib/prometheus'
-import { getSiteConfig } from '@/lib/config'
+import { getSiteConfig, getResponseTimeThresholds } from '@/lib/config'
 import { getActiveIncidents as fetchActiveIncidents, getActiveMaintenances } from '@/lib/incidents'
 import { calculateOverallStatus } from '@/lib/types'
 import type { HealthCheckResult, UptimeData } from '@/lib/types'
@@ -56,6 +56,7 @@ function StatusSkeleton() {
 async function StatusContent() {
   const { services, uptimeData, hasPrometheus } = await getStatusData()
   const overallStatus = calculateOverallStatus(services)
+  const thresholds = getResponseTimeThresholds()
   const affectedCount = services.filter(s => s.status !== 'operational').length
   const activeIncidents = await fetchActiveIncidents()
   const scheduledMaintenance = await getActiveMaintenances()
@@ -117,6 +118,7 @@ async function StatusContent() {
           uptimeData={uptimeData || undefined}
           groupBy="group"
           variant="card"
+          thresholds={thresholds}
         />
       </section>
 

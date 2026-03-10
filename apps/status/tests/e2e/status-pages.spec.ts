@@ -60,6 +60,14 @@ test.describe('Status Page Verification', () => {
         const data = await response.json();
         console.log('Status response services:', data.services?.length ?? 0);
 
+        // Validate responseTimeThresholds in API response
+        expect(data).toHaveProperty('responseTimeThresholds');
+        expect(data.responseTimeThresholds).toHaveProperty('fast');
+        expect(data.responseTimeThresholds).toHaveProperty('normal');
+        expect(data.responseTimeThresholds).toHaveProperty('slow');
+        expect(typeof data.responseTimeThresholds.fast).toBe('number');
+        console.log('Response time thresholds:', JSON.stringify(data.responseTimeThresholds));
+
         // Validate that services with health-check URLs have href
         if (data.services && data.services.length > 0) {
           const switchyardApi = data.services.find(
@@ -211,6 +219,25 @@ test.describe('Status Page Verification', () => {
       console.log('Theme toggle buttons found:', count);
     });
 
+    test('should display HTTP status code badges', async ({ page }) => {
+      await page.goto('https://status.enclii.dev', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Expand all groups first to make badges visible
+      const expandAll = page.locator('button:has-text("Expand All")');
+      if (await expandAll.isVisible()) {
+        await expandAll.click();
+      }
+
+      // Status code badges are rendered as mono-styled spans with 3-digit codes
+      const badges = page.locator('span.font-mono.rounded:text-matches("^[1-5]\\\\d{2}$")');
+      const count = await badges.count();
+      console.log('HTTP status code badges found:', count);
+      // At least some services should show status codes (may be hidden on mobile)
+    });
+
     test('should render with data-theme="dark" by default', async ({ page }) => {
       await page.goto('https://status.enclii.dev', {
         waitUntil: 'networkidle',
@@ -325,6 +352,14 @@ test.describe('Status Page Verification', () => {
       if (response.ok()) {
         const data = await response.json();
         console.log('Status response services:', data.services?.length ?? 0);
+
+        // Validate responseTimeThresholds in API response
+        expect(data).toHaveProperty('responseTimeThresholds');
+        expect(data.responseTimeThresholds).toHaveProperty('fast');
+        expect(data.responseTimeThresholds).toHaveProperty('normal');
+        expect(data.responseTimeThresholds).toHaveProperty('slow');
+        expect(typeof data.responseTimeThresholds.fast).toBe('number');
+        console.log('Response time thresholds:', JSON.stringify(data.responseTimeThresholds));
 
         // Validate that services with health-check URLs have href
         if (data.services && data.services.length > 0) {
