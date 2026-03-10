@@ -68,6 +68,9 @@ spec:
           value: "https://auth.madfam.io/.well-known/jwks.json"
         - name: ENCLII_EXTERNAL_ISSUER
           value: "https://auth.madfam.io"
+        # Janua JWT audience claim (matches Janua's JWT_AUDIENCE default)
+        - name: ENCLII_JANUA_AUDIENCE
+          value: "janua.dev"
         # Admin email mapping for OIDC providers that don't include roles in JWT
         - name: ENCLII_ADMIN_EMAILS
           value: "admin@madfam.io"
