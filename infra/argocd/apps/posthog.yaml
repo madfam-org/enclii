@@ -115,11 +115,7 @@ spec:
           enabled: false
 
         pgbouncer:
-          enabled: true
-          replicaCount: 1
-          image:
-            repository: docker.io/edoburu/pgbouncer
-            tag: "v1.25.1-p0"
+          enabled: false
 
         externalPostgresql:
           postgresqlHost: postgres.data.svc.cluster.local

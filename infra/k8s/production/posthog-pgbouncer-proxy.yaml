@@ -1,0 +1,33 @@
+# Stub PgBouncer service for PostHog
+# PostHog's init containers expect posthog-pgbouncer:6432 to be available.
+# Since bitnami/pgbouncer images were removed from Docker Hub, this Service+Endpoints
+# pair routes PgBouncer traffic directly to the shared PostgreSQL instance.
+# PostHog connects directly to Postgres without connection pooling.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: posthog-pgbouncer
+  namespace: posthog
+  labels:
+    app: posthog-pgbouncer
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6432
+      targetPort: 5432
+      protocol: TCP
+      name: postgresql
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: posthog-pgbouncer
+  namespace: posthog
+subsets:
+  - addresses:
+      - ip: 10.43.123.52  # postgres.data.svc.cluster.local ClusterIP
+    ports:
+      - port: 5432
+        protocol: TCP
+        name: postgresql
