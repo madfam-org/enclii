@@ -10,7 +10,10 @@
 #           mes-mqtt-bridge (MQTT bridge for IoT devices),
 #           inference-service (ML inference),
 #           mes-ha-bridge (Home Assistant bridge).
-# Backend services connect to PostgreSQL + Redis in data namespace.
+# Infrastructure pods (in-namespace): postgres-pravara (StatefulSet :5432),
+#   redis-pravara (Deployment :6379), emqx (MQTT broker :1883),
+#   centrifugo (WebSocket gateway :8000).
+# All database/cache/broker traffic is INTRA-NAMESPACE (not data namespace).
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
 
@@ -43,6 +46,10 @@ spec:
   podSelector: {}
   policyTypes:
     - Egress
+
+# =============================================================================
+# Ingress: Cloudflare tunnel -> application pods
+# =============================================================================
 
 # Allow Cloudflare tunnel -> pravara-ui (mes.madfam.io)
 ---
@@ -119,7 +126,121 @@ spec:
         - protocol: TCP
           port: 8000
 
-# Allow pravara-api egress (DNS + HTTPS + PostgreSQL + Redis)
+# =============================================================================
+# Ingress: In-namespace infrastructure pods (postgres, redis, emqx, centrifugo)
+# =============================================================================
+
+# Allow app pods -> postgres-pravara:5432 (in-namespace)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-pravara-ingress
+  namespace: pravara-mes
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/part-of: pravara-mes
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: pravara-mes
+      ports:
+        - protocol: TCP
+          port: 5432
+
+# Allow app pods -> redis-pravara:6379 (in-namespace)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-pravara-ingress
+  namespace: pravara-mes
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/part-of: pravara-mes
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: pravara-mes
+      ports:
+        - protocol: TCP
+          port: 6379
+
+# Allow app pods -> emqx:1883 (MQTT broker, in-namespace)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: emqx-pravara-ingress
+  namespace: pravara-mes
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: emqx
+      app.kubernetes.io/part-of: pravara-mes
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: pravara-mes
+      ports:
+        - protocol: TCP
+          port: 1883
+
+# Allow app pods + Cloudflare tunnel -> centrifugo:8000 (WebSocket gateway, in-namespace)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: centrifugo-ingress
+  namespace: pravara-mes
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: centrifugo
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: pravara-mes
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 8000
+
+# =============================================================================
+# Egress: Application pods
+# =============================================================================
+
+# Allow pravara-api egress (DNS + HTTPS + local PostgreSQL + local Redis + Centrifugo)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -148,28 +269,32 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
-    # Redis in data namespace
+    # Redis in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: redis
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 6379
+    # Centrifugo in pravara-mes namespace (real-time push)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: centrifugo
+      ports:
+        - protocol: TCP
+          port: 8000
 
 # Allow pravara-ui egress (DNS + HTTPS for SSR API calls)
 ---
@@ -201,7 +326,7 @@ spec:
         - protocol: TCP
           port: 443
 
-# Allow pravara-gateway egress (DNS + HTTPS + PostgreSQL + Redis)
+# Allow pravara-gateway egress (DNS + HTTPS + local PostgreSQL + local Redis)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -230,30 +355,26 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
-    # Redis in data namespace
+    # Redis in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: redis
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 6379
 
-# Allow pravara-worker egress (DNS + HTTPS + PostgreSQL + Redis — no inbound traffic)
+# Allow pravara-worker egress (DNS + HTTPS + local PostgreSQL + local Redis)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -282,30 +403,26 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
-    # Redis in data namespace (Celery broker)
+    # Redis in pravara-mes namespace (Celery broker, local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: redis
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 6379
 
-# Allow telemetry-worker egress (DNS + PostgreSQL + Redis — no inbound traffic)
+# Allow telemetry-worker egress (DNS + local PostgreSQL + local Redis + EMQX)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -329,30 +446,35 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
-    # Redis in data namespace
+    # Redis in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: redis
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 6379
+    # EMQX MQTT broker in pravara-mes namespace (local instance)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: emqx
+              app.kubernetes.io/part-of: pravara-mes
+      ports:
+        - protocol: TCP
+          port: 1883
 
-# Allow mes-mqtt-bridge egress (DNS + MQTT + PostgreSQL + Redis)
+# Allow mes-mqtt-bridge egress (DNS + MQTT + HTTPS + local PostgreSQL + local Redis + EMQX)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -376,7 +498,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # MQTT broker (standard port 1883, TLS port 8883)
+    # MQTT to external brokers (standard port 1883, TLS port 8883)
     - to: []
       ports:
         - protocol: TCP
@@ -388,30 +510,35 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
-    # Redis in data namespace
+    # Redis in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: redis
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 6379
+    # EMQX MQTT broker in pravara-mes namespace (local instance)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: emqx
+              app.kubernetes.io/part-of: pravara-mes
+      ports:
+        - protocol: TCP
+          port: 1883
 
-# Allow inference-service egress (DNS + HTTPS + PostgreSQL)
+# Allow inference-service egress (DNS + HTTPS + local PostgreSQL)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -440,19 +567,17 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
 
-# Allow mes-ha-bridge egress (DNS + HTTPS/WebSocket + PostgreSQL + Redis)
+# Allow mes-ha-bridge egress (DNS + HTTPS/WebSocket + local PostgreSQL + local Redis)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -483,25 +608,21 @@ spec:
           port: 443
         - protocol: TCP
           port: 8123
-    # PostgreSQL in data namespace
+    # PostgreSQL in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: postgres
+              app.kubernetes.io/name: postgres
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 5432
-    # Redis in data namespace
+    # Redis in pravara-mes namespace (local instance)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: data
-          podSelector:
-            matchLabels:
-              app: redis
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/part-of: pravara-mes
       ports:
         - protocol: TCP
           port: 6379

@@ -1,6 +1,6 @@
 # Service Outage Remediation Playbook
 
-Last updated: 2026-03-09
+Last updated: 2026-03-10
 
 ## Overview
 
@@ -45,6 +45,36 @@ kubectl patch application <app-name> -n argocd --type merge -p '{"operation":{"s
 kubectl rollout restart deployment/<service> -n <namespace>
 
 # If OOMKilled, increase limits in the repo's K8s manifests
+```
+
+### NetworkPolicy Blocking Intra-Namespace Traffic
+
+**Cause**: Default-deny policies block pod-to-pod traffic within the same namespace. Common when services deploy their own database/cache/broker pods (e.g., pravara-mes runs postgres-pravara + redis-pravara locally) but egress/ingress rules only target a shared namespace (e.g., `data`).
+
+**Symptoms**:
+- CrashLoopBackOff with database connection errors (but shared postgres in `data` namespace is healthy)
+- 502 via Cloudflare tunnel (backend pod crashing)
+- `kubectl logs` shows connection refused/timeout to in-namespace services
+
+**Diagnosis**:
+```bash
+# Check if pod can reach its local database
+kubectl exec -n <namespace> deploy/<app> -- nc -zv <db-svc>:5432
+
+# List all NetworkPolicies in the namespace
+kubectl get networkpolicy -n <namespace> -o yaml
+
+# Look for egress rules — do they target the correct namespace?
+# If selectors use namespaceSelector for 'data' but DB is in-namespace,
+# the podSelector should NOT have a namespaceSelector (same-namespace default)
+```
+
+**Fix**: Add intra-namespace ingress rules for infrastructure pods and update egress rules to target local pod selectors:
+```bash
+# IMPORTANT: delete-and-recreate (not just apply) if policies lack
+# the last-applied-configuration annotation (session 77 gotcha)
+kubectl delete networkpolicies --all -n <namespace>
+kubectl apply -f infra/k8s/policies/<namespace>-network-policies.yaml
 ```
 
 ### DNS Resolution Failure

@@ -154,6 +154,13 @@ phase_network_policies() {
   log "Applying policies for yantra4d, pravara-mes, karafiel, tezca, forgesight, madfam-site..."
 
   for policy in yantra4d pravara-mes karafiel tezca forgesight madfam-site; do
+    local ns="$policy"
+    local existing
+    existing=$(kubectl get networkpolicies -n "$ns" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$existing" -gt 0 ]]; then
+      log "Deleting existing policies in $ns (required for spec merge)..."
+      kubectl delete networkpolicies --all -n "$ns"
+    fi
     log "Applying ${policy}-network-policies.yaml..."
     kubectl apply -f "${POLICY_DIR}/${policy}-network-policies.yaml"
   done
