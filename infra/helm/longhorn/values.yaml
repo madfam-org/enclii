@@ -24,8 +24,9 @@ defaultSettings:
   backupTargetCredentialSecret: "longhorn-backup-secret"
 
   # Performance tuning for SSD/NVMe
-  guaranteedEngineManagerCPU: 12
-  guaranteedReplicaManagerCPU: 12
+  # Right-sized from 12% (1440m on 12-core) to 3% (360m) — actual usage ~91m
+  guaranteedEngineManagerCPU: 3
+  guaranteedReplicaManagerCPU: 3
 
   # Auto-salvage replicas when majority are available
   autoSalvage: true
