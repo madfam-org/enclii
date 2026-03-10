@@ -117,6 +117,9 @@ spec:
         pgbouncer:
           enabled: true
           replicaCount: 1
+          image:
+            repository: docker.io/pgbouncer/pgbouncer
+            tag: "1.23.1"
 
         externalPostgresql:
           postgresqlHost: postgres.data.svc.cluster.local
