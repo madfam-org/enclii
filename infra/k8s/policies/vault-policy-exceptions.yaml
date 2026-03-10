@@ -13,6 +13,10 @@ spec:
       ruleNames:
         - autogen-deny-host-ports
         - deny-host-ports
+    - policyName: restrict-capabilities
+      ruleNames:
+        - autogen-drop-all-capabilities
+        - drop-all-capabilities
     - policyName: restrict-image-registries
       ruleNames:
         - autogen-validate-registries

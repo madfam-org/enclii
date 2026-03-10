@@ -22,6 +22,10 @@ spec:
       ruleNames:
         - autogen-validate-registries
         - validate-registries
+    - policyName: require-health-probes
+      ruleNames:
+        - require-liveness-probe
+        - require-readiness-probe
   match:
     any:
       - resources:
