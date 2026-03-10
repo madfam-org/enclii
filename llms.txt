@@ -56,7 +56,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 - [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
 - [packages/sdk-go/](./packages/sdk-go/): Go SDK — API client (`pkg/client/`) and type definitions (`pkg/types/`)
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
-- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, 5-min windows) + dark/light theme toggle + uptime API + incident management + clickable service links (separate `href` for user-facing URL vs health-check `url`)
+- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + clickable service links (separate `href` for user-facing URL vs health-check `url`)
 
 ## Optional
 

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { formatResponseTime } from '@/lib/utils'
 import type { ServiceStatus, TimelineResponse, ServiceTimeline, TimelineSlot } from '@/lib/types'
 import { STATUS_COLORS, STATUS_LABELS, groupByKey } from '@/lib/status-config'
 import { Clock, Activity } from 'lucide-react'
+import { useTimelineBreakpoint } from '@/hooks/useTimelineBreakpoint'
 
 function formatSlotTime(iso: string): string {
   const d = new Date(iso)
@@ -14,9 +15,10 @@ function formatSlotTime(iso: string): string {
 
 interface TimelineBarProps {
   timeline: ServiceTimeline
+  gapClass: string
 }
 
-function TimelineBar({ timeline }: TimelineBarProps) {
+function TimelineBar({ timeline, gapClass }: TimelineBarProps) {
   const { service, slots, uptime24h } = timeline
 
   return (
@@ -43,7 +45,7 @@ function TimelineBar({ timeline }: TimelineBarProps) {
           {uptime24h.toFixed(2)}%
         </span>
       </div>
-      <div className="flex gap-px h-6">
+      <div className={cn('flex h-6', gapClass)}>
         {slots.map((slot, index) => (
           <SlotCell key={slot.start} slot={slot} index={index} total={slots.length} />
         ))}
@@ -128,7 +130,7 @@ function TimelineTimeLabels({ from, to }: TimelineTimeLabelsProps) {
     <div className="flex justify-between text-xs text-muted-foreground mt-1.5 px-0.5">
       <span>{formatSlotTime(from)}</span>
       {labels.map((label, i) => (
-        <span key={i}>{label}</span>
+        <span key={i} className="hidden sm:inline">{label}</span>
       ))}
       <span>Now</span>
     </div>
@@ -163,13 +165,15 @@ export function Timeline() {
   const [data, setData] = useState<TimelineResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isInitialLoad = useRef(true)
+  const breakpoint = useTimelineBreakpoint()
 
   useEffect(() => {
     let cancelled = false
 
     async function fetchTimeline() {
       try {
-        const res = await fetch('/api/status/timeline?hours=24')
+        const res = await fetch(`/api/status/timeline?hours=24&window=${breakpoint.windowMinutes}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json: TimelineResponse = await res.json()
         if (!cancelled) {
@@ -181,7 +185,12 @@ export function Timeline() {
           setError(err instanceof Error ? err.message : 'Failed to load timeline')
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          if (isInitialLoad.current) {
+            isInitialLoad.current = false
+            setLoading(false)
+          }
+        }
       }
     }
 
@@ -193,7 +202,7 @@ export function Timeline() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [])
+  }, [breakpoint.windowMinutes])
 
   if (loading) {
     return (
@@ -266,7 +275,7 @@ export function Timeline() {
                 </h3>
                 <div className="border rounded-lg bg-card p-4 space-y-4">
                   {timelines.map((tl) => (
-                    <TimelineBar key={tl.service} timeline={tl} />
+                    <TimelineBar key={tl.service} timeline={tl} gapClass={breakpoint.gapClass} />
                   ))}
                   <TimelineTimeLabels from={data.from} to={data.to} />
                 </div>
