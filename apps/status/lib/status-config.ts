@@ -109,7 +109,7 @@ export const RESPONSE_TIME_COLORS: Record<ResponseTimeStatus, string> = {
   fast: 'text-status-operational',
   normal: 'text-status-degraded',
   slow: 'text-status-degraded',
-  critical: 'text-status-outage',
+  critical: 'text-status-degraded',
   unknown: 'text-muted-foreground',
 }
 
@@ -131,7 +131,7 @@ export const RESPONSE_TIME_BAR_COLORS: Record<ResponseTimeStatus, string> = {
   fast: 'bg-status-operational',
   normal: 'bg-status-degraded',
   slow: 'bg-status-degraded',
-  critical: 'bg-status-outage',
+  critical: 'bg-status-degraded',
   unknown: 'bg-muted',
 }
 

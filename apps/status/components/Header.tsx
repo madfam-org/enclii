@@ -127,7 +127,7 @@ export function Footer({ siteName }: { siteName: string }) {
               <Rss className="size-3.5" />
               <span>RSS</span>
             </Link>
-            <span>&copy; {currentYear} {siteName.replace(/ Status$/, '')}. All rights reserved.</span>
+            <span>&copy; {currentYear} {siteName.replace(/ (System )?Status$/, '')}. All rights reserved.</span>
           </div>
         </div>
       </div>

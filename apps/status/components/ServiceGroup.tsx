@@ -47,7 +47,12 @@ export function ServiceGroup({
   const operationalPct = Math.round((operationalCount / services.length) * 100)
 
   return (
-    <div className="border border-border rounded-lg bg-card/50 overflow-hidden">
+    <div className={cn(
+      'border border-border rounded-lg bg-card/50 overflow-hidden',
+      !isExpanded && groupStatus === 'outage' && 'border-l-2 border-l-status-outage',
+      !isExpanded && groupStatus === 'degraded' && 'border-l-2 border-l-status-degraded',
+      !isExpanded && groupStatus === 'maintenance' && 'border-l-2 border-l-status-maintenance',
+    )}>
       {/* Group Header */}
       <button
         onClick={onToggle}
@@ -57,7 +62,7 @@ export function ServiceGroup({
           'text-left'
         )}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusBadge status={groupStatus} showLabel={false} size="sm" />
           <h2 className="text-lg font-semibold">{name}</h2>
           <span className="text-sm text-muted-foreground">

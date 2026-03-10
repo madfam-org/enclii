@@ -30,7 +30,9 @@ export function ThemeToggle() {
   // Render placeholder to avoid layout shift before hydration
   if (!mounted) {
     return (
-      <div className="p-2 rounded-md size-9" aria-hidden="true" />
+      <div className="p-2 rounded-md size-9 flex items-center justify-center text-muted-foreground" aria-hidden="true">
+        <Sun className="size-4 opacity-50" />
+      </div>
     )
   }
 

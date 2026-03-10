@@ -32,7 +32,7 @@ export function ServiceCard({
       )}
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-2 sm:gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <a
@@ -57,13 +57,13 @@ export function ServiceCard({
               {service.description}
             </p>
           )}
-          <p className="text-xs text-muted-foreground/60 mt-0.5 truncate font-mono">
+          <p className="text-xs text-muted-foreground/60 mt-0.5 truncate font-mono max-w-[200px] sm:max-w-none">
             {new URL(service.href || service.url).hostname}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {service.responseTime !== null && (
-            <span className="text-xs font-mono text-muted-foreground">
+            <span className="text-xs font-mono text-muted-foreground hidden sm:inline">
               {formatResponseTime(service.responseTime)}
             </span>
           )}
