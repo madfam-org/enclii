@@ -333,3 +333,65 @@ export function getFrameworkLabel(framework: FrameworkType | string): string {
   const normalizedFramework = framework.toLowerCase() as FrameworkType;
   return frameworkIcons[normalizedFramework]?.label || "Unknown";
 }
+
+// Maps repo slugs and service/project name prefixes to frameworks.
+const KNOWN_REPO_FRAMEWORKS: Record<string, FrameworkType> = {
+  janua: "fastapi",
+  "pravara-mes": "python",
+  tezca: "django",
+  "leyes-como-codigo-mx": "django",
+  dhanam: "nextjs",
+  forgesight: "nextjs",
+  karafiel: "nextjs",
+  yantra4d: "nextjs",
+  enclii: "go",
+  "madfam-site": "nextjs",
+  "autoswarm-office": "nextjs",
+};
+
+/**
+ * Infer framework from service name and git repo URL when API returns no framework.
+ */
+export function inferFrameworkFromContext(
+  serviceName: string,
+  gitRepo?: string,
+): FrameworkType {
+  const name = serviceName.toLowerCase();
+  const repo = (gitRepo || "").toLowerCase();
+
+  // Known repo slug match (last path segment of git URL)
+  const repoSlug = repo.split("/").pop()?.replace(/\.git$/, "") || "";
+  if (KNOWN_REPO_FRAMEWORKS[repoSlug]) return KNOWN_REPO_FRAMEWORKS[repoSlug];
+
+  // Known name prefix match (e.g. "tezca-api" → "tezca")
+  const namePrefix = name.split("-")[0];
+  if (KNOWN_REPO_FRAMEWORKS[namePrefix]) return KNOWN_REPO_FRAMEWORKS[namePrefix];
+
+  // Specific repo name matches
+  if (repo.includes("nextjs") || repo.includes("next-")) return "nextjs";
+  if (repo.includes("fastapi") || repo.includes("fast-api")) return "fastapi";
+  if (repo.includes("django")) return "django";
+  if (repo.includes("flask")) return "flask";
+  if (repo.includes("rails")) return "rails";
+  if (repo.includes("svelte")) return "svelte";
+  if (repo.includes("nuxt")) return "nuxt";
+  if (repo.includes("angular")) return "angular";
+
+  // Service name patterns for frontend
+  if (/-ui$|-(web|app|frontend|dashboard|landing|docs|site|status|page)/.test(name)) {
+    return "nextjs";
+  }
+
+  // Service name patterns for backend
+  if (/-api$|-server$|-backend$|-gateway$|-worker/.test(name)) {
+    // Check repo for language hints
+    if (repo.includes("python") || repo.includes("fastapi") || repo.includes("flask")) return "python";
+    if (repo.includes("node") || repo.includes("express") || repo.includes("typescript")) return "node";
+    return "unknown";
+  }
+
+  // CLI/SDK patterns
+  if (/cli$|sdk/.test(name)) return "go";
+
+  return "unknown";
+}

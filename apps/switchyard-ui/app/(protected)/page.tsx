@@ -13,7 +13,9 @@ import {
   ProjectCardCompact,
   ProjectCardCompactSkeleton,
   type CompactProject,
+  type CompactService,
 } from "@/components/dashboard/project-card-compact";
+import { inferFrameworkFromContext } from "@/components/dashboard/framework-icon";
 import { type SortOption } from "@/components/dashboard/project-search-filter";
 import { useViewMode } from "@/components/dashboard/view-toggle";
 import { SubNavActionBar } from "@/components/dashboard/sub-nav-action-bar";
@@ -85,21 +87,53 @@ export default function Dashboard() {
       const compactProjects: CompactProject[] = apiProjects.map(
         (project, i) => {
           const result = serviceResults[i];
-          const services =
+          const apiServices =
             result.status === "fulfilled" ? result.value.services || [] : [];
 
-          const healthyCount = services.filter(
+          const healthyCount = apiServices.filter(
             (s) => s.health === "healthy",
           ).length;
 
           const domain =
-            services.find((s) => s.domain)?.domain || undefined;
+            apiServices.find((s) => s.domain)?.domain || undefined;
 
-          const framework = services.find((s) => s.framework)?.framework;
+          const gitRepo = apiServices.find((s) => s.git_repo)?.git_repo;
 
-          const gitRepo = services.find((s) => s.git_repo)?.git_repo;
+          // Framework: API value → heuristic from name/repo
+          const framework =
+            apiServices.find((s) => s.framework)?.framework ||
+            inferFrameworkFromContext(
+              apiServices[0]?.name || project.name,
+              gitRepo,
+            );
 
-          const latestService = services
+          // Map to CompactService[]
+          const compactServices: CompactService[] = apiServices.map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: (["running", "pending", "failed", "deploying"].includes(s.status)
+              ? s.status
+              : "unknown") as CompactService["status"],
+            health: (["healthy", "unhealthy"].includes(s.health)
+              ? s.health
+              : "unknown") as CompactService["health"],
+          }));
+
+          // Compute aggregate status
+          const hasAny = compactServices.length > 0;
+          const hasFailed = compactServices.some((s) => s.status === "failed");
+          const allHealthy = compactServices.every(
+            (s) => s.status === "running" && s.health === "healthy",
+          );
+          const aggregateStatus: CompactProject["aggregateStatus"] = !hasAny
+            ? "unknown"
+            : hasFailed
+              ? "failing"
+              : allHealthy
+                ? "healthy"
+                : "degraded";
+
+          const latestService = apiServices
             .filter((s) => s.last_deployment)
             .sort(
               (a, b) =>
@@ -136,8 +170,11 @@ export default function Dashboard() {
             gitRepo,
             domain,
             lastDeployment,
-            serviceCount: services.length,
+            serviceCount: apiServices.length,
             healthyCount,
+            services: compactServices,
+            aggregateStatus,
+            updatedAt: project.updated_at,
           };
         },
       );
@@ -185,10 +222,10 @@ export default function Dashboard() {
         result = [...result].sort((a, b) => {
           const aTime = a.lastDeployment?.timestamp
             ? new Date(a.lastDeployment.timestamp).getTime()
-            : 0;
+            : a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
           const bTime = b.lastDeployment?.timestamp
             ? new Date(b.lastDeployment.timestamp).getTime()
-            : 0;
+            : b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
           return bTime - aTime;
         });
         break;
