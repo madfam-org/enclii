@@ -184,5 +184,31 @@ data:
         "url": "https://mes.madfam.io",
         "group": "Pravara MES",
         "description": "Manufacturing dashboard"
+      },
+      {
+        "name": "AutoSwarm API",
+        "url": "https://agents-api.madfam.io/api/v1/health/health",
+        "href": "https://agents-api.madfam.io",
+        "group": "AutoSwarm Office",
+        "description": "Agent orchestration API"
+      },
+      {
+        "name": "AutoSwarm UI",
+        "url": "https://agents.madfam.io",
+        "group": "AutoSwarm Office",
+        "description": "Agent management console"
+      },
+      {
+        "name": "AutoSwarm Admin",
+        "url": "https://agents-admin.madfam.io",
+        "group": "AutoSwarm Office",
+        "description": "Admin operations console"
+      },
+      {
+        "name": "AutoSwarm Colyseus",
+        "url": "https://agents-ws.madfam.io/health",
+        "href": "https://agents-ws.madfam.io",
+        "group": "AutoSwarm Office",
+        "description": "Real-time collaboration server"
       }
     ]
