@@ -39,6 +39,13 @@ data:
         "description": "Platform documentation"
       },
       {
+        "name": "Vault",
+        "url": "https://vault.enclii.dev/v1/sys/health",
+        "href": "https://vault.enclii.dev",
+        "group": "Enclii",
+        "description": "Secret management"
+      },
+      {
         "name": "Auth",
         "url": "https://auth.madfam.io/health",
         "href": "https://auth.madfam.io",
