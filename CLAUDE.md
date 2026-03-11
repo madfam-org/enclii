@@ -287,6 +287,12 @@ Access to Dispatch requires BOTH:
 - ✅ `landing-page` → enclii.dev (deployed)
 - ✅ `status-page` → status.enclii.dev (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, auto-incident detection, uptime API, dark/light theme)
 - ✅ `status-page-madfam` → status.madfam.io (deployed, 24h timeline with adaptive 5-60 min windows based on viewport, Atom feed, incidents API, auto-incident detection, uptime API, dark/light theme)
+- ✅ `autoswarm-nexus-api` → agents-api.madfam.io (agent orchestration API)
+- ✅ `autoswarm-office-ui` → agents.madfam.io (agent management console)
+- ✅ `autoswarm-admin` → agents-admin.madfam.io (admin console)
+- ✅ `autoswarm-colyseus` → agents-ws.madfam.io (real-time collaboration)
+- ✅ `autoswarm-gateway` → (background worker, no public endpoint)
+- ✅ `autoswarm-workers` → (background worker, no public endpoint)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification
