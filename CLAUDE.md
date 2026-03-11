@@ -519,7 +519,10 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Purpose | Location |
 |---------|----------|
 | App router | `apps/switchyard-ui/app/` |
+| Dashboard page | `apps/switchyard-ui/app/(protected)/page.tsx` |
 | Components | `apps/switchyard-ui/components/` |
+| Dashboard cards | `apps/switchyard-ui/components/dashboard/project-card-compact.tsx` |
+| Framework detection | `apps/switchyard-ui/components/dashboard/framework-icon.tsx` (known-repo map + heuristic) |
 | API calls | `apps/switchyard-ui/lib/api/` |
 | Hooks | `apps/switchyard-ui/hooks/` |
 | Types | `apps/switchyard-ui/types/` |
