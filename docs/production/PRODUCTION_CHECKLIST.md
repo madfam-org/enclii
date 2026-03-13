@@ -44,7 +44,7 @@ tags: [production, deployment, checklist, operations]
 
 ### Compute & Kubernetes
 - [x] 2-node k3s cluster (foundry-core + foundry-builder-01)
-- [x] k3s v1.33.6+k3s1 on both nodes
+- [x] k3s v1.33.7+k3s3 on both nodes
 - [x] Builder node tainted (builder=true:NoSchedule)
 - [x] Cloudflare Tunnel ingress (2 replicas + PDB)
 - [x] 28 tunnel routes configured

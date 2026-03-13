@@ -36,7 +36,7 @@ spec:
               effect: NoSchedule
           containers:
             - name: cleanup
-              image: rancher/k3s:v1.33.6-k3s1
+              image: rancher/k3s:v1.33.7-k3s3
               command:
                 - /bin/sh
                 - -c

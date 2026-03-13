@@ -69,7 +69,7 @@ else
     "endpoint": "https://foundry-core:6443",
     "region": "eu-central",
     "status": "ready",
-    "metadata": {"k3s_version":"v1.33.6+k3s1","role":"control-plane+worker","node_count":1}
+    "metadata": {"k3s_version":"v1.33.7+k3s3","role":"control-plane+worker","node_count":1}
   }')
   parsed=$(parse_response "$resp")
   code=${parsed%%|*}
@@ -95,7 +95,7 @@ else
     "endpoint": "https://foundry-builder-01:6443",
     "region": "eu-central",
     "status": "ready",
-    "metadata": {"k3s_version":"v1.33.6+k3s1","role":"worker","taints":["builder=true:NoSchedule"],"purpose":"CI builds + ARC runners"}
+    "metadata": {"k3s_version":"v1.33.7+k3s3","role":"worker","taints":["builder=true:NoSchedule"],"purpose":"CI builds + ARC runners"}
   }')
   parsed=$(parse_response "$resp")
   code=${parsed%%|*}

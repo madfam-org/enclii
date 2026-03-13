@@ -218,7 +218,7 @@ kubectl delete node foundry-builder-01
 # Provision replacement (see Hetzner VPS setup)
 # Rejoin cluster:
 curl -sfL https://get.k3s.io | K3S_URL=https://95.217.198.239:6443 \
-  K3S_TOKEN=<node-token> INSTALL_K3S_VERSION=v1.33.6+k3s1 sh -
+  K3S_TOKEN=<node-token> INSTALL_K3S_VERSION=v1.33.7+k3s3 sh -
 
 # Re-apply builder taint
 kubectl taint nodes <new-node> builder=true:NoSchedule
@@ -311,7 +311,7 @@ Worst case: control plane is gone, need to rebuild from scratch.
 ssh root@<new-ip>
 
 # Install k3s (match existing version)
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.33.6+k3s1 \
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.33.7+k3s3 \
   INSTALL_K3S_EXEC="server --disable traefik --disable servicelb" sh -
 
 # Get kubeconfig
@@ -394,7 +394,7 @@ cat /var/lib/rancher/k3s/server/node-token
 
 # On builder node
 curl -sfL https://get.k3s.io | K3S_URL=https://<new-ip>:6443 \
-  K3S_TOKEN=<token> INSTALL_K3S_VERSION=v1.33.6+k3s1 sh -
+  K3S_TOKEN=<token> INSTALL_K3S_VERSION=v1.33.7+k3s3 sh -
 
 # Taint and label
 kubectl taint nodes foundry-builder-01 builder=true:NoSchedule

@@ -1,0 +1,242 @@
+# Capacity Roadmap — Production Cluster
+
+> **Created**: 2026-03-13 | **Audit Baseline**: 150 pods, 22 namespaces, 36 endpoints
+> **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
+
+## Current Utilization Summary
+
+### Compute
+
+| Resource | Allocatable | Requested | Actual | Utilization (req) | Utilization (actual) |
+|----------|-------------|-----------|--------|--------------------|-----------------------|
+| **CPU (foundry-core)** | 12,000m | 10,460m | 1,340m | **87%** | 11% |
+| **CPU (builder-01)** | 2,000m | ~0m | 31m | ~0% | 1% |
+| **Memory (foundry-core)** | 64Gi | 24.9Gi | 21.5Gi | 39% | 33% |
+| **Memory (builder-01)** | 3.8Gi | ~0m | 1.1Gi | ~0% | 28% |
+
+**Key Insight**: CPU is over-committed at request level (87%) but actual usage is only 11%. The bottleneck is Kubernetes scheduling — pods won't schedule if requests exceed allocatable. The biggest offender is Longhorn `instance-manager` at 1440m requested vs 84m actual.
+
+### Storage
+
+| Volume | Capacity | Used | Usage % | Namespace |
+|--------|----------|------|---------|-----------|
+| data/postgres | 10Gi | 232Mi | 3% | data |
+| prometheus | 20Gi | 4.3Gi | 22% | monitoring |
+| tezca-es | 50Gi | 1.0Gi | 2% | tezca |
+| pravara-mes/postgres | 20Gi | 46Mi | 0% | pravara-mes |
+| Longhorn replicas total | ~150Gi | 58Gi | ~39% | longhorn-system |
+
+**Disk (root filesystem)**: 77G/98G (83%) — **P1 alert**. 399 container images + 58G Longhorn + 5.5G logs.
+
+### Growth Trends
+
+| Metric | Feb 6, 2026 | Mar 13, 2026 | Delta | Rate |
+|--------|-------------|--------------|-------|------|
+| Pods | 82 | 150 | +68 (+83%) | +1.9/day |
+| Disk | 67% (62G) | 83% (77G) | +16% (+15G) | +0.43G/day |
+| ArgoCD apps | 19 | 28 | +9 (+47%) | — |
+| Longhorn volumes | 5 | 17 | +12 | — |
+| Namespaces | 14 | 22 | +8 | — |
+| Endpoints | 12 | 36 | +24 | — |
+
+**At current disk growth rate (0.43G/day), 95% disk usage reached in ~28 days (April 10, 2026).**
+
+## Immediate Actions (This Week)
+
+### 1. Prune Container Images — Saves ~10-20G
+
+```bash
+# On foundry-core:
+sudo k3s crictl rmi --prune
+# Verify:
+sudo k3s crictl images | wc -l
+df -h /
+```
+
+399 images on disk. Pruning unused images should recover 10-20G, buying ~3-6 weeks.
+
+### 2. Apply Longhorn CPU Fix — Saves 1,080m CPU
+
+Session 79 reduced `guaranteedEngineManagerCPU/ReplicaManagerCPU` from 12→3 in Helm values, but the settings were never applied to the cluster. The instance-manager still requests 1440m (12% of total cluster CPU) while using only 84m.
+
+```bash
+# Via Longhorn UI or API:
+kubectl -n longhorn-system edit settings.longhorn.io guaranteed-instance-manager-cpu
+# Set value to: 3
+# Note: Setting name may vary by Longhorn version. Check:
+kubectl get settings.longhorn.io -n longhorn-system
+```
+
+After applying: CPU allocation drops from 87% → ~78%.
+
+### 3. Delete Detached Longhorn Volumes — Saves ~44G
+
+Three volumes are detached/unknown (PostHog ClickHouse data). PostHog is non-functional (stuck in Init).
+
+```bash
+# Verify volumes are truly unused:
+kubectl get pvc -A | grep -E "posthog|vault"
+# Delete detached volumes via Longhorn UI or:
+kubectl delete volume.longhorn.io -n longhorn-system pvc-f54e9877-ccee-493c-84bf-d695d2ccb48b
+kubectl delete volume.longhorn.io -n longhorn-system pvc-f6e04c77-67fc-4eeb-b40b-d2d659413e1b
+kubectl delete volume.longhorn.io -n longhorn-system pvc-fadce9ab-37d7-468e-a29b-6510ad677c72
+```
+
+### 4. Log Rotation — Saves ~3-4G
+
+```bash
+sudo journalctl --vacuum-size=500M
+sudo find /var/log -name "*.gz" -mtime +7 -delete
+```
+
+## Capacity Thresholds
+
+| Threshold | Trigger | Action |
+|-----------|---------|--------|
+| Disk > 80% | **NOW (83%)** | Prune images, clean volumes, rotate logs |
+| Disk > 90% | ~April 10 at current rate | Emergency: add storage node |
+| CPU req > 85% | **NOW (87%)** | Apply Longhorn fix, review HPA mins |
+| CPU req > 95% | +2-3 more services | Must add compute node |
+| Memory req > 70% | ~40Gi | Review and compact |
+| Pods > 200 | +50 pods | Check max-pods setting |
+
+## Hardware Recommendation: Hetzner EX44
+
+**Decision: Order before April 1, 2026** to lock in current pricing.
+
+### Why EX44
+
+| Spec | foundry-core (AX41) | **EX44 (recommended)** | Comparison |
+|------|---------------------|------------------------|------------|
+| CPU | AMD Ryzen 5 3600 (6C/12T) | Intel i5-13500 (14C/20T) | **1.8x compute** |
+| RAM | 64GB DDR4 | 64GB DDR4 | Same |
+| Storage | 2x512GB NVMe | 2x512GB NVMe Gen4 | Faster I/O |
+| Price (current) | ~€46/mo | ~€44-47/mo | Similar |
+| Price (April) | +21% (AX42-U) | **+3-7%** | Much better value |
+
+### Why Now (Hetzner April 2026 Price Changes)
+
+| Server | Current | April 1 | Increase |
+|--------|---------|---------|----------|
+| AX42-U (successor to AX41) | €46.00 | €55.58 | **+21%** |
+| **EX44** | €43.58 | **€44.84-46.58** | **+3-7%** |
+| Server Auction (Ryzen) | ~€35-40 | ~€36-41 | +3% |
+| **64GB RAM add-on** | €32.36 | **€218.40** | **+575%** |
+
+**Critical: Order with 64GB base RAM.** The RAM add-on price is increasing 575% in April.
+
+### Alternative: Server Auction
+
+- Watch for Ryzen 5 3600 / Ryzen 7 3700X with 64GB + NVMe
+- ~€35-40/mo, only +3% increase in April
+- Same CPU architecture as foundry-core
+- Less predictable availability
+
+### Cost Projection
+
+| Configuration | Monthly | Annual | 5-Year |
+|---------------|---------|--------|--------|
+| Current (2-node) | ~€55 | ~€660 | ~€3,300 |
+| **3-node (+ EX44)** | **~€100** | **~€1,200** | **~€6,000** |
+| SaaS equivalent | ~€2,000+ | ~€24,000+ | ~€120,000+ |
+
+Even at 3 nodes, the cluster is **20x cheaper** than equivalent SaaS.
+
+## k3s Node Addition Checklist
+
+### Pre-Deploy
+
+```bash
+# 1. Order EX44 with Ubuntu 24.04, 64GB RAM
+# 2. Initial server setup
+hostnamectl set-hostname foundry-node-02
+apt update && apt upgrade -y
+```
+
+### Join Cluster
+
+```bash
+# Get join token from control plane:
+ssh foundry-core 'sudo cat /var/lib/rancher/k3s/server/node-token'
+
+# Install k3s agent (MUST match version v1.33.7+k3s3):
+curl -sfL https://get.k3s.io | \
+  K3S_URL=https://95.217.198.239:6443 \
+  K3S_TOKEN=<token> \
+  INSTALL_K3S_VERSION="v1.33.7+k3s3" sh -
+
+# Label (no taint — general workloads):
+kubectl label node foundry-node-02 node-role.kubernetes.io/worker=true
+```
+
+### Post-Join
+
+1. Verify: `kubectl get nodes -o wide` — 3 nodes Ready
+2. Install Longhorn on new node (auto via DaemonSet)
+3. Update Cloudflare tunnel to include new node (if needed)
+4. Rebalance workloads: `kubectl rollout restart deploy -n <ns>` for large deployments
+
+## Longhorn Multi-Replica Migration
+
+When the 3rd node (2nd storage node) joins:
+
+### Step 1: Update Default Replica Count
+
+```bash
+# In infra/helm/longhorn/values.yaml:
+# Change: defaultReplicaCount: 1 → 2
+helm upgrade longhorn longhorn/longhorn -n longhorn-system -f values.yaml
+```
+
+### Step 2: Patch Existing Volumes
+
+```bash
+for vol in $(kubectl get volumes.longhorn.io -n longhorn-system -o name); do
+  kubectl patch $vol -n longhorn-system --type merge \
+    -p '{"spec":{"numberOfReplicas":2}}'
+done
+```
+
+### Step 3: Monitor Replication
+
+```bash
+# Watch replication progress (~30-60 min for 58GB):
+kubectl get volumes.longhorn.io -n longhorn-system -w
+# All volumes should show ROBUSTNESS=healthy with 2 replicas
+```
+
+### Also Staged for Multi-Node
+
+- **Redis Sentinel**: `infra/k8s/production/redis-sentinel.yaml` — activate for HA
+- **Anti-affinity**: Existing `preferredDuringScheduling` rules will auto-spread replicas
+
+## Scaling Decision Matrix
+
+| Clients | Pods (est.) | Nodes | Storage | Monthly Cost |
+|---------|-------------|-------|---------|--------------|
+| 1-5 (current) | 100-200 | 2-3 | 200GB Longhorn | ~€55-100 |
+| 5-25 | 200-500 | 3-5 | 500GB-1TB | ~€150-250 |
+| 25-100 | 500-2000 | 5-10 | 1-5TB | ~€250-500 |
+| 100+ | 2000+ | 10+ | 5TB+ | €500+ |
+
+## Non-Running Pod Remediation
+
+| Pod | Issue | Root Cause | Fix |
+|-----|-------|-----------|-----|
+| roundhouse (3) | CrashLoopBackOff | Redis DNS `i/o timeout` | Check NetworkPolicy egress to CoreDNS |
+| karafiel-worker (1) | CrashLoopBackOff | Can't resolve `redis.data.svc.cluster.local` | External repo — DNS/NetworkPolicy issue |
+| tezca-beat (1) | CrashLoopBackOff | Celery beat crash | External repo — app-level issue |
+| yantra4d-admin/studio (2) | CrashLoopBackOff | nginx `host not found in upstream "backend"` | Stale deployments from rollout — delete old ReplicaSets |
+| posthog (5) | Init:0/N stuck | ClickHouse not ready, migration blocked | PostHog chart broken (known — Redpanda subchart issue) |
+| sentinel (1) | Error | CronJob failure | Investigate sentinel namespace config |
+
+## ArgoCD OutOfSync Apps
+
+| App | Status | Likely Cause |
+|-----|--------|-------------|
+| enclii-infrastructure | OutOfSync/Healthy | Git-side changes not synced (new resources) |
+| network-policies | OutOfSync/Healthy | Manual kubectl changes diverged from git |
+| platform-infra-services | OutOfSync/Healthy | Infrastructure changes pending sync |
+| status-enclii/madfam | OutOfSync/Healthy | Recent commits not auto-synced |
+| vault | OutOfSync/Healthy | Vault deployed manually, ArgoCD app defined but not synced |
+| posthog | OutOfSync/Degraded | Chart broken, intentionally not synced |

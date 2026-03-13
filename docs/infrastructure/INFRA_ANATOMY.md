@@ -1,38 +1,56 @@
 # Infrastructure Anatomy - Production State
 
-> **Generated**: 2026-01-17 | **Last Updated**: 2026-02-06 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Wave 15 (Full Health + Hardening + ArgoCD Expansion)
+> **Generated**: 2026-01-17 | **Last Updated**: 2026-03-13 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
 >
-> **Live Status Check** (2026-02-06, session 10):
-> - Disk usage: 67% (62G/98G) — cleaned orphaned ReplicaSets + pruned images
-> - ArgoCD: 19 apps — 17 Synced/Healthy, 2 Unknown/Healthy (ARC OCI bug persists in v3.2.5)
-> - core-services: ✅ Synced/Healthy
-> - Endpoints: 12/12 public endpoints healthy, all <1s
-> - Dhanam API: ✅ /health returns 200 (probes switched to httpGet)
-> - Orphaned resources: 0 (janua-docs, janua-website svcs deleted; janua-proxy + configmap deleted)
-> - TLS Certs: All valid
-> - Longhorn: 5/5 volumes healthy, 42GB allocated
-> - Golden configs: 20/20 passing
+> **Live Status Check** (2026-03-13):
+> - Nodes: 2/2 Ready, k3s v1.33.7+k3s3 (upgraded from v1.33.7+k3s3)
+> - Pods: 150 total (137 Running/Completed, 13 non-Running)
+> - Disk usage: **83% (77G/98G) — P1, image pruning needed** (+16% in 35 days)
+> - ArgoCD: 28 apps — 13 Synced/Healthy, 2 Unknown/Healthy (ARC), 7 OutOfSync, 6 Degraded
+> - Endpoints: 34/36 public endpoints operational, all <1.2s (2 expected 502s: PostHog + MES-admin)
+> - CPU allocated: 10,460m/12,000m (87%) — Longhorn instance-manager 1440m fix NOT applied
+> - Memory allocated: 24.9Gi/64Gi (39%) — adequate headroom
+> - Longhorn: 14/17 volumes healthy, 3 detached/unknown (PostHog)
+> - NetworkPolicies: 197 across 16 namespaces
+> - Kyverno: 16 cluster policies (7 Enforce, 9 Audit), 8 exceptions
+> - Auth (Janua SSO): OIDC/PKCE verified on app.enclii.dev + admin.enclii.dev + app.dhan.am
+> - Databases: All healthy (data/postgres, data/redis, enclii/redis)
+> - No OOM kills, 8 HPAs within targets
 >
-> **✅ FIXED — dhan.am / app.dhan.am 502 Bad Gateway:**
-> - **Root cause was**: ArgoCD SSA merge conflict — CI's `kubectl set image` created competing field manager, SSA merged both port specs (`containerPort: 3000` live + `containerPort: 4200` git) instead of replacing, creating duplicate port name "http"
-> - **Fix applied**: Removed `ServerSideApply=true` and `RespectIgnoreDifferences=true` from `infra/argocd/apps/dhanam.yaml`, switching to 3-way merge (same pattern as janua.yaml). 3-way merge computes a JSON patch (replacement), avoiding SSA field ownership conflicts.
-> - **Status**: ArgoCD will auto-detect config change and resync with 3-way merge
+> **Crash Summary (13 non-Running pods):**
+> - roundhouse (3): Redis DNS timeout — `lookup redis: i/o timeout`
+> - karafiel-worker (1): Redis DNS failure to `redis.data.svc.cluster.local`
+> - tezca-beat (1): Celery beat crash after start
+> - yantra4d-admin/studio (2): nginx `host not found in upstream "backend"`
+> - posthog (5): Init containers stuck (ClickHouse dependency not ready)
+> - sentinel infra-audit (1): CronJob Error
+>
+> **Urgent Actions:**
+> 1. Prune container images (`k3s crictl rmi --prune`) — 399 images consuming disk
+> 2. Apply Longhorn CPU fix (1440m→360m) — saves 1080m CPU, drops allocation to 78%
+> 3. Delete 3 detached Longhorn volumes (PostHog) — free ~44G
+> 4. Order EX44 before April 1 price increase
 
 ## Executive Summary
 
 | Category | Status | Severity |
 |----------|--------|----------|
-| **Overall Health** | 100% operational | ✅ HEALTHY |
-| **Endpoints** | 12/12 public endpoints responding <1s | ✅ HEALTHY |
-| **Pods** | 82 running, 0 errors | ✅ HEALTHY |
-| **Nodes** | 2/2 Ready, version matched (k3s v1.33.6) | ✅ HEALTHY |
-| **CPU** | core: 12% (1504m), builder: 1% (35m) | ✅ HEALTHY |
-| **Memory** | core: 27% (17.7GB/64GB), builder: 33% (1.2GB/4GB) | ✅ HEALTHY |
-| **Disk** | core: 67% (62G/98G) | ✅ HEALTHY |
-| **ArgoCD** | 19 apps: 17 Synced/Healthy, 2 Unknown/Healthy (ARC OCI bug) | ✅ HEALTHY |
-| **Storage** | 10/10 PVCs bound | ✅ HEALTHY |
-| **Longhorn** | 5/5 volumes healthy (42GB allocated) | ✅ HEALTHY |
-| **TLS Certs** | All valid | ✅ HEALTHY |
+| **Overall Health** | 91% operational (137/150 pods healthy) | ⚠️ DEGRADED |
+| **Endpoints** | 34/36 public endpoints responding <1.2s | ✅ HEALTHY |
+| **Pods** | 150 total, 137 Running/Completed, 13 non-Running | ⚠️ DEGRADED |
+| **Nodes** | 2/2 Ready, version matched (k3s v1.33.7+k3s3) | ✅ HEALTHY |
+| **CPU (actual)** | core: 11% (1340m), builder: 1% (31m) | ✅ HEALTHY |
+| **CPU (allocated)** | 10,460m/12,000m = 87% | ⚠️ TIGHT |
+| **Memory (actual)** | core: 33% (21.5GB/64GB), builder: 28% (1.1GB/3.8GB) | ✅ HEALTHY |
+| **Memory (allocated)** | 24.9Gi/64Gi = 39% | ✅ HEALTHY |
+| **Disk** | core: 83% (77G/98G) — grew +16% in 35 days | 🔴 CRITICAL |
+| **ArgoCD** | 28 apps: 13 Synced/Healthy, 7 OutOfSync, 6 Degraded, 2 Unknown | ⚠️ DEGRADED |
+| **Storage** | 18/18 PVCs bound, 14/17 Longhorn volumes healthy | ⚠️ DEGRADED |
+| **Longhorn** | 17 volumes (~150GB allocated), 3 detached/unknown | ⚠️ DEGRADED |
+| **Auth** | Janua OIDC/PKCE verified on 3 platforms | ✅ HEALTHY |
+| **Databases** | All healthy (postgres, redis in data + enclii) | ✅ HEALTHY |
+| **NetworkPolicies** | 197 across 16 namespaces | ✅ HEALTHY |
+| **Kyverno** | 16 policies, 8 exceptions | ✅ HEALTHY |
 | **Cost** | ~$55/month | ✅ ON TARGET |
 
 ### Wave 15 Changes (Wave 14 → Wave 15)
@@ -130,8 +148,8 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.6+k3s1 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
-| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.6+k3s1 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
+| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
+| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)
 - **Kernel**: 6.8.0-88-generic
@@ -589,7 +607,7 @@ kubectl get pods -A --field-selector 'status.phase!=Running,status.phase!=Succee
 
 # Node status
 kubectl get nodes -o wide
-# Expected: 2 nodes, both Ready, both v1.33.6+k3s1
+# Expected: 2 nodes, both Ready, both v1.33.7+k3s3
 ```
 
 ---
@@ -865,7 +883,7 @@ kubectl get nodes -o wide
 1. **dhanam-api CrashLoop** - Switched to TCP probes (commit: `9354dcb`)
 2. **Grafana CrashLoopBackOff** - Fixed PVC and ConfigMap (commit: `9354dcb`)
 3. **Dispatch Wrong Image Path** - Corrected to `ghcr.io/madfam-org/enclii/dispatch` (commit: `9354dcb`)
-4. **VPS Builder Node CNI** - Downgraded k3s to v1.33.6+k3s1 to match control plane
+4. **VPS Builder Node CNI** - Downgraded k3s to v1.33.7+k3s3 to match control plane
 5. **Cloudflared Consolidation** - Single unified config (commit: `4c17f1f`)
 6. **Kyverno CronJob Deadlock** - Set cleanup image to `latest` (commits: `39b3a72`, `7e4cbd4`, `9934b94`, `33b71ca`)
 7. **Cloudflared Kyverno Compliance** - Added explicit `privileged: false` (commit: `1391e1a`)

@@ -191,7 +191,7 @@ Single-source OCI Helm applications work correctly — the chart name is properl
 #### Version
 
 - ArgoCD: v3.2.5
-- Kubernetes: v1.33.6+k3s1
+- Kubernetes: v1.33.7+k3s3
 
 #### Application Spec (minimal reproduction)
 

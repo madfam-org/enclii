@@ -17,7 +17,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 - **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
 - **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
 - **Self-Deployment**: Enclii deploys itself (dogfooding)
-- **Cluster**: 2-node k3s v1.33.6+k3s1 (foundry-core + foundry-builder-01)
+- **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
 
 ### God Files (Critical Paths)
 
@@ -284,7 +284,7 @@ make precommit          # All checks before committing
 ### Compute (2-node k3s cluster)
 - **foundry-core** (Hetzner AX41-NVMe): Control plane — AMD Ryzen 5 3600, 64GB RAM, 2x512GB NVMe
 - **foundry-builder-01** (Hetzner Cloud VPS): CI builder — tainted `builder=true:NoSchedule`
-- **k3s v1.33.6+k3s1**: Lightweight Kubernetes
+- **k3s v1.33.7+k3s3**: Lightweight Kubernetes
 
 ### Ingress
 - **Cloudflare Tunnel**: Zero-trust, zero exposed ports, 2 replica `cloudflared` pods

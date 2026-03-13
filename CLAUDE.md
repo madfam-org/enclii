@@ -11,9 +11,9 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Dogfooding:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
-**GitOps:** ArgoCD App-of-Apps (10 apps in `infra/argocd/apps/` incl. 1 ApplicationSet for projects) with self-heal - **Operational** (Jan 2026)
-**Storage:** Longhorn CSI v1.7.2 (single-replica; ready for multi-node) - **Operational** (Jan 2026)
-**Last Audit:** Feb 6, 2026 — 82 pods, 0 errors, 12 endpoints 100% healthy ([report](./docs/infrastructure/INFRA_ANATOMY.md))
+**GitOps:** ArgoCD App-of-Apps (28 apps across 22 namespaces) with self-heal - **Operational** (Jan 2026)
+**Storage:** Longhorn CSI v1.7.2 (17 volumes, single-replica; ready for multi-node) - **Operational** (Jan 2026)
+**Last Audit:** Mar 13, 2026 — 150 pods, 36 endpoints, 34 operational ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
 
 ### Port Allocation
 
@@ -167,7 +167,7 @@ Enclii runs on a 2-node k3s cluster with infrastructure prepared for further sca
 **Compute & Kubernetes (2-node cluster):**
 - **foundry-core** (Hetzner AX41-NVME) - Control plane (AMD Ryzen 5 3600, 64GB RAM, 2x512GB NVMe) - ~$50/month
 - **foundry-builder-01** (VPS "The Forge") - Worker node for CI builds (taint: builder=true:NoSchedule)
-- **k3s v1.33.6+k3s1** - Lightweight Kubernetes (both nodes must match k3s version)
+- **k3s v1.33.7+k3s3** - Lightweight Kubernetes (both nodes must match k3s version)
 - **Cloudflare Tunnel** - Zero-trust ingress (replaces LoadBalancer) - $0
 
 > **Note:** 2-node cluster since Jan 2026. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in single-replica mode; ready for multi-replica when additional storage nodes are added.
@@ -569,6 +569,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Storage/Longhorn | `docs/infrastructure/STORAGE.md` |
 | Cloudflare integration | `docs/infrastructure/CLOUDFLARE.md` |
 | External secrets | `docs/infrastructure/EXTERNAL_SECRETS.md` |
+| Capacity roadmap | `docs/infrastructure/CAPACITY_ROADMAP.md` |
 | **LLM Context** | |
 | LLM context (compact) | `llms.txt` |
 | LLM context (full) | `llms-full.txt` |
