@@ -18,5 +18,13 @@ configMapGenerator:
       labels:
         grafana_dashboard: "true"
 
+  - name: grafana-dashboard-node-maintenance
+    namespace: monitoring
+    files:
+      - node-maintenance.json
+    options:
+      labels:
+        grafana_dashboard: "true"
+
 generatorOptions:
   disableNameSuffixHash: true
