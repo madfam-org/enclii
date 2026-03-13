@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify, createRemoteJWKSet } from 'jose'
+import {
+  isAllowedDomain as _isAllowedDomain,
+  hasAllowedRole as _hasAllowedRole,
+  isPublicPath as _isPublicPath,
+  extractRoles as _extractRoles,
+} from './lib/auth-helpers'
 
 /**
  * Dispatch Middleware - Infrastructure Operator Access Control
@@ -37,11 +43,11 @@ const ALLOWED_ROLES = process.env.ALLOWED_ADMIN_ROLES
   : DEFAULT_ROLES
 
 function isAllowedDomain(email: string): boolean {
-  return ALLOWED_DOMAINS.some((domain) => email.toLowerCase().endsWith(domain.toLowerCase()))
+  return _isAllowedDomain(email, ALLOWED_DOMAINS)
 }
 
 function hasAllowedRole(roles: string[]): boolean {
-  return roles.some((role) => ALLOWED_ROLES.includes(role))
+  return _hasAllowedRole(roles, ALLOWED_ROLES)
 }
 
 // Public paths that don't require authentication
@@ -57,9 +63,7 @@ const publicPaths = [
 ]
 
 function isPublicPath(pathname: string): boolean {
-  return publicPaths.some(
-    (path) => pathname === path || pathname.startsWith(path + '/')
-  )
+  return _isPublicPath(pathname, publicPaths)
 }
 
 /**
@@ -67,14 +71,7 @@ function isPublicPath(pathname: string): boolean {
  * Supports both array and comma-separated string formats.
  */
 function extractRoles(payload: Record<string, unknown>): string[] {
-  const rolesRaw = payload.roles || payload.role || payload['enclii_roles']
-  if (Array.isArray(rolesRaw)) {
-    return rolesRaw.filter((r): r is string => typeof r === 'string')
-  }
-  if (typeof rolesRaw === 'string') {
-    return rolesRaw.split(',').map((r) => r.trim())
-  }
-  return []
+  return _extractRoles(payload)
 }
 
 export async function middleware(request: NextRequest) {

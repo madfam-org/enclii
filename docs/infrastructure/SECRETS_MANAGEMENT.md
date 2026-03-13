@@ -184,6 +184,43 @@ When upgrading providers:
 3. The `kubernetes-store` can coexist with an external provider during migration
 4. Create ExternalSecret resources gradually — migrate one namespace at a time
 
+## Vault ExternalSecret Resources
+
+Once Vault is deployed and initialized, ExternalSecret resources will sync secrets from Vault into Kubernetes namespaces.
+
+### Available ExternalSecrets
+
+| Resource | Namespace | Vault Path | Secrets |
+|----------|-----------|------------|---------|
+| `enclii-secrets` | enclii | `secret/enclii` | DATABASE_URL, REDIS_URL, JANUA_CLIENT_ID, JANUA_CLIENT_SECRET, GITHUB_WEBHOOK_SECRET, SWITCHYARD_API_KEY |
+| `janua-secrets` | janua | `secret/janua` | DATABASE_URL, REDIS_URL, JWT_SIGNING_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET |
+| `data-secrets` | data | `secret/data` | POSTGRES_PASSWORD, REDIS_PASSWORD |
+| `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | TUNNEL_TOKEN |
+
+### Configuration
+
+All ExternalSecrets use:
+- **Store**: `vault-store` (ClusterSecretStore)
+- **API Version**: `external-secrets.io/v1beta1` (ESO v0.9.11)
+- **Refresh Interval**: 15 minutes
+- **Deletion Policy**: Retain (secrets persist if ExternalSecret is deleted)
+
+### Files
+
+Located at `infra/k8s/base/external-secrets/vault-secrets/`:
+- `enclii-secrets.yaml`
+- `janua-secrets.yaml`
+- `data-secrets.yaml`
+- `cloudflare-secrets.yaml`
+
+### Verification
+
+After Vault deployment, verify ExternalSecrets are syncing:
+```bash
+kubectl get externalsecrets -A
+kubectl describe externalsecret enclii-secrets -n enclii
+```
+
 ## Related Documentation
 
 - [External Secrets Operator](./EXTERNAL_SECRETS.md)

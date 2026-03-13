@@ -426,6 +426,29 @@ POLICY"
     ok "Policy ${ns}-read created"
   done
 
+  # ESO reader policy for External Secrets Operator
+  log "Creating ESO reader policy..."
+  kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+    sh -c "vault policy write eso-reader - <<'POLICY'
+path \"secret/data/*\" {
+  capabilities = [\"read\"]
+}
+path \"secret/metadata/*\" {
+  capabilities = [\"read\", \"list\"]
+}
+POLICY"
+  ok "Policy eso-reader created"
+
+  # Bind ESO service account to the reader role
+  log "Binding ESO Kubernetes auth role..."
+  kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+    vault write auth/kubernetes/role/eso-reader \
+      bound_service_account_names=external-secrets \
+      bound_service_account_namespaces=external-secrets \
+      policies=eso-reader \
+      ttl=1h
+  ok "ESO reader role bound"
+
   log "Enabling audit logging..."
   kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
     vault audit enable file file_path=/vault/audit/audit.log 2>/dev/null \
