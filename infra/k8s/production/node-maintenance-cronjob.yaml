@@ -1,0 +1,137 @@
+# Node Maintenance CronJob
+# Purpose: Automated garbage collection — images, logs, containerd, Longhorn orphans
+# Schedule: Daily at 2:30 AM UTC (before Longhorn backups at 3:00)
+# Consolidates: image-cleanup.yaml + disk-cleanup.yaml + log rotation
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: node-maintenance
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: node-maintenance
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: node-maintenance
+            app.kubernetes.io/component: maintenance
+        spec:
+          restartPolicy: OnFailure
+          hostPID: true
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: "true"
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+          containers:
+            - name: maintenance
+              image: docker.io/rancher/k3s:v1.33.7-k3s3
+              command:
+                - nsenter
+                - -t
+                - "1"
+                - -m
+                - -u
+                - -i
+                - -n
+                - -p
+                - --
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "=== Node Maintenance Started: $(date -u) ==="
+                  DISK_BEFORE=$(df / | awk 'NR==2 {print $5}')
+                  echo "Disk before: $DISK_BEFORE"
+
+                  # --- 1. Prune unused container images ---
+                  echo ""
+                  echo "--- Step 1: Pruning unused container images ---"
+                  IMAGES_BEFORE=$(k3s crictl images -q 2>/dev/null | wc -l)
+                  k3s crictl rmi --prune 2>/dev/null || true
+                  IMAGES_AFTER=$(k3s crictl images -q 2>/dev/null | wc -l)
+                  echo "Images: $IMAGES_BEFORE -> $IMAGES_AFTER (removed $((IMAGES_BEFORE - IMAGES_AFTER)))"
+
+                  # --- 2. Clean stopped containers ---
+                  echo ""
+                  echo "--- Step 2: Cleaning exited containers ---"
+                  CLEANED=0
+                  for cid in $(k3s crictl ps -a -q 2>/dev/null); do
+                    STATE=$(k3s crictl inspect "$cid" 2>/dev/null | grep -o '"state": "[^"]*"' | head -1 | cut -d'"' -f4)
+                    if [ "$STATE" = "CONTAINER_EXITED" ]; then
+                      k3s crictl rm "$cid" 2>/dev/null && CLEANED=$((CLEANED + 1)) || true
+                    fi
+                  done
+                  echo "Removed $CLEANED exited containers"
+
+                  # --- 3. Journal log rotation ---
+                  echo ""
+                  echo "--- Step 3: Rotating journal logs ---"
+                  LOGS_BEFORE=$(du -sm /var/log/ 2>/dev/null | awk '{print $1}')
+                  journalctl --vacuum-size=500M 2>/dev/null || true
+                  find /var/log -name "*.gz" -mtime +7 -delete 2>/dev/null || true
+                  find /var/log -name "*.1" -mtime +14 -delete 2>/dev/null || true
+                  LOGS_AFTER=$(du -sm /var/log/ 2>/dev/null | awk '{print $1}')
+                  echo "Logs: ${LOGS_BEFORE}MB -> ${LOGS_AFTER}MB (freed $((LOGS_BEFORE - LOGS_AFTER))MB)"
+
+                  # --- 4. Final disk report ---
+                  echo ""
+                  echo "--- Final Disk Report ---"
+                  df -h /
+                  DISK_AFTER=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+                  echo ""
+                  if [ "$DISK_AFTER" -gt 85 ]; then
+                    echo "WARNING: Disk usage $DISK_AFTER% exceeds 85% threshold!"
+                    echo "Manual intervention may be required."
+                  else
+                    echo "Disk usage $DISK_AFTER% is within safe limits."
+                  fi
+
+                  echo ""
+                  echo "=== Node Maintenance Completed: $(date -u) ==="
+              securityContext:
+                privileged: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
+              volumeMounts:
+                - name: containerd-socket
+                  mountPath: /run/k3s/containerd/containerd.sock
+                  readOnly: false
+                - name: host-var-log
+                  mountPath: /var/log
+                  readOnly: false
+                - name: host-run-log
+                  mountPath: /run/log
+                  readOnly: false
+          volumes:
+            - name: containerd-socket
+              hostPath:
+                path: /run/k3s/containerd/containerd.sock
+                type: Socket
+            - name: host-var-log
+              hostPath:
+                path: /var/log
+                type: Directory
+            - name: host-run-log
+              hostPath:
+                path: /run/log
+                type: Directory

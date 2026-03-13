@@ -1,0 +1,55 @@
+# PolicyException for node-maintenance CronJob
+# Requires: privileged, hostPID, hostPath for containerd socket and log access
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: node-maintenance-privileged
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: node-maintenance
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    policies.kyverno.io/description: >-
+      Node maintenance CronJob requires privileged access for containerd image
+      pruning (crictl), journal log rotation, and disk cleanup.
+    policies.kyverno.io/severity: medium
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - CronJob
+            - Job
+          names:
+            - "node-maintenance*"
+          namespaces:
+            - enclii
+  exceptions:
+    - policyName: disallow-host-path
+      ruleNames:
+        - host-path
+        - autogen-host-path
+        - autogen-cronjob-host-path
+    - policyName: disallow-host-namespaces
+      ruleNames:
+        - host-namespaces
+        - autogen-host-namespaces
+        - autogen-cronjob-host-namespaces
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+        - autogen-cronjob-privileged-containers
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
+        - autogen-cronjob-run-as-non-root
+    - policyName: restrict-capabilities
+      ruleNames:
+        - require-drop-all
+        - autogen-require-drop-all
+        - autogen-cronjob-drop-all-capabilities
