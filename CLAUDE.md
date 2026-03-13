@@ -13,7 +13,7 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
 **GitOps:** ArgoCD App-of-Apps (28 apps across 22 namespaces) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (17 volumes, single-replica; ready for multi-node) - **Operational** (Jan 2026)
-**Last Audit:** Mar 13, 2026 — 150 pods, 36 endpoints, 34 operational ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
+**Last Audit:** Mar 13, 2026 — ~150 pods, 46 endpoints, 37 operational ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
 
 ### Port Allocation
 

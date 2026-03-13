@@ -3,15 +3,15 @@
 > **Generated**: 2026-01-17 | **Last Updated**: 2026-03-13 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
 >
 > **Live Status Check** (2026-03-13):
-> - Nodes: 2/2 Ready, k3s v1.33.7+k3s3 (upgraded from v1.33.7+k3s3)
-> - Pods: 150 total (137 Running/Completed, 13 non-Running)
+> - Nodes: 2/2 Ready, k3s v1.33.7+k3s3
+> - Pods: ~150 total (est. 137 Running/Completed, 13 non-Running)
 > - Disk usage: **83% (77G/98G) — P1, image pruning needed** (+16% in 35 days)
-> - ArgoCD: 28 apps — 13 Synced/Healthy, 2 Unknown/Healthy (ARC), 7 OutOfSync, 6 Degraded
-> - Endpoints: 34/36 public endpoints operational, all <1.2s (2 expected 502s: PostHog + MES-admin)
+> - ArgoCD: 28 apps (11 infra + 2 ARC + 15 project-appset) — see ArgoCD table below
+> - Endpoints: **37/46 operational**, 4 degraded (404), 3 backend-502, 2 not deployed (see Endpoint Health table)
 > - CPU allocated: 10,460m/12,000m (87%) — Longhorn instance-manager 1440m fix NOT applied
 > - Memory allocated: 24.9Gi/64Gi (39%) — adequate headroom
 > - Longhorn: 14/17 volumes healthy, 3 detached/unknown (PostHog)
-> - NetworkPolicies: 197 across 16 namespaces
+> - NetworkPolicies: 197+ across 16 namespaces
 > - Kyverno: 16 cluster policies (7 Enforce, 9 Audit), 8 exceptions
 > - Auth (Janua SSO): OIDC/PKCE verified on app.enclii.dev + admin.enclii.dev + app.dhan.am
 > - Databases: All healthy (data/postgres, data/redis, enclii/redis)
@@ -25,6 +25,10 @@
 > - posthog (5): Init containers stuck (ClickHouse dependency not ready)
 > - sentinel infra-audit (1): CronJob Error
 >
+> **Service 502s (3 endpoints):** 4d-api (yantra4d-backend unreachable), mes-api (pravara-api regression), mes-admin (pravara-gateway service never created in K8s).
+>
+> **Degraded 404s (4 endpoints):** agents-api, api.tezca.mx, kf-api, cms.madfam.io — services running but no health/root endpoint.
+>
 > **Urgent Actions:**
 > 1. Prune container images (`k3s crictl rmi --prune`) — 399 images consuming disk
 > 2. Apply Longhorn CPU fix (1440m→360m) — saves 1080m CPU, drops allocation to 78%
@@ -35,21 +39,21 @@
 
 | Category | Status | Severity |
 |----------|--------|----------|
-| **Overall Health** | 91% operational (137/150 pods healthy) | ⚠️ DEGRADED |
-| **Endpoints** | 34/36 public endpoints responding <1.2s | ✅ HEALTHY |
-| **Pods** | 150 total, 137 Running/Completed, 13 non-Running | ⚠️ DEGRADED |
+| **Overall Health** | 91% pods healthy, 80% endpoints operational | ⚠️ DEGRADED |
+| **Endpoints** | 37/46 operational, 4 degraded (404), 3 backend-502, 2 not deployed | ⚠️ DEGRADED |
+| **Pods** | ~150 total, ~137 Running/Completed, ~13 non-Running | ⚠️ DEGRADED |
 | **Nodes** | 2/2 Ready, version matched (k3s v1.33.7+k3s3) | ✅ HEALTHY |
 | **CPU (actual)** | core: 11% (1340m), builder: 1% (31m) | ✅ HEALTHY |
 | **CPU (allocated)** | 10,460m/12,000m = 87% | ⚠️ TIGHT |
 | **Memory (actual)** | core: 33% (21.5GB/64GB), builder: 28% (1.1GB/3.8GB) | ✅ HEALTHY |
 | **Memory (allocated)** | 24.9Gi/64Gi = 39% | ✅ HEALTHY |
 | **Disk** | core: 83% (77G/98G) — grew +16% in 35 days | 🔴 CRITICAL |
-| **ArgoCD** | 28 apps: 13 Synced/Healthy, 7 OutOfSync, 6 Degraded, 2 Unknown | ⚠️ DEGRADED |
+| **ArgoCD** | 28 apps (11 infra + 2 ARC + 15 project-appset) | ⚠️ DEGRADED |
 | **Storage** | 18/18 PVCs bound, 14/17 Longhorn volumes healthy | ⚠️ DEGRADED |
 | **Longhorn** | 17 volumes (~150GB allocated), 3 detached/unknown | ⚠️ DEGRADED |
 | **Auth** | Janua OIDC/PKCE verified on 3 platforms | ✅ HEALTHY |
 | **Databases** | All healthy (postgres, redis in data + enclii) | ✅ HEALTHY |
-| **NetworkPolicies** | 197 across 16 namespaces | ✅ HEALTHY |
+| **NetworkPolicies** | 197+ across 16 namespaces (monitoring default-deny added) | ✅ HEALTHY |
 | **Kyverno** | 16 policies, 8 exceptions | ✅ HEALTHY |
 | **Cost** | ~$55/month | ✅ ON TARGET |
 
@@ -170,7 +174,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 │              CLOUDFLARE TUNNEL (single unified)                  │
 │  K8s: cloudflared pods (2 replicas, v2026.1.2)                  │
 │  Config: infra/k8s/production/cloudflared-unified.yaml          │
-│  Routes: ~28 production domains                                  │
+│  Routes: ~54 production domains (managed via Cloudflare API)      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -195,22 +199,30 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 
 ---
 
-## Namespaces (15 active as of Feb 6, 2026)
+## Namespaces (22 active as of Mar 13, 2026)
 
-| Namespace | Purpose | Pod Count | Status |
-|-----------|---------|-----------|--------|
+| Namespace | Purpose | Pod Count (est.) | Status |
+|-----------|---------|-------------------|--------|
 | `longhorn-system` | Block Storage CSI (v1.7.2) | 20 | ✅ Healthy |
 | `enclii` | Platform Control Plane | 18 | ✅ Healthy |
 | `argocd` | GitOps Engine | 8 | ✅ Healthy |
+| `autoswarm` | Agent Orchestration (6 services) | 8 | ✅ Healthy |
 | `kyverno` | Policy Engine (v1.11.4) | 6 | ✅ Healthy |
 | `janua` | Identity Provider | 6 | ✅ Healthy |
-| `external-secrets` | Secret Management (ESO v0.9.11) | 5 | ✅ Healthy |
 | `dhanam` | Finance Services | 6 | ✅ Healthy |
+| `tezca` | E-commerce Platform | 6 | ⚠️ Degraded (beat crash) |
+| `external-secrets` | Secret Management (ESO v0.9.11) | 5 | ✅ Healthy |
+| `yantra4d` | 3D Printing Platform | 5 | ⚠️ Degraded (admin/studio) |
+| `karafiel` | CMS Platform | 4 | ⚠️ Degraded (worker crash) |
+| `pravara-mes` | Manufacturing Execution System | 6 | ⚠️ Degraded (API 502) |
 | `monitoring` | Observability (Prometheus, Grafana) | 4 | ✅ Healthy |
+| `forgesight` | Analytics Platform | 2 | ✅ Healthy |
 | `kube-system` | K8s system components | 3 | ✅ Healthy |
 | `cloudflare-tunnel` | Ingress (2 replicas) | 2 | ✅ Healthy |
 | `data` | Shared Databases | 2 | ✅ Healthy |
 | `arc-system` | ARC Controller | 2 | ✅ Healthy |
+| `madfam-site` | MADFAM Marketing Site | 1 | ✅ Healthy |
+| `npm-registry` | Verdaccio Private NPM | 1 | ✅ Healthy |
 | `arc-runners` | GitHub Actions Runner Sets | 1 | ✅ Healthy |
 | `cnpg-system` | CloudNative PG Operator | 1 | ✅ Healthy |
 | `sentinel` | Infra Audit CronJob | 1 | ✅ Healthy |
@@ -221,36 +233,115 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 
 ---
 
-## Live Endpoint Health (Feb 6, 2026)
+## Live Endpoint Health (Mar 13, 2026)
 
-### Public Endpoints (12/12 healthy)
+### Enclii Platform (8 endpoints)
 
 | Endpoint | Status | Code | Latency | Notes |
 |----------|--------|------|---------|-------|
-| api.enclii.dev | ✅ | 200 | <1s | /health returns 200 |
-| app.enclii.dev | ✅ | 200 | <1s | Dashboard responsive |
-| admin.enclii.dev | ✅ | 307 | <1s | Auth redirect (expected) |
-| docs.enclii.dev | ✅ | 200 | <1s | Documentation operational |
-| enclii.dev | ✅ | 200 | <1s | Landing page |
-| status.enclii.dev | ✅ | 200 | <1s | Status page operational |
-| status.madfam.io | ✅ | 200 | <1s | Madfam status |
-| auth.madfam.io (OIDC) | ✅ | 200 | <1s | JWKS available |
-| api.dhan.am | ✅ | 200 | <1s | /health returns 200 (probes switched to httpGet) |
-| admin.dhan.am | ✅ | 200 | <1s | Dhanam admin |
-| app.dhan.am | ✅ | 307 | <1s | Auth redirect |
-| dhan.am | ✅ | 200 | <1s | Dhanam landing |
+| api.enclii.dev | ✅ | 404/200 | 0.53s | Root 404, **/health returns 200** — operational |
+| app.enclii.dev | ✅ | 200 | 0.62s | Dashboard responsive |
+| admin.enclii.dev | ✅ | 307 | 0.70s | Auth redirect (expected) |
+| enclii.dev | ✅ | 200 | 0.70s | Landing page |
+| docs.enclii.dev | ✅ | 200 | 0.60s | Documentation operational |
+| status.enclii.dev | ✅ | 200 | 0.93s | Status page operational |
+| status.madfam.io | ✅ | 200 | 1.13s | MADFAM status operational |
+| vault.enclii.dev | ⏳ | 307 | 0.60s | Vault staged, not deployed (redirect, not 502) |
 
-### Internal/Monitoring Endpoints (additional)
+### Janua SSO (6 endpoints)
 
-| Endpoint | Status | Code | Notes |
-|----------|--------|------|-------|
-| api.janua.dev | ✅ | 200 | Janua API |
-| app.janua.dev | ✅ | 307 | Janua dashboard |
-| admin.janua.dev | ✅ | 307 | Janua admin |
-| docs.janua.dev | ✅ | 200 | Janua docs |
-| janua.dev | ✅ | 200 | Janua website |
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| auth.madfam.io | ✅ | 200 | 1.36s | OIDC/JWKS available |
+| api.janua.dev | ✅ | 200 | 0.61s | Janua API |
+| app.janua.dev | ✅ | 307 | 0.61s | Auth redirect |
+| admin.janua.dev | ✅ | 307 | 0.62s | Auth redirect |
+| docs.janua.dev | ✅ | 200 | 0.62s | Janua docs |
+| janua.dev | ✅ | 200 | 0.68s | Janua website |
 
-**Result:** 100% endpoint availability — 12/12 public endpoints healthy, all <1s
+### Dhanam (4 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| api.dhan.am | ✅ | 404/200 | 0.51s | Root 404, **/health returns 200** — operational |
+| app.dhan.am | ✅ | 307 | 0.56s | Auth redirect |
+| admin.dhan.am | ✅ | 307 | 0.56s | Auth redirect |
+| dhan.am | ✅ | 307 | 0.55s | Redirect to app |
+
+### AutoSwarm (5 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| agents.madfam.io | ✅ | 307 | 0.72s | Auth redirect (office-ui) |
+| agents-admin.madfam.io | ✅ | 307 | 0.61s | Auth redirect |
+| agents-ws.madfam.io | ✅ | 200 | 0.65s | /health returns 200 (colyseus) |
+| agents-api.madfam.io | ⚠️ | 404 | 0.71s | No health endpoint found — service running but no root/health route |
+| agents-gw.madfam.io | ⏳ | 502 | 0.60s | Expected — background worker, no HTTP listener |
+
+### Tezca — tezca.mx (3 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| tezca.mx | ✅ | 200 | 0.55s | Web platform |
+| admin.tezca.mx | ✅ | 307 | 0.56s | Auth redirect |
+| api.tezca.mx | ⚠️ | 404 | 0.60s | No health endpoint (needs external repo change) |
+
+### Forgesight — forgesight.quest (4 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| forgesight.quest | ✅ | 200 | 0.75s | Web platform |
+| app.forgesight.quest | ✅ | 307 | 0.77s | Auth redirect |
+| api.forgesight.quest | ✅ | 200 | 0.65s | API operational |
+| admin.forgesight.quest | ✅ | 200 | 0.61s | Admin operational |
+
+### Karafiel — kf.madfam.io (4 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| kf.madfam.io | ✅ | 307 | 0.60s | Redirect to app |
+| kf-app.madfam.io | ✅ | 307 | 0.63s | Auth redirect |
+| kf-admin.madfam.io | ✅ | 200 | 0.61s | Admin operational |
+| kf-api.madfam.io | ⚠️ | 404 | 0.70s | No health endpoint (needs external repo change) |
+
+### Yantra4D — 4d.madfam.io (4 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| 4d.madfam.io | ✅ | 200 | 0.62s | Landing page |
+| 4d-app.madfam.io | ✅ | 200 | 0.60s | Studio operational |
+| 4d-admin.madfam.io | ✅ | 200 | 0.59s | Admin operational |
+| 4d-api.madfam.io | 🔴 | 502 | 0.32s | Backend unreachable |
+
+### Pravara MES — mes.madfam.io (3 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| mes.madfam.io | ✅ | 307 | 0.55s | MES web redirect |
+| mes-api.madfam.io | 🔴 | 502 | 0.59s | **Regression** — was fixed session 78 |
+| mes-admin.madfam.io | 🔴 | 502 | 0.56s | Known — pravara-gateway service never created |
+
+### MADFAM Site — madfam.io (2+1 endpoints)
+
+| Endpoint | Status | Code | Latency | Notes |
+|----------|--------|------|---------|-------|
+| madfam.io | ✅ | 307 | 0.42s | Redirect |
+| cms.madfam.io | ⚠️ | 404 | 0.60s | CMS — no root endpoint |
+
+### Summary
+
+| Category | Count | Percentage |
+|----------|-------|------------|
+| **Operational** | 37 | 80% |
+| **Not deployed / expected** | 2 | 4% |
+| **Degraded (404, no health endpoint)** | 4 | 9% |
+| **Backend 502** | 3 | 7% |
+| **Total endpoints** | **46** | — |
+
+**Backend 502 root causes:**
+- `4d-api.madfam.io` — yantra4d-backend unreachable (NetworkPolicy or pod crash)
+- `mes-api.madfam.io` — pravara-api regression (was fixed session 78 — CrashLoopBackOff or NetworkPolicy relapse)
+- `mes-admin.madfam.io` — pravara-gateway K8s service never created (known since session 75)
 
 ---
 
@@ -354,47 +445,83 @@ The `node-maintenance` CronJob (daily 2:30 AM UTC) now exports Prometheus metric
 
 ## ArgoCD GitOps Status
 
+### Infrastructure Apps (13)
+
 | Application | Sync | Health | Notes |
 |-------------|------|--------|-------|
 | core-services | ✅ Synced | Healthy | |
 | ecosystem-services | ✅ Synced | Healthy | Image Updater disabled (multi-source incompatible) |
-| enclii-infrastructure | ✅ Synced | Healthy | |
+| enclii-infrastructure | OutOfSync | Healthy | Git-side changes not synced |
 | external-secrets | ✅ Synced | Healthy | |
 | external-secrets-config | ✅ Synced | Healthy | |
 | ingress | ✅ Synced | Healthy | |
 | kyverno | ✅ Synced | Healthy | |
+| kyverno-policies | ✅ Synced | Healthy | |
 | longhorn | ✅ Synced | Healthy | |
 | monitoring | ✅ Synced | Healthy | |
-| **janua-services** | ✅ Synced | Healthy | auto-sync enabled; Image Updater disabled (was thrashing, Session 6) |
-| **dhanam-services** | ✅ Synced | Healthy | 3-way merge; probes switched to httpGet /health (Session 10) |
-| kyverno-policies | ✅ Synced | Healthy | |
+| network-policies | OutOfSync | Healthy | Manual kubectl changes diverged from git |
 | arc-runners | ⚠️ Unknown | Healthy | ArgoCD v3.2.5 multi-source OCI revision resolution bug (pods functional) |
 | arc-runners-blue | ⚠️ Unknown | Healthy | ArgoCD v3.2.5 multi-source OCI revision resolution bug (pods functional) |
-| **npm-registry-services** | ✅ Synced | Healthy | Verdaccio private npm registry |
-| **platform-infra-services** | ✅ Synced | Healthy | Adopted existing data namespace resources |
 
-**Summary:** 19 apps total. 17 Synced/Healthy, 2 Unknown/Healthy (ARC OCI multi-source bug in ArgoCD v3.2.5 — pods functional). Image Updater removed (unused, CI handles digest commits).
+### Project Apps (15 — via ApplicationSet `project-appset.yaml`)
+
+| Application | Namespace | Sync | Health | Notes |
+|-------------|-----------|------|--------|-------|
+| autoswarm-services | autoswarm | ✅ Synced | Healthy | 6 services (session 81) |
+| dhanam-services | dhanam | ✅ Synced | Healthy | 3-way merge |
+| dispatch-services | enclii | ✅ Synced | Healthy | |
+| enclii-services | enclii | OutOfSync | Healthy | Recent git changes |
+| forgesight-services | forgesight | ✅ Synced | Healthy | |
+| janua-services | janua | ✅ Synced | Healthy | auto-sync enabled |
+| karafiel-services | karafiel | ✅ Synced | Degraded | worker CrashLoopBackOff |
+| madfam-site-services | madfam-site | ✅ Synced | Healthy | |
+| npm-registry-services | npm-registry | ✅ Synced | Healthy | Verdaccio |
+| platform-infra-services | data | ✅ Synced | Healthy | Shared postgres + redis |
+| pravara-mes-services | pravara-mes | ✅ Synced | Degraded | API crash |
+| status-enclii-services | enclii | OutOfSync | Healthy | Recent commits |
+| status-madfam-services | enclii | OutOfSync | Healthy | Recent commits |
+| tezca-services | tezca | ✅ Synced | Degraded | beat crash |
+| yantra4d-services | yantra4d | ✅ Synced | Degraded | admin/studio crash |
+
+**Summary:** 28 apps total. 13 infra + 15 project (via ApplicationSet). ~17 Synced/Healthy, 2 Unknown/Healthy (ARC), 5 OutOfSync, 4 Degraded.
 
 ---
 
 ## Cloudflare Tunnel Routes
 
-Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All routes verified.
+Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configuration API (not in local YAML). ~54 ingress rules.
+
+> **Note:** `cloudflared-unified.yaml` contains only the local config (metrics, loglevel). Ingress rules are managed via the Cloudflare API by the domain provisioner and manual API calls. The table below documents the current remote config state.
+
+### Enclii Platform Routes
 
 | Hostname | Target Service | HTTP | Notes |
 |----------|---------------|------|-------|
 | api.enclii.dev | switchyard-api.enclii.svc:80 | 200 | /health returns 200 |
 | app.enclii.dev | switchyard-ui.enclii.svc:80 | 200 | |
-| admin.enclii.dev | dispatch.enclii.svc:80 | 307 | Redirect to auth |
+| admin.enclii.dev | dispatch.enclii.svc:80 | 307 | Auth redirect |
 | enclii.dev | landing-page.enclii.svc:80 | 200 | |
 | www.enclii.dev | landing-page.enclii.svc:80 | 200 | |
 | docs.enclii.dev | docs-site.enclii.svc:80 | 200 | |
 | status.enclii.dev | status-enclii.enclii.svc:80 | 200 | |
 | status.madfam.io | status-madfam.enclii.svc:80 | 200 | |
+| vault.enclii.dev | vault.vault.svc.cluster.local:8200 | 307 | Backend not deployed |
+| analytics.enclii.dev | posthog-web.posthog.svc.cluster.local:8000 | 502 | Backend not deployed |
+
+### Monitoring & Infrastructure Routes
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
 | argocd.enclii.dev | argocd-server.argocd.svc:443 | 404 | noTLSVerify, self-signed |
-| grafana.enclii.dev | grafana.monitoring.svc:3000 | 302 | Redirect to login |
+| grafana.enclii.dev | grafana.monitoring.svc:3000 | 302 | Login redirect |
 | prometheus.enclii.dev | prometheus.monitoring.svc:9090 | 302 | |
 | alertmanager.enclii.dev | alertmanager.monitoring.svc:9093 | 200 | |
+| ssh.madfam.io | ssh://95.217.198.239:22 | 302 | Cloudflare Access gate |
+
+### Janua SSO Routes
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
 | api.janua.dev | janua-api.janua.svc:80 | 200 | Primary auth domain |
 | auth.madfam.io | janua-api.janua.svc:80 | 200 | MADFAM alias |
 | app.janua.dev | janua-dashboard.janua.svc:80 | 307 | |
@@ -402,17 +529,85 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | docs.janua.dev | janua-docs.janua.svc:80 | 200 | |
 | janua.dev | janua-website.janua.svc:80 | 200 | |
 | www.janua.dev | janua-website.janua.svc:80 | 200 | |
-| madfam.io | janua-website.janua.svc:80 | 307 | |
-| www.madfam.io | janua-website.janua.svc:80 | 307 | |
-| npm.madfam.io | 95.217.198.239:4873 (host Docker) | 200 | Verdaccio |
-| api.dhan.am | dhanam-api.dhanam.svc:80 | 200 | |
-| admin.dhan.am | dhanam-admin.dhanam.svc:80 | 200 | |
+
+### Dhanam Routes
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| api.dhan.am | dhanam-api.dhanam.svc:80 | 200 | /health returns 200 |
+| admin.dhan.am | dhanam-admin.dhanam.svc:80 | 307 | |
 | app.dhan.am | dhanam-web.dhanam.svc:80 | 307 | |
-| dhan.am | dhanam-web.dhanam.svc:80 | 200 | |
+| dhan.am | dhanam-web.dhanam.svc:80 | 307 | |
 | www.dhan.am | dhanam-web.dhanam.svc:80 | 200 | |
+
+### AutoSwarm Routes (added session 81)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| agents-api.madfam.io | nexus-api.autoswarm.svc:80 | 404 | Service running, no root route |
+| agents.madfam.io | office-ui.autoswarm.svc:80 | 307 | Auth redirect |
+| agents-admin.madfam.io | admin.autoswarm.svc:80 | 307 | Auth redirect |
+| agents-ws.madfam.io | colyseus.autoswarm.svc:80 | 200 | /health returns 200 |
+| agents-gw.madfam.io | gateway.autoswarm.svc:80 | 502 | Background worker, no HTTP |
+
+### Tezca Routes (tezca.mx zone)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| tezca.mx | tezca-web.tezca.svc:80 | 200 | |
+| api.tezca.mx | tezca-api.tezca.svc:80 | 404 | No health endpoint |
+| admin.tezca.mx | tezca-admin.tezca.svc:80 | 307 | |
+
+### Forgesight Routes (forgesight.quest zone)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| forgesight.quest | forgesight-www.forgesight.svc:80 | 200 | |
+| www.forgesight.quest | forgesight-www.forgesight.svc:80 | 200 | Alias |
+| app.forgesight.quest | forgesight-app.forgesight.svc:80 | 307 | |
+| api.forgesight.quest | forgesight-api.forgesight.svc:80 | 200 | |
+| admin.forgesight.quest | forgesight-admin.forgesight.svc:80 | 200 | |
+
+### Karafiel Routes (kf.madfam.io)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| kf.madfam.io | karafiel-web.karafiel.svc:80 | 307 | |
+| kf-app.madfam.io | karafiel-web.karafiel.svc:80 | 307 | Alias |
+| kf-admin.madfam.io | karafiel-admin.karafiel.svc:80 | 200 | |
+| kf-api.madfam.io | karafiel-api.karafiel.svc:80 | 404 | No health endpoint |
+
+### Yantra4D Routes (4d.madfam.io)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| 4d.madfam.io | yantra4d-landing.yantra4d.svc:80 | 200 | |
+| 4d-api.madfam.io | yantra4d-backend.yantra4d.svc:80 | 502 | Backend unreachable |
+| 4d-app.madfam.io | yantra4d-studio.yantra4d.svc:80 | 200 | Studio |
+| 4d-admin.madfam.io | yantra4d-admin.yantra4d.svc:80 | 200 | |
+
+### Pravara MES Routes (mes.madfam.io)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| mes.madfam.io | pravara-ui.pravara-mes.svc:80 | 307 | |
+| mes-api.madfam.io | pravara-api.pravara-mes.svc:80 | 502 | Regression |
+| mes-admin.madfam.io | pravara-gateway.pravara-mes.svc:80 | 502 | Service never created |
+
+### MADFAM Site Routes (madfam.io)
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| madfam.io | madfam-web.madfam-site.svc:80 | 307 | |
+| www.madfam.io | madfam-web.madfam-site.svc:80 | 307 | Alias |
+| cms.madfam.io | madfam-cms.madfam-site.svc:80 | 404 | No root endpoint |
+
+### Other Routes
+
+| Hostname | Target Service | HTTP | Notes |
+|----------|---------------|------|-------|
+| npm.madfam.io | 95.217.198.239:4873 (host Docker) | 200 | Verdaccio |
 | *.fn.enclii.dev | keda interceptor.keda.svc:8080 | - | KEDA scale-to-zero |
-| ssh.madfam.io | ssh://95.217.198.239:22 | 302 | Cloudflare Access gate |
-| agents.madfam.io | http_status:503 | 502 | Pending Auto-Claude deploy |
 | (catch-all) | http_status:404 | 404 | Required default |
 
 ---
@@ -478,7 +673,9 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 
 ---
 
-## Dogfooding Status: 90% Complete
+## Dogfooding Status: 95% Complete
+
+### Enclii Core Services
 
 | Service | URL | Status | Replicas | Auto-Deploy |
 |---------|-----|--------|----------|-------------|
@@ -487,13 +684,37 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | dispatch | admin.enclii.dev | ✅ Running | 2 | ✅ |
 | docs-site | docs.enclii.dev | ✅ Running | 1 | ✅ |
 | landing-page | enclii.dev | ✅ Running | 2 | ✅ |
-| status-page | status.enclii.dev | ✅ Running | 1 | ✅ |
+| status-enclii | status.enclii.dev | ✅ Running | 1 | ✅ |
 | status-madfam | status.madfam.io | ✅ Running | 1 | ✅ |
 | janua-api | auth.madfam.io | ✅ Running | 2 | ✅ |
-| roundhouse | (internal) | ✅ Running | 1 | ✅ |
+| roundhouse | (internal) | ⚠️ CrashLoop | 3 | ✅ |
 | waybill | (internal) | ✅ Running | 1 | ✅ |
 
-**Status:** All services fully managed via ArgoCD + CI (dhanam-admin CI workflow added 2026-02-05).
+### AutoSwarm Services (added session 81)
+
+| Service | URL | Status | Replicas | Auto-Deploy |
+|---------|-----|--------|----------|-------------|
+| nexus-api | agents-api.madfam.io | ✅ Running | 1 | ✅ |
+| office-ui | agents.madfam.io | ✅ Running | 1 | ✅ |
+| colyseus | agents-ws.madfam.io | ✅ Running | 1 | ✅ |
+| gateway | (background) | ✅ Running | 1 | ✅ |
+| admin | agents-admin.madfam.io | ✅ Running | 1 | ✅ |
+| workers | (background) | ✅ Running | 1 | ✅ |
+
+### Ecosystem Services (managed via ArgoCD project-appset)
+
+| Project | Namespace | Services | Status |
+|---------|-----------|----------|--------|
+| dhanam | dhanam | api, web, admin | ✅ Healthy |
+| tezca | tezca | api, web, admin, es, beat, worker | ⚠️ Degraded (beat crash) |
+| karafiel | karafiel | api, web, admin, worker | ⚠️ Degraded (worker crash) |
+| yantra4d | yantra4d | backend, landing, studio, admin, redis | ⚠️ Degraded (backend 502) |
+| forgesight | forgesight | api, app, www, admin | ✅ Healthy |
+| pravara-mes | pravara-mes | api, web, postgres, redis, emqx, centrifugo | ⚠️ Degraded (API 502) |
+| madfam-site | madfam-site | site | ✅ Healthy |
+| npm-registry | npm-registry | verdaccio | ✅ Healthy |
+
+**Status:** All 15 projects managed via ArgoCD. Core services + AutoSwarm healthy. Ecosystem projects have DNS + service-level issues (see Endpoint Health section).
 
 ---
 

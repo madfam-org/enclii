@@ -1,4 +1,110 @@
 ---
+# Default deny all ingress and egress in monitoring namespace
+# All traffic must be explicitly allowed by the policies below
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Prometheus ingress — from Cloudflare tunnel (UI) and Grafana (datasource)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-ingress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+  - Ingress
+  ingress:
+  # From Cloudflare tunnel (prometheus.enclii.dev UI)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
+    ports:
+    - protocol: TCP
+      port: 9090
+  # From Grafana (datasource queries)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: grafana
+    ports:
+    - protocol: TCP
+      port: 9090
+  # From AlertManager (silences API)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: alertmanager
+    ports:
+    - protocol: TCP
+      port: 9090
+---
+# Node-exporter ingress — from Prometheus only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: node-exporter-ingress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: node-exporter
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 9100
+---
+# Node-exporter egress — DNS only (exposes metrics, doesn't initiate connections)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: node-exporter-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-exporter
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: node-exporter
+  policyTypes:
+  - Egress
+  egress:
+  # DNS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+---
 # Prometheus egress — DNS, scrape targets, K8s API
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -56,6 +162,16 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: data
+  # Scrape targets in cloudflare-tunnel (cloudflared metrics)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
+  # Scrape targets in longhorn-system
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: longhorn-system
   # Kubernetes API server
   - to: []
     ports:

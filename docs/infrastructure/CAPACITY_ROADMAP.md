@@ -1,6 +1,6 @@
 # Capacity Roadmap — Production Cluster
 
-> **Created**: 2026-03-13 | **Audit Baseline**: 150 pods, 22 namespaces, 36 endpoints
+> **Created**: 2026-03-13 | **Audit Baseline**: ~150 pods, 22 namespaces, 46 endpoints (37 operational)
 > **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
 
 ## Current Utilization Summary
@@ -37,7 +37,7 @@
 | ArgoCD apps | 19 | 28 | +9 (+47%) | — |
 | Longhorn volumes | 5 | 17 | +12 | — |
 | Namespaces | 14 | 22 | +8 | — |
-| Endpoints | 12 | 36 | +24 | — |
+| Endpoints | 12 | 46 | +34 | — |
 
 **At current disk growth rate (0.43G/day), 95% disk usage reached in ~28 days (April 10, 2026).**
 

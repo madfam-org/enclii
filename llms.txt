@@ -39,7 +39,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 
 - [ArgoCD Config](./infra/argocd/): Root application + 11 app definitions (incl. network-policies, vault, posthog)
 - [K8s Production Manifests](./infra/k8s/production/): Deployments, services, patches
-- [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): 62 ingress rules (auto-provisioned via enclii.yaml, incl. vault.enclii.dev + analytics.enclii.dev)
+- [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): ~54 ingress rules (managed via Cloudflare API; see expected-tunnel-config.json for authoritative route list)
 - [Terraform](./infra/terraform/): Infrastructure as code for Hetzner + Cloudflare
 
 ## Integrations
