@@ -99,6 +99,35 @@ spec:
                     echo "Disk usage $DISK_AFTER% is within safe limits."
                   fi
 
+                  # --- 5. Export Prometheus metrics via textfile collector ---
+                  echo ""
+                  echo "--- Step 5: Exporting Prometheus metrics ---"
+                  METRICS_DIR="/var/lib/node_exporter/textfile_collector"
+                  mkdir -p "$METRICS_DIR"
+                  IMAGES_REMOVED=$((IMAGES_BEFORE - IMAGES_AFTER))
+                  LOGS_FREED_MB=$((LOGS_BEFORE - LOGS_AFTER))
+                  # Guard against negative values from measurement variance
+                  [ "$IMAGES_REMOVED" -lt 0 ] && IMAGES_REMOVED=0
+                  [ "$LOGS_FREED_MB" -lt 0 ] && LOGS_FREED_MB=0
+                  cat > "$METRICS_DIR/node_maintenance.prom" <<METRICS
+                  # HELP node_maintenance_last_run_timestamp_seconds Unix timestamp of last successful maintenance run
+                  # TYPE node_maintenance_last_run_timestamp_seconds gauge
+                  node_maintenance_last_run_timestamp_seconds $(date +%s)
+                  # HELP node_maintenance_images_removed_total Images removed in last run
+                  # TYPE node_maintenance_images_removed_total gauge
+                  node_maintenance_images_removed_total $IMAGES_REMOVED
+                  # HELP node_maintenance_containers_cleaned_total Exited containers cleaned in last run
+                  # TYPE node_maintenance_containers_cleaned_total gauge
+                  node_maintenance_containers_cleaned_total $CLEANED
+                  # HELP node_maintenance_logs_freed_bytes Bytes freed by log rotation in last run
+                  # TYPE node_maintenance_logs_freed_bytes gauge
+                  node_maintenance_logs_freed_bytes $((LOGS_FREED_MB * 1024 * 1024))
+                  # HELP node_maintenance_disk_usage_percent Root disk usage percentage after cleanup
+                  # TYPE node_maintenance_disk_usage_percent gauge
+                  node_maintenance_disk_usage_percent $DISK_AFTER
+                  METRICS
+                  echo "Metrics written to $METRICS_DIR/node_maintenance.prom"
+
                   echo ""
                   echo "=== Node Maintenance Completed: $(date -u) ==="
               securityContext:

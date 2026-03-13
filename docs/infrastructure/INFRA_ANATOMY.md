@@ -296,6 +296,28 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | prometheus | ClusterIP | 9090 | ✅ |
 | grafana | ClusterIP | 3000 | ✅ |
 | alertmanager | ClusterIP | 9093 | ✅ |
+| node-exporter | ClusterIP (DaemonSet) | 9100 | ✅ |
+
+**Maintenance Observability (Mar 2026):**
+
+The `node-maintenance` CronJob (daily 2:30 AM UTC) now exports Prometheus metrics via the node-exporter textfile collector:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `node_maintenance_last_run_timestamp_seconds` | gauge | Unix timestamp of last run |
+| `node_maintenance_images_removed_total` | gauge | Container images pruned |
+| `node_maintenance_containers_cleaned_total` | gauge | Exited containers cleaned |
+| `node_maintenance_logs_freed_bytes` | gauge | Log space reclaimed (bytes) |
+| `node_maintenance_disk_usage_percent` | gauge | Root disk % after cleanup |
+
+**Alert rules** (in `prometheus-rules` ConfigMap):
+- `MaintenanceCronJobFailed` — job failure detection (10m)
+- `NodeMaintenanceStale` — no metrics for >48h
+- `NodeDiskWillFillIn7Days` — `predict_linear` on root FS
+- `LonghornOrphanedVolume` — detached volume >24h
+- `LonghornVolumeDegraded` — degraded volume >30m
+
+**Grafana dashboard**: `node-maintenance` (uid) — disk health, maintenance history, Longhorn storage stats
 
 ---
 
@@ -501,7 +523,7 @@ Single unified tunnel via `infra/k8s/production/cloudflared-unified.yaml`. All r
 | ~~Investigate core-services Progressing status~~ | ~~P1~~ | ~~1h~~ | ✅ **DONE** (now Synced/Healthy) |
 | ~~Clean orphaned janua ReplicaSets (59 → ~5-10)~~ | ~~P2~~ | ~~15min~~ | ✅ **DONE** (28 cleaned, Session 9) |
 | ~~Decide on `janua-proxy` (scaled to 0/0)~~ | ~~P2~~ | ~~30min~~ | ✅ **DONE** (deleted, Session 10) |
-| Disk monitoring alert at 80% in Prometheus | P1 | 1h | Prevent outages |
+| ~~Disk monitoring alert at 80% in Prometheus~~ | ~~P1~~ | ~~1h~~ | ✅ **DONE** (predictive 7-day + maintenance CronJob failure + Longhorn orphan alerts) |
 | Pod Disruption Budgets for switchyard-api, janua-api, cloudflared | P1 | 2h | Zero-downtime maintenance |
 | Investigate `status` vs `status-enclii` redundancy | P2 | 1h | Lean operations |
 | Investigate `roundhouse` vs `roundhouse-api` split | P2 | 1h | Documentation |

@@ -545,6 +545,10 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | GPU setup | `infra/k8s/base/gpu/` |
 | Kaniko builds | `apps/roundhouse/k8s/kaniko-job-template.yaml` |
 | Vault ExternalSecrets | `infra/k8s/base/external-secrets/vault-secrets/` (enclii, janua, data, cloudflare) |
+| Node maintenance | `infra/k8s/production/node-maintenance-cronjob.yaml` (daily GC + Prometheus metrics export) |
+| Prometheus config + alerts | `infra/k8s/production/monitoring/prometheus.yaml` (scrape configs, alert rules ConfigMap) |
+| Node exporter | `infra/k8s/production/monitoring/node-exporter.yaml` (DaemonSet + textfile collector) |
+| Grafana dashboards | `infra/k8s/production/monitoring/dashboards/` (roundhouse, secrets-rotation, node-maintenance) |
 | Status K8s (base) | `apps/status/k8s/base/` (deployment, service, secret template) |
 | Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
 | Status Atom feed | `apps/status/app/feed.xml/route.ts` |

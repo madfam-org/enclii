@@ -143,6 +143,7 @@ Key routes in `cloudflared-unified.yaml`:
 | `status-enclii` | enclii | Status page (status.enclii.dev) |
 | `status-madfam` | enclii | Status page (status.madfam.io) |
 | `status-recorder-*` | enclii | CronJob — records status history every 60s + auto-incident detection |
+| `node-maintenance` | enclii | CronJob — daily garbage collection (images, containers, logs) + Prometheus metrics export via textfile collector |
 | `cloudflared` | cloudflare-tunnel | Ingress tunnel |
 
 ### Authentication

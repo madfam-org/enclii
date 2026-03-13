@@ -63,6 +63,7 @@ spec:
             - "--path.sysfs=/host/sys"
             - "--path.rootfs=/host/root"
             - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)"
+            - "--collector.textfile.directory=/textfile"
             - "--no-collector.arp"
             - "--no-collector.infiniband"
             - "--no-collector.wifi"
@@ -94,6 +95,9 @@ spec:
               mountPath: /host/root
               mountPropagation: HostToContainer
               readOnly: true
+            - name: textfile
+              mountPath: /textfile
+              readOnly: true
       volumes:
         - name: proc
           hostPath:
@@ -104,6 +108,10 @@ spec:
         - name: root
           hostPath:
             path: /
+        - name: textfile
+          hostPath:
+            path: /var/lib/node_exporter/textfile_collector
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service
