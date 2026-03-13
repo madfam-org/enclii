@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"io"
 	"net/http"
 
@@ -10,14 +11,25 @@ import (
 	"go.uber.org/zap"
 )
 
+// BuildQueue defines the queue operations used by API handlers.
+type BuildQueue interface {
+	Enqueue(ctx context.Context, job *queue.BuildJob) error
+	QueueLength(ctx context.Context) (int64, error)
+	GetJob(ctx context.Context, jobID uuid.UUID) (*queue.BuildJob, queue.JobStatus, error)
+	GetResult(ctx context.Context, jobID uuid.UUID) (*queue.BuildResult, error)
+	ActiveWorkers(ctx context.Context) ([]string, error)
+	StreamLogs(ctx context.Context, jobID uuid.UUID, fromID string) (<-chan string, error)
+	UpdateStatus(ctx context.Context, jobID uuid.UUID, status queue.JobStatus, workerID string) error
+}
+
 // Handlers contains all API handlers
 type Handlers struct {
-	queue  *queue.RedisQueue
+	queue  BuildQueue
 	logger *zap.Logger
 }
 
 // NewHandlers creates new API handlers
-func NewHandlers(q *queue.RedisQueue, logger *zap.Logger) *Handlers {
+func NewHandlers(q BuildQueue, logger *zap.Logger) *Handlers {
 	return &Handlers{
 		queue:  q,
 		logger: logger,

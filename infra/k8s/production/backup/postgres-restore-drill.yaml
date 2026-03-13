@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: restore-drill
-          image: docker.io/amazon/aws-cli:latest
+          image: docker.io/amazon/aws-cli:2.22.35
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false

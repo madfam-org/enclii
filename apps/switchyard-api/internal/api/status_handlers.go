@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
@@ -138,7 +140,7 @@ func (h *Handler) fetchStatusEntriesForProject(ctx context.Context, repoFullName
 				entries = append(entries, statusServiceEntry{
 					Name:  d.Name,
 					URL:   "https://" + d.Name,
-					Group: strings.Title(project), //nolint:staticcheck
+					Group: cases.Title(language.English).String(project),
 				})
 			}
 			return entries

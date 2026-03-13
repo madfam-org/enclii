@@ -33,7 +33,8 @@ spec:
               type: RuntimeDefault
           containers:
             - name: archive
-              image: ghcr.io/madfam-org/switchyard-api:latest
+              image: ghcr.io/madfam-org/enclii/switchyard-api@sha256:c68b36c1ef7898e6b1843df497dffcfb1378d7c0bf6a8e9878a156f818a41133
+              imagePullPolicy: IfNotPresent
               command: ["/app/switchyard-api"]
               args: ["--mode=archive-audit"]
               securityContext:

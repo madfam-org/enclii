@@ -37,7 +37,7 @@ spec:
               type: RuntimeDefault
           initContainers:
             - name: download-backup
-              image: docker.io/amazon/aws-cli:latest
+              image: docker.io/amazon/aws-cli:2.22.35
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false

@@ -688,7 +688,7 @@ pnpm test:e2e
 | Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse, waybill, CLI (47 cmd tests), SDK, dispatch (109 tests), status (129 tests), switchyard-ui (159 tests) |
+| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (47 cmd tests), SDK (30 client+type tests), dispatch (109 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests) |
 | Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.enclii.dev) + ExternalSecret manifests (4 namespaces) + ESO reader policy in deploy script. Needs cluster deploy |
 | PostHog (analytics) | Blocked | Chart v30.46.0 is latest available; officially unmaintained since May 2023. Redpanda subchart broken. Options: debug Redpanda, switch to Kafka subchart, or migrate to Docker Compose |
 
