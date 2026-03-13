@@ -321,11 +321,11 @@ Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Lo
 
 - [apps/switchyard-api/](./apps/switchyard-api/): Control plane API (Go/Gin, port 4200)
 - [apps/switchyard-ui/](./apps/switchyard-ui/): Web dashboard (Next.js, port 4201)
-- [apps/dispatch/](./apps/dispatch/): Admin platform (Next.js, port 4203)
-- [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
+- [apps/dispatch/](./apps/dispatch/): Admin platform (Next.js, port 4203) — 109 unit tests (auth, RBAC, Cloudflare API, components)
+- [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra) — 47 command-level tests (login, deploy, onboard, root)
 - [packages/sdk-go/](./packages/sdk-go/): Go SDK — API client (`pkg/client/`) and type definitions (`pkg/types/`)
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko)
-- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + auto-incident detection (creates/resolves incidents from consecutive health check failures, `AUTO_INCIDENTS_ENABLED` env var) + clickable service links (separate `href` for user-facing URL vs health-check `url`)
+- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + auto-incident detection (creates/resolves incidents from consecutive health check failures, `AUTO_INCIDENTS_ENABLED` env var) + clickable service links (separate `href` for user-facing URL vs health-check `url`) + 129 unit tests + 31 E2E tests
 - [apps/waybill/](./apps/waybill/): Infrastructure cost metering (customer billing via Dhanam)
 - [apps/docs-site/](./apps/docs-site/): Documentation (Docusaurus)
 - [apps/landing/](./apps/landing/): Landing page (Next.js)

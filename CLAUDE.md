@@ -268,9 +268,11 @@ Access to Dispatch requires BOTH:
 | Purpose | Location |
 |---------|----------|
 | Middleware (server-side auth) | `apps/dispatch/middleware.ts` |
+| Auth helpers (pure functions) | `apps/dispatch/lib/auth-helpers.ts` |
 | Auth Context (client-side) | `apps/dispatch/contexts/AuthContext.tsx` |
 | K8s Deployment | `apps/dispatch/k8s/deployment.yaml` |
 | Dockerfile | `apps/dispatch/Dockerfile` |
+| Unit tests | `apps/dispatch/__tests__/` (8 files, 109 tests: auth, API, Cloudflare, components) |
 
 ### Dogfooding Status (In Progress)
 
@@ -512,6 +514,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Commands | `packages/cli/internal/cmd/` |
 | API client | `packages/cli/internal/api/` |
 | Auth flow | `packages/cli/internal/auth/` |
+| Command tests | `packages/cli/internal/cmd/*_test.go` (4 files, 47 tests: login, deploy, onboard, root) |
 | Config | `packages/cli/internal/config/` |
 
 ### UI (Next.js)
@@ -526,6 +529,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | API calls | `apps/switchyard-ui/lib/api/` |
 | Hooks | `apps/switchyard-ui/hooks/` |
 | Types | `apps/switchyard-ui/types/` |
+| Unit tests | `apps/switchyard-ui/**/*.test.ts` (6 files, 159 tests) |
 
 ### Infrastructure
 
@@ -540,6 +544,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Longhorn values | `infra/helm/longhorn/` |
 | GPU setup | `infra/k8s/base/gpu/` |
 | Kaniko builds | `apps/roundhouse/k8s/kaniko-job-template.yaml` |
+| Vault ExternalSecrets | `infra/k8s/base/external-secrets/vault-secrets/` (enclii, janua, data, cloudflare) |
 | Status K8s (base) | `apps/status/k8s/base/` (deployment, service, secret template) |
 | Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
 | Status Atom feed | `apps/status/app/feed.xml/route.ts` |
@@ -548,6 +553,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Status uptime API | `apps/status/app/api/status/uptime/route.ts` |
 | Status shared config | `apps/status/lib/status-config.ts` (colors, labels, priority, incident config) |
 | Status E2E tests | `apps/status/tests/e2e/status-pages.spec.ts` |
+| Status unit tests | `apps/status/__tests__/lib/` (7 files, 129 tests: types, config, health-checker, auto-incidents, incidents, status-history, status-config) |
 
 ### Documentation
 
@@ -682,9 +688,9 @@ pnpm test:e2e
 | Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse, waybill, CLI, SDK |
-| Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.enclii.dev) in repo. Needs cluster deploy |
-| PostHog (analytics) | Staged | Helm values + ArgoCD app + NetworkPolicies + tunnel route (analytics.enclii.dev) + Go/frontend SDKs in repo. Needs cluster deploy |
+| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse, waybill, CLI (47 cmd tests), SDK, dispatch (109 tests), status (129 tests), switchyard-ui (159 tests) |
+| Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.enclii.dev) + ExternalSecret manifests (4 namespaces) + ESO reader policy in deploy script. Needs cluster deploy |
+| PostHog (analytics) | Blocked | Chart v30.46.0 is latest available; officially unmaintained since May 2023. Redpanda subchart broken. Options: debug Redpanda, switch to Kafka subchart, or migrate to Docker Compose |
 
 ---
 

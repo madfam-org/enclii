@@ -357,6 +357,22 @@ jobs:
         working-directory: apps/switchyard-ui
         run: pnpm test -- --coverage --passWithNoTests
 
+      - name: Install dispatch dependencies
+        working-directory: apps/dispatch
+        run: pnpm install --frozen-lockfile
+
+      - name: Run dispatch tests
+        working-directory: apps/dispatch
+        run: pnpm test -- --passWithNoTests
+
+      - name: Install status dependencies
+        working-directory: apps/status
+        run: pnpm install --frozen-lockfile
+
+      - name: Run status tests
+        working-directory: apps/status
+        run: pnpm test -- --passWithNoTests
+
       - name: Build UI
         working-directory: apps/switchyard-ui
         run: pnpm run build
