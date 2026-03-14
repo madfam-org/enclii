@@ -157,10 +157,24 @@ externalRedis:
   port: 6379
 
 # ---------------------------------------------------------------------------
-# ZooKeeper — disabled (Redpanda does not require ZooKeeper)
+# ZooKeeper — required by ClickHouse for ReplicatedMergeTree tables
+# Even with a single replica, PostHog's ClickHouse schema uses replicated
+# table engines that depend on ZooKeeper for metadata coordination.
 # ---------------------------------------------------------------------------
 zookeeper:
-  enabled: false
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    size: 1Gi
 
 # ---------------------------------------------------------------------------
 # PostHog configuration

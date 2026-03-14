@@ -131,7 +131,19 @@ spec:
           existingSecretPasswordKey: POSTHOG_REDIS_PASSWORD
 
         zookeeper:
-          enabled: false
+          enabled: true
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          persistence:
+            enabled: true
+            storageClassName: longhorn
+            size: 1Gi
 
         serviceAccount:
           create: true
