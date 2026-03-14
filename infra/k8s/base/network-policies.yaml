@@ -93,7 +93,7 @@ spec:
     - protocol: TCP
       port: 4200
 ---
-# Restrict Redis access to only Switchyard API
+# Restrict Redis access to Switchyard API + Roundhouse
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -112,8 +112,10 @@ spec:
   ingress:
   - from:
     - podSelector:
-        matchLabels:
-          app: switchyard-api
+        matchExpressions:
+          - key: app
+            operator: In
+            values: [switchyard-api, roundhouse-api, roundhouse]
     ports:
     - protocol: TCP
       port: 6379

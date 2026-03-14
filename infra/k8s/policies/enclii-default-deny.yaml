@@ -13,7 +13,8 @@
 #      - dispatch       (DNS + HTTPS + switchyard-api:4200)
 #      - docs-site      (DNS only)
 #      - landing-page   (DNS only)
-#      - roundhouse     (DNS + HTTPS + K8s API for builds)
+#      - roundhouse-api (DNS + HTTPS + K8s API + Redis)
+#      - roundhouse     (DNS + HTTPS + K8s API + Redis + switchyard-api callbacks)
 #
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
@@ -168,12 +169,12 @@ spec:
         - protocol: UDP
           port: 53
 
-# Allow roundhouse egress (DNS + HTTPS for registry push + K8s API for job management)
+# Allow roundhouse-api egress (DNS + HTTPS + K8s API + Redis)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: roundhouse-egress
+  name: roundhouse-api-egress
   namespace: enclii
   labels:
     app.kubernetes.io/managed-by: enclii
@@ -202,3 +203,62 @@ spec:
       ports:
         - protocol: TCP
           port: 6443
+    # Redis in enclii namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+# Allow roundhouse worker egress (DNS + HTTPS + K8s API + Redis + switchyard-api callbacks)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: roundhouse-worker-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: roundhouse
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for container registry, GitHub API
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # K8s API for build job management
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 6443
+    # Redis in enclii namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Callbacks to switchyard-api
+    - to:
+        - podSelector:
+            matchLabels:
+              app: switchyard-api
+      ports:
+        - protocol: TCP
+          port: 4200
