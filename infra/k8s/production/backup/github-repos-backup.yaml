@@ -47,8 +47,7 @@ data:
         break
       fi
 
-      REPOS="${REPOS}
-${PAGE_REPOS}"
+      REPOS=$(printf '%s\n%s' "${REPOS}" "${PAGE_REPOS}")
       PAGE=$((PAGE + 1))
     done
 
