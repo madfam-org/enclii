@@ -184,7 +184,7 @@ phase_network_policies() {
   hdr "Batch 2/4: Infrastructure Services"
   confirm "Apply infrastructure policies (monitoring, arc, vault, posthog namespaces)?"
 
-  for policy in monitoring-default-deny arc-default-deny vault-network-policies posthog-network-policies; do
+  for policy in arc-default-deny vault-network-policies posthog-network-policies; do
     log "Applying ${policy}.yaml..."
     kubectl apply -f "${POLICY_DIR}/${policy}.yaml"
   done
@@ -247,7 +247,7 @@ phase_network_policies() {
 
   # --- Also apply remaining policies ---
   hdr "Applying remaining policies (status, janua, dhanam)"
-  for policy in status-network-policies janua-network-policies dhanam-network-policies; do
+  for policy in status-network-policies janua-network-policies; do
     local file="${POLICY_DIR}/${policy}.yaml"
     if [[ -f "$file" ]]; then
       log "Applying ${policy}.yaml..."

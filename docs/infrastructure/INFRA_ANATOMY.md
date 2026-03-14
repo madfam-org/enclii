@@ -53,7 +53,7 @@
 | **Longhorn** | 17 volumes (~150GB allocated), 3 detached/unknown | ⚠️ DEGRADED |
 | **Auth** | Janua OIDC/PKCE verified on 3 platforms | ✅ HEALTHY |
 | **Databases** | All healthy (postgres, redis in data + enclii) | ✅ HEALTHY |
-| **NetworkPolicies** | 197+ across 16 namespaces (monitoring default-deny added) | ✅ HEALTHY |
+| **NetworkPolicies** | 197+ across 16 namespaces (per-app ownership, no overlaps) | ✅ HEALTHY |
 | **Kyverno** | 16 policies, 8 exceptions | ✅ HEALTHY |
 | **Cost** | see internal-devops | ✅ ON TARGET |
 
@@ -459,7 +459,7 @@ The `node-maintenance` CronJob (daily 2:30 AM UTC) now exports Prometheus metric
 | kyverno-policies | ✅ Synced | Healthy | |
 | longhorn | ✅ Synced | Healthy | |
 | monitoring | ✅ Synced | Healthy | |
-| network-policies | OutOfSync | Healthy | Manual kubectl changes diverged from git |
+| network-policies | ✅ Synced | Healthy | Removed monitoring/dhanam duplicates (owned by their own apps) |
 | arc-runners | ⚠️ Unknown | Healthy | ArgoCD v3.2.5 multi-source OCI revision resolution bug (pods functional) |
 | arc-runners-blue | ⚠️ Unknown | Healthy | ArgoCD v3.2.5 multi-source OCI revision resolution bug (pods functional) |
 
