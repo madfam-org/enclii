@@ -9,7 +9,7 @@
 set -euo pipefail
 
 # Configuration
-SSH_HOST="${JANUA_SSH_HOST:-solarpunk@95.217.198.239}"
+SSH_HOST="${JANUA_SSH_HOST:?Set JANUA_SSH_HOST (e.g. user@host)}"
 NAMESPACE="janua"
 SLACK_WEBHOOK="${JANUA_SLACK_WEBHOOK:-}"
 MAX_RESTART_ATTEMPTS=3

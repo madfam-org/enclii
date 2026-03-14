@@ -11,7 +11,7 @@ tags: [infrastructure, kubernetes, argocd, longhorn, cloudflare]
 
 This section documents Enclii's production infrastructure components deployed in January 2026.
 
-> **Current State:** Running on a single Hetzner AX41-NVME dedicated server. Infrastructure (Longhorn, ArgoCD) is prepared for multi-node scaling when additional nodes are added.
+> **Current State:** Running on a single Hetzner dedicated server. Infrastructure (Longhorn, ArgoCD) is prepared for multi-node scaling when additional nodes are added.
 
 ## Contents
 

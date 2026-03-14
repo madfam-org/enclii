@@ -283,7 +283,7 @@ make precommit          # All checks before committing
 ## Production Infrastructure
 
 ### Compute (2-node k3s cluster)
-- **foundry-core** (Hetzner AX41-NVMe): Control plane — AMD Ryzen 5 3600, 64GB RAM, 2x512GB NVMe
+- **foundry-core** (Hetzner dedicated server): Control plane node
 - **foundry-builder-01** (Hetzner Cloud VPS): CI builder — tainted `builder=true:NoSchedule`
 - **k3s v1.33.7+k3s3**: Lightweight Kubernetes
 

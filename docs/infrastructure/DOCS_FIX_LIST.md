@@ -44,7 +44,7 @@ The Enclii switchyard-api now uses K8s internal DNS (`redis.data.svc.cluster.loc
 ### NEW: SSH Tunnel Fix (FIXED 2026-01-17 21:42 UTC)
 
 **Problem**: `ssh.madfam.io` failing with "connection refused" - cloudflared pods tried `localhost:22` which refers to pod loopback, not host SSH.
-**Resolution**: Updated Cloudflare tunnel route from `ssh://localhost:22` to `ssh://95.217.198.239:22` via dashboard.
+**Resolution**: Updated Cloudflare tunnel route from `ssh://localhost:22` to `ssh://<CONTROL_PLANE_IP>:22` via dashboard.
 **Verification**: `ssh solarpunk@ssh.madfam.io` now works correctly.
 
 ### NEW: Kyverno Configuration Issue (FIXED 2026-01-17 21:15 UTC)
@@ -155,7 +155,7 @@ The PORT_ALLOCATION.md defines *intended* port allocations, but the K8s manifest
 
 | Line | Content | Action |
 |------|---------|--------|
-| L212 | `ENCLII_REDIS_URL = 95.217.198.239:6379` | Document as **BUG** not as current state |
+| L212 | `ENCLII_REDIS_URL = <CONTROL_PLANE_IP>:6379` | Document as **BUG** not as current state |
 | L41-43 | Systemd cloudflared services | Add "TO BE DISABLED" marker |
 | L27 | Public IP reference | OK (informational) |
 
@@ -164,10 +164,10 @@ The PORT_ALLOCATION.md defines *intended* port allocations, but the K8s manifest
 ```markdown
 # In INFRA_ANATOMY.md, line 212:
 # BEFORE:
-| switchyard-api | ENCLII_REDIS_URL | **95.217.198.239:6379** | EXTERNAL |
+| switchyard-api | ENCLII_REDIS_URL | **<CONTROL_PLANE_IP>:6379** | EXTERNAL |
 
 # AFTER:
-| switchyard-api | ENCLII_REDIS_URL | **95.217.198.239:6379** | **BUG** - Should be `redis://redis.data.svc.cluster.local:6379` |
+| switchyard-api | ENCLII_REDIS_URL | **<CONTROL_PLANE_IP>:6379** | **BUG** - Should be `redis://redis.data.svc.cluster.local:6379` |
 ```
 
 ---

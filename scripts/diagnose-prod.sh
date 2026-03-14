@@ -289,7 +289,7 @@ phase4_config_integrity() {
     # 4.3 External URL check
     print_section "External URL Configuration"
 
-    local redis_external=$(sudo kubectl exec -n enclii deploy/switchyard-api -- printenv ENCLII_REDIS_URL 2>/dev/null | grep -c "95.217" || echo 0)
+    local redis_external=$(sudo kubectl exec -n enclii deploy/switchyard-api -- printenv ENCLII_REDIS_URL 2>/dev/null | grep -cE '^redis://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || echo 0)
     if [[ $redis_external -gt 0 ]]; then
         check_fail "switchyard-api using external Redis IP!"
     else

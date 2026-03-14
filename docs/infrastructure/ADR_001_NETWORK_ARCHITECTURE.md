@@ -94,7 +94,7 @@ spec:
 
 > **Redis MUST be accessed via `redis://redis.data.svc.cluster.local:6379`. External IPs are FORBIDDEN.**
 
-**Rationale**: During Operation FORTRESS, we discovered Switchyard using `95.217.198.239:6379` (public IP) which:
+**Rationale**: During Operation FORTRESS, we discovered Switchyard using `<HOST_IP>:6379` (public IP) which:
 1. Exposed Redis traffic to the public internet
 2. Failed when we locked down to localhost binding
 3. Created unnecessary external network hops
@@ -112,7 +112,7 @@ REDIS_URL: "redis://127.0.0.1:6379"
 **Forbidden Patterns**:
 ```yaml
 # NEVER use these in production
-REDIS_URL: "redis://95.217.198.239:6379"  # External IP
+REDIS_URL: "redis://<HOST_IP>:6379"  # External IP
 REDIS_URL: "redis://0.0.0.0:6379"         # Wildcard bind
 REDIS_URL: "redis://foundry-core:6379"    # Hostname resolution issues
 ```

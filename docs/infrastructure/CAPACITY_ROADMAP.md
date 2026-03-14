@@ -100,54 +100,21 @@ sudo find /var/log -name "*.gz" -mtime +7 -delete
 | Memory req > 70% | ~40Gi | Review and compact |
 | Pods > 200 | +50 pods | Check max-pods setting |
 
-## Hardware Recommendation: Hetzner EX44
+## Hardware Recommendation
 
-**Decision: Order before April 1, 2026** to lock in current pricing.
+> **Detailed pricing, server specs, and cost projections**: see `madfam-org/internal-devops` → `infrastructure/cost-analysis.md` and `hardware/hetzner-evaluation.md`
 
-### Why EX44
-
-| Spec | foundry-core (AX41) | **EX44 (recommended)** | Comparison |
-|------|---------------------|------------------------|------------|
-| CPU | AMD Ryzen 5 3600 (6C/12T) | Intel i5-13500 (14C/20T) | **1.8x compute** |
-| RAM | 64GB DDR4 | 64GB DDR4 | Same |
-| Storage | 2x512GB NVMe | 2x512GB NVMe Gen4 | Faster I/O |
-| Price (current) | ~€46/mo | ~€44-47/mo | Similar |
-| Price (April) | +21% (AX42-U) | **+3-7%** | Much better value |
-
-### Why Now (Hetzner April 2026 Price Changes)
-
-| Server | Current | April 1 | Increase |
-|--------|---------|---------|----------|
-| AX42-U (successor to AX41) | €46.00 | €55.58 | **+21%** |
-| **EX44** | €43.58 | **€44.84-46.58** | **+3-7%** |
-| Server Auction (Ryzen) | ~€35-40 | ~€36-41 | +3% |
-| **64GB RAM add-on** | €32.36 | **€218.40** | **+575%** |
-
-**Critical: Order with 64GB base RAM.** The RAM add-on price is increasing 575% in April.
-
-### Alternative: Server Auction
-
-- Watch for Ryzen 5 3600 / Ryzen 7 3700X with 64GB + NVMe
-- ~€35-40/mo, only +3% increase in April
-- Same CPU architecture as foundry-core
-- Less predictable availability
-
-### Cost Projection
-
-| Configuration | Monthly | Annual | 5-Year |
-|---------------|---------|--------|--------|
-| Current (2-node) | ~€55 | ~€660 | ~€3,300 |
-| **3-node (+ EX44)** | **~€100** | **~€1,200** | **~€6,000** |
-| SaaS equivalent | ~€2,000+ | ~€24,000+ | ~€120,000+ |
-
-Even at 3 nodes, the cluster is **20x cheaper** than equivalent SaaS.
+The next node should be ordered from Hetzner (same DC as foundry-core for latency). Key considerations:
+- Match or exceed current control plane CPU/RAM specs
+- NVMe storage preferred for Longhorn replication
+- Same k3s version (v1.33.7+k3s3)
 
 ## k3s Node Addition Checklist
 
 ### Pre-Deploy
 
 ```bash
-# 1. Order EX44 with Ubuntu 24.04, 64GB RAM
+# 1. Order server (see internal-devops/hardware/ for recommendations)
 # 2. Initial server setup
 hostnamectl set-hostname foundry-node-02
 apt update && apt upgrade -y
@@ -161,7 +128,7 @@ ssh foundry-core 'sudo cat /var/lib/rancher/k3s/server/node-token'
 
 # Install k3s agent (MUST match version v1.33.7+k3s3):
 curl -sfL https://get.k3s.io | \
-  K3S_URL=https://95.217.198.239:6443 \
+  K3S_URL=https://<CONTROL_PLANE_IP>:6443 \
   K3S_TOKEN=<token> \
   INSTALL_K3S_VERSION="v1.33.7+k3s3" sh -
 
@@ -212,12 +179,14 @@ kubectl get volumes.longhorn.io -n longhorn-system -w
 
 ## Scaling Decision Matrix
 
-| Clients | Pods (est.) | Nodes | Storage | Monthly Cost |
-|---------|-------------|-------|---------|--------------|
-| 1-5 (current) | 100-200 | 2-3 | 200GB Longhorn | ~€55-100 |
-| 5-25 | 200-500 | 3-5 | 500GB-1TB | ~€150-250 |
-| 25-100 | 500-2000 | 5-10 | 1-5TB | ~€250-500 |
-| 100+ | 2000+ | 10+ | 5TB+ | €500+ |
+| Clients | Pods (est.) | Nodes | Storage |
+|---------|-------------|-------|---------|
+| 1-5 (current) | 100-200 | 2-3 | 200GB Longhorn |
+| 5-25 | 200-500 | 3-5 | 500GB-1TB |
+| 25-100 | 500-2000 | 5-10 | 1-5TB |
+| 100+ | 2000+ | 10+ | 5TB+ |
+
+> Cost projections: see `internal-devops/infrastructure/cost-analysis.md`
 
 ## Non-Running Pod Remediation
 

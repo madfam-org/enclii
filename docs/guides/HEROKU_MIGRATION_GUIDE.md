@@ -763,7 +763,7 @@ heroku apps:destroy your-app --confirm your-app
 | Heroku Redis (Premium) | $15/month | $0 (in-cluster) |
 | Custom Domain SSL | Free | Free (Cloudflare) |
 | CI/CD (Heroku CI) | $10/month | $0 (GitHub webhooks) |
-| **Total** | **$125+/month** | **~$55/month (shared infrastructure)** |
+| **Total** | **$125+/month** | **self-hostednth (shared infrastructure)** |
 
 Enclii's infrastructure cost is shared across all your services, so additional apps add zero marginal infrastructure cost.
 

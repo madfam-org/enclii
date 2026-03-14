@@ -2,7 +2,7 @@
 
 This document defines how the Enclii team detects, responds to, and recovers from production incidents. All on-call personnel must be familiar with these procedures.
 
-**Infrastructure context:** 2-node k3s cluster (Hetzner AX41-NVME + VPS builder), Cloudflare tunnel ingress, self-hosted PostgreSQL and Redis, ArgoCD GitOps, Janua SSO.
+**Infrastructure context:** 2-node k3s cluster (Hetzner dedicated server + VPS builder), Cloudflare tunnel ingress, self-hosted PostgreSQL and Redis, ArgoCD GitOps, Janua SSO.
 
 ---
 

@@ -33,7 +33,7 @@ Enclii is a Platform-as-a-Service (PaaS) that provides streamlined developer exp
 | Data residency | EU (Hetzner) | Multi-region | Multi-region | Multi-region |
 | Own infrastructure | Yes (optional) | No | No | No |
 
-**Cost comparison**: Enclii runs on ~$55/month infrastructure vs. $2,220+/month for equivalent Railway + Auth0 setup.
+**Cost comparison**: Enclii runs on self-hosted infrastructure at significant savings vs. equivalent Railway + Auth0 setup. See internal-devops for cost breakdown.
 
 ### What can I deploy on Enclii?
 
@@ -142,11 +142,7 @@ When you open a pull request:
 
 ### Where does my code run?
 
-On dedicated Hetzner bare-metal servers in Germany, managed by the MADFAM team. Current setup:
-- AMD Ryzen 5 3600 (6 cores)
-- 64GB RAM
-- 2x512GB NVMe SSD
-- k3s Kubernetes distribution
+On dedicated Hetzner bare-metal servers in Germany, managed by the MADFAM team, running k3s Kubernetes. See internal-devops for hardware specs.
 
 ### Is there a shared or dedicated option?
 

@@ -1,13 +1,13 @@
 # ENCLII PLATFORM - COMPREHENSIVE CAPABILITY MATRIX
 **Status:** 95% Production Ready | **Date:** January 2026 (Updated)
 
-> ⚠️ **Note:** This matrix was originally created Nov 2025. Current infrastructure: single Hetzner AX41-NVME (~$55/mo), self-hosted PostgreSQL/Redis. Core services live at enclii.dev.
+> ⚠️ **Note:** This matrix was originally created Nov 2025. Current infrastructure: single Hetzner dedicated server, self-hosted PostgreSQL/Redis. Core services live at enclii.dev. See internal-devops for cost breakdown.
 
 ---
 
 ## EXECUTIVE SUMMARY
 
-Enclii is a **open source DevOps platform** running on cost-optimized infrastructure. Current status is **95% production-ready** with core services deployed. The platform provides multi-tenant SaaS capabilities at 97% cost savings vs Railway/Auth0 (~$55/mo vs $2,220/mo).
+Enclii is a **open source DevOps platform** running on cost-optimized infrastructure. Current status is **95% production-ready** with core services deployed. The platform provides multi-tenant SaaS capabilities at significant cost savings vs Railway/Auth0. See internal-devops for cost breakdown.
 
 **Key Achievements:**
 - ✅ Complete control plane API with RBAC/Auth
@@ -768,36 +768,30 @@ curl https://app.enclii.dev/
 
 # PART 11: COST ANALYSIS
 
-## Enclii Infrastructure Cost (~$55/month)
+## Enclii Infrastructure Cost
+
+See internal-devops for cost breakdown.
 
 ```
 Hetzner Dedicated Server
-  AX41-NVME (6-core, 64GB)   ~$50/mo
-
-Cloudflare
-  Tunnel (replaces LB)        $0 (FREE)
-  R2 Storage (5GB/mo)         $5/mo
-  For SaaS (100 domains)      $0 (FREE)
-  DDoS Protection             $0 (FREE)
-
-Self-hosted PostgreSQL
-  In-cluster deployment       $0
+Cloudflare (Tunnel, R2, SaaS, DDoS)
+Self-hosted PostgreSQL (in-cluster)
 
 Single Redis Instance
   In-cluster (Sentinel staged) $0
 
 ─────────────────────────────────
-TOTAL                         ~$55/mo
+See internal-devops for cost breakdown.
 ```
 
 ## Comparison with Alternatives
 
-| Platform | Monthly Cost | Annual Cost |
-|----------|--------------|-------------|
-| **Enclii** | ~$55 | ~$660 |
-| Railway | $2,000+ | $24,000+ |
-| Auth0 | $220+ | $2,640+ |
-| Railway + Auth0 | $2,220+ | $26,640+ |
+| Platform | Model | Annual Cost |
+|----------|-------|-------------|
+| **Enclii** | Self-hosted | See internal-devops |
+| Railway | SaaS | $24,000+ |
+| Auth0 | SaaS | $2,640+ |
+| Railway + Auth0 | SaaS | $26,640+ |
 | DigitalOcean App Platform | $341 | $4,092 |
 | AWS ECS Fargate | $300-1,000 | $3,600-12,000 |
 

@@ -3,11 +3,11 @@
 **Current Production Readiness:** 95%
 **Target Production Readiness:** 100%
 **Remaining:** Load testing, final security audit
-**Estimated Monthly Cost:** ~$55 (vs $2,000+ with Auth0/Clerk)
+**Estimated Monthly Cost:** See internal-devops for cost breakdown
 
 > ⚠️ **Documentation Notice (Jan 2026):**
 > This document was originally a planning roadmap. **Actual current infrastructure:**
-> - **Single Hetzner AX41-NVME** dedicated server (~$50/mo), not 3x CPX31 VMs
+> - **Single Hetzner dedicated server**, not 3x CPX31 VMs
 > - **Self-hosted PostgreSQL** in-cluster, not Ubicloud managed
 > - **Self-hosted Redis** in-cluster, not Redis Sentinel HA
 > - **Single-node k3s**, not multi-node cluster (Longhorn ready for scaling)
@@ -47,7 +47,7 @@ This roadmap outlines the path to deploying Enclii to production with **validate
 │  │  Ubicloud Managed PostgreSQL                 │   │
 │  │  • Runs ON Hetzner infrastructure            │   │
 │  │  • Managed HA, backups, monitoring           │   │
-│  │  • ~$50/mo                                   │   │
+│  │  • See internal-devops for pricing            │   │
 │  └──────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────┐   │
 │  │  Self-Hosted Redis with Sentinel             │   │
@@ -65,7 +65,7 @@ Features: Multi-tenant SaaS ready with 100 free custom domains
 
 **Cost Savings:**
 - **vs DigitalOcean:** $341/mo → $100/mo = **$2,900/year saved**
-- **vs Railway + Auth0:** $2,220/mo → $100/mo = **$25,440/year saved**
+- **vs Railway + Auth0:** SaaS equivalent/mo → $100/mo = **$25,440/year saved**
 - **5-year savings:** **$127,200** vs Railway + Auth0
 
 **Superior Features:**
@@ -384,7 +384,7 @@ s3 = boto3.client('s3',
 **Why Ubicloud is Perfect:**
 - ✅ Managed PostgreSQL running ON Hetzner infrastructure
 - ✅ Same reliability as DigitalOcean managed
-- ✅ ~$50/month (vs $120/mo)
+- ✅ Cost-effective (see internal-devops for pricing)
 - ✅ High availability with automated failover
 - ✅ Automated backups with point-in-time recovery
 - ✅ Monitoring and alerting included
@@ -399,7 +399,7 @@ Ubicloud PostgreSQL on Hetzner:
 - HA: Primary + Standby (automatic failover)
 - Backups: Daily with 7-day retention + PITR
 - Monitoring: Built-in dashboards
-- Cost: ~$50/month
+- Cost: See internal-devops for pricing
 ```
 
 **Setup:**
@@ -474,8 +474,8 @@ spec:
 | **Janua Auth** | Self-hosted | **$0** |
 | **Total** | | **$100/month** |
 
-**Staging Environment:** ~$50/month (50% of production)
-**Grand Total:** **~$150/month** (production + staging)
+**Staging Environment:** See internal-devops for pricing
+**Grand Total:** See internal-devops for cost breakdown
 
 ### One-Time Costs
 
@@ -504,7 +504,7 @@ Total: $13,412
 | Solution | Monthly | 5-Year Total | Savings vs Enclii |
 |----------|---------|--------------|-------------------|
 | **Enclii (Hetzner + Cloudflare + Ubicloud)** | $100 | $8,012 | $0 (baseline) |
-| **Railway + Auth0** | $2,220 | $133,200 | **$125,188** |
+| **Railway + Auth0** | SaaS equivalent | $133,200 | **$125,188** |
 | **Vercel + Clerk** | $2,500 | $150,000 | **$141,988** |
 | **DigitalOcean (managed services)** | $341 | $22,472 | **$14,460** |
 | **AWS EKS** | $695 | $43,700 | **$35,688** |
@@ -1198,7 +1198,7 @@ Week 7-8: Testing, Validation & Dogfooding
 
 This **research-validated architecture** provides:
 
-1. ✅ **Unbeatable Cost:** $100/month (vs $2,220/month for Railway + Auth0)
+1. ✅ **Unbeatable Cost:** $100/month (vs SaaS equivalent/month for Railway + Auth0)
 2. ✅ **Superior Features:** 100 free custom domains (Cloudflare for SaaS)
 3. ✅ **Zero Bandwidth Costs:** Cloudflare R2 with zero egress fees
 4. ✅ **Enterprise Security:** DDoS protection, zero-trust networking

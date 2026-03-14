@@ -9,7 +9,7 @@
 
 Enclii uses Longhorn as the Container Storage Interface (CSI) driver for persistent storage.
 
-> **Current State:** Running on a single Hetzner AX41-NVME dedicated server. Longhorn is deployed and configured for multi-node replication, but currently operates in single-replica mode. When additional nodes are added, replication will automatically activate.
+> **Current State:** Running on a single Hetzner dedicated server. Longhorn is deployed and configured for multi-node replication, but currently operates in single-replica mode. When additional nodes are added, replication will automatically activate.
 
 ## Architecture
 
@@ -22,8 +22,8 @@ Enclii uses Longhorn as the Container Storage Interface (CSI) driver for persist
                           │
                           ▼
                     ┌─────────┐
-                    │ Node 1  │  ◄── Hetzner AX41-NVME
-                    │ (Single)│      (64GB RAM, 2x512GB NVMe)
+                    │ Node 1  │  ◄── Hetzner dedicated server
+                    │ (Single)│
                     └─────────┘
                           │
                     ┌─────────┐

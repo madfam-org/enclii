@@ -167,7 +167,7 @@ Switchyard validates JWT via Janua JWKS
 
 ### Infrastructure
 
-- **Kubernetes:** Hetzner AX41-NVME dedicated server (single-node k3s)
+- **Kubernetes:** Hetzner dedicated server (single-node k3s)
 - **Ingress:** Cloudflare Tunnel (replaces LoadBalancer)
 - **Database:** Self-hosted PostgreSQL in-cluster (daily backups to R2)
 - **Cache:** Single Redis instance (Sentinel config staged for multi-node)
@@ -176,7 +176,7 @@ Switchyard validates JWT via Janua JWKS
 
 > **Note:** Currently single-node. Longhorn CSI and Redis Sentinel configs are ready for multi-node scaling when needed.
 
-**Cost:** ~$55/month (vs $2,220 for Railway + Auth0)
+**Cost:** See internal-devops for cost breakdown
 
 ## Secrets Required
 

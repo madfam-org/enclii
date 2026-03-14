@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Enclii is an open source DevOps platform for deploying, scaling, and operating containerized services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
 
 **Current Status:** 🟢 v0.1.0 - Production Beta (95% ready) ([checklist](./docs/production/PRODUCTION_CHECKLIST.md))
-**Infrastructure:** Hetzner Dedicated (2-node k3s) + Cloudflare (~$55/month) - **Running**
+**Infrastructure:** Hetzner Dedicated (2-node k3s) + Cloudflare - **Running**
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Dogfooding:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
@@ -160,15 +160,17 @@ Key vars for local development (set in `.env`):
 
 ## Production Infrastructure
 
-### Current Production Stack (~$55/month)
+### Current Production Stack
 
-Enclii runs on a 2-node k3s cluster with infrastructure prepared for further scaling:
+Enclii runs on a 2-node k3s cluster with infrastructure prepared for further scaling.
+
+> **Operational details** (server IPs, hardware specs, costs, SSH access): see `madfam-org/internal-devops` (private repo).
 
 **Compute & Kubernetes (2-node cluster):**
-- **foundry-core** (Hetzner AX41-NVME) - Control plane (AMD Ryzen 5 3600, 64GB RAM, 2x512GB NVMe) - ~$50/month
-- **foundry-builder-01** (VPS "The Forge") - Worker node for CI builds (taint: builder=true:NoSchedule)
+- **foundry-core** - Control plane (Hetzner dedicated server)
+- **foundry-builder-01** - Worker node for CI builds (taint: builder=true:NoSchedule)
 - **k3s v1.33.7+k3s3** - Lightweight Kubernetes (both nodes must match k3s version)
-- **Cloudflare Tunnel** - Zero-trust ingress (replaces LoadBalancer) - $0
+- **Cloudflare Tunnel** - Zero-trust ingress (replaces LoadBalancer)
 
 > **Note:** 2-node cluster since Jan 2026. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in single-replica mode; ready for multi-replica when additional storage nodes are added.
 
@@ -190,20 +192,17 @@ Internet → Cloudflare Edge → cloudflared pods → K8s Service:80 → Contain
 > See `infra/DEPLOYMENT.md` for complete Service Routing table.
 
 **Database & Caching:**
-- **Self-hosted PostgreSQL** - In-cluster deployment with PVC storage, daily backups to R2 - $0
-- **Self-hosted Redis** - Single instance in-cluster (Sentinel config ready for multi-node) - $0
-
-> **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL ($50/mo) and Redis Sentinel HA. Conclusion: **NOT NEEDED** for current 99.5% SLA / 24-hour RPO requirements. Self-hosted meets targets at $0 cost. Redis Sentinel manifests staged at `infra/k8s/production/redis-sentinel.yaml` for multi-node deployment.
+- **Self-hosted PostgreSQL** - In-cluster deployment with PVC storage, daily backups to R2
+- **Self-hosted Redis** - Single instance in-cluster (Sentinel config ready for multi-node)
 
 **Storage & Networking:**
-- **Cloudflare R2** - Zero-egress object storage (SBOMs, artifacts) - $5/month
-- **Cloudflare for SaaS** - First 100 custom domains FREE - $0
+- **Cloudflare R2** - Zero-egress object storage (SBOMs, artifacts)
+- **Cloudflare for SaaS** - First 100 custom domains FREE
 
 **GitOps & Orchestration (Deployed Jan 2026):**
 - **ArgoCD** - GitOps engine with App-of-Apps pattern
 - **Pull-based sync** with automatic drift correction (self-heal)
 - Configuration: `infra/argocd/` (root-application.yaml, apps/*.yaml)
-- Access: `kubectl port-forward svc/argocd-server -n argocd 8080:443`
 
 **Cluster Storage (Deployed Jan 2026):**
 - **Longhorn CSI** - Block storage (prepared for multi-node replication)
@@ -219,9 +218,6 @@ Internet → Cloudflare Edge → cloudflared pods → K8s Service:80 → Contain
 - **Kaniko** - Rootless container builds (replaces Docker-in-Docker)
 - Pod Security `restricted`, NetworkPolicy isolation
 - Configuration: `apps/roundhouse/k8s/kaniko-job-template.yaml`
-
-**vs Traditional SaaS Stack:** $2,220/month (Railway $2,000 + Auth0 $220)
-**5-Year Savings:** $129,900
 
 See [PRODUCTION_DEPLOYMENT_ROADMAP.md](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md) for details.
 
@@ -454,7 +450,7 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller -
 
 # Access ArgoCD UI (port-forward)
 kubectl port-forward svc/argocd-server -n argocd 8080:443
-# Login: admin / (kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+# Login: see internal-devops/access/argocd-access.md
 
 # Force sync an application
 kubectl patch application core-services -n argocd --type merge -p '{"operation":{"sync":{}}}'

@@ -133,8 +133,8 @@ else
     \"boot_mode\": \"UEFI\",
     \"state\": \"provisioned\",
     \"power_state\": \"on\",
-    \"hardware_profile\": {\"cpu\":\"AMD Ryzen 5 3600\",\"cores\":6,\"threads\":12,\"ram_gb\":64,\"storage\":[{\"type\":\"NVMe SSD\",\"size_gb\":512},{\"type\":\"NVMe SSD\",\"size_gb\":512}],\"network\":\"1Gbit\"},
-    \"cost_per_hour_cents\": 7
+    \"hardware_profile\": {\"cpu\":\"server-cpu\",\"cores\":0,\"threads\":0,\"ram_gb\":0,\"storage\":[],\"network\":\"1Gbit\"},
+    \"cost_per_hour_cents\": 0
   }")
   parsed=$(parse_response "$resp")
   code=${parsed%%|*}

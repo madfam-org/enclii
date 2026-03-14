@@ -222,12 +222,7 @@ tags: [production, deployment, checklist, operations]
 
 ## Cost Summary
 
-| Resource | Monthly Cost |
-|----------|-------------|
-| Hetzner AX41-NVME (foundry-core) | ~$50 |
-| Cloudflare R2 (backups) | ~$5 |
-| Cloudflare (tunnel, DNS, DDoS) | $0 |
-| **Total** | **~$55/month** |
+See internal-devops for cost breakdown.
 
 ---
 

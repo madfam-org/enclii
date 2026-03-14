@@ -10,7 +10,7 @@
 
 **Status:** Beta (95% production-ready) | [Production Checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
-**Infrastructure:** Hetzner Dedicated + Cloudflare (~$55/month) - **Running**
+**Infrastructure:** Hetzner Dedicated + Cloudflare - **Running**
 
 ---
 
@@ -38,28 +38,25 @@ Enclii is an **open source DevOps platform** for deploying, scaling, and operati
 
 ### 🏗️ Production-Ready Infrastructure
 
-**2-Node Hetzner Cluster** (~$55/month):
+**2-Node Hetzner Cluster:**
 
-| Node | Role | Hardware | Cost |
-|------|------|----------|------|
-| **The Sanctuary** | Production Workloads | Hetzner AX41-NVMe (AMD Ryzen, 64GB RAM, 2x512GB NVMe) | ~$50/mo |
-| **The Forge** | CI/CD Builder | Hetzner Cloud CPX11 (2 AMD vCPU, 2GB RAM) | ~$5/mo |
+| Node | Role | Hardware |
+|------|------|----------|
+| **The Sanctuary** | Production Workloads | Hetzner dedicated server |
+| **The Forge** | CI/CD Builder | Hetzner Cloud VPS |
 
 **Cost-Optimized Stack:**
-- **Cloudflare Tunnel** - Zero-trust ingress (replaces load balancers) - $0
-- **Cloudflare for SaaS** - 100 custom domains FREE - $0
-- **Cloudflare R2** - Zero-egress object storage - $5/mo
-- **Self-hosted PostgreSQL** - In-cluster with persistent storage - $0
-- **Self-hosted Redis** - In-cluster caching (Sentinel ready for multi-node) - $0
+- **Cloudflare Tunnel** - Zero-trust ingress (replaces load balancers)
+- **Cloudflare for SaaS** - 100 custom domains FREE
+- **Cloudflare R2** - Zero-egress object storage
+- **Self-hosted PostgreSQL** - In-cluster with persistent storage
+- **Self-hosted Redis** - In-cluster caching (Sentinel ready for multi-node)
 
 > **Builder Node Targeting**: Build workloads are isolated on "The Forge" via Kubernetes taints (`builder=true:NoSchedule`). Production apps run exclusively on "The Sanctuary".
 
 > **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** for 99.5% SLA / 24-hour RPO. Sentinel manifests staged for future multi-node deployment.
 
-**vs Traditional Stack** ($2,220/month):
-- Railway: $2,000+/month
-- Auth0: $220+/month
-- **5-Year Savings: $129,900** 💰
+Self-hosted infrastructure is significantly cheaper than equivalent SaaS platforms.
 
 [View infrastructure details →](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 
@@ -382,10 +379,10 @@ enclii scale --min 5 --max 10 --service api --env prod
 
 | Feature | Railway | Enclii |
 |---------|---------|--------|
-| **Cost** | $2,000+/mo | **~$55/mo** 💰 |
+| **Cost** | Expensive | **Self-hosted (fraction of SaaS cost)** |
 | **Custom Domains** | Limited, expensive | **100 FREE** (Cloudflare for SaaS) |
 | **Vendor Lock-In** | Full lock-in | **None** (portable Kubernetes) |
-| **Auth** | Bring your own ($220/mo for Auth0) | **Janua included** ($0) |
+| **Auth** | Bring your own (expensive) | **Janua included** |
 | **Bandwidth** | Expensive egress | **Zero egress** (Cloudflare R2) |
 | **Multi-Tenancy** | Not designed for it | **Built-in** (NetworkPolicies, quotas) |
 | **Self-Hosting** | Impossible | **Fully self-hosted** |
@@ -394,17 +391,17 @@ enclii scale --min 5 --max 10 --service api --env prod
 
 | Feature | Vercel + Clerk | Enclii |
 |---------|----------------|--------|
-| **Cost** | $2,500/mo | **~$55/mo** 💰 |
+| **Cost** | Expensive | **Self-hosted (fraction of cost)** |
 | **Backend Support** | Limited (Functions) | **Full container support** |
 | **Database** | Bring your own | **Self-hosted PostgreSQL included** |
-| **Auth** | Clerk ($300+/mo) | **Janua included** ($0) |
+| **Auth** | Clerk (expensive) | **Janua included** |
 | **Control** | SaaS (no control) | **Full control** (self-hosted) |
 
 ### The Self-Hosted Advantage
 
 **Why self-hosted infrastructure matters:**
 
-1. **Cost Control** - ~$55/month vs $2,220 (97% savings)
+1. **Cost Control** - Fraction of equivalent SaaS cost
 2. **No Vendor Lock-In** - Portable Kubernetes, standard tools
 3. **Data Sovereignty** - Your infrastructure, your rules
 4. **Unlimited Scale** - No artificial SaaS limits

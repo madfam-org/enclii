@@ -1,9 +1,9 @@
 # ENCLII PLATFORM - EXECUTIVE SUMMARY
-**Status:** 95% Production Ready | **Cost:** ~$55/month vs $2,220 (97% savings) | **Live:** [app.enclii.dev](https://app.enclii.dev)
+**Status:** 95% Production Ready | **Live:** [app.enclii.dev](https://app.enclii.dev)
 
 > ⚠️ **Historical Document Notice (Jan 2026):**
 > This summary was written during early planning. **Current actual infrastructure:**
-> - **Single Hetzner AX41-NVME** dedicated server (~$55/mo total)
+> - **Single Hetzner dedicated server**
 > - **Self-hosted PostgreSQL** in-cluster (not Ubicloud)
 > - **Single Redis instance** (Sentinel staged for multi-node)
 > - Core services are **LIVE** at api.enclii.dev and app.enclii.dev
@@ -12,12 +12,11 @@
 
 ## THE PLATFORM AT A GLANCE
 
-Enclii is a **open source DevOps platform** that enables teams to deploy containerized services with enterprise-grade security and observability—at 97% lower cost than Railway + Auth0.
+Enclii is a **open source DevOps platform** that enables teams to deploy containerized services with enterprise-grade security and observability—at significantly lower cost than Railway + Auth0.
 
 **Key Numbers (Updated Jan 2026):**
 - ✅ **95% production ready** - Core services running at enclii.dev
-- ✅ **~$55/month** infrastructure cost (~$660/year)
-- ✅ **$129,900 saved** over 5 years vs Railway + Auth0
+- ✅ Significant cost savings vs traditional SaaS stack (see internal-devops for breakdown)
 - ✅ **Core services deployed** - API, UI, Auth, Docs running
 - ✅ **GitOps operational** - ArgoCD App-of-Apps with self-heal
 
@@ -95,7 +94,7 @@ Enclii is a **open source DevOps platform** that enables teams to deploy contain
 
 | Feature | Enclii | Railway | Winner |
 |---------|--------|---------|--------|
-| Cost | ~$55/mo | $2,000+/mo | 🏆 Enclii (97% savings) |
+| Cost | Self-hosted | $2,000+/mo | 🏆 Enclii |
 | Container Support | ✅ Full | ✅ Full | Tie |
 | Custom Domains | ✅ 100 FREE | ⚠️ Limited | 🏆 Enclii |
 | Multi-Tenancy | ✅ Built-in | ❌ Not designed | 🏆 Enclii |
@@ -108,7 +107,7 @@ Enclii is a **open source DevOps platform** that enables teams to deploy contain
 
 | Feature | Enclii | Vercel | Winner |
 |---------|--------|--------|--------|
-| Cost | ~$55/mo | $500-2,000/mo | 🏆 Enclii |
+| Cost | Self-hosted | $500-2,000/mo | 🏆 Enclii |
 | Frontend Hosting | ✅ (Container) | ✅ (Optimized) | Vercel |
 | Backend Containers | ✅ Full | ⚠️ Functions only | 🏆 Enclii |
 | Database | ⚠️ BYOD | ⚠️ BYOD | Tie |
@@ -126,20 +125,18 @@ Enclii is a **open source DevOps platform** that enables teams to deploy contain
 
 ```
 Hetzner Dedicated Server
-├─ 1x AX41-NVME (AMD Ryzen 5, 64GB RAM, 2x512GB NVMe)
+├─ 1x dedicated server
 │  ├─ Kubernetes k3s (single-node)
 │  ├─ Self-hosted PostgreSQL + Redis
 │  ├─ Longhorn CSI (ready for multi-node)
-│  └─ ~$50/mo
 │
 └─ Cloudflare (Global Edge)
-   ├─ Tunnel (replaces LoadBalancer) - $0
-   ├─ R2 Object Storage (zero-egress) - $5/mo
-   ├─ For SaaS (100 custom domains) - $0
-   └─ DDoS Protection + SSL - $0
+   ├─ Tunnel (replaces LoadBalancer)
+   ├─ R2 Object Storage (zero-egress)
+   ├─ For SaaS (100 custom domains)
+   └─ DDoS Protection + SSL
 
-───────────────────────────
-TOTAL: ~$55/month
+See internal-devops for cost breakdown.
 ```
 
 > **Note:** Originally planned multi-node with Ubicloud (~$100/mo), but single-node self-hosted meets current 99.5% SLA / 24hr RPO requirements at lower cost.
@@ -322,15 +319,7 @@ curl https://app.enclii.dev/
 
 ### Cost Structure
 
-| Component | Cost/Month |
-|-----------|-----------|
-| Hetzner AX41-NVME | ~$50 |
-| Self-hosted PostgreSQL | $0 |
-| Self-hosted Redis | $0 |
-| Cloudflare R2 | $5 |
-| Cloudflare Tunnel | $0 |
-| Cloudflare for SaaS | $0 |
-| **TOTAL** | **~$55** |
+See internal-devops for cost breakdown.
 
 ### Comparison with Incumbents
 
@@ -385,7 +374,7 @@ Enclii is a **well-architected, ambitious platform** that delivers:
 - Multi-tenant isolation proven
 - Kubernetes orchestration solid
 - Security fundamentals strong
-- Cost equation unbeatable (~$55/mo)
+- Cost equation unbeatable (self-hosted)
 - Infrastructure-as-Code complete
 
 **⚠️ What Needs Work:**

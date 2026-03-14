@@ -1,14 +1,14 @@
 # ENCLII QUICK REFERENCE GUIDE
 
-> ⚠️ **Note (Jan 2026):** This guide was written during planning. Current infrastructure: single Hetzner AX41-NVME (~$55/mo), self-hosted PostgreSQL/Redis.
+> ⚠️ **Note (Jan 2026):** This guide was written during planning. Current infrastructure: single Hetzner dedicated server, self-hosted PostgreSQL/Redis. See internal-devops for cost breakdown.
 
 ## Platform Status at a Glance
 
 | Metric | Value |
 |--------|-------|
 | **Production Readiness** | 95% - Core services live at enclii.dev |
-| **Infrastructure Cost** | ~$55/month |
-| **vs Railway Savings** | 97% ($129,900 over 5 years) |
+| **Infrastructure Cost** | See internal-devops |
+| **vs Railway Savings** | 97% (significant savings over 5 years) |
 | **Services Deployed** | API, UI, Auth, Docs live |
 | **GitOps** | ArgoCD App-of-Apps operational |
 | **Database Tables** | 8 implemented, 6 planned |
@@ -530,21 +530,13 @@ SLA: P95 < 2 minutes
 ## COST BREAKDOWN
 
 ### Monthly Operating Cost
-```
-Hetzner AX41-NVME       $50
-Self-hosted PostgreSQL   $0
-Self-hosted Redis        $0
-Cloudflare R2            $5
-Cloudflare Tunnel        $0
-Cloudflare for SaaS      $0
-─────────────────────────
-TOTAL                  ~$55/month
-```
+
+See internal-devops for cost breakdown.
 
 ### Comparison
 | Platform | Cost/Month | Notes |
 |----------|-----------|-------|
-| **Enclii** | ~$55 | Self-hosted |
+| **Enclii** | Self-hosted | See internal-devops |
 | Railway | $2,000+ | SaaS |
 | Auth0 | $220+ | SaaS |
 | DigitalOcean | $341+ | SaaS alternative |

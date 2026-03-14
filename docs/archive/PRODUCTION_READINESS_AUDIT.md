@@ -5,7 +5,7 @@
 
 > ⚠️ **Historical Document Notice:**
 > This audit was created in November 2025 as a planning document. **Actual current infrastructure (Jan 2026):**
-> - Single Hetzner AX41-NVME dedicated server (~$50/mo)
+> - Single Hetzner dedicated server
 > - Self-hosted PostgreSQL in-cluster (not Ubicloud)
 > - Self-hosted Redis in-cluster (not Sentinel HA)
 > - Single-node k3s with Longhorn (ready for multi-node scaling)
@@ -1117,7 +1117,7 @@ func (s *ProjectService) EnableJanuaAuth(ctx context.Context, projectID uuid.UUI
 
 **Pros:**
 - ✅ Simple operations (one Janua instance)
-- ✅ Cost-effective (~$50/mo total for unlimited customers)
+- ✅ Cost-effective (self-hosted, see internal-devops for breakdown)
 - ✅ Janua natively supports multi-tenancy
 
 **Cons:**
@@ -1284,7 +1284,7 @@ func (s *ProjectService) ProvisionDedicatedJanua(ctx context.Context, projectID 
 | Solution | Monthly | Annual | 5-Year |
 |----------|---------|--------|--------|
 | **Enclii (Hetzner + Cloudflare + Janua)** | $100 | $1,200 | $6,000 |
-| **Railway + Auth0** | $2,220 | $26,640 | $133,200 |
+| **Railway + Auth0** | SaaS equivalent | $26,640 | $133,200 |
 | **Vercel + Clerk** | $2,500 | $30,000 | $150,000 |
 | **DigitalOcean (managed)** | $341 | $4,092 | $20,460 |
 
@@ -1379,7 +1379,7 @@ Enclii is **70% production-ready** with the new infrastructure stack. The codeba
 3. **Week 5-6:** Polish (multi-tenancy, monitoring, load testing)
 
 **Financial Impact:**
-- **Monthly cost:** $100 (vs $2,220 with Railway + Auth0)
+- **Monthly cost:** $100 (vs SaaS equivalent with Railway + Auth0)
 - **5-year savings:** $127,200+
 - **Payback period:** <1 month
 

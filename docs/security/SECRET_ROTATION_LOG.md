@@ -13,7 +13,7 @@ plaintext credentials committed to git:
 | Secret | Exposure | Status |
 |--------|----------|--------|
 | RSA private key (`jwt-secrets.private-key`) | Full PEM in git history | **Inert** -- key was a dev placeholder; production signing uses a separately-provisioned key applied via `kubectl` |
-| PostgreSQL password (`TempPassword123`) | Plaintext in git history | **Inert** -- password was rotated on-cluster; the value in git history no longer grants access |
+| PostgreSQL password (rotated) | Plaintext in git history | **Inert** -- password was rotated on-cluster; the value in git history no longer grants access |
 
 **Remediation (2026-03-08):**
 - `secrets.production.yaml` replaced with `MANAGED_VIA_KUBECTL` placeholder stubs

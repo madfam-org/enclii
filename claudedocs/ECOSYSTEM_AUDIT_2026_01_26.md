@@ -11,8 +11,8 @@
 
 | Node | IP | Role | k3s | CPU | RAM | Status |
 |------|----|------|-----|-----|-----|--------|
-| foundry-core | 95.217.198.239 | control-plane | v1.33.6+k3s1 | 5% | 33% (21GB/64GB) | Ready |
-| foundry-builder-01 | 77.42.89.211 | worker (builder) | v1.33.6+k3s1 | 2% | 23% (916Mi/4GB) | Ready |
+| foundry-core | <CONTROL_PLANE_IP> | control-plane | v1.33.6+k3s1 | 5% | 33% (21GB/64GB) | Ready |
+| foundry-builder-01 | <WORKER_NODE_IP> | worker (builder) | v1.33.6+k3s1 | 2% | 23% (916Mi/4GB) | Ready |
 
 **Pods:** 79 Running, 12 Completed, 0 CrashLoopBackOff, 0 ImagePullBackOff, 0 Error
 

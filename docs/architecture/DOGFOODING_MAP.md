@@ -147,7 +147,7 @@
 
 ```
 Week 1-2: Infrastructure Bootstrap
-├── Hetzner AX41-NVME (single-node k3s)
+├── Hetzner dedicated server (single-node k3s)
 ├── Cloudflare Tunnel (ingress)
 ├── Self-hosted PostgreSQL (in-cluster)
 ├── Single Redis instance (Sentinel staged)
@@ -222,13 +222,9 @@ namespaces:
 | sim4d-api | 500m | 1Gi | CAD processing |
 | geom-core (WASM) | - | - | Client-side |
 
-### Cluster Resources (Hetzner AX41-NVME single-node)
+### Cluster Resources (Hetzner dedicated server, single-node)
 
-```
-Total: 6 cores (12 threads), 64GB RAM, 2x512GB NVMe
-Platform overhead: ~30%
-Available for apps: ~8 vCPU, 45GB RAM
-```
+See internal-devops for hardware specs and capacity details.
 
 ---
 

@@ -15,17 +15,7 @@ Questions about Enclii costs, pricing structure, and billing.
 
 Enclii runs on fixed-cost infrastructure rather than usage-based billing. Current infrastructure costs:
 
-| Component | Cost/Month |
-|-----------|------------|
-| Hetzner AX41-NVME (Dedicated Server) | ~$50 |
-| Cloudflare R2 (Object Storage) | ~$5 |
-| Cloudflare Tunnel | $0 |
-| Total Infrastructure | **~$55/month** |
-
-This compares to:
-- Railway: ~$2,000/month for similar workloads
-- Auth0: ~$220/month for authentication
-- **Traditional SaaS Stack**: ~$2,220/month
+See internal-devops for cost breakdown. Enclii runs on fixed-cost self-hosted infrastructure (Hetzner dedicated server + Cloudflare) at significant savings vs traditional SaaS stacks (Railway, Auth0, etc.).
 
 ### What's included in the base cost?
 
@@ -65,29 +55,15 @@ Contact us for startup pricing if you're early-stage.
 - **Total: ~$140-200/month** (small scale)
 - At scale: $2,000+/month
 
-**Enclii**: ~$55/month fixed, regardless of number of services.
+**Enclii**: Fixed-cost self-hosted infrastructure, regardless of number of services. See internal-devops for cost breakdown.
 
 ### How does Enclii compare to Vercel?
 
-Vercel is optimized for frontend/edge. Enclii is for full-stack:
+Vercel is optimized for frontend/edge. Enclii is for full-stack. Enclii makes sense when you need backend services, databases, or have multiple apps, with significant cost advantages at scale.
 
-| Scenario | Vercel | Enclii |
-|----------|--------|--------|
-| Static site | $0-20 | $55 (shared) |
-| Full-stack app | $50-200 | $55 |
-| Multiple services | $200+ | $55 |
-| Database included | No | Yes |
+### What about long-term savings?
 
-Enclii makes sense when you need backend services, databases, or have multiple apps.
-
-### What about the 5-year savings?
-
-Based on our cost analysis:
-- Traditional SaaS: $2,220/month × 60 months = $133,200
-- Enclii: $55/month × 60 months = $3,300
-- **5-Year Savings: ~$129,900**
-
-This assumes similar scale and features.
+Enclii's self-hosted model provides significant savings over traditional SaaS stacks (Railway + Auth0) over multi-year periods. See internal-devops for detailed cost analysis.
 
 ## Subscription Tiers
 

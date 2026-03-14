@@ -24,7 +24,7 @@ Risk assessment of third-party vendors integrated into the Enclii platform.
 
 | Service | Purpose | Enclii Component |
 |---------|---------|-----------------|
-| AX41-NVMe Dedicated Server | foundry-core control plane node | k3s control plane, PostgreSQL, Redis, ArgoCD |
+| Dedicated Server | foundry-core control plane node | k3s control plane, PostgreSQL, Redis, ArgoCD |
 | Cloud VPS (The Forge) | foundry-builder-01 worker node | GitHub Actions runners, CI builds |
 
 ### Data Shared with Vendor

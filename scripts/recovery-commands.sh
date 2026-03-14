@@ -52,7 +52,7 @@ check_redis_url() {
 
     echo "Current ENCLII_REDIS_URL: $redis_url"
 
-    if [[ "$redis_url" == *"95.217"* ]]; then
+    if echo "$redis_url" | grep -qE '^redis://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'; then
         echo_fail "EXTERNAL IP DETECTED! Redis URL uses public IP instead of internal K8s DNS"
         echo "Expected: redis://redis:6379 or redis://redis.data.svc.cluster.local:6379"
         return 1

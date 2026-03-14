@@ -120,9 +120,9 @@ kubectl rollout restart deployment/status-madfam -n status
 
 | Resource | Spec |
 |----------|------|
-| CPU | AMD Ryzen 5 3600 (6C/12T) |
-| RAM | 64 GB |
-| Storage | 2x 512GB NVMe |
+| CPU | See internal-devops for hardware specs |
+| RAM | See internal-devops for hardware specs |
+| Storage | See internal-devops for hardware specs |
 | Role | Control plane + workloads |
 
 ### Capacity Thresholds

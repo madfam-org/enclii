@@ -172,7 +172,7 @@ This document describes how Enclii deploys **itself** using its own platform, an
 │  └────────────────────────────────────────────────────┘        │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Kubernetes Cluster (Hetzner AX41-NVME single-node)      │  │
+│  │  Kubernetes Cluster (Hetzner dedicated server, single-node) │  │
 │  │                                                           │  │
 │  │  Namespace: enclii-platform                              │  │
 │  │  ┌─────────────────────────────────────────────────┐    │  │
@@ -356,7 +356,7 @@ janua/
 
 ### Prerequisites
 
-- Hetzner AX41-NVME dedicated server (single-node k3s)
+- Hetzner dedicated server (single-node k3s)
 - Cloudflare account with Tunnel configured
 - Self-hosted PostgreSQL in-cluster (or Ubicloud for HA)
 - GitHub accounts with access to `madfam-org/enclii` and `madfam-org/janua`
@@ -365,7 +365,7 @@ janua/
 
 Follow the [PRODUCTION_DEPLOYMENT_ROADMAP.md](../production/PRODUCTION_DEPLOYMENT_ROADMAP.md) to set up:
 
-1. **Hetzner dedicated server** (AX41-NVME, single-node k3s)
+1. **Hetzner dedicated server** (single-node k3s)
 2. **Cloudflare Tunnel** (replaces LoadBalancer)
 3. **Cloudflare for SaaS** (100 free custom domains)
 4. **Self-hosted PostgreSQL** (in-cluster with daily backups)
@@ -715,7 +715,7 @@ kubectl exec -it -n enclii-platform deployment/janua -- date
 ## Progress Tracker
 
 ### Phase 1: Infrastructure Setup ✅ COMPLETE
-- [x] Provision Hetzner dedicated server (AX41-NVME)
+- [x] Provision Hetzner dedicated server
 - [x] Deploy Cloudflare Tunnel
 - [x] Set up self-hosted PostgreSQL (in-cluster)
 - [x] Deploy single Redis instance (Sentinel staged)

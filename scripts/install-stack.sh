@@ -3,7 +3,7 @@
 # install-stack.sh - Zero-Tinker Unified Installer
 # =============================================================================
 # Deploy Enclii (DevOps), Janua (Auth), or The Trinity (Both + Foundry)
-# Target: Single Hetzner AX41-NVME node with k3s
+# Target: Single Hetzner dedicated server node with k3s
 #
 # SECURITY NOTE: This script contains TEMPLATE PLACEHOLDERS for credentials
 # (e.g., ${GITHUB_TOKEN}, $(POSTGRES_PASSWORD)). These are shell variable

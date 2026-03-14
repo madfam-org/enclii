@@ -55,7 +55,7 @@
 | **Databases** | All healthy (postgres, redis in data + enclii) | ✅ HEALTHY |
 | **NetworkPolicies** | 197+ across 16 namespaces (monitoring default-deny added) | ✅ HEALTHY |
 | **Kyverno** | 16 policies, 8 exceptions | ✅ HEALTHY |
-| **Cost** | ~$55/month | ✅ ON TARGET |
+| **Cost** | see internal-devops | ✅ ON TARGET |
 
 ### Wave 15 Changes (Wave 14 → Wave 15)
 
@@ -152,8 +152,8 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-core** | 95.217.198.239 | control-plane, master | Hetzner AX41-NVME (Ryzen 5 3600, 64GB, 2x512GB NVMe) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
-| **foundry-builder-01** | 77.42.89.211 | worker (role=builder) | VPS ("The Forge") | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
+| **foundry-core** | <CONTROL_PLANE_IP> | control-plane, master | Hetzner dedicated (see internal-devops for specs) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
+| **foundry-builder-01** | <WORKER_NODE_IP> | worker (role=builder) | VPS ("The Forge") | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)
 - **Kernel**: 6.8.0-88-generic
@@ -516,7 +516,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | grafana.enclii.dev | grafana.monitoring.svc:3000 | 302 | Login redirect |
 | prometheus.enclii.dev | prometheus.monitoring.svc:9090 | 302 | |
 | alertmanager.enclii.dev | alertmanager.monitoring.svc:9093 | 200 | |
-| ssh.madfam.io | ssh://95.217.198.239:22 | 302 | Cloudflare Access gate |
+| ssh.madfam.io | ssh://<CONTROL_PLANE_IP>:22 | 302 | Cloudflare Access gate |
 
 ### Janua SSO Routes
 
@@ -606,7 +606,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 
 | Hostname | Target Service | HTTP | Notes |
 |----------|---------------|------|-------|
-| npm.madfam.io | 95.217.198.239:4873 (host Docker) | 200 | Verdaccio |
+| npm.madfam.io | <CONTROL_PLANE_IP>:4873 (host Docker) | 200 | Verdaccio |
 | *.fn.enclii.dev | keda interceptor.keda.svc:8080 | - | KEDA scale-to-zero |
 | (catch-all) | http_status:404 | 404 | Required default |
 
@@ -781,12 +781,14 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 
 ### Scaling Thresholds
 
-| Clients | Infrastructure | Estimated Cost |
-|---------|----------------|----------------|
-| 1-10 | Current 2-node | $55/mo |
-| 10-25 | Add 3rd node + HA | $100/mo |
-| 25-50 | Managed DB evaluation | $150-200/mo |
-| 50+ | Multi-region | $300+/mo |
+| Clients | Infrastructure |
+|---------|----------------|
+| 1-10 | Current 2-node |
+| 10-25 | Add 3rd node + HA |
+| 25-50 | Managed DB evaluation |
+| 50+ | Multi-region |
+
+> Cost projections: see `internal-devops/infrastructure/cost-analysis.md`
 
 ### Infrastructure Already Staged
 
