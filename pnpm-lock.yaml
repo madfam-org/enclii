@@ -878,7 +878,7 @@ packages:
     engines: {node: '>=8'}
 
   '@janua/ui@0.1.1':
-    resolution: {integrity: sha512-AFaE5C7y9s5NXxhwrJVWNbtpjpaRXODWtV7c4rTQAUQ5vsCDYN3kLurE5AZp3iibtc0WAbKdunkwIE9erC0J1Q==}
+    resolution: {integrity: sha512-jqLeqEU+fSVZANdn2u4YTpAOWxRSAg5B3Dhou8/H8o36FF+8ShjkGk82gLI1PLcF2T20pu1pHJcjELMRHjV7Ew==}
     peerDependencies:
       react: ^18.0.0
       react-dom: ^18.0.0
