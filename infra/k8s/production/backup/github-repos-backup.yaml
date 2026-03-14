@@ -24,7 +24,7 @@ metadata:
 data:
   clone-and-bundle.sh: |
     #!/bin/sh
-    set -euo pipefail
+    set -eu
 
     echo "[$(date)] Starting GitHub repository backup..."
 

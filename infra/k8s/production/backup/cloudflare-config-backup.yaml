@@ -24,7 +24,7 @@ metadata:
 data:
   backup.sh: |
     #!/bin/bash
-    set -euo pipefail
+    set -eu
 
     BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
     BACKUP_PREFIX="cloudflare-config"
@@ -42,16 +42,16 @@ data:
     curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
       "${CF_API}/zones/${CF_ZONE_ENCLII}/dns_records?per_page=500" \
       > "${EXPORT_DIR}/dns-enclii-dev.json"
-    ENCLII_COUNT=$(cat "${EXPORT_DIR}/dns-enclii-dev.json" | grep -o '"id"' | wc -l)
-    echo "[$(date)] ✓ enclii.dev: ${ENCLII_COUNT} records"
+    ENCLII_COUNT=$(grep -o '"id"' "${EXPORT_DIR}/dns-enclii-dev.json" | wc -l)
+    echo "[$(date)] OK enclii.dev: ${ENCLII_COUNT} records"
 
     # Export DNS records for madfam.io zone
     echo "[$(date)] Exporting madfam.io DNS records..."
     curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
       "${CF_API}/zones/${CF_ZONE_MADFAM}/dns_records?per_page=500" \
       > "${EXPORT_DIR}/dns-madfam-io.json"
-    MADFAM_COUNT=$(cat "${EXPORT_DIR}/dns-madfam-io.json" | grep -o '"id"' | wc -l)
-    echo "[$(date)] ✓ madfam.io: ${MADFAM_COUNT} records"
+    MADFAM_COUNT=$(grep -o '"id"' "${EXPORT_DIR}/dns-madfam-io.json" | wc -l)
+    echo "[$(date)] OK madfam.io: ${MADFAM_COUNT} records"
 
     # Export tunnel list
     echo "[$(date)] Exporting tunnel list..."
@@ -61,7 +61,7 @@ data:
 
     # Export tunnel configs (iterate over tunnel IDs)
     echo "[$(date)] Exporting tunnel configurations..."
-    TUNNEL_IDS=$(cat "${EXPORT_DIR}/tunnels.json" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+    TUNNEL_IDS=$(grep -o '"id":"[^"]*"' "${EXPORT_DIR}/tunnels.json" | cut -d'"' -f4)
     for TID in ${TUNNEL_IDS}; do
       echo "[$(date)] Exporting tunnel config: ${TID}"
       curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
@@ -79,19 +79,12 @@ data:
         > "${EXPORT_DIR}/settings-${ZONE_NAME}.json" || true
     done
 
-    # Create tarball
-    TARBALL="/tmp/cf-${TIMESTAMP}.tar.gz"
-    tar czf "${TARBALL}" -C "${EXPORT_DIR}" .
-    TARBALL_SIZE=$(du -h "${TARBALL}" | cut -f1)
-    echo "[$(date)] Archive created: ${TARBALL_SIZE}"
-
-    # Upload to R2
-    BACKUP_KEY="${BACKUP_PREFIX}/cf-${TIMESTAMP}.tar.gz"
-    echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
-    aws s3 cp "${TARBALL}" "s3://${BACKUP_BUCKET}/${BACKUP_KEY}" \
+    # Upload individual files to R2 (no tar — aws-cli image lacks tar)
+    echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${TIMESTAMP}/"
+    aws s3 sync "${EXPORT_DIR}/" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${TIMESTAMP}/" \
       --endpoint-url "${R2_ENDPOINT}"
 
-    aws s3 cp "${TARBALL}" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest.tar.gz" \
+    aws s3 sync "${EXPORT_DIR}/" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest/" \
       --endpoint-url "${R2_ENDPOINT}"
 
     echo "[$(date)] Upload complete"
@@ -103,18 +96,18 @@ data:
 
     aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/" \
       --endpoint-url "${R2_ENDPOINT}" 2>/dev/null \
-      | while read -r line; do
-        FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1 || echo "")
-        FILE_NAME=$(echo "$line" | awk '{print $4}')
-
-        if [[ -n "${FILE_DATE}" && "${FILE_DATE}" < "${CUTOFF_DATE}" && "${FILE_NAME}" != "latest.tar.gz" ]]; then
-          echo "[$(date)] Deleting old backup: ${FILE_NAME}"
-          aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${FILE_NAME}" \
-            --endpoint-url "${R2_ENDPOINT}"
+      | grep "PRE" | awk '{print $2}' | tr -d '/' \
+      | while read -r DIR_NAME; do
+        if [ "${DIR_NAME}" != "latest" ] && echo "${DIR_NAME}" | grep -qE '^[0-9]{8}$'; then
+          if [ "${DIR_NAME}" \< "${CUTOFF_DATE}" ]; then
+            echo "[$(date)] Deleting old backup: ${DIR_NAME}/"
+            aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${DIR_NAME}/" \
+              --endpoint-url "${R2_ENDPOINT}" --recursive
+          fi
         fi
       done
 
-    echo "[$(date)] Cloudflare config backup complete: ${BACKUP_KEY}"
+    echo "[$(date)] Cloudflare config backup complete"
 ---
 # CronJob for daily Cloudflare config backups
 apiVersion: batch/v1
