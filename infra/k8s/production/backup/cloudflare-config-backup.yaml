@@ -1,0 +1,215 @@
+---
+# Cloudflare Config Backup to Cloudflare R2
+#
+# Architecture: Single container (aws-cli, which includes curl) exports DNS records,
+#               tunnel list, and tunnel configs via Cloudflare API, then uploads to R2.
+#
+# Schedule: 1:15 AM UTC daily
+#
+# Usage:
+#   1. Create cloudflare-api-credentials secret (see cloudflare-api-secrets.yaml.template)
+#   2. Ensure r2-backup-credentials secret exists in data namespace
+#   3. Apply this manifest
+
+# Backup Script ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflare-backup-script
+  namespace: data
+  labels:
+    app.kubernetes.io/name: cloudflare-config-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
+    BACKUP_PREFIX="cloudflare-config"
+    R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+    CF_API="https://api.cloudflare.com/client/v4"
+
+    TIMESTAMP=$(date +%Y%m%d)
+    EXPORT_DIR="/tmp/cf-export"
+    mkdir -p "${EXPORT_DIR}"
+
+    echo "[$(date)] Starting Cloudflare config backup..."
+
+    # Export DNS records for enclii.dev zone
+    echo "[$(date)] Exporting enclii.dev DNS records..."
+    curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
+      "${CF_API}/zones/${CF_ZONE_ENCLII}/dns_records?per_page=500" \
+      > "${EXPORT_DIR}/dns-enclii-dev.json"
+    ENCLII_COUNT=$(cat "${EXPORT_DIR}/dns-enclii-dev.json" | grep -o '"id"' | wc -l)
+    echo "[$(date)] ✓ enclii.dev: ${ENCLII_COUNT} records"
+
+    # Export DNS records for madfam.io zone
+    echo "[$(date)] Exporting madfam.io DNS records..."
+    curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
+      "${CF_API}/zones/${CF_ZONE_MADFAM}/dns_records?per_page=500" \
+      > "${EXPORT_DIR}/dns-madfam-io.json"
+    MADFAM_COUNT=$(cat "${EXPORT_DIR}/dns-madfam-io.json" | grep -o '"id"' | wc -l)
+    echo "[$(date)] ✓ madfam.io: ${MADFAM_COUNT} records"
+
+    # Export tunnel list
+    echo "[$(date)] Exporting tunnel list..."
+    curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
+      "${CF_API}/accounts/${CF_ACCOUNT_ID}/cfd_tunnel?is_deleted=false" \
+      > "${EXPORT_DIR}/tunnels.json"
+
+    # Export tunnel configs (iterate over tunnel IDs)
+    echo "[$(date)] Exporting tunnel configurations..."
+    TUNNEL_IDS=$(cat "${EXPORT_DIR}/tunnels.json" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+    for TID in ${TUNNEL_IDS}; do
+      echo "[$(date)] Exporting tunnel config: ${TID}"
+      curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
+        "${CF_API}/accounts/${CF_ACCOUNT_ID}/cfd_tunnel/${TID}/configurations" \
+        > "${EXPORT_DIR}/tunnel-config-${TID}.json" || true
+    done
+
+    # Export zone settings
+    echo "[$(date)] Exporting zone settings..."
+    for ZONE_ID in "${CF_ZONE_ENCLII}" "${CF_ZONE_MADFAM}"; do
+      ZONE_NAME=$(curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
+        "${CF_API}/zones/${ZONE_ID}" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+      curl -sf -H "Authorization: Bearer ${CF_API_TOKEN}" \
+        "${CF_API}/zones/${ZONE_ID}/settings" \
+        > "${EXPORT_DIR}/settings-${ZONE_NAME}.json" || true
+    done
+
+    # Create tarball
+    TARBALL="/tmp/cf-${TIMESTAMP}.tar.gz"
+    tar czf "${TARBALL}" -C "${EXPORT_DIR}" .
+    TARBALL_SIZE=$(du -h "${TARBALL}" | cut -f1)
+    echo "[$(date)] Archive created: ${TARBALL_SIZE}"
+
+    # Upload to R2
+    BACKUP_KEY="${BACKUP_PREFIX}/cf-${TIMESTAMP}.tar.gz"
+    echo "[$(date)] Uploading to R2: s3://${BACKUP_BUCKET}/${BACKUP_KEY}"
+    aws s3 cp "${TARBALL}" "s3://${BACKUP_BUCKET}/${BACKUP_KEY}" \
+      --endpoint-url "${R2_ENDPOINT}"
+
+    aws s3 cp "${TARBALL}" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest.tar.gz" \
+      --endpoint-url "${R2_ENDPOINT}"
+
+    echo "[$(date)] Upload complete"
+
+    # Cleanup old backups (keep last 30 days)
+    RETENTION_DAYS=30
+    echo "[$(date)] Cleaning up backups older than ${RETENTION_DAYS} days..."
+    CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
+
+    aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/" \
+      --endpoint-url "${R2_ENDPOINT}" 2>/dev/null \
+      | while read -r line; do
+        FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1 || echo "")
+        FILE_NAME=$(echo "$line" | awk '{print $4}')
+
+        if [[ -n "${FILE_DATE}" && "${FILE_DATE}" < "${CUTOFF_DATE}" && "${FILE_NAME}" != "latest.tar.gz" ]]; then
+          echo "[$(date)] Deleting old backup: ${FILE_NAME}"
+          aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${FILE_NAME}" \
+            --endpoint-url "${R2_ENDPOINT}"
+        fi
+      done
+
+    echo "[$(date)] Cloudflare config backup complete: ${BACKUP_KEY}"
+---
+# CronJob for daily Cloudflare config backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloudflare-config-backup
+  namespace: data
+  labels:
+    app.kubernetes.io/name: cloudflare-config-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "15 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: cloudflare-config-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: docker.io/amazon/aws-cli:2.33.16
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/bash
+                - /scripts/backup.sh
+              env:
+                - name: CF_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: cloudflare-api-credentials
+                      key: api-token
+                - name: CF_ZONE_ENCLII
+                  valueFrom:
+                    secretKeyRef:
+                      name: cloudflare-api-credentials
+                      key: zone-id-enclii
+                - name: CF_ZONE_MADFAM
+                  valueFrom:
+                    secretKeyRef:
+                      name: cloudflare-api-credentials
+                      key: zone-id-madfam
+                - name: CF_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cloudflare-api-credentials
+                      key: account-id
+                - name: R2_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: account-id
+                - name: R2_BUCKET
+                  value: enclii-backups
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: cloudflare-backup-script
+                defaultMode: 0755

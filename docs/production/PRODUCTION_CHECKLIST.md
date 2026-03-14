@@ -142,6 +142,37 @@ tags: [production, deployment, checklist, operations]
 - [x] Restore drill Job configured (data namespace)
 - [x] Backup-verify weekly CronJob (Sundays 4 AM UTC)
 
+### K3s Datastore
+- [x] Daily CronJob (1:30 AM UTC) → Cloudflare R2
+- [x] Archives state.db, TLS certs, cluster token via nsenter
+- [x] 7-day retention
+- [x] Kyverno PolicyException for hostPID/privileged
+
+### GitHub Repositories
+- [x] Daily CronJob (1:00 AM UTC) → Cloudflare R2
+- [x] Mirror + bundle all madfam-org repos
+- [x] 7-day retention
+- [ ] Create `github-backup-credentials` secret on cluster
+
+### Cloudflare Configuration
+- [x] Daily CronJob (1:15 AM UTC) → Cloudflare R2
+- [x] DNS records, tunnel configs, zone settings
+- [x] 30-day retention
+- [ ] Create `cloudflare-api-credentials` secret on cluster
+
+### ArgoCD Secrets
+- [x] Weekly CronJob (Sundays 2:00 AM UTC) → Cloudflare R2
+- [x] Secrets, ConfigMaps, repo creds, applications, AppProjects
+- [x] 12-week retention
+- [x] RBAC: ServiceAccount + Role + RoleBinding for cross-namespace access
+
+### Backup Alerting
+- [x] CronJobFailed scope expanded to `data` namespace
+- [x] K3sBackupMissing alert (25h threshold, critical)
+- [x] GitHubBackupMissing alert (25h threshold, critical)
+- [x] CloudflareBackupMissing alert (25h threshold, warning)
+- [x] BackupJobFailed alert (all named backup jobs, critical)
+
 ### Longhorn Volumes
 - [x] Backup target: s3://enclii-backups@auto/
 - [x] Credential secret configured

@@ -7,7 +7,7 @@
 Enclii is MADFAM's production DevOps platform running on a 2-node k3s cluster on Hetzner +
 Cloudflare. It dogfoods itself — the control plane runs on Enclii. Authentication
 is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
-11 apps in `infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
+12 apps in `infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
 
 ---
 
@@ -29,7 +29,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 | Terraform | `infra/terraform/` |
 | K8s Manifests | `infra/k8s/production/` |
 | ArgoCD Root | `infra/argocd/root-application.yaml` |
-| ArgoCD Apps | `infra/argocd/apps/*.yaml` (11 apps incl. network-policies, vault, posthog) |
+| ArgoCD Apps | `infra/argocd/apps/*.yaml` (12 apps incl. network-policies, vault, posthog, backup) |
 | Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (~54 ingress rules, managed via Cloudflare API; see `expected-tunnel-config.json` for authoritative route list) |
 | Kyverno Policies | `infra/k8s/base/kyverno/policies/` |
 | Golden Tests | `tests/golden/` (pre-commit validation) |
@@ -294,7 +294,8 @@ make precommit          # All checks before committing
 ### Data
 - **PostgreSQL**: In-cluster with PVC, daily R2 backups
 - **Redis**: In-cluster single instance (Sentinel ready)
-- **Cloudflare R2**: Object storage (SBOMs, artifacts)
+- **Cloudflare R2**: Object storage (SBOMs, artifacts, backups)
+- **Backup System**: 6 CronJobs (PostgreSQL, K3s datastore, GitHub repos, Cloudflare config, ArgoCD secrets, backup-verify) managed via ArgoCD `backup` app
 - **Longhorn CSI**: Block storage (single-replica, multi-node ready)
 
 ### GitOps
@@ -312,7 +313,7 @@ make precommit          # All checks before committing
 
 ## ArgoCD App-of-Apps Overview
 
-The root application at `infra/argocd/root-application.yaml` manages 11 child applications defined in `infra/argocd/apps/`:
+The root application at `infra/argocd/root-application.yaml` manages 12 child applications defined in `infra/argocd/apps/`:
 
 Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Longhorn storage, and supporting infrastructure. Each app syncs from its respective Git repository with automated self-heal.
 

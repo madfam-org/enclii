@@ -7,7 +7,7 @@
 Enclii is MADFAM's production DevOps platform running on a 2-node k3s cluster on Hetzner +
 Cloudflare. It dogfoods itself — the control plane runs on Enclii. Authentication
 is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
-11 apps in `infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
+12 apps in `infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
 
 ## Core Documentation
 
@@ -37,7 +37,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 
 ## Infrastructure
 
-- [ArgoCD Config](./infra/argocd/): Root application + 11 app definitions (incl. network-policies, vault, posthog)
+- [ArgoCD Config](./infra/argocd/): Root application + 12 app definitions (incl. network-policies, vault, posthog, backup)
 - [K8s Production Manifests](./infra/k8s/production/): Deployments, services, patches
 - [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): ~54 ingress rules (managed via Cloudflare API; see expected-tunnel-config.json for authoritative route list)
 - [Terraform](./infra/terraform/): Infrastructure as code for Hetzner + Cloudflare

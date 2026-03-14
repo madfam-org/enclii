@@ -1,0 +1,34 @@
+# Backup System Application
+# Deploys: PostgreSQL backup, K3s datastore backup, GitHub repos backup,
+#          Cloudflare config backup, ArgoCD secrets backup, verify + restore drill
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backup
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: backup
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: backup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/backup
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
