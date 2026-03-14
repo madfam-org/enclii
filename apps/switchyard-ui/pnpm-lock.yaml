@@ -526,7 +526,7 @@ packages:
     engines: {node: '>=8'}
 
   '@janua/nextjs@0.1.2':
-    resolution: {integrity: sha512-6rU3/Fcvf1Qt3lJwxg5plbLmVLdfLqte+n3Vxot/p6UeeAale8B8mQnfRakYZj0DX3KVnH5u6yCouSue1eJKbQ==}
+    resolution: {integrity: sha512-SP6TMXKQCmhd5q/fuBQptrNfs9TiEB5EJfkfDK+1RzFEHBFhWvEdVGi0ho4IzL8b/mXrsLQ8SOsak6YOoSalYg==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       next: '>=14.0.0'
@@ -534,13 +534,13 @@ packages:
       react-dom: '>=17.0.0'
 
   '@janua/react-sdk@0.1.1':
-    resolution: {integrity: sha512-SyezNtV3YyjtYheR0KvQPpnikU1zL+o2EJw1iKd8gzx5q+RdtY3knryk9AOGl2JUf3JkSY9KTBJ25LOqmKaEBw==}
+    resolution: {integrity: sha512-MdAns2YP6r0AGXDNVIcUPAxTn57JbC+Lc4adcJsa4LFC4uXOGLDzUFdw3Mz44KIbdCgGkCmH18tI5KJ2QeibCA==}
     peerDependencies:
       react: ^18.0.0
       react-dom: ^18.0.0
 
   '@janua/typescript-sdk@0.1.1':
-    resolution: {integrity: sha512-Pgo8koAeukckHPGF2W18w7ToAppG4dVmv2YaaRwbwSRWh6k5ZKlt3zojHEwU2qk4do0nGY/xlQknoq/y4KfeQA==}
+    resolution: {integrity: sha512-WPuGziVvVL5G3kI+0NZwb+V6ovITPpcJmLnwOk4oOoAiENruE8Hn9hFyWRpCnLkbZ7vkwaYIhYoMOHaxmZuFzw==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       '@apollo/client': ^3.8.0
@@ -558,7 +558,7 @@ packages:
         optional: true
 
   '@janua/ui@0.1.1':
-    resolution: {integrity: sha512-AFaE5C7y9s5NXxhwrJVWNbtpjpaRXODWtV7c4rTQAUQ5vsCDYN3kLurE5AZp3iibtc0WAbKdunkwIE9erC0J1Q==}
+    resolution: {integrity: sha512-jqLeqEU+fSVZANdn2u4YTpAOWxRSAg5B3Dhou8/H8o36FF+8ShjkGk82gLI1PLcF2T20pu1pHJcjELMRHjV7Ew==}
     peerDependencies:
       react: ^18.0.0
       react-dom: ^18.0.0
