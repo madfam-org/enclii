@@ -1,7 +1,7 @@
 ---
 # K3s Datastore Backup to Cloudflare R2
 #
-# Architecture: initContainer (k3s image + nsenter) creates host archive →
+# Architecture: initContainer (k3s image + nsenter inline) creates host archive →
 #               main container (aws-cli) uploads to R2
 #
 # Requires: hostPID, control-plane nodeSelector, PolicyException
@@ -12,7 +12,7 @@
 #   2. Apply the PolicyException (k3s-backup-policy-exception.yaml)
 #   3. Apply this manifest
 
-# Backup Scripts ConfigMap
+# Upload Script ConfigMap (backup runs inline via nsenter, like node-maintenance)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,35 +23,9 @@ metadata:
     app.kubernetes.io/component: backup
     app.kubernetes.io/part-of: enclii
 data:
-  backup.sh: |
-    #!/bin/sh
-    set -eu
-
-    echo "[$(date)] Starting k3s datastore backup..."
-
-    # Use nsenter to access host filesystem and create archive
-    nsenter -t 1 -m -u -i -n -p -- /bin/sh -c '
-      set -e
-      TMPFILE=/tmp/k3s-state.tar.gz
-      echo "Archiving k3s state..."
-      tar czf "$TMPFILE" \
-        /var/lib/rancher/k3s/server/db/state.db \
-        /var/lib/rancher/k3s/server/tls/ \
-        /var/lib/rancher/k3s/server/token \
-        2>/dev/null
-      echo "Archive created: $(du -h $TMPFILE | cut -f1)"
-    '
-
-    # Copy archive from host /tmp to shared volume via /proc/1/root
-    cp /proc/1/root/tmp/k3s-state.tar.gz /backup/k3s-state.tar.gz
-
-    BACKUP_SIZE=$(du -h /backup/k3s-state.tar.gz | cut -f1)
-    echo "[$(date)] Backup archive ready: ${BACKUP_SIZE}"
-    date +%Y%m%d > /backup/TIMESTAMP
-
   upload.sh: |
     #!/bin/bash
-    set -euo pipefail
+    set -eu
 
     BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
     BACKUP_PREFIX="k3s-datastore"
@@ -82,7 +56,7 @@ data:
         FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1 || echo "")
         FILE_NAME=$(echo "$line" | awk '{print $4}')
 
-        if [[ -n "${FILE_DATE}" && "${FILE_DATE}" < "${CUTOFF_DATE}" && "${FILE_NAME}" != "latest.tar.gz" ]]; then
+        if [ -n "${FILE_DATE}" ] && [ "${FILE_DATE}" \< "${CUTOFF_DATE}" ] && [ "${FILE_NAME}" != "latest.tar.gz" ]; then
           echo "[$(date)] Deleting old backup: ${FILE_NAME}"
           aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${FILE_NAME}" \
             --endpoint-url "${R2_ENDPOINT}"
@@ -128,7 +102,8 @@ spec:
           securityContext:
             seccompProfile:
               type: RuntimeDefault
-          # Step 1: nsenter into host to archive k3s state
+          # Step 1: nsenter into host, tar k3s state, copy to shared volume
+          # Uses inline command (proven pattern from node-maintenance CronJob)
           initContainers:
             - name: backup
               image: docker.io/rancher/k3s:v1.33.7-k3s3
@@ -138,11 +113,31 @@ spec:
                   drop:
                     - ALL
               command:
+                - nsenter
+                - -t
+                - "1"
+                - -m
+                - -u
+                - -i
+                - -n
+                - -p
+                - --
                 - /bin/sh
-                - /scripts/backup.sh
+                - -c
+                - |
+                  set -e
+                  echo "=== K3s Datastore Backup Started: $(date -u) ==="
+                  TMPFILE=/tmp/k3s-state.tar.gz
+                  echo "Archiving k3s state..."
+                  tar czf "$TMPFILE" \
+                    /var/lib/rancher/k3s/server/db/state.db \
+                    /var/lib/rancher/k3s/server/tls/ \
+                    /var/lib/rancher/k3s/server/token \
+                    2>/dev/null
+                  BACKUP_SIZE=$(du -h "$TMPFILE" | cut -f1)
+                  echo "Archive created: $BACKUP_SIZE"
+                  echo "=== K3s Datastore Backup Completed: $(date -u) ==="
               volumeMounts:
-                - name: scripts
-                  mountPath: /scripts
                 - name: backup-data
                   mountPath: /backup
               resources:
@@ -152,6 +147,34 @@ spec:
                 limits:
                   memory: "256Mi"
                   cpu: "200m"
+          # Step 1.5: Copy from host /tmp to shared volume + write timestamp
+          # Separate container because nsenter changes mount namespace
+            - name: copy
+              image: docker.io/rancher/k3s:v1.33.7-k3s3
+              securityContext:
+                privileged: true
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "Copying archive from host /tmp to shared volume..."
+                  cp /proc/1/root/tmp/k3s-state.tar.gz /backup/k3s-state.tar.gz
+                  date +%Y%m%d > /backup/TIMESTAMP
+                  echo "Copy complete: $(du -h /backup/k3s-state.tar.gz | cut -f1)"
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "25m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "100m"
           # Step 2: Upload archive to R2
           containers:
             - name: upload
