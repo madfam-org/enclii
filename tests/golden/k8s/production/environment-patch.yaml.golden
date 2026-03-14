@@ -155,6 +155,13 @@ spec:
               name: enclii-cloudflare-credentials
               key: tunnel-id
               optional: true
+        # PostHog Analytics (self-hosted at analytics.enclii.dev)
+        - name: ENCLII_POSTHOG_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: enclii-secrets
+              key: ENCLII_POSTHOG_API_KEY
+              optional: true
         readinessProbe:
           httpGet:
             path: /health/ready

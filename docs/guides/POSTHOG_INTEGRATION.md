@@ -4,17 +4,30 @@ How to add PostHog product analytics to any Madfam ecosystem application.
 
 ## Architecture
 
-All analytics traffic is routed through `analytics.enclii.dev`, a Cloudflare reverse proxy that forwards to the PostHog ingestion API. This avoids ad-blocker interference and keeps data flows within Enclii's infrastructure boundary.
+All analytics traffic is routed through `analytics.enclii.dev`, which points to a self-hosted PostHog instance running in the `posthog` namespace on the k3s cluster. This avoids ad-blocker interference and keeps all analytics data within Enclii's infrastructure boundary.
 
 ```
 Browser / Go service
     |
     v
-analytics.enclii.dev  (Cloudflare Worker / tunnel route)
+analytics.enclii.dev  (Cloudflare Tunnel route)
     |
     v
-PostHog Cloud or Self-Hosted
+PostHog (self-hosted, posthog namespace)
+    |
+    +-- ClickHouse (analytics DB, 20Gi Longhorn PVC)
+    +-- Redpanda (Kafka-compatible broker, dev mode, 5Gi PVC)
+    +-- PostgreSQL (shared, data namespace)
+    +-- Redis (shared, data namespace)
 ```
+
+### Deployment Notes
+
+PostHog is deployed via Helm chart v30.46.0 managed by ArgoCD (`infra/argocd/apps/posthog.yaml`).
+
+**Redpanda broker**: The PostHog Helm chart has NO Redpanda subchart — only `bitnami/kafka`. The `redpanda: enabled: true` values block was silently ignored. We deploy a standalone Redpanda StatefulSet (`infra/k8s/production/posthog-redpanda.yaml`) and wire it via `externalKafka.brokers`. This is the same approach PostHog's own Docker Compose uses (Redpanda v25.1.9 in developer mode).
+
+**PgBouncer stub**: PostHog init containers expect `posthog-pgbouncer:6543`. A stub Service+Endpoints (`posthog-pgbouncer-proxy.yaml`) routes this directly to the shared PostgreSQL ClusterIP.
 
 ## Prerequisites
 
@@ -217,13 +230,11 @@ Route all PostHog traffic through a Cloudflare Worker or tunnel route so that:
 2. No third-party cookies are set.
 3. Data stays within Enclii's infrastructure boundary for compliance.
 
-Example tunnel route addition in `cloudflared-unified.yaml`:
+The tunnel route in `cloudflared-unified.yaml` points to the in-cluster PostHog web service:
 
 ```yaml
 - hostname: analytics.enclii.dev
-  service: https://us.i.posthog.com   # or your self-hosted PostHog URL
-  originRequest:
-    noTLSVerify: false
+  service: http://posthog-web.posthog.svc.cluster.local:8000
 ```
 
 ---

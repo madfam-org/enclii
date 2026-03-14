@@ -1,0 +1,121 @@
+# Standalone Redpanda for PostHog event streaming
+# Kafka-compatible broker in developer mode (single-node, minimal resources)
+#
+# Why standalone instead of Helm subchart:
+# PostHog chart v30.46.0 has NO Redpanda dependency — only bitnami/kafka.
+# The `redpanda: enabled: true` values block was silently ignored by the chart,
+# and `kafka: enabled: false` meant no broker was ever deployed. ClickHouse
+# init containers failed waiting for Kafka. This standalone StatefulSet provides
+# a Kafka-compatible broker via Redpanda's developer mode.
+#
+# Version: v25.1.9 (same version PostHog's own Docker Compose uses)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: posthog-redpanda
+  namespace: posthog
+  labels:
+    app: posthog-redpanda
+spec:
+  type: ClusterIP
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092
+      protocol: TCP
+    - name: admin
+      port: 9644
+      targetPort: 9644
+      protocol: TCP
+  selector:
+    app: posthog-redpanda
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: posthog-redpanda
+  namespace: posthog
+  labels:
+    app: posthog-redpanda
+spec:
+  serviceName: posthog-redpanda
+  replicas: 1
+  selector:
+    matchLabels:
+      app: posthog-redpanda
+  template:
+    metadata:
+      labels:
+        app: posthog-redpanda
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v25.1.9
+          args:
+            - redpanda
+            - start
+            - --mode
+            - dev-container
+            - --smp
+            - "1"
+            - --memory
+            - 512M
+            - --overprovisioned
+            - --kafka-addr
+            - 0.0.0.0:9092
+            - --advertise-kafka-addr
+            - posthog-redpanda.posthog.svc.cluster.local:9092
+          ports:
+            - name: kafka
+              containerPort: 9092
+            - name: admin
+              containerPort: 9644
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
+          readinessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: 9644
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: 9644
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 5Gi

@@ -1,8 +1,12 @@
 # PostHog Product Analytics Application
 # Deploys: PostHog (via Helm) — self-hosted product analytics
 # Namespace: posthog
-# External deps: PostgreSQL (data ns), Redis (data ns)
+# External deps: PostgreSQL (data ns), Redis (data ns), Redpanda (posthog ns)
 # Ingress: Cloudflare Tunnel (analytics.enclii.dev)
+#
+# Broker: Standalone Redpanda StatefulSet (posthog-redpanda.yaml), NOT the
+# chart's bitnami/kafka subchart. Chart v30.46.0 has no Redpanda dependency —
+# `redpanda: enabled: true` was silently ignored. We use externalKafka instead.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -37,7 +41,7 @@ spec:
           replicaCount: 1
           resources:
             requests:
-              cpu: 250m
+              cpu: 200m
               memory: 512Mi
             limits:
               cpu: "1"
@@ -48,7 +52,7 @@ spec:
           replicaCount: 1
           resources:
             requests:
-              cpu: 250m
+              cpu: 200m
               memory: 512Mi
             limits:
               cpu: "1"
@@ -58,7 +62,7 @@ spec:
           replicaCount: 1
           resources:
             requests:
-              cpu: 200m
+              cpu: 150m
               memory: 256Mi
             limits:
               cpu: 500m
@@ -94,22 +98,14 @@ spec:
             shardsCount: 1
             replicasCount: 1
 
+        # Kafka disabled — using standalone Redpanda (posthog-redpanda.yaml)
         kafka:
           enabled: false
 
-        redpanda:
-          enabled: true
-          resources:
-            requests:
-              cpu: 200m
-              memory: 512Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
-          persistence:
-            enabled: true
-            storageClassName: longhorn
-            size: 10Gi
+        # Wire PostHog to the standalone Redpanda broker
+        externalKafka:
+          brokers:
+            - posthog-redpanda.posthog.svc.cluster.local:9092
 
         postgresql:
           enabled: false
@@ -145,20 +141,12 @@ spec:
     server: https://kubernetes.default.svc
     namespace: posthog
 
-  # PAUSED: PostHog chart v30.46.0 has broken dependencies:
-  # - Redpanda subchart not generating resources
-  # - ClickHouse migrations fail without Kafka/Redpanda broker
-  # v30.46.0 is the LATEST available version (Feb 2025). Chart is officially
-  # unmaintained by PostHog since May 2023 — no v31+ exists.
-  # Options: (1) debug Redpanda subchart, (2) switch to Kafka subchart,
-  # (3) migrate to Docker Compose (PostHog's recommended self-host method).
-  # Re-enable after resolving chart compatibility.
-  # syncPolicy:
-  #   automated:
-  #     prune: true
-  #     selfHeal: true
-  #   syncOptions:
-  #     - CreateNamespace=true
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 
   # ClickHouse operator creates dynamic resources; ignore status drift
   ignoreDifferences:

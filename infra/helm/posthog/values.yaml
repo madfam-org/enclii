@@ -6,11 +6,14 @@
 # - Create posthog-secrets in posthog namespace:
 #     kubectl create secret generic posthog-secrets -n posthog \
 #       --from-literal=POSTHOG_DB_PASSWORD='<password>' \
-#       --from-literal=POSTHOG_SECRET_KEY='<django-secret-key>'
+#       --from-literal=POSTHOG_SECRET_KEY='<django-secret-key>' \
+#       --from-literal=POSTHOG_REDIS_PASSWORD=''
 # - Create posthog database in shared PostgreSQL:
 #     kubectl exec -n data deploy/postgres -- psql -U postgres \
 #       -c "CREATE USER posthog WITH PASSWORD '<password>';" \
 #       -c "CREATE DATABASE posthog OWNER posthog;"
+# - Deploy standalone Redpanda BEFORE Helm install:
+#     kubectl apply -f infra/k8s/production/posthog-redpanda.yaml
 #
 # After install:
 # - Web UI available via Cloudflare Tunnel at analytics.enclii.dev
@@ -25,7 +28,7 @@ web:
   replicaCount: 1
   resources:
     requests:
-      cpu: 250m
+      cpu: 200m
       memory: 512Mi
     limits:
       cpu: "1"
@@ -49,7 +52,7 @@ worker:
   replicaCount: 1
   resources:
     requests:
-      cpu: 250m
+      cpu: 200m
       memory: 512Mi
     limits:
       cpu: "1"
@@ -71,7 +74,7 @@ plugins:
   replicaCount: 1
   resources:
     requests:
-      cpu: 200m
+      cpu: 150m
       memory: 256Mi
     limits:
       cpu: 500m
@@ -115,24 +118,18 @@ clickhouse:
     replicasCount: 1
 
 # ---------------------------------------------------------------------------
-# Kafka / Redpanda — event streaming (use Redpanda for lower footprint)
+# Kafka — disabled; using standalone Redpanda as Kafka-compatible broker
+# PostHog chart v30.46.0 has NO Redpanda subchart dependency. The chart only
+# bundles bitnami/kafka. The `redpanda:` values block was silently ignored.
+# We deploy Redpanda separately (posthog-redpanda.yaml) and wire it here.
 # ---------------------------------------------------------------------------
 kafka:
   enabled: false
 
-redpanda:
-  enabled: true
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: "1"
-      memory: 1Gi
-  persistence:
-    enabled: true
-    storageClassName: longhorn
-    size: 10Gi
+# Point PostHog at the standalone Redpanda broker
+externalKafka:
+  brokers:
+    - posthog-redpanda.posthog.svc.cluster.local:9092
 
 # ---------------------------------------------------------------------------
 # PostgreSQL — external (shared cluster in data namespace)

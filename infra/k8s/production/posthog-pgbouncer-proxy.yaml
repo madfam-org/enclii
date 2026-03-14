@@ -26,7 +26,10 @@ metadata:
   namespace: posthog
 subsets:
   - addresses:
-      - ip: 10.43.123.52  # postgres.data.svc.cluster.local ClusterIP
+      # WARNING: This is the ClusterIP of postgres.data.svc.cluster.local.
+      # If the postgres Service is recreated, this IP will change.
+      # Verify with: kubectl get svc postgres -n data -o jsonpath='{.spec.clusterIP}'
+      - ip: 10.43.123.52
     ports:
       - port: 5432
         protocol: TCP
