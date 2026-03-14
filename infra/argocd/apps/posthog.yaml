@@ -93,7 +93,7 @@ spec:
           persistence:
             enabled: true
             storageClassName: longhorn
-            size: 20Gi
+            size: 10Gi
           layout:
             shardsCount: 1
             replicasCount: 1
@@ -160,9 +160,26 @@ spec:
     syncOptions:
       - CreateNamespace=true
 
-  # ClickHouse operator creates dynamic resources; ignore status drift
+  # ClickHouse operator manages its own StatefulSets, Services, ConfigMaps.
+  # Ignore differences to prevent ArgoCD from fighting the operator.
   ignoreDifferences:
     - group: "clickhouse.altinity.com"
       kind: "*"
+      jsonPointers:
+        - /status
+    - group: apps
+      kind: StatefulSet
+      name: chi-posthog-posthog-0-0
+      jsonPointers:
+        - /spec
+    - group: ""
+      kind: Service
+      name: chi-posthog-posthog-0-0
+      jsonPointers:
+        - /spec
+    - group: ""
+      kind: Endpoints
+      jsonPointers:
+        - /subsets
       jsonPointers:
         - /status
