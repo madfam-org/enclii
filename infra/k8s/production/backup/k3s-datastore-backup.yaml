@@ -25,7 +25,7 @@ metadata:
 data:
   backup.sh: |
     #!/bin/sh
-    set -euo pipefail
+    set -eu
 
     echo "[$(date)] Starting k3s datastore backup..."
 
@@ -42,8 +42,8 @@ data:
       echo "Archive created: $(du -h $TMPFILE | cut -f1)"
     '
 
-    # Copy archive from host /tmp to shared volume
-    nsenter -t 1 -m -- cp /tmp/k3s-state.tar.gz /backup/k3s-state.tar.gz
+    # Copy archive from host /tmp to shared volume via /proc/1/root
+    cp /proc/1/root/tmp/k3s-state.tar.gz /backup/k3s-state.tar.gz
 
     BACKUP_SIZE=$(du -h /backup/k3s-state.tar.gz | cut -f1)
     echo "[$(date)] Backup archive ready: ${BACKUP_SIZE}"
