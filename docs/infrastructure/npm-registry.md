@@ -467,13 +467,23 @@ git tag shared-lib-v0.2.0
 git push origin shared-lib-v0.2.0
 ```
 
-#### Publishable packages
+#### Publishable packages (all repos)
 
-| Package | Tag Pattern | Build | Notes |
-|---------|-------------|-------|-------|
-| `@enclii/shared-lib` | `shared-lib-v*` | TypeScript → dist/ | Utilities (clsx, tailwind-merge) |
-| `@enclii/ui-components` | `ui-components-v*` | TypeScript → dist/ | React components, depends on shared-lib |
-| `@enclii/config` | `config-v*` | None (plain JS) | Tailwind config presets |
+| Package | Repo | Tag Pattern | Version | Status |
+|---------|------|-------------|---------|--------|
+| `@enclii/shared-lib` | enclii | `shared-lib-v*` | 0.1.0 | Published |
+| `@enclii/ui-components` | enclii | `ui-components-v*` | 0.1.0 | Published |
+| `@enclii/config` | enclii | `config-v*` | 0.1.0 | Published |
+| `@janua/ui` | janua | `ui-v*` | 0.1.1 | Published |
+| `@janua/react-sdk` | janua | `react-sdk-v*` | 0.1.1 | Published |
+| `@janua/typescript-sdk` | janua | `typescript-sdk-v*` | 0.1.1 | Published |
+| `@janua/nextjs` | janua | `nextjs-v*` | 0.1.2 | Published |
+| `@dhanam/shared` | dhanam | `@dhanam/shared@*` | 0.1.0 | Published |
+| `@dhanam/esg` | dhanam | `@dhanam/esg@*` | 0.1.0 | Published |
+| `@dhanam/simulations` | dhanam | `@dhanam/simulations@*` | 0.1.0 | Published |
+| `@dhanam/billing-sdk` | dhanam | `@dhanam/billing-sdk@*` | 0.2.0 | Published |
+| `@tezca/api-client` | tezca | `api-client-v*` | 0.1.0 | Published |
+| `@forgesight/client` | forgesight | `client-v*` | 0.1.0 | Published |
 
 ### .npmrc Template (for all MADFAM repos)
 ```ini
@@ -519,10 +529,10 @@ git push origin shared-lib-v0.2.0
 - [x] Add NPM_MADFAM_TOKEN to GitHub org secrets
 - [x] Update .npmrc in all repos
 - [x] Publish initial @enclii packages (shared-lib, ui-components, config)
-- [ ] Test package installation
+- [x] Test package installation
 - [ ] Set up monitoring alerts
 
-> **Status (Feb 2026):** Verdaccio is running and healthy. ArgoCD-managed as `npm-registry-services` app. PVC reduced from 50Gi to 5Gi (Session 44). @janua packages published. @enclii packages publish via `.github/workflows/publish-sdks.yml` (tag-triggered).
+> **Status (Mar 2026):** Verdaccio running and healthy. ArgoCD-managed as `npm-registry-services` app. PVC reduced from 50Gi to 5Gi (Session 44). After PVC corruption + recreation (Mar 14, 2026), all 13 packages across 5 repos were republished. NPM_MADFAM_TOKEN rotated on all 5 repos (janua, enclii, dhanam, tezca, forgesight). Token expires ~Jun 12, 2026. CI publish workflows operational on enclii, dhanam, tezca, and forgesight.
 
 ---
 
@@ -587,7 +597,7 @@ kubectl scale deploy/verdaccio --replicas=2 -n enclii-workloads
 3. **Network Policy**: Only allow ingress from Cloudflare IPs
 4. **Rate Limiting**: Cloudflare rate limiting rules
 5. **Audit Logging**: All publish/unpublish actions logged
-6. **Token Rotation**: CI tokens rotated quarterly
+6. **Token Rotation**: CI tokens rotated quarterly (current token expires ~Jun 12, 2026)
 
 ---
 
