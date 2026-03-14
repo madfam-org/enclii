@@ -11,6 +11,7 @@ metadata:
     app.kubernetes.io/component: backup
     app.kubernetes.io/part-of: enclii
   annotations:
+    argocd.argoproj.io/sync-wave: "-1"
     policies.kyverno.io/description: >-
       K3s datastore backup CronJob requires privileged access and hostPID
       for nsenter into the control-plane node to archive state.db, TLS certs,

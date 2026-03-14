@@ -101,6 +101,8 @@ metadata:
     app.kubernetes.io/name: k3s-datastore-backup
     app.kubernetes.io/component: backup
     app.kubernetes.io/part-of: enclii
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   schedule: "30 1 * * *"
   concurrencyPolicy: Forbid
