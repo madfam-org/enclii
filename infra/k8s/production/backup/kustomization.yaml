@@ -2,8 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: data
 resources:
-  - postgres-backup.yaml
-  - backup-verify-cronjob.yaml
+  # postgres-backup.yaml and backup-verify-cronjob.yaml are managed by
+  # platform-infra-services ArgoCD app — do not duplicate here
   - restore-drill-cronjob.yaml
   - k3s-datastore-backup.yaml
   - k3s-backup-policy-exception.yaml
