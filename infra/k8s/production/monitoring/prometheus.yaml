@@ -644,7 +644,7 @@ data:
         rules:
           # CronJob Failures
           - alert: CronJobFailed
-            expr: kube_job_status_failed{namespace=~"enclii|monitoring"} > 0
+            expr: kube_job_status_failed{namespace=~"enclii|monitoring|data"} > 0
             for: 5m
             labels:
               severity: warning
@@ -671,6 +671,46 @@ data:
             annotations:
               summary: "PostgreSQL backup missing"
               description: "No successful PostgreSQL backup job completed in the last 25 hours."
+
+          - alert: K3sBackupMissing
+            expr: time() - max(kube_job_status_completion_time{job_name=~"k3s-datastore-backup.*"}) > 90000
+            for: 5m
+            labels:
+              severity: critical
+              service: backup
+            annotations:
+              summary: "K3s datastore backup missing"
+              description: "No successful k3s backup in 25 hours."
+
+          - alert: GitHubBackupMissing
+            expr: time() - max(kube_job_status_completion_time{job_name=~"github-repos-backup.*"}) > 90000
+            for: 5m
+            labels:
+              severity: critical
+              service: backup
+            annotations:
+              summary: "GitHub repository backup missing"
+              description: "No successful GitHub repo backup in 25 hours."
+
+          - alert: CloudflareBackupMissing
+            expr: time() - max(kube_job_status_completion_time{job_name=~"cloudflare-config-backup.*"}) > 90000
+            for: 5m
+            labels:
+              severity: warning
+              service: backup
+            annotations:
+              summary: "Cloudflare config backup missing"
+              description: "No successful Cloudflare config backup in 25 hours."
+
+          - alert: BackupJobFailed
+            expr: kube_job_status_failed{namespace="data", job_name=~"(k3s-datastore|github-repos|cloudflare-config|argocd-secrets)-backup.*"} > 0
+            for: 0m
+            labels:
+              severity: critical
+              service: backup
+            annotations:
+              summary: "Backup job {{ $labels.job_name }} failed"
+              description: "Check logs: kubectl logs -n data job/{{ $labels.job_name }}"
 
           # HPA Scaling
           - alert: HPAMaxedOut

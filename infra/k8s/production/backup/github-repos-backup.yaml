@@ -1,0 +1,250 @@
+---
+# GitHub Repository Backup to Cloudflare R2
+#
+# Architecture: initContainer (alpine/git) clones + bundles all org repos →
+#               main container (aws-cli) uploads bundles to R2
+#
+# Schedule: 1:00 AM UTC daily
+#
+# Usage:
+#   1. Create github-backup-credentials secret (see github-backup-secrets.yaml.template)
+#   2. Ensure r2-backup-credentials secret exists in data namespace
+#   3. Apply this manifest
+
+# Backup Scripts ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: github-backup-script
+  namespace: data
+  labels:
+    app.kubernetes.io/name: github-repos-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+data:
+  clone-and-bundle.sh: |
+    #!/bin/sh
+    set -euo pipefail
+
+    echo "[$(date)] Starting GitHub repository backup..."
+
+    ORG="madfam-org"
+    BUNDLE_DIR="/backup/bundles"
+    mkdir -p "${BUNDLE_DIR}"
+
+    # Fetch all repos via GitHub API (paginated)
+    PAGE=1
+    REPOS=""
+    while true; do
+      RESPONSE=$(wget -q -O - \
+        --header="Authorization: token ${GITHUB_PAT}" \
+        --header="Accept: application/vnd.github.v3+json" \
+        "https://api.github.com/orgs/${ORG}/repos?per_page=100&page=${PAGE}&type=all")
+
+      PAGE_REPOS=$(echo "${RESPONSE}" | grep -o '"clone_url": "[^"]*"' | cut -d'"' -f4)
+
+      if [ -z "${PAGE_REPOS}" ]; then
+        break
+      fi
+
+      REPOS="${REPOS}
+${PAGE_REPOS}"
+      PAGE=$((PAGE + 1))
+    done
+
+    REPO_COUNT=$(echo "${REPOS}" | grep -c 'https://' || echo 0)
+    echo "[$(date)] Found ${REPO_COUNT} repositories"
+
+    SUCCESS=0
+    FAILED=0
+
+    for REPO_URL in ${REPOS}; do
+      REPO_NAME=$(echo "${REPO_URL}" | sed 's|.*/||;s|\.git$||')
+      if [ -z "${REPO_NAME}" ]; then
+        continue
+      fi
+
+      echo "[$(date)] Cloning ${REPO_NAME}..."
+      # Inject PAT into clone URL for private repos
+      AUTH_URL=$(echo "${REPO_URL}" | sed "s|https://|https://${GITHUB_PAT}@|")
+
+      CLONE_DIR="/tmp/clone-${REPO_NAME}"
+      if git clone --mirror "${AUTH_URL}" "${CLONE_DIR}" 2>/dev/null; then
+        echo "[$(date)] Bundling ${REPO_NAME}..."
+        if git -C "${CLONE_DIR}" bundle create "${BUNDLE_DIR}/${REPO_NAME}.bundle" --all 2>/dev/null; then
+          BUNDLE_SIZE=$(du -h "${BUNDLE_DIR}/${REPO_NAME}.bundle" | cut -f1)
+          echo "[$(date)] ✓ ${REPO_NAME}: ${BUNDLE_SIZE}"
+          SUCCESS=$((SUCCESS + 1))
+        else
+          echo "[$(date)] ✗ ${REPO_NAME}: bundle failed"
+          FAILED=$((FAILED + 1))
+        fi
+        # Remove clone immediately to save disk
+        rm -rf "${CLONE_DIR}"
+      else
+        echo "[$(date)] ✗ ${REPO_NAME}: clone failed"
+        FAILED=$((FAILED + 1))
+      fi
+    done
+
+    echo "[$(date)] Clone & bundle complete: ${SUCCESS} succeeded, ${FAILED} failed"
+    date +%Y%m%d > /backup/TIMESTAMP
+
+    if [ "${FAILED}" -gt 0 ] && [ "${SUCCESS}" -eq 0 ]; then
+      echo "[$(date)] ERROR: All repos failed"
+      exit 1
+    fi
+
+  upload.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    BACKUP_BUCKET="${R2_BUCKET:-enclii-backups}"
+    BACKUP_PREFIX="github-mirrors"
+    R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+    TIMESTAMP=$(cat /backup/TIMESTAMP)
+    BUNDLE_DIR="/backup/bundles"
+
+    echo "[$(date)] Uploading bundles to R2: s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${TIMESTAMP}/"
+    aws s3 sync "${BUNDLE_DIR}/" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${TIMESTAMP}/" \
+      --endpoint-url "${R2_ENDPOINT}"
+
+    # Also copy to latest/
+    aws s3 sync "${BUNDLE_DIR}/" "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/latest/" \
+      --endpoint-url "${R2_ENDPOINT}"
+
+    echo "[$(date)] Upload complete"
+
+    # Cleanup old backups (keep last 7 daily directories)
+    RETENTION_DAYS=7
+    echo "[$(date)] Cleaning up backups older than ${RETENTION_DAYS} days..."
+    CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d)
+
+    aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/" \
+      --endpoint-url "${R2_ENDPOINT}" 2>/dev/null \
+      | grep "PRE" | awk '{print $2}' | tr -d '/' \
+      | while read -r DIR_NAME; do
+        if [[ "${DIR_NAME}" =~ ^[0-9]{8}$ && "${DIR_NAME}" < "${CUTOFF_DATE}" ]]; then
+          echo "[$(date)] Deleting old backup: ${DIR_NAME}/"
+          aws s3 rm "s3://${BACKUP_BUCKET}/${BACKUP_PREFIX}/${DIR_NAME}/" \
+            --endpoint-url "${R2_ENDPOINT}" --recursive
+        fi
+      done
+
+    echo "[$(date)] GitHub backup pipeline complete"
+---
+# CronJob for daily GitHub repository backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: github-repos-backup
+  namespace: data
+  labels:
+    app.kubernetes.io/name: github-repos-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: github-repos-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          # Step 1: Clone and bundle all org repos
+          initContainers:
+            - name: clone-bundle
+              image: docker.io/alpine/git:2.45.2
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/sh
+                - /scripts/clone-and-bundle.sh
+              env:
+                - name: GITHUB_PAT
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-backup-credentials
+                      key: github-pat
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "500m"
+          # Step 2: Upload bundles to R2
+          containers:
+            - name: upload
+              image: docker.io/amazon/aws-cli:2.33.16
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/bash
+                - /scripts/upload.sh
+              env:
+                - name: R2_ACCOUNT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: account-id
+                - name: R2_BUCKET
+                  value: enclii-backups
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: r2-backup-credentials
+                      key: secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  value: auto
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: github-backup-script
+                defaultMode: 0755
+            - name: backup-data
+              emptyDir:
+                sizeLimit: 5Gi

@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: data
+resources:
+  - postgres-backup.yaml
+  - backup-verify-cronjob.yaml
+  - restore-drill-cronjob.yaml
+  - k3s-datastore-backup.yaml
+  - k3s-backup-policy-exception.yaml
+  - github-repos-backup.yaml
+  - cloudflare-config-backup.yaml
+  - argocd-secrets-backup.yaml

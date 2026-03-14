@@ -541,6 +541,9 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | GPU setup | `infra/k8s/base/gpu/` |
 | Kaniko builds | `apps/roundhouse/k8s/kaniko-job-template.yaml` |
 | Vault ExternalSecrets | `infra/k8s/base/external-secrets/vault-secrets/` (enclii, janua, data, cloudflare) |
+| Backup CronJobs | `infra/k8s/production/backup/` (postgres, k3s-datastore, github-repos, cloudflare-config, argocd-secrets, verify, restore-drill) |
+| Backup Kustomization | `infra/k8s/production/backup/kustomization.yaml` (ArgoCD-managed) |
+| Backup coverage runbook | `docs/runbooks/BACKUP_COVERAGE.md` |
 | Node maintenance | `infra/k8s/production/node-maintenance-cronjob.yaml` (daily GC + Prometheus metrics export) |
 | Prometheus config + alerts | `infra/k8s/production/monitoring/prometheus.yaml` (scrape configs, alert rules ConfigMap) |
 | Node exporter | `infra/k8s/production/monitoring/node-exporter.yaml` (DaemonSet + textfile collector) |

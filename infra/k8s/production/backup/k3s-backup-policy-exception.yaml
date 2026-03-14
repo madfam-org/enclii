@@ -1,0 +1,56 @@
+# PolicyException for k3s-datastore-backup CronJob
+# Requires: privileged, hostPID for nsenter into control-plane node
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: k3s-datastore-backup-privileged
+  namespace: data
+  labels:
+    app.kubernetes.io/name: k3s-datastore-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    policies.kyverno.io/description: >-
+      K3s datastore backup CronJob requires privileged access and hostPID
+      for nsenter into the control-plane node to archive state.db, TLS certs,
+      and cluster token.
+    policies.kyverno.io/severity: medium
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - CronJob
+            - Job
+          names:
+            - "k3s-datastore-backup*"
+          namespaces:
+            - data
+  exceptions:
+    - policyName: disallow-host-path
+      ruleNames:
+        - host-path
+        - autogen-host-path
+        - autogen-cronjob-host-path
+    - policyName: disallow-host-namespaces
+      ruleNames:
+        - host-namespaces
+        - autogen-host-namespaces
+        - autogen-cronjob-host-namespaces
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+        - autogen-cronjob-privileged-containers
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
+        - autogen-cronjob-run-as-non-root
+    - policyName: restrict-capabilities
+      ruleNames:
+        - require-drop-all
+        - autogen-require-drop-all
+        - autogen-cronjob-drop-all-capabilities
