@@ -4,7 +4,9 @@
 # Default-deny + explicit allow rules for the karafiel namespace.
 # Contains: karafiel-api (Django REST API, cloudflare tunnel + PostgreSQL + Redis),
 #           karafiel-web (Next.js frontend, cloudflare tunnel),
-#           karafiel-admin (Django admin, cloudflare tunnel).
+#           karafiel-admin (Django admin, cloudflare tunnel),
+#           karafiel-beat (Celery beat scheduler),
+#           karafiel-worker (Celery worker).
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
 
@@ -236,6 +238,105 @@ spec:
         - protocol: TCP
           port: 5432
     # Redis in data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+# Allow karafiel-beat egress (DNS + PostgreSQL + Redis — no inbound traffic)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: karafiel-beat-egress
+  namespace: karafiel
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: karafiel-beat
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # PostgreSQL in data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Redis in data namespace (Celery broker)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+# Allow karafiel-worker egress (DNS + HTTPS + PostgreSQL + Redis — no inbound traffic)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: karafiel-worker-egress
+  namespace: karafiel
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: karafiel-worker
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS egress for external APIs (task processing)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # PostgreSQL in data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Redis in data namespace (Celery broker)
     - to:
         - namespaceSelector:
             matchLabels:

@@ -7,7 +7,7 @@
 #           tezca-admin (Django admin, cloudflare tunnel),
 #           tezca-beat (Celery beat scheduler),
 #           tezca-worker (Celery worker).
-# All backend services connect to PostgreSQL + Redis in data namespace.
+# Backend services connect to PostgreSQL in data namespace + tezca-redis in-namespace.
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
 
@@ -272,6 +272,113 @@ spec:
         - protocol: TCP
           port: 6379
 
+# Allow ingress to tezca-redis from api, worker, beat (Celery broker + cache)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tezca-redis-ingress
+  namespace: tezca
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tezca-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - tezca-api
+                  - tezca-worker
+                  - tezca-beat
+      ports:
+        - protocol: TCP
+          port: 6379
+
+# Allow tezca-redis egress (DNS only — Redis doesn't initiate external connections)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tezca-redis-egress
+  namespace: tezca
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tezca-redis
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# Allow ingress to tezca-es from api (search)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tezca-es-ingress
+  namespace: tezca
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tezca-es
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - tezca-api
+                  - tezca-worker
+      ports:
+        - protocol: TCP
+          port: 9200
+
+# Allow tezca-es egress (DNS only)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tezca-es-egress
+  namespace: tezca
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tezca-es
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
 # Allow tezca-beat egress (DNS + PostgreSQL + Redis — no inbound traffic)
 ---
 apiVersion: networking.k8s.io/v1
@@ -315,6 +422,14 @@ spec:
           podSelector:
             matchLabels:
               app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # tezca-redis in-namespace (Celery broker — beat connects to tezca-redis:6379)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tezca-redis
       ports:
         - protocol: TCP
           port: 6379
@@ -367,6 +482,14 @@ spec:
           podSelector:
             matchLabels:
               app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # tezca-redis in-namespace (Celery broker — worker connects to tezca-redis:6379)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tezca-redis
       ports:
         - protocol: TCP
           port: 6379
