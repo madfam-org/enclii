@@ -187,9 +187,22 @@ kubectl run test --rm -it --image=curlimages/curl -- \
   curl -v http://<service>.<namespace>.svc.cluster.local:80
 ```
 
-4. **Check network policies**:
+4. **Check network policies** (common root cause for ecosystem services):
 ```bash
+# List all policies in the namespace
 kubectl get networkpolicies -n <namespace>
+
+# Inspect a specific policy's egress/ingress rules
+kubectl describe networkpolicy <policy-name> -n <namespace>
+
+# Check if the pod's labels match any allow policy's podSelector
+kubectl get pod <pod-name> -n <namespace> --show-labels
+
+# Common pitfalls:
+# - Intra-namespace egress: use podSelector (no namespaceSelector)
+# - Cross-namespace: must match BOTH namespaceSelector AND podSelector
+# - Port must be container targetPort, NOT K8s service port
+# - k3s sends TCP RST (Connection refused) for blocked traffic, not ETIMEDOUT
 ```
 
 ### 502 Bad Gateway

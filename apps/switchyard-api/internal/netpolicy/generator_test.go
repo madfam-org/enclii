@@ -291,6 +291,130 @@ func TestGeneratePolicies_LabelsPresent(t *testing.T) {
 	assertContains(t, yaml, "enclii.dev/project: my-proj")
 }
 
+func TestGeneratePolicies_IntraNamespaceBroker(t *testing.T) {
+	// Simulates tezca: worker/beat need intra-namespace Redis + ES access
+	// via Custom rules (the standard "redis" egress only targets data namespace)
+	spec := NetworkSpec{
+		Services: []ServiceSpec{
+			{
+				Name:    "tezca-worker",
+				Label:   "app.kubernetes.io/name",
+				Port:    0,
+				Ingress: nil,
+				Egress:  []string{"dns", "https", "postgres", "redis"},
+			},
+			{
+				Name:    "tezca-beat",
+				Label:   "app.kubernetes.io/name",
+				Port:    0,
+				Ingress: nil,
+				Egress:  []string{"dns", "postgres", "redis"},
+			},
+			{
+				Name:    "tezca-redis",
+				Label:   "app.kubernetes.io/name",
+				Port:    0,
+				Ingress: nil,
+				Egress:  []string{"dns"},
+			},
+		},
+		Custom: []CustomRule{
+			{
+				Name:      "worker-to-intra-redis",
+				From:      map[string]string{"app.kubernetes.io/name": "tezca-worker"},
+				To:        map[string]string{"app.kubernetes.io/name": "tezca-redis"},
+				Port:      6379,
+				Direction: "both",
+			},
+			{
+				Name:      "beat-to-intra-redis",
+				From:      map[string]string{"app.kubernetes.io/name": "tezca-beat"},
+				To:        map[string]string{"app.kubernetes.io/name": "tezca-redis"},
+				Port:      6379,
+				Direction: "both",
+			},
+			{
+				Name:      "worker-to-intra-es",
+				From:      map[string]string{"app.kubernetes.io/name": "tezca-worker"},
+				To:        map[string]string{"app.kubernetes.io/name": "tezca-es"},
+				Port:      9200,
+				Direction: "both",
+			},
+		},
+	}
+
+	out, err := GeneratePolicies("tezca", "tezca", spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yaml := string(out)
+
+	// Standard egress policies for worker and beat
+	assertContains(t, yaml, "name: tezca-worker-egress")
+	assertContains(t, yaml, "name: tezca-beat-egress")
+	assertContains(t, yaml, "name: tezca-redis-egress")
+
+	// Custom intra-namespace ingress/egress rules
+	assertContains(t, yaml, "worker-to-intra-redis-custom-ingress")
+	assertContains(t, yaml, "worker-to-intra-redis-custom-egress")
+	assertContains(t, yaml, "beat-to-intra-redis-custom-ingress")
+	assertContains(t, yaml, "beat-to-intra-redis-custom-egress")
+	assertContains(t, yaml, "worker-to-intra-es-custom-ingress")
+	assertContains(t, yaml, "worker-to-intra-es-custom-egress")
+
+	// Intra-namespace rules use podSelector (no namespaceSelector)
+	assertContains(t, yaml, "app.kubernetes.io/name: tezca-redis")
+	assertContains(t, yaml, "app.kubernetes.io/name: tezca-es")
+	assertContains(t, yaml, "port: 6379")
+	assertContains(t, yaml, "port: 9200")
+}
+
+func TestGeneratePolicies_WorkerBeatEgress(t *testing.T) {
+	// Simulates karafiel: beat/worker need DNS + postgres + redis in data namespace
+	// Validates that the same egress pattern used for API works for background workers
+	spec := NetworkSpec{
+		Services: []ServiceSpec{
+			{
+				Name:   "karafiel-beat",
+				Label:  "app",
+				Port:   0,
+				Egress: []string{"dns", "postgres", "redis"},
+			},
+			{
+				Name:   "karafiel-worker",
+				Label:  "app",
+				Port:   0,
+				Egress: []string{"dns", "https", "postgres", "redis"},
+			},
+		},
+	}
+
+	out, err := GeneratePolicies("karafiel", "karafiel", spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yaml := string(out)
+
+	// Both services should have egress policies
+	assertContains(t, yaml, "name: karafiel-beat-egress")
+	assertContains(t, yaml, "name: karafiel-worker-egress")
+
+	// Beat: DNS + postgres + redis (no HTTPS)
+	assertContains(t, yaml, "app: karafiel-beat")
+	assertContains(t, yaml, "app: karafiel-worker")
+
+	// Neither should have ingress policies (no inbound traffic)
+	assertNotContains(t, yaml, "name: karafiel-beat-ingress")
+	assertNotContains(t, yaml, "name: karafiel-worker-ingress")
+
+	// Worker has HTTPS, beat doesn't — both have postgres + redis
+	// Count YAML docs: default-deny (2) + 2 egress = 4
+	docs := strings.Count(yaml, "---")
+	if docs < 4 {
+		t.Errorf("expected at least 4 YAML documents, got %d", docs)
+	}
+}
+
 func TestGeneratePolicies_HTTPEgress(t *testing.T) {
 	spec := NetworkSpec{
 		Services: []ServiceSpec{

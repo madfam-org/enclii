@@ -1,6 +1,6 @@
 # Service Outage Remediation Playbook
 
-Last updated: 2026-03-10
+Last updated: 2026-03-15
 
 ## Overview
 
@@ -77,6 +77,16 @@ kubectl delete networkpolicies --all -n <namespace>
 kubectl apply -f infra/k8s/policies/<namespace>-network-policies.yaml
 ```
 
+**Real examples:**
+
+| Namespace | Service | Symptom | Root Cause | Fix |
+|-----------|---------|---------|------------|-----|
+| tezca | tezca-worker, tezca-beat | `Connection refused` to `tezca-redis:6379` | Egress only allowed Redis in `data` NS, but Celery broker is `tezca-redis` in-namespace | Added intra-namespace Redis egress (`podSelector` with no `namespaceSelector`) + `tezca-redis-ingress` |
+| karafiel | karafiel-beat, karafiel-worker | `Temporary failure in name resolution` for `redis.data.svc.cluster.local` | No egress policies existed for beat/worker — only api/web/admin had them | Added `karafiel-beat-egress` and `karafiel-worker-egress` (DNS + PG + Redis) |
+| pravara-mes | pravara-api | `Connection refused` to `postgres-pravara:5432` | Egress targeted `data` NS but pravara-mes has in-namespace postgres | Added local `podSelector` egress (session 78) |
+
+**Key diagnostic pattern:** `Connection refused` (ECONNREFUSED) in k3s can mean NetworkPolicy is blocking traffic — k3s sends TCP RST instead of silently dropping packets (unlike Calico which gives ETIMEDOUT).
+
 ### DNS Resolution Failure
 
 **Cause**: Tunnel route configured but Cloudflare DNS CNAME never created.
@@ -139,13 +149,13 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 
 | Service Group | Pods | Est. Memory |
 |---------------|------|-------------|
-| Tezca (web, api, admin) | 3 | ~1.5 GB |
-| Yantra4D (landing, studio, api, admin) | 4 | ~2.0 GB |
-| Karafiel (web, api, admin) | 3 | ~1.5 GB |
+| Tezca (web, api, admin, beat, worker, redis, es) | 7 | ~2.5 GB |
+| Yantra4D (landing, studio, backend, admin, redis) | 5 | ~2.5 GB |
+| Karafiel (web, api, admin, beat, worker) | 5 | ~2.0 GB |
 | Forgesight (app, api, admin) | 3 | ~1.5 GB |
-| Pravara MES (ui, api, gateway) | 3 | ~1.5 GB |
+| Pravara MES (ui, api, centrifugo, emqx, pg, redis, telemetry) | 7 | ~3.0 GB |
 | Madfam CMS | 1 | ~0.25 GB |
-| **Total** | **17** | **~8.25 GB** |
+| **Total** | **28** | **~11.75 GB** |
 
 ### When to Scale
 
