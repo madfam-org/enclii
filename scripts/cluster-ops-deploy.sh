@@ -416,7 +416,7 @@ phase_vault_configure() {
   ok "Kubernetes auth configured"
 
   log "Creating per-namespace read policies..."
-  for ns in enclii janua dhanam; do
+  for ns in enclii janua data cloudflare-tunnel dhanam autoswarm tezca yantra4d karafiel forgesight pravara-mes monitoring arc-runners enclii-builds npm-registry madfam-site posthog longhorn-system kyverno; do
     kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
       sh -c "vault policy write ${ns}-read - <<'POLICY'
 path \"secret/data/${ns}/*\" {
@@ -460,12 +460,12 @@ POLICY"
   kubectl exec -n vault vault-0 -- vault status
   echo
 
-  log "Checking if Cloudflare tunnel route exists for vault.enclii.dev..."
-  check_http "vault.enclii.dev/v1/sys/health" "200" \
-    && ok "vault.enclii.dev reachable" \
-    || warn "vault.enclii.dev not reachable — add Cloudflare tunnel route manually:
+  log "Checking if Cloudflare tunnel route exists for vault.madfam.io..."
+  check_http "vault.madfam.io/v1/sys/health" "200" \
+    && ok "vault.madfam.io reachable" \
+    || warn "vault.madfam.io not reachable — add Cloudflare tunnel route manually:
     Dashboard → Zero Trust → Tunnels → enclii → Public Hostnames
-    vault.enclii.dev → http://vault.vault.svc.cluster.local:8200"
+    vault.madfam.io → http://vault.vault.svc.cluster.local:8200"
 
   echo
   ok "Phase 2 complete. Vault is operational."
@@ -596,12 +596,12 @@ phase_posthog() {
   # --- Step 3.6: Verify ---
   hdr "Step 3.6: Verify PostHog"
 
-  log "Checking analytics.enclii.dev (requires Cloudflare tunnel route)..."
-  check_http "analytics.enclii.dev/_health" "200" \
-    && ok "PostHog reachable at analytics.enclii.dev" \
-    || warn "analytics.enclii.dev not reachable — add Cloudflare tunnel route:
+  log "Checking analytics.madfam.io (requires Cloudflare tunnel route)..."
+  check_http "analytics.madfam.io/_health" "200" \
+    && ok "PostHog reachable at analytics.madfam.io" \
+    || warn "analytics.madfam.io not reachable — add Cloudflare tunnel route:
     Dashboard → Zero Trust → Tunnels → enclii → Public Hostnames
-    analytics.enclii.dev → http://posthog-web.posthog.svc.cluster.local:8000
+    analytics.madfam.io → http://posthog-web.posthog.svc.cluster.local:8000
     (Verify service name: kubectl get svc -n posthog)"
 
   log "Verifying no impact on existing services..."
@@ -609,7 +609,7 @@ phase_posthog() {
 
   echo
   ok "Phase 3 complete."
-  log "Manual step: Navigate to https://analytics.enclii.dev"
+  log "Manual step: Navigate to https://analytics.madfam.io"
   log "  1. Create admin account"
   log "  2. Create organization"
   log "  3. Create project"
@@ -721,8 +721,8 @@ phase_verify_all() {
   for url in api.enclii.dev/health app.enclii.dev admin.enclii.dev status.enclii.dev docs.enclii.dev; do
     check_http "$url" || ((failed++))
   done
-  check_http "vault.enclii.dev/v1/sys/health" "200" || ((failed++))
-  check_http "analytics.enclii.dev/_health" "200" || ((failed++))
+  check_http "vault.madfam.io/v1/sys/health" "200" || ((failed++))
+  check_http "analytics.madfam.io/_health" "200" || ((failed++))
   echo
 
   log "2. NetworkPolicy count:"
@@ -771,6 +771,71 @@ phase_verify_all() {
 }
 
 # =============================================================================
+# Phase 6: Vault Secret Migration
+# =============================================================================
+phase_vault_migrate() {
+  hdr "Phase 6: Migrate K8s Secrets to Vault"
+
+  # Check prerequisites
+  log "Checking Vault is unsealed..."
+  local sealed
+  sealed=$(kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null | jq -r '.sealed' || echo "unknown")
+  if [[ "$sealed" != "false" ]]; then
+    err "Vault is sealed or unreachable (status: $sealed). Unseal first: $0 vault"
+    exit 1
+  fi
+  ok "Vault is unsealed"
+
+  if [[ -z "${VAULT_ROOT_TOKEN:-}" ]]; then
+    echo -n "Enter Vault root token: "
+    read -rs VAULT_ROOT_TOKEN
+    echo
+  fi
+
+  log "Running migration script..."
+  if [[ -x scripts/vault-secret-migration.sh ]]; then
+    VAULT_TOKEN="$VAULT_ROOT_TOKEN" ./scripts/vault-secret-migration.sh --all
+  else
+    err "Migration script not found or not executable: scripts/vault-secret-migration.sh"
+    exit 1
+  fi
+
+  # Apply ExternalSecrets
+  hdr "Applying ExternalSecrets"
+  log "Applying vault-store ClusterSecretStore..."
+  kubectl apply -f infra/k8s/base/external-secrets/vault-cluster-secret-store.yaml 2>/dev/null \
+    && ok "ClusterSecretStore vault-store applied" \
+    || warn "vault-store may already exist"
+
+  log "Applying ExternalSecret resources one namespace at a time..."
+  local es_dir="infra/k8s/base/external-secrets/vault-secrets"
+  local es_failed=0
+  for f in "$es_dir"/*.yaml; do
+    local ns
+    ns=$(grep 'namespace:' "$f" | head -1 | awk '{print $2}')
+    log "  Applying $(basename "$f") → namespace $ns"
+    kubectl apply -f "$f" 2>/dev/null \
+      && ok "  $(basename "$f") applied" \
+      || { warn "  Failed to apply $(basename "$f")"; ((es_failed++)); }
+    sleep 2
+  done
+
+  # Verify
+  hdr "Verifying ExternalSecrets"
+  log "Waiting 30s for initial sync..."
+  sleep 30
+  kubectl get externalsecrets -A
+  echo
+
+  if [[ "$es_failed" -eq 0 ]]; then
+    ok "Phase 6 complete. All ExternalSecrets applied."
+  else
+    warn "Phase 6 complete with $es_failed failures. Review output above."
+  fi
+  log "Verify all secrets synced: kubectl get externalsecrets -A"
+}
+
+# =============================================================================
 # Main Dispatch
 # =============================================================================
 main() {
@@ -782,6 +847,7 @@ main() {
     vault|2)             phase_vault ;;
     posthog|3)           phase_posthog ;;
     cosign|4)            phase_cosign ;;
+    vault-migrate|6)     phase_vault_migrate ;;
     verify-all|verify|5) phase_verify_all ;;
     help|--help|-h)
       echo "Usage: $0 <phase>"
@@ -792,6 +858,7 @@ main() {
       echo "  vault (2)             Vault init + unseal + configure"
       echo "  posthog (3)           PostHog DB + secrets + deploy"
       echo "  cosign (4)            Cosign Audit → Enforce"
+      echo "  vault-migrate (6)     Migrate K8s secrets to Vault"
       echo "  verify-all (5)        End-to-end verification"
       echo
       echo "Example:"

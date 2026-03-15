@@ -10,7 +10,7 @@
 # - Initialize Vault: kubectl exec -n vault vault-0 -- vault operator init
 # - Unseal Vault: kubectl exec -n vault vault-0 -- vault operator unseal <key>
 # - UI available via: kubectl port-forward -n vault svc/vault 8200:8200
-# - Production UI via Cloudflare Tunnel (vault.enclii.dev)
+# - Production UI via Cloudflare Tunnel (vault.madfam.io)
 
 server:
   # Standalone mode for single-node k3s cluster

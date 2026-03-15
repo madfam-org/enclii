@@ -5,14 +5,14 @@
  * the application. The actual React provider lives in PostHogProvider.tsx.
  *
  * The initialization respects the browser Do-Not-Track signal and routes all
- * traffic through analytics.enclii.dev (Cloudflare reverse proxy) so that
+ * traffic through analytics.madfam.io (Cloudflare reverse proxy) so that
  * ad-blockers do not interfere with product analytics.
  */
 import posthog from "posthog-js";
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? "";
 const POSTHOG_HOST =
-  process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://analytics.enclii.dev";
+  process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://analytics.madfam.io";
 
 let initialized = false;
 

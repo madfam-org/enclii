@@ -155,7 +155,7 @@ spec:
               name: enclii-cloudflare-credentials
               key: tunnel-id
               optional: true
-        # PostHog Analytics (self-hosted at analytics.enclii.dev)
+        # PostHog Analytics (self-hosted at analytics.madfam.io)
         - name: ENCLII_POSTHOG_API_KEY
           valueFrom:
             secretKeyRef:

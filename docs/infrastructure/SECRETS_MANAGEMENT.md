@@ -1,21 +1,24 @@
 # Secrets Management Strategy
 
-**Last Updated:** February 4, 2026 (Wave 15 audit)
-**Current Approach:** Kubernetes native secrets + ESO cross-namespace copying
-**Chosen Future Provider:** Self-hosted HashiCorp Vault (Community Edition)
-**Next Review:** When any trigger criteria below is met
+**Last Updated:** March 14, 2026
+**Current Approach:** HashiCorp Vault (self-hosted) + ESO vault-store
+**Provider:** Self-hosted HashiCorp Vault (Community Edition) at vault.madfam.io
+**Coverage:** ~160 secrets across 16 namespaces via 19 ExternalSecret resources
 
 ---
 
 ## Current State
 
-Secrets are created manually via `kubectl create secret` in the `enclii` namespace. The External Secrets Operator (ESO) with a `kubernetes-store` ClusterSecretStore copies secrets to other namespaces as needed. There is no external secrets provider.
+All production secrets are stored in self-hosted HashiCorp Vault (KV v2 engine) and synced to Kubernetes namespaces via the External Secrets Operator (ESO) with a `vault-store` ClusterSecretStore. The Vault UI is accessible at `https://vault.madfam.io`.
 
-**Why this works today:**
-- Single cluster (2 nodes), single team
-- ~10-15 secrets total across all namespaces
-- Low rotation frequency (credentials change quarterly at most)
-- All secret creation is manual and traceable to a human operator
+**Architecture:**
+- Vault pod runs in the `vault` namespace (Helm chart)
+- ESO authenticates via Kubernetes ServiceAccount auth
+- 19 ExternalSecret resources cover 16 namespaces (~160 secrets)
+- Secrets refresh every 15 minutes
+- Audit logging enabled at `/vault/audit/audit.log`
+
+**Migration script:** `scripts/vault-secret-migration.sh` — reads existing K8s secrets and writes to Vault KV v2.
 
 ## Revisit Thresholds
 
@@ -158,68 +161,30 @@ Deploy Vault when **ANY** of the following conditions is met:
 | 3 | Revenue threshold reached | Justifies operational overhead |
 | 4 | Team size exceeds 3 engineers with production access | Access control + audit trails needed |
 
-**Current state:** None of these triggers are met. Manual K8s secrets remain appropriate.
+**Current state:** Multiple triggers were met (>50 secrets, >8 namespaces, >15 external API keys). Vault is deployed.
 
-## Recommended Upgrade Path
+## Current Architecture
 
 ```
-Current                     Next step (when triggered)
-─────────────────────────   ─────────────────────────
-K8s native secrets          HashiCorp Vault (self-hosted)
-+ ESO kubernetes-store      + ESO vault-store
-                            + K8s auth for pods
-                            + OIDC auth (Janua) for operators
-                            + Dynamic DB credentials
-                            + Audit logging
-
-Trigger: now                Trigger: ANY criteria above
+Vault (vault namespace)
+  └─ KV v2 engine at secret/
+  └─ K8s auth (eso-reader role)
+  └─ OIDC auth (Janua) for operators
+  └─ Audit log (/vault/audit/audit.log)
+       │
+       ▼
+ESO (external-secrets namespace)
+  └─ ClusterSecretStore: vault-store
+       │
+       ▼
+19 ExternalSecret resources → 16 namespaces
 ```
 
-## Implementation Notes
+See [EXTERNAL_SECRETS.md](./EXTERNAL_SECRETS.md) for the full ExternalSecret inventory.
 
-When upgrading providers:
+## Operations
 
-1. ESO is already installed and operational — only the ClusterSecretStore provider config changes
-2. Vault/OpenBao commented config is preserved in git history (removed Feb 2026 cleanup)
-3. The `kubernetes-store` can coexist with an external provider during migration
-4. Create ExternalSecret resources gradually — migrate one namespace at a time
-
-## Vault ExternalSecret Resources
-
-Once Vault is deployed and initialized, ExternalSecret resources will sync secrets from Vault into Kubernetes namespaces.
-
-### Available ExternalSecrets
-
-| Resource | Namespace | Vault Path | Secrets |
-|----------|-----------|------------|---------|
-| `enclii-secrets` | enclii | `secret/enclii` | DATABASE_URL, REDIS_URL, JANUA_CLIENT_ID, JANUA_CLIENT_SECRET, GITHUB_WEBHOOK_SECRET, SWITCHYARD_API_KEY |
-| `janua-secrets` | janua | `secret/janua` | DATABASE_URL, REDIS_URL, JWT_SIGNING_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET |
-| `data-secrets` | data | `secret/data` | POSTGRES_PASSWORD, REDIS_PASSWORD |
-| `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | TUNNEL_TOKEN |
-
-### Configuration
-
-All ExternalSecrets use:
-- **Store**: `vault-store` (ClusterSecretStore)
-- **API Version**: `external-secrets.io/v1beta1` (ESO v0.9.11)
-- **Refresh Interval**: 15 minutes
-- **Deletion Policy**: Retain (secrets persist if ExternalSecret is deleted)
-
-### Files
-
-Located at `infra/k8s/base/external-secrets/vault-secrets/`:
-- `enclii-secrets.yaml`
-- `janua-secrets.yaml`
-- `data-secrets.yaml`
-- `cloudflare-secrets.yaml`
-
-### Verification
-
-After Vault deployment, verify ExternalSecrets are syncing:
-```bash
-kubectl get externalsecrets -A
-kubectl describe externalsecret enclii-secrets -n enclii
-```
+For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](../runbooks/VAULT_OPERATIONS.md).
 
 ## Related Documentation
 

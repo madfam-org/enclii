@@ -16,7 +16,7 @@
 #     kubectl apply -f infra/k8s/production/posthog-redpanda.yaml
 #
 # After install:
-# - Web UI available via Cloudflare Tunnel at analytics.enclii.dev
+# - Web UI available via Cloudflare Tunnel at analytics.madfam.io
 # - Add posthog namespace to data-network-policies.yaml for DB/Redis access
 
 cloud: "private"

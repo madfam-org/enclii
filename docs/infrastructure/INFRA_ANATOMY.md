@@ -246,7 +246,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | docs.enclii.dev | ✅ | 200 | 0.60s | Documentation operational |
 | status.enclii.dev | ✅ | 200 | 0.93s | Status page operational |
 | status.madfam.io | ✅ | 200 | 1.13s | MADFAM status operational |
-| vault.enclii.dev | ⏳ | 307 | 0.60s | Vault staged, not deployed (redirect, not 502) |
+| vault.madfam.io | ⏳ | 307 | 0.60s | Vault staged, not deployed (redirect, not 502) |
 
 ### Janua SSO (6 endpoints)
 
@@ -505,8 +505,8 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | docs.enclii.dev | docs-site.enclii.svc:80 | 200 | |
 | status.enclii.dev | status-enclii.enclii.svc:80 | 200 | |
 | status.madfam.io | status-madfam.enclii.svc:80 | 200 | |
-| vault.enclii.dev | vault.vault.svc.cluster.local:8200 | 307 | Backend not deployed |
-| analytics.enclii.dev | posthog-web.posthog.svc.cluster.local:8000 | 502 | Backend not deployed |
+| vault.madfam.io | vault.vault.svc.cluster.local:8200 | 307 | Backend not deployed |
+| analytics.madfam.io | posthog-web.posthog.svc.cluster.local:8000 | 502 | Backend not deployed |
 
 ### Monitoring & Infrastructure Routes
 

@@ -4,13 +4,13 @@ How to add PostHog product analytics to any Madfam ecosystem application.
 
 ## Architecture
 
-All analytics traffic is routed through `analytics.enclii.dev`, a first-party domain that proxies to PostHog Cloud via a Cloudflare Worker. This avoids ad-blocker interference (first-party domain) while keeping operational simplicity.
+All analytics traffic is routed through `analytics.madfam.io`, a first-party domain that proxies to PostHog Cloud via a Cloudflare Worker. This avoids ad-blocker interference (first-party domain) while keeping operational simplicity.
 
 ```
 Browser / Go service
     |
     v
-analytics.enclii.dev  (Cloudflare Worker)
+analytics.madfam.io  (Cloudflare Worker)
     |
     v
 PostHog Cloud (us.i.posthog.com)
@@ -33,7 +33,7 @@ PostHog's recommended self-host method is Docker Compose, not Helm. The Cloudfla
 | Item | Value |
 |------|-------|
 | PostHog project API key | `phc_...` (get from PostHog project settings) |
-| Ingestion endpoint | `https://analytics.enclii.dev` |
+| Ingestion endpoint | `https://analytics.madfam.io` |
 
 ---
 
@@ -51,7 +51,7 @@ Add to `.env.local` (never commit real keys):
 
 ```env
 NEXT_PUBLIC_POSTHOG_KEY=phc_your_project_key
-NEXT_PUBLIC_POSTHOG_HOST=https://analytics.enclii.dev
+NEXT_PUBLIC_POSTHOG_HOST=https://analytics.madfam.io
 ```
 
 ### 3. Add the provider
@@ -78,7 +78,7 @@ If you are in a non-Enclii app that does not have the provider component, you ca
 import posthog from "posthog-js";
 
 posthog.init("phc_your_project_key", {
-  api_host: "https://analytics.enclii.dev",
+  api_host: "https://analytics.madfam.io",
   capture_pageview: true,
   autocapture: true,
   respect_dnt: true,
@@ -123,7 +123,7 @@ go get github.com/posthog/posthog-go
 
 ```env
 ENCLII_POSTHOG_API_KEY=phc_your_project_key
-ENCLII_POSTHOG_ENDPOINT=https://analytics.enclii.dev
+ENCLII_POSTHOG_ENDPOINT=https://analytics.madfam.io
 ```
 
 ### 3. Initialize the client
@@ -221,7 +221,7 @@ env:
 
 ---
 
-## Cloudflare Worker Proxy (analytics.enclii.dev)
+## Cloudflare Worker Proxy (analytics.madfam.io)
 
 All PostHog traffic goes through a Cloudflare Worker that proxies to PostHog Cloud:
 
@@ -229,7 +229,7 @@ All PostHog traffic goes through a Cloudflare Worker that proxies to PostHog Clo
 2. No third-party cookies are set.
 3. Simple `fetch()` proxy — zero infrastructure to maintain.
 
-The Worker is deployed at `analytics.enclii.dev` and rewrites requests to `us.i.posthog.com`. Configured in the Cloudflare dashboard under Workers & Pages.
+The Worker is deployed at `analytics.madfam.io` and rewrites requests to `us.i.posthog.com`. Configured in the Cloudflare dashboard under Workers & Pages.
 
 ---
 

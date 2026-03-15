@@ -44,10 +44,17 @@ data:
       },
       {
         "name": "Vault",
-        "url": "https://vault.enclii.dev/v1/sys/health",
-        "href": "https://vault.enclii.dev",
+        "url": "https://vault.madfam.io/v1/sys/health",
+        "href": "https://vault.madfam.io",
         "group": "Enclii",
         "description": "Secret management"
+      },
+      {
+        "name": "Analytics Proxy",
+        "url": "https://analytics.madfam.io/batch/",
+        "href": "https://analytics.madfam.io",
+        "group": "Enclii",
+        "description": "PostHog analytics proxy"
       },
       {
         "name": "Auth",
