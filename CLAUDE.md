@@ -54,7 +54,7 @@ The project follows a monorepo structure with these key components:
 - **UI**: Web interface (Next.js)
 - **Dispatch**: Admin control platform (Next.js) - fleet management, topology visualization
 - **Waybill**: Infrastructure cost metering and usage showback (Go). Customer billing handled by Dhanam.
-- **Functions**: Serverless functions with scale-to-zero - **API + UI complete**, KEDA runtime pending deployment
+- **Functions**: Serverless functions with scale-to-zero - **API + UI complete**, KEDA operator ArgoCD app staged (pending cluster deploy)
 - **Junctions**: Routing/ingress + certs + DNS - **Planned**
 - **Timetable**: Cron and one-off jobs - **Planned**
 - **Lockbox**: Internal — Vault client + rotation controller in switchyard-api; ESO handles K8s secrets in production
@@ -538,6 +538,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | ArgoCD config | `infra/argocd/` |
 | ArgoCD apps | `infra/argocd/apps/*.yaml` |
 | Longhorn values | `infra/helm/longhorn/` |
+| KEDA values | `infra/helm/keda/values.yaml` |
 | GPU setup | `infra/k8s/base/gpu/` |
 | Kaniko builds | `apps/roundhouse/k8s/kaniko-job-template.yaml` |
 | Vault ExternalSecrets | `infra/k8s/base/external-secrets/vault-secrets/` (enclii, janua, data, cloudflare) |
@@ -547,7 +548,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Node maintenance | `infra/k8s/production/node-maintenance-cronjob.yaml` (daily GC + Prometheus metrics export) |
 | Prometheus config + alerts | `infra/k8s/production/monitoring/prometheus.yaml` (scrape configs, alert rules ConfigMap) |
 | Node exporter | `infra/k8s/production/monitoring/node-exporter.yaml` (DaemonSet + textfile collector) |
-| Grafana dashboards | `infra/k8s/production/monitoring/dashboards/` (roundhouse, secrets-rotation, node-maintenance) |
+| Grafana dashboards | `infra/k8s/production/monitoring/dashboards/` (roundhouse, secrets-rotation, node-maintenance, longhorn-health) |
 | Status K8s (base) | `apps/status/k8s/base/` (deployment, service, secret template) |
 | Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
 | Status Atom feed | `apps/status/app/feed.xml/route.ts` |
@@ -573,6 +574,11 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Cloudflare integration | `docs/infrastructure/CLOUDFLARE.md` |
 | External secrets | `docs/infrastructure/EXTERNAL_SECRETS.md` |
 | Capacity roadmap | `docs/infrastructure/CAPACITY_ROADMAP.md` |
+| Longhorn recovery runbook | `docs/runbooks/LONGHORN_VOLUME_RECOVERY.md` |
+| Cluster ops runbook | `docs/runbooks/CLUSTER_REMEDIATION_OPS.md` |
+| **Load Testing** | |
+| k6 test scripts | `tests/load/` (health.js, api.js, stress.js, config.js) |
+| Load test CI | `.github/workflows/load-test.yml` (weekly + manual dispatch) |
 | **LLM Context** | |
 | LLM context (compact) | `llms.txt` |
 | LLM context (full) | `llms-full.txt` |
