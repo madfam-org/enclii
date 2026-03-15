@@ -1,0 +1,123 @@
+name: Load Tests
+
+on:
+  schedule:
+    # Weekly: Sunday 11 PM UTC
+    - cron: '0 23 * * 0'
+  workflow_dispatch:
+    inputs:
+      test_level:
+        description: 'Test level to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+
+env:
+  K6_VERSION: 'v0.55.0'
+
+jobs:
+  smoke-test:
+    name: Smoke Test (Health Endpoint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install k6
+        run: |
+          curl -L https://github.com/grafana/k6/releases/download/${{ env.K6_VERSION }}/k6-${{ env.K6_VERSION }}-linux-amd64.tar.gz | tar xz
+          sudo mv k6-*/k6 /usr/local/bin/
+          k6 version
+
+      - name: Create results directory
+        run: mkdir -p results
+
+      - name: Run smoke test
+        continue-on-error: true
+        env:
+          ENCLII_BASE_URL: https://api.enclii.dev
+        run: |
+          k6 run \
+            --out json=results/smoke.json \
+            tests/load/health.js
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: results/
+          retention-days: 30
+
+  load-test:
+    name: Load Test (Authenticated API)
+    needs: smoke-test
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.test_level != 'smoke')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install k6
+        run: |
+          curl -L https://github.com/grafana/k6/releases/download/${{ env.K6_VERSION }}/k6-${{ env.K6_VERSION }}-linux-amd64.tar.gz | tar xz
+          sudo mv k6-*/k6 /usr/local/bin/
+          k6 version
+
+      - name: Create results directory
+        run: mkdir -p results
+
+      - name: Run load test
+        continue-on-error: true
+        env:
+          ENCLII_BASE_URL: https://api.enclii.dev
+          ENCLII_TOKEN: ${{ secrets.ENCLII_LOAD_TEST_TOKEN }}
+        run: |
+          k6 run \
+            --out json=results/load.json \
+            tests/load/api.js
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: results/
+          retention-days: 30
+
+  stress-test:
+    name: Stress Test (1000 RPS)
+    needs: load-test
+    if: github.event_name == 'workflow_dispatch' && inputs.test_level == 'stress'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install k6
+        run: |
+          curl -L https://github.com/grafana/k6/releases/download/${{ env.K6_VERSION }}/k6-${{ env.K6_VERSION }}-linux-amd64.tar.gz | tar xz
+          sudo mv k6-*/k6 /usr/local/bin/
+          k6 version
+
+      - name: Create results directory
+        run: mkdir -p results
+
+      - name: Run stress test
+        continue-on-error: true
+        env:
+          ENCLII_BASE_URL: https://api.enclii.dev
+          ENCLII_TOKEN: ${{ secrets.ENCLII_LOAD_TEST_TOKEN }}
+        run: |
+          k6 run \
+            --out json=results/stress.json \
+            tests/load/stress.js
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-test-results
+          path: results/
+          retention-days: 30
