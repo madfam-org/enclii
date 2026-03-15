@@ -18,7 +18,7 @@ openssl genrsa -out "$TMPKEY" 2048
 echo "==> Creating/updating jwt-secrets in namespace $NAMESPACE..."
 kubectl create secret generic jwt-secrets \
   --from-literal=jwt-secret="$(openssl rand -hex 32)" \
-  --from-file=jwt-private-key="$TMPKEY" \
+  --from-file=private-key="$TMPKEY" \
   -n "$NAMESPACE" \
   --dry-run=client -o yaml | kubectl apply -f -
 
