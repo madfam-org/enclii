@@ -1,0 +1,16 @@
+name = "posthog-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Route: analytics.enclii.dev/*
+# Configure in Cloudflare dashboard: Workers & Pages → posthog-proxy → Settings → Triggers
+# Add route: analytics.enclii.dev/* (zone: enclii.dev)
+#
+# Or use wrangler:
+#   npx wrangler deploy
+#   Then add route via dashboard or API
+
+[env.production]
+routes = [
+  { pattern = "analytics.enclii.dev/*", zone_name = "enclii.dev" }
+]
