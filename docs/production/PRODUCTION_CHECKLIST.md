@@ -8,8 +8,8 @@ tags: [production, deployment, checklist, operations]
 # Enclii Production Deployment Checklist
 
 **Status:** Production Beta v0.1.0
-**Last Updated:** March 2026
-**Last Audit:** Production Hardening Wave 1+2 (Mar 2, 2026)
+**Last Updated:** March 15, 2026
+**Last Audit:** Full Platform Remediation (Mar 15, 2026)
 
 ---
 
@@ -93,7 +93,7 @@ tags: [production, deployment, checklist, operations]
 - [x] NetworkPolicies for data namespace (default-deny + allow)
 - [x] NetworkPolicies for status namespace (default-deny + allow)
 - [x] Cloudflare Zero Trust ingress
-- [ ] Default-deny for all remaining namespaces
+- [x] Default-deny for all 14 workload namespaces; 6 infra namespaces exempt by design (`enclii.dev/type: infrastructure`)
 
 ### Image Security
 - [x] Kyverno `restrict-image-registries` in **Enforce** mode
@@ -101,7 +101,7 @@ tags: [production, deployment, checklist, operations]
 - [x] Kyverno `require-probes` active
 - [x] Kyverno `require-resources` active
 - [x] Monitoring namespace PolicyException configured
-- [ ] Cosign image signature verification (Audit mode)
+- [x] Cosign image signature verification (Enforce mode in git, opt-in per namespace via `enclii.dev/verify-signatures` label)
 
 ### Secrets Management
 - [x] Redis password in K8s Secret (not in git)
@@ -109,7 +109,7 @@ tags: [production, deployment, checklist, operations]
 - [x] ArgoCD webhook secret configured
 - [x] GHCR credentials per namespace
 - [x] ENCLII_CALLBACK_TOKEN in all 3 repos
-- [ ] HashiCorp Vault / ExternalSecrets (future)
+- [x] HashiCorp Vault (git-ready: 19 ExternalSecrets, Helm, ArgoCD app, NetworkPolicies — PR #64 merged). Cluster deploy pending — see `docs/runbooks/CLUSTER_REMEDIATION_OPS.md`
 
 ### API Error Handling
 - [x] Internal errors (500) return generic message, never leak `err.Error()`
@@ -152,13 +152,13 @@ tags: [production, deployment, checklist, operations]
 - [x] Daily CronJob (1:00 AM UTC) → Cloudflare R2
 - [x] Mirror + bundle all madfam-org repos
 - [x] 7-day retention
-- [ ] Create `github-backup-credentials` secret on cluster
+- [ ] Create `github-backup-credentials` secret on cluster — see [Cluster Ops Runbook §2](../runbooks/CLUSTER_REMEDIATION_OPS.md#section-2--backup-credential-secrets-p1)
 
 ### Cloudflare Configuration
 - [x] Daily CronJob (1:15 AM UTC) → Cloudflare R2
 - [x] DNS records, tunnel configs, zone settings
 - [x] 30-day retention
-- [ ] Create `cloudflare-api-credentials` secret on cluster
+- [ ] Create `cloudflare-api-credentials` secret on cluster — see [Cluster Ops Runbook §2](../runbooks/CLUSTER_REMEDIATION_OPS.md#section-2--backup-credential-secrets-p1)
 
 ### ArgoCD Secrets
 - [x] Weekly CronJob (Sundays 2:00 AM UTC) → Cloudflare R2
@@ -199,19 +199,27 @@ tags: [production, deployment, checklist, operations]
 - [x] ServiceMonitor for waybill cost tracking metrics
 - [ ] PagerDuty/Opsgenie integration
 
-### Endpoints (12/12 Healthy)
+### Endpoints (20/20 Healthy)
 - [x] api.enclii.dev/health → 200
 - [x] app.enclii.dev → 200
 - [x] enclii.dev → 200
 - [x] docs.enclii.dev → 200
 - [x] admin.enclii.dev → 200
 - [x] status.enclii.dev → 200
+- [x] status.madfam.io → 200
 - [x] api.dhan.am/health → 200
 - [x] app.dhan.am → 200
 - [x] admin.dhan.am → 200
 - [x] api.janua.dev/health → 200
 - [x] app.janua.dev → 200
 - [x] admin.janua.dev → 200
+- [x] agents-api.madfam.io → 200
+- [x] agents.madfam.io → 307 (login redirect)
+- [x] agents-admin.madfam.io → 307 (login redirect)
+- [x] agents-ws.madfam.io/health → 200
+- [x] agents-gw.madfam.io → 502 (expected: background worker, no HTTP)
+- [x] mes.madfam.io → 200
+- [x] mes-api.madfam.io/health → 200
 
 ---
 
@@ -248,6 +256,15 @@ tags: [production, deployment, checklist, operations]
 | Janua API | api.janua.dev | - | Running |
 | Janua Dashboard | app.janua.dev | - | Running |
 | Janua Admin | admin.janua.dev | - | Running |
+| Status (madfam) | status.madfam.io | 4204 | Running |
+| AutoSwarm Nexus API | agents-api.madfam.io | 4300 | Running |
+| AutoSwarm Office UI | agents.madfam.io | 4301 | Running |
+| AutoSwarm Admin | agents-admin.madfam.io | 4302 | Running |
+| AutoSwarm Colyseus | agents-ws.madfam.io | 4303 | Running |
+| AutoSwarm Gateway | agents-gw.madfam.io | 4304 | Running (no HTTP) |
+| AutoSwarm Workers | - | - | Running (background) |
+| MES Web | mes.madfam.io | 4501 | Running |
+| MES API | mes-api.madfam.io | 4500 | Running |
 
 ---
 
@@ -280,9 +297,13 @@ See internal-devops for cost breakdown.
 - [ ] Redis Sentinel — manifests staged
 - [ ] Multi-node Longhorn — when additional storage nodes added
 - [ ] Monitoring access restriction (Cloudflare Access or remove public routes)
+- [ ] Longhorn EXT4 filesystem corruption pattern (5 incidents, manual PVC recreation needed) — see [Longhorn Recovery Runbook](../runbooks/LONGHORN_VOLUME_RECOVERY.md)
+- [ ] PostHog Helm chart v30.46 broken (using Cloudflare Worker proxy to PostHog Cloud)
+- [ ] ESO CRD migration v0.9.11→v0.16.2 deferred — see [Cluster Ops Runbook §7](../runbooks/CLUSTER_REMEDIATION_OPS.md#section-7--eso-crd-migration-plan-p1-deferred)
+- [ ] KEDA runtime for serverless functions (operator + HTTP add-on) — ArgoCD app staged
 
 ---
 
-**Document Version:** 3.0
-**Last Audit:** Production Hardening Wave 1+2 (Mar 2, 2026)
+**Document Version:** 4.0
+**Last Audit:** Full Platform Remediation (Mar 15, 2026)
 **Maintained By:** Platform Team
