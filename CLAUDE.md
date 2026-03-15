@@ -694,7 +694,7 @@ pnpm test:e2e
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
 | Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (47 cmd tests), SDK (30 client+type tests), dispatch (109 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests) |
 | Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.enclii.dev) + ExternalSecret manifests (4 namespaces) + ESO reader policy in deploy script. Needs cluster deploy |
-| PostHog (analytics) | Ready | Chart v30.46.0 with standalone Redpanda broker (chart has NO Redpanda subchart — `redpanda: enabled` was silently ignored). Helm values fixed: `externalKafka` points to `posthog-redpanda.posthog.svc.cluster.local:9092`. ArgoCD sync enabled. Needs cluster-side setup (namespace, DB, secrets, Redpanda deploy) |
+| PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.enclii.dev` → PostHog Cloud. All repos point to `analytics.enclii.dev`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
 
 ---
 

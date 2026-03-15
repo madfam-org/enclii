@@ -4,30 +4,29 @@ How to add PostHog product analytics to any Madfam ecosystem application.
 
 ## Architecture
 
-All analytics traffic is routed through `analytics.enclii.dev`, which points to a self-hosted PostHog instance running in the `posthog` namespace on the k3s cluster. This avoids ad-blocker interference and keeps all analytics data within Enclii's infrastructure boundary.
+All analytics traffic is routed through `analytics.enclii.dev`, a first-party domain that proxies to PostHog Cloud via a Cloudflare Worker. This avoids ad-blocker interference (first-party domain) while keeping operational simplicity.
 
 ```
 Browser / Go service
     |
     v
-analytics.enclii.dev  (Cloudflare Tunnel route)
+analytics.enclii.dev  (Cloudflare Worker)
     |
     v
-PostHog (self-hosted, posthog namespace)
-    |
-    +-- ClickHouse (analytics DB, 20Gi Longhorn PVC)
-    +-- Redpanda (Kafka-compatible broker, dev mode, 5Gi PVC)
-    +-- PostgreSQL (shared, data namespace)
-    +-- Redis (shared, data namespace)
+PostHog Cloud (us.i.posthog.com)
 ```
 
-### Deployment Notes
+### Why Cloudflare Worker proxy instead of self-hosted
 
-PostHog is deployed via Helm chart v30.46.0 managed by ArgoCD (`infra/argocd/apps/posthog.yaml`).
+PostHog Helm chart v30.46.0 (the latest available) is **fundamentally broken** for single-node self-hosting. It was officially unmaintained by PostHog since May 2023. Issues encountered during deployment:
 
-**Redpanda broker**: The PostHog Helm chart has NO Redpanda subchart — only `bitnami/kafka`. The `redpanda: enabled: true` values block was silently ignored. We deploy a standalone Redpanda StatefulSet (`infra/k8s/production/posthog-redpanda.yaml`) and wire it via `externalKafka.brokers`. This is the same approach PostHog's own Docker Compose uses (Redpanda v25.1.9 in developer mode).
+1. Chart has NO Redpanda subchart — `redpanda: enabled: true` was silently ignored
+2. ClickHouse migrations expect multi-cluster topology (`posthog_primary_replica`)
+3. Migrations require AWS MSK named collection (`msk_cluster`) not configurable via Helm values
+4. Bundled ClickHouse 23.9 lacks features needed by migrations (MODIFY_QUERY on MaterializedViews)
+5. Async migrations crash on fresh installs (IndexError on missing tables)
 
-**PgBouncer stub**: PostHog init containers expect `posthog-pgbouncer:6543`. A stub Service+Endpoints (`posthog-pgbouncer-proxy.yaml`) routes this directly to the shared PostgreSQL ClusterIP.
+PostHog's recommended self-host method is Docker Compose, not Helm. The Cloudflare Worker proxy gives us the key benefit (first-party domain, ad-blocker bypass) without the ops burden. Infrastructure manifests are retained in `infra/helm/posthog/` and `infra/k8s/production/posthog-*.yaml` for future self-host attempts.
 
 ## Prerequisites
 
@@ -222,20 +221,15 @@ env:
 
 ---
 
-## Cloudflare Reverse Proxy (analytics.enclii.dev)
+## Cloudflare Worker Proxy (analytics.enclii.dev)
 
-Route all PostHog traffic through a Cloudflare Worker or tunnel route so that:
+All PostHog traffic goes through a Cloudflare Worker that proxies to PostHog Cloud:
 
 1. Ad-blockers do not drop events (first-party domain).
 2. No third-party cookies are set.
-3. Data stays within Enclii's infrastructure boundary for compliance.
+3. Simple `fetch()` proxy — zero infrastructure to maintain.
 
-The tunnel route in `cloudflared-unified.yaml` points to the in-cluster PostHog web service:
-
-```yaml
-- hostname: analytics.enclii.dev
-  service: http://posthog-web.posthog.svc.cluster.local:8000
-```
+The Worker is deployed at `analytics.enclii.dev` and rewrites requests to `us.i.posthog.com`. Configured in the Cloudflare dashboard under Workers & Pages.
 
 ---
 

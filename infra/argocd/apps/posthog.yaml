@@ -153,12 +153,18 @@ spec:
     server: https://kubernetes.default.svc
     namespace: posthog
 
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  # PAUSED: Helm chart v30.46.0 is fundamentally incompatible with single-node
+  # self-hosting. ClickHouse migrations expect multi-cluster topology
+  # (posthog_primary_replica), AWS MSK named collections, and CH 24.x features.
+  # Chart unmaintained since May 2023. Using Cloudflare Worker proxy to
+  # PostHog Cloud instead (analytics.enclii.dev → us.i.posthog.com).
+  # Re-evaluate when PostHog releases a working self-host Helm chart.
+  # syncPolicy:
+  #   automated:
+  #     prune: true
+  #     selfHeal: true
+  #   syncOptions:
+  #     - CreateNamespace=true
 
   # ClickHouse operator manages its own StatefulSets, Services, ConfigMaps.
   # Ignore differences to prevent ArgoCD from fighting the operator.

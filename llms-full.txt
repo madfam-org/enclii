@@ -131,7 +131,7 @@ Key routes in `cloudflared-unified.yaml`:
 - `app.enclii.dev` → `switchyard-ui.enclii.svc.cluster.local:80`
 - `api.enclii.dev` → `switchyard-api.enclii.svc.cluster.local:80`
 - `vault.enclii.dev` → `vault.vault.svc.cluster.local:8200` (502 — backend pending deploy)
-- `analytics.enclii.dev` → `posthog-web.posthog.svc.cluster.local:8000` (pending cluster-side setup)
+- `analytics.enclii.dev` → Cloudflare Worker proxy → PostHog Cloud (us.i.posthog.com)
 
 ### Kubernetes Resources
 
