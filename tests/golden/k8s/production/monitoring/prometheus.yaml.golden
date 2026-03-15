@@ -785,6 +785,44 @@ data:
               summary: "Longhorn volume {{ $labels.volume }} is degraded"
               description: "Volume has fewer healthy replicas than expected for 30m."
 
+  longhorn-filesystem-health.yml: |
+    groups:
+      - name: longhorn-filesystem-health
+        interval: 60s
+        rules:
+          # Detect disk I/O saturation before EXT4 errors
+          - alert: LonghornVolumeIOSaturation
+            expr: rate(node_disk_io_time_weighted_seconds_total[5m]) > 0.95
+            for: 10m
+            labels:
+              severity: warning
+              service: longhorn
+            annotations:
+              summary: "Disk I/O saturation on {{ $labels.instance }} device {{ $labels.device }}"
+              description: "I/O weighted time ratio is {{ $value | humanizePercentage }} for 10m. EXT4 corruption risk increases under sustained I/O pressure."
+
+          # Heuristic: FS corruption causing pod crash loops in stateful namespaces
+          - alert: PodWriteFailureCrashLoop
+            expr: increase(kube_pod_container_status_restarts_total{namespace=~"data|enclii|monitoring"}[30m]) > 5 and on(namespace, pod) kube_pod_container_status_last_terminated_reason{reason="Error"}
+            for: 5m
+            labels:
+              severity: critical
+              service: longhorn
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} crash-looping with errors (possible FS corruption)"
+              description: "{{ $value }} restarts in 30m with Error termination in a stateful namespace. Check volume health: kubectl get volumes.longhorn.io -n longhorn-system"
+
+          # Volume capacity exhaustion
+          - alert: LonghornVolumeNearFull
+            expr: (longhorn_volume_actual_size_bytes / longhorn_volume_capacity_bytes) > 0.9
+            for: 1h
+            labels:
+              severity: warning
+              service: longhorn
+            annotations:
+              summary: "Longhorn volume {{ $labels.volume }} is {{ $value | humanizePercentage }} full"
+              description: "Volume is above 90% capacity for 1h. Expand or clean up data to prevent write failures."
+
   client-slo-rules.yml: |
     groups:
       - name: client-slo
