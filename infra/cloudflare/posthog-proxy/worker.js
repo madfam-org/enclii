@@ -1,9 +1,9 @@
 // PostHog Reverse Proxy Worker
-// Routes analytics.enclii.dev → us.i.posthog.com
+// Routes analytics.madfam.io → us.i.posthog.com
 // Benefits: ad-blocker bypass (first-party domain), no third-party cookies
 //
 // Deploy: npx wrangler deploy --name posthog-proxy
-// Route: analytics.enclii.dev/*
+// Route: analytics.madfam.io/*
 
 const POSTHOG_HOST = "us.i.posthog.com";
 

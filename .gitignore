@@ -81,6 +81,8 @@ secrets.*.yaml
 !*-secret.yaml.template
 !*.TEMPLATE
 !secrets.yaml.TEMPLATE
+# ExternalSecret manifests (no actual secret values — just Vault path references)
+!infra/k8s/base/external-secrets/vault-secrets/*-secrets.yaml
 
 # Enclii credentials (local credential storage)
 .enclii/

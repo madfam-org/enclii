@@ -2,9 +2,9 @@ name = "posthog-proxy"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
-# Route: analytics.enclii.dev/*
+# Route: analytics.madfam.io/*
 # Configure in Cloudflare dashboard: Workers & Pages → posthog-proxy → Settings → Triggers
-# Add route: analytics.enclii.dev/* (zone: enclii.dev)
+# Add route: analytics.madfam.io/* (zone: enclii.dev)
 #
 # Or use wrangler:
 #   npx wrangler deploy
@@ -12,5 +12,5 @@ compatibility_date = "2024-01-01"
 
 [env.production]
 routes = [
-  { pattern = "analytics.enclii.dev/*", zone_name = "enclii.dev" }
+  { pattern = "analytics.madfam.io/*", zone_name = "madfam.io" }
 ]

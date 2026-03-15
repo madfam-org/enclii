@@ -693,8 +693,8 @@ pnpm test:e2e
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
 | Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (47 cmd tests), SDK (30 client+type tests), dispatch (109 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests) |
-| Vault (secret management) | Staged | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.enclii.dev) + ExternalSecret manifests (4 namespaces) + ESO reader policy in deploy script. Needs cluster deploy |
-| PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.enclii.dev` → PostHog Cloud. All repos point to `analytics.enclii.dev`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
+| Vault (secret management) | Ready | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Needs cluster deploy (init, unseal, configure, migrate) |
+| PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud. All repos point to `analytics.madfam.io`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
 
 ---
 

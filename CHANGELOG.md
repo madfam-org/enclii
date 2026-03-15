@@ -7,7 +7,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 ## [Unreleased]
 
 ### Added
-- Cloudflare tunnel routes for vault.enclii.dev and analytics.enclii.dev (backends pending deploy)
+- Cloudflare tunnel routes for vault.madfam.io and analytics.madfam.io (backends pending deploy)
 - ArgoCD network-policies app for GitOps-managed NetworkPolicy enforcement
 - PostHog Helm values, ArgoCD app, Go/frontend SDKs (pending cluster deploy)
 - Vault Helm values, ArgoCD app, ESO ClusterSecretStore (pending cluster deploy)

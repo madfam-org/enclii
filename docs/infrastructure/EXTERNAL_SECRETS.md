@@ -1,91 +1,126 @@
 # External Secrets Operator
 
-**Last Updated:** February 2026
-**Status:** Operational
-**Active Provider:** `kubernetes-store` (cross-namespace secret copying)
+**Last Updated:** March 2026
+**Status:** Operational (Vault-backed)
+**Active Providers:** `vault-store` (HashiCorp Vault KV v2) + `kubernetes-store` (legacy, cross-namespace)
 
 ---
 
 ## Overview
 
-Enclii uses the External Secrets Operator (ESO) to synchronize secrets across Kubernetes namespaces. Currently, secrets are managed as native Kubernetes secrets in the `enclii` namespace and copied to other namespaces via the `kubernetes-store` ClusterSecretStore.
+Enclii uses the External Secrets Operator (ESO) to synchronize secrets from HashiCorp Vault into Kubernetes namespaces. All ~160 production secrets across 16 namespaces are stored in Vault and synced via ExternalSecret resources.
 
-For future secrets management strategy and provider upgrade thresholds, see [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md).
+For secrets management strategy and Vault deployment details, see [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md).
+For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](../runbooks/VAULT_OPERATIONS.md).
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│       Source: enclii namespace          │
-│  (secrets created via kubectl)          │
+│    HashiCorp Vault (vault namespace)    │
+│    KV v2 engine at secret/              │
+│    UI: https://vault.madfam.io          │
 └─────────────────────────────────────────┘
+                    │
+          K8s ServiceAccount auth
                     │
                     ▼
 ┌─────────────────────────────────────────┐
 │     External Secrets Operator           │
 │     (external-secrets namespace)        │
 │  ┌─────────────────────────────────────┐│
-│  │ ClusterSecretStore: kubernetes-store││
-│  │ Provider: kubernetes (cross-ns)     ││
+│  │ ClusterSecretStore: vault-store     ││
+│  │ Provider: vault (KV v2)            ││
 │  └─────────────────────────────────────┘│
 └─────────────────────────────────────────┘
                     │
                     ▼
 ┌─────────────────────────────────────────┐
-│   Target namespaces (via ExternalSecret)│
-│  • monitoring, argocd, etc.             │
+│   16 namespaces (via ExternalSecret)    │
+│  • enclii, janua, data, dhanam, tezca  │
+│  • yantra4d, karafiel, forgesight, ... │
 └─────────────────────────────────────────┘
 ```
 
 ## Configuration
 
-### ClusterSecretStore
-
-Located at `infra/k8s/base/external-secrets/cluster-secret-store.yaml`:
+### ClusterSecretStore (Vault)
 
 ```yaml
 apiVersion: external-secrets.io/v1beta1
 kind: ClusterSecretStore
 metadata:
-  name: kubernetes-store
+  name: vault-store
 spec:
   provider:
-    kubernetes:
-      remoteNamespace: enclii
-      server:
-        caProvider:
-          type: ConfigMap
-          name: kube-root-ca.crt
-          namespace: kube-system
-          key: ca.crt
+    vault:
+      server: "http://vault.vault.svc.cluster.local:8200"
+      path: "secret"
+      version: "v2"
       auth:
-        serviceAccount:
-          name: external-secrets
-          namespace: external-secrets
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "eso-reader"
+          serviceAccountRef:
+            name: external-secrets
+            namespace: external-secrets
 ```
 
-### Creating an ExternalSecret
+### ClusterSecretStore (Legacy kubernetes-store)
 
-To copy a secret from `enclii` namespace to another namespace:
+Still available for backward compatibility at `infra/k8s/base/external-secrets/cluster-secret-store.yaml`.
+
+### Creating an ExternalSecret (Vault-backed)
 
 ```yaml
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
-  name: my-credentials
+  name: my-service-secrets
   namespace: target-namespace
+  labels:
+    app.kubernetes.io/managed-by: enclii
 spec:
-  refreshInterval: 1h
+  refreshInterval: 15m
   secretStoreRef:
-    name: kubernetes-store
+    name: vault-store
     kind: ClusterSecretStore
   target:
-    name: my-credentials
+    name: my-service-secrets
     creationPolicy: Owner
-  dataFrom:
-    - extract:
-        key: my-credentials  # name of secret in enclii namespace
+    deletionPolicy: Retain
+  data:
+    - secretKey: DATABASE_URL
+      remoteRef:
+        key: secret/target-namespace
+        property: database_url
 ```
+
+## ExternalSecret Inventory
+
+| Resource | Namespace | Vault Path | Key Count |
+|----------|-----------|------------|-----------|
+| `enclii-secrets` | enclii | `secret/enclii` | 23 |
+| `janua-secrets` | janua | `secret/janua` | 9 |
+| `data-secrets` | data | `secret/data` | 8 |
+| `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
+| `dhanam-secrets` | dhanam | `secret/dhanam` | 17 |
+| `autoswarm-secrets` | autoswarm | `secret/autoswarm` | 3 |
+| `tezca-secrets` | tezca | `secret/tezca` | 11 |
+| `yantra4d-secrets` | yantra4d | `secret/yantra4d` | 3 |
+| `karafiel-secrets` | karafiel | `secret/karafiel` | 15 |
+| `forgesight-secrets` | forgesight | `secret/forgesight` | 9 |
+| `pravara-mes-secrets` | pravara-mes | `secret/pravara-mes` | 11 |
+| `monitoring-secrets` | monitoring | `secret/monitoring` | 3 |
+| `arc-runners-secrets` | arc-runners | `secret/arc-runners` | 3 |
+| `enclii-builds-secrets` | enclii-builds | `secret/enclii-builds` | 3 |
+| `npm-registry-secrets` | npm-registry | `secret/npm-registry` | 1 |
+| `madfam-site-secrets` | madfam-site | `secret/madfam-site` | 2 |
+| `posthog-secrets` | posthog | `secret/posthog` | 2 |
+| `longhorn-secrets` | longhorn-system | `secret/longhorn-system` | 1 |
+| `kyverno-secrets` | kyverno | `secret/kyverno` | 1 |
+
+Files located at `infra/k8s/base/external-secrets/vault-secrets/`.
 
 ## Operations
 
@@ -95,11 +130,14 @@ spec:
 # Verify ClusterSecretStore is valid
 kubectl get clustersecretstores -o wide
 
-# List all ExternalSecrets
+# List all ExternalSecrets and their sync status
 kubectl get externalsecrets -A
 
 # Check operator health
 kubectl get pods -n external-secrets
+
+# Verify a specific secret synced
+kubectl get secret <name> -n <namespace> -o jsonpath='{.data}' | jq 'keys'
 ```
 
 ### Force Refresh
@@ -109,12 +147,11 @@ kubectl annotate externalsecret <name> -n <namespace> \
   force-sync=$(date +%s) --overwrite
 ```
 
-### Verify Synced Secret
+### Add a New Secret
 
-```bash
-# Check if target secret exists (don't print values)
-kubectl get secret <name> -n <namespace> -o jsonpath='{.data}' | jq 'keys'
-```
+1. Write to Vault: `vault kv put secret/<namespace> key=value`
+2. Add entry to the namespace's ExternalSecret YAML in `infra/k8s/base/external-secrets/vault-secrets/`
+3. Commit and let ArgoCD sync, or `kubectl apply -f` directly
 
 ## Troubleshooting
 
@@ -125,12 +162,16 @@ kubectl get externalsecret <name> -n <namespace> -o yaml | yq '.status'
 # Check operator logs
 kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets -f
 
-# Verify service account RBAC
-kubectl auth can-i get secrets --as=system:serviceaccount:external-secrets:external-secrets
+# Verify Vault connectivity from ESO
+kubectl exec -n vault vault-0 -- vault kv get secret/<namespace>
+
+# Verify service account can authenticate to Vault
+kubectl exec -n vault vault-0 -- vault read auth/kubernetes/role/eso-reader
 ```
 
 ## Related Documentation
 
 - [Secrets Management Strategy](./SECRETS_MANAGEMENT.md)
+- [Vault Operations Runbook](../runbooks/VAULT_OPERATIONS.md)
 - [GitOps with ArgoCD](./GITOPS.md)
 - [Cloudflare Integration](./CLOUDFLARE.md)

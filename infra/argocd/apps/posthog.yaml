@@ -2,7 +2,7 @@
 # Deploys: PostHog (via Helm) — self-hosted product analytics
 # Namespace: posthog
 # External deps: PostgreSQL (data ns), Redis (data ns), Redpanda (posthog ns)
-# Ingress: Cloudflare Tunnel (analytics.enclii.dev)
+# Ingress: Cloudflare Tunnel (analytics.madfam.io)
 #
 # Broker: Standalone Redpanda StatefulSet (posthog-redpanda.yaml), NOT the
 # chart's bitnami/kafka subchart. Chart v30.46.0 has no Redpanda dependency —
@@ -157,7 +157,7 @@ spec:
   # self-hosting. ClickHouse migrations expect multi-cluster topology
   # (posthog_primary_replica), AWS MSK named collections, and CH 24.x features.
   # Chart unmaintained since May 2023. Using Cloudflare Worker proxy to
-  # PostHog Cloud instead (analytics.enclii.dev → us.i.posthog.com).
+  # PostHog Cloud instead (analytics.madfam.io → us.i.posthog.com).
   # Re-evaluate when PostHog releases a working self-host Helm chart.
   # syncPolicy:
   #   automated:

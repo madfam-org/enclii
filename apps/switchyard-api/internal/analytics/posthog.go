@@ -5,7 +5,7 @@
 // Environment variables (via config.Config):
 //
 //	ENCLII_POSTHOG_API_KEY      - PostHog project API key (empty = disabled)
-//	ENCLII_POSTHOG_ENDPOINT     - Ingestion endpoint (default: https://analytics.enclii.dev)
+//	ENCLII_POSTHOG_ENDPOINT     - Ingestion endpoint (default: https://analytics.madfam.io)
 //
 // Usage:
 //
@@ -26,7 +26,7 @@ import (
 
 // defaultEndpoint is the self-hosted PostHog ingestion URL reverse-proxied
 // through Cloudflare so that ad-blockers never drop server-side events.
-const defaultEndpoint = "https://analytics.enclii.dev"
+const defaultEndpoint = "https://analytics.madfam.io"
 
 // defaultFlushInterval controls how often the SDK sends batched events.
 const defaultFlushInterval = 30 * time.Second

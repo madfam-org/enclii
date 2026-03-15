@@ -22,7 +22,7 @@ export interface PostHogOptions {
   /** PostHog project API key. Required. */
   apiKey: string;
   /**
-   * Ingestion endpoint. Defaults to `https://analytics.enclii.dev` which is
+   * Ingestion endpoint. Defaults to `https://analytics.madfam.io` which is
    * reverse-proxied through Cloudflare to avoid ad-blocker interference.
    */
   apiHost?: string;
@@ -41,7 +41,7 @@ export interface PostHogOptions {
 }
 
 /** Default ingestion host reverse-proxied via Cloudflare. */
-const DEFAULT_API_HOST = "https://analytics.enclii.dev";
+const DEFAULT_API_HOST = "https://analytics.madfam.io";
 
 /**
  * Build a posthog-js compatible config object from Enclii defaults + overrides.
