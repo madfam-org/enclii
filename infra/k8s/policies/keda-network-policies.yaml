@@ -1,0 +1,165 @@
+# =============================================================================
+# KEDA Namespace NetworkPolicies
+# =============================================================================
+# Default-deny + explicit allow rules for the keda namespace.
+# Contains: KEDA operator (controller), KEDA metrics API server
+# Accessed by: kube-system (API server aggregation), monitoring (Prometheus)
+# Manages: ScaledObjects across all namespaces (needs K8s API access)
+# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# =============================================================================
+
+# Default deny all ingress to keda namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Default deny all egress from keda namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+# KEDA operator egress — K8s API server, DNS, and intra-namespace
+# The operator watches ScaledObjects across all namespaces and manages HPAs,
+# so it needs access to the K8s API server on ports 443 and 6443.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-operator-egress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # K8s API server (manage HPAs, read ScaledObjects, patch Deployments)
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # Intra-namespace: operator -> metrics server communication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 9666
+
+# KEDA metrics server egress — K8s API server and DNS
+# The metrics server registers as an aggregated API and needs API server access.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-metrics-server-egress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator-metrics-apiserver
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # K8s API server (register aggregated API, read ScaledObjects)
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+# Allow kube-system -> KEDA metrics server (API server aggregation layer)
+# The K8s API server proxies external.metrics.k8s.io requests to KEDA.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-metrics-ingress-apiserver
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator-metrics-apiserver
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 9666
+
+# Allow monitoring namespace -> KEDA operator (Prometheus metrics scraping)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-operator-ingress-monitoring
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080

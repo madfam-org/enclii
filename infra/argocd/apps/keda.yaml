@@ -1,0 +1,86 @@
+# KEDA (Kubernetes Event-Driven Autoscaling)
+# Deploys: KEDA operator + metrics server (via Helm)
+# Purpose: Scale-to-zero and event-driven autoscaling for Functions runtime
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: keda
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: autoscaling
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://kedacore.github.io/charts
+    chart: keda
+    targetRevision: 2.16.1  # Pin to specific stable version
+    helm:
+      valueFiles: []
+      # Reference values from the enclii repo
+      # ArgoCD Helm sources don't support external valueFiles,
+      # so values are inlined here matching infra/helm/keda/values.yaml
+      values: |
+        operator:
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        metricsServer:
+          replicaCount: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+
+        tolerations:
+          - key: "nvidia.com/gpu"
+            operator: "Exists"
+            effect: "NoSchedule"
+
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keda
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  # KEDA controller manages CRDs and aggregated API service dynamically
+  ignoreDifferences:
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs
+    - group: apiregistration.k8s.io
+      kind: APIService
+      jsonPointers:
+        - /spec/caBundle

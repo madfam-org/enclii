@@ -1,0 +1,32 @@
+# Kyverno PolicyExceptions for KEDA namespace
+# KEDA Helm chart uses upstream ghcr.io/kedacore images that are not
+# cosign-signed by us. Exceptions are scoped to the keda namespace only.
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: keda-helm-chart
+  namespace: keda
+spec:
+  exceptions:
+    - policyName: restrict-image-registries
+      ruleNames:
+        - autogen-validate-registries
+        - validate-registries
+    - policyName: verify-image-signatures
+      ruleNames:
+        - verify-image
+        - autogen-verify-image
+    - policyName: require-health-probes
+      ruleNames:
+        - require-liveness-probe
+        - require-readiness-probe
+  match:
+    any:
+      - resources:
+          namespaces:
+            - keda
+          kinds:
+            - Deployment
+            - Pod
+            - ReplicaSet

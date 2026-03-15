@@ -1,0 +1,51 @@
+# KEDA (Kubernetes Event-Driven Autoscaling) - Operator Values
+# Install: Managed by ArgoCD (infra/argocd/apps/keda.yaml)
+# Chart: kedacore/keda from https://kedacore.github.io/charts
+#
+# Prerequisites:
+# - ArgoCD syncing infra/argocd/apps/keda.yaml
+# - Kyverno PolicyException applied (infra/k8s/policies/keda-policy-exceptions.yaml)
+# - NetworkPolicies applied (infra/k8s/policies/keda-network-policies.yaml)
+#
+# After install:
+# - Verify: kubectl get pods -n keda
+# - Check ScaledObjects: kubectl get scaledobjects -A
+# - Metrics server: kubectl get apiservices | grep external.metrics
+
+# KEDA operator (controller)
+operator:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Metrics API server (aggregated API for HPA)
+metricsServer:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Tolerate GPU nodes (don't schedule on them)
+tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# Prefer scheduling on control plane node
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
