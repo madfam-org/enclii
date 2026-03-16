@@ -346,6 +346,12 @@ Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Lo
 - [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md): Self-service repo registration
 - [External Repo Deploy](./docs/guides/EXTERNAL_REPO_DEPLOY.md): Auto-deploy for dhanam/janua/client repos
 
+## Governance
+
+- [LICENSE](./LICENSE): AGPL-3.0 (full text)
+- [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md): Dual-licensing inquiry notice
+- [Self-Hosting Guide](./docs/guides/SELF_HOSTING.md): Full self-hosting docs (no capability restrictions under AGPL)
+
 ## Optional
 
 - [CLI Reference](./docs/cli/): Command documentation

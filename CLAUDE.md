@@ -580,6 +580,10 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | **Load Testing** | |
 | k6 test scripts | `tests/load/` (health.js, api.js, stress.js, config.js) |
 | Load test CI | `.github/workflows/load-test.yml` (weekly + manual dispatch) |
+| **Governance** | |
+| License (full AGPL-3.0) | `LICENSE` |
+| Commercial licensing notice | `COMMERCIAL_LICENSE.md` |
+| Self-hosting guide | `docs/guides/SELF_HOSTING.md` |
 | **LLM Context** | |
 | LLM context (compact) | `llms.txt` |
 | LLM context (full) | `llms-full.txt` |

@@ -60,6 +60,12 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 - [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko) — 21 unit tests (handlers, switchyard client)
 - [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + auto-incident detection (creates/resolves incidents from consecutive health check failures, `AUTO_INCIDENTS_ENABLED` env var) + clickable service links (separate `href` for user-facing URL vs health-check `url`) + auto-scaled response time bars with configurable thresholds (`RESPONSE_TIME_THRESHOLDS` env var) + HTTP status code badges + 129 unit tests + 31 E2E tests
 
+## Governance
+
+- [LICENSE](./LICENSE): AGPL-3.0 (full text)
+- [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md): Dual-licensing inquiry notice
+- [Self-Hosting Guide](./docs/guides/SELF_HOSTING.md): Full self-hosting docs (no capability restrictions under AGPL)
+
 ## Optional
 
 - [CLI Reference](./docs/cli/): Command documentation
