@@ -259,6 +259,16 @@ test.describe('Status Page Verification', () => {
       console.log('Default data-theme:', dataTheme);
     });
 
+    test('should still have removed services absent (regression guard)', async ({ request }) => {
+      const response = await request.get('https://status.enclii.dev/api/status');
+      if (response.ok()) {
+        const data = await response.json();
+        const names = data.services?.map((s: { service: string }) => s.service) ?? [];
+        expect(names).not.toContain('Vault');
+        console.log('Regression guard: removed services still absent');
+      }
+    });
+
     test('should toggle theme on click', async ({ page }) => {
       await page.goto('https://status.enclii.dev', {
         waitUntil: 'networkidle',
@@ -572,6 +582,7 @@ test.describe('Status Page Verification', () => {
         expect(names).not.toContain('Yantra4D API');
         expect(names).not.toContain('Karafiel API');
         expect(names).not.toContain('MADFAM CMS');
+        expect(names).not.toContain('Vault');
         console.log('Regression guard: all removed services still absent');
       }
     });

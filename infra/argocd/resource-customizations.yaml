@@ -1,0 +1,66 @@
+# ArgoCD Resource Customizations — Custom health checks for CRDs
+#
+# ArgoCD shows "Progressing" or "Unknown" health for resources it doesn't
+# know how to assess. This ConfigMap patch adds health checks for:
+#   - ScaledObject (KEDA) — marks Healthy if conditions show Ready=True
+#   - ServiceMonitor (Prometheus) — always Healthy (declarative, no status)
+#   - PodDisruptionBudget — Healthy when currentHealthy >= desiredHealthy
+#
+# Apply to the cluster:
+#   KUBECONFIG=~/.kube/config-hetzner kubectl patch configmap argocd-cm \
+#     -n argocd --type merge -p "$(cat infra/argocd/resource-customizations.yaml)"
+#
+# This resolves the autoswarm-services "Progressing" status (issue #4 in fleet audit).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.customizations.health.keda.sh_ScaledObject: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for _, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = condition.message or "ScaledObject is ready"
+            return hs
+          end
+          if condition.type == "Ready" and condition.status == "False" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "ScaledObject not ready"
+            return hs
+          end
+        end
+      end
+    end
+    hs.status = "Healthy"
+    hs.message = "ScaledObject is active"
+    return hs
+  resource.customizations.health.monitoring.coreos.com_ServiceMonitor: |
+    hs = {}
+    hs.status = "Healthy"
+    hs.message = "ServiceMonitor is a declarative resource"
+    return hs
+  resource.customizations.health.policy_PodDisruptionBudget: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.currentHealthy ~= nil and obj.status.desiredHealthy ~= nil then
+        if obj.status.currentHealthy >= obj.status.desiredHealthy then
+          hs.status = "Healthy"
+          hs.message = "PDB satisfied: " .. obj.status.currentHealthy .. "/" .. obj.status.desiredHealthy .. " healthy"
+        else
+          hs.status = "Degraded"
+          hs.message = "PDB violated: " .. obj.status.currentHealthy .. "/" .. obj.status.desiredHealthy .. " healthy"
+        end
+      else
+        hs.status = "Healthy"
+        hs.message = "PDB status pending"
+      end
+    else
+      hs.status = "Healthy"
+      hs.message = "PDB status not yet available"
+    end
+    return hs

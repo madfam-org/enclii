@@ -250,6 +250,62 @@ In the multi-source revision resolution path, concatenate `repoURL + "/" + chart
 
 ---
 
+## AutoSwarm Services "Progressing" Health Status
+
+**Status:** Fixed (resource customizations added)
+**Affected Apps:** `autoswarm-services`
+**Impact:** ArgoCD shows `Progressing` or `Unknown` health. All 8 pods are Running and healthy.
+
+### Symptom
+
+The `autoswarm-services` application shows `Progressing` health status with 29 resources at `Unknown` health. The affected resource types are:
+- `ScaledObject` (KEDA) — no built-in health check
+- `ServiceMonitor` (Prometheus) — declarative resource, no status
+- `PodDisruptionBudget` — ArgoCD can't assess `currentHealthy` vs `desiredHealthy`
+
+### Root Cause
+
+ArgoCD has no built-in health assessment for these CRD types. Without custom health checks, it defaults to `Unknown` or `Progressing`.
+
+### Fix
+
+Custom Lua health checks added in `infra/argocd/resource-customizations.yaml`. Apply to the cluster:
+
+```bash
+KUBECONFIG=~/.kube/config-hetzner kubectl patch configmap argocd-cm \
+  -n argocd --type merge -p "$(cat infra/argocd/resource-customizations.yaml)"
+```
+
+This adds health checks for:
+- `keda.sh/ScaledObject` — checks `Ready` condition
+- `monitoring.coreos.com/ServiceMonitor` — always Healthy (declarative)
+- `policy/PodDisruptionBudget` — checks `currentHealthy >= desiredHealthy`
+
+---
+
+## Network-Policies OutOfSync (PostHog Namespace)
+
+**Status:** Fixed (sync options added)
+**Affected Apps:** `network-policies`
+**Impact:** ArgoCD shows `OutOfSync` for 11 posthog namespace policies + 2 monitoring policies. No security impact — policies for non-existent namespaces are harmless.
+
+### Symptom
+
+The `network-policies` app shows OutOfSync because:
+1. PostHog namespace doesn't exist (PostHog not deployed — Helm chart broken, using Cloud proxy)
+2. Policies targeting the `posthog` namespace can't be created without the namespace
+3. Monitoring policies have annotation drift from manual `kubectl` application
+
+### Fix
+
+Added sync options to `infra/argocd/apps/network-policies.yaml`:
+- `CreateNamespace=true` — auto-creates namespaces so policies can be applied
+- `SkipDryRunOnMissingResource=true` — prevents sync failures on missing namespace resources
+
+For monitoring policy drift, force sync from ArgoCD to reconcile annotations.
+
+---
+
 ## Other Known Issues
 
 _No other known issues at this time._

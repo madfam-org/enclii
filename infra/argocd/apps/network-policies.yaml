@@ -24,3 +24,5 @@ spec:
     syncOptions:
       - ServerSideApply=true
       - RespectIgnoreDifferences=true
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true

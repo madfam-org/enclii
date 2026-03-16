@@ -12,8 +12,10 @@ data:
   auto-incident-threshold: "2"
   # Services to monitor for MADFAM Ecosystem (all projects)
   # NOTE: Only services with working health endpoints are monitored.
-  # Services without /health endpoints (Yantra4D API, Karafiel API, MADFAM CMS)
-  # and non-existent services (MES Admin) have been removed to avoid false signals.
+  # Excluded to avoid false-alarm auto-incidents:
+  #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
+  #   - MES Admin (pravara-gateway not deployed; re-add when image exists)
+  #   - Yantra4D API, Karafiel API, MADFAM CMS (no /health endpoints)
   # Re-add them when external repos add proper health endpoints.
   services-config: |
     [
@@ -41,13 +43,6 @@ data:
         "url": "https://docs.enclii.dev",
         "group": "Enclii",
         "description": "Platform documentation"
-      },
-      {
-        "name": "Vault",
-        "url": "https://vault.madfam.io/v1/sys/health",
-        "href": "https://vault.madfam.io",
-        "group": "Enclii",
-        "description": "Secret management"
       },
       {
         "name": "Analytics Proxy",
