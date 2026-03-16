@@ -268,7 +268,8 @@ Access to Dispatch requires BOTH:
 | Auth Context (client-side) | `apps/dispatch/contexts/AuthContext.tsx` |
 | K8s Deployment | `apps/dispatch/k8s/deployment.yaml` |
 | Dockerfile | `apps/dispatch/Dockerfile` |
-| Unit tests | `apps/dispatch/__tests__/` (8 files, 109 tests: auth, API, Cloudflare, components) |
+| Analytics | `apps/dispatch/lib/analytics/posthog.ts`, `apps/dispatch/components/PostHogProvider.tsx` |
+| Unit tests | `apps/dispatch/__tests__/` (10 files, 123 tests: auth, API, Cloudflare, components, analytics) |
 
 ### Dogfooding Status (In Progress)
 
@@ -698,7 +699,7 @@ pnpm test:e2e
 | Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (47 cmd tests), SDK (30 client+type tests), dispatch (109 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests) |
+| Test coverage enforcement | Active | CI threshold at 40%. Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (47 cmd tests), SDK (30 client+type tests), dispatch (123 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests) |
 | Vault (secret management) | Ready | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Needs cluster deploy (init, unseal, configure, migrate) |
 | PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud. All repos point to `analytics.madfam.io`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
 
