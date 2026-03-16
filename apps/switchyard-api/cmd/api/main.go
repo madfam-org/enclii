@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/api"
@@ -397,6 +398,8 @@ func main() {
 	// Use custom recovery middleware that logs panics with full stack trace
 	// and returns proper JSON error responses instead of empty body
 	router.Use(middleware.RecoveryMiddleware(logger))
+	// OTel HTTP tracing — creates spans for every request when tracing is enabled
+	router.Use(otelgin.Middleware("switchyard-api"))
 
 	// Initialize security middleware with CORS support
 	securityMiddleware := middleware.NewSecurityMiddleware(nil) // Uses default config with CORS
