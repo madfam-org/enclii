@@ -21,7 +21,7 @@
   },
   "link.item.label.Guides": {
     "message": "Guides",
-    "description": "The label of footer link with label=Guides linking to /guides/DOGFOODING_GUIDE"
+    "description": "The label of footer link with label=Guides linking to /guides/ONBOARDING_GUIDE"
   },
   "link.item.label.GitHub": {
     "message": "GitHub",

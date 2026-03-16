@@ -206,7 +206,7 @@ Database & Backups     ██████░░░ 65%
 - [ ] API key management (5 days)
 - [ ] Multi-tenant organizations (3 days)
 
-### Week 5-6: Dogfooding & Load Testing
+### Week 5-6: Self-Hosted Deployment & Load Testing
 - [ ] Deploy Janua on Enclii (3 days)
 - [ ] Deploy Switchyard API on Enclii (2 days)
 - [ ] Deploy Switchyard UI on Enclii (2 days)
@@ -294,18 +294,18 @@ curl https://app.enclii.dev/
 
 ---
 
-## THE DOGFOODING STRATEGY
+## THE SELF-HOSTED STRATEGY
 
 **Goal:** "We run our entire platform on Enclii. Here's the proof."
 
-22 services ready to deploy in `dogfooding/` directory:
-- ✅ switchyard-api.yaml - Control plane
-- ✅ switchyard-ui.yaml - Dashboard
-- ✅ janua.yaml - Authentication
-- ✅ landing-page.yaml - Marketing site
-- ✅ docs-site.yaml - Documentation
-- ✅ status-page.yaml - Status monitoring
-- ✅ 16 additional MADFAM services
+Core services deployed and running in production:
+- ✅ switchyard-api - Control plane (api.enclii.dev)
+- ✅ switchyard-ui - Dashboard (app.enclii.dev)
+- ✅ janua - Authentication (auth.madfam.io)
+- ✅ landing-page - Marketing site (enclii.dev)
+- ✅ docs-site - Documentation (docs.enclii.dev)
+- ✅ status-page - Status monitoring (status.enclii.dev)
+- ✅ 14+ additional MADFAM services
 
 **Why it matters:**
 - ✅ **Credibility:** "We use what we sell"
@@ -348,11 +348,11 @@ See internal-devops for cost breakdown.
 2. Complete infrastructure hardening
 3. Begin Janua OAuth integration
 4. Start load testing framework
-5. Begin dogfooding service deployment
+5. Begin self-hosted service deployment
 
 ### Medium Term (Weeks 3-6)
 1. Complete Janua integration
-2. Deploy dogfooding services
+2. Deploy self-hosted services
 3. Load test at 1,000 RPS
 4. Security audit & pen testing
 5. Build pipeline automation

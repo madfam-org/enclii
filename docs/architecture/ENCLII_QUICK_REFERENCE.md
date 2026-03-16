@@ -511,7 +511,7 @@ SLA: P95 < 2 minutes
 - ❌ Multi-tenant organizations
 - ❌ Secret backend (Vault/1Password)
 
-### Phase 3: Dogfooding (Weeks 5-6) 🔄
+### Phase 3: Self-Hosted Deployment (Weeks 5-6) 🔄
 - ❌ Deploy Janua on Enclii
 - ❌ Deploy control plane on Enclii
 - ❌ Load testing (1,000 RPS)
@@ -560,7 +560,7 @@ See internal-devops for cost breakdown.
 | PRODUCTION_READINESS_AUDIT.md | Gap analysis | ✅ Complete |
 | ARCHITECTURE.md | System design | ✅ Complete |
 | API.md | REST API reference | ✅ Partial |
-| DOGFOODING_GUIDE.md | Self-hosting strategy | ✅ Complete |
+| ONBOARDING_GUIDE.md | Service onboarding guide | ✅ Complete |
 | QUICKSTART.md | Local dev setup | ✅ Complete |
 | DEVELOPMENT.md | Contributing guide | ✅ Complete |
 
@@ -603,7 +603,6 @@ kubectl scale deployment/{service} --replicas=5 -n prod-{project}
 
 **Documentation:** `/Users/aldoruizluna/labspace/enclii/docs/`  
 **Code:** `/Users/aldoruizluna/labspace/enclii/`  
-**Dogfooding Specs:** `/Users/aldoruizluna/labspace/enclii/dogfooding/`  
 **Infrastructure:** `/Users/aldoruizluna/labspace/enclii/infra/`  
 
 **Full Capabilities Matrix:** `ENCLII_CAPABILITY_MATRIX.md` (11,000+ words)  

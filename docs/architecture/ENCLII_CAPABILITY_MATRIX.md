@@ -482,10 +482,10 @@ Week 3-4: Security & Auth
   ✓ API key management
   ✓ Multi-tenant organizations
 
-Week 5-6: Dogfooding Setup
+Week 5-6: Self-Hosted Deployment
   ✓ Janua deployment on Enclii
-  ✓ Control plane dogfooding
-  ✓ Dashboard dogfooding
+  ✓ Control plane self-deployment
+  ✓ Dashboard self-deployment
   ✓ Load testing (1000 RPS)
   ✓ Security audit
 

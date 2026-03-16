@@ -269,5 +269,5 @@ See `docs/infrastructure/EXTERNAL_SECRETS.md` for implementation status.
 ## Related Documentation
 
 - [Agency Model Deployment](./AGENCY_MODEL_DEPLOYMENT.md) - Multi-tenant client deployment
-- [Dogfooding Guide](./DOGFOODING_GUIDE.md) - Running Enclii on Enclii
+- [Onboarding Guide](./ONBOARDING_GUIDE.md) - Zero-touch repo onboarding
 - [External Secrets](../infrastructure/EXTERNAL_SECRETS.md) - Vault integration roadmap

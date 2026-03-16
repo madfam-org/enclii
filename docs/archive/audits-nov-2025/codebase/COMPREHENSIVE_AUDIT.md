@@ -41,7 +41,7 @@ enclii/
 │   ├── dev/                      # ✅ Kind cluster config
 │   └── (terraform/ - MISSING)    # ❌ Not present
 ├── tests/integration/            # ✅ 5 Go files - COMPREHENSIVE
-├── dogfooding/                   # ✅ Service specs ready (not yet deployed)
+├── (dogfooding/ removed)         # ℹ️ Service specs migrated to per-repo enclii.yaml
 ├── docs/                         # ✅ 23 markdown files
 └── examples/                     # ✅ 5 example service YAML files
 ```
@@ -616,38 +616,9 @@ make health-check     # Check all environments
 
 ---
 
-## Part 8: Dogfooding Setup (Planned)
+## Part 8: Self-Hosted Deployment (Completed)
 
-**Location:** `/home/user/enclii/dogfooding/`
-
-**Service Specs Ready (not yet deployed):**
-
-1. **`switchyard-api.yaml`** - Control plane
-   - 3 replicas, 3-10 autoscaling
-   - Exposed at api.enclii.io
-
-2. **`switchyard-ui.yaml`** - Web dashboard
-   - 2 replicas, 2-8 autoscaling
-   - Exposed at app.enclii.io
-
-3. **`janua.yaml`** - Authentication
-   - Built from separate repo: github.com/madfam-org/janua
-   - 3 replicas (HA), 3-10 autoscaling
-   - Exposed at auth.enclii.io
-
-4. **`landing-page.yaml`** - Marketing
-   - Static export with 24h cache
-   - Exposed at enclii.io
-
-5. **`docs-site.yaml`** - Documentation
-   - Documentation site
-   - Exposed at docs.enclii.io
-
-6. **`status-page.yaml`** - Status monitoring
-   - Uptime tracking
-   - Exposed at status.enclii.io
-
-**Status:** Specs complete, awaiting infrastructure (Weeks 1-2) and Janua integration (Weeks 3-4)
+> **Note (archive):** The `dogfooding/` directory has been removed. Service specs now live in each repo's `enclii.yaml`. All core services are deployed and running in production. See [ONBOARDING_GUIDE.md](../../../guides/ONBOARDING_GUIDE.md) for the current deployment pattern.
 
 ---
 
@@ -660,7 +631,7 @@ make health-check     # Check all environments
 - `CLAUDE.md` - Project conventions and guidelines (8 KB)
 - `PRODUCTION_DEPLOYMENT_ROADMAP.md` - 8-week timeline (37 KB)
 - `PRODUCTION_READINESS_AUDIT.md` - Current state assessment (37 KB)
-- `DOGFOODING_GUIDE.md` - Self-hosting strategy (29 KB)
+- `ONBOARDING_GUIDE.md` - Service onboarding guide
 
 **Architecture & Development:**
 - `docs/ARCHITECTURE.md` - System design

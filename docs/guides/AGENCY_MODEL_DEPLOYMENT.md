@@ -246,7 +246,7 @@ echo "Client Invitation ID: $INVITE_ID"
 echo ""
 echo "Next Steps:"
 echo "1. Client accepts invitation at their email"
-echo "2. Deploy LinkStack with: enclii service create --file dogfooding/clients/${APP_NAME}-linkstack.yaml"
+echo "2. Deploy LinkStack with: enclii service create --file clients/${APP_NAME}-linkstack.yaml"
 echo "3. Configure domain: links.example-app.dev"
 echo ""
 echo "Environment variables for deployment:"
@@ -258,7 +258,7 @@ echo "export CLIENT_NAMESPACE=${APP_NAME}-production"
 
 ## Deliverable 2: LinkStack Deployment Manifest
 
-Save as `dogfooding/clients/${APP_NAME}-linkstack.yaml`:
+Save as `clients/${APP_NAME}-linkstack.yaml`:
 
 ```yaml
 # LinkStack Service Specification for ${CLIENT_NAME}
@@ -553,7 +553,7 @@ Add to `infra/k8s/production/cloudflared-unified.yaml`:
 
 □ STEP 2: ENCLII DEPLOYMENT (10 minutes)
   ├─ □ Create namespace: kubectl create ns ${APP_NAME}-production
-  ├─ □ Deploy service: enclii service create --file dogfooding/clients/${APP_NAME}-linkstack.yaml
+  ├─ □ Deploy service: enclii service create --file clients/${APP_NAME}-linkstack.yaml
   ├─ □ Add tunnel route: Update cloudflared-unified.yaml
   ├─ □ Apply tunnel: kubectl apply -f infra/k8s/production/cloudflared-unified.yaml
   └─ □ Verify pod running: kubectl get pods -n ${APP_NAME}-production

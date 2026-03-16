@@ -1064,20 +1064,20 @@ spec:
 - [ ] Chaos engineering validated
 - [ ] DR runbooks documented and tested
 
-### Dogfooding ⭐ CRITICAL
+### Self-Hosted Deployment ⭐ CRITICAL
 
-- [ ] Service specs created for Enclii components (`dogfooding/`)
+- [ ] Service specs created for Enclii components
 - [ ] Enclii API deployed via Enclii itself
 - [ ] Enclii UI deployed via Enclii itself
 - [ ] Janua deployed via Enclii (from separate repo)
 - [ ] Landing page, docs, status page deployed via Enclii
 - [ ] Continuous deployment enabled for all services
 - [ ] Janua OAuth fully integrated (Enclii authenticates with Janua)
-- [ ] Sales materials updated with dogfooding narrative
+- [ ] Sales materials updated with self-hosted narrative
 - [ ] Public status page shows Enclii services
 - [ ] Team trained on deploying via `enclii deploy` command
 
-**Why Critical:** Dogfooding provides customer confidence, validates product quality, and enables authentic sales narratives. See [DOGFOODING_GUIDE.md](../guides/DOGFOODING_GUIDE.md) for details.
+**Why Critical:** Self-hosting provides customer confidence, validates product quality, and enables authentic sales narratives. See [ONBOARDING_GUIDE.md](../guides/ONBOARDING_GUIDE.md) for details.
 
 ---
 
@@ -1099,19 +1099,19 @@ Week 3-4: Security Hardening
 ├─ Day 21-23: Audit logging + PgBouncer
 └─ Day 24-28: Secret rotation + testing
 
-Week 5-6: Operational Excellence & Dogfooding Setup
+Week 5-6: Operational Excellence & Self-Hosted Setup
 ├─ Day 29-31: Auto-scaling + CI/CD
 ├─ Day 32-34: Blue-green + canary
 ├─ Day 35-37: DR runbooks + testing
-├─ Day 38-40: Staging environment + Dogfooding service specs
+├─ Day 38-40: Staging environment + Service specs
 └─ Day 41-42: Chaos engineering + Self-deployment migration
 
-Week 7-8: Testing, Validation & Dogfooding
+Week 7-8: Testing, Validation & Self-Deployment
 ├─ Day 43-46: Test coverage expansion + Deploy Enclii via Enclii
 ├─ Day 47-49: Load testing + Continuous deployment setup
 ├─ Day 50-52: Security audit + Janua OAuth integration testing
 ├─ Day 53-55: SOC 2 documentation + Sales material update
-└─ Day 56:    🚀 PRODUCTION GO-LIVE (Fully Dogfooded)
+└─ Day 56:    🚀 PRODUCTION GO-LIVE (Fully Self-Hosted)
 ```
 
 **Total Timeline:** 8 weeks (6 weeks with 2 engineers)
@@ -1190,7 +1190,7 @@ Week 7-8: Testing, Validation & Dogfooding
 - [ ] Timeline: 8 weeks acceptable?
 - [ ] Janua for auth (vs Auth0/Clerk)?
 - [ ] Security audit: $2,000 third-party test?
-- [ ] Dogfooding approach: Run Enclii on Enclii?
+- [ ] Self-hosted approach: Run Enclii on Enclii?
 
 ---
 
@@ -1206,11 +1206,11 @@ This **research-validated architecture** provides:
 6. ✅ **No Vendor Lock-In:** Portable infrastructure (Kubernetes standard)
 7. ✅ **Multi-Tenant Ready:** Built for SaaS from day one
 8. ✅ **Production Grade:** 99.95% uptime SLA, auto-scaling, HA
-9. ✅ **Fully Dogfooded:** Enclii runs on Enclii, authenticated by Janua
+9. ✅ **Fully Self-Hosted:** Enclii runs on Enclii, authenticated by Janua
 
 **5-Year Savings: $125,000+** (vs Railway + Auth0)
 
-**Confidence Signal:** "We run our entire platform on Enclii, authenticated by Janua. We're our own most demanding customer." — See [DOGFOODING_GUIDE.md](../guides/DOGFOODING_GUIDE.md)
+**Confidence Signal:** "We run our entire platform on Enclii, authenticated by Janua. We're our own most demanding customer." — See [ONBOARDING_GUIDE.md](../guides/ONBOARDING_GUIDE.md)
 
 **Recommended Next Step:** Approve budget and start Week 1 infrastructure provisioning.
 

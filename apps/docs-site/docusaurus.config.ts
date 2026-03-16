@@ -109,7 +109,7 @@ const config: Config = {
             },
             {
               label: 'Guides',
-              to: '/guides/DOGFOODING_GUIDE',
+              to: '/guides/ONBOARDING_GUIDE',
             },
           ],
         },

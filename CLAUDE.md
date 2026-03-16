@@ -9,7 +9,7 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Current Status:** 🟢 v0.1.0 - Production Beta (95% ready) ([checklist](./docs/production/PRODUCTION_CHECKLIST.md))
 **Infrastructure:** Hetzner Dedicated (2-node k3s) + Cloudflare - **Running**
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
-**Dogfooding:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
+**Self-Hosted:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
 **GitOps:** ArgoCD App-of-Apps (28 apps across 22 namespaces) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (17 volumes, single-replica; ready for multi-node) - **Operational** (Jan 2026)
@@ -271,13 +271,11 @@ Access to Dispatch requires BOTH:
 | Analytics | `apps/dispatch/lib/analytics/posthog.ts`, `apps/dispatch/components/PostHogProvider.tsx` |
 | Unit tests | `apps/dispatch/__tests__/` (10 files, 123 tests: auth, API, Cloudflare, components, analytics) |
 
-### Dogfooding Status (In Progress)
+### Production Services
 
-**Goal:** Run our entire platform on Enclii, authenticated by Janua.
+All services deploy via the zero-touch onboarding pattern: K8s manifests, CI workflows, and `enclii.yaml` live in each repo. ArgoCD registration via `POST /v1/admin/onboard`. No deployment config lives in the enclii repo itself.
 
-> **Current State:** "We run our core production services on Enclii. We are our own most demanding customer."
-
-**Production Services** (running at enclii.dev):
+**Running at enclii.dev:**
 - ✅ `switchyard-api` → api.enclii.dev (control plane)
 - ✅ `switchyard-ui` → app.enclii.dev (web dashboard)
 - ✅ `dispatch` → admin.enclii.dev (admin control platform)
@@ -301,12 +299,7 @@ Access to Dispatch requires BOTH:
 - ✅ Deployment lifecycle event tracking (push → build → deploy → healthy)
 - ✅ Self-service repo onboarding API
 
-See [DOGFOODING_GUIDE.md](./docs/guides/DOGFOODING_GUIDE.md) for complete implementation plan.
-
-**Why This Matters:**
-- **Customer Confidence:** "If they trust it, we can too"
-- **Product Quality:** We find bugs before customers do
-- **Sales Credibility:** Authentic production usage metrics
+See [ONBOARDING_GUIDE.md](./docs/guides/ONBOARDING_GUIDE.md) for adding new repos.
 
 ---
 

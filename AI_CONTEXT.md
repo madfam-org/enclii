@@ -3,7 +3,7 @@
 ## Architecture
 - **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
 - **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
-- **Self-Deployment**: Enclii deploys itself (dogfooding)
+- **Self-Deployment**: Enclii deploys itself (zero-touch onboarding)
 - **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
 - **Last Audit**: Mar 13, 2026 — 150 pods, 34/36 endpoints operational, disk 83% (action needed)
 

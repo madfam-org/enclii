@@ -18,19 +18,20 @@
 
 Enclii is an **open source DevOps platform** for deploying, scaling, and operating containerized services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
 
-### The Dogfooding Strategy (In Progress)
+### Self-Hosted Production
 
-> **Goal:** "We run our entire platform on Enclii, authenticated by Janua. We are our own most demanding customer."
+> "We run our entire platform on Enclii, authenticated by Janua. We are our own most demanding customer."
 
-**Current Production Services:**
-- ✅ **Control Plane API** (`api.enclii.dev`) → Running on Enclii
-- ✅ **Web Dashboard** (`app.enclii.dev`) → Running on Enclii
+**Production Services:**
+- ✅ **Control Plane API** (`api.enclii.dev`)
+- ✅ **Web Dashboard** (`app.enclii.dev`)
+- ✅ **Admin Platform** (`admin.enclii.dev`)
 - ✅ **Authentication** (`auth.madfam.io`) → Janua SSO (OIDC)
-- ✅ **Documentation** (`docs.enclii.dev`) → Running on Enclii
-- 🔲 **Landing Page** (`enclii.dev`) → Pending
-- 🔲 **Status Page** (`status.enclii.dev`) → Pending
+- ✅ **Documentation** (`docs.enclii.dev`)
+- ✅ **Landing Page** (`enclii.dev`)
+- ✅ **Status Page** (`status.enclii.dev`, `status.madfam.io`)
 
-**Current Status:** Core services are deployed and running in production. GitHub webhooks configured for CI/CD. Real build pipeline with Buildpacks/Dockerfile detection operational. [See dogfooding guide →](./docs/guides/DOGFOODING_GUIDE.md)
+All services deploy via zero-touch onboarding — K8s manifests and CI workflows live in each repo, not here. [See onboarding guide →](./docs/guides/ONBOARDING_GUIDE.md)
 
 ---
 
@@ -155,16 +156,8 @@ enclii/
 │   │   ├── staging/           # Staging overlays
 │   │   └── production/        # Production overlays
 │   └── terraform/             # Infrastructure as Code
-├── dogfooding/                # ⭐ Service specs for self-hosting
-│   ├── switchyard-api.yaml    # Control plane (from this repo)
-│   ├── switchyard-ui.yaml     # Web UI (from this repo)
-│   ├── janua.yaml             # Auth (from github.com/madfam-org/janua)
-│   ├── landing-page.yaml      # Marketing site
-│   ├── docs-site.yaml         # Documentation
-│   └── status-page.yaml       # Status monitoring
 ├── docs/                      # Documentation
-├── examples/                  # Sample service specs
-└── DOGFOODING_GUIDE.md        # Self-hosting strategy
+└── examples/                  # Sample service specs
 ```
 
 ### Component Names
@@ -295,19 +288,6 @@ cloudflared tunnel create enclii-production
 kubectl apply -k infra/k8s/production
 ```
 
-**Dogfooding (Week 5-6):**
-```bash
-# Import service specs
-./bin/enclii service create --file dogfooding/switchyard-api.yaml
-./bin/enclii service create --file dogfooding/janua.yaml
-
-# Deploy via Enclii itself
-./bin/enclii deploy --service switchyard-api --env production
-./bin/enclii deploy --service janua --env production
-
-# ✅ Enclii now deploys Enclii!
-```
-
 ---
 
 ## CLI Reference
@@ -349,7 +329,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 **Getting Started:**
 - [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md) - 8-week plan
 - [Production Readiness Audit](./docs/production/PRODUCTION_READINESS_AUDIT.md) - Current state
-- [Dogfooding Guide](./docs/guides/DOGFOODING_GUIDE.md) - Self-hosting strategy
+- [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md) - Zero-touch repo onboarding
 - [Quick Start](./docs/getting-started/QUICKSTART.md) - Local dev in 10 minutes
 
 **Architecture:**
@@ -435,7 +415,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 
 ### Phase 3: Production (Current - 95%)
 
-- ✅ Dogfooding (Enclii deploys itself)
+- ✅ Self-hosted (Enclii deploys itself)
 - ✅ Real build pipeline (Buildpacks/Dockerfile)
 - ✅ GitHub webhook CI/CD
 - ✅ Container registry push (ghcr.io)
@@ -489,27 +469,24 @@ Email: [security@enclii.dev](mailto:security@enclii.dev)
 
 ---
 
-## The Vision: Dogfooding as Competitive Advantage
+## The Vision: Self-Hosted as Competitive Advantage
 
-**Goal (Weeks 5-8):** Run our entire production infrastructure on Enclii, authenticated by Janua.
+We run our entire production infrastructure on Enclii, authenticated by Janua.
 
-When we launch, prospects will ask **"Can Enclii handle production?"**
-
-We'll answer with verifiable proof:
+When prospects ask **"Can Enclii handle production?"** — we answer with verifiable proof:
 > "We run our entire production on Enclii. Here's our status page showing 99.95% uptime. We deploy 10-20 times per day with zero downtime using our own platform."
 
-**What we're building (service specs ready in `dogfooding/`):**
+**Production services running today:**
 - Control Plane API at api.enclii.dev
 - Web Dashboard at app.enclii.dev
-- Janua Auth at auth.janua.dev
-- Public status page at status.enclii.dev
+- Admin Platform at admin.enclii.dev
+- Janua Auth at auth.madfam.io
+- Status pages at status.enclii.dev, status.madfam.io
 
 **Why this matters:**
 - Customer confidence: "If they trust it, we can too"
-- Product quality: We'll find bugs before customers do
+- Product quality: We find bugs before customers do
 - Sales credibility: Authentic production usage metrics
-
-[See complete dogfooding plan →](./docs/guides/DOGFOODING_GUIDE.md)
 
 ---
 
@@ -556,7 +533,7 @@ This repository includes machine-readable context files following the [llmstxt.o
 - **Status Page:** [status.enclii.dev](https://status.enclii.dev)
 - **Janua (Auth):** [janua.dev](https://janua.dev) | [GitHub](https://github.com/madfam-org/janua)
 - **Production Roadmap:** [PRODUCTION_DEPLOYMENT_ROADMAP.md](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
-- **Dogfooding Guide:** [DOGFOODING_GUIDE.md](./docs/guides/DOGFOODING_GUIDE.md)
+- **Onboarding Guide:** [ONBOARDING_GUIDE.md](./docs/guides/ONBOARDING_GUIDE.md)
 
 ---
 

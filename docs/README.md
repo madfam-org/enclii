@@ -67,7 +67,7 @@ System design, architecture decisions, and API references.
 ### 📖 Guides
 User guides for common tasks and migrations.
 
-- [Dogfooding Guide](./guides/DOGFOODING_GUIDE.md) - Running Enclii on Enclii (self-hosting)
+- [Onboarding Guide](./guides/ONBOARDING_GUIDE.md) - Zero-touch repo onboarding
 - [Railway Migration Guide](./guides/RAILWAY_MIGRATION_GUIDE.md) - Migrating from Railway
 - [Vercel Migration Guide](./guides/VERCEL_MIGRATION_GUIDE.md) - Migrating from Vercel
 - [Heroku Migration Guide](./guides/HEROKU_MIGRATION_GUIDE.md) - Migrating from Heroku

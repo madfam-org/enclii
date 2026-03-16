@@ -206,7 +206,7 @@ export const authOptions = {
 
 ## Deployment
 
-The UI is deployed on Enclii (dogfooding):
+The UI is deployed on Enclii (self-hosted):
 
 ```bash
 enclii deploy --service switchyard-ui --env production

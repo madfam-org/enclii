@@ -5,9 +5,9 @@
 > Go backend + Next.js frontend + ArgoCD GitOps + Cloudflare Tunnel zero-trust ingress.
 
 Enclii is MADFAM's production DevOps platform running on a 2-node k3s cluster on Hetzner +
-Cloudflare. It dogfoods itself — the control plane runs on Enclii. Authentication
-is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
-12 apps in `infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
+Cloudflare. The control plane runs on Enclii itself. Authentication is handled by
+Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with 12 apps in
+`infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
 
 ---
 
@@ -16,7 +16,7 @@ is handled by Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with
 ### Architecture
 - **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
 - **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
-- **Self-Deployment**: Enclii deploys itself (dogfooding)
+- **Self-Deployment**: Enclii deploys itself (zero-touch onboarding)
 - **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
 
 ### God Files (Critical Paths)

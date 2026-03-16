@@ -1,4 +1,4 @@
-# Enclii - Self-Hosted PaaS Platform (Dogfooding)
+# Enclii - Self-Hosted PaaS Platform
 # Enclii deploys itself!
 
 apiVersion: enclii.dev/v1

@@ -789,6 +789,6 @@ func (o *Orchestrator) rollbackGroup(group *DeploymentGroup, cause error) error 
 
 ## Related Documents
 
-- [Dogfooding Guide](../guides/DOGFOODING_GUIDE.md)
+- [Onboarding Guide](../guides/ONBOARDING_GUIDE.md)
 - [Production Deployment Roadmap](../production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 - [Service Spec Format](../reference/service-spec.md)

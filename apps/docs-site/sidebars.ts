@@ -25,7 +25,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides',
       items: [
-        'guides/DOGFOODING_GUIDE',
+        'guides/ONBOARDING_GUIDE',
         'guides/RAILWAY_MIGRATION_GUIDE',
         'guides/VERCEL_MIGRATION_GUIDE',
         'guides/TESTING_GUIDE',
@@ -159,7 +159,7 @@ const sidebars: SidebarsConfig = {
         'production/PRODUCTION_CHECKLIST',
         'production/GAP_ANALYSIS',
         'production/BUILD_PIPELINE',
-        'production/dogfooding-roadmap',
+
       ],
     },
 

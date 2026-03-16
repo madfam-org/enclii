@@ -102,6 +102,6 @@ Open http://localhost:3000 to see the dashboard.
 
 - **Next Steps**: [Development Guide](/docs/getting-started/DEVELOPMENT)
 - **CLI Reference**: [CLI Commands](/docs/cli/)
-- **Deployment**: [Deploying Services](/docs/guides/DOGFOODING_GUIDE)
+- **Deployment**: [Deploying Services](/docs/guides/ONBOARDING_GUIDE)
 - **Troubleshooting**: [Common Issues](/docs/troubleshooting/)
 - **FAQ**: [Frequently Asked Questions](/docs/faq/)

@@ -140,12 +140,12 @@ VALUES (
 **Prerequisites:**
 - ✅ Enclii running with local auth (Phase A)
 - ✅ Bootstrap admin account created
-- ✅ Janua service spec ready (`dogfooding/janua.yaml`)
+- ✅ Janua service spec ready
 
 **Steps:**
 1. Log in to Enclii dashboard using bootstrap admin
 2. Navigate to "Deploy Service"
-3. Deploy Janua from `dogfooding/janua.yaml`:
+3. Deploy Janua from service spec:
    ```yaml
    apiVersion: enclii.dev/v1
    kind: Service

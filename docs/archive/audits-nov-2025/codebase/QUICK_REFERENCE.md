@@ -99,13 +99,7 @@ return a.publicKey, nil  // Use public key for verification
 │   ├── custom_domain_test.go
 │   ├── routes_test.go
 │   └── helpers.go
-├── dogfooding/              ✅ SERVICE SPECS READY (6 YAML files)
-│   ├── switchyard-api.yaml
-│   ├── switchyard-ui.yaml
-│   ├── janua.yaml          ⚠️ References separate repo (not deployed)
-│   ├── landing-page.yaml
-│   ├── docs-site.yaml
-│   └── status-page.yaml
+├── (dogfooding/ removed)    ℹ️ Service specs migrated to per-repo enclii.yaml
 ├── docs/                    ✅ COMPREHENSIVE (23 markdown files)
 ├── examples/                ✅ EXAMPLES (5 YAML files)
 └── (Other config files)

@@ -673,7 +673,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 
 ---
 
-## Dogfooding Status: 95% Complete
+## Production Services: 95% Complete
 
 ### Enclii Core Services
 

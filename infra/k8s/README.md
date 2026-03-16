@@ -435,7 +435,7 @@ kubectl get configmap cloudflared-config -n enclii-production -o yaml
 
 - [Production Deployment Roadmap](../docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 - [Production Checklist](../docs/production/PRODUCTION_CHECKLIST.md)
-- [Dogfooding Guide](../docs/guides/DOGFOODING_GUIDE.md)
+- [Onboarding Guide](../docs/guides/ONBOARDING_GUIDE.md)
 - [Security Architecture](../docs/architecture/SECURITY_ARCHITECTURE.md)
 
 ---

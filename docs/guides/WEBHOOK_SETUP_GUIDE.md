@@ -247,7 +247,7 @@ echo "New secret: $NEW_SECRET"
 
 ## Related Documentation
 
-- [Dogfooding Guide](./DOGFOODING_GUIDE.md)
+- [Onboarding Guide](./ONBOARDING_GUIDE.md)
 - [Build Pipeline](../production/BUILD_PIPELINE.md)
 - [Janua Deployment Hardening](../cross-repo/JANUA_DEPLOYMENT_PROMPT.md)
 - [Dhanam Deployment Hardening](../cross-repo/DHANAM_DEPLOYMENT_PROMPT.md)

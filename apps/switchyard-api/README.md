@@ -176,13 +176,13 @@ docker build -t switchyard-api .
 
 ## Deployment
 
-The API runs on Enclii itself (dogfooding):
+The API runs on Enclii itself (self-hosted):
 
 ```bash
 enclii deploy --service switchyard-api --env production
 ```
 
-See [DOGFOODING_GUIDE.md](../../docs/guides/DOGFOODING_GUIDE.md) for details.
+See [ONBOARDING_GUIDE.md](../../docs/guides/ONBOARDING_GUIDE.md) for details.
 
 ## Related Components
 

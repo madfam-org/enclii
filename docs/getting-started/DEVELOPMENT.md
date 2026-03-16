@@ -566,7 +566,7 @@ go mod download
 
 - **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART)
 - **CLI**: [CLI Reference](/docs/cli/) | [Deploy Command](/docs/cli/commands/deploy)
-- **Guides**: [Testing Guide](/docs/guides/TESTING_GUIDE) | [Dogfooding Guide](/docs/guides/DOGFOODING_GUIDE)
+- **Guides**: [Testing Guide](/docs/guides/TESTING_GUIDE) | [Onboarding Guide](/docs/guides/ONBOARDING_GUIDE)
 - **SDK**: [TypeScript SDK](/docs/sdk/typescript/)
 - **Troubleshooting**: [Build Failures](/docs/troubleshooting/build-failures) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
 - **Production**: [Production Checklist](/docs/production/PRODUCTION_CHECKLIST)

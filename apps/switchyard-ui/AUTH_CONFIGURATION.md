@@ -81,8 +81,8 @@ Deploy Janua via Enclii or manually:
 # Via Enclii (future)
 enclii deploy --template janua --env production
 
-# Or via Kubernetes
-kubectl apply -f dogfooding/janua.yaml
+# Or via Kubernetes (see Janua repo for manifests)
+kubectl apply -k apps/api/k8s/
 ```
 
 ### 2. Create OAuth Client in Janua

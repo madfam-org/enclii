@@ -153,7 +153,7 @@ kubectl create secret generic linkstack-secrets \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy the application
-kubectl apply -f dogfooding/clients/${APP_NAME}-linkstack.k8s.yaml
+kubectl apply -f clients/${APP_NAME}-linkstack.k8s.yaml
 ```
 
 ---
@@ -316,8 +316,8 @@ EOF
 | `scripts/provision-domain.sh` | Cloudflare Zone/DNS/Tunnel automation |
 | `scripts/deploy-client.sh` | Master deployment orchestrator |
 | `scripts/onboard-${APP_NAME}.sh` | Janua RBAC setup |
-| `dogfooding/clients/${APP_NAME}-linkstack.yaml` | Enclii service spec |
-| `dogfooding/clients/${APP_NAME}-linkstack.k8s.yaml` | Raw K8s manifest |
+| `clients/${APP_NAME}-linkstack.yaml` | Enclii service spec |
+| `clients/${APP_NAME}-linkstack.k8s.yaml` | Raw K8s manifest |
 | `docs/guides/AGENCY_MODEL_DEPLOYMENT.md` | Full deployment guide |
 | `docs/guides/ZERO_TOUCH_EXECUTION.md` | This file |
 

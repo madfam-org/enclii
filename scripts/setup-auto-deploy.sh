@@ -178,7 +178,7 @@ sync_services() {
     "$cli_path" services-sync \
         --api-endpoint "${API_ENDPOINT}" \
         --api-token "${ENCLII_API_TOKEN}" \
-        --dir "${ROOT_DIR}/dogfooding/" \
+        --dir "${ROOT_DIR}" \
         --project "$project_slug"
 
     log_success "Services synced for '$project_slug'"

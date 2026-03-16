@@ -11,7 +11,7 @@ tags: [infrastructure, npm, verdaccio, registry]
 
 - **DNS Setup**: [DNS Configuration (Porkbun)](/docs/infrastructure/dns-setup-porkbun)
 - **Cloudflare**: [Cloudflare Integration](/docs/infrastructure/CLOUDFLARE)
-- **Dogfooding**: [Dogfooding Roadmap](/docs/production/dogfooding-roadmap)
+- **Onboarding**: [Onboarding Guide](/docs/guides/ONBOARDING_GUIDE)
 
 ## Overview
 
@@ -96,7 +96,7 @@ Files to create in `infra/k8s/base/`:
 **Timeline: Day 2**
 **Owner: DevOps**
 
-Create `dogfooding/npm-registry.yaml` following Enclii patterns.
+Create `enclii.yaml` service definition following Enclii patterns.
 
 ### Phase 4: Janua OAuth Integration (Optional Enhancement)
 **Timeline: Day 3-4**
@@ -325,7 +325,7 @@ spec:
 
 ### Enclii Service Definition
 
-#### dogfooding/npm-registry.yaml
+#### npm-registry enclii.yaml
 ```yaml
 apiVersion: enclii.dev/v1
 kind: Service

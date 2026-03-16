@@ -261,7 +261,7 @@ gh run list --workflow=docker-build.yml --limit=5
 
 > **All tenant operations (onboarding, config, secrets) MUST be performed via Enclii/Janua APIs or CLIs. Direct database/SSH access is restricted strictly to Core Platform debugging (Foundry).**
 
-**Rationale**: During Operations LIFTOFF and GOVERNOR, we identified a pattern of relying on "bare metal" access (SSH, SQL execution, kubectl exec into pods) instead of using our own ecosystem APIs. This violates the principle of dogfooding and creates:
+**Rationale**: During Operations LIFTOFF and GOVERNOR, we identified a pattern of relying on "bare metal" access (SSH, SQL execution, kubectl exec into pods) instead of using our own ecosystem APIs. This violates the principle of self-deployment and creates:
 1. Security gaps (bypassing audit logs)
 2. Reproducibility issues (manual steps not captured in IaC)
 3. Missing API coverage (if an operation requires SSH, the API is incomplete)
