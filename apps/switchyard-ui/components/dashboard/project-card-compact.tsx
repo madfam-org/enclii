@@ -3,12 +3,6 @@
 import Link from "next/link";
 import { ExternalLink, GitBranch, Github } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/formatting";
 import { FrameworkIcon, FrameworkType } from "./framework-icon";
@@ -18,6 +12,9 @@ export interface CompactService {
   name: string;
   status: "running" | "pending" | "failed" | "deploying" | "unknown";
   health: "healthy" | "unhealthy" | "unknown";
+  version?: string;
+  replicas?: string;
+  environment?: string;
 }
 
 export interface CompactProject {
@@ -69,7 +66,7 @@ const aggregateStatusColor: Record<string, string> = {
   unknown: "bg-muted-foreground",
 };
 
-const MAX_VISIBLE_PILLS = 4;
+const MAX_VISIBLE_TABLE_ROWS = 5;
 
 function ServiceStatusSummary({ services }: { services: CompactService[] }) {
   const counts: Record<string, number> = {};
@@ -93,14 +90,17 @@ export function ProjectCardCompact({
   const aggregateStatus = project.aggregateStatus || "unknown";
   const dotColor = aggregateStatusColor[aggregateStatus] || "bg-muted-foreground";
 
-  const visibleServices = services.slice(0, MAX_VISIBLE_PILLS);
-  const overflowServices = services.slice(MAX_VISIBLE_PILLS);
+  const hasOverflow = services.length > MAX_VISIBLE_TABLE_ROWS;
+  const visibleServices = hasOverflow
+    ? services.slice(0, MAX_VISIBLE_TABLE_ROWS)
+    : services;
+  const overflowCount = services.length - MAX_VISIBLE_TABLE_ROWS;
 
   return (
     <Link href={`/projects/${project.slug}`} className="block">
       <Card
         className={cn(
-          "hover:border-primary/50 group relative flex min-h-[220px] flex-col justify-between p-4 transition-all duration-200 hover:shadow-lg",
+          "hover:border-primary/50 group relative flex min-h-[240px] flex-col justify-between p-4 transition-all duration-200 hover:shadow-lg",
           className,
         )}
       >
@@ -125,67 +125,78 @@ export function ProjectCardCompact({
           </div>
         </div>
 
-        {/* Row 2: Service status pills */}
+        {/* Row 2: Service table */}
         {services.length > 0 && (
-          <TooltipProvider delayDuration={200}>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {visibleServices.map((service) => (
-                <Tooltip key={service.id}>
-                  <TooltipTrigger asChild>
-                    <div className="bg-muted/50 hover:bg-muted flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors cursor-default">
-                      <div
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          serviceStatusColor[service.status] || "bg-muted-foreground",
-                        )}
-                      />
-                      <span className="max-w-[80px] truncate text-[10px] font-medium">
-                        {service.name}
-                      </span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs">
-                      <div className="font-medium">{service.name}</div>
-                      <div className="text-muted-foreground">
-                        {serviceStatusLabel[service.status] || "Unknown"} &middot;{" "}
-                        {service.health}
+          <div className="mt-2 overflow-hidden rounded border border-border/40">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="bg-muted/30 text-muted-foreground">
+                  <th className="py-1 pl-2 pr-1 text-left font-medium">Service</th>
+                  <th className="px-1 py-1 text-left font-medium">Status</th>
+                  <th className="px-1 py-1 text-right font-medium">Replicas</th>
+                  <th className="py-1 pl-1 pr-2 text-right font-medium">Env</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {visibleServices.map((service) => (
+                  <tr
+                    key={service.id}
+                    className="hover:bg-muted/20 transition-colors"
+                  >
+                    <td className="py-1 pl-2 pr-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div
+                          className={cn(
+                            "h-1.5 w-1.5 shrink-0 rounded-full",
+                            serviceStatusColor[service.status] ||
+                              "bg-muted-foreground",
+                          )}
+                        />
+                        <span className="truncate font-medium max-w-[100px]">
+                          {service.name}
+                        </span>
                       </div>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-              {overflowServices.length > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="bg-muted/50 hover:bg-muted flex items-center rounded-full px-2 py-0.5 transition-colors cursor-default">
-                      <span className="text-muted-foreground text-[10px] font-medium">
-                        +{overflowServices.length}
+                    </td>
+                    <td className="px-1 py-1">
+                      <span
+                        className={cn(
+                          "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none",
+                          service.status === "running" &&
+                            "bg-status-success/15 text-status-success",
+                          service.status === "failed" &&
+                            "bg-status-error/15 text-status-error",
+                          service.status === "pending" &&
+                            "bg-status-warning/15 text-status-warning",
+                          service.status === "deploying" &&
+                            "bg-status-info/15 text-status-info animate-pulse",
+                          service.status === "unknown" &&
+                            "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {serviceStatusLabel[service.status] || "Unknown"}
                       </span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs space-y-0.5">
-                      {overflowServices.map((s) => (
-                        <div key={s.id} className="flex items-center gap-1.5">
-                          <div
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full",
-                              serviceStatusColor[s.status] || "bg-muted-foreground",
-                            )}
-                          />
-                          <span>{s.name}</span>
-                          <span className="text-muted-foreground">
-                            {serviceStatusLabel[s.status] || "Unknown"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-          </TooltipProvider>
+                    </td>
+                    <td className="px-1 py-1 text-right text-muted-foreground tabular-nums">
+                      {service.replicas || "\u2014"}
+                    </td>
+                    <td className="py-1 pl-1 pr-2 text-right text-muted-foreground truncate max-w-[60px]">
+                      {service.environment || "\u2014"}
+                    </td>
+                  </tr>
+                ))}
+                {hasOverflow && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="py-1 text-center text-[10px] text-muted-foreground"
+                    >
+                      +{overflowCount} more service{overflowCount > 1 ? "s" : ""}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {/* Row 3: Commit message, description, or status summary */}
@@ -254,7 +265,7 @@ export function ProjectCardCompact({
 
 export function ProjectCardCompactSkeleton() {
   return (
-    <Card className="flex h-[220px] animate-pulse flex-col justify-between p-4">
+    <Card className="flex h-[240px] animate-pulse flex-col justify-between p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="bg-muted h-6 w-6 rounded" />
@@ -262,11 +273,11 @@ export function ProjectCardCompactSkeleton() {
         </div>
         <div className="bg-muted h-2.5 w-2.5 rounded-full" />
       </div>
-      {/* Service pills skeleton */}
-      <div className="mt-2 flex gap-1">
-        <div className="bg-muted h-5 w-16 rounded-full" />
-        <div className="bg-muted h-5 w-20 rounded-full" />
-        <div className="bg-muted h-5 w-14 rounded-full" />
+      {/* Service table skeleton */}
+      <div className="mt-2 space-y-1 rounded border border-border/40 p-2">
+        <div className="bg-muted h-3 w-full rounded" />
+        <div className="bg-muted h-3 w-5/6 rounded" />
+        <div className="bg-muted h-3 w-4/6 rounded" />
       </div>
       <div className="bg-muted mt-2 h-3 w-3/4 rounded" />
       <div className="bg-muted mt-2 h-3 w-1/2 rounded" />

@@ -44,6 +44,9 @@ interface ApiService {
   framework?: string;
   last_commit_message?: string;
   last_commit_branch?: string;
+  desired_replicas?: number;
+  ready_replicas?: number;
+  auto_deploy_env?: string;
 }
 
 const INITIAL_VISIBLE = 10;
@@ -117,6 +120,11 @@ export default function Dashboard() {
             health: (["healthy", "unhealthy"].includes(s.health)
               ? s.health
               : "unknown") as CompactService["health"],
+            replicas:
+              s.ready_replicas !== undefined && s.desired_replicas !== undefined
+                ? `${s.ready_replicas}/${s.desired_replicas}`
+                : undefined,
+            environment: s.auto_deploy_env || undefined,
           }));
 
           // Compute aggregate status
