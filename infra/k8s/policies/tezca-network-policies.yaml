@@ -219,6 +219,22 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    # tezca-redis in-namespace (cache + rate limiting + sessions)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tezca-redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # tezca-es in-namespace (search)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tezca-es
+      ports:
+        - protocol: TCP
+          port: 9200
 
 # Allow tezca-admin egress (DNS + HTTPS + PostgreSQL + Redis)
 ---
