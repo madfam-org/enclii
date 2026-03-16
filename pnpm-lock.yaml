@@ -74,6 +74,9 @@ importers:
       postcss:
         specifier: ^8.4.31
         version: 8.5.8
+      posthog-js:
+        specifier: ^1.236.0
+        version: 1.359.1
       react:
         specifier: ^18.2.0
         version: 18.3.1
