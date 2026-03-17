@@ -9,8 +9,8 @@ import { useEffect } from 'react'
 /**
  * Dispatch Login Page
  *
- * Redirects to Janua SSO for authentication.
- * Only admin@madfam.io is allowed to access Dispatch.
+ * SSO-only login via Janua (Enterprise SSO).
+ * Only authorized infrastructure operators may access Dispatch.
  */
 export default function LoginPage() {
   const { isAuthenticated, isLoading, login } = useAuth()
@@ -61,7 +61,7 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <Button onClick={login} className="w-full gap-2" size="lg">
-              Sign in with Janua SSO
+              Enterprise SSO
               <ArrowRight className="size-4" />
             </Button>
 
@@ -70,11 +70,24 @@ export default function LoginPage() {
               <span className="font-mono text-primary">auth.madfam.io</span>
             </p>
           </div>
+
+          {/* Legal Links */}
+          <p className="text-xs text-center text-muted-foreground">
+            By continuing, you agree to the{' '}
+            <a href="https://enclii.dev/terms" className="underline hover:text-foreground" target="_blank" rel="noopener noreferrer">
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a href="https://enclii.dev/privacy" className="underline hover:text-foreground" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </a>
+            .
+          </p>
         </div>
 
         {/* Footer */}
-        <p className="text-xs text-center text-muted-foreground">
-          admin.enclii.dev | Superuser Access Only
+        <p className="text-xs text-center text-muted-foreground opacity-60">
+          Powered by Janua
         </p>
       </div>
     </div>
