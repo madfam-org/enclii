@@ -236,7 +236,7 @@ spec:
         - protocol: TCP
           port: 9200
 
-# Allow tezca-admin egress (DNS + HTTPS + PostgreSQL + Redis)
+# Allow tezca-admin egress (DNS + HTTPS + PostgreSQL + Redis + Janua)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -287,6 +287,17 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    # Janua API for server-side SSO (internal ClusterIP)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: janua
+          podSelector:
+            matchLabels:
+              app: janua-api
+      ports:
+        - protocol: TCP
+          port: 80
 
 # Allow ingress to tezca-redis from api, worker, beat (Celery broker + cache)
 ---
