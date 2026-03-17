@@ -266,13 +266,13 @@ jobs:
             COV=$(go tool cover -func="$mod/coverage.out" | grep "total:" | awk '{print $NF}' | sed 's/%//')
             [ -z "$COV" ] && continue
             echo "$mod: ${COV}%"
-            if [ "$(echo "$COV < 40" | bc -l)" -eq 1 ]; then
-              echo "::error::$mod coverage ${COV}% below 40% threshold"
+            if [ "$(echo "$COV < 50" | bc -l)" -eq 1 ]; then
+              echo "::error::$mod coverage ${COV}% below 50% threshold"
               FAILED=1
             fi
           done
           [ "${FAILED}" -eq 1 ] && exit 1
-          echo "All modules meet 40% coverage threshold"
+          echo "All modules meet 50% coverage threshold"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

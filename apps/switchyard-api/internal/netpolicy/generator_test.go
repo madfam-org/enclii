@@ -501,6 +501,71 @@ func TestGeneratePolicies_HTTPEgress(t *testing.T) {
 	assertContains(t, yaml, "port: 443")
 }
 
+func TestGeneratePolicies_PgBouncerEgress(t *testing.T) {
+	// Simulates autoswarm-nexus-api: needs DNS + HTTPS + pgbouncer (connection pooling)
+	spec := NetworkSpec{
+		Services: []ServiceSpec{
+			{
+				Name:    "nexus-api",
+				Label:   "app",
+				Port:    4400,
+				Ingress: []string{"cloudflare-tunnel"},
+				Egress:  []string{"dns", "https", "pgbouncer"},
+			},
+		},
+	}
+
+	out, err := GeneratePolicies("autoswarm", "autoswarm", spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yaml := string(out)
+
+	// Ingress policy present
+	assertContains(t, yaml, "name: nexus-api-ingress")
+
+	// Egress policy with pgbouncer rule
+	assertContains(t, yaml, "name: nexus-api-egress")
+	assertContains(t, yaml, "PgBouncer")
+	assertContains(t, yaml, "kubernetes.io/metadata.name: data")
+	assertContains(t, yaml, "app: pgbouncer")
+	assertContains(t, yaml, "port: 6432")
+
+	// Standard egress types
+	assertContains(t, yaml, "port: 53")
+	assertContains(t, yaml, "port: 443")
+
+	// No postgres (pgbouncer replaces direct postgres access)
+	assertNotContains(t, yaml, "port: 5432")
+	assertNotContains(t, yaml, "port: 6379")
+}
+
+func TestGeneratePolicies_PgBouncerAndPostgres(t *testing.T) {
+	// Service that needs both direct postgres and pgbouncer access
+	spec := NetworkSpec{
+		Services: []ServiceSpec{
+			{
+				Name:   "migration-runner",
+				Port:   0,
+				Egress: []string{"dns", "postgres", "pgbouncer"},
+			},
+		},
+	}
+
+	out, err := GeneratePolicies("test-ns", "test", spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "name: migration-runner-egress")
+	// Both postgres and pgbouncer rules present
+	assertContains(t, yaml, "port: 5432")
+	assertContains(t, yaml, "port: 6432")
+	assertContains(t, yaml, "app: postgres")
+	assertContains(t, yaml, "app: pgbouncer")
+}
+
 // helpers
 
 func assertContains(t *testing.T, haystack, needle string) {

@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -457,6 +459,94 @@ func (c *Client) RollbackDeployment(ctx context.Context, name, namespace string)
 	}
 
 	return nil
+}
+
+// ApplyNetworkPolicies parses multi-document YAML containing NetworkPolicy
+// resources and applies each to the cluster via create-or-update. Returns the
+// number of policies applied and any error. This replaces the previous pattern
+// of committing NetworkPolicy YAML to git for ArgoCD sync.
+func (c *Client) ApplyNetworkPolicies(ctx context.Context, namespace string, yamlBytes []byte) (int, error) {
+	npClient := c.Clientset.NetworkingV1().NetworkPolicies(namespace)
+	applied := 0
+
+	// Split multi-document YAML
+	docs := splitYAMLDocuments(yamlBytes)
+	for _, doc := range docs {
+		if len(doc) == 0 {
+			continue
+		}
+
+		var np networkingv1.NetworkPolicy
+		if err := yamlDecodeNetworkPolicy(doc, &np); err != nil {
+			// Skip non-NetworkPolicy documents (comments, empty docs)
+			continue
+		}
+		if np.Kind != "NetworkPolicy" && np.Kind != "" {
+			continue
+		}
+		if np.Name == "" {
+			continue
+		}
+
+		// Override namespace to match the target
+		np.Namespace = namespace
+
+		existing, err := npClient.Get(ctx, np.Name, metav1.GetOptions{})
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return applied, fmt.Errorf("check existing NetworkPolicy %s: %w", np.Name, err)
+			}
+			// Create new
+			if _, err := npClient.Create(ctx, &np, metav1.CreateOptions{}); err != nil {
+				return applied, fmt.Errorf("create NetworkPolicy %s: %w", np.Name, err)
+			}
+		} else {
+			// Update existing — preserve resourceVersion
+			np.ResourceVersion = existing.ResourceVersion
+			if _, err := npClient.Update(ctx, &np, metav1.UpdateOptions{}); err != nil {
+				return applied, fmt.Errorf("update NetworkPolicy %s: %w", np.Name, err)
+			}
+		}
+		applied++
+	}
+
+	return applied, nil
+}
+
+// splitYAMLDocuments splits a multi-document YAML byte slice on "---" separators.
+func splitYAMLDocuments(data []byte) [][]byte {
+	var docs [][]byte
+	lines := strings.Split(string(data), "\n")
+	var current []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "---" {
+			if len(current) > 0 {
+				docs = append(docs, []byte(strings.Join(current, "\n")))
+				current = nil
+			}
+			continue
+		}
+		current = append(current, line)
+	}
+	if len(current) > 0 {
+		docs = append(docs, []byte(strings.Join(current, "\n")))
+	}
+	return docs
+}
+
+// yamlDecodeNetworkPolicy decodes YAML bytes into a NetworkPolicy, skipping
+// comment-only or empty documents gracefully.
+func yamlDecodeNetworkPolicy(data []byte, np *networkingv1.NetworkPolicy) error {
+	jsonData, err := sigsyaml.YAMLToJSON(data)
+	if err != nil {
+		return err
+	}
+	// Skip empty/null JSON documents
+	s := strings.TrimSpace(string(jsonData))
+	if s == "" || s == "null" || s == "{}" {
+		return fmt.Errorf("empty document")
+	}
+	return json.Unmarshal(jsonData, np)
 }
 
 // resolveGVR maps an apiVersion + kind to a GroupVersionResource using the discovery API.

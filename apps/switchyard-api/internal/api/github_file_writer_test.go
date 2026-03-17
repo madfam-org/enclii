@@ -61,6 +61,15 @@ func TestListGitHubDirectory(t *testing.T) {
 			3,
 			false,
 		},
+		{
+			"server error",
+			func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`{"message":"Internal Server Error"}`))
+			},
+			0,
+			true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -68,24 +77,67 @@ func TestListGitHubDirectory(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			// We can't easily override the GitHub API URL in listGitHubDirectory
-			// since it's hardcoded, but we test the parsing logic with the response structures.
-			// For integration testing, this would be tested against a mock GitHub API.
-			_ = server // Placeholder for integration test wiring
+			ctx := context.Background()
+			files, err := listGitHubDirectoryWithBaseURL(ctx, "fake-token", "owner", "repo", "k8s/production", "main", server.URL)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && len(files) != tt.wantFiles {
+				t.Errorf("got %d files, want %d", len(files), tt.wantFiles)
+			}
 		})
 	}
 }
 
-func TestListGitHubDirectoryIntegration(t *testing.T) {
-	// This test validates the HTTP client logic using a local mock server.
-	// It requires overriding the GitHub API base URL, which the current code doesn't support.
-	// Skipping until we add a configurable base URL or use an HTTP interceptor.
-	t.Skip("requires configurable GitHub API base URL for mock server injection")
+func TestListGitHubDirectory_AuthHeader(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
 
 	ctx := context.Background()
-	files, err := listGitHubDirectory(ctx, "fake-token", "owner", "repo", "k8s/production", "main")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, _ = listGitHubDirectoryWithBaseURL(ctx, "test-token-123", "owner", "repo", "path", "", server.URL)
+
+	if gotAuth != "Bearer test-token-123" {
+		t.Errorf("expected Authorization header 'Bearer test-token-123', got %q", gotAuth)
 	}
-	_ = files
+}
+
+func TestListGitHubDirectory_NoToken(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	_, _ = listGitHubDirectoryWithBaseURL(ctx, "", "owner", "repo", "path", "", server.URL)
+
+	if gotAuth != "" {
+		t.Errorf("expected no Authorization header when token is empty, got %q", gotAuth)
+	}
+}
+
+func TestListGitHubDirectory_RefParam(t *testing.T) {
+	var gotURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	_, _ = listGitHubDirectoryWithBaseURL(ctx, "", "owner", "repo", "k8s/prod", "develop", server.URL)
+
+	expected := "/repos/owner/repo/contents/k8s/prod?ref=develop"
+	if gotURL != expected {
+		t.Errorf("expected URL %q, got %q", expected, gotURL)
+	}
 }
