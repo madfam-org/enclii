@@ -166,6 +166,23 @@ Key vars for local development (set in `.env`):
 - Budget alerts at 80% threshold
 - Hard throttle at 100% for non-production environments
 
+### CLI Preference
+- **ALWAYS prefer `enclii` CLI over `kubectl`** for operational tasks — the CLI is the canonical interface for both internal operations and client platforms:
+  - Service status: `enclii ps` (not `kubectl get pods`)
+  - Logs: `enclii logs <service> -f` (not `kubectl logs`)
+  - Deployments: `enclii deploy --env <env>` (not `kubectl set image`)
+  - Rollbacks: `enclii rollback <service>` (not `kubectl rollout undo`)
+  - Secrets: `enclii secrets set KEY=VALUE --secret` (not `kubectl create secret`)
+  - Domains/routing: `enclii domains add <domain>` (not manual tunnel config)
+  - Onboarding: `enclii onboard --repo org/name` (not manual namespace/ArgoCD setup)
+- **Use `kubectl` only when** no enclii CLI equivalent exists:
+  - Kyverno PolicyExceptions and raw CRD management
+  - ArgoCD application sync/patch operations
+  - Storage/PVC operations, node management
+  - Direct pod debugging (`kubectl exec`, `kubectl port-forward`)
+  - Janua DB operations (no enclii equivalent)
+- **Rationale**: The enclii CLI routes through the Switchyard API, providing audit logging, lifecycle event tracking, service-scoped context, and consistent behavior across all platforms that consume the CLI
+
 ## Production Infrastructure
 
 ### Current Production Stack
@@ -730,6 +747,7 @@ This section defines the operating protocol for AI agents (Claude Code, GitHub C
    - TypeScript: `pnpm typecheck && pnpm lint`
 3. **UPDATE TodoWrite** after completing each task
 4. **CHECKPOINT every 30 minutes** via `write_memory()` for session persistence
+5. **PREFER `enclii` CLI over `kubectl`** for all operational tasks — see "CLI Preference" under Important Conventions
 
 ### Secret Management Protocols (Safe-Patch Mode)
 **High-Value Targets**: You are PERMITTED to edit `.env` and `.env.local` files, but MUST adhere to:
