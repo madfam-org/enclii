@@ -58,7 +58,7 @@ Mapping of SOC 2 Trust Services Criteria to Enclii platform implementations.
 | CC6.5 -- Access removal | Session management via Redis, SSO logout (RP-Initiated) | Redis session store, Janua logout endpoint | Active |
 | CC6.6 -- System boundaries | Cloudflare edge TLS, zero NodePorts, tunnel-only ingress | Cloudflare tunnel config | Active |
 | CC6.7 -- Transmission security | TLS everywhere (Cloudflare edge to tunnel), encrypted Redis/PG connections | Cloudflare TLS, k8s service mesh | Active |
-| CC6.8 -- Unauthorized access prevention | Kyverno policies, pod security restricted profile | `infra/k8s/policies/dhanam-quota.yaml` | Active |
+| CC6.8 -- Unauthorized access prevention | Kyverno policies, pod security restricted profile, per-namespace quotas | `infra/k8s/policies/enclii-quota.yaml`, ecosystem `enclii.yaml` quota sections | Active |
 
 ## CC7 -- System Operations
 
