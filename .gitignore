@@ -118,3 +118,6 @@ tests/load/results/
 
 # Docusaurus build cache
 .docusaurus/
+
+# Private operational repo (cloned for reference only)
+internal-devops/

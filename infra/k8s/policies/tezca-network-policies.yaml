@@ -287,7 +287,7 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
-    # Janua API for server-side SSO (internal ClusterIP)
+    # Janua API for server-side SSO (pod port 8080 — kube-proxy DNAT resolves before NP eval)
     - to:
         - namespaceSelector:
             matchLabels:
@@ -297,7 +297,7 @@ spec:
               app: janua-api
       ports:
         - protocol: TCP
-          port: 80
+          port: 8080
 
 # Allow ingress to tezca-redis from api, worker, beat (Celery broker + cache)
 ---

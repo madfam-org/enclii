@@ -17,6 +17,10 @@ spec:
       ruleNames:
         - verify-image
         - autogen-verify-image
+    - policyName: block-host-ports
+      ruleNames:
+        - autogen-deny-host-ports
+        - deny-host-ports
     - policyName: require-health-probes
       ruleNames:
         - require-liveness-probe

@@ -191,6 +191,22 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    # MinIO in-namespace (object storage for industry data)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: forgesight-minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    # OpenSearch in-namespace (search index)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: forgesight-opensearch
+      ports:
+        - protocol: TCP
+          port: 9200
 
 # Allow forgesight-www egress (DNS only — static site)
 ---
