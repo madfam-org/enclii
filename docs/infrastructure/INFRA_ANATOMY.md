@@ -894,7 +894,7 @@ kubectl get nodes -o wide
 
 7. **Dhanam ResourceQuota Increased** (rolling update headroom)
    - CPU: 4→6, memory: 6→8Gi
-   - File: `infra/k8s/policies/dhanam-quota.yaml`
+   - File: `dhanam/enclii.yaml` (quota section; previously `infra/k8s/policies/dhanam-quota.yaml`)
 
 8. **Dhanam Container Name Mismatch Fixed**
    - Manifest `web` → `dhanam-web` to match live deployment (strategic merge patch key)

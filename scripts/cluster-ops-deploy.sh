@@ -256,7 +256,7 @@ phase_network_policies() {
   done
 
   # Quotas (safe, non-breaking)
-  for policy in enclii-quota janua-quota dhanam-quota; do
+  for policy in enclii-quota janua-quota; do
     local file="${POLICY_DIR}/${policy}.yaml"
     if [[ -f "$file" ]]; then
       log "Applying ${policy}.yaml..."
