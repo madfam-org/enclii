@@ -273,9 +273,9 @@ make precommit          # All checks before committing
 | Symptom | Check | Fix |
 |---------|-------|-----|
 | API 500 errors | `enclii logs switchyard-api` | Check DB connection, env vars |
-| Build stuck | `kubectl get jobs -n enclii-builds` | Restart Roundhouse worker |
+| Build stuck | `enclii builds logs --latest` | Restart Roundhouse worker |
 | Auth fails | `curl .../jwks.json` | Check Janua status, OIDC config |
-| Deploy timeout | `kubectl describe deploy` | Check resource limits, probes |
+| Deploy timeout | `enclii ps --wide` | Check resource limits, probes |
 | SSL errors | Cert-manager logs | Check issuer, DNS |
 
 ---

@@ -402,14 +402,13 @@ kubectl exec -n enclii deploy/switchyard-api -- psql "$DATABASE_URL" -c "\dt"
 # Check API health
 curl https://api.enclii.dev/health
 
-# View API logs
+# View API logs (prefer enclii CLI)
 enclii logs switchyard-api -f --level error
 
-# Check database connectivity
+# Check database connectivity (kubectl — no CLI equivalent)
 kubectl exec -n enclii deploy/switchyard-api -- /app/healthcheck db
 
-# Inspect pod status
-kubectl get pods -n enclii -l app=switchyard-api
+# Inspect pod status (kubectl — direct pod debugging)
 kubectl describe pod -n enclii <pod-name>
 ```
 
@@ -419,10 +418,10 @@ kubectl describe pod -n enclii <pod-name>
 # View build logs
 enclii builds logs --latest
 
-# Check Roundhouse worker status
+# Check Roundhouse worker status (kubectl — internal platform service)
 kubectl logs -n enclii -l app=roundhouse -f
 
-# Inspect build job
+# Inspect build job (kubectl — raw job debugging)
 kubectl get jobs -n enclii-builds
 kubectl logs -n enclii-builds job/<job-name>
 ```
@@ -430,16 +429,17 @@ kubectl logs -n enclii-builds job/<job-name>
 ### Deployment Issues
 
 ```bash
-# Check deployment status
+# Check deployment status (prefer enclii CLI)
 enclii ps --wide
 
-# View reconciler logs
-kubectl logs -n enclii -l app=reconciler -f
+# View service logs
+enclii logs <service> -f
 
-# Inspect Kubernetes deployment
-kubectl get deploy -n <namespace>
+# Rollback if needed
+enclii rollback <service>
+
+# Direct pod debugging (kubectl — when CLI doesn't expose enough detail)
 kubectl describe deploy -n <namespace> <service>
-kubectl rollout status deploy/<service> -n <namespace>
 ```
 
 ### Auth/SSO Issues
@@ -451,7 +451,7 @@ curl https://auth.madfam.io/.well-known/jwks.json | jq
 # Verify token (CLI)
 enclii auth verify
 
-# Check Janua logs
+# Check Janua logs (kubectl — Janua is a separate service, no enclii equivalent)
 kubectl logs -n janua -l app=janua-api -f
 ```
 
@@ -703,9 +703,9 @@ pnpm test:e2e
 | Symptom | Check | Fix |
 |---------|-------|-----|
 | API 500 errors | `enclii logs switchyard-api` | Check DB connection, env vars |
-| Build stuck | `kubectl get jobs -n enclii-builds` | Restart Roundhouse worker |
+| Build stuck | `enclii builds logs --latest` | Restart Roundhouse worker |
 | Auth fails | `curl .../jwks.json` | Check Janua status, OIDC config |
-| Deploy timeout | `kubectl describe deploy` | Check resource limits, probes |
+| Deploy timeout | `enclii ps --wide` | Check resource limits, probes |
 | Preview not created | Webhook logs | Verify GitHub integration |
 | SSL errors | Cert-manager logs | Check issuer, DNS |
 
@@ -721,7 +721,7 @@ pnpm test:e2e
 | Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold raised from 40% to 50% (Session 97). Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (47 cmd tests), SDK (30 client+type tests), dispatch (123 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests), provenance (42 tests), signing (8 tests), addons (6 tests) |
+| Test coverage enforcement | Active | CI threshold raised from 40% to 50% (Session 97). Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (82 cmd tests — secrets, domains, ps, logs, rollback added Session 99), SDK (30 client+type tests), dispatch (123 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests), provenance (42 tests), signing (8 tests), addons (6 tests) |
 | Vault (secret management) | Ready | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel + autoswarm live in their own repos (self-provisioning pattern, not in enclii) |
 | PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud. All repos point to `analytics.madfam.io`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
 | react-sdk pre-existing test failures | Known debt | 10 tests in `@janua/react-sdk` (hook/component tests with `@janua/ui` ESM + JanuaProvider context issues). Barrel export test (47 tests) passes clean. `\|\| true` removed in Session 95 |

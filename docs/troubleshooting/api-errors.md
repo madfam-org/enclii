@@ -176,9 +176,13 @@ Rate limits:
 
 1. **Retry the request** - transient errors may resolve
 2. **Check status page** - https://status.enclii.dev
-3. **Review API logs** (if you have cluster access):
+3. **Review API logs**:
 
 ```bash
+# Prefer enclii CLI
+enclii logs switchyard-api -n 50
+
+# Or via kubectl if you need raw pod logs
 kubectl logs -n enclii deploy/switchyard-api --tail=50
 ```
 
@@ -206,10 +210,13 @@ kubectl logs -n enclii deploy/switchyard-api --tail=50
 curl https://api.enclii.dev/health
 ```
 
-3. **Verify infrastructure** (if you have access):
+3. **Verify infrastructure**:
 
 ```bash
-kubectl get pods -n enclii
+# Service status via CLI
+enclii ps
+
+# Direct pod debugging (kubectl — when you need K8s event details)
 kubectl describe pod -n enclii <pod-name>
 ```
 

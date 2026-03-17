@@ -44,9 +44,11 @@ enclii logs <service-name> -f
 
 **Solutions**:
 
-1. **Check pod events**:
+1. **Check service logs for startup errors**:
 ```bash
-# Via CLI (if you have cluster access)
+enclii logs <service-name> --previous
+
+# Direct pod debugging (kubectl — when you need K8s event details)
 kubectl describe pod -n <namespace> -l app=<service>
 ```
 
@@ -167,7 +169,7 @@ docker run --env-file .env <image>
 docker pull ghcr.io/madfam-org/<service>:<tag>
 ```
 
-2. **Check registry credentials**:
+2. **Check registry credentials** (kubectl — raw secret inspection):
 ```bash
 kubectl get secret -n <namespace> registry-pull-secret -o yaml
 ```
@@ -187,7 +189,7 @@ kubectl get secret -n <namespace> registry-pull-secret -o yaml
 
 **Solutions**:
 
-1. **Check current resource usage**:
+1. **Check current resource usage** (kubectl — metrics-server query):
 ```bash
 kubectl top pod -n <namespace> -l app=<service>
 ```
@@ -236,7 +238,7 @@ enclii releases list --service <service-id>
 
 **Solutions**:
 
-1. **Check cluster capacity** (admin):
+1. **Check cluster capacity** (kubectl — node-level inspection, no CLI equivalent):
 ```bash
 kubectl describe nodes | grep -A5 "Allocated resources"
 ```
@@ -294,16 +296,16 @@ enclii ps --watch
 enclii logs <service-name> -f
 ```
 
-### Via kubectl (Admin Access)
+### Via kubectl (Admin Access — when CLI doesn't expose enough detail)
 
 ```bash
-# Watch rollout status
+# Direct K8s rollout status
 kubectl rollout status deployment/<service> -n <namespace>
 
 # View deployment events
 kubectl describe deployment/<service> -n <namespace>
 
-# Check pod status
+# Watch pod status
 kubectl get pods -n <namespace> -l app=<service> -w
 ```
 
