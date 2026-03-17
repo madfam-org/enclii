@@ -415,6 +415,71 @@ func TestGeneratePolicies_WorkerBeatEgress(t *testing.T) {
 	}
 }
 
+func TestGeneratePolicies_JanuaEgress(t *testing.T) {
+	// Simulates tezca-admin: cloudflare ingress + DNS + HTTPS + janua + postgres + redis
+	spec := NetworkSpec{
+		Services: []ServiceSpec{
+			{
+				Name:    "tezca-admin",
+				Label:   "app.kubernetes.io/name",
+				Port:    3001,
+				Ingress: []string{"cloudflare-tunnel"},
+				Egress:  []string{"dns", "https", "janua", "postgres", "redis"},
+			},
+		},
+	}
+
+	out, err := GeneratePolicies("tezca", "tezca", spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yaml := string(out)
+
+	// Ingress policy present
+	assertContains(t, yaml, "name: tezca-admin-ingress")
+	assertContains(t, yaml, "port: 3001")
+
+	// Egress policy with janua SSO rule
+	assertContains(t, yaml, "name: tezca-admin-egress")
+	assertContains(t, yaml, "Janua SSO")
+	assertContains(t, yaml, "kubernetes.io/metadata.name: janua")
+	assertContains(t, yaml, "app: janua-api")
+	assertContains(t, yaml, "port: 8080")
+
+	// Other egress types still present
+	assertContains(t, yaml, "port: 53")
+	assertContains(t, yaml, "port: 443")
+	assertContains(t, yaml, "port: 5432")
+	assertContains(t, yaml, "port: 6379")
+}
+
+func TestGeneratePolicies_JanuaEgressOnly(t *testing.T) {
+	// Service that only needs DNS + janua (no other egress)
+	spec := NetworkSpec{
+		Services: []ServiceSpec{
+			{
+				Name:   "auth-proxy",
+				Port:   0,
+				Egress: []string{"dns", "janua"},
+			},
+		},
+	}
+
+	out, err := GeneratePolicies("test-ns", "test", spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "name: auth-proxy-egress")
+	assertContains(t, yaml, "kubernetes.io/metadata.name: janua")
+	assertContains(t, yaml, "app: janua-api")
+	assertContains(t, yaml, "port: 8080")
+	// No postgres or redis
+	assertNotContains(t, yaml, "port: 5432")
+	assertNotContains(t, yaml, "port: 6379")
+}
+
 func TestGeneratePolicies_HTTPEgress(t *testing.T) {
 	spec := NetworkSpec{
 		Services: []ServiceSpec{

@@ -36,7 +36,8 @@ spec:
   policyTypes:
     - Egress
 
-# Allow Cloudflare tunnel + tezca namespace → janua-api (port 8080)
+# Allow Cloudflare tunnel + application namespaces → janua-api (port 8080)
+# Uses label selector — any namespace with enclii.dev/type=application gets access
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -54,12 +55,14 @@ spec:
     - Ingress
   ingress:
     - from:
+        # Browser SSO via Cloudflare tunnel
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: cloudflare-tunnel
+        # Server-side SSO from all application namespaces
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: tezca
+              enclii.dev/type: application
       ports:
         - protocol: TCP
           port: 8080

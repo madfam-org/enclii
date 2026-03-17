@@ -3,8 +3,8 @@
 # =============================================================================
 # Default-deny + explicit allow rules for the shared data namespace.
 # Contains: PostgreSQL (5432), PgBouncer (6432), Redis (6379), backup CronJobs.
-# Accessed by: enclii, janua, dhanam, tezca, data, forgesight, karafiel,
-#              pravara-mes, madfam-site, yantra4d, posthog, autoswarm
+# Uses label selectors — new namespaces auto-gain access via EnsureNamespace()
+# labels (enclii.dev/data-access: "true"). No manual edits needed for onboarding.
 # Managed by enclii repo, synced via ArgoCD network-policies Application.
 # =============================================================================
 
@@ -39,8 +39,7 @@ spec:
     - Egress
 
 # Allow application namespaces -> PostgreSQL (port 5432)
-# When adding a new namespace, add a namespaceSelector entry below AND apply live:
-#   kubectl apply -f infra/k8s/policies/data-network-policies.yaml
+# Uses label selector — any namespace with enclii.dev/data-access=true gets access
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -60,40 +59,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: enclii
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: janua
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: dhanam
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: tezca
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: data
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: forgesight
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: karafiel
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: pravara-mes
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: madfam-site
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: yantra4d
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: posthog
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: autoswarm
+              enclii.dev/data-access: "true"
       ports:
         - protocol: TCP
           port: 5432
@@ -118,40 +84,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: enclii
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: janua
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: dhanam
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: tezca
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: data
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: forgesight
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: karafiel
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: pravara-mes
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: madfam-site
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: yantra4d
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: posthog
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: autoswarm
+              enclii.dev/data-access: "true"
       ports:
         - protocol: TCP
           port: 6379
@@ -176,40 +109,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: enclii
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: janua
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: dhanam
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: tezca
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: data
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: forgesight
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: karafiel
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: pravara-mes
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: madfam-site
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: yantra4d
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: posthog
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: autoswarm
+              enclii.dev/data-access: "true"
       ports:
         - protocol: TCP
           port: 6432

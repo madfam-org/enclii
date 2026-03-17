@@ -89,7 +89,7 @@ Do **not** modify these core repos to onboard a new app:
 
 | Repo | What NOT to do |
 |------|----------------|
-| `enclii` | Add routes to tunnel config, add NetworkPolicies for your app, add CORS origins, add status monitors |
+| `enclii` | Add routes to tunnel config, add hardcoded namespace entries to NetworkPolicies, add CORS origins, add status monitors |
 | `janua` | Add OAuth clients to seed script, add CORS origins to K8s deployment, create OAuth client YAML files |
 | `dhanam` | Add hardcoded URLs or fallbacks referencing your app |
 
@@ -97,7 +97,7 @@ Do **not** modify these core repos to onboard a new app:
 
 These are infra ops performed by a platform operator, not code changes:
 
-1. **Namespace labels**: `kubectl label ns ${NAMESPACE} enclii.dev/data-access=true` (if the app needs shared DB/Redis access)
+1. **Namespace labels**: Automatic — `EnsureNamespace()` applies `enclii.dev/data-access=true` and `enclii.dev/type=application` during onboarding. Platform NetworkPolicies use label selectors, so new namespaces auto-gain access to shared data (PostgreSQL, Redis, PgBouncer) and Janua SSO with no manual steps.
 2. **K8s secrets**: Create secrets for DB credentials, API keys, etc.
 3. **GitHub secrets**: Add `ENCLII_CALLBACK_TOKEN`, `MADFAM_BOT_PAT` to the repo
 4. **GitHub team access**: Grant `automation` team write access for CI digest commits

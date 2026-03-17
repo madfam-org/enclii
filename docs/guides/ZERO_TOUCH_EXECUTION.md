@@ -130,6 +130,9 @@ chmod +x scripts/onboard-${APP_NAME}.sh
 ```
 
 ### Phase 2: Namespace Only
+
+> **Note**: For Enclii-managed apps, use `POST /v1/admin/onboard` instead — `EnsureNamespace()` auto-applies all required labels (`enclii.dev/data-access=true`, `enclii.dev/type=application`) which grant access to shared data services and Janua SSO via label-based NetworkPolicies.
+
 ```bash
 kubectl create namespace ${APP_NAME}-production --dry-run=client -o yaml | kubectl apply -f -
 kubectl label namespace ${APP_NAME}-production client=${APP_NAME} managed-by=madfam

@@ -76,7 +76,7 @@ The `network.services` section auto-generates Kubernetes NetworkPolicies during 
 | `label` | No | `app` | Label key for pod selector |
 | `port` | Yes | - | Container port for ingress |
 | `ingress` | No | `[]` | Ingress sources: `cloudflare-tunnel` |
-| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis` |
+| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis`, `janua` |
 
 For intra-namespace communication (e.g., nginx proxy → backend), use `network.custom`:
 
@@ -155,7 +155,7 @@ The onboarding pipeline executes a multi-step provisioning workflow:
 4. **Validates manifest path** — checks the directory exists in the repo and contains YAML files
 5. Generates ArgoCD `config.json` for the ApplicationSet
 6. **Auto-commits** `config.json` to `infra/argocd/projects/<name>/` in the enclii repo (no manual step)
-7. Creates K8s namespace with labels, **default-deny NetworkPolicy** (DNS-only egress), and copies GHCR credentials
+7. Creates K8s namespace with labels (`enclii.dev/data-access=true`, `enclii.dev/type=application`), **default-deny NetworkPolicy** (DNS-only egress), and copies GHCR credentials. These labels auto-grant access to shared data services (PostgreSQL, Redis, PgBouncer) and Janua SSO — no manual NetworkPolicy edits needed.
 8. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
 9. Registers onboarding in DB
 10. Creates Postgres database + role, updates PgBouncer *(if requested)* — PgBouncer userlist is bootstrapped automatically if absent

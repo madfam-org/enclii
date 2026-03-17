@@ -24,7 +24,7 @@ type ServiceSpec struct {
 	Label   string   // label key (default "app")
 	Port    int      // container port for ingress
 	Ingress []string // e.g. ["cloudflare-tunnel"]
-	Egress  []string // e.g. ["dns","https","postgres","redis","http"]
+	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua"]
 }
 
 // CustomRule declares a custom network policy rule.
@@ -158,6 +158,9 @@ func egressCategories(svc ServiceSpec) []string {
 	if svc.hasEgress("redis") {
 		cats = append(cats, "Redis")
 	}
+	if svc.hasEgress("janua") {
+		cats = append(cats, "Janua SSO")
+	}
 	return cats
 }
 
@@ -232,6 +235,22 @@ func buildEgressRules(svc ServiceSpec) []egressRule {
       ports:
         - protocol: TCP
           port: 6379`,
+		})
+	}
+
+	if svc.hasEgress("janua") {
+		rules = append(rules, egressRule{
+			Comment: "Janua SSO in janua namespace",
+			YAML: `    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: janua
+          podSelector:
+            matchLabels:
+              app: janua-api
+      ports:
+        - protocol: TCP
+          port: 8080`,
 		})
 	}
 

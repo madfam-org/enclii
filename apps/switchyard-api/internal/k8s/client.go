@@ -113,6 +113,14 @@ func (c *Client) DeployService(ctx context.Context, spec *DeploymentSpec) error 
 	return nil
 }
 
+// EnsureNamespace creates a K8s namespace (or ensures required labels on an existing one).
+// Labels applied:
+//   - enclii.dev/type=application — grants Janua SSO ingress via janua-api-ingress policy
+//   - enclii.dev/data-access=true — grants PostgreSQL, Redis, PgBouncer access via data-network-policies
+//   - enclii.dev/verify-signatures=true — Kyverno image signature enforcement
+//
+// These labels power label-based NetworkPolicies so new namespaces auto-gain
+// access to shared platform services without editing any policy files.
 func (c *Client) EnsureNamespace(ctx context.Context, namespace string) error {
 	existing, err := c.Clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil {
