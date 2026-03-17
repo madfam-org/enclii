@@ -7,9 +7,9 @@ tags: [production, deployment, checklist, operations]
 
 # Enclii Production Deployment Checklist
 
-**Status:** Production Beta v0.1.0
-**Last Updated:** March 15, 2026
-**Last Audit:** Full Platform Remediation (Mar 15, 2026)
+**Status:** Production Release Candidate v0.1.0
+**Last Updated:** March 16, 2026
+**Last Audit:** Gap Remediation Sprint (Mar 16, 2026)
 
 ---
 
@@ -94,6 +94,9 @@ tags: [production, deployment, checklist, operations]
 - [x] NetworkPolicies for status namespace (default-deny + allow)
 - [x] Cloudflare Zero Trust ingress
 - [x] Default-deny for all 14 workload namespaces; 6 infra namespaces exempt by design (`enclii.dev/type: infrastructure`)
+- [x] Ecosystem NetworkPolicies auto-generated from `enclii.yaml` `network:` section (zero-touch — Session 96)
+- [x] Onboarding handler applies NetworkPolicies via K8s API (replaces git-commit path — Session 97)
+- [x] PgBouncer egress type added to netpolicy generator (port 6432 — Session 97)
 
 ### Image Security
 - [x] Kyverno `restrict-image-registries` in **Enforce** mode

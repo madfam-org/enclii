@@ -64,11 +64,21 @@ func TestComputeOnboardStatus(t *testing.T) {
 			"completed",
 		},
 		{
-			"network_policies failure is non-critical",
+			"network_policies failure is non-critical (generation error)",
 			[]stepResult{
 				{Name: "namespace", Critical: true, Err: nil, Status: "ok"},
 				{Name: "argocd_config", Critical: true, Err: nil, Status: "ok"},
 				{Name: "network_policies", Critical: false, Err: fmt.Errorf("generation failed"), Status: "failed"},
+				{Name: "registry_credentials", Critical: false, Err: nil, Status: "ok"},
+			},
+			"partial",
+		},
+		{
+			"network_policies failure is non-critical (k8s apply error)",
+			[]stepResult{
+				{Name: "namespace", Critical: true, Err: nil, Status: "ok"},
+				{Name: "argocd_config", Critical: true, Err: nil, Status: "ok"},
+				{Name: "network_policies", Critical: false, Err: fmt.Errorf("applied 2 policies before error: create NetworkPolicy foo: forbidden"), Status: "failed"},
 				{Name: "registry_credentials", Critical: false, Err: nil, Status: "ok"},
 			},
 			"partial",

@@ -76,7 +76,7 @@ The `network.services` section auto-generates Kubernetes NetworkPolicies during 
 | `label` | No | `app` | Label key for pod selector |
 | `port` | Yes | - | Container port for ingress |
 | `ingress` | No | `[]` | Ingress sources: `cloudflare-tunnel` |
-| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis`, `janua` |
+| `egress` | No | `[]` | Egress types: `dns`, `https`, `http`, `postgres`, `redis`, `janua`, `pgbouncer` |
 
 For intra-namespace communication (e.g., nginx proxy → backend), use `network.custom`:
 

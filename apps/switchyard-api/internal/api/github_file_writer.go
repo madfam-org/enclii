@@ -34,10 +34,20 @@ type gitHubDirEntry struct {
 	Type string `json:"type"` // "file" or "dir"
 }
 
+// githubAPIBaseURL is the default GitHub API base URL. Override in tests via
+// listGitHubDirectoryWithBaseURL.
+const githubAPIBaseURL = "https://api.github.com"
+
 // listGitHubDirectory lists files in a directory of a GitHub repo.
 // Returns file names, or error if directory doesn't exist.
 func listGitHubDirectory(ctx context.Context, token, owner, repo, path, ref string) ([]string, error) {
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+	return listGitHubDirectoryWithBaseURL(ctx, token, owner, repo, path, ref, githubAPIBaseURL)
+}
+
+// listGitHubDirectoryWithBaseURL is the testable version of listGitHubDirectory
+// that accepts a configurable API base URL for mock server injection.
+func listGitHubDirectoryWithBaseURL(ctx context.Context, token, owner, repo, path, ref, baseURL string) ([]string, error) {
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", baseURL, owner, repo, path)
 	if ref != "" {
 		apiURL += "?ref=" + ref
 	}

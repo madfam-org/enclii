@@ -24,7 +24,7 @@ type ServiceSpec struct {
 	Label   string   // label key (default "app")
 	Port    int      // container port for ingress
 	Ingress []string // e.g. ["cloudflare-tunnel"]
-	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua"]
+	Egress  []string // e.g. ["dns","https","postgres","redis","http","janua","pgbouncer"]
 }
 
 // CustomRule declares a custom network policy rule.
@@ -161,6 +161,9 @@ func egressCategories(svc ServiceSpec) []string {
 	if svc.hasEgress("janua") {
 		cats = append(cats, "Janua SSO")
 	}
+	if svc.hasEgress("pgbouncer") {
+		cats = append(cats, "PgBouncer")
+	}
 	return cats
 }
 
@@ -251,6 +254,22 @@ func buildEgressRules(svc ServiceSpec) []egressRule {
       ports:
         - protocol: TCP
           port: 8080`,
+		})
+	}
+
+	if svc.hasEgress("pgbouncer") {
+		rules = append(rules, egressRule{
+			Comment: "PgBouncer in data namespace",
+			YAML: `    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 6432`,
 		})
 	}
 
