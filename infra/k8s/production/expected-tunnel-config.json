@@ -65,7 +65,7 @@
   },
   {
     "hostname": "admin.tezca.mx",
-    "service": "http://tezca-admin.tezca.svc.cluster.local:80"
+    "service": "http://tezca-admin.tezca.svc.cluster.local:3001"
   },
   {
     "_comment": "=== YANTRA4D ===",
