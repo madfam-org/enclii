@@ -146,7 +146,7 @@
   },
   {
     "hostname": "mes-admin.madfam.io",
-    "service": "http://pravara-gateway.pravara-mes.svc.cluster.local:80"
+    "service": "http://pravara-admin.pravara-mes.svc.cluster.local:80"
   },
   {
     "_comment": "=== CATCH-ALL ===",

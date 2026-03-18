@@ -315,6 +315,9 @@ All services deploy via the zero-touch onboarding pattern: K8s manifests, CI wor
 - ✅ `autoswarm-colyseus` → agents-ws.madfam.io (real-time collaboration)
 - ✅ `autoswarm-gateway` → (background worker, no public endpoint)
 - ✅ `autoswarm-workers` → (background worker, no public endpoint)
+- ✅ `pravara-admin` → mes-admin.madfam.io (MES admin console)
+- ✅ `pravara-api` → mes-api.madfam.io (MES control plane)
+- ✅ `pravara-ui` → mes.madfam.io (MES web dashboard)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification
@@ -722,7 +725,7 @@ pnpm test:e2e
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
 | Test coverage enforcement | Active | CI threshold raised from 40% to 50% (Session 97). Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (82 cmd tests — secrets, domains, ps, logs, rollback added Session 99), SDK (30 client+type tests), dispatch (123 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests), provenance (42 tests), signing (8 tests), addons (6 tests) |
-| Vault (secret management) | Ready | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel + autoswarm live in their own repos (self-provisioning pattern, not in enclii) |
+| Vault (secret management) | Ready | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel, autoswarm, and pravara-mes live in their own repos (self-provisioning pattern, not in enclii) |
 | PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud. All repos point to `analytics.madfam.io`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
 | react-sdk pre-existing test failures | Known debt | 10 tests in `@janua/react-sdk` (hook/component tests with `@janua/ui` ESM + JanuaProvider context issues). Barrel export test (47 tests) passes clean. `\|\| true` removed in Session 95 |
 | Onboarding handler K8s API migration | Completed | Session 97: NetworkPolicies now applied via K8s API (`k8s.ApplyNetworkPolicies`) instead of git commit. No more writes to `infra/k8s/policies/` during onboarding |

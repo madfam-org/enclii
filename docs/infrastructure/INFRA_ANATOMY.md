@@ -25,7 +25,7 @@
 > - posthog (5): Init containers stuck (ClickHouse dependency not ready)
 > - sentinel infra-audit (1): CronJob Error
 >
-> **Service 502s (3 endpoints):** 4d-api (yantra4d-backend unreachable), mes-api (pravara-api regression), mes-admin (pravara-gateway service never created in K8s).
+> **Service 502s (3 endpoints at time of audit):** 4d-api (yantra4d-backend unreachable), mes-api (pravara-api regression), mes-admin (resolved Session 100 — tunnel route fixed, NetworkPolicies created).
 >
 > **Degraded 404s (4 endpoints):** agents-api, api.tezca.mx, kf-api, cms.madfam.io — services running but no health/root endpoint.
 >
