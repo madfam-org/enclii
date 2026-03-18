@@ -76,13 +76,19 @@ server:
     readOnlyRootFilesystem: true
 
   # Readiness/liveness probes
+  # uninitcode=200 and sealedcode=200 allow vault to stay running
+  # while uninitialized/sealed (init/unseal is a manual step)
   readinessProbe:
     enabled: true
-    path: "/v1/sys/health?standbyok=true"
+    path: "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
+    periodSeconds: 10
+    failureThreshold: 3
   livenessProbe:
     enabled: true
-    path: "/v1/sys/health?standbyok=true"
+    path: "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
     initialDelaySeconds: 60
+    periodSeconds: 10
+    failureThreshold: 6
 
   # Tolerate GPU nodes (don't schedule on them)
   tolerations:
