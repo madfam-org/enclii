@@ -25,6 +25,10 @@ spec:
       ruleNames:
         - require-liveness-probe
         - require-readiness-probe
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
   match:
     any:
       - resources:
