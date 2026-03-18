@@ -106,11 +106,11 @@ tags:
   - name: admin
     description: Admin control plane - fleet, clusters, infrastructure, multi-tenancy, governance, costs
   - name: timetable
-    description: "Cron jobs and one-off scheduled tasks (NOT IMPLEMENTED — ETA: Q2 2026)"
+    description: Cron jobs and one-off scheduled tasks
   - name: status
     description: Status page service registry and configmap management
   - name: junctions
-    description: "Advanced routing, ingress management, and certificate automation (NOT IMPLEMENTED — ETA: Q3 2026)"
+    description: Advanced routing, ingress management, and certificate automation
 
 paths:
   # ============================================
@@ -3923,41 +3923,70 @@ paths:
                 type: object
 
   # ============================================
-  # TIMETABLE ENDPOINTS (NOT IMPLEMENTED - 501)
+  # TIMETABLE ENDPOINTS
   # ============================================
   /v1/projects/{slug}/cron-jobs:
     post:
-      summary: Create cron job (not implemented)
-      description: "NOT IMPLEMENTED — Returns 501. ETA: Q2 2026."
+      summary: Create cron job
+      description: Creates a recurring scheduled job for a service
       tags: [timetable]
       operationId: createCronJob
-      x-not-implemented: true
       parameters:
         - $ref: '#/components/parameters/projectSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_id, name, schedule, command]
+              properties:
+                service_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                schedule:
+                  type: string
+                  description: "5-field cron expression (e.g., '*/5 * * * *')"
+                command:
+                  type: string
+                image:
+                  type: string
+                timeout:
+                  type: integer
+                  default: 300
+                retries:
+                  type: integer
+                  default: 0
+                concurrency:
+                  type: string
+                  enum: [allow, forbid, replace]
+                  default: forbid
       responses:
-        '501':
-          description: Feature not yet implemented
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotImplementedResponse'
+        '201':
+          description: Cron job created
+        '400':
+          description: Invalid request
+        '404':
+          description: Project not found
+        '409':
+          description: Cron job with this name already exists
     get:
-      summary: List cron jobs (not implemented)
-      description: "NOT IMPLEMENTED — Returns 501. ETA: Q2 2026."
+      summary: List cron jobs
+      description: Lists all cron jobs for a project
       tags: [timetable]
       operationId: listCronJobs
-      x-not-implemented: true
       parameters:
         - $ref: '#/components/parameters/projectSlug'
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: List of cron jobs
   /v1/cron-jobs/{id}:
     get:
-      summary: Get cron job (not implemented)
+      summary: Get cron job
       tags: [timetable]
       operationId: getCronJob
-      x-not-implemented: true
       parameters:
         - name: id
           in: path
@@ -3966,13 +3995,14 @@ paths:
             type: string
             format: uuid
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: Cron job details
+        '404':
+          description: Cron job not found
     patch:
-      summary: Update cron job (not implemented)
+      summary: Update cron job
       tags: [timetable]
       operationId: updateCronJob
-      x-not-implemented: true
       parameters:
         - name: id
           in: path
@@ -3980,14 +4010,38 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                schedule:
+                  type: string
+                command:
+                  type: string
+                image:
+                  type: string
+                timeout:
+                  type: integer
+                retries:
+                  type: integer
+                suspended:
+                  type: boolean
+                concurrency:
+                  type: string
+                  enum: [allow, forbid, replace]
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: Cron job updated
+        '404':
+          description: Cron job not found
     delete:
-      summary: Delete cron job (not implemented)
+      summary: Delete cron job
       tags: [timetable]
       operationId: deleteCronJob
-      x-not-implemented: true
       parameters:
         - name: id
           in: path
@@ -3996,14 +4050,16 @@ paths:
             type: string
             format: uuid
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: Cron job deleted
+        '404':
+          description: Cron job not found
   /v1/cron-jobs/{id}/runs:
     get:
-      summary: List cron job runs (not implemented)
+      summary: List cron job runs
+      description: Lists execution history for a cron job
       tags: [timetable]
       operationId: listCronJobRuns
-      x-not-implemented: true
       parameters:
         - name: id
           in: path
@@ -4012,52 +4068,124 @@ paths:
             type: string
             format: uuid
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: List of cron job runs
+        '404':
+          description: Cron job not found
   /v1/projects/{slug}/one-off-jobs:
     post:
-      summary: Create one-off job (not implemented)
-      description: "NOT IMPLEMENTED — Returns 501. ETA: Q2 2026."
+      summary: Create one-off job
+      description: Creates a single-execution job for a service
       tags: [timetable]
       operationId: createOneOffJob
-      x-not-implemented: true
       parameters:
         - $ref: '#/components/parameters/projectSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_id, name, command]
+              properties:
+                service_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                command:
+                  type: string
+                image:
+                  type: string
+                timeout:
+                  type: integer
+                  default: 300
+                run_at:
+                  type: string
+                  format: date-time
+                  description: "RFC3339 timestamp. Omit to run immediately."
       responses:
-        '501':
-          description: Feature not yet implemented
+        '201':
+          description: One-off job created
+        '400':
+          description: Invalid request
+        '404':
+          description: Project not found
 
   # ============================================
-  # JUNCTION ENDPOINTS (NOT IMPLEMENTED - 501)
+  # JUNCTION ENDPOINTS
   # ============================================
   /v1/projects/{slug}/junctions:
     post:
-      summary: Create junction (not implemented)
-      description: "NOT IMPLEMENTED — Returns 501. ETA: Q3 2026."
+      summary: Create junction
+      description: Creates a routing rule with Cloudflare tunnel + DNS provisioning
       tags: [junctions]
       operationId: createJunction
-      x-not-implemented: true
       parameters:
         - $ref: '#/components/parameters/projectSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_id, domain]
+              properties:
+                service_id:
+                  type: string
+                  format: uuid
+                domain:
+                  type: string
+                  description: "e.g., api.example.com"
+                path:
+                  type: string
+                  default: "/"
+                protocol:
+                  type: string
+                  enum: [http, https, grpc]
+                  default: https
+                tls:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                    issuer:
+                      type: string
+                      enum: [letsencrypt-prod, letsencrypt-staging, custom, selfsigned]
+                      default: letsencrypt-prod
+                    cert_secret:
+                      type: string
+                    min_version:
+                      type: string
+                      default: "1.2"
+                    force_redirect:
+                      type: boolean
+                      default: true
       responses:
-        '501':
-          description: Feature not yet implemented
+        '201':
+          description: Junction created and infrastructure provisioned
+        '400':
+          description: Invalid request
+        '404':
+          description: Project not found
+        '409':
+          description: Junction for this domain+path already exists
     get:
-      summary: List junctions (not implemented)
+      summary: List junctions
+      description: Lists all routing rules for a project
       tags: [junctions]
       operationId: listJunctions
-      x-not-implemented: true
       parameters:
         - $ref: '#/components/parameters/projectSlug'
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: List of junctions
   /v1/junctions/{id}:
     get:
-      summary: Get junction (not implemented)
+      summary: Get junction
       tags: [junctions]
       operationId: getJunction
-      x-not-implemented: true
       parameters:
         - name: id
           in: path
@@ -4066,13 +4194,15 @@ paths:
             type: string
             format: uuid
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: Junction details
+        '404':
+          description: Junction not found
     delete:
-      summary: Delete junction (not implemented)
+      summary: Delete junction
+      description: Deletes a junction and removes tunnel route + DNS record
       tags: [junctions]
       operationId: deleteJunction
-      x-not-implemented: true
       parameters:
         - name: id
           in: path
@@ -4081,8 +4211,10 @@ paths:
             type: string
             format: uuid
       responses:
-        '501':
-          description: Feature not yet implemented
+        '200':
+          description: Junction deleted and infrastructure cleaned up
+        '404':
+          description: Junction not found
 
 components:
   securitySchemes:
@@ -4117,24 +4249,6 @@ components:
         type: string
 
   schemas:
-    # ===== Not Implemented =====
-    NotImplementedResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          example: not_implemented
-        message:
-          type: string
-          example: "Timetable (Cron Jobs) is not yet available"
-        eta:
-          type: string
-          example: "Q2 2026"
-        tracking:
-          type: string
-          format: uri
-          example: "https://github.com/madfam-org/enclii/issues"
-
     # ===== Health =====
     HealthResponse:
       type: object

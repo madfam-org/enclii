@@ -7,9 +7,6 @@ import (
 )
 
 // Timetable types for cron and one-off scheduled jobs.
-// Status: NOT IMPLEMENTED — stub types for API contract definition.
-// Tracking: https://github.com/madfam-org/enclii/issues (Timetable feature)
-// ETA: Q2 2026
 
 // CronJob represents a recurring scheduled job.
 type CronJob struct {

@@ -52,6 +52,12 @@ Learn more at https://enclii.dev`,
 	// Serverless functions (scale-to-zero)
 	rootCmd.AddCommand(NewFunctionsCommand(cfg))
 
+	// Scheduled jobs (cron + one-off)
+	rootCmd.AddCommand(NewJobsCommand(cfg))
+
+	// Routing and ingress
+	rootCmd.AddCommand(NewJunctionsCommand(cfg))
+
 	// Authentication commands
 	rootCmd.AddCommand(NewLoginCommand(cfg))
 	rootCmd.AddCommand(NewLogoutCommand(cfg))

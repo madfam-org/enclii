@@ -7,9 +7,6 @@ import (
 )
 
 // Junction types for routing, ingress, and certificate management.
-// Status: NOT IMPLEMENTED — stub types for API contract definition.
-// Tracking: https://github.com/madfam-org/enclii/issues (Junction feature)
-// ETA: Q3 2026
 
 // Junction represents a routing/ingress configuration for a service.
 type Junction struct {

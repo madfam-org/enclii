@@ -41,6 +41,14 @@ type Repositories struct {
 	LifecycleEvents *LifecycleEventRepository
 	Onboardings     *OnboardingRepository
 
+	// Timetable (Cron Jobs & One-Off Jobs)
+	CronJobs    *CronJobRepository
+	CronJobRuns *CronJobRunRepository
+	OneOffJobs  *OneOffJobRepository
+
+	// Junctions (Routing & Ingress)
+	Junctions *JunctionRepository
+
 	// Admin Control Plane repositories
 	Clusters            *ClusterRepository
 	BareMetalHosts      *BareMetalHostRepository
@@ -98,6 +106,14 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		Webhooks:            NewWebhookRepositoryWithTx(tx),
 		CIRuns:              NewCIRunRepositoryWithTx(tx),
 		Functions:           NewFunctionRepositoryWithTx(tx),
+
+		// Timetable
+		CronJobs:    NewCronJobRepositoryWithTx(tx),
+		CronJobRuns: NewCronJobRunRepositoryWithTx(tx),
+		OneOffJobs:  NewOneOffJobRepositoryWithTx(tx),
+
+		// Junctions
+		Junctions: NewJunctionRepositoryWithTx(tx),
 
 		// Deployment Lifecycle & Onboarding
 		LifecycleEvents: NewLifecycleEventRepositoryWithTx(tx),
@@ -159,6 +175,14 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Webhooks:            NewWebhookRepository(db),
 		CIRuns:              NewCIRunRepository(db),
 		Functions:           NewFunctionRepository(db),
+
+		// Timetable
+		CronJobs:    NewCronJobRepository(db),
+		CronJobRuns: NewCronJobRunRepository(db),
+		OneOffJobs:  NewOneOffJobRepository(db),
+
+		// Junctions
+		Junctions: NewJunctionRepository(db),
 
 		// Deployment Lifecycle & Onboarding
 		LifecycleEvents: NewLifecycleEventRepository(db),

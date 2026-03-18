@@ -36,7 +36,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: cleanup
-              image: docker.io/bitnami/kubectl:1.33
+              image: docker.io/bitnami/kubectl:latest@sha256:d80c09afa570a14cf6d32ca09ca610b5701eb0a08c655b5bb820194b218078eb
               command:
                 - /bin/sh
                 - -c

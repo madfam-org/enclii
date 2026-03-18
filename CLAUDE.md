@@ -55,8 +55,8 @@ The project follows a monorepo structure with these key components:
 - **Dispatch**: Admin control platform (Next.js) - fleet management, topology visualization
 - **Waybill**: Infrastructure cost metering and usage showback (Go). Customer billing handled by Dhanam.
 - **Functions**: Serverless functions with scale-to-zero - **API + UI complete**, KEDA operator ArgoCD app staged (pending cluster deploy)
-- **Junctions**: Routing/ingress + certs + DNS - **Planned**
-- **Timetable**: Cron and one-off jobs - **Planned**
+- **Junctions**: Routing/ingress + certs + DNS - **Implemented** (Session 103)
+- **Timetable**: Cron and one-off jobs - **Implemented** (Session 103)
 - **Lockbox**: Internal — Vault client + rotation controller in switchyard-api; ESO handles K8s secrets in production
 - **Signal**: Implemented — `/v1/observability/*` endpoints, Prometheus + Grafana deployed
 
@@ -514,7 +514,15 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Admin services | `apps/switchyard-api/internal/services/` (bare_metal, cluster_admin, infrastructure, vcluster, placement, drift, cost_tracking) |
 | Admin types | `packages/sdk-go/pkg/types/admin.go` |
 | SDK client | `packages/sdk-go/pkg/client/` (projects, services, deployments, envvars, logs) |
-| Stub types | `packages/sdk-go/pkg/types/timetable.go`, `junction.go` |
+| Timetable types | `packages/sdk-go/pkg/types/timetable.go` |
+| Junction types | `packages/sdk-go/pkg/types/junction.go` |
+| Timetable handlers | `apps/switchyard-api/internal/api/timetable_handlers.go` |
+| Junction handlers | `apps/switchyard-api/internal/api/junction_handlers.go` |
+| Timetable repos | `apps/switchyard-api/internal/db/cron_job_repository.go`, `cron_job_run_repository.go`, `one_off_job_repository.go` |
+| Junction repo | `apps/switchyard-api/internal/db/junction_repository.go` |
+| Timetable reconciler | `apps/switchyard-api/internal/reconciler/timetable_reconciler.go` |
+| Timetable migrations | `apps/switchyard-api/migrations/007_timetable.up.sql` |
+| Junction migrations | `apps/switchyard-api/migrations/008_junctions.up.sql` |
 | Admin migrations | `apps/switchyard-api/internal/db/migrations/002_admin_foundation.*.sql` |
 | enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
 | NetworkPolicy generator | `apps/switchyard-api/internal/netpolicy/generator.go` |
@@ -720,11 +728,11 @@ pnpm test:e2e
 |------|--------|-------|
 | ESO CRD migration (0.9.11 to 0.16.2) | Deferred | Requires maintenance window, CRD v1beta1 to v1 migration. Current version stable |
 | Digest pinning for ecosystem repos | Out of scope | Changes go in external repos (forgesight, karafiel, pravara-mes, madfam-site) |
-| Timetable (user cron jobs) | Stub (501) | API stubs returning 501 with ETA Q2 2026. Types in `sdk-go/pkg/types/timetable.go` |
-| Junction (routing/ingress) | Stub (501) | API stubs returning 501 with ETA Q3 2026. Types in `sdk-go/pkg/types/junction.go` |
+| Timetable (user cron jobs) | **Implemented** | 7 API endpoints, 3 DB tables, K8s CronJob reconciler, CLI `enclii jobs` commands. Session 103 |
+| Junction (routing/ingress) | **Implemented** | 4 API endpoints, 1 DB table, Cloudflare tunnel + cert-manager integration, CLI `enclii junctions` commands. Session 103 |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold raised from 40% to 50% (Session 97). Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (82 cmd tests — secrets, domains, ps, logs, rollback added Session 99), SDK (30 client+type tests), dispatch (123 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests), provenance (42 tests), signing (8 tests), addons (6 tests) |
+| Test coverage enforcement | Active | CI threshold raised from 40% to 50% (Session 97). Tests across db/, reconciler/, services/, roundhouse (21 handler+client tests), waybill (14 handler+collector tests), CLI (82 cmd tests — secrets, domains, ps, logs, rollback added Session 99), SDK (30 client+type tests), dispatch (123 tests), status (129 tests), switchyard-ui (159 tests), shared-lib (19 tests), ui-components (18 tests), provenance (42 tests), signing (8 tests), addons (6 tests), timetable (62 repo + 19 handler tests, Session 103), junction (included in timetable count) |
 | Vault (secret management) | Ready | Helm values + ArgoCD app + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel, autoswarm, and pravara-mes live in their own repos (self-provisioning pattern, not in enclii) |
 | PostHog (analytics) | Proxy | Helm chart v30.46.0 fundamentally broken (unmaintained since May 2023, CH migrations expect multi-cluster topology + AWS MSK). Using Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud. All repos point to `analytics.madfam.io`. ArgoCD sync paused. Standalone Redpanda manifest retained for future self-host attempt |
 | react-sdk pre-existing test failures | Resolved | Session 102: Replaced empty div mocks with interactive form mocks, expanded useJanua context. 12/12 suites, 123/123 tests pass (janua `bdb7a31b`) |
