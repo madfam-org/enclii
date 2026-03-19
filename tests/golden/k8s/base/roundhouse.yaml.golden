@@ -126,9 +126,7 @@ spec:
               value: "builder=true:NoSchedule"
             - name: KANIKO_JOB_TEMPLATE_PATH
               value: "/etc/roundhouse/templates/job-template.yaml"
-            # Redis connection
-            - name: REDIS_URL
-              value: "redis://redis:6379/0"
+            # Redis connection (URL constructed from components by config.Load)
             - name: REDIS_HOST
               value: "redis"
             - name: REDIS_PORT
@@ -263,8 +261,7 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            - name: REDIS_URL
-              value: "redis://redis:6379/0"
+            # Redis connection (URL constructed from components by config.Load)
             - name: REDIS_HOST
               value: "redis"
             - name: REDIS_PORT

@@ -1,8 +1,8 @@
-# Remaining Items — Post Session 103
+# Remaining Items — Post Session 106
 
-> **Last updated:** 2026-03-18 (Session 103)
+> **Last updated:** 2026-03-19 (Session 106)
 > **Platform status:** Production Release Candidate v0.1.0 (95% ready)
-> **Cluster:** 2-node k3s (foundry-core + foundry-builder-01), ~150 pods, 0 crashing
+> **Cluster:** 2-node k3s (foundry-core + foundry-builder-01), ~150 pods
 
 This document is the single source of truth for every remaining actionable item
 across the enclii platform and ecosystem. Items are organized by execution context
@@ -13,13 +13,16 @@ across the enclii platform and ecosystem. Items are organized by execution conte
 ## Quick Reference — Execution Order
 
 ```
-P0  [Cluster] Capacity cleanup (disk prune + detached volumes + log rotation)  ~15 min
-P1  [Cluster] Backup credentials (GitHub PAT + Cloudflare API token)           ~10 min
-P1  [Cluster] Vault init → unseal → configure → migrate secrets               ~60 min
-P1  [Cluster] Restore drill (validate backup pipeline)                         ~15 min
-P1  [Cluster] Cosign enforce activation (per-namespace, phased)                ~20 min
-P2  [Cluster] Legacy CronJob cleanup (2 orphaned jobs)                          ~2 min
-P2  [Cluster] ArgoCD sync sweep (post-Vault)                                   ~10 min
+P0  [Cluster] PostHog cleanup — scale to 0, delete PVCs + detached volumes     ~15 min
+P0  [Cluster] Longhorn CPU fix — helm upgrade with committed values             ~10 min
+P0  [Cluster] Disk prune — crictl rmi + journalctl vacuum + old logs            ~10 min
+P1  [Cluster] ArgoCD sync sweep — force-sync OutOfSync apps (post git push)     ~10 min
+P1  [Cluster] Backup credentials (GitHub PAT + Cloudflare API token)            ~10 min
+P1  [Cluster] Restore drill (validate backup pipeline)                          ~15 min
+P1  [Cluster] Vault init → unseal → configure → migrate secrets                 ~60 min
+P1  [Cluster] Cosign enforce activation (per-namespace, phased)                 ~20 min
+P2  [Cluster] Legacy CronJob cleanup (2 orphaned jobs)                           ~2 min
+P2  [Cluster] PostHog namespace deletion (after Wave 0 cleanup)                  ~5 min
                                                                         Total: ~2.5 hrs
 
 Deferred (not blocking v0.1.0):
@@ -33,6 +36,22 @@ Deferred (not blocking v0.1.0):
 
 ---
 
+## Session 106 Resolved Items (Software-Only Remediation)
+
+| Wave | Item | Status | Details |
+|------|------|--------|---------|
+| W2 | Vault health probes | **Committed** | `uninitcode=200&sealedcode=200` added to readiness+liveness. ArgoCD auto-syncs on push. |
+| W3 | Prometheus retention | **Committed** | 15d/15GB → 7d/8GB. Saves ~7GB after compaction. |
+| W4 | Roundhouse Redis auth | **Committed** | Config.Load() now resolves `REDIS_URL` from `REDIS_HOST`+`REDIS_PASSWORD` components. Hardcoded unauthenticated URL removed from K8s manifest. Needs image rebuild+deploy. |
+| W6 | PostHog config cleanup | **Committed** | ArgoCD app deleted, pgbouncer-proxy deleted, Helm values + Redpanda archived to `infra/archive/posthog/`. Cloudflare Worker proxy retained. |
+| W7a | Timetable reconciler tests | **Committed** | 30 tests: sanitizeK8sName, cronJobK8sName, oneOffJobK8sName, mapConcurrencyPolicy, stringSliceEqual, buildCronJob, buildOneOffJob, cronJobNeedsUpdate. All passing. |
+| W7b | Cron job run repo tests | **Committed** | 14 tests: Create, ListByCronJob (ordered, empty, limit, cap, error), UpdateStatus (success, not found, error). All passing. |
+| W7c | CI load-test dedup | **Committed** | Removed duplicate smoke test from ci.yml (already in load-test.yml). |
+| W8 | Resource right-sizing | **Committed** | switchyard-api CPU limit 1000m→800m, cloudflared 500m→300m, switchyard-ui 500m→300m. Requests unchanged. |
+| W9 | Documentation | **Committed** | REMAINING_ITEMS.md + CLAUDE.md updated. |
+
+---
+
 ## Section 1: Cluster Operations (Require SSH + Secrets)
 
 All cluster commands use:
@@ -40,33 +59,74 @@ All cluster commands use:
 ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io "sudo kubectl ..."
 ```
 
-### 1A. Capacity Cleanup — P0, ~15 min
+### 1A. PostHog Cleanup — P0, ~15 min (Wave 0)
 
-Disk is at 83%, CPU requests at 87%. These must be addressed first.
+PostHog self-host abandoned. 5 stuck pods, 3 orphaned Longhorn volumes (~44 GB).
 
-| Task | Command | Recovery | Reference |
-|------|---------|----------|-----------|
-| **Prune container images** | `sudo k3s crictl rmi --prune` | ~10-20 GB | CAPACITY_ROADMAP.md:46 |
-| **Delete PostHog detached volumes** | `kubectl delete pvc --all -n posthog --ignore-not-found` then `kubectl delete volumes.longhorn.io <name> -n longhorn-system` for any remaining detached | ~44 GB | CLUSTER_REMEDIATION_OPS.md §5 |
-| **Apply Longhorn CPU fix** | Reduce `guaranteedEngineManagerCPU` from 12 → 3 via Longhorn UI or API | 1,080m CPU | CAPACITY_ROADMAP.md:58, Helm values updated Session 79 but not applied |
-| **Log rotation** | `sudo journalctl --vacuum-size=500M` + `sudo find /var/log -name "*.gz" -mtime +7 -delete` | ~3-4 GB | CAPACITY_ROADMAP.md:85 |
+```bash
+# Scale everything to 0 first
+sudo kubectl scale deploy --all -n posthog --replicas=0
+sudo kubectl scale statefulset --all -n posthog --replicas=0
+sudo kubectl delete pods -n posthog --all --grace-period=0 --force
+sudo kubectl delete pvc -n posthog --all
 
-**Forecast without cleanup:** 95% disk reached ~April 10, 2026 (0.43 GB/day growth).
+# Delete detached Longhorn volumes
+sudo kubectl get volumes.longhorn.io -n longhorn-system -o json | \
+  jq -r '.items[] | select(.status.state == "detached") | .metadata.name'
+# For each volume:
+sudo kubectl delete volumes.longhorn.io -n longhorn-system <each-volume>
 
-### 1B. Backup Credential Provisioning — P1, ~10 min
+# Delete the namespace (after ArgoCD app is already removed in W6)
+sudo kubectl delete namespace posthog --timeout=120s
+```
 
-Two backup CronJobs fail on every scheduled run because their secrets don't exist yet.
+**Verify:** `df -h /` drops from 83% to ~33%. `kubectl get pods -n posthog` returns empty.
 
-**GitHub Backup Secret** (`github-backup-credentials` in `data` namespace):
+### 1B. Longhorn CPU Fix — P0, ~10 min (Wave 1)
+
+Apply already-committed `guaranteedEngineManagerCPU: 3` / `guaranteedReplicaManagerCPU: 3`.
+
+```bash
+sudo helm upgrade longhorn longhorn/longhorn -n longhorn-system -f infra/helm/longhorn/values.yaml
+sudo kubectl rollout status -n longhorn-system daemonset/longhorn-manager --timeout=300s
+```
+
+**Verify:** `kubectl top pods -n longhorn-system | grep instance-manager` shows <200m each.
+
+### 1C. Capacity Cleanup — P0, ~10 min
+
+```bash
+sudo k3s crictl rmi --prune                                    # ~10-20 GB
+sudo journalctl --vacuum-size=500M                              # ~3-4 GB
+sudo find /var/log -name "*.gz" -mtime +7 -delete              # old logs
+```
+
+### 1D. ArgoCD Sync Sweep — P1, ~10 min (Wave 2)
+
+After pushing the Session 106 commit, ArgoCD auto-syncs changed apps. Force-sync any remaining OutOfSync:
+
+```bash
+for app in $(sudo kubectl get applications -n argocd -o json | \
+  jq -r '.items[] | select(.status.sync.status != "Synced") | .metadata.name'); do
+  sudo kubectl patch application "$app" -n argocd --type merge \
+    -p '{"operation":{"sync":{"revision":"HEAD","prune":true}}}'
+done
+```
+
+**Expected permanently OutOfSync:** `network-policies` (prune:false by design).
+
+### 1E. Backup Credential Provisioning — P1, ~10 min (Wave 5)
+
+Two backup CronJobs fail because secrets don't exist yet.
+
+**GitHub Backup Secret:**
 ```bash
 sudo kubectl create secret generic github-backup-credentials -n data \
   --from-literal=github-pat="<MADFAM_BOT_PAT_WITH_REPO_READ>" \
   --dry-run=client -o yaml | sudo kubectl apply -f -
 ```
-- Template: `infra/k8s/production/backup/github-backup-secrets.yaml.template`
-- Consumer: `github-repos-backup` CronJob (daily 1:00 AM UTC)
 
-**Cloudflare API Secret** (`cloudflare-api-credentials` in `data` namespace):
+**Cloudflare API Secret:**
 ```bash
 sudo kubectl create secret generic cloudflare-api-credentials -n data \
   --from-literal=api-token="<CF_API_TOKEN_DNS_READ_TUNNEL_READ>" \
@@ -75,242 +135,104 @@ sudo kubectl create secret generic cloudflare-api-credentials -n data \
   --from-literal=account-id="<CF_ACCOUNT_ID>" \
   --dry-run=client -o yaml | sudo kubectl apply -f -
 ```
-- Template: `infra/k8s/production/backup/cloudflare-api-secrets.yaml.template`
-- Consumer: `cloudflare-config-backup` CronJob (daily 1:15 AM UTC)
 
-**Verify:**
+**Test + restore drill:**
 ```bash
 sudo kubectl create job github-backup-test --from=cronjob/github-repos-backup -n data
 sudo kubectl create job cf-backup-test --from=cronjob/cloudflare-config-backup -n data
-sudo kubectl get jobs -n data --watch  # both should Complete
+sudo kubectl create job restore-drill-manual --from=cronjob/postgres-restore-drill -n data
+sudo kubectl get jobs -n data --watch  # all should Complete
 ```
 
-### 1C. Vault Deployment — P1, ~60 min (8 sequential steps)
+### 1F. Vault Deployment — P1, ~60 min
 
-Vault pod is Running 1/1 but uninitialized. All manifests are committed.
 Full runbook: `docs/runbooks/CLUSTER_REMEDIATION_OPS.md` §3
 
-**Step 1 — Initialize:**
-```bash
-sudo kubectl exec -n vault vault-0 -- vault operator init \
-  -key-shares=5 -key-threshold=3 -format=json > vault-init.json
-# CRITICAL: Store vault-init.json off-cluster immediately (unseal keys are irreplaceable)
-```
+Health probes now accept uninitialized/sealed state (Session 106 fix). Pod should be Running.
 
-**Step 2 — Unseal (3 of 5 keys):**
-```bash
-sudo kubectl exec -n vault vault-0 -- vault operator unseal <KEY_1>
-sudo kubectl exec -n vault vault-0 -- vault operator unseal <KEY_2>
-sudo kubectl exec -n vault vault-0 -- vault operator unseal <KEY_3>
-```
+Steps: init → unseal (3/5 keys) → enable KV engine → configure K8s auth → create ESO policy → migrate secrets → deploy ClusterSecretStore + ExternalSecrets → verify.
 
-**Step 3 — Enable KV engine:**
-```bash
-sudo kubectl exec -n vault vault-0 -- vault secrets enable -path=secret kv-v2
-```
-
-**Step 4 — Configure K8s auth:**
-```bash
-sudo kubectl exec -n vault vault-0 -- vault auth enable kubernetes
-sudo kubectl exec -n vault vault-0 -- sh -c 'vault write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc:443" \
-  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-  token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token'
-```
-
-**Step 5 — Create ESO reader policy + role:**
-```bash
-sudo kubectl exec -n vault vault-0 -- sh -c 'vault policy write eso-reader - <<POLICY
-path "secret/data/*" { capabilities = ["read", "list"] }
-POLICY'
-
-sudo kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/eso-reader \
-  bound_service_account_names=external-secrets \
-  bound_service_account_namespaces=external-secrets \
-  policies=eso-reader ttl=1h
-```
-
-**Step 6 — Migrate secrets (19 namespaces, ~160 keys):**
-```bash
-# Dry run first
-./scripts/vault-secret-migration.sh --all --dry-run --verbose
-
-# Actual migration
-./scripts/vault-secret-migration.sh --all --verbose
-```
-
-**Step 7 — Deploy ClusterSecretStore + ExternalSecrets:**
-```bash
-sudo kubectl apply -f infra/k8s/base/external-secrets/vault-cluster-secret-store.yaml
-sudo kubectl apply -f infra/k8s/base/external-secrets/vault-secrets/
-```
-
-**Step 8 — Verify:**
-```bash
-sudo kubectl exec -n vault vault-0 -- vault status  # Sealed=false
-sudo kubectl get externalsecrets -A                  # all SecretSynced
-```
-
-**Risk:** Medium. Unseal keys are irreplaceable. Back up `vault-init.json` to multiple secure locations before proceeding.
-
-### 1D. Restore Drill — P1, ~15 min
-
-Run after backup credentials exist (1B). Non-destructive.
+### 1G. Cosign Enforce Activation — P1, ~20 min
 
 ```bash
-sudo kubectl create job restore-drill-manual --from=cronjob/postgres-restore-drill -n data
-sudo kubectl logs -n data job/restore-drill-manual -f
-```
-
-Expected output: `=== RESTORE DRILL PASSED ===` with table count > 0.
-
-### 1E. Cosign Enforce Activation — P1, ~20 min
-
-Policy is committed in Enforce mode (`infra/k8s/base/kyverno/policies/image-policies.yaml`).
-Activation is per-namespace via label.
-
-**Phase 1 (safe — all first-party images):**
-```bash
+# Phase 1 (safe — all first-party images):
 sudo kubectl label namespace enclii enclii.dev/verify-signatures=true
-```
-
-**Phase 2:**
-```bash
+# Phase 2:
 sudo kubectl label namespace status enclii.dev/verify-signatures=true
 sudo kubectl label namespace monitoring enclii.dev/verify-signatures=true
 ```
 
-**Phase 3:**
-```bash
-sudo kubectl label namespace enclii-builds enclii.dev/verify-signatures=true
-```
-
-**Verify before each phase:**
-```bash
-# Check all images in a namespace are signed
-for pod in $(sudo kubectl get pods -n enclii -o jsonpath='{.items[*].spec.containers[*].image}'); do
-  cosign verify --certificate-oidc-issuer="https://token.actions.githubusercontent.com" "$pod" 2>/dev/null && echo "OK: $pod" || echo "UNSIGNED: $pod"
-done
-```
-
-Ecosystem namespaces have PolicyExceptions and should NOT be labeled until their images are signed.
-
-### 1F. Legacy CronJob Cleanup — P2, ~2 min
+### 1H. Legacy CronJob Cleanup — P2, ~2 min
 
 ```bash
 sudo kubectl delete cronjob image-cleanup -n kube-system --ignore-not-found
 sudo kubectl delete cronjob disk-cleanup -n enclii --ignore-not-found
 ```
 
-### 1G. ArgoCD Sync Sweep — P2, ~10 min
+---
 
-Run after Vault deployment (1C) to verify all apps are healthy.
+## Section 2: Roundhouse Image Rebuild (Post Wave 4)
+
+The Redis auth fix requires a Docker image rebuild for the Roundhouse service.
 
 ```bash
-# Force sync vault
-sudo kubectl patch application vault -n argocd --type merge \
-  -p '{"operation":{"sync":{"prune":true}}}'
+# Option A: Trigger via CI (push to main triggers docker-build)
+# The commit from Session 106 changes apps/roundhouse/ code — CI auto-builds.
 
-# Full status
-sudo kubectl get application -n argocd \
-  -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status
+# Option B: Manual rebuild
+cd apps/roundhouse
+docker build -t ghcr.io/madfam-org/enclii/roundhouse:latest -f Dockerfile .
+docker push ghcr.io/madfam-org/enclii/roundhouse:latest
+
+# Verify pods restart with auth:
+sudo kubectl rollout restart deploy/roundhouse -n enclii
+sudo kubectl rollout restart deploy/roundhouse-api -n enclii
+sudo kubectl logs -n enclii -l app=roundhouse --tail=5
+# Should show: "Connected to Redis queue (standalone mode)"
 ```
 
-**Expected permanently OutOfSync:** `network-policies` (prune:false by design), `posthog` (sync paused).
+---
+
+## Section 3: External Repo Follow-ups (Out of Scope)
+
+| Repo | Issue | Fix Needed |
+|------|-------|-----------|
+| autoswarm-office | agents-api 404 | Add `/health` endpoint |
+| tezca | api.tezca.mx 404 | Add `/health` endpoint |
+| karafiel | kf-api 404, worker crash | Add `/health` endpoint, fix Redis connection |
+| forgesight | cms.madfam.io 404 | Add `/health` endpoint |
+| yantra4d | 4d-api 502, admin/studio crash | Fix nginx upstream config |
+| pravara-mes | mes-api 502 | Fix API startup |
 
 ---
 
-## Section 2: Deferred Items (Not Blocking v0.1.0)
+## Section 4: Deferred Items (Not Blocking v0.1.0)
 
-### 2A. ESO CRD Migration (0.9.11 → 0.16.2) — Needs Maintenance Window
-
-| Aspect | Detail |
-|--------|--------|
-| **Current version** | v0.9.11 (v1beta1 CRDs), stable |
-| **Target version** | v0.16.2 (v1 CRDs) |
-| **Risk** | High — affects all ExternalSecrets cluster-wide |
-| **Duration** | ~45 min with rollback plan |
-| **Prerequisite** | Vault deployed and all ExternalSecrets syncing |
-| **Full plan** | `docs/runbooks/CLUSTER_REMEDIATION_OPS.md` §7 |
-
-Migration steps: backup CRDs → scale down ESO → update ArgoCD targetRevision → verify CRD migration → scale up → verify all ExternalSecrets reconcile.
-
-### 2B. PagerDuty/Opsgenie Integration
-
-AlertManager is deployed with alert rules, but notifications go nowhere.
-Need to configure a receiver in `infra/k8s/production/monitoring/prometheus.yaml` and add the integration secret.
-
-### 2C. PostgreSQL HA (Patroni/CloudNativePG)
-
-Required when SLA target exceeds 99.9%. Redis Sentinel manifests staged at `infra/k8s/production/redis-sentinel.yaml`.
-
-### 2D. Multi-Node Longhorn Replication
-
-When 3rd storage node is added: increase `defaultReplicaCount` from 1 → 2 in `infra/helm/longhorn/values.yaml`, enable `replicaAutoBalance: best-effort`.
-
-### 2E. GPU Node Setup
-
-Manifests ready at `infra/k8s/base/gpu/` (NVIDIA device plugin DaemonSet + README). Awaiting GPU hardware.
-
-### 2F. Multi-Region
-
-Explicitly out of scope for v1 per `docs/architecture/SOFTWARE_SPEC.md`.
-
-### 2G. Handler Legacy Pattern Migration
-
-Incremental: migrate handlers from direct repo access to service layer as they're touched for other work. No dedicated sprint needed.
-
-### 2H. Image Digest Pinning for Ecosystem Repos
-
-Out of scope for enclii repo. Each ecosystem repo (forgesight, karafiel, pravara-mes, etc.) should pin their own images.
-
-### 2I. KEDA Runtime for Serverless Functions
-
-KEDA operator + HTTP add-on ArgoCD app is staged but not synced. Functions API + UI are complete. Deploy when scale-to-zero is needed.
+| Item | Notes |
+|------|-------|
+| ESO CRD migration (0.9.11 → 0.16.2) | Needs maintenance window, v1beta1 to v1 CRD migration |
+| PagerDuty/Opsgenie integration | Email alerting works; configure AlertManager receiver |
+| PostgreSQL HA / Redis Sentinel | When SLA > 99.9% required |
+| Multi-node Longhorn replication | When 3rd storage node added |
+| GPU node setup | Manifests ready at `infra/k8s/base/gpu/`, awaiting hardware |
+| Multi-region | Out of scope for v1 |
+| Handler legacy pattern migration | Incremental, no dedicated sprint |
+| Image digest pinning (ecosystem) | Each repo pins own images |
+| KEDA runtime (serverless) | ArgoCD app staged, deploy when scale-to-zero needed |
 
 ---
 
-## Section 3: Known Issues (No Fix Available)
+## Section 5: Expected Post-Remediation Metrics
 
-| Issue | Impact | Workaround | Reference |
-|-------|--------|------------|-----------|
-| **ArgoCD OCI multi-source bug** (v3.2.5) | 2 ARC apps show Unknown/Healthy | Cosmetic — pods functional | PRODUCTION_CHECKLIST.md:296 |
-| **PostHog Helm chart v30.46 broken** | Cannot self-host PostHog | Cloudflare Worker proxy to PostHog Cloud (`analytics.madfam.io`) | PRODUCTION_CHECKLIST.md:304 |
-| **Longhorn EXT4 corruption pattern** | ~1 incident/month (5 total) | Manual PVC recreation per `docs/runbooks/LONGHORN_VOLUME_RECOVERY.md` | PRODUCTION_CHECKLIST.md:303 |
-| **Janua DB backup workflow failing** | Janua-specific backups not running | Platform postgres-backup covers the DB; Janua-specific workflow needs investigation | PRODUCTION_CHECKLIST.md:298 |
-
----
-
-## Section 4: Ecosystem Repos Status
-
-All 7 ecosystem repos are clean on `main`, no uncommitted changes.
-
-| Repo | Last Commit | CI | Notes |
-|------|-------------|-----|-------|
-| **madfam-site** | `b697882` — add network section | GREEN | No issues |
-| **karafiel** | `c484cfd` — pgbouncer egress fix | GREEN | 2 stale branches |
-| **forgesight** | `19081d5` — PostHog localStorage fix (S103) | GREEN | 3 stale branches |
-| **yantra4d** | `d435a6d` — admin OIDC redirect | GREEN | 10 stale branches |
-| **dhanam** | `a12b2a8` — admin image digest | GREEN | PR #37 open (fix/dhanam-admin-argocd-config), 7 stale branches |
-| **pravara-mes** | `53c413a` — Next.js 16 build artifacts | GREEN | 1 stale branch |
-| **autoswarm-office** | `726bf97` — GHCR_TOKEN PAT fix (S102) | GREEN | 18 stale branches |
-
-**Stale branch cleanup:** Optional. ~41 stale remote branches across all repos. Safe to delete with `git push origin --delete <branch>`.
-
-**Open PR:** `dhanam` PR #37 (fix/dhanam-admin-argocd-config) — review and merge or close.
-
----
-
-## Section 5: Capacity Forecast
-
-| Metric | Current | Threshold | Date at Risk | Growth Rate |
-|--------|---------|-----------|--------------|-------------|
-| **Disk** | 83% | 95% | ~April 10 | 0.43 GB/day |
-| **CPU requested** | 87% | 95% | ~April 25 | Slow |
-| **Pods** | ~150 | ~200 (etcd limit) | ~May | +1.9/day |
-| **Longhorn volumes** | 17 | ~30 | ~June | +0.3/week |
-
-After cleanup (Section 1A), disk drops to ~60% and CPU to ~78%, buying ~6-8 weeks.
+| Metric | Before | After (projected) | Change |
+|--------|--------|-------------------|--------|
+| Disk | 83% | ~33% | -50pp |
+| CPU allocated | 87% | ~69% | -18pp |
+| Non-running pods | 13 | 3-5 (external repos) | -8 to -10 |
+| ArgoCD Synced/Healthy | 17/28 | 24/27 | +7 |
+| Backup pipelines | 3/5 | 5/5 | +2 |
+| Test files missing | 2 | 0 | complete |
+| Disk fill date | ~April 10 | months out | safe |
 
 ---
 
@@ -318,7 +240,7 @@ After cleanup (Section 1A), disk drops to ~60% and CPU to ~78%, buying ~6-8 week
 
 | Module | Tests | Session |
 |--------|-------|---------|
-| switchyard-api (db, api, reconciler, services) | ~300+ | S97-103 |
+| switchyard-api (db, api, reconciler, services) | ~330+ | S97-106 |
 | CLI (cmd, client, config) | 82 | S99 |
 | SDK (client, types) | 30 | S97 |
 | Dispatch (auth, API, components) | 123 | S98 |
@@ -326,9 +248,11 @@ After cleanup (Section 1A), disk drops to ~60% and CPU to ~78%, buying ~6-8 week
 | Switchyard UI (components, hooks) | 159 | Various |
 | Provenance + Signing | 50 | S97 |
 | Timetable + Junction | 81 | S103 |
-| **Total** | **~950+** | |
+| Timetable reconciler | 30 | S106 |
+| Cron job run repo | 14 | S106 |
+| **Total** | **~1,000+** | |
 
-CI threshold: 50% minimum (raised from 40% in Session 97). No `t.Skip("TODO...")` stubs remaining.
+CI threshold: 50% minimum. No `t.Skip("TODO...")` stubs remaining. CI load-test deduplicated (S106).
 
 ---
 
@@ -350,3 +274,5 @@ CI threshold: 50% minimum (raised from 40% in Session 97). No `t.Skip("TODO...")
 | GPU manifests | `infra/k8s/base/gpu/` |
 | Longhorn Helm values | `infra/helm/longhorn/values.yaml` |
 | Vault Helm values | `infra/helm/vault/values.yaml` |
+| PostHog archived values | `infra/archive/posthog/` |
+| Cloudflare PostHog proxy | `infra/cloudflare/posthog-proxy/` (still active) |

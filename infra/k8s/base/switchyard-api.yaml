@@ -90,7 +90,7 @@ spec:
               cpu: "100m"
             limits:
               memory: "1Gi"
-              cpu: "1000m"
+              cpu: "800m"
           # Startup probe: Extended window for Redis connection retries
           # Max startup time: 30 * 5s = 150s (covers 5 Redis retries with backoff)
           startupProbe:

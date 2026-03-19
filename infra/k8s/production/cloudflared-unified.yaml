@@ -132,7 +132,7 @@ spec:
               cpu: "50m"
             limits:
               memory: "256Mi"
-              cpu: "500m"
+              cpu: "300m"
           volumeMounts:
             - name: config
               mountPath: /etc/cloudflared/config.yaml

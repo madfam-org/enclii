@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/spf13/viper"
@@ -15,7 +16,10 @@ type Config struct {
 	DatabaseURL string `mapstructure:"DATABASE_URL"`
 
 	// Redis
-	RedisURL string `mapstructure:"REDIS_URL"`
+	RedisURL      string `mapstructure:"REDIS_URL"`
+	RedisHost     string `mapstructure:"REDIS_HOST"`
+	RedisPort     string `mapstructure:"REDIS_PORT"`
+	RedisPassword string `mapstructure:"REDIS_PASSWORD"`
 
 	// Build settings
 	BuildMode        string        `mapstructure:"BUILD_MODE"` // "docker" or "kaniko"
@@ -67,6 +71,9 @@ func Load() (*Config, error) {
 
 	// Bind environment variables explicitly for reliable reading
 	_ = viper.BindEnv("REDIS_URL")
+	_ = viper.BindEnv("REDIS_HOST")
+	_ = viper.BindEnv("REDIS_PORT")
+	_ = viper.BindEnv("REDIS_PASSWORD")
 	_ = viper.BindEnv("DATABASE_URL")
 	_ = viper.BindEnv("REGISTRY")
 	_ = viper.BindEnv("REGISTRY_USER")
@@ -94,6 +101,36 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	// If REDIS_URL has no credentials but REDIS_PASSWORD is set, rebuild the URL
+	// with authentication. This fixes the common K8s pattern where the password
+	// is injected via a Secret but the URL is hardcoded without auth.
+	if cfg.RedisPassword != "" && cfg.RedisURL != "" {
+		u, parseErr := url.Parse(cfg.RedisURL)
+		if parseErr == nil && u.User == nil {
+			u.User = url.UserPassword("", cfg.RedisPassword)
+			cfg.RedisURL = u.String()
+		}
+	}
+
+	// If no REDIS_URL at all, construct from components.
+	if cfg.RedisURL == "" && cfg.RedisHost != "" {
+		host := cfg.RedisHost
+		port := cfg.RedisPort
+		if port == "" {
+			port = "6379"
+		}
+		if cfg.RedisPassword != "" {
+			cfg.RedisURL = (&url.URL{
+				Scheme: "redis",
+				User:   url.UserPassword("", cfg.RedisPassword),
+				Host:   host + ":" + port,
+				Path:   "/0",
+			}).String()
+		} else {
+			cfg.RedisURL = "redis://" + host + ":" + port + "/0"
+		}
 	}
 
 	return &cfg, nil

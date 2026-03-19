@@ -93,11 +93,15 @@ spec:
 
           readinessProbe:
             enabled: true
-            path: "/v1/sys/health?standbyok=true"
+            path: "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             enabled: true
-            path: "/v1/sys/health?standbyok=true"
+            path: "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
             initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 6
 
           tolerations:
             - key: "nvidia.com/gpu"

@@ -27,7 +27,7 @@ func main() {
 
 	// Validate required config
 	if cfg.RedisURL == "" {
-		logger.Fatal("REDIS_URL is required")
+		logger.Fatal("REDIS_URL or REDIS_HOST is required")
 	}
 	if cfg.Registry == "" {
 		logger.Fatal("REGISTRY is required")
