@@ -16,7 +16,7 @@ on:
         type: boolean
 
 env:
-  GO_VERSION: '1.24.13'
+  GO_VERSION: '1.25.0'
   NODE_VERSION: '20'
   # Runner selection: Use self-hosted if ARC bootstrap is complete, otherwise GitHub-hosted
   # Set ARC_BOOTSTRAP_COMPLETE=true in repository variables after ARC is installed
