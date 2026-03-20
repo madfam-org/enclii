@@ -3,6 +3,7 @@
 > **Last updated:** 2026-03-19 (Session 106)
 > **Platform status:** Production Release Candidate v0.1.0 (95% ready)
 > **Cluster:** 2-node k3s (foundry-core + foundry-builder-01), ~150 pods
+> **Full Remediation Plan:** [REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md) (8 phases, 45+ items)
 
 This document is the single source of truth for every remaining actionable item
 across the enclii platform and ecosystem. Items are organized by execution context

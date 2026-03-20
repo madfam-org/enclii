@@ -355,7 +355,7 @@ jobs:
 
       - name: Run tests
         working-directory: apps/switchyard-ui
-        run: pnpm test -- --coverage --passWithNoTests
+        run: pnpm test -- --coverage
 
       - name: Install dispatch dependencies
         working-directory: apps/dispatch
@@ -363,7 +363,7 @@ jobs:
 
       - name: Run dispatch tests
         working-directory: apps/dispatch
-        run: pnpm test -- --passWithNoTests
+        run: pnpm test
 
       - name: Install status dependencies
         working-directory: apps/status
@@ -371,7 +371,7 @@ jobs:
 
       - name: Run status tests
         working-directory: apps/status
-        run: pnpm test -- --passWithNoTests
+        run: pnpm test
 
       - name: Install shared-lib dependencies
         working-directory: packages/shared-lib

@@ -77,4 +77,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: switchyard-api
-  namespace: default
+  namespace: enclii

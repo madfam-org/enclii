@@ -75,6 +75,13 @@ enclii deploy --env production
 | [`ps`](./commands/ps.md) | List services and their status |
 | [`logs`](./commands/logs.md) | Stream or fetch service logs |
 | [`rollback`](./commands/rollback.md) | Rollback to a previous deployment |
+| [`secrets`](./commands/secrets.md) | Manage service secrets and environment variables |
+| [`domains`](./commands/domains.md) | Manage custom domains for services |
+| [`functions`](./commands/functions.md) | Manage serverless functions (scale-to-zero) |
+| [`jobs`](./commands/jobs.md) | Manage cron and one-off scheduled jobs |
+| [`junctions`](./commands/junctions.md) | Manage routing rules and ingress configuration |
+| [`releases`](./commands/releases.md) | List releases (builds) for a service |
+| [`services delete`](./commands/services-delete.md) | Delete a service from a project |
 | [`services sync`](./commands/services-sync.md) | Synchronize service configuration |
 | [`local`](./commands/local.md) | Local development environment commands |
 | [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
