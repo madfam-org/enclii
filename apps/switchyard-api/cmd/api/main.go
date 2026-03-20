@@ -545,6 +545,7 @@ func main() {
 	}
 
 	// Start server in goroutine
+	errCh := make(chan error, 1)
 	go func() {
 		logrus.Infof("🚂 Switchyard API starting on port %s", cfg.Port)
 		logrus.Infof("   Environment: %s", cfg.Environment)
@@ -552,14 +553,20 @@ func main() {
 		logrus.Infof("   Build work dir: %s", cfg.BuildWorkDir)
 		logrus.Infof("   Build cache dir: %s", cfg.BuildCacheDir)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logrus.Fatal("Failed to start server:", err)
+			errCh <- err
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+
+	select {
+	case err := <-errCh:
+		logrus.Errorf("Server failed to start: %v", err)
+	case <-quit:
+		logrus.Info("Received shutdown signal")
+	}
 
 	logrus.Info("Shutting down server...")
 

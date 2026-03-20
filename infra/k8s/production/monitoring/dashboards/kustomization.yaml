@@ -26,5 +26,37 @@ configMapGenerator:
       labels:
         grafana_dashboard: "true"
 
+  - name: grafana-dashboard-cluster-capacity
+    namespace: monitoring
+    files:
+      - cluster-capacity.json
+    options:
+      labels:
+        grafana_dashboard: "true"
+
+  - name: grafana-dashboard-api-latency
+    namespace: monitoring
+    files:
+      - api-latency.json
+    options:
+      labels:
+        grafana_dashboard: "true"
+
+  - name: grafana-dashboard-cost-trends
+    namespace: monitoring
+    files:
+      - cost-trends.json
+    options:
+      labels:
+        grafana_dashboard: "true"
+
+  - name: grafana-dashboard-argocd-sync
+    namespace: monitoring
+    files:
+      - argocd-sync.json
+    options:
+      labels:
+        grafana_dashboard: "true"
+
 generatorOptions:
   disableNameSuffixHash: true

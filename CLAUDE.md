@@ -578,7 +578,9 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Node maintenance | `infra/k8s/production/node-maintenance-cronjob.yaml` (daily GC + Prometheus metrics export) |
 | Prometheus config + alerts | `infra/k8s/production/monitoring/prometheus.yaml` (scrape configs, alert rules ConfigMap) |
 | Node exporter | `infra/k8s/production/monitoring/node-exporter.yaml` (DaemonSet + textfile collector) |
-| Grafana dashboards | `infra/k8s/production/monitoring/dashboards/` (roundhouse, secrets-rotation, node-maintenance, longhorn-health) |
+| Grafana dashboards | `infra/k8s/production/monitoring/dashboards/` (roundhouse, secrets-rotation, node-maintenance, longhorn-health, cluster-capacity, api-latency, cost-trends, argocd-sync) |
+| Logging stack | `infra/k8s/production/logging/` (Fluent Bit DaemonSet + Loki StatefulSet, ArgoCD-managed via `infra/argocd/apps/logging.yaml`) |
+| HPAs | `infra/k8s/production/hpa-switchyard-api.yaml`, `hpa-switchyard-ui.yaml`, `hpa-roundhouse-api.yaml` |
 | Status K8s (base) | `apps/status/k8s/base/` (deployment, service, secret template) |
 | Status K8s (overlays) | `apps/status/k8s/enclii/`, `apps/status/k8s/madfam/` (configmap, cronjob) |
 | Status Atom feed | `apps/status/app/feed.xml/route.ts` |
@@ -606,6 +608,9 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Capacity roadmap | `docs/infrastructure/CAPACITY_ROADMAP.md` |
 | Longhorn recovery runbook | `docs/runbooks/LONGHORN_VOLUME_RECOVERY.md` |
 | Cluster ops runbook | `docs/runbooks/CLUSTER_REMEDIATION_OPS.md` |
+| Incident response runbook | `docs/runbooks/INCIDENT_RESPONSE.md` (severity classification, escalation matrix, 5 failure playbooks, postmortem process) |
+| K3s upgrade runbook | `docs/runbooks/K3S_UPGRADE.md` (prerequisites, rolling upgrade sequence, CRD migration notes, rollback procedure) |
+| Logging conventions | `docs/architecture/LOGGING_CONVENTIONS.md` (logrus/zap split, standards for new services, Fluent Bit parser config) |
 | **Load Testing** | |
 | k6 test scripts | `tests/load/` (health.js, api.js, stress.js, config.js) |
 | Load test CI | `.github/workflows/load-test.yml` (weekly + manual dispatch) |
@@ -732,7 +737,7 @@ pnpm test:e2e
 | Junction (routing/ingress) | **Implemented** | 4 API endpoints, 1 DB table, Cloudflare tunnel + cert-manager integration, CLI `enclii junctions` commands. Session 103 |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
 | Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold 50%. `--passWithNoTests` removed from mandatory suites (switchyard-ui, dispatch, status) in S106. Tests: db/, reconciler/ (30 S106), services/, roundhouse (21), waybill (14), CLI (82), SDK (30), dispatch (123), status (129), switchyard-ui (159), shared-lib (19), ui-components (18), provenance (42), signing (8), addons (6), timetable (62+19 S103), cron_job_run (14 S106). 16 Go packages identified for Tier 1-3 test expansion (see REMEDIATION_PLAN.md Phase 2). RBAC namespace bug fixed S106 (`default`->`enclii`). Integration tests go.mod aligned to 1.25.0 |
+| Test coverage enforcement | Active | CI threshold 50%. `--passWithNoTests` removed from mandatory suites (switchyard-ui, dispatch, status) in S106. Tests: db/, reconciler/ (30 S106 + 35 S107), services/, roundhouse (21), waybill (14), CLI (82 + 33 S107), SDK (30), dispatch (123), status (129), switchyard-ui (159), shared-lib (19), ui-components (18), provenance (42), signing (8), addons (6), timetable (62+19 S103), cron_job_run (14 S106), topology (43 S107), rotation (18 S107), backup (16 S107). 220+ tests added in S107 across 8 packages. RBAC namespace bug fixed S106 (`default`->`enclii`). Integration tests go.mod aligned to 1.25.0 |
 | Vault (secret management) | Ready | Helm values + ArgoCD app (health probes fixed S106: `uninitcode=200&sealedcode=200`) + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Pod can now run uninitialized/sealed. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel, autoswarm, and pravara-mes live in their own repos (self-provisioning pattern, not in enclii) |
 | PostHog (analytics) | Removed (S106) | Self-host abandoned. ArgoCD app + namespace + PVCs removed. Helm values archived to `infra/archive/posthog/`. Analytics via Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud (still active at `infra/cloudflare/posthog-proxy/`) |
 | react-sdk pre-existing test failures | Resolved | Session 102: Replaced empty div mocks with interactive form mocks, expanded useJanua context. 12/12 suites, 123/123 tests pass (janua `bdb7a31b`) |

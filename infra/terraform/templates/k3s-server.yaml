@@ -32,6 +32,7 @@ write_files:
       server: https://${first_server_ip}:6443
       %{ endif }
       token: ${k3s_token}
+      secrets-encryption: true
     permissions: '0600'
 
   - path: /etc/sysctl.d/99-kubernetes.conf

@@ -74,6 +74,13 @@ data:
         editable: false
         jsonData:
           implementation: prometheus
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.logging.svc.cluster.local:3100
+        editable: false
+        jsonData:
+          maxLines: 1000
 ---
 # Grafana Dashboard Providers
 apiVersion: v1

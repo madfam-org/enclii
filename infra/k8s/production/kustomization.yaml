@@ -3,6 +3,9 @@ kind: Kustomization
 namespace: enclii
 resources:
 - ../base
+- hpa-switchyard-api.yaml
+- hpa-switchyard-ui.yaml
+- hpa-roundhouse-api.yaml
 # NOTE: cloudflared.yaml removed - using existing cloudflared in cloudflare-tunnel namespace
 # The cloudflare-tunnel namespace has working cloudflared pods with proper credentials
 # - cloudflared.yaml

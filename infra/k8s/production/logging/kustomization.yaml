@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: logging
+
+resources:
+  - fluent-bit-daemonset.yaml
+  - loki-statefulset.yaml
+
+# Note: commonLabels are NOT used here because kustomize adds them to service
+# selectors, causing selector mismatches with pods. Labels are set directly
+# in each resource's metadata instead.
+
+# Common annotations
+commonAnnotations:
+  enclii.dev/component: logging
