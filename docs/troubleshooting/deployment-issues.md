@@ -11,7 +11,7 @@ This guide helps resolve issues with deploying services to the Enclii platform.
 
 ## Prerequisites
 
-- [CLI installed](/docs/cli/)
+- [CLI installed](/cli/)
 - Service configured with successful build
 
 ## Quick Diagnosis
@@ -336,5 +336,5 @@ enclii secrets set --service <service-id> SECRET_KEY=sensitive-value
 
 - **Build Issues**: [Build Failures](./build-failures)
 - **Networking**: [Networking Troubleshooting](./networking)
-- **CLI Deploy Command**: [enclii deploy](/docs/cli/commands/deploy)
-- **Service Spec**: [Service Specification](/docs/reference/service-spec)
+- **CLI Deploy Command**: [enclii deploy](/cli/commands/deploy)
+- **Service Spec**: [Service Specification](/reference/service-spec)

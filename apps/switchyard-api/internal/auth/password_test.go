@@ -1,9 +1,17 @@
 package auth
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	// Use a low bcrypt cost for tests to avoid timeouts.
+	// Production uses cost 14; tests use cost 4.
+	bcryptCost = 4
+	os.Exit(m.Run())
+}
 
 func TestHashPassword(t *testing.T) {
 	tests := []struct {
@@ -210,6 +218,6 @@ func BenchmarkComparePassword(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ComparePassword(password, hash)
+		ComparePassword(hash, password)
 	}
 }

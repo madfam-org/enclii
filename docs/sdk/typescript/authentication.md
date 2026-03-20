@@ -348,7 +348,7 @@ const enclii = new EncliiClient({
 
 ## Related Documentation
 
-- **SDK Overview**: [TypeScript SDK](./index)
-- **CLI Auth**: [CLI Authentication](/docs/guides/cli-auth-setup)
-- **Auth Troubleshooting**: [Auth Problems](/docs/troubleshooting/auth-problems)
+- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
+- **CLI Auth**: [CLI Authentication](/guides/cli-auth-setup)
+- **Auth Troubleshooting**: [Auth Problems](/troubleshooting/auth-problems)
 - **API Reference**: [API Docs](/api-reference/)

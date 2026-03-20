@@ -11,8 +11,8 @@ This guide covers common API errors you may encounter when using the Enclii API.
 
 ## Prerequisites
 
-- [CLI installed](/docs/cli/) or API client configured
-- [Authentication set up](/docs/guides/cli-auth-setup)
+- [CLI installed](/cli/) or API client configured
+- [Authentication set up](/guides/cli-auth-setup)
 
 ## HTTP Status Codes
 
@@ -261,5 +261,5 @@ curl -i https://api.enclii.dev/v1/users/me 2>&1 | grep -i x-request-id
 ## Related Documentation
 
 - **Authentication**: [Auth Problems](./auth-problems)
-- **API Reference**: [OpenAPI Spec](/api-reference)
-- **CLI Reference**: [CLI Commands](/docs/cli/)
+- **API Reference**: [OpenAPI Spec](/api-reference/)
+- **CLI Reference**: [CLI Commands](/cli/)

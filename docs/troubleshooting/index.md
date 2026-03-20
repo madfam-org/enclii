@@ -47,7 +47,7 @@ If you can't find a solution here:
 
 ## Related Documentation
 
-- **Getting Started**: [Quickstart Guide](/docs/getting-started/QUICKSTART)
-- **CLI Reference**: [CLI Commands](/docs/cli/)
-- **FAQ**: [Frequently Asked Questions](/docs/faq/)
-- **Runbooks**: [Operational Runbooks](/docs/runbooks/)
+- **Getting Started**: [Quickstart Guide](/getting-started/QUICKSTART)
+- **CLI Reference**: [CLI Commands](/cli/)
+- **FAQ**: [Frequently Asked Questions](/faq/)
+- **Runbooks**: [Database Recovery](/runbooks/DATABASE_RECOVERY) | [Cluster Ops](/runbooks/CLUSTER_REMEDIATION_OPS)

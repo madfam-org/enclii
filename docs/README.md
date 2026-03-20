@@ -117,57 +117,9 @@ GitOps, storage, compute, and Kubernetes infrastructure. **[Infrastructure Index
 - ARC Runners: `infra/argocd/apps/arc-runners.yaml` — GitHub Actions self-hosted runners
 
 ### 🔍 Audits
-Comprehensive audit reports organized by category. **Start with the [Audit README](./audits/README.md)** for navigation.
+Browser-based audit reports from January 2026 are available in the `audits/` directory.
 
-#### Master Reports
-- [Master Audit Report](./audits/MASTER_REPORT.md) - Comprehensive overview of all audits
-- [Audit Navigation Guide](./audits/README.md) - **START HERE** - Navigation by role
-
-#### Security Audits
-- [Comprehensive Security Audit](./audits/security/COMPREHENSIVE_AUDIT.md)
-- [Security Executive Summary](./audits/security/EXECUTIVE_SUMMARY.md)
-- [Security Quick Reference](./audits/security/QUICK_REFERENCE.md)
-- [Authentication Audit Report](./audits/security/AUTH_REPORT.md)
-- [Secret Management Audit](./audits/security/SECRET_MANAGEMENT.md)
-
-#### Infrastructure Audits
-- [Infrastructure README](./audits/infrastructure/README.md) - **START HERE** for infrastructure
-- [Comprehensive Infrastructure Audit](./audits/infrastructure/COMPREHENSIVE_AUDIT.md)
-- [Infrastructure Audit Report](./audits/infrastructure/AUDIT_REPORT.md)
-- [Infrastructure Summary](./audits/infrastructure/SUMMARY.md)
-- [Infrastructure Issues Tracker](./audits/infrastructure/ISSUES_TRACKER.md)
-
-#### Codebase Audits
-- [Comprehensive Codebase Audit](./audits/codebase/COMPREHENSIVE_AUDIT.md)
-- [Enclii Comprehensive Audit](./audits/codebase/ENCLII_COMPREHENSIVE_AUDIT.md)
-- [Go Code Audit Report](./audits/codebase/GO_AUDIT_REPORT.md)
-- [Go Audit Summary](./audits/codebase/GO_SUMMARY.md)
-- [Codebase Quick Reference](./audits/codebase/QUICK_REFERENCE.md)
-- [Switchyard Audit](./audits/codebase/SWITCHYARD_AUDIT.md)
-
-#### UI/Frontend Audits
-- [Comprehensive UI Audit](./audits/ui/COMPREHENSIVE_AUDIT.md)
-- [UI Executive Summary](./audits/ui/EXECUTIVE_SUMMARY.md)
-- [Switchyard UI Audit](./audits/ui/SWITCHYARD_UI_AUDIT.md)
-- [Switchyard UI Summary](./audits/ui/SWITCHYARD_UI_SUMMARY.md)
-
-#### Dependencies Audits
-- [Dependencies README](./audits/dependencies/README.md) - **START HERE** for dependencies
-- [Comprehensive Dependencies Analysis](./audits/dependencies/COMPREHENSIVE_ANALYSIS.md)
-- [Dependency Audit Checklist](./audits/dependencies/AUDIT_CHECKLIST.md)
-- [Dependencies Quick Reference](./audits/dependencies/QUICK_REFERENCE.md)
-
-#### Testing Audits
-- [Testing Infrastructure Assessment](./audits/testing/INFRASTRUCTURE_ASSESSMENT.md)
-- [Testing Assessment Summary](./audits/testing/ASSESSMENT_SUMMARY.md)
-- [Testing Improvement Roadmap](./audits/testing/IMPROVEMENT_ROADMAP.md)
-- [Test Coverage Status](./audits/testing/COVERAGE_STATUS.md)
-
-#### Technical Debt
-- [Technical Debt README](./audits/technical-debt/README.md) - **START HERE** for tech debt
-- [Technical Debt Synthesis Report](./audits/technical-debt/SYNTHESIS_REPORT.md)
-- [Technical Debt Executive Summary](./audits/technical-debt/EXECUTIVE_SUMMARY.md)
-- [Technical Debt Action Checklist](./audits/technical-debt/ACTION_CHECKLIST.md)
+> **Note:** Detailed audit reports (security, infrastructure, codebase, UI, dependencies, testing, technical debt) were produced during earlier development phases and have been archived. See `docs/archive/audits-nov-2025/` for the full set of historical audit documents.
 
 ### 🛠️ Implementation
 Implementation status reports and strategy documents.
@@ -181,78 +133,18 @@ Implementation status reports and strategy documents.
 - [Main Integration Complete](./implementation/MAIN_INTEGRATION_COMPLETE.md)
 
 ### 📦 Archive
-Historical reports, completed progress tracking documents, and design artifacts.
-
-#### Design Documents (Planning Artifacts)
-- [Design Docs README](./archive/design-docs/README.md) - **Historical design documents**
-- [MVP Implementation Prompt](./archive/design-docs/ENCLII_MVP_IMPLEMENTATION_PROMPT.md)
-- [MVP Parity Prompt V2](./archive/design-docs/ENCLII_MVP_PARITY_PROMPT_V2.md)
-- [SWE Agent Stability Prompt](./archive/design-docs/SWE_AGENT_PROMPT_FULL_STABILITY.md)
-
-#### Sprint Progress Reports
-- [Sprint 0 Complete](./archive/SPRINT_0_COMPLETE.md)
-- [Sprint 0 Progress](./archive/SPRINT_0_PROGRESS.md)
-- [Sprint 1 Progress](./archive/SPRINT_1_PROGRESS.md)
-- [Phase 1 Fixes Complete](./archive/PHASE_1_FIXES_COMPLETE.md)
-- [Phase 2 Auth Security Complete](./archive/PHASE_2_AUTH_SECURITY_COMPLETE.md)
-
-#### Audit Artifacts
-- [Analysis Complete](./archive/ANALYSIS_COMPLETE.md)
-- [Audit Files Reviewed](./archive/AUDIT_FILES_REVIEWED.md)
-- [Audit Issues Tracker](./archive/AUDIT_ISSUES_TRACKER.md)
-- [Audit Logging Provenance](./archive/AUDIT_LOGGING_PROVENANCE.md)
-- [Secret Audit Summary](./archive/SECRET_AUDIT_SUMMARY.md)
-
-#### Other Historical Documents
-- [Cleanup Summary](./archive/CLEANUP_SUMMARY.md)
-- [Documentation Quality Review](./archive/DOCUMENTATION_QUALITY_REVIEW.md)
-- [Refactoring Progress](./archive/REFACTORING_PROGRESS.md)
-- [Switchyard Executive Summary](./archive/SWITCHYARD_EXECUTIVE_SUMMARY.md)
-- [Switchyard Gap Report](./archive/SWITCHYARD_GAP_REPORT.md)
+Historical reports, completed progress tracking documents, and design artifacts are stored in the `archive/` directory. These are excluded from the docs site build but remain available in the repository for reference.
 
 ## Navigation by Role
 
-### 👔 Executives / CTOs
-**Time commitment:** 30 minutes
-
-1. [Master Audit Report](./audits/MASTER_REPORT.md) (Executive Summary section)
-2. [Technical Debt Executive Summary](./audits/technical-debt/EXECUTIVE_SUMMARY.md)
-3. [Security Executive Summary](./audits/security/EXECUTIVE_SUMMARY.md)
-
-### 👨‍💼 Engineering Managers
-**Time commitment:** 1-2 hours
-
-1. [Master Audit Report](./audits/MASTER_REPORT.md) (Production Roadmap section)
-2. [Technical Debt Action Checklist](./audits/technical-debt/ACTION_CHECKLIST.md)
-3. [Testing Assessment Summary](./audits/testing/ASSESSMENT_SUMMARY.md)
-
-### 🔧 DevOps / SRE Engineers
-**Time commitment:** 2-3 hours
-
-1. [Infrastructure README](./audits/infrastructure/README.md)
-2. [Dependency Audit Checklist](./audits/dependencies/AUDIT_CHECKLIST.md)
-3. [Comprehensive Infrastructure Audit](./audits/infrastructure/COMPREHENSIVE_AUDIT.md)
-
-### 🔐 Security Engineers
-**Time commitment:** 2-3 hours
-
-1. [Security Quick Reference](./audits/security/QUICK_REFERENCE.md)
-2. [Comprehensive Security Audit](./audits/security/COMPREHENSIVE_AUDIT.md)
-3. [Dependencies Quick Reference](./audits/dependencies/QUICK_REFERENCE.md)
-
-### 💻 Frontend Developers
-**Time commitment:** 2-3 hours
-
-1. [UI Executive Summary](./audits/ui/EXECUTIVE_SUMMARY.md)
-2. [Comprehensive UI Audit](./audits/ui/COMPREHENSIVE_AUDIT.md)
-3. [Testing Guide](./guides/TESTING_GUIDE.md)
-
-### 💻 Backend Developers
-**Time commitment:** 2-3 hours
-
-1. [Go Audit Summary](./audits/codebase/GO_SUMMARY.md)
-2. [Go Code Audit Report](./audits/codebase/GO_AUDIT_REPORT.md)
-3. [Testing Improvement Roadmap](./audits/testing/IMPROVEMENT_ROADMAP.md)
+| Role | Start Here |
+|------|-----------|
+| **Executives / CTOs** | [Production Checklist](./production/PRODUCTION_CHECKLIST.md), [Gap Analysis](./production/GAP_ANALYSIS.md) |
+| **Engineering Managers** | [Production Deployment Roadmap](./production/PRODUCTION_DEPLOYMENT_ROADMAP.md), [Testing Guide](./guides/TESTING_GUIDE.md) |
+| **DevOps / SRE** | [Infrastructure Index](./infrastructure/README.md), [Runbooks](./runbooks/CLUSTER_REMEDIATION_OPS.md) |
+| **Security Engineers** | [Kyverno Policies](./infrastructure/KYVERNO_POLICIES.md), [Secret Rotation Log](./security/SECRET_ROTATION_LOG.md) |
+| **Frontend Developers** | [Quickstart](./getting-started/QUICKSTART.md), [TypeScript SDK](./sdk/typescript/) |
+| **Backend Developers** | [Architecture](./architecture/ARCHITECTURE.md), [API Docs](./architecture/API.md), [Testing Guide](./guides/TESTING_GUIDE.md) |
 
 ## Core Documentation (Root Directory)
 
@@ -286,11 +178,9 @@ When adding new documentation:
 
 ---
 
----
-
 ## Related Documentation
 
-- **API Reference**: [OpenAPI Documentation](/api-reference/)
+- **API Reference**: [OpenAPI Documentation](./api-reference/)
 - **CLI Reference**: [CLI Commands](./cli/)
 - **TypeScript SDK**: [SDK Documentation](./sdk/typescript/)
 - **Troubleshooting**: [Common Issues](./troubleshooting/)
@@ -298,5 +188,5 @@ When adding new documentation:
 
 ---
 
-**Last Updated:** 2026-03-08
-**Documentation Version:** 3.1 (Docs Audit Remediation)
+**Last Updated:** 2026-03-20
+**Documentation Version:** 3.2 (Broken Links Fix)

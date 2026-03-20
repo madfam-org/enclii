@@ -350,7 +350,7 @@ nc -vz <service>.<namespace>.svc.cluster.local 80
 
 ## Related Documentation
 
-- **DNS Setup**: [DNS Setup (Porkbun)](/docs/infrastructure/dns-setup-porkbun)
-- **Cloudflare**: [Cloudflare Integration](/docs/infrastructure/CLOUDFLARE)
+- **DNS Setup**: [DNS Setup (Porkbun)](/infrastructure/dns-setup-porkbun)
+- **Cloudflare**: [Cloudflare Integration](/infrastructure/CLOUDFLARE)
 - **Deployment Issues**: [Deployment Troubleshooting](./deployment-issues)
-- **Architecture**: [Infrastructure Anatomy](/docs/infrastructure/INFRA_ANATOMY)
+- **Architecture**: [Infrastructure Anatomy](/infrastructure/INFRA_ANATOMY)

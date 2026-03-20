@@ -415,9 +415,9 @@ Enclii automatically prevents committing secrets in `enclii.yaml`:
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART)
-- **CLI**: [CLI Reference](/docs/cli/) | [Deploy Command](/docs/cli/commands/deploy)
-- **SDK**: [TypeScript SDK - Deployments](/docs/sdk/typescript/deployments)
-- **Troubleshooting**: [Build Failures](/docs/troubleshooting/build-failures) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **FAQ**: [General FAQ](/docs/faq/general)
-- **Other Integrations**: [SSO Integration](/docs/integrations/sso)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART)
+- **CLI**: [CLI Reference](/cli/) | [Deploy Command](/cli/commands/deploy)
+- **SDK**: [TypeScript SDK - Deployments](/sdk/typescript/deployments)
+- **Troubleshooting**: [Build Failures](/troubleshooting/build-failures) | [Deployment Issues](/troubleshooting/deployment-issues)
+- **FAQ**: [General FAQ](/faq/general)
+- **Other Integrations**: [SSO Integration](/integrations/sso)

@@ -260,7 +260,7 @@ Only **443 (HTTPS)** via Cloudflare Tunnel. No other ports are exposed to the in
 
 ## Related Documentation
 
-- **Infrastructure**: [Cloudflare Integration](/docs/infrastructure/CLOUDFLARE)
-- **Authentication**: [SSO Integration](/docs/integrations/sso)
-- **General FAQ**: [General Questions](/docs/faq/general)
-- **Compliance Webhooks**: [Compliance Webhooks](/docs/integrations/compliance-webhooks)
+- **Infrastructure**: [Cloudflare Integration](/infrastructure/CLOUDFLARE)
+- **Authentication**: [SSO Integration](/integrations/sso)
+- **General FAQ**: [General Questions](/faq/general)
+- **Compliance Webhooks**: [Compliance Webhooks](/integrations/compliance-webhooks)

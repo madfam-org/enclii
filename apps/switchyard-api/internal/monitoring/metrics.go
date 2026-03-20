@@ -3,6 +3,7 @@ package monitoring
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -385,6 +386,49 @@ const (
 	LongBuildTimeThreshold   = 600  // 10 minutes
 	LongDeployTimeThreshold  = 300  // 5 minutes
 )
+
+// AutoRollbackErrorThreshold is the 5xx error rate threshold that triggers
+// automatic deployment rollback. Deployments with error rates above this
+// threshold are considered unhealthy.
+const AutoRollbackErrorThreshold = 0.02 // 2% 5xx error rate
+
+// CheckDeploymentHealth checks if a deployment is healthy based on HTTP error rate.
+// Returns true if healthy (error rate <= threshold), false if unhealthy.
+// The threshold is the AutoRollbackErrorThreshold (2%).
+// Also returns the calculated error rate.
+func CheckDeploymentHealth(registry *prometheus.Registry, namespace, service string) (bool, float64) {
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		// If we cannot gather metrics, assume healthy (fail open)
+		return true, 0
+	}
+
+	var totalRequests, serverErrors float64
+
+	for _, mf := range metricFamilies {
+		if mf.GetName() != "enclii_http_requests_total" {
+			continue
+		}
+
+		for _, m := range mf.GetMetric() {
+			val := m.GetCounter().GetValue()
+			totalRequests += val
+
+			for _, label := range m.GetLabel() {
+				if label.GetName() == "status_code" && strings.HasPrefix(label.GetValue(), "5") {
+					serverErrors += val
+				}
+			}
+		}
+	}
+
+	if totalRequests == 0 {
+		return true, 0
+	}
+
+	errorRate := serverErrors / totalRequests
+	return errorRate <= AutoRollbackErrorThreshold, errorRate
+}
 
 // Metrics export for external monitoring systems
 type MetricsSnapshot struct {

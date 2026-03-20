@@ -571,3 +571,19 @@ func TestSetNotificationService_NilIsAllowed(t *testing.T) {
 		t.Error("notificationService should be nil after SetNotificationService(nil)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Post-deploy health observation
+// ---------------------------------------------------------------------------
+
+// TestHealthObservation_SkipsWhenK8sClientNil verifies that health observation
+// is skipped when the K8s client is nil.
+func TestHealthObservation_SkipsWhenK8sClientNil(t *testing.T) {
+	// Controller with nil k8sClient should not panic when observePostDeployHealth is called
+	logger := logrus.New()
+	logger.SetLevel(logrus.PanicLevel)
+	c := NewController(nil, nil, nil, logger)
+	// observePostDeployHealth should be a no-op when k8sClient is nil
+	c.observePostDeployHealth("test-deploy-id")
+	// If we get here without panic, the test passes
+}

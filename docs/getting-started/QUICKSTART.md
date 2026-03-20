@@ -100,8 +100,8 @@ Open http://localhost:3000 to see the dashboard.
 
 ## Related Documentation
 
-- **Next Steps**: [Development Guide](/docs/getting-started/DEVELOPMENT)
-- **CLI Reference**: [CLI Commands](/docs/cli/)
-- **Deployment**: [Deploying Services](/docs/guides/ONBOARDING_GUIDE)
-- **Troubleshooting**: [Common Issues](/docs/troubleshooting/)
-- **FAQ**: [Frequently Asked Questions](/docs/faq/)
+- **Next Steps**: [Development Guide](/getting-started/DEVELOPMENT)
+- **CLI Reference**: [CLI Commands](/cli/)
+- **Deployment**: [Deploying Services](/guides/ONBOARDING_GUIDE)
+- **Troubleshooting**: [Common Issues](/troubleshooting/)
+- **FAQ**: [Frequently Asked Questions](/faq/)

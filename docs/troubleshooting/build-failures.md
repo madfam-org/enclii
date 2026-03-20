@@ -11,7 +11,7 @@ This guide helps diagnose and fix issues with the Enclii build pipeline.
 
 ## Prerequisites
 
-- [CLI installed](/docs/cli/)
+- [CLI installed](/cli/)
 - Service configured and connected to a Git repository
 
 ## Quick Diagnosis
@@ -288,5 +288,5 @@ enclii deploy --service <service-id>
 ## Related Documentation
 
 - **Deployment Issues**: [Deployment Troubleshooting](./deployment-issues)
-- **Build Pipeline**: [Build Pipeline Implementation](/docs/implementation/BUILD_PIPELINE_IMPLEMENTATION)
-- **Service Spec**: [Service Specification Reference](/docs/reference/service-spec)
+- **Build Pipeline**: [Build Pipeline Implementation](/implementation/BUILD_PIPELINE_IMPLEMENTATION)
+- **Service Spec**: [Service Specification Reference](/reference/service-spec)

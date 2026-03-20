@@ -13,10 +13,9 @@ const config: Config = {
   organizationName: 'madfam-io',
   projectName: 'enclii',
 
-  // TODO: Change to 'throw' after fixing 60+ pre-existing broken links
-  // (docs/README.md audit subdirectory refs, archive exclusions, external links)
-  onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
+  onBrokenLinks: 'throw',
+  onBrokenMarkdownLinks: 'throw',
+  onBrokenAnchors: 'warn',
 
   // Use standard markdown to avoid MDX parsing issues with <placeholders>
   markdown: {
@@ -73,7 +72,8 @@ const config: Config = {
           label: 'Documentation',
         },
         {
-          to: '/api-reference/',
+          type: 'doc',
+          docId: 'api-reference/index',
           label: 'API Reference',
           position: 'left',
         },
@@ -103,6 +103,7 @@ const config: Config = {
               label: 'API Reference',
               to: '/api-reference/',
             },
+
             {
               label: 'CLI Commands',
               to: '/cli/',

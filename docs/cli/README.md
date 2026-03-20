@@ -179,8 +179,8 @@ enclii local down
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART)
-- **SDK Alternative**: [TypeScript SDK](/docs/sdk/typescript/) for programmatic access
-- **Troubleshooting**: [Auth Problems](/docs/troubleshooting/auth-problems) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **FAQ**: [General FAQ](/docs/faq/general)
-- **Reference**: [Service Specification](/docs/reference/service-spec) | [GitHub Integration](/docs/integrations/github)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART)
+- **SDK Alternative**: [TypeScript SDK](/sdk/typescript/) for programmatic access
+- **Troubleshooting**: [Auth Problems](/troubleshooting/auth-problems) | [Deployment Issues](/troubleshooting/deployment-issues)
+- **FAQ**: [General FAQ](/faq/general)
+- **Reference**: [Service Specification](/reference/service-spec) | [GitHub Integration](/integrations/github)

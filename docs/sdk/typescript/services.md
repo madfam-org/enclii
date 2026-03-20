@@ -420,7 +420,7 @@ try {
 
 ## Related Documentation
 
-- **SDK Overview**: [TypeScript SDK](./index)
+- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
 - **Deployments**: [Deployment Management](./deployments)
 - **Domains**: [Custom Domains](./domains)
 - **API Reference**: [Services API](/api-reference/#tag/services)

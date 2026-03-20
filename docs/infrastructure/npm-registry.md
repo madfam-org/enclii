@@ -9,9 +9,9 @@ tags: [infrastructure, npm, verdaccio, registry]
 
 ## Related Documentation
 
-- **DNS Setup**: [DNS Configuration (Porkbun)](/docs/infrastructure/dns-setup-porkbun)
-- **Cloudflare**: [Cloudflare Integration](/docs/infrastructure/CLOUDFLARE)
-- **Onboarding**: [Onboarding Guide](/docs/guides/ONBOARDING_GUIDE)
+- **DNS Setup**: [DNS Configuration (Porkbun)](/infrastructure/dns-setup-porkbun)
+- **Cloudflare**: [Cloudflare Integration](/infrastructure/CLOUDFLARE)
+- **Onboarding**: [Onboarding Guide](/guides/ONBOARDING_GUIDE)
 
 ## Overview
 

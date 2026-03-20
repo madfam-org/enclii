@@ -539,12 +539,12 @@ sequenceDiagram
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART) | [Development Guide](/docs/getting-started/DEVELOPMENT)
-- **Infrastructure**: [Infrastructure Overview](/docs/infrastructure/) | [GitOps](/docs/infrastructure/GITOPS) | [Storage](/docs/infrastructure/STORAGE)
-- **CLI**: [CLI Reference](/docs/cli/) | [Deploy Command](/docs/cli/commands/deploy)
-- **SDKs**: [TypeScript SDK](/docs/sdk/typescript/) | [Go SDK](/docs/sdk/go/)
-- **Troubleshooting**: [API Errors](/docs/troubleshooting/api-errors) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **Security**: [Security FAQ](/docs/faq/security) | [Security Audit](/docs/audits/security/EXECUTIVE_SUMMARY)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART) | [Development Guide](/getting-started/DEVELOPMENT)
+- **Infrastructure**: [Infrastructure Overview](/infrastructure/) | [GitOps](/infrastructure/GITOPS) | [Storage](/infrastructure/STORAGE)
+- **CLI**: [CLI Reference](/cli/) | [Deploy Command](/cli/commands/deploy)
+- **SDKs**: [TypeScript SDK](/sdk/typescript/) | [Go SDK](https://github.com/madfam-io/enclii/tree/main/packages/sdk-go)
+- **Troubleshooting**: [API Errors](/troubleshooting/api-errors) | [Deployment Issues](/troubleshooting/deployment-issues)
+- **Security**: [Security FAQ](/faq/security) | [Secret Rotation Log](/security/SECRET_ROTATION_LOG)
 - **API Reference**: [OpenAPI Documentation](/api-reference/)
 
 ---

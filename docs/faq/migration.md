@@ -47,13 +47,13 @@ Options for database migration:
 2. **Replication**: Set up follower, then promote
 3. **New database**: Start fresh if possible
 
-See [Database Operations](/docs/guides/database-operations) for detailed steps.
+See [Database Operations](/guides/database-operations) for detailed steps.
 
 ## Railway Migration
 
 ### How do I migrate from Railway?
 
-See our detailed [Railway Migration Guide](/docs/guides/RAILWAY_MIGRATION_GUIDE).
+See our detailed [Railway Migration Guide](/guides/RAILWAY_MIGRATION_GUIDE).
 
 **Quick steps**:
 1. Export Railway environment variables
@@ -94,7 +94,7 @@ Update your connection strings accordingly.
 
 ### How do I migrate from Vercel?
 
-See our detailed [Vercel Migration Guide](/docs/guides/VERCEL_MIGRATION_GUIDE).
+See our detailed [Vercel Migration Guide](/guides/VERCEL_MIGRATION_GUIDE).
 
 **Key differences**:
 - Vercel is edge-first, Enclii is container-first
@@ -349,8 +349,8 @@ jobs:
 
 ## Related Documentation
 
-- **Railway Guide**: [Railway Migration Guide](/docs/guides/RAILWAY_MIGRATION_GUIDE)
-- **Vercel Guide**: [Vercel Migration Guide](/docs/guides/VERCEL_MIGRATION_GUIDE)
-- **Heroku Guide**: [Heroku Migration Guide](/docs/guides/HEROKU_MIGRATION_GUIDE)
-- **Database Operations**: [Database Operations Guide](/docs/guides/database-operations)
-- **Getting Started**: [Quickstart](/docs/getting-started/QUICKSTART)
+- **Railway Guide**: [Railway Migration Guide](/guides/RAILWAY_MIGRATION_GUIDE)
+- **Vercel Guide**: [Vercel Migration Guide](/guides/VERCEL_MIGRATION_GUIDE)
+- **Heroku Guide**: [Heroku Migration Guide](/guides/HEROKU_MIGRATION_GUIDE)
+- **Database Operations**: [Database Operations Guide](/guides/database-operations)
+- **Getting Started**: [Quickstart](/getting-started/QUICKSTART)

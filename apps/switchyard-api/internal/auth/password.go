@@ -6,12 +6,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	// bcryptCost is the cost parameter for bcrypt hashing
-	// Higher cost = more secure but slower
-	// 14 is a good balance between security and performance
-	bcryptCost = 14
-)
+// bcryptCost is the cost parameter for bcrypt hashing.
+// Higher cost = more secure but slower.
+// 14 is a good balance between security and performance.
+// This is a var (not const) so tests can lower it to avoid timeouts.
+var bcryptCost = 14
 
 // HashPassword hashes a plaintext password using bcrypt
 func HashPassword(password string) (string, error) {

@@ -200,7 +200,7 @@ We provide a full offboarding guide to ensure smooth transitions.
 
 ## Related Documentation
 
-- **Cost Analysis**: [Production Deployment Roadmap](/docs/production/PRODUCTION_DEPLOYMENT_ROADMAP)
-- **Infrastructure**: [Infrastructure Anatomy](/docs/infrastructure/INFRA_ANATOMY)
-- **Migration**: [Migration FAQ](/docs/faq/migration)
-- **Security**: [Security FAQ](/docs/faq/security)
+- **Cost Analysis**: [Production Deployment Roadmap](/production/PRODUCTION_DEPLOYMENT_ROADMAP)
+- **Infrastructure**: [Infrastructure Anatomy](/infrastructure/INFRA_ANATOMY)
+- **Migration**: [Migration FAQ](/faq/migration)
+- **Security**: [Security FAQ](/faq/security)

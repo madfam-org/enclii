@@ -452,8 +452,8 @@ kubectl get pods -n enclii-system
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART) | [Development Guide](/docs/getting-started/DEVELOPMENT)
-- **CLI**: [CLI Reference](/docs/cli/)
-- **Troubleshooting**: [Build Failures](/docs/troubleshooting/build-failures) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **Infrastructure**: [Infrastructure Overview](/docs/infrastructure/)
-- **Production**: [Production Checklist](/docs/production/PRODUCTION_CHECKLIST)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART) | [Development Guide](/getting-started/DEVELOPMENT)
+- **CLI**: [CLI Reference](/cli/)
+- **Troubleshooting**: [Build Failures](/troubleshooting/build-failures) | [Deployment Issues](/troubleshooting/deployment-issues)
+- **Infrastructure**: [Infrastructure Overview](/infrastructure/)
+- **Production**: [Production Checklist](/production/PRODUCTION_CHECKLIST)

@@ -87,8 +87,8 @@ kubectl port-forward svc/longhorn-frontend -n longhorn-system 8081:80
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART)
-- **Architecture**: [Platform Architecture](/docs/architecture/ARCHITECTURE)
-- **Production**: [Production Checklist](/docs/production/PRODUCTION_CHECKLIST) | [Deployment Roadmap](/docs/production/PRODUCTION_DEPLOYMENT_ROADMAP)
-- **Troubleshooting**: [Networking Issues](/docs/troubleshooting/networking) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **Guides**: [Database Operations](/docs/guides/database-operations) | [DNS Setup](/docs/infrastructure/dns-setup-porkbun)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART)
+- **Architecture**: [Platform Architecture](/architecture/)
+- **Production**: [Production Checklist](/production/PRODUCTION_CHECKLIST) | [Deployment Roadmap](/production/PRODUCTION_DEPLOYMENT_ROADMAP)
+- **Troubleshooting**: [Networking Issues](/troubleshooting/networking) | [Deployment Issues](/troubleshooting/deployment-issues)
+- **Guides**: [Database Operations](/guides/database-operations) | [DNS Setup](/infrastructure/dns-setup-porkbun)

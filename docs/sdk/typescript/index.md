@@ -214,5 +214,5 @@ app.get('/projects', async (req, res) => {
 
 - **API Reference**: [OpenAPI Docs](/api-reference/)
 - **Authentication**: [Auth Guide](./authentication)
-- **Go SDK**: [Go SDK](/docs/sdk/go/)
-- **CLI**: [CLI Reference](/docs/cli/)
+- **Go SDK**: [Go SDK](https://github.com/madfam-io/enclii/tree/main/packages/sdk-go)
+- **CLI**: [CLI Reference](/cli/)

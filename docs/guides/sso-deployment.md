@@ -9,9 +9,9 @@ tags: [sso, janua, authentication, deployment]
 
 ## Related Documentation
 
-- **SSO Integration**: [SSO Overview](/docs/integrations/sso)
-- **CLI Auth**: [CLI Authentication Setup](/docs/guides/cli-auth-setup)
-- **Troubleshooting**: [Authentication Problems](/docs/troubleshooting/auth-problems)
+- **SSO Integration**: [SSO Overview](/integrations/sso)
+- **CLI Auth**: [CLI Authentication Setup](/guides/cli-auth-setup)
+- **Troubleshooting**: [Authentication Problems](/troubleshooting/auth-problems)
 
 ## Status: Configuration Ready, Pending Production Deployment
 

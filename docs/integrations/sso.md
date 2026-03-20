@@ -435,10 +435,10 @@ curl https://auth.madfam.io/.well-known/jwks.json
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART)
-- **CLI**: [CLI Reference](/docs/cli/) | [Login Command](/docs/cli/commands/login)
-- **Guides**: [CLI Auth Setup](/docs/guides/cli-auth-setup) | [SSO Deployment](/docs/guides/sso-deployment)
-- **Troubleshooting**: [Auth Problems](/docs/troubleshooting/auth-problems)
-- **Security FAQ**: [Security Questions](/docs/faq/security)
-- **Other Integrations**: [GitHub Integration](/docs/integrations/github)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART)
+- **CLI**: [CLI Reference](/cli/) | [Login Command](/cli/commands/login)
+- **Guides**: [CLI Auth Setup](/guides/cli-auth-setup) | [SSO Deployment](/guides/sso-deployment)
+- **Troubleshooting**: [Auth Problems](/troubleshooting/auth-problems)
+- **Security FAQ**: [Security Questions](/faq/security)
+- **Other Integrations**: [GitHub Integration](/integrations/github)
 - **External**: [Janua Documentation](https://docs.janua.dev)

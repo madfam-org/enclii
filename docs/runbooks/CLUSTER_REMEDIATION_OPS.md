@@ -42,7 +42,7 @@ kubectl get cronjobs -A | grep -E "image-cleanup|disk-cleanup"
 
 ---
 
-## Section 2 -- Backup Credential Secrets (P1)
+## Section 2 -- Backup Credential Secrets (P1) {#section-2--backup-credential-secrets-p1}
 
 **Context:** Two backup CronJobs (`github-repos-backup` and `cloudflare-config-backup`) are deployed via ArgoCD but depend on secrets that must be created manually. Without these secrets, the jobs fail on every scheduled run.
 
@@ -510,7 +510,7 @@ kubectl get job restore-drill-manual -n data 2>/dev/null || echo "Job cleaned up
 
 ---
 
-## Section 7 -- ESO CRD Migration Plan (P1, Deferred)
+## Section 7 -- ESO CRD Migration Plan (P1, Deferred) {#section-7--eso-crd-migration-plan-p1-deferred}
 
 **Context:** The External Secrets Operator is pinned at v0.9.11 (uses `v1beta1` CRDs). The target version is v0.16.2 (uses `v1` CRDs). The current version is stable and functional. Migration requires a maintenance window because CRD upgrades are irreversible and affect all ExternalSecret resources cluster-wide.
 

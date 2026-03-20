@@ -353,7 +353,7 @@ try {
 
 ## Related Documentation
 
-- **SDK Overview**: [TypeScript SDK](./index)
+- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
 - **Services**: [Service Management](./services)
 - **Deployments**: [Deployments](./deployments)
 - **API Reference**: [Projects API](/api-reference/#tag/projects)

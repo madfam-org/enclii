@@ -367,8 +367,8 @@ try {
 
 ## Related Documentation
 
-- **SDK Overview**: [TypeScript SDK](./index)
+- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
 - **Services**: [Service Management](./services)
-- **Networking**: [Networking Troubleshooting](/docs/troubleshooting/networking)
-- **DNS Setup**: [DNS Configuration](/docs/infrastructure/dns-setup-porkbun)
+- **Networking**: [Networking Troubleshooting](/troubleshooting/networking)
+- **DNS Setup**: [DNS Configuration](/infrastructure/dns-setup-porkbun)
 - **API Reference**: [Domains API](/api-reference/#tag/domains)

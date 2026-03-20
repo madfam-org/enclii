@@ -11,7 +11,7 @@ This guide helps resolve authentication and authorization issues with Enclii.
 
 ## Prerequisites
 
-- [CLI installed](/docs/cli/)
+- [CLI installed](/cli/)
 - Network access to auth.madfam.io and api.enclii.dev
 
 ## Quick Diagnosis
@@ -75,7 +75,7 @@ enclii login  # Uses default enclii-cli
 ```
 
 2. **Register OAuth client** (admin required):
-   - See [CLI Auth Setup](/docs/guides/cli-auth-setup)
+   - See [CLI Auth Setup](/guides/cli-auth-setup)
 
 3. **Verify client exists**:
 ```bash
@@ -332,7 +332,7 @@ scope=openid%20profile%20email"
 
 ## Related Documentation
 
-- **CLI Auth Setup**: [Authentication Setup Guide](/docs/guides/cli-auth-setup)
-- **SSO Deployment**: [SSO Deployment Instructions](/docs/guides/sso-deployment)
-- **SSO Integration**: [SSO Integration](/docs/integrations/sso)
+- **CLI Auth Setup**: [Authentication Setup Guide](/guides/cli-auth-setup)
+- **SSO Deployment**: [SSO Deployment Instructions](/guides/sso-deployment)
+- **SSO Integration**: [SSO Integration](/integrations/sso)
 - **API Errors**: [API Error Reference](./api-errors)

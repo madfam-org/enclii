@@ -182,6 +182,7 @@ const sidebars: SidebarsConfig = {
       label: 'Reference',
       collapsed: true,
       items: [
+        'api-reference/index',
         'reference/service-spec',
       ],
     },

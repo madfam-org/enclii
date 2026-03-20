@@ -11,14 +11,14 @@ This guide covers all aspects of database management on Enclii, including provis
 
 ## Prerequisites
 
-- [CLI installed](/docs/cli/)
+- [CLI installed](/cli/)
 - Project created in Enclii
 
 ## Related Documentation
 
-- **Troubleshooting**: [API Errors](/docs/troubleshooting/api-errors)
-- **Migration Guide**: [Migration FAQ](/docs/faq/migration)
-- **Service Spec**: [Service Specification](/docs/reference/service-spec)
+- **Troubleshooting**: [API Errors](/troubleshooting/api-errors)
+- **Migration Guide**: [Migration FAQ](/faq/migration)
+- **Service Spec**: [Service Specification](/reference/service-spec)
 
 ## Database Types
 
@@ -493,6 +493,6 @@ enclii addons forward <addon>         # Port forward for local access
 
 ## Related Documentation
 
-- **Troubleshooting**: [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **Migration FAQ**: [Migrating Databases](/docs/faq/migration#database-migration)
-- **Service Config**: [Service Specification](/docs/reference/service-spec)
+- **Troubleshooting**: [Deployment Issues](/troubleshooting/deployment-issues)
+- **Migration FAQ**: [Migrating Databases](/faq/migration#database-migration)
+- **Service Config**: [Service Specification](/reference/service-spec)

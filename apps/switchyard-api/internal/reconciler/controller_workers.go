@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,6 +50,9 @@ func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWork
 		status = types.DeploymentStatusRunning
 		health = types.HealthStatusHealthy
 		logger.Info("Deployment reconciled successfully")
+
+		// Start post-deploy health observation (fire-and-forget with stopCh guard)
+		c.observePostDeployHealth(work.DeploymentID)
 	} else {
 		const maxRetries = 10
 
@@ -266,4 +270,124 @@ func (c *Controller) drainRetryQueue(logger *logrus.Entry) {
 			"remaining": len(remaining),
 		}).Debug("Drained retry queue to work queue")
 	}
+}
+
+// observePostDeployHealth monitors a deployment after successful reconciliation.
+// It checks deployment health every 30s for 2 minutes (4 checks). If replicas
+// are unavailable for 2 consecutive checks, it triggers an automatic rollback.
+// This is a fire-and-forget goroutine guarded by the controller's stopCh.
+func (c *Controller) observePostDeployHealth(deploymentID string) {
+	if c.k8sClient == nil {
+		return
+	}
+
+	go func() {
+		logger := c.logger.WithFields(logrus.Fields{
+			"component":  "health-observer",
+			"deployment": deploymentID,
+		})
+
+		// Resolve the deployment to get service name and namespace.
+		// Use context.Background() since the caller's context may be cancelled.
+		ctx := context.Background()
+
+		if c.repositories == nil {
+			logger.Debug("Repositories not available, skipping health observation")
+			return
+		}
+
+		deployment, err := c.repositories.Deployments.GetByID(ctx, deploymentID)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get deployment for health observation")
+			return
+		}
+
+		release, err := c.repositories.Releases.GetByID(deployment.ReleaseID)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get release for health observation")
+			return
+		}
+
+		service, err := c.repositories.Services.GetByID(release.ServiceID)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get service for health observation")
+			return
+		}
+
+		environment, err := c.repositories.Environments.GetByID(ctx, deployment.EnvironmentID)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get environment for health observation")
+			return
+		}
+
+		serviceName := service.Name
+		namespace := environment.KubeNamespace
+
+		logger = logger.WithFields(logrus.Fields{
+			"service":   serviceName,
+			"namespace": namespace,
+		})
+		logger.Info("Starting post-deploy health observation")
+
+		const (
+			checkInterval       = 30 * time.Second
+			totalChecks         = 4 // 4 checks * 30s = 2 minutes
+			consecutiveFailures = 2 // trigger rollback after 2 consecutive failures
+		)
+
+		failCount := 0
+		for i := 0; i < totalChecks; i++ {
+			select {
+			case <-c.stopCh:
+				logger.Debug("Health observation cancelled by shutdown")
+				return
+			case <-time.After(checkInterval):
+			}
+
+			statusInfo, err := c.k8sClient.GetDeploymentStatusInfo(ctx, namespace, serviceName)
+			if err != nil {
+				logger.WithError(err).Warn("Failed to get deployment status during health observation")
+				failCount = 0 // reset on transient errors (can't determine health)
+				continue
+			}
+
+			if statusInfo.UnavailableReplicas > 0 {
+				failCount++
+				logger.WithFields(logrus.Fields{
+					"unavailable_replicas": statusInfo.UnavailableReplicas,
+					"ready_replicas":       statusInfo.ReadyReplicas,
+					"consecutive_failures": failCount,
+					"check":                i + 1,
+				}).Warn("Deployment has unavailable replicas")
+
+				if failCount >= consecutiveFailures {
+					logger.Error("Deployment unhealthy for consecutive checks, triggering auto-rollback")
+
+					rollbackErr := c.k8sClient.RollbackDeployment(ctx, serviceName, namespace)
+					if rollbackErr != nil {
+						logger.WithError(rollbackErr).Error("Auto-rollback failed")
+					} else {
+						logger.Info("Auto-rollback completed successfully")
+					}
+
+					// Update deployment status to Failed in database
+					deploymentUUID, parseErr := uuid.Parse(deploymentID)
+					if parseErr == nil {
+						errMsg := fmt.Sprintf("auto-rollback triggered: %d unavailable replicas for %d consecutive health checks", statusInfo.UnavailableReplicas, failCount)
+						c.repositories.Deployments.UpdateStatusWithError(deploymentUUID, types.DeploymentStatusFailed, types.HealthStatusUnhealthy, &errMsg)
+					}
+					return
+				}
+			} else {
+				failCount = 0 // reset on healthy check
+				logger.WithFields(logrus.Fields{
+					"ready_replicas":     statusInfo.ReadyReplicas,
+					"available_replicas": statusInfo.AvailableReplicas,
+					"check":              i + 1,
+				}).Debug("Deployment healthy during observation")
+			}
+		}
+
+		logger.Info("Post-deploy health observation completed, deployment stable")
+	}()
 }

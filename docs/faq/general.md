@@ -198,7 +198,7 @@ Integrations available:
 
 ## Related Documentation
 
-- **Quickstart**: [Deploy Your First App](/docs/getting-started/QUICKSTART)
-- **Architecture**: [Platform Architecture](/docs/architecture/ARCHITECTURE)
-- **Billing FAQ**: [Pricing Questions](/docs/faq/billing)
-- **Migration**: [Migration FAQ](/docs/faq/migration)
+- **Quickstart**: [Deploy Your First App](/getting-started/QUICKSTART)
+- **Architecture**: [Platform Architecture](/architecture/)
+- **Billing FAQ**: [Pricing Questions](/faq/billing)
+- **Migration**: [Migration FAQ](/faq/migration)

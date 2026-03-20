@@ -564,10 +564,10 @@ go mod download
 
 ## Related Documentation
 
-- **Getting Started**: [Quick Start Guide](/docs/getting-started/QUICKSTART)
-- **CLI**: [CLI Reference](/docs/cli/) | [Deploy Command](/docs/cli/commands/deploy)
-- **Guides**: [Testing Guide](/docs/guides/TESTING_GUIDE) | [Onboarding Guide](/docs/guides/ONBOARDING_GUIDE)
-- **SDK**: [TypeScript SDK](/docs/sdk/typescript/)
-- **Troubleshooting**: [Build Failures](/docs/troubleshooting/build-failures) | [Deployment Issues](/docs/troubleshooting/deployment-issues)
-- **Production**: [Production Checklist](/docs/production/PRODUCTION_CHECKLIST)
-- **Architecture**: [Platform Architecture](/docs/architecture/ARCHITECTURE)
+- **Getting Started**: [Quick Start Guide](/getting-started/QUICKSTART)
+- **CLI**: [CLI Reference](/cli/) | [Deploy Command](/cli/commands/deploy)
+- **Guides**: [Testing Guide](/guides/TESTING_GUIDE) | [Onboarding Guide](/guides/ONBOARDING_GUIDE)
+- **SDK**: [TypeScript SDK](/sdk/typescript/)
+- **Troubleshooting**: [Build Failures](/troubleshooting/build-failures) | [Deployment Issues](/troubleshooting/deployment-issues)
+- **Production**: [Production Checklist](/production/PRODUCTION_CHECKLIST)
+- **Architecture**: [Platform Architecture](/architecture/)

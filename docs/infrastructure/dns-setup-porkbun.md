@@ -9,9 +9,9 @@ tags: [infrastructure, dns, porkbun, cloudflare]
 
 ## Related Documentation
 
-- **Cloudflare**: [Cloudflare Integration](/docs/infrastructure/CLOUDFLARE)
-- **npm Registry**: [npm Registry Implementation](/docs/infrastructure/npm-registry)
-- **Troubleshooting**: [Networking Issues](/docs/troubleshooting/networking)
+- **Cloudflare**: [Cloudflare Integration](/infrastructure/CLOUDFLARE)
+- **npm Registry**: [npm Registry Implementation](/infrastructure/npm-registry)
+- **Troubleshooting**: [Networking Issues](/troubleshooting/networking)
 
 ## Overview
 

@@ -448,7 +448,7 @@ try {
 
 ## Related Documentation
 
-- **SDK Overview**: [TypeScript SDK](./index)
+- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
 - **Services**: [Service Management](./services)
-- **Troubleshooting**: [Deployment Issues](/docs/troubleshooting/deployment-issues)
+- **Troubleshooting**: [Deployment Issues](/troubleshooting/deployment-issues)
 - **API Reference**: [Deployments API](/api-reference/#tag/deployments)

@@ -11,9 +11,9 @@ This document describes how to set up OAuth authentication for the Enclii CLI.
 
 ## Related Documentation
 
-- **Prerequisites**: [CLI Installation](/docs/cli/)
-- **SSO Provider**: [Janua SSO Integration](/docs/integrations/sso)
-- **Troubleshooting**: [Authentication Problems](/docs/troubleshooting/auth-problems)
+- **Prerequisites**: [CLI Installation](/cli/)
+- **SSO Provider**: [Janua SSO Integration](/integrations/sso)
+- **Troubleshooting**: [Authentication Problems](/troubleshooting/auth-problems)
 
 ## Prerequisites
 

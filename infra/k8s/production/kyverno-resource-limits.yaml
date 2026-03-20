@@ -1,0 +1,66 @@
+---
+# Kyverno Enforcement Policy: Require Resource Limits
+# Ensures all Deployment containers specify CPU/memory requests and memory limits.
+# Prevents resource starvation and enables proper scheduling and autoscaling.
+#
+# Complements the Audit-mode policy in infra/k8s/base/kyverno/policies/best-practices.yaml
+# by enforcing on Deployments (with autogen for Pods) in non-platform namespaces.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  labels:
+    app.kubernetes.io/part-of: enclii
+    enclii.dev/component: policy
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Deployment
+    policies.kyverno.io/description: >-
+      All Deployment containers must declare resources.requests.cpu,
+      resources.requests.memory, and resources.limits.memory. Without
+      resource requests the scheduler cannot bin-pack effectively, and
+      without memory limits a single container can OOM-kill neighbours.
+      CPU limits are intentionally omitted to avoid unnecessary throttling.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-resource-requests-and-memory-limit
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+      exclude:
+        any:
+          # System namespaces managed by the distribution
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+          # Platform namespaces labelled by enclii onboarding or infra manifests
+          - resources:
+              namespaceSelector:
+                matchExpressions:
+                  - key: enclii.dev/type
+                    operator: Exists
+      validate:
+        message: >-
+          All containers must specify resources.requests.cpu,
+          resources.requests.memory, and resources.limits.memory.
+          CPU limits are not required (avoids unnecessary throttling).
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - resources:
+                      requests:
+                        cpu: "?*"
+                        memory: "?*"
+                      limits:
+                        memory: "?*"

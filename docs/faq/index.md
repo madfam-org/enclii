@@ -11,25 +11,25 @@ Find answers to common questions about Enclii, organized by topic.
 
 ## Question Categories
 
-### [General](/docs/faq/general)
+### [General](/faq/general)
 Platform overview, capabilities, and basic usage questions.
 - What is Enclii?
 - What languages and frameworks are supported?
 - How does Enclii compare to other platforms?
 
-### [Billing & Pricing](/docs/faq/billing)
+### [Billing & Pricing](/faq/billing)
 Cost structure, pricing tiers, and billing questions.
 - How much does Enclii cost?
 - What's included in the infrastructure cost?
 - Are there any hidden fees?
 
-### [Security](/docs/faq/security)
+### [Security](/faq/security)
 Security practices, compliance, and data protection.
 - How is my data protected?
 - What security certifications do you have?
 - How are secrets managed?
 
-### [Migration](/docs/faq/migration)
+### [Migration](/faq/migration)
 Moving from other platforms like Railway, Vercel, Heroku.
 - How do I migrate from Railway?
 - Can I bring my existing Docker images?
@@ -40,7 +40,7 @@ Moving from other platforms like Railway, Vercel, Heroku.
 ### Getting Started
 
 **Q: How do I deploy my first app?**
-A: Follow the [Quickstart Guide](/docs/getting-started/QUICKSTART) - you can deploy in under 5 minutes.
+A: Follow the [Quickstart Guide](/getting-started/QUICKSTART) - you can deploy in under 5 minutes.
 
 **Q: Do I need Docker knowledge?**
 A: No. Enclii supports Buildpacks for automatic containerization, but you can use Dockerfiles if you prefer.
@@ -73,12 +73,12 @@ A: Yes. Enclii supports cron jobs and one-off tasks via the Timetable subsystem.
 ## Still Have Questions?
 
 - **Search the docs**: Use the search bar above
-- **Check troubleshooting**: [Troubleshooting Guide](/docs/troubleshooting/)
+- **Check troubleshooting**: [Troubleshooting Guide](/troubleshooting/)
 - **Open an issue**: [GitHub Issues](https://github.com/madfam-org/enclii/issues)
 - **Contact support**: support@enclii.dev
 
 ## Related Documentation
 
-- **Getting Started**: [Quickstart](/docs/getting-started/QUICKSTART)
-- **Troubleshooting**: [Common Issues](/docs/troubleshooting/)
-- **Migration Guides**: [From Railway](/docs/guides/RAILWAY_MIGRATION_GUIDE), [From Vercel](/docs/guides/VERCEL_MIGRATION_GUIDE), [From Heroku](/docs/guides/HEROKU_MIGRATION_GUIDE)
+- **Getting Started**: [Quickstart](/getting-started/QUICKSTART)
+- **Troubleshooting**: [Common Issues](/troubleshooting/)
+- **Migration Guides**: [From Railway](/guides/RAILWAY_MIGRATION_GUIDE), [From Vercel](/guides/VERCEL_MIGRATION_GUIDE), [From Heroku](/guides/HEROKU_MIGRATION_GUIDE)
