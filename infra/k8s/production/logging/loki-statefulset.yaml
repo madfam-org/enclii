@@ -150,6 +150,7 @@ spec:
               protocol: TCP
           # Container-level security
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
