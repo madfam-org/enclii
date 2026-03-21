@@ -1,0 +1,32 @@
+# Kyverno PolicyExceptions for Logging namespace
+# Fluent Bit requires hostPath mounts (/var/log, /var/lib/docker/containers)
+# to collect pod logs. Loki StatefulSet may trigger autogen host-port rules.
+# Exceptions are scoped to the logging namespace only.
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: logging-stack
+  namespace: logging
+spec:
+  exceptions:
+    - policyName: disallow-host-path
+      ruleNames:
+        - host-path
+        - autogen-host-path
+    - policyName: block-host-ports
+      ruleNames:
+        - deny-host-ports
+        - autogen-deny-host-ports
+  match:
+    any:
+      - resources:
+          namespaces:
+            - logging
+          kinds:
+            - DaemonSet
+            - StatefulSet
+            - Pod
+          names:
+            - fluent-bit*
+            - loki*

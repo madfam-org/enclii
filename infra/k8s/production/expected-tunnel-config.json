@@ -69,19 +69,19 @@
   },
   {
     "_comment": "=== YANTRA4D ===",
-    "hostname": "4d.madfam.io",
+    "hostname": "yantra4d.com",
     "service": "http://yantra4d-landing.yantra4d.svc.cluster.local:80"
   },
   {
-    "hostname": "4d-api.madfam.io",
+    "hostname": "api.yantra4d.com",
     "service": "http://yantra4d-backend.yantra4d.svc.cluster.local:80"
   },
   {
-    "hostname": "4d-app.madfam.io",
+    "hostname": "app.yantra4d.com",
     "service": "http://yantra4d-studio.yantra4d.svc.cluster.local:80"
   },
   {
-    "hostname": "4d-admin.madfam.io",
+    "hostname": "admin.yantra4d.com",
     "service": "http://yantra4d-admin.yantra4d.svc.cluster.local:80"
   },
   {
