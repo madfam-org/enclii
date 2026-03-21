@@ -1,0 +1,8 @@
+{
+  "name": "foundry-scout",
+  "repoURL": "https://github.com/madfam-org/server-auction-tracker.git",
+  "branch": "main",
+  "manifestPath": "deploy/k8s/production",
+  "namespace": "foundry-scout",
+  "partOf": "foundry-scout"
+}

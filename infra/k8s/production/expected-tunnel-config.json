@@ -149,6 +149,11 @@
     "service": "http://pravara-admin.pravara-mes.svc.cluster.local:80"
   },
   {
+    "_comment": "=== FOUNDRY SCOUT ===",
+    "hostname": "sniper.madfam.io",
+    "service": "http://deal-sniper-web.foundry-scout.svc.cluster.local:80"
+  },
+  {
     "_comment": "=== CATCH-ALL ===",
     "service": "http_status:404"
   }

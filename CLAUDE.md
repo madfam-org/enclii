@@ -318,6 +318,7 @@ All services deploy via the zero-touch onboarding pattern: K8s manifests, CI wor
 - ✅ `pravara-admin` → mes-admin.madfam.io (MES admin console)
 - ✅ `pravara-api` → mes-api.madfam.io (MES control plane)
 - ✅ `pravara-ui` → mes.madfam.io (MES web dashboard)
+- ✅ `deal-sniper` → sniper.madfam.io (Hetzner auction tracker dashboard)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification
