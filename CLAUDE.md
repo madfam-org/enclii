@@ -509,7 +509,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | HTTP handlers | `apps/switchyard-api/internal/api/*.go` |
 | Route registration | `apps/switchyard-api/internal/api/*_handlers.go` (distributed, no centralized router) |
 | Middleware | `apps/switchyard-api/internal/middleware/` |
-| Services | `apps/switchyard-api/internal/services/` |
+| Services | `apps/switchyard-api/internal/services/` (projects, deployments, webhook, build, domain_sync, tunnel_routes, deployment_groups, auth, analyzer) |
 | Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` (bare_metal, cluster_admin, cost, drift, managed_resource, propagation, virtual_cluster, admin_topology) |
 | Admin services | `apps/switchyard-api/internal/services/` (bare_metal, cluster_admin, infrastructure, vcluster, placement, drift, cost_tracking) |
 | Admin types | `packages/sdk-go/pkg/types/admin.go` |
@@ -614,6 +614,10 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | **Load Testing** | |
 | k6 test scripts | `tests/load/` (health.js, api.js, stress.js, config.js) |
 | Load test CI | `.github/workflows/load-test.yml` (weekly + manual dispatch) |
+| **Integration Testing** | |
+| K8s integration tests | `tests/integration/` (deploy pipeline, PVC persistence, routes, custom domains, service volumes) |
+| Deploy pipeline tests | `apps/switchyard-api/internal/api/deploy_pipeline_test.go` (45 tests: webhook→build→deploy flow) |
+| Deploy pipeline helpers | `apps/switchyard-api/internal/api/deploy_pipeline_helpers_test.go` (fixtures, HTTP helpers) |
 | **Governance** | |
 | License (full AGPL-3.0) | `LICENSE` |
 | Commercial licensing notice | `COMMERCIAL_LICENSE.md` |
@@ -736,8 +740,8 @@ pnpm test:e2e
 | Timetable (user cron jobs) | **Implemented** | 7 API endpoints, 3 DB tables, K8s CronJob reconciler, CLI `enclii jobs` commands. Session 103 |
 | Junction (routing/ingress) | **Implemented** | 4 API endpoints, 1 DB table, Cloudflare tunnel + cert-manager integration, CLI `enclii junctions` commands. Session 103 |
 | Multi-region | Deferred | Explicitly out of scope for v1 per SOFTWARE_SPEC.md |
-| Handler legacy pattern (repos to services) | Incremental | Migrate as handlers are touched for other work |
-| Test coverage enforcement | Active | CI threshold 50%. `--passWithNoTests` removed from mandatory suites (switchyard-ui, dispatch, status) in S106. Tests: db/, reconciler/ (30 S106 + 35 S107), services/, roundhouse (21), waybill (14), CLI (82 + 33 S107), SDK (30), dispatch (123), status (129), switchyard-ui (159), shared-lib (19), ui-components (18), provenance (42), signing (8), addons (6), timetable (62+19 S103), cron_job_run (14 S106), topology (43 S107), rotation (18 S107), backup (16 S107). 220+ tests added in S107 across 8 packages. RBAC namespace bug fixed S106 (`default`->`enclii`). Integration tests go.mod aligned to 1.25.0 |
+| Handler legacy pattern (repos to services) | **In Progress** | WebhookService + BuildService created (S109). 2 of ~8 service extractions done. Handlers coexist with h.repos.* — incremental migration continues S111-114 |
+| Test coverage enforcement | Active | CI threshold 50%. `--passWithNoTests` removed from mandatory suites (switchyard-ui, dispatch, status) in S106. Tests: db/, reconciler/ (30 S106 + 35 S107), services/ (+ webhook 19, build 10 S109), roundhouse (21), waybill (14), CLI (82 + 33 S107), SDK (30), dispatch (123), status (129), switchyard-ui (159), shared-lib (19), ui-components (18), provenance (42), signing (8), addons (6), timetable (62+19 S103), cron_job_run (14 S106), topology (43 S107), rotation (18 S107), backup (16 S107), **deploy pipeline (45 API + 3 integration S109)**. 220+ tests added in S107, ~140 in S109. RBAC namespace bug fixed S106 (`default`->`enclii`). Integration tests go.mod aligned to 1.25.0 |
 | Vault (secret management) | Ready | Helm values + ArgoCD app (health probes fixed S106: `uninitcode=200&sealedcode=200`) + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (19 files, 16 namespaces, ~160 keys) + ESO reader policy + migration script. Pod can now run uninitialized/sealed. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel, autoswarm, and pravara-mes live in their own repos (self-provisioning pattern, not in enclii) |
 | PostHog (analytics) | Removed (S106) | Self-host abandoned. ArgoCD app + namespace + PVCs removed. Helm values archived to `infra/archive/posthog/`. Analytics via Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud (still active at `infra/cloudflare/posthog-proxy/`) |
 | react-sdk pre-existing test failures | Resolved | Session 102: Replaced empty div mocks with interactive form mocks, expanded useJanua context. 12/12 suites, 123/123 tests pass (janua `bdb7a31b`) |

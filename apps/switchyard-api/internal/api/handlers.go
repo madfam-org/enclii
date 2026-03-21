@@ -70,6 +70,10 @@ type Handler struct {
 	secretsProvisioner  *provisioning.SecretsProvisioner
 	r2Provisioner       *provisioning.R2Provisioner
 
+	// Pipeline services (optional — set via setters for incremental migration)
+	webhookService *services.WebhookService
+	buildService   *services.BuildService
+
 	// Admin Control Plane services (optional)
 	bareMetalService      *services.BareMetalService
 	clusterAdminService   *services.ClusterAdminService
@@ -164,6 +168,16 @@ func (h *Handler) SetNotificationService(svc *notifications.Service) {
 // This is optional - if not set, emails will be logged instead of sent
 func (h *Handler) SetEmailService(svc *notifications.EmailService) {
 	h.emailService = svc
+}
+
+// SetWebhookService sets the webhook processing service
+func (h *Handler) SetWebhookService(svc *services.WebhookService) {
+	h.webhookService = svc
+}
+
+// SetBuildService sets the build callback processing service
+func (h *Handler) SetBuildService(svc *services.BuildService) {
+	h.buildService = svc
 }
 
 // SetBareMetalService sets the bare metal fleet service
