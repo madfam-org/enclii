@@ -180,10 +180,10 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 | tezca.mx | tezca | tezca-web |
 | api.tezca.mx | tezca | tezca-api |
 | admin.tezca.mx | tezca | tezca-admin |
-| 4d.madfam.io | yantra4d | yantra4d-landing |
-| 4d-app.madfam.io | yantra4d | yantra4d-studio |
-| 4d-api.madfam.io | yantra4d | yantra4d-api |
-| 4d-admin.madfam.io | yantra4d | yantra4d-admin |
+| yantra4d.com | yantra4d | yantra4d-landing |
+| app.yantra4d.com | yantra4d | yantra4d-studio |
+| api.yantra4d.com | yantra4d | yantra4d-backend |
+| admin.yantra4d.com | yantra4d | yantra4d-admin |
 | kf.madfam.io | karafiel | karafiel-web |
 | kf-app.madfam.io | karafiel | karafiel-web |
 | kf-api.madfam.io | karafiel | karafiel-api |

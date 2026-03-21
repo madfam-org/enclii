@@ -304,14 +304,14 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | kf-admin.madfam.io | ✅ | 200 | 0.61s | Admin operational |
 | kf-api.madfam.io | ⚠️ | 404 | 0.70s | No health endpoint (needs external repo change) |
 
-### Yantra4D — 4d.madfam.io (4 endpoints)
+### Yantra4D — yantra4d.com (4 endpoints)
 
 | Endpoint | Status | Code | Latency | Notes |
 |----------|--------|------|---------|-------|
-| 4d.madfam.io | ✅ | 200 | 0.62s | Landing page |
-| 4d-app.madfam.io | ✅ | 200 | 0.60s | Studio operational |
-| 4d-admin.madfam.io | ✅ | 200 | 0.59s | Admin operational |
-| 4d-api.madfam.io | 🔴 | 502 | 0.32s | Backend unreachable |
+| yantra4d.com | ✅ | 200 | 0.62s | Landing page |
+| app.yantra4d.com | ✅ | 200 | 0.60s | Studio operational |
+| admin.yantra4d.com | ✅ | 200 | 0.59s | Admin operational |
+| api.yantra4d.com | 🔴 | 502 | 0.32s | Backend unreachable |
 
 ### Pravara MES — mes.madfam.io (3 endpoints)
 
@@ -339,7 +339,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | **Total endpoints** | **46** | — |
 
 **Backend 502 root causes:**
-- `4d-api.madfam.io` — yantra4d-backend unreachable (NetworkPolicy or pod crash)
+- `api.yantra4d.com` — yantra4d-backend unreachable (NetworkPolicy or pod crash)
 - `mes-api.madfam.io` — pravara-api regression (was fixed session 78 — CrashLoopBackOff or NetworkPolicy relapse)
 - `mes-admin.madfam.io` — pravara-gateway K8s service never created (known since session 75)
 
@@ -577,14 +577,14 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | kf-admin.madfam.io | karafiel-admin.karafiel.svc:80 | 200 | |
 | kf-api.madfam.io | karafiel-api.karafiel.svc:80 | 404 | No health endpoint |
 
-### Yantra4D Routes (4d.madfam.io)
+### Yantra4D Routes (yantra4d.com)
 
 | Hostname | Target Service | HTTP | Notes |
 |----------|---------------|------|-------|
-| 4d.madfam.io | yantra4d-landing.yantra4d.svc:80 | 200 | |
-| 4d-api.madfam.io | yantra4d-backend.yantra4d.svc:80 | 502 | Backend unreachable |
-| 4d-app.madfam.io | yantra4d-studio.yantra4d.svc:80 | 200 | Studio |
-| 4d-admin.madfam.io | yantra4d-admin.yantra4d.svc:80 | 200 | |
+| yantra4d.com | yantra4d-landing.yantra4d.svc:80 | 200 | |
+| api.yantra4d.com | yantra4d-backend.yantra4d.svc:80 | 502 | Backend unreachable |
+| app.yantra4d.com | yantra4d-studio.yantra4d.svc:80 | 200 | Studio |
+| admin.yantra4d.com | yantra4d-admin.yantra4d.svc:80 | 200 | |
 
 ### Pravara MES Routes (mes.madfam.io)
 

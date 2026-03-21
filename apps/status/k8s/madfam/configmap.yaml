@@ -116,19 +116,19 @@ data:
       },
       {
         "name": "Yantra4D Web",
-        "url": "https://4d.madfam.io",
+        "url": "https://yantra4d.com",
         "group": "Yantra4D",
         "description": "3D printing platform"
       },
       {
         "name": "Yantra4D Studio",
-        "url": "https://4d-app.madfam.io",
+        "url": "https://app.yantra4d.com",
         "group": "Yantra4D",
         "description": "3D design studio"
       },
       {
         "name": "Yantra4D Admin",
-        "url": "https://4d-admin.madfam.io",
+        "url": "https://admin.yantra4d.com",
         "group": "Yantra4D",
         "description": "Print operations console"
       },

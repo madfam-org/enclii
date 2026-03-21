@@ -52,6 +52,12 @@ data:
             send_resolved: true
             headers:
               Subject: '[CRITICAL] {{ .CommonLabels.alertname }} - Enclii'
+        slack_configs:
+          - api_url_file: '/etc/alertmanager/slack-webhook-url'
+            channel: '#alerts-critical'
+            title: '[CRITICAL] {{ .CommonLabels.alertname }}'
+            text: '{{ .CommonAnnotations.description }}'
+            send_resolved: true
 
       - name: 'warning-receiver'
         email_configs:
@@ -59,6 +65,12 @@ data:
             send_resolved: true
             headers:
               Subject: '[WARNING] {{ .CommonLabels.alertname }} - Enclii'
+        slack_configs:
+          - api_url_file: '/etc/alertmanager/slack-webhook-url'
+            channel: '#alerts-warning'
+            title: '[WARNING] {{ .CommonLabels.alertname }}'
+            text: '{{ .CommonAnnotations.description }}'
+            send_resolved: true
 
     inhibit_rules:
       # If a critical alert is firing, inhibit warnings for the same service
@@ -143,6 +155,10 @@ spec:
               mountPath: /etc/alertmanager/smtp-password
               subPath: smtp-password
               readOnly: true
+            - name: slack-secret
+              mountPath: /etc/alertmanager/slack-webhook-url
+              subPath: slack-webhook-url
+              readOnly: true
             - name: data
               mountPath: /alertmanager
           startupProbe:
@@ -170,9 +186,30 @@ spec:
         - name: smtp-secret
           secret:
             secretName: alertmanager-smtp-secret
+        - name: slack-secret
+          secret:
+            secretName: alertmanager-slack-secret
         - name: data
-          emptyDir:
-            sizeLimit: 256Mi
+          persistentVolumeClaim:
+            claimName: alertmanager-data
+---
+# AlertManager PVC — persistent alert state across restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alertmanager-data
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi
 ---
 # AlertManager Service
 apiVersion: v1

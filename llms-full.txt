@@ -29,7 +29,7 @@ Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with 12 apps in
 | Terraform | `infra/terraform/` |
 | K8s Manifests | `infra/k8s/production/` |
 | ArgoCD Root | `infra/argocd/root-application.yaml` |
-| ArgoCD Apps | `infra/argocd/apps/*.yaml` (12 apps incl. network-policies, vault, posthog, backup) |
+| ArgoCD Apps | `infra/argocd/apps/*.yaml` (12 apps incl. network-policies, vault, logging, backup) |
 | Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (~54 ingress rules, managed via Cloudflare API; see `expected-tunnel-config.json` for authoritative route list) |
 | Kyverno Policies | `infra/k8s/base/kyverno/policies/` |
 | Golden Tests | `tests/golden/` (pre-commit validation) |

@@ -71,15 +71,13 @@ After applying: CPU allocation drops from 87% → ~78%.
 
 ### 3. Delete Detached Longhorn Volumes — Saves ~44G
 
-Three volumes are detached/unknown (PostHog ClickHouse data). PostHog is non-functional (stuck in Init).
+**Status:** PostHog namespace deleted (S110). Volumes may have been auto-deleted with namespace.
+Verify remaining detached volumes and delete if still present:
 
 ```bash
-# Verify volumes are truly unused:
-kubectl get pvc -A | grep -E "posthog|vault"
-# Delete detached volumes via Longhorn UI or:
-kubectl delete volume.longhorn.io -n longhorn-system pvc-f54e9877-ccee-493c-84bf-d695d2ccb48b
-kubectl delete volume.longhorn.io -n longhorn-system pvc-f6e04c77-67fc-4eeb-b40b-d2d659413e1b
-kubectl delete volume.longhorn.io -n longhorn-system pvc-fadce9ab-37d7-468e-a29b-6510ad677c72
+# Check for any remaining detached volumes:
+kubectl get volumes.longhorn.io -n longhorn-system --no-headers | grep -i detach
+# Delete detached volumes via Longhorn UI or CLI
 ```
 
 ### 4. Log Rotation — Saves ~3-4G
@@ -196,7 +194,7 @@ kubectl get volumes.longhorn.io -n longhorn-system -w
 | karafiel-worker (1) | CrashLoopBackOff | Can't resolve `redis.data.svc.cluster.local` | External repo — DNS/NetworkPolicy issue |
 | tezca-beat (1) | CrashLoopBackOff | Celery beat crash | External repo — app-level issue |
 | yantra4d-admin/studio (2) | CrashLoopBackOff | nginx `host not found in upstream "backend"` | Stale deployments from rollout — delete old ReplicaSets |
-| posthog (5) | Init:0/N stuck | ClickHouse not ready, migration blocked | PostHog chart broken (known — Redpanda subchart issue) |
+| ~~posthog (5)~~ | ~~Init:0/N stuck~~ | ~~ClickHouse not ready~~ | **Removed S110** — namespace + ArgoCD app deleted |
 | sentinel (1) | Error | CronJob failure | Investigate sentinel namespace config |
 
 ## ArgoCD OutOfSync Apps
@@ -208,4 +206,4 @@ kubectl get volumes.longhorn.io -n longhorn-system -w
 | platform-infra-services | OutOfSync/Healthy | Infrastructure changes pending sync |
 | status-enclii/madfam | OutOfSync/Healthy | Recent commits not auto-synced |
 | vault | OutOfSync/Healthy | Vault deployed manually, ArgoCD app defined but not synced |
-| posthog | OutOfSync/Degraded | Chart broken, intentionally not synced |
+| ~~posthog~~ | ~~OutOfSync/Degraded~~ | **Removed S110** — ArgoCD app deleted |

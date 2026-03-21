@@ -116,7 +116,6 @@ spec:
 | `enclii-builds-secrets` | enclii-builds | `secret/enclii-builds` | 3 |
 | `npm-registry-secrets` | npm-registry | `secret/npm-registry` | 1 |
 | `madfam-site-secrets` | madfam-site | `secret/madfam-site` | 2 |
-| `posthog-secrets` | posthog | `secret/posthog` | 2 |
 | `longhorn-secrets` | longhorn-system | `secret/longhorn-system` | 1 |
 | `kyverno-secrets` | kyverno | `secret/kyverno` | 1 |
 

@@ -37,7 +37,7 @@ Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with 12 apps in
 
 ## Infrastructure
 
-- [ArgoCD Config](./infra/argocd/): Root application + 12 app definitions (incl. network-policies, vault, posthog, backup)
+- [ArgoCD Config](./infra/argocd/): Root application + 12 app definitions (incl. network-policies, vault, logging, backup)
 - [K8s Production Manifests](./infra/k8s/production/): Deployments, services, patches
 - [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): ~54 ingress rules (managed via Cloudflare API; see expected-tunnel-config.json for authoritative route list)
 - [Terraform](./infra/terraform/): Infrastructure as code for Hetzner + Cloudflare
