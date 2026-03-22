@@ -41,9 +41,10 @@ spec:
   policyTypes:
     - Egress
 
-# KEDA operator egress — K8s API server, DNS, and intra-namespace
+# KEDA operator egress — K8s API server, DNS, intra-namespace, and trigger backends
 # The operator watches ScaledObjects across all namespaces and manages HPAs,
 # so it needs access to the K8s API server on ports 443 and 6443.
+# It also connects to trigger backends (e.g. Redis) to check scaling metrics.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -82,6 +83,14 @@ spec:
           port: 8443
         - protocol: TCP
           port: 9666
+    # Trigger backends: Redis in data namespace (ScaledObject metric polling)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+      ports:
+        - protocol: TCP
+          port: 6379
 
 # KEDA metrics server egress — K8s API server and DNS
 # The metrics server registers as an aggregated API and needs API server access.
