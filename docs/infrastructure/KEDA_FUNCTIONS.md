@@ -220,6 +220,28 @@ kubectl get deploy fn-hello -n fn-my-project -o yaml | grep imagePullPolicy
 
 3. Consider setting `minReplicas: 1` for latency-sensitive functions
 
+### NetworkPolicy Blocking KEDA Components
+
+KEDA runs under default-deny NetworkPolicies (`infra/k8s/policies/keda-network-policies.yaml`). If ScaledObject mutations are rejected or metrics fail:
+
+1. Check admission webhook can reach K8s API:
+```bash
+kubectl logs -n keda -l app.kubernetes.io/name=keda-admission-webhooks -f
+```
+
+2. Check metrics-server→operator gRPC (port 9666):
+```bash
+kubectl logs -n keda -l app.kubernetes.io/name=keda-operator-metrics-apiserver -f
+# Look for "connection refused" on port 9666
+```
+
+3. Verify policies are applied:
+```bash
+kubectl get networkpolicy -n keda
+# Should include: keda-admission-webhooks-egress, keda-admission-webhooks-ingress,
+# keda-operator-ingress-grpc, keda-metrics-server-egress, keda-operator-egress
+```
+
 ### Interceptor Not Routing
 
 1. Verify interceptor is running:
