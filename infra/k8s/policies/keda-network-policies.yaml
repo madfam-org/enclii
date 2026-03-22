@@ -2,8 +2,11 @@
 # KEDA Namespace NetworkPolicies
 # =============================================================================
 # Default-deny + explicit allow rules for the keda namespace.
-# Contains: KEDA operator (controller), KEDA metrics API server
-# Accessed by: kube-system (API server aggregation), monitoring (Prometheus)
+# Contains: KEDA operator (controller), KEDA metrics API server,
+#           KEDA admission webhooks (ScaledObject validation)
+# Accessed by: kube-system (API server aggregation + webhook calls),
+#              monitoring (Prometheus scraping)
+# Internal: metrics-server ↔ operator gRPC on port 9666
 # Manages: ScaledObjects across all namespaces (needs K8s API access)
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
