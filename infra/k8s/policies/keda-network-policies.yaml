@@ -110,6 +110,14 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    # Intra-namespace: metrics server -> operator gRPC communication
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 9666
 
 # Allow kube-system -> KEDA metrics server (API server aggregation layer)
 # The K8s API server proxies external.metrics.k8s.io requests to KEDA.
@@ -163,3 +171,85 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+
+# KEDA admission webhooks egress — K8s API server and DNS
+# The admission webhook validates ScaledObjects by querying the K8s API.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-admission-webhooks-egress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-admission-webhooks
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # K8s API server (validate ScaledObjects, check API group resources)
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+# Allow kube-system -> KEDA admission webhooks (API server calls webhook)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-admission-webhooks-ingress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-admission-webhooks
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+
+# Allow intra-namespace ingress to KEDA operator on gRPC port 9666
+# The metrics API server calls the operator via gRPC for ScaledObject resolution.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-operator-ingress-grpc
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keda-operator
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 9666
