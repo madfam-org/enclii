@@ -78,7 +78,7 @@ jobs:
             infra/scripts/arc/**
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: ${{ env.HELM_VERSION }}
 
@@ -167,7 +167,7 @@ jobs:
 
       - name: Setup Helm
         if: steps.check-secret.outputs.skip != 'true'
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: ${{ env.HELM_VERSION }}
 
@@ -324,7 +324,7 @@ jobs:
           chmod 600 ~/.kube/config
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: ${{ env.HELM_VERSION }}
 
