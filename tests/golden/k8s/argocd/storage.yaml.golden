@@ -23,7 +23,7 @@ spec:
       # Inline values (or reference external values file)
       values: |
         defaultSettings:
-          defaultReplicaCount: 1
+          defaultReplicaCount: 2
           storageOverProvisioningPercentage: 100
           storageMinimalAvailablePercentage: 15
           autoSalvage: true
@@ -32,7 +32,7 @@ spec:
           guaranteedEngineManagerCPU: 3
           guaranteedReplicaManagerCPU: 3
         persistence:
-          defaultClassReplicaCount: 1
+          defaultClassReplicaCount: 2
           reclaimPolicy: Retain
         ingress:
           enabled: false

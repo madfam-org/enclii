@@ -12,7 +12,7 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Self-Hosted:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
 **GitOps:** ArgoCD App-of-Apps (28 apps across 22 namespaces) with self-heal - **Operational** (Jan 2026)
-**Storage:** Longhorn CSI v1.7.2 (17 volumes, single-replica; ready for multi-node) - **Operational** (Jan 2026)
+**Storage:** Longhorn CSI v1.7.2 (17 volumes, 2-replica across nodes) - **Operational** (Jan 2026)
 **Last Audit:** Mar 21, 2026 — Full remediation S110 (Yantra4D domain migration, logging Kyverno fix, PostHog cleanup, CrashLoop fixes) ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
 
 ### Port Allocation
@@ -197,7 +197,7 @@ Enclii runs on a 2-node k3s cluster with infrastructure prepared for further sca
 - **k3s v1.33.7+k3s3** - Lightweight Kubernetes (both nodes must match k3s version)
 - **Cloudflare Tunnel** - Zero-trust ingress (replaces LoadBalancer)
 
-> **Note:** 2-node cluster since Jan 2026. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in single-replica mode; ready for multi-replica when additional storage nodes are added.
+> **Note:** 2-node cluster since Jan 2026. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in 2-replica mode for storage redundancy across nodes.
 
 **Ingress Architecture (Cloudflare Tunnel):**
 ```
@@ -231,7 +231,7 @@ Internet → Cloudflare Edge → cloudflared pods → K8s Service:80 → Contain
 
 **Cluster Storage (Deployed Jan 2026):**
 - **Longhorn CSI** - Block storage (prepared for multi-node replication)
-- StorageClasses: `longhorn` (single replica on single-node; ready for HA when nodes added)
+- StorageClasses: `longhorn` (2 replicas across nodes for storage redundancy)
 - Configuration: `infra/helm/longhorn/`
 
 **GPU Node Preparation (Ready to Deploy):**
