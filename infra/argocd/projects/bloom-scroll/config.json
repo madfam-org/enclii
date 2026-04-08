@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "bloom-scroll",
+  "namespace": "bloom-scroll",
+  "partOf": "bloom-scroll",
+  "repoURL": "https://github.com/madfam-org/bloom-scroll.git"
+}
