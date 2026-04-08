@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "forj",
+  "namespace": "forj",
+  "partOf": "forj",
+  "repoURL": "https://github.com/madfam-org/forj.git"
+}
