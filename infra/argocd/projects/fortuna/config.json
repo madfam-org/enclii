@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "fortuna",
+  "namespace": "fortuna",
+  "partOf": "fortuna",
+  "repoURL": "https://github.com/madfam-org/fortuna.git"
+}
