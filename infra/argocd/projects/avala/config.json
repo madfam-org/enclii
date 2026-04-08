@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/enclii",
+  "name": "avala",
+  "namespace": "avala",
+  "partOf": "avala",
+  "repoURL": "https://github.com/madfam-org/avala.git"
+}
