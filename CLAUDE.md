@@ -339,6 +339,19 @@ All services deploy via the zero-touch onboarding pattern: K8s manifests, CI wor
 - ✅ `tezca-admin` → admin.tezca.mx (admin console)
 - ✅ `madfam-web` → madfam.io (org site)
 - ✅ `madfam-cms` → cms.madfam.io (content management)
+- ✅ `fortuna-api` → api.fortuna.tube (problem intelligence API)
+- ✅ `fortuna-web` → fortuna.tube (problem intelligence dashboard)
+- ✅ `avala-api` → api.avala.studio (learning verification API)
+- ✅ `avala-web` → avala.studio (learning verification platform)
+- ✅ `digifab-quoting-api` → api.cotiza.studio (quoting engine API)
+- ✅ `digifab-quoting-web` → cotiza.studio (automated quoting)
+- ✅ `primavera3d-web` → primavera3d.pro (3D portfolio)
+- ✅ `ceq-studio` → ceq.lol (ComfyUI wrapper)
+- ✅ `nuit-one-web` → nuit.one (audio platform)
+- ✅ `forj-web` → forj.design (fabrication storefronts)
+- ✅ `bloom-scroll-web` → almanac.solar (slow web aggregator)
+- ✅ `coforma-studio-web` → coforma.studio (customer advisory boards)
+- ✅ `blueprint-harvester-api` → blueprint.tube (3D model indexing)
 
 **Build Pipeline Status:**
 - ✅ GitHub webhook configured with HMAC verification

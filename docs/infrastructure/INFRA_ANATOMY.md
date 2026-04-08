@@ -3,7 +3,7 @@
 > **Generated**: 2026-01-17 | **Last Updated**: 2026-04-08 | **Host**: foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder] | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
 >
 > **Live Status Check** (2026-04-07):
-> - Nodes: 2/2 Ready (3rd node EX44 ordered, pending provisioning), k3s v1.33.7+k3s3
+> - Nodes: 3/3 Ready (foundry-cp [EX44] + foundry-worker-01 [AX41] + foundry-builder-01 [VPS]), k3s v1.33.7+k3s3
 > - Pods: ~150 total (est. 137 Running/Completed, 13 non-Running)
 > - Disk usage: **83% (77G/98G) — P1, image pruning needed** (+16% in 35 days)
 > - ArgoCD: 28 apps (11 infra + 2 ARC + 15 project-appset) — see ArgoCD table below
@@ -42,7 +42,7 @@
 | **Overall Health** | 91% pods healthy, 80% endpoints operational | ⚠️ DEGRADED |
 | **Endpoints** | 37/46 operational, 4 degraded (404), 3 backend-502, 2 not deployed | ⚠️ DEGRADED |
 | **Pods** | ~150 total, ~137 Running/Completed, ~13 non-Running | ⚠️ DEGRADED |
-| **Nodes** | 2/2 Ready, version matched (k3s v1.33.7+k3s3) | ✅ HEALTHY |
+| **Nodes** | 3/3 Ready, version matched (k3s v1.33.7+k3s3) | ✅ HEALTHY |
 | **CPU (actual)** | core: 11% (1340m), builder: 1% (31m) | ✅ HEALTHY |
 | **CPU (allocated)** | 10,460m/12,000m = 87% | ⚠️ TIGHT |
 | **Memory (actual)** | core: 33% (21.5GB/64GB), builder: 28% (1.1GB/3.8GB) | ✅ HEALTHY |
@@ -784,8 +784,8 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 
 | Clients | Infrastructure |
 |---------|----------------|
-| 1-10 | Current 2-node |
-| 10-25 | Add 3rd node + HA |
+| 1-10 | Current 3-node |
+| 10-25 | HA + storage expansion |
 | 25-50 | Managed DB evaluation |
 | 50+ | Multi-region |
 
@@ -853,7 +853,7 @@ kubectl get pods -A --field-selector 'status.phase!=Running,status.phase!=Succee
 
 # Node status
 kubectl get nodes -o wide
-# Expected: 2 nodes, both Ready, both v1.33.7+k3s3
+# Expected: 3 nodes, all Ready, all v1.33.7+k3s3
 ```
 
 ---
@@ -864,7 +864,7 @@ kubectl get nodes -o wide
 
 **Trigger:** Full health audit, infrastructure hardening, ArgoCD expansion to external repos, client onboarding readiness.
 
-**Scope:** 2-node cluster, 15 active namespaces, 9 key endpoints, 14→16 ArgoCD applications.
+**Scope:** 3-node cluster, 15 active namespaces, 9 key endpoints, 14→16 ArgoCD applications.
 
 **Session 1 — Hardening (07:05 UTC):**
 
@@ -1079,7 +1079,7 @@ kubectl get nodes -o wide
 
 **Trigger:** Scheduled infrastructure audit with issue resolution.
 
-**Scope:** 2-node cluster, 19 namespaces, 9 key endpoints, 14 ArgoCD applications.
+**Scope:** 3-node cluster, 19 namespaces, 9 key endpoints, 14 ArgoCD applications.
 
 **Issues Identified & Resolved:**
 
@@ -1109,7 +1109,7 @@ kubectl get nodes -o wide
 
 **Trigger:** Comprehensive health check and long-term stability assessment post-Wave 12 fixes.
 
-**Scope:** 2-node cluster, 19 namespaces, 14 production endpoints, 14 ArgoCD applications.
+**Scope:** 3-node cluster, 19 namespaces, 14 production endpoints, 14 ArgoCD applications.
 
 **Key Findings:**
 - ✅ PostgreSQL CrashLoopBackOff resolved (Kyverno PolicyException added)

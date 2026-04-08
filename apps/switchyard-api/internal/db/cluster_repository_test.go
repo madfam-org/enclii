@@ -29,8 +29,8 @@ func TestClusterRepository_Create(t *testing.T) {
 
 		now := time.Now().Truncate(time.Microsecond)
 		c := &types.Cluster{
-			Name:     "foundry-core",
-			Slug:     "foundry-core",
+			Name:     "foundry-cp",
+			Slug:     "foundry-cp",
 			Type:     types.ClusterTypeK3s,
 			Endpoint: "https://10.0.0.1:6443",
 			Region:   "us-east-1",
@@ -39,7 +39,7 @@ func TestClusterRepository_Create(t *testing.T) {
 
 		mock.ExpectQuery(`INSERT INTO clusters`).
 			WithArgs(
-				sqlmock.AnyArg(), "foundry-core", "foundry-core", types.ClusterTypeK3s,
+				sqlmock.AnyArg(), "foundry-cp", "foundry-cp", types.ClusterTypeK3s,
 				"https://10.0.0.1:6443", "", "us-east-1", types.ClusterStatusReady, sqlmock.AnyArg(),
 			).
 			WillReturnRows(sqlmock.NewRows([]string{"created_at", "updated_at"}).AddRow(now, now))
@@ -70,14 +70,14 @@ func TestClusterRepository_GetByID(t *testing.T) {
 
 		id := uuid.New()
 		rows := mockClusterRows()
-		addClusterRow(rows, id, "foundry-core", "foundry-core")
+		addClusterRow(rows, id, "foundry-cp", "foundry-cp")
 
 		mock.ExpectQuery(`SELECT id, name, slug`).WithArgs(id).WillReturnRows(rows)
 
 		result, err := repo.GetByID(context.Background(), id)
 		assert.NoError(t, err)
 		assert.Equal(t, id, result.ID)
-		assert.Equal(t, "foundry-core", result.Name)
+		assert.Equal(t, "foundry-cp", result.Name)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

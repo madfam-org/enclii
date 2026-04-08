@@ -3,7 +3,7 @@
 Mapping of SOC 2 Trust Services Criteria to Enclii platform implementations.
 
 **Last reviewed:** 2026-02-01
-**Scope:** Enclii PaaS (2-node k3s cluster, control plane, build pipeline, web UI)
+**Scope:** Enclii PaaS (3-node k3s cluster, control plane, build pipeline, web UI)
 
 ## CC1 -- Control Environment
 

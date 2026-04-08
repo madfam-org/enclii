@@ -2,7 +2,7 @@
 
 > **Goal:** $0 → first paying customer across the MADFAM product ecosystem
 > **Context:** 31 repos, $55/month infra, $0 revenue, 0 paying customers (as of Feb 25, 2026)
-> **Infra:** 2-node k3s cluster (Hetzner + Cloudflare), ArgoCD GitOps, Janua SSO
+> **Infra:** 3-node k3s cluster (foundry-cp + foundry-worker-01 + foundry-builder-01, Hetzner + Cloudflare), ArgoCD GitOps, Janua SSO
 > **Last updated:** Feb 26, 2026
 
 ---

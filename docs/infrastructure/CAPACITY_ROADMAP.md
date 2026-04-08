@@ -115,7 +115,7 @@ The next node should be ordered from Hetzner (same DC as foundry-cp for latency)
 ```bash
 # 1. Order server (see internal-devops/hardware/ for recommendations)
 # 2. Initial server setup
-hostnamectl set-hostname foundry-node-02
+hostnamectl set-hostname foundry-worker-02
 apt update && apt upgrade -y
 ```
 
@@ -132,12 +132,12 @@ curl -sfL https://get.k3s.io | \
   INSTALL_K3S_VERSION="v1.33.7+k3s3" sh -
 
 # Label (no taint — general workloads):
-kubectl label node foundry-node-02 node-role.kubernetes.io/worker=true
+kubectl label node foundry-worker-02 node-role.kubernetes.io/worker=true
 ```
 
 ### Post-Join
 
-1. Verify: `kubectl get nodes -o wide` — 3 nodes Ready
+1. Verify: `kubectl get nodes -o wide` — 4 nodes Ready
 2. Install Longhorn on new node (auto via DaemonSet)
 3. Update Cloudflare tunnel to include new node (if needed)
 4. Rebalance workloads: `kubectl rollout restart deploy -n <ns>` for large deployments

@@ -4,7 +4,7 @@
 
 **Overall Score: 7.5/10 — ~85% Production Ready**
 
-Enclii has undergone a dramatic transformation since the Nov 2025 audit (6.8/10, 35% ready). The platform now runs real production traffic across 79 pods, 28 domains, and 13 ArgoCD-managed applications on a 2-node k3s cluster costing self-hosted.
+Enclii has undergone a dramatic transformation since the Nov 2025 audit (6.8/10, 35% ready). The platform now runs real production traffic across 79 pods, 28 domains, and 13 ArgoCD-managed applications on a 3-node k3s cluster costing self-hosted.
 
 ### Progress Delta
 | Metric | Nov 2025 | Jan 2026 |
@@ -50,7 +50,7 @@ Enclii has undergone a dramatic transformation since the Nov 2025 audit (6.8/10,
 
 ## 3. Infrastructure State (as of Jan 26, 2026 audit)
 
-- **Cluster**: 2-node k3s v1.33.6 (foundry-core + foundry-builder-01)
+- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp + foundry-worker-01 + foundry-builder-01)
 - **Pods**: 79 running, 0 errors
 - **Domains**: 28 healthy, all via Cloudflare Tunnel (zero exposed ports)
 - **GitOps**: ArgoCD App-of-Apps (13 applications, self-heal enabled)
