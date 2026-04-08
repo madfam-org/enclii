@@ -25,7 +25,7 @@ resource "cloudflare_tunnel_config" "enclii" {
     # Switchyard API
     ingress_rule {
       hostname = "${var.subdomain_api}.${var.domain}"
-      service  = "http://switchyard-api:8080"
+      service  = "http://switchyard-api.enclii.svc.cluster.local:80"
 
       origin_request {
         connect_timeout = "30s"
@@ -36,42 +36,42 @@ resource "cloudflare_tunnel_config" "enclii" {
     # Switchyard UI
     ingress_rule {
       hostname = "${var.subdomain_app}.${var.domain}"
-      service  = "http://switchyard-ui:3000"
+      service  = "http://switchyard-ui.enclii.svc.cluster.local:80"
     }
 
     # Monitoring (protected by Access)
     ingress_rule {
       hostname = "metrics.${var.domain}"
-      service  = "http://prometheus:9090"
+      service  = "http://prometheus.monitoring.svc.cluster.local:9090"
     }
 
     ingress_rule {
       hostname = "grafana.${var.domain}"
-      service  = "http://grafana:3000"
+      service  = "http://grafana.monitoring.svc.cluster.local:3000"
     }
 
     # Landing page (apex domain)
     ingress_rule {
       hostname = var.domain
-      service  = "http://landing-page:4204"
+      service  = "http://landing-page.enclii.svc.cluster.local:80"
     }
 
     # Landing page (www subdomain)
     ingress_rule {
       hostname = "www.${var.domain}"
-      service  = "http://landing-page:4204"
+      service  = "http://landing-page.enclii.svc.cluster.local:80"
     }
 
     # Documentation site
     ingress_rule {
       hostname = "docs.${var.domain}"
-      service  = "http://docs-site:80"
+      service  = "http://docs-site.enclii.svc.cluster.local:80"
     }
 
     # Status page (Enclii Platform)
     ingress_rule {
       hostname = "status.${var.domain}"
-      service  = "http://status-enclii.enclii.svc.cluster.local:80"
+      service  = "http://status-enclii.status.svc.cluster.local:80"
     }
 
     # Default catch-all

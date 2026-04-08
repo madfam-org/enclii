@@ -33,6 +33,15 @@
     "service": "http://status-madfam.status.svc.cluster.local:80"
   },
   {
+    "_comment": "=== MONITORING (Protected by Zero Trust Access) ===",
+    "hostname": "metrics.enclii.dev",
+    "service": "http://prometheus.monitoring.svc.cluster.local:9090"
+  },
+  {
+    "hostname": "grafana.enclii.dev",
+    "service": "http://grafana.monitoring.svc.cluster.local:3000"
+  },
+  {
     "_comment": "=== JANUA AUTH ===",
     "hostname": "auth.madfam.io",
     "service": "http://janua-api.janua.svc.cluster.local:4100"

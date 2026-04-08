@@ -22,6 +22,7 @@ metadata:
   name: cloudflare-tunnel
   labels:
     name: cloudflare-tunnel
+    kubernetes.io/metadata.name: cloudflare-tunnel
     app.kubernetes.io/name: cloudflared
     app.kubernetes.io/component: ingress
 
