@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "coforma-studio",
+  "namespace": "coforma-studio",
+  "partOf": "coforma-studio",
+  "repoURL": "https://github.com/madfam-org/coforma-studio.git"
+}
