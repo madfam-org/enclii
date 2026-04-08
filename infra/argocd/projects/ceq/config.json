@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "ceq",
+  "namespace": "ceq",
+  "partOf": "ceq",
+  "repoURL": "https://github.com/madfam-org/ceq.git"
+}
