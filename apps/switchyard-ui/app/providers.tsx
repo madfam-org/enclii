@@ -3,6 +3,7 @@
 import { ThemeProvider } from 'next-themes';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ScopeProvider } from '@/contexts/ScopeContext';
+import { PostHogProvider } from '@/lib/analytics/PostHogProvider';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -13,7 +14,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <AuthProvider>
-        <ScopeProvider>{children}</ScopeProvider>
+        <PostHogProvider>
+          <ScopeProvider>{children}</ScopeProvider>
+        </PostHogProvider>
       </AuthProvider>
     </ThemeProvider>
   );

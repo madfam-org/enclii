@@ -576,6 +576,7 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | API calls | `apps/switchyard-ui/lib/api/` |
 | Hooks | `apps/switchyard-ui/hooks/` |
 | Types | `apps/switchyard-ui/types/` |
+| Analytics | `apps/switchyard-ui/lib/analytics/posthog.ts`, `apps/switchyard-ui/lib/analytics/PostHogProvider.tsx` |
 | Unit tests | `apps/switchyard-ui/**/*.test.ts` (6 files, 159 tests) |
 
 ### Infrastructure
@@ -765,7 +766,7 @@ pnpm test:e2e
 | Handler legacy pattern (repos to services) | **In Progress** | WebhookService + BuildService created (S109). 2 of ~8 service extractions done. Handlers coexist with h.repos.* — incremental migration continues S111-114 |
 | Test coverage enforcement | Active | CI threshold 50%. `--passWithNoTests` removed from mandatory suites (switchyard-ui, dispatch, status) in S106. Tests: db/, reconciler/ (30 S106 + 35 S107), services/ (+ webhook 19, build 10 S109), roundhouse (21), waybill (14), CLI (82 + 33 S107), SDK (30), dispatch (123), status (129), switchyard-ui (159), shared-lib (19), ui-components (18), provenance (42), signing (8), addons (6), timetable (62+19 S103), cron_job_run (14 S106), topology (43 S107), rotation (18 S107), backup (16 S107), **deploy pipeline (45 API + 3 integration S109)**. 220+ tests added in S107, ~140 in S109. RBAC namespace bug fixed S106 (`default`->`enclii`). Integration tests go.mod aligned to 1.25.0 |
 | Vault (secret management) | Ready | Helm values + ArgoCD app (health probes fixed S106: `uninitcode=200&sealedcode=200`) + ESO ClusterSecretStore + NetworkPolicies + tunnel route (vault.madfam.io) + ExternalSecret manifests (18 files, 15 namespaces, ~155 keys) + ESO reader policy + migration script. Pod can now run uninitialized/sealed. Needs cluster deploy (init, unseal, configure, migrate). `JANUA_SECRET_KEY` ExternalSecrets for karafiel, autoswarm, and pravara-mes live in their own repos (self-provisioning pattern, not in enclii) |
-| PostHog (analytics) | Removed (S106, cleaned S110) | Self-host abandoned S106. Zombie namespace + ArgoCD app + policy files + ExternalSecret removed S110. Helm values archived to `infra/archive/posthog/`. Analytics via Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud (still active at `infra/cloudflare/posthog-proxy/`) |
+| PostHog (analytics) | Removed (S106, cleaned S110) | Self-host abandoned S106. Zombie namespace + ArgoCD app + policy files + ExternalSecret removed S110. Helm values archived to `infra/archive/posthog/`. Analytics via Cloudflare Worker proxy: `analytics.madfam.io` → PostHog Cloud (still active at `infra/cloudflare/posthog-proxy/`). Client-side PostHog re-enabled for switchyard-ui via the Cloudflare Worker proxy at `analytics.madfam.io` |
 | react-sdk pre-existing test failures | Resolved | Session 102: Replaced empty div mocks with interactive form mocks, expanded useJanua context. 12/12 suites, 123/123 tests pass (janua `bdb7a31b`) |
 | Onboarding handler K8s API migration | Completed | Session 97: NetworkPolicies now applied via K8s API (`k8s.ApplyNetworkPolicies`) instead of git commit. No more writes to `infra/k8s/policies/` during onboarding |
 | pgbouncer egress type | Completed | Session 97: Added to netpolicy generator (port 6432 to data namespace). Available in `enclii.yaml` `network.services[].egress` |

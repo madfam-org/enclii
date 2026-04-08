@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
+import { identifyUser } from "@/lib/analytics/posthog";
 
 /**
  * OAuth Callback — Direct PKCE code exchange
@@ -111,6 +112,15 @@ function AuthCallbackContent() {
         }
 
         setStatus("success");
+
+        // Identify user in PostHog with Janua UUID
+        if (userData?.id) {
+          identifyUser(userData.id, {
+            email: userData.email,
+            name: userData.name || userData.display_name,
+            product: 'enclii',
+          });
+        }
 
         // Full page navigation ensures browser processes Set-Cookie headers
         setTimeout(() => {

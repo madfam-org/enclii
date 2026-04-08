@@ -50,6 +50,13 @@ spec:
               value: "oidc"
             - name: NEXT_PUBLIC_JANUA_URL
               value: "https://auth.madfam.io"
+            - name: NEXT_PUBLIC_POSTHOG_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: enclii-secrets
+                  key: posthog-key
+            - name: NEXT_PUBLIC_POSTHOG_HOST
+              value: "https://analytics.madfam.io"
           ports:
             - containerPort: 4201
               name: http
