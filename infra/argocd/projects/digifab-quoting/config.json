@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "digifab-quoting",
+  "namespace": "digifab-quoting",
+  "partOf": "digifab-quoting",
+  "repoURL": "https://github.com/madfam-org/digifab-quoting.git"
+}
