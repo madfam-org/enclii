@@ -2,11 +2,10 @@
 # Redis Sentinel High Availability Configuration for Enclii
 # Provides automatic failover and high availability for session/cache storage
 #
-# DEPLOYMENT BLOCKED: Do NOT deploy until a 3rd node is added to the cluster.
-# The 2-node k3s cluster (foundry-core + foundry-builder-01) cannot satisfy
-# the 3-replica quorum required for Sentinel HA. The builder node has a
-# NoSchedule taint (builder=true) so only 1 node is schedulable for Redis.
-# Once a 3rd general-purpose node is provisioned, update replicas and deploy.
+# READY TO DEPLOY: 3-node cluster (foundry-cp + foundry-worker-01 + foundry-builder-01)
+# now satisfies the 3-replica quorum. The builder node has a NoSchedule taint
+# (builder=true) so 2 nodes (foundry-cp + foundry-worker-01) are schedulable
+# for Redis Sentinel replicas — sufficient for quorum with 2 of 3 replicas.
 apiVersion: v1
 kind: ConfigMap
 metadata:
