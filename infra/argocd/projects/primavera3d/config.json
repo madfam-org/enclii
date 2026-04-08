@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "primavera3d",
+  "namespace": "primavera3d",
+  "partOf": "primavera3d",
+  "repoURL": "https://github.com/madfam-org/primavera3d.git"
+}
