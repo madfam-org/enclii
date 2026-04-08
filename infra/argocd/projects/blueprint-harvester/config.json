@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "blueprint-harvester",
+  "namespace": "blueprint-harvester",
+  "partOf": "blueprint-harvester",
+  "repoURL": "https://github.com/madfam-org/blueprint-harvester.git"
+}
