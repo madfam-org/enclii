@@ -114,7 +114,7 @@ REDIS_URL: "redis://127.0.0.1:6379"
 # NEVER use these in production
 REDIS_URL: "redis://<HOST_IP>:6379"  # External IP
 REDIS_URL: "redis://0.0.0.0:6379"         # Wildcard bind
-REDIS_URL: "redis://foundry-core:6379"    # Hostname resolution issues
+REDIS_URL: "redis://foundry-cp:6379"       # Hostname resolution issues
 ```
 
 **Sentinel Audit Check**:
@@ -277,7 +277,7 @@ gh run list --workflow=docker-build.yml --limit=5
 ```bash
 # NEVER do these for tenant operations
 kubectl exec -it postgres-pod -- psql  # Use API instead
-ssh foundry-core 'kubectl ...'         # Use enclii CLI instead
+ssh foundry-cp 'kubectl ...'           # Use enclii CLI instead
 curl -X POST janua-api/internal/...    # Use public API endpoints
 ```
 

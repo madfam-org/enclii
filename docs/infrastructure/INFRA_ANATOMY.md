@@ -1,6 +1,6 @@
 # Infrastructure Anatomy - Production State
 
-> **Generated**: 2026-01-17 | **Last Updated**: 2026-04-07 | **Host**: foundry-primary (pending) + foundry-core + foundry-builder-01 | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
+> **Generated**: 2026-01-17 | **Last Updated**: 2026-04-08 | **Host**: foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder] | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
 >
 > **Live Status Check** (2026-04-07):
 > - Nodes: 2/2 Ready (3rd node EX44 ordered, pending provisioning), k3s v1.33.7+k3s3
@@ -152,12 +152,13 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-core** | <CONTROL_PLANE_IP> | control-plane, master | Hetzner dedicated (see internal-devops for specs) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
+| **foundry-cp** | 37.27.235.104 | control-plane, master | Hetzner EX44 (i5-13500, 128GB, 2x512GB NVMe Gen4) | v1.33.7+k3s3 | — | — | ✅ Ready | new |
+| **foundry-worker-01** | 95.217.198.239 | worker | Hetzner AX41-NVMe (Ryzen 5 3600, 64GB) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
 | **foundry-builder-01** | <WORKER_NODE_IP> | worker (role=builder) | VPS ("The Forge") | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)
 - **Kernel**: 6.8.0-88-generic
-- **Node Count**: 2 (since Jan 2026)
+- **Node Count**: 3 (since Apr 2026; was 2 from Jan-Apr 2026)
 - **Builder Node**: Tainted `builder=true:NoSchedule` — only ARC runner pods schedule here
 - **Resource Headroom**: 94-99% CPU available, 69-81% Memory available
 
@@ -179,9 +180,9 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                K8s CLUSTER (K3s, 2 nodes)                       │
+│                K8s CLUSTER (K3s, 3 nodes)                       │
 │                                                                 │
-│  foundry-core (control-plane):                                  │
+│  foundry-cp (control-plane, EX44):                              │
 │    janua-api.janua.svc (80)       switchyard-api.enclii.svc (80)│
 │    janua-dashboard.janua.svc      dispatch.enclii.svc (80)      │
 │    postgres.enclii.svc (5432)     redis.data.svc (6379)         │

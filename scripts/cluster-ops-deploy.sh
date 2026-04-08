@@ -16,7 +16,7 @@
 #   verify-all         Final end-to-end verification
 #
 # Prerequisites:
-#   - SSH tunnel to foundry-core (port 55323 → 6443)
+#   - SSH tunnel to foundry-cp (port 55323 → 6443)
 #   - kubectl context set to 'foundry'
 #   - Cloudflare Zero Trust dashboard access (for tunnel routes)
 #
@@ -101,7 +101,7 @@ phase_preflight() {
   log "Checking cluster access..."
   if ! kubectl cluster-info &>/dev/null; then
     err "Cannot reach cluster. Is the SSH tunnel running?"
-    echo "  ssh -L 55323:127.0.0.1:6443 root@<foundry-core-ip>"
+    echo "  ssh -L 55323:127.0.0.1:6443 root@<foundry-cp-ip>"
     exit 1
   fi
   ok "Cluster reachable"

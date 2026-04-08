@@ -15,7 +15,7 @@ defaultSettings:
   defaultReplicaCount: 2
 
   # Storage allocation settings
-  storageOverProvisioningPercentage: 100
+  storageOverProvisioningPercentage: 200
   storageMinimalAvailablePercentage: 15
 
   # Backup to Cloudflare R2 (offsite)

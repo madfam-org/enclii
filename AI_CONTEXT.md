@@ -4,8 +4,8 @@
 - **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
 - **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
 - **Self-Deployment**: Enclii deploys itself (zero-touch onboarding)
-- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-primary [EX44, 128GB] + foundry-core + foundry-builder-01)
-- **Last Audit**: Apr 7, 2026 — 3rd node ordered (EX44, i5-13500, 128GB), production restored from 530 outage, disk 74%
+- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp [EX44, 128GB, control-plane] + foundry-worker-01 [AX41, worker] + foundry-builder-01 [builder])
+- **Last Audit**: Apr 8, 2026 — K3s control-plane migrated to foundry-cp (EX44, i5-13500, 128GB), foundry-core renamed to foundry-worker-01, API endpoint 37.27.235.104:6443
 
 ## God Files (Critical Paths)
 | Purpose | Path |

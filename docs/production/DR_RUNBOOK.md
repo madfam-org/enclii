@@ -1,6 +1,6 @@
 # Disaster Recovery Runbook
 
-**Cluster:** 2-node k3s (foundry-core + foundry-builder-01)
+**Cluster:** 3-node k3s (foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder])
 **RPO:** 24 hours (daily PostgreSQL backup to R2)
 **RTO:** 2 hours (manual rebuild)
 **Last Updated:** Feb 23, 2026 (Production Audit — Session 37)

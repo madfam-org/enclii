@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # diagnose-outages.sh — Cluster diagnostic runbook for service outages
-# Run from foundry-core or any host with KUBECONFIG set
+# Run from foundry-cp or any host with KUBECONFIG set
 set -euo pipefail
 
 NAMESPACES=(tezca yantra4d karafiel pravara-mes forgesight madfam-site enclii dhanam janua status)

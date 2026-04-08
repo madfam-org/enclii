@@ -9,7 +9,7 @@ This playbook covers diagnosing and remediating service outages visible on `stat
 ## Quick Start
 
 ```bash
-# From foundry-core (or any host with KUBECONFIG)
+# From foundry-cp (or any host with KUBECONFIG)
 ./scripts/diagnose-outages.sh
 ```
 
@@ -126,7 +126,7 @@ kubectl rollout restart deployment/status-madfam -n status
 
 ## Hardware Capacity
 
-### Current Cluster (foundry-core)
+### Current Cluster (foundry-cp + foundry-worker-01 + foundry-builder-01)
 
 | Resource | Spec |
 |----------|------|
@@ -160,8 +160,8 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 ### When to Scale
 
 - **> 85% RAM**: Set resource limits on non-critical ecosystem pods, scale down monitoring
-- **> 90% RAM**: Add a 3rd worker node or upgrade foundry-core RAM
-- **Check live**: `kubectl top nodes` + `kubectl describe node foundry-core | grep -A 10 "Allocated resources"`
+- **> 90% RAM**: Add another worker node or upgrade foundry-worker-01 RAM
+- **Check live**: `kubectl top nodes` + `kubectl describe node foundry-worker-01 | grep -A 10 "Allocated resources"`
 
 ## Service Inventory
 
@@ -202,7 +202,7 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 
 After git-side fixes are merged:
 
-- [ ] SSH to foundry-core, run `./scripts/diagnose-outages.sh`
+- [ ] SSH to foundry-cp, run `./scripts/diagnose-outages.sh`
 - [ ] Check `kubectl top nodes` — confirm < 85% memory
 - [ ] For each failing namespace: check pods, fix image pulls, restart
 - [ ] Create Pravara MES DNS CNAMEs (mes, mes-api, mes-admin) via Cloudflare API

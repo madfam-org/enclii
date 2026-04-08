@@ -13,7 +13,7 @@ tags: [operations, runbook, incident-response, on-call]
 
 **Prerequisites:**
 - `kubectl` access to enclii-production cluster (`KUBECONFIG=~/.kube/enclii-production`)
-- SSH access to foundry-core via `ssh ssh.madfam.io`
+- SSH access to foundry-cp (control plane) via `ssh ssh.madfam.io`
 - `enclii` CLI authenticated and configured
 - Access to Cloudflare dashboard (dash.cloudflare.com)
 - Access to Grafana dashboards (port-forward or tunnel)
@@ -198,11 +198,11 @@ for domain in api.enclii.dev app.enclii.dev admin.enclii.dev auth.madfam.io stat
 done
 ```
 
-**Escalation:** If not resolved within 15 minutes, SSH into foundry-core to verify node-level network connectivity:
+**Escalation:** If not resolved within 15 minutes, SSH into foundry-cp to verify node-level network connectivity:
 
 ```bash
 ssh ssh.madfam.io
-# Once on foundry-core:
+# Once on foundry-cp:
 systemctl status k3s
 crictl pods | grep cloudflared
 ```

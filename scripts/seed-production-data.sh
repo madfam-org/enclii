@@ -56,29 +56,29 @@ fi
 
 existing_clusters=$(echo "$body" | jq -r '.clusters[]?.name // empty' 2>/dev/null || true)
 
-# Cluster: foundry-core
-if echo "$existing_clusters" | grep -qx "foundry-core"; then
-  echo "  foundry-core: already exists"
-  CORE_CLUSTER_ID=$(echo "$body" | jq -r '.clusters[] | select(.name=="foundry-core") | .id')
+# Cluster: foundry-cp
+if echo "$existing_clusters" | grep -qx "foundry-cp"; then
+  echo "  foundry-cp: already exists"
+  CORE_CLUSTER_ID=$(echo "$body" | jq -r '.clusters[] | select(.name=="foundry-cp") | .id')
 else
-  echo "  Creating foundry-core..."
+  echo "  Creating foundry-cp..."
   resp=$(api POST /clusters -d '{
-    "name": "foundry-core",
-    "slug": "foundry-core",
+    "name": "foundry-cp",
+    "slug": "foundry-cp",
     "type": "k3s",
-    "endpoint": "https://foundry-core:6443",
+    "endpoint": "https://37.27.235.104:6443",
     "region": "eu-central",
     "status": "ready",
-    "metadata": {"k3s_version":"v1.33.7+k3s3","role":"control-plane+worker","node_count":1}
+    "metadata": {"k3s_version":"v1.33.7+k3s3","role":"control-plane","node_count":3}
   }')
   parsed=$(parse_response "$resp")
   code=${parsed%%|*}
   body_c=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
     CORE_CLUSTER_ID=$(echo "$body_c" | jq -r '.id')
-    echo "  foundry-core: created ($CORE_CLUSTER_ID)"
+    echo "  foundry-cp: created ($CORE_CLUSTER_ID)"
   else
-    echo "  ERROR creating foundry-core (HTTP $code): $body_c"
+    echo "  ERROR creating foundry-cp (HTTP $code): $body_c"
   fi
 fi
 
@@ -120,14 +120,14 @@ body=${parsed#*|}
 
 existing_hosts=$(echo "$body" | jq -r '.hosts[]?.name // empty' 2>/dev/null || true)
 
-# Host: foundry-core
-if echo "$existing_hosts" | grep -qx "foundry-core"; then
-  echo "  foundry-core: already exists"
-  CORE_BMH_ID=$(echo "$body" | jq -r '.hosts[] | select(.name=="foundry-core") | .id')
+# Host: foundry-cp
+if echo "$existing_hosts" | grep -qx "foundry-cp"; then
+  echo "  foundry-cp: already exists"
+  CORE_BMH_ID=$(echo "$body" | jq -r '.hosts[] | select(.name=="foundry-cp") | .id')
 else
-  echo "  Registering foundry-core..."
+  echo "  Registering foundry-cp..."
   resp=$(api POST /fleet -d "{
-    \"name\": \"foundry-core\",
+    \"name\": \"foundry-cp\",
     \"cluster_id\": \"${CORE_CLUSTER_ID:-}\",
     \"bmc_address\": \"https://robot.hetzner.com\",
     \"boot_mode\": \"UEFI\",
@@ -141,9 +141,9 @@ else
   body_h=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
     CORE_BMH_ID=$(echo "$body_h" | jq -r '.id')
-    echo "  foundry-core: registered ($CORE_BMH_ID)"
+    echo "  foundry-cp: registered ($CORE_BMH_ID)"
   else
-    echo "  ERROR registering foundry-core (HTTP $code): $body_h"
+    echo "  ERROR registering foundry-cp (HTTP $code): $body_h"
   fi
 fi
 
@@ -223,7 +223,7 @@ resp=$(api POST /costs/allocate -d "{
 }")
 parsed=$(parse_response "$resp")
 code=${parsed%%|*}
-echo "  foundry-core cost: HTTP $code"
+echo "  foundry-cp cost: HTTP $code"
 
 resp=$(api POST /costs/allocate -d "{
   \"bare_metal_host_id\": \"${FORGE_BMH_ID:-}\",

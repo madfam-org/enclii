@@ -1,8 +1,8 @@
 # Capacity Roadmap — Production Cluster
 
 > **Created**: 2026-03-13 | **Audit Baseline**: ~150 pods, 22 namespaces, 46 endpoints (37 operational)
-> **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-primary + foundry-core + foundry-builder-01)
-> **Last Updated**: 2026-04-07 — EX44 (i5-13500, 128GB, HEL1) ordered, pending provisioning
+> **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp [EX44, control-plane] + foundry-worker-01 [AX41, worker] + foundry-builder-01 [builder])
+> **Last Updated**: 2026-04-08 — Control-plane migrated to foundry-cp (EX44, i5-13500, 128GB), foundry-core renamed to foundry-worker-01
 
 ## Current Utilization Summary
 
@@ -10,9 +10,9 @@
 
 | Resource | Allocatable | Requested | Actual | Utilization (req) | Utilization (actual) |
 |----------|-------------|-----------|--------|--------------------|-----------------------|
-| **CPU (foundry-core)** | 12,000m | 10,460m | 1,340m | **87%** | 11% |
+| **CPU (foundry-worker-01)** | 12,000m | 10,460m | 1,340m | **87%** | 11% |
 | **CPU (builder-01)** | 2,000m | ~0m | 31m | ~0% | 1% |
-| **Memory (foundry-core)** | 64Gi | 24.9Gi | 21.5Gi | 39% | 33% |
+| **Memory (foundry-worker-01)** | 64Gi | 24.9Gi | 21.5Gi | 39% | 33% |
 | **Memory (builder-01)** | 3.8Gi | ~0m | 1.1Gi | ~0% | 28% |
 
 **Key Insight**: CPU is over-committed at request level (87%) but actual usage is only 11%. The bottleneck is Kubernetes scheduling — pods won't schedule if requests exceed allocatable. The biggest offender is Longhorn `instance-manager` at 1440m requested vs 84m actual.
@@ -27,7 +27,7 @@
 | pravara-mes/postgres | 20Gi | 46Mi | 0% | pravara-mes |
 | Longhorn replicas total | ~150Gi | 58Gi | ~39% | longhorn-system |
 
-**Disk (root filesystem)**: 77G/98G (83%) — **P1 alert**. 399 container images + 58G Longhorn + 5.5G logs.
+**Disk (root filesystem, foundry-worker-01)**: 77G/98G (83%) — **P1 alert**. 399 container images + 58G Longhorn + 5.5G logs.
 
 ### Growth Trends
 
@@ -47,7 +47,7 @@
 ### 1. Prune Container Images — Saves ~10-20G
 
 ```bash
-# On foundry-core:
+# On foundry-worker-01 (or foundry-cp):
 sudo k3s crictl rmi --prune
 # Verify:
 sudo k3s crictl images | wc -l
@@ -103,7 +103,7 @@ sudo find /var/log -name "*.gz" -mtime +7 -delete
 
 > **Detailed pricing, server specs, and cost projections**: see `madfam-org/internal-devops` → `infrastructure/cost-analysis.md` and `hardware/hetzner-evaluation.md`
 
-The next node should be ordered from Hetzner (same DC as foundry-core for latency). Key considerations:
+The next node should be ordered from Hetzner (same DC as foundry-cp for latency). Key considerations:
 - Match or exceed current control plane CPU/RAM specs
 - NVMe storage preferred for Longhorn replication
 - Same k3s version (v1.33.7+k3s3)
@@ -123,11 +123,11 @@ apt update && apt upgrade -y
 
 ```bash
 # Get join token from control plane:
-ssh foundry-core 'sudo cat /var/lib/rancher/k3s/server/node-token'
+ssh foundry-cp 'sudo cat /var/lib/rancher/k3s/server/node-token'
 
 # Install k3s agent (MUST match version v1.33.7+k3s3):
 curl -sfL https://get.k3s.io | \
-  K3S_URL=https://<CONTROL_PLANE_IP>:6443 \
+  K3S_URL=https://37.27.235.104:6443 \
   K3S_TOKEN=<token> \
   INSTALL_K3S_VERSION="v1.33.7+k3s3" sh -
 

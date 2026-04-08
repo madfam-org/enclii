@@ -13,7 +13,7 @@ tags: [operations, runbook, cluster, remediation]
 
 **Prerequisites:**
 - `kubectl` access to enclii-production cluster (`KUBECONFIG=~/.kube/enclii-production`)
-- SSH access to foundry-core via `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io`
+- SSH access to foundry-cp (control plane) via `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io`
 - Credentials for Vault initialization, GitHub PAT, and Cloudflare API token as noted per section
 
 ---
@@ -395,7 +395,7 @@ kubectl get policyreport -A
 
 ## Section 5 -- PostHog Orphaned Volume Cleanup (P0)
 
-**Context:** The PostHog Helm deployment was paused (chart v30.46.0 is fundamentally broken -- unmaintained since May 2023, ClickHouse migrations expect multi-cluster topology + AWS MSK). ArgoCD sync is paused for the PostHog application. Up to 3 Longhorn volumes (~44GB total) may remain detached, consuming disk space on foundry-core.
+**Context:** The PostHog Helm deployment was paused (chart v30.46.0 is fundamentally broken -- unmaintained since May 2023, ClickHouse migrations expect multi-cluster topology + AWS MSK). ArgoCD sync is paused for the PostHog application. Up to 3 Longhorn volumes (~44GB total) may remain detached, consuming disk space on foundry-worker-01.
 
 **Pre-conditions:** None. This is a cleanup operation.
 
@@ -448,7 +448,7 @@ kubectl get all -n posthog
 kubectl get volumes.longhorn.io -n longhorn-system | grep -c detached
 # Expected: 0 (or known non-PostHog volumes only)
 
-# Check disk space recovered on foundry-core (via SSH)
+# Check disk space recovered on foundry-worker-01 (via SSH)
 ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io \
   "df -h / && df -h /var/lib/longhorn"
 ```

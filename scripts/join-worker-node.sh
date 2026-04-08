@@ -3,12 +3,12 @@
 # join-worker-node.sh - Join a new worker node to the k3s cluster
 #
 # Idempotent script that configures a fresh Hetzner server as a k3s agent
-# and joins it to the existing foundry-core control plane.
+# and joins it to the existing foundry-cp control plane.
 #
 # Prerequisites:
 #   - Fresh Ubuntu 24.04 LTS server
 #   - SSH access as root
-#   - K3S_TOKEN set (from foundry-core: sudo cat /var/lib/rancher/k3s/server/node-token)
+#   - K3S_TOKEN set (from foundry-cp: sudo cat /var/lib/rancher/k3s/server/node-token)
 #
 # Usage:
 #   # From your workstation:
@@ -17,7 +17,7 @@
 #     K3S_TOKEN=<token> bash
 #
 #   # Or with explicit variables:
-#   K3S_TOKEN=<token> K3S_URL=https://95.217.198.239:6443 HOSTNAME=foundry-node-02 bash join-worker-node.sh
+#   K3S_TOKEN=<token> K3S_URL=https://37.27.235.104:6443 HOSTNAME=foundry-node-02 bash join-worker-node.sh
 #
 
 set -euo pipefail
@@ -27,7 +27,7 @@ set -euo pipefail
 # ═══════════════════════════════════════════════════
 
 K3S_VERSION="${K3S_VERSION:-v1.33.7+k3s3}"
-K3S_URL="${K3S_URL:-https://95.217.198.239:6443}"
+K3S_URL="${K3S_URL:-https://37.27.235.104:6443}"
 HOSTNAME="${HOSTNAME:-foundry-node-02}"
 NODE_LABEL="${NODE_LABEL:-node-role=worker}"
 
@@ -50,7 +50,7 @@ if [[ -z "${K3S_TOKEN:-}" ]]; then
     err "K3S_TOKEN is required."
     echo ""
     echo "Retrieve it from the control plane:"
-    echo "  ssh solarpunk@95.217.198.239 'sudo cat /var/lib/rancher/k3s/server/node-token'"
+    echo "  ssh solarpunk@37.27.235.104 'sudo cat /var/lib/rancher/k3s/server/node-token'"
     echo ""
     echo "Then run:"
     echo "  K3S_TOKEN=<token> bash $(basename "$0")"
@@ -157,7 +157,7 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${GREEN}Node ${HOSTNAME} joined the cluster successfully!${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════${NC}"
 echo ""
-echo "Next steps (run from your workstation or foundry-core):"
+echo "Next steps (run from your workstation or foundry-cp):"
 echo ""
 echo "  # Verify node is Ready"
 echo "  kubectl get nodes -o wide"

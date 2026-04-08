@@ -192,13 +192,13 @@ Enclii runs on a 3-node k3s cluster (2 dedicated servers + 1 builder VPS).
 > **Operational details** (server IPs, hardware specs, costs, SSH access): see `madfam-org/internal-devops` (private repo).
 
 **Compute & Kubernetes (3-node cluster):**
-- **foundry-primary** - Primary worker node (Hetzner EX44: i5-13500, 128GB, 2x512GB NVMe Gen4) — ordered 2026-04-07
-- **foundry-core** - Control plane + spillover worker (Hetzner AX41-NVMe: Ryzen 5 3600, 64GB)
+- **foundry-cp** - Control plane + primary workload node (Hetzner EX44: i5-13500, 14C/20T, 128GB, 2x512GB NVMe Gen4) — provisioned 2026-04-08
+- **foundry-worker-01** - Worker node + Longhorn 2nd replica target (Hetzner AX41-NVMe: Ryzen 5 3600, 64GB)
 - **foundry-builder-01** - CI builds only (Hetzner VPS: 2 vCPU, 4GB, taint: builder=true:NoSchedule)
 - **k3s v1.33.7+k3s3** - Lightweight Kubernetes (all nodes must match k3s version)
 - **Cloudflare Tunnel** - Zero-trust ingress (replaces LoadBalancer)
 
-> **Note:** 3-node cluster since Apr 2026. foundry-primary handles all production workloads; foundry-core retains control-plane and serves as Longhorn 2nd replica target. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in 2-replica mode for storage redundancy across dedicated nodes.
+> **Note:** 3-node cluster since Apr 2026. Control-plane migrated from AX41 to EX44 on 2026-04-08. foundry-cp runs k3s server + production workloads; foundry-worker-01 handles spillover workloads and serves as Longhorn 2nd replica target. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in 2-replica mode for storage redundancy across dedicated nodes.
 
 **Ingress Architecture (Cloudflare Tunnel):**
 ```

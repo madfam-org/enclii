@@ -17,7 +17,7 @@ Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with 12 apps in
 - **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
 - **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
 - **Self-Deployment**: Enclii deploys itself (zero-touch onboarding)
-- **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
+- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp + foundry-worker-01 + foundry-builder-01)
 
 ### God Files (Critical Paths)
 
@@ -282,8 +282,9 @@ make precommit          # All checks before committing
 
 ## Production Infrastructure
 
-### Compute (2-node k3s cluster)
-- **foundry-core** (Hetzner dedicated server): Control plane node
+### Compute (3-node k3s cluster)
+- **foundry-cp** (Hetzner EX44): Control plane node (i5-13500, 128GB)
+- **foundry-worker-01** (Hetzner AX41-NVMe): Worker node (Ryzen 5 3600, 64GB)
 - **foundry-builder-01** (Hetzner Cloud VPS): CI builder — tainted `builder=true:NoSchedule`
 - **k3s v1.33.7+k3s3**: Lightweight Kubernetes
 
