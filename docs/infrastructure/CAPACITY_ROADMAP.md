@@ -1,7 +1,8 @@
 # Capacity Roadmap — Production Cluster
 
 > **Created**: 2026-03-13 | **Audit Baseline**: ~150 pods, 22 namespaces, 46 endpoints (37 operational)
-> **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
+> **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-primary + foundry-core + foundry-builder-01)
+> **Last Updated**: 2026-04-07 — EX44 (i5-13500, 128GB, HEL1) ordered, pending provisioning
 
 ## Current Utilization Summary
 
@@ -179,10 +180,11 @@ kubectl get volumes.longhorn.io -n longhorn-system -w
 
 | Clients | Pods (est.) | Nodes | Storage |
 |---------|-------------|-------|---------|
-| 1-5 (current) | 100-200 | 2-3 | 200GB Longhorn |
-| 5-25 | 200-500 | 3-5 | 500GB-1TB |
-| 25-100 | 500-2000 | 5-10 | 1-5TB |
-| 100+ | 2000+ | 10+ | 5TB+ |
+| 1-100 (current — alpha) | 150-400 | **3 (current)** | 200GB-1TB Longhorn |
+| 100-500 (beta) | 400-800 | 3 | 1TB Longhorn |
+| 500-2,000 (early revenue) | 800-1,500 | 3-4 | 1-2TB |
+| 2,000-10,000 (growth) | 1,500-3,000 | 4-6 | 2-5TB |
+| 10,000+ (scale) | 3,000+ | 6+ | 5TB+ |
 
 > Cost projections: see `internal-devops/infrastructure/cost-analysis.md`
 

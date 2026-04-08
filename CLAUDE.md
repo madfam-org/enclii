@@ -7,13 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Enclii is an open source DevOps platform for deploying, scaling, and operating containerized services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
 
 **Current Status:** 🟢 v0.1.0 - Production Beta (95% ready) ([checklist](./docs/production/PRODUCTION_CHECKLIST.md))
-**Infrastructure:** Hetzner Dedicated (2-node k3s) + Cloudflare - **Running**
+**Infrastructure:** Hetzner Dedicated (3-node k3s) + Cloudflare - **Running**
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Self-Hosted:** Core services deployed ([api.enclii.dev](https://api.enclii.dev), [app.enclii.dev](https://app.enclii.dev))
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
 **GitOps:** ArgoCD App-of-Apps (28 apps across 22 namespaces) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (17 volumes, 2-replica across nodes) - **Operational** (Jan 2026)
-**Last Audit:** Mar 21, 2026 — Full remediation S110 (Yantra4D domain migration, logging Kyverno fix, PostHog cleanup, CrashLoop fixes) ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
+**Last Audit:** Apr 7, 2026 — Production 530 recovery (server power-on, tunnel route fix, EX44 3rd node ordered), S110 remediation (Yantra4D domain migration, logging Kyverno fix, PostHog cleanup, CrashLoop fixes) ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
 
 ### Port Allocation
 
@@ -187,17 +187,18 @@ Key vars for local development (set in `.env`):
 
 ### Current Production Stack
 
-Enclii runs on a 2-node k3s cluster with infrastructure prepared for further scaling.
+Enclii runs on a 3-node k3s cluster (2 dedicated servers + 1 builder VPS).
 
 > **Operational details** (server IPs, hardware specs, costs, SSH access): see `madfam-org/internal-devops` (private repo).
 
-**Compute & Kubernetes (2-node cluster):**
-- **foundry-core** - Control plane (Hetzner dedicated server)
-- **foundry-builder-01** - Worker node for CI builds (taint: builder=true:NoSchedule)
-- **k3s v1.33.7+k3s3** - Lightweight Kubernetes (both nodes must match k3s version)
+**Compute & Kubernetes (3-node cluster):**
+- **foundry-primary** - Primary worker node (Hetzner EX44: i5-13500, 128GB, 2x512GB NVMe Gen4) — ordered 2026-04-07
+- **foundry-core** - Control plane + spillover worker (Hetzner AX41-NVMe: Ryzen 5 3600, 64GB)
+- **foundry-builder-01** - CI builds only (Hetzner VPS: 2 vCPU, 4GB, taint: builder=true:NoSchedule)
+- **k3s v1.33.7+k3s3** - Lightweight Kubernetes (all nodes must match k3s version)
 - **Cloudflare Tunnel** - Zero-trust ingress (replaces LoadBalancer)
 
-> **Note:** 2-node cluster since Jan 2026. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in 2-replica mode for storage redundancy across nodes.
+> **Note:** 3-node cluster since Apr 2026. foundry-primary handles all production workloads; foundry-core retains control-plane and serves as Longhorn 2nd replica target. Builder node runs only ARC GitHub Actions runners. Longhorn CSI operates in 2-replica mode for storage redundancy across dedicated nodes.
 
 **Ingress Architecture (Cloudflare Tunnel):**
 ```

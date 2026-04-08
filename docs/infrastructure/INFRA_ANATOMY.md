@@ -1,9 +1,9 @@
 # Infrastructure Anatomy - Production State
 
-> **Generated**: 2026-01-17 | **Last Updated**: 2026-03-13 | **Host**: foundry-core + foundry-builder-01 | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
+> **Generated**: 2026-01-17 | **Last Updated**: 2026-04-07 | **Host**: foundry-primary (pending) + foundry-core + foundry-builder-01 | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
 >
-> **Live Status Check** (2026-03-13):
-> - Nodes: 2/2 Ready, k3s v1.33.7+k3s3
+> **Live Status Check** (2026-04-07):
+> - Nodes: 2/2 Ready (3rd node EX44 ordered, pending provisioning), k3s v1.33.7+k3s3
 > - Pods: ~150 total (est. 137 Running/Completed, 13 non-Running)
 > - Disk usage: **83% (77G/98G) — P1, image pruning needed** (+16% in 35 days)
 > - ArgoCD: 28 apps (11 infra + 2 ARC + 15 project-appset) — see ArgoCD table below

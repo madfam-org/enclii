@@ -4,8 +4,8 @@
 - **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
 - **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
 - **Self-Deployment**: Enclii deploys itself (zero-touch onboarding)
-- **Cluster**: 2-node k3s v1.33.7+k3s3 (foundry-core + foundry-builder-01)
-- **Last Audit**: Mar 13, 2026 — 150 pods, 34/36 endpoints operational, disk 83% (action needed)
+- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-primary [EX44, 128GB] + foundry-core + foundry-builder-01)
+- **Last Audit**: Apr 7, 2026 — 3rd node ordered (EX44, i5-13500, 128GB), production restored from 530 outage, disk 74%
 
 ## God Files (Critical Paths)
 | Purpose | Path |
