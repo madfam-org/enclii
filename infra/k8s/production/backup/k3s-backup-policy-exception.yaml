@@ -25,8 +25,6 @@ spec:
             - Pod
             - CronJob
             - Job
-          names:
-            - "k3s-datastore-backup*"
           namespaces:
             - data
   exceptions:
@@ -55,3 +53,8 @@ spec:
         - require-drop-all
         - autogen-require-drop-all
         - autogen-cronjob-drop-all-capabilities
+    - policyName: verify-image-signatures
+      ruleNames:
+        - check-signature
+        - autogen-check-signature
+        - autogen-cronjob-check-signature
