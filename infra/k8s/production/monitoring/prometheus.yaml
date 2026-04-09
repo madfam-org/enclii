@@ -371,7 +371,7 @@ data:
               description: "Redis cache is not responding."
 
           - alert: RedisHighMemory
-            expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+            expr: (redis_memory_max_bytes > 0 and redis_memory_used_bytes / redis_memory_max_bytes > 0.85) or (redis_memory_max_bytes == 0 and redis_memory_used_bytes > 170000000)
             for: 5m
             labels:
               severity: warning

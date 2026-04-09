@@ -69,14 +69,15 @@ spec:
 
         - alert: RedisHighMemory
           expr: |
-            redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+            (redis_memory_max_bytes > 0 and redis_memory_used_bytes / redis_memory_max_bytes > 0.8)
+            or (redis_memory_max_bytes == 0 and redis_memory_used_bytes > 170000000)
           for: 5m
           labels:
             severity: warning
             category: platform
           annotations:
-            summary: "Redis memory usage above 80%"
-            description: "Redis memory at {{ $value | humanizePercentage }} of maxmemory for 5m."
+            summary: "Redis memory usage above 80% of maxmemory (200MB)"
+            description: "Redis memory used: {{ $value | humanize1024 }}B. Configured maxmemory: 200MB."
 
         - alert: RedisRejectedConnections
           expr: |
