@@ -1,16 +1,16 @@
 # Blue runner scale set (primary)
 # This is the active scale set during normal operations
-# Usage: helm upgrade --install enclii-runners-blue \
+# Usage: helm upgrade --install madfam-runners-blue \
 #          oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
 #          --namespace arc-runners \
 #          --values values-runner-set.yaml \
 #          --values values-runner-set-blue.yaml
 
-runnerScaleSetName: "enclii-runners-blue"
+runnerScaleSetName: "madfam-runners-blue"
 
-# Scale configuration
+# Scale configuration — 2vCPU/4GB builder node, keep concurrency low
 minRunners: 1
-maxRunners: 6
+maxRunners: 2
 
 # Blue-specific labels for identification
 template:
@@ -34,4 +34,3 @@ template:
 # NOTE: Custom PVC volumes removed for now
 # ARC's container merge doesn't work properly with custom containers
 # Caching will use GitHub Actions cache instead of PVC-based caching
-# TODO: Revisit PVC caching when ARC Helm chart improves merge behavior

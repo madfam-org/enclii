@@ -139,13 +139,13 @@ gh api -X PUT orgs/madfam-org/actions/runner-groups/1/repositories/REPO_ID
 ```bash
 # Create a new runner group with "All repositories" access
 gh api -X POST orgs/madfam-org/actions/runner-groups \
-  -f name="enclii-runners" \
+  -f name="madfam-runners" \
   -f visibility="all"
 ```
 
 Then update `values-runner-set.yaml`:
 ```yaml
-runnerGroup: "enclii-runners"
+runnerGroup: "madfam-runners"
 ```
 
 ---
@@ -173,11 +173,11 @@ template:
 - **Runner ID**: 44
 - **Status**: Connected to GitHub, Listening for Jobs
 - **Runner Group**: Default
-- **Label**: `enclii-runners-blue`
+- **Label**: `madfam-runners-blue`
 
 ### Queued Jobs
 ```
-10+ jobs queued with label "enclii-runners-blue"
+10+ jobs queued with label "madfam-runners-blue"
 All showing "Waiting for a runner to pick up this job"
 ```
 
@@ -190,7 +190,7 @@ After configuring runner group access:
 ```bash
 # 1. Check listener logs - should show jobs being assigned
 KUBECONFIG=~/.kube/config-hetzner kubectl logs -n arc-system \
-  -l actions.github.com/scale-set-name=enclii-runners-blue --tail=20
+  -l actions.github.com/scale-set-name=madfam-runners-blue --tail=20
 
 # Look for: "assigned job": N (where N > 0)
 
@@ -226,7 +226,7 @@ gh api repos/madfam-org/enclii/actions/runners
 
 ```
 1. GitHub Actions workflow triggered
-2. GitHub checks runs-on label (enclii-runners-blue)
+2. GitHub checks runs-on label (madfam-runners-blue)
 3. GitHub looks for matching runner in runner groups with repo access
 4. If found, GitHub sends job to listener via long-poll
 5. Listener creates EphemeralRunner pod for job
@@ -261,13 +261,13 @@ export KUBECONFIG=~/.kube/config-hetzner
 kubectl get ephemeralrunner,pods -n arc-runners
 
 # Check listener logs for job assignment
-kubectl logs -n arc-system -l actions.github.com/scale-set-name=enclii-runners-blue --tail=50
+kubectl logs -n arc-system -l actions.github.com/scale-set-name=madfam-runners-blue --tail=50
 
 # Check runner pod logs
-kubectl logs -n arc-runners -l actions.github.com/scale-set-name=enclii-runners-blue --tail=50
+kubectl logs -n arc-runners -l actions.github.com/scale-set-name=madfam-runners-blue --tail=50
 
 # Redeploy runners (if needed)
-helm upgrade --install enclii-runners-blue \
+helm upgrade --install madfam-runners-blue \
   oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
   --namespace arc-runners \
   --version 0.10.1 \

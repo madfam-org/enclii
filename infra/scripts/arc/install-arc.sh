@@ -150,7 +150,7 @@ install_runners() {
 
     # Install Blue scale set (active)
     log_info "Installing Blue runner scale set..."
-    helm upgrade --install enclii-runners-blue \
+    helm upgrade --install madfam-runners-blue \
         oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
         --namespace "${RUNNER_NAMESPACE}" \
         --create-namespace \
@@ -162,7 +162,7 @@ install_runners() {
 
     # Install Green scale set (standby)
     log_info "Installing Green runner scale set..."
-    helm upgrade --install enclii-runners-green \
+    helm upgrade --install madfam-runners-green \
         oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
         --namespace "${RUNNER_NAMESPACE}" \
         --create-namespace \
@@ -196,8 +196,8 @@ verify_installation() {
     echo ""
     echo "Next steps:"
     echo "1. Check GitHub UI: Settings → Actions → Runners"
-    echo "2. Runners should appear as 'enclii-runners-blue' and 'enclii-runners-green'"
-    echo "3. Update .github/workflows/ci.yml to use 'runs-on: enclii-runners'"
+    echo "2. Runners should appear as 'madfam-runners-blue' and 'madfam-runners-green'"
+    echo "3. Update .github/workflows/ci.yml to use 'runs-on: madfam-runners-blue'"
 }
 
 print_usage() {

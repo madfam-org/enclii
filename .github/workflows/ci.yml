@@ -20,13 +20,13 @@ env:
   NODE_VERSION: '20'
   # Runner selection: Use self-hosted if ARC bootstrap is complete, otherwise GitHub-hosted
   # Set ARC_BOOTSTRAP_COMPLETE=true in repository variables after ARC is installed
-  # Note: ARC runner scale set is named 'enclii-runners-blue' (blue/green deployment pattern)
-  RUNNER_LABEL: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+  # Note: ARC runner scale set is named 'madfam-runners-blue' (blue/green deployment pattern)
+  RUNNER_LABEL: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
 
 jobs:
   lint:
     name: Lint & Format
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -77,7 +77,7 @@ jobs:
 
   manifest-audit:
     name: Manifest Audit (Ratchet)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     # Run in parallel with lint for speed
     steps:
       - uses: actions/checkout@v6
@@ -171,7 +171,7 @@ jobs:
 
   golden-config:
     name: Golden Config Check (Ratchet)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     # Run in parallel with lint for speed
     steps:
       - uses: actions/checkout@v6
@@ -283,7 +283,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     needs: unit-tests
 
     steps:
@@ -326,7 +326,7 @@ jobs:
 
   ui-tests:
     name: UI Tests
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     # Serialize with lint to avoid resource contention on self-hosted runners
     needs: lint
     env:
@@ -440,7 +440,7 @@ jobs:
 
   security-scan:
     name: Security Scan
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     # Serialize with ui-tests to avoid resource contention on self-hosted runners
     needs: ui-tests
 
@@ -581,7 +581,7 @@ jobs:
   # =============================================================================
   docker-build:
     name: 'Build: ${{ matrix.name }}'
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     needs: [build, ui-tests, detect-changes, ecosystem-e2e]
     if: |
       always() &&
@@ -1120,7 +1120,7 @@ jobs:
 
   test-summary:
     name: Test Summary
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, ecosystem-e2e]
     if: always()
 

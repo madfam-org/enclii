@@ -6,13 +6,22 @@ import (
 	"github.com/google/uuid"
 )
 
+// CIRunnerMode controls whether CI runs on GitHub-hosted or self-hosted runners
+type CIRunnerMode string
+
+const (
+	CIRunnerModeGitHub     CIRunnerMode = "github"
+	CIRunnerModeSelfHosted CIRunnerMode = "self-hosted"
+)
+
 // Project represents a collection of services
 type Project struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	Name      string    `json:"name" db:"name"`
-	Slug      string    `json:"slug" db:"slug"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID           uuid.UUID    `json:"id" db:"id"`
+	Name         string       `json:"name" db:"name"`
+	Slug         string       `json:"slug" db:"slug"`
+	CIRunnerMode CIRunnerMode `json:"ci_runner_mode" db:"ci_runner_mode"`
+	CreatedAt    time.Time    `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at" db:"updated_at"`
 }
 
 // Environment represents a deployment target (dev, staging, prod, preview-*)

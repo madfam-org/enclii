@@ -57,7 +57,7 @@ func setupTimetableTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func())
 }
 
 // projectSelectColumns matches the columns scanned by ProjectRepository.GetBySlug
-var projectSelectColumns = []string{"id", "name", "slug", "created_at", "updated_at"}
+var projectSelectColumns = []string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}
 
 // cronJobSelectColumns matches the columns scanned by CronJobRepository.GetByID/ListByProject
 var cronJobSelectColumns = []string{
@@ -89,10 +89,10 @@ func TestCreateCronJob_Success(t *testing.T) {
 	now := time.Now()
 
 	// Mock: GetBySlug (uses QueryRow without context)
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("test-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Test Project", "test-project", now, now))
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	// Mock: CronJobs.Create (INSERT)
 	mock.ExpectExec(`INSERT INTO cron_jobs`).
@@ -177,7 +177,7 @@ func TestCreateCronJob_ProjectNotFound(t *testing.T) {
 	defer cleanup()
 
 	// Mock: GetBySlug returns not found
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("nonexistent").
 		WillReturnError(sql.ErrNoRows)
 
@@ -210,10 +210,10 @@ func TestCreateCronJob_InvalidServiceID(t *testing.T) {
 	now := time.Now()
 
 	// Mock: GetBySlug succeeds
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("test-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Test Project", "test-project", now, now))
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	router := gin.New()
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
@@ -264,10 +264,10 @@ func TestListCronJobs_Success(t *testing.T) {
 	now := time.Now()
 
 	// Mock: GetBySlug
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("test-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Test Project", "test-project", now, now))
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	// Mock: ListByProject returns 2 cron jobs
 	rows := sqlmock.NewRows(cronJobSelectColumns).
@@ -301,7 +301,7 @@ func TestListCronJobs_Empty(t *testing.T) {
 	projectID := uuid.New()
 	now := time.Now()
 
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("empty-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
 			AddRow(projectID, "Empty Project", "empty-project", now, now))
@@ -458,10 +458,10 @@ func TestCreateOneOffJob_Success(t *testing.T) {
 	now := time.Now()
 
 	// Mock: GetBySlug
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("test-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Test Project", "test-project", now, now))
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	// Mock: OneOffJobs.Create
 	mock.ExpectExec(`INSERT INTO one_off_jobs`).
@@ -500,10 +500,10 @@ func TestCreateOneOffJob_WithRunAt(t *testing.T) {
 	now := time.Now()
 	futureTime := now.Add(24 * time.Hour).Format(time.RFC3339)
 
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("test-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Test Project", "test-project", now, now))
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	mock.ExpectExec(`INSERT INTO one_off_jobs`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -535,10 +535,10 @@ func TestCreateOneOffJob_InvalidRunAt(t *testing.T) {
 	serviceID := uuid.New()
 	now := time.Now()
 
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("test-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Test Project", "test-project", now, now))
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	router := gin.New()
 	router.POST("/v1/projects/:slug/one-off-jobs", h.CreateOneOffJob)
@@ -564,7 +564,7 @@ func TestCreateOneOffJob_ProjectNotFound(t *testing.T) {
 	h, mock, cleanup := setupTimetableTestHandler(t)
 	defer cleanup()
 
-	mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug`).
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("nonexistent").
 		WillReturnError(sql.ErrNoRows)
 

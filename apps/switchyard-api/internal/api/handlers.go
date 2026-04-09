@@ -339,6 +339,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/projects/:slug", h.GetProject)
 			protected.DELETE("/projects/:slug", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProject)
 
+			// CI Runner Configuration
+			protected.GET("/projects/:slug/ci-runner-config", h.GetCIRunnerConfig)
+			protected.PUT("/projects/:slug/ci-runner-config", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateCIRunnerConfig)
+
 			// Environments
 			protected.POST("/projects/:slug/environments", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateEnvironment)
 			protected.GET("/projects/:slug/environments", h.ListEnvironments)

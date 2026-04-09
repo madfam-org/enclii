@@ -20,10 +20,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 NAMESPACE="arc-runners"
 CHART_VERSION="0.10.1"
+SCALE_SET_PREFIX="${SCALE_SET_PREFIX:-madfam-runners}"  # Override via env: SCALE_SET_PREFIX=custom-runners
 DRAIN_TIMEOUT=300        # 5 minutes max wait for jobs to complete
 REGISTRATION_WAIT=30     # Seconds to wait for runners to register
 MIN_RUNNERS=1            # Minimum runners for active scale set
-MAX_RUNNERS=6            # Maximum runners
+MAX_RUNNERS=2            # Maximum runners (constrained by builder node: 2vCPU/4GB)
 
 # Colors for output
 RED='\033[0;31m'
@@ -58,8 +59,8 @@ get_active_color() {
     if [[ -z "${active}" ]]; then
         # If no active label, check which one has runners
         local blue_runners green_runners
-        blue_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=enclii-runners-blue" --no-headers 2>/dev/null | wc -l || echo "0")
-        green_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=enclii-runners-green" --no-headers 2>/dev/null | wc -l || echo "0")
+        blue_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=${SCALE_SET_PREFIX}-blue" --no-headers 2>/dev/null | wc -l || echo "0")
+        green_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=${SCALE_SET_PREFIX}-green" --no-headers 2>/dev/null | wc -l || echo "0")
 
         if [[ ${blue_runners} -gt 0 ]]; then
             echo "blue"
@@ -134,7 +135,7 @@ drain_scale_set() {
 # Activate a scale set (scale up and set active label)
 activate_scale_set() {
     local color=$1
-    local scale_set="enclii-runners-${color}"
+    local scale_set="${SCALE_SET_PREFIX}-${color}"
     local values_file="${REPO_ROOT}/infra/helm/arc/values-runner-set-${color}.yaml"
 
     log_info "Activating ${scale_set}..."
@@ -158,7 +159,7 @@ activate_scale_set() {
 # Deactivate a scale set (scale down and set inactive label)
 deactivate_scale_set() {
     local color=$1
-    local scale_set="enclii-runners-${color}"
+    local scale_set="${SCALE_SET_PREFIX}-${color}"
 
     log_info "Deactivating ${scale_set}..."
 
@@ -207,7 +208,7 @@ print_status() {
     echo ""
 
     for color in blue green; do
-        local scale_set="enclii-runners-${color}"
+        local scale_set="${SCALE_SET_PREFIX}-${color}"
         local running busy
         running=$(get_running_pods "${scale_set}")
         busy=$(get_busy_runners "${scale_set}")
@@ -322,7 +323,7 @@ main() {
         activate_scale_set "${target_color}"
 
         # 2. Wait for new runners to register
-        wait_for_registration "enclii-runners-${target_color}" "${REGISTRATION_WAIT}" || {
+        wait_for_registration "${SCALE_SET_PREFIX}-${target_color}" "${REGISTRATION_WAIT}" || {
             log_error "New runners failed to register. Aborting switch."
             log_info "Rolling back..."
             deactivate_scale_set "${target_color}"
@@ -330,7 +331,7 @@ main() {
         }
 
         # 3. Drain old color
-        drain_scale_set "enclii-runners-${current_active}" || {
+        drain_scale_set "${SCALE_SET_PREFIX}-${current_active}" || {
             log_warn "Drain incomplete, but new runners are ready"
         }
 
@@ -344,7 +345,7 @@ main() {
     echo "============================================"
     print_status
 
-    log_success "Active scale set: enclii-runners-${target_color}"
+    log_success "Active scale set: ${SCALE_SET_PREFIX}-${target_color}"
 }
 
 main "$@"

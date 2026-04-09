@@ -25,11 +25,15 @@ func newProjectMockDB(t *testing.T) (*ProjectRepository, sqlmock.Sqlmock, func()
 }
 
 // projectColumns returns the standard column set for project queries.
-var projectColumns = []string{"id", "name", "slug", "created_at", "updated_at"}
+var projectColumns = []string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}
 
 func projectRow(p *types.Project) *sqlmock.Rows {
+	mode := p.CIRunnerMode
+	if mode == "" {
+		mode = types.CIRunnerModeGitHub
+	}
 	return sqlmock.NewRows(projectColumns).
-		AddRow(p.ID, p.Name, p.Slug, p.CreatedAt, p.UpdatedAt)
+		AddRow(p.ID, p.Name, p.Slug, mode, p.CreatedAt, p.UpdatedAt)
 }
 
 // --- Create ---
@@ -96,7 +100,7 @@ func TestProjectRepository_GetByID(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 		expected := &types.Project{ID: id, Name: "proj", Slug: "proj", CreatedAt: now, UpdatedAt: now}
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnRows(projectRow(expected))
 
@@ -113,7 +117,7 @@ func TestProjectRepository_GetByID(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnError(sql.ErrNoRows)
 
@@ -128,7 +132,7 @@ func TestProjectRepository_GetByID(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnError(fmt.Errorf("connection reset"))
 
@@ -149,7 +153,7 @@ func TestProjectRepository_GetBySlug(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 		expected := &types.Project{ID: uuid.New(), Name: "found", Slug: "found-slug", CreatedAt: now, UpdatedAt: now}
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug = \$1`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug = \$1`).
 			WithArgs("found-slug").
 			WillReturnRows(projectRow(expected))
 
@@ -164,7 +168,7 @@ func TestProjectRepository_GetBySlug(t *testing.T) {
 		repo, mock, cleanup := newProjectMockDB(t)
 		defer cleanup()
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug = \$1`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug = \$1`).
 			WithArgs("nonexistent").
 			WillReturnError(sql.ErrNoRows)
 
@@ -182,7 +186,7 @@ func TestProjectRepository_List(t *testing.T) {
 		repo, mock, cleanup := newProjectMockDB(t)
 		defer cleanup()
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects ORDER BY created_at DESC`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC`).
 			WillReturnRows(sqlmock.NewRows(projectColumns))
 
 		results, err := repo.List()
@@ -197,10 +201,10 @@ func TestProjectRepository_List(t *testing.T) {
 
 		now := time.Now().Truncate(time.Microsecond)
 		rows := sqlmock.NewRows(projectColumns).
-			AddRow(uuid.New(), "alpha", "alpha", now, now).
-			AddRow(uuid.New(), "beta", "beta", now.Add(-time.Hour), now.Add(-time.Hour))
+			AddRow(uuid.New(), "alpha", "alpha", "github", now, now).
+			AddRow(uuid.New(), "beta", "beta", "github", now.Add(-time.Hour), now.Add(-time.Hour))
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects ORDER BY created_at DESC`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC`).
 			WillReturnRows(rows)
 
 		results, err := repo.List()
@@ -215,7 +219,7 @@ func TestProjectRepository_List(t *testing.T) {
 		repo, mock, cleanup := newProjectMockDB(t)
 		defer cleanup()
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects ORDER BY created_at DESC`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC`).
 			WillReturnError(fmt.Errorf("db unavailable"))
 
 		results, err := repo.List()
@@ -232,7 +236,7 @@ func TestProjectRepository_List(t *testing.T) {
 		rows := sqlmock.NewRows([]string{"id", "name"}).
 			AddRow(uuid.New(), "partial")
 
-		mock.ExpectQuery(`SELECT id, name, slug, created_at, updated_at FROM projects ORDER BY created_at DESC`).
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC`).
 			WillReturnRows(rows)
 
 		results, err := repo.List()
