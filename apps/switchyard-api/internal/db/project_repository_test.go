@@ -246,6 +246,67 @@ func TestProjectRepository_List(t *testing.T) {
 	})
 }
 
+// --- UpdateCIRunnerMode ---
+
+func TestProjectRepository_UpdateCIRunnerMode(t *testing.T) {
+	t.Run("success - self-hosted", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		mock.ExpectExec(`UPDATE projects SET ci_runner_mode = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(types.CIRunnerModeSelfHosted, id).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.UpdateCIRunnerMode(context.Background(), id, types.CIRunnerModeSelfHosted)
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("success - github", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		mock.ExpectExec(`UPDATE projects SET ci_runner_mode = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(types.CIRunnerModeGitHub, id).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.UpdateCIRunnerMode(context.Background(), id, types.CIRunnerModeGitHub)
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("not found returns ErrNoRows", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		mock.ExpectExec(`UPDATE projects SET ci_runner_mode = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(types.CIRunnerModeSelfHosted, id).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := repo.UpdateCIRunnerMode(context.Background(), id, types.CIRunnerModeSelfHosted)
+		assert.ErrorIs(t, err, sql.ErrNoRows)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		mock.ExpectExec(`UPDATE projects SET ci_runner_mode = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(types.CIRunnerModeSelfHosted, id).
+			WillReturnError(fmt.Errorf("constraint violation"))
+
+		err := repo.UpdateCIRunnerMode(context.Background(), id, types.CIRunnerModeSelfHosted)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "constraint")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 // --- Delete ---
 
 func TestProjectRepository_Delete(t *testing.T) {

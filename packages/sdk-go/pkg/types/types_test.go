@@ -7,6 +7,21 @@ import (
 	"github.com/google/uuid"
 )
 
+func TestCIRunnerModeConstants(t *testing.T) {
+	tests := []struct {
+		mode CIRunnerMode
+		want string
+	}{
+		{CIRunnerModeGitHub, "github"},
+		{CIRunnerModeSelfHosted, "self-hosted"},
+	}
+	for _, tt := range tests {
+		if string(tt.mode) != tt.want {
+			t.Errorf("CIRunnerMode = %q, want %q", tt.mode, tt.want)
+		}
+	}
+}
+
 func TestBuildTypeConstants(t *testing.T) {
 	tests := []struct {
 		bt   BuildType
