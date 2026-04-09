@@ -43,7 +43,15 @@ template:
         operator: "Equal"
         value: "true"
         effect: "NoSchedule"
-    # NOTE: Do NOT define containers here - let ARC inject them properly
+    containers:
+      - name: runner
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1500m
+            memory: 2Gi
 
 # Listener configuration (manages scale set communication with GitHub)
 listenerTemplate:

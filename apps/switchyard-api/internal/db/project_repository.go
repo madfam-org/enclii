@@ -33,10 +33,10 @@ func (r *ProjectRepository) Create(project *types.Project) error {
 
 func (r *ProjectRepository) GetByID(ctx context.Context, id uuid.UUID) (*types.Project, error) {
 	project := &types.Project{}
-	query := `SELECT id, name, slug, created_at, updated_at FROM projects WHERE id = $1`
+	query := `SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id = $1`
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&project.ID, &project.Name, &project.Slug,
+		&project.ID, &project.Name, &project.Slug, &project.CIRunnerMode,
 		&project.CreatedAt, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -48,10 +48,10 @@ func (r *ProjectRepository) GetByID(ctx context.Context, id uuid.UUID) (*types.P
 
 func (r *ProjectRepository) GetBySlug(slug string) (*types.Project, error) {
 	project := &types.Project{}
-	query := `SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug = $1`
+	query := `SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug = $1`
 
 	err := r.db.QueryRow(query, slug).Scan(
-		&project.ID, &project.Name, &project.Slug,
+		&project.ID, &project.Name, &project.Slug, &project.CIRunnerMode,
 		&project.CreatedAt, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -62,7 +62,7 @@ func (r *ProjectRepository) GetBySlug(slug string) (*types.Project, error) {
 }
 
 func (r *ProjectRepository) List() ([]*types.Project, error) {
-	query := `SELECT id, name, slug, created_at, updated_at FROM projects ORDER BY created_at DESC`
+	query := `SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC`
 
 	rows, err := r.db.Query(query)
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *ProjectRepository) List() ([]*types.Project, error) {
 	var projects []*types.Project
 	for rows.Next() {
 		project := &types.Project{}
-		err := rows.Scan(&project.ID, &project.Name, &project.Slug, &project.CreatedAt, &project.UpdatedAt)
+		err := rows.Scan(&project.ID, &project.Name, &project.Slug, &project.CIRunnerMode, &project.CreatedAt, &project.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -81,6 +81,23 @@ func (r *ProjectRepository) List() ([]*types.Project, error) {
 	}
 
 	return projects, nil
+}
+
+// UpdateCIRunnerMode sets the CI runner mode for a project
+func (r *ProjectRepository) UpdateCIRunnerMode(ctx context.Context, id uuid.UUID, mode types.CIRunnerMode) error {
+	query := `UPDATE projects SET ci_runner_mode = $1, updated_at = NOW() WHERE id = $2`
+	result, err := r.db.ExecContext(ctx, query, mode, id)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // Delete removes a project by ID

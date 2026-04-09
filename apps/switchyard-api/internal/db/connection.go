@@ -247,8 +247,8 @@ func (dm *DatabaseManager) PrepareStatements(ctx context.Context) (*PreparedStat
 
 	// Prepare frequently used queries
 	queries := map[string]**sql.Stmt{
-		"SELECT id, name, slug, created_at, updated_at FROM projects WHERE slug = $1":                                                                                        &stmts.GetProject,
-		"SELECT id, name, slug, created_at, updated_at FROM projects ORDER BY created_at DESC LIMIT $1 OFFSET $2":                                                            &stmts.ListProjects,
+		"SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug = $1":                                                                        &stmts.GetProject,
+		"SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC LIMIT $1 OFFSET $2":                                            &stmts.ListProjects,
 		"SELECT id, project_id, name, git_repo, build_config, created_at, updated_at FROM services WHERE id = $1":                                                            &stmts.GetService,
 		"SELECT id, project_id, name, git_repo, build_config, created_at, updated_at FROM services WHERE project_id = $1 ORDER BY created_at DESC":                           &stmts.ListServices,
 		"SELECT id, service_id, version, image_uri, git_sha, status, created_at, updated_at FROM releases WHERE id = $1":                                                     &stmts.GetRelease,

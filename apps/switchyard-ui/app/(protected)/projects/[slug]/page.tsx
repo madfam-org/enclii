@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, apiPut } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -12,12 +12,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 
 interface Project {
   id: string;
   name: string;
   slug: string;
   description: string;
+  ci_runner_mode: 'github' | 'self-hosted';
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +72,21 @@ export default function ProjectDetailPage() {
     git_repo: '',
     build_config: {}
   });
+  const [ciRunnerToggling, setCiRunnerToggling] = useState(false);
+
+  const toggleCIRunnerMode = async () => {
+    if (!project || ciRunnerToggling) return;
+    setCiRunnerToggling(true);
+    try {
+      const newMode = project.ci_runner_mode === 'self-hosted' ? 'github' : 'self-hosted';
+      await apiPut(`/v1/projects/${slug}/ci-runner-config`, { mode: newMode });
+      setProject({ ...project, ci_runner_mode: newMode });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update CI runner mode');
+    } finally {
+      setCiRunnerToggling(false);
+    }
+  };
 
   const fetchProjectData = async () => {
     try {
@@ -213,6 +230,21 @@ export default function ProjectDetailPage() {
             <div className="flex items-center mt-2 space-x-4 text-sm text-muted-foreground">
               <span>Slug: {project.slug}</span>
               <span>Created: {new Date(project.created_at).toLocaleDateString()}</span>
+            </div>
+            <div className="flex items-center mt-3 space-x-3">
+              <Switch
+                checked={project.ci_runner_mode === 'self-hosted'}
+                onCheckedChange={toggleCIRunnerMode}
+                disabled={ciRunnerToggling}
+              />
+              <span className="text-sm text-muted-foreground">
+                CI on {project.ci_runner_mode === 'self-hosted' ? 'Enclii (self-hosted)' : 'GitHub Actions'}
+              </span>
+              {project.ci_runner_mode === 'self-hosted' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                  VPS
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center space-x-3">

@@ -621,3 +621,91 @@ func (c *Client) UpdateIssueComment(ctx context.Context, token, owner, repo stri
 
 	return &comment, nil
 }
+
+// SetRepositoryVariable creates or updates a GitHub Actions variable on a repository.
+// If the variable doesn't exist, it creates it. If it exists, it updates the value.
+func (c *Client) SetRepositoryVariable(ctx context.Context, installationID int64, owner, repo, name, value string) error {
+	token, err := c.GetInstallationToken(ctx, installationID)
+	if err != nil {
+		return err
+	}
+
+	payload, _ := json.Marshal(map[string]string{"name": name, "value": value})
+
+	// Try PATCH first (update existing)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/variables/%s", owner, repo, name)
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to update repository variable: %w", err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil // Updated successfully
+	}
+
+	// Variable doesn't exist — create it
+	if resp.StatusCode == http.StatusNotFound {
+		createURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/variables", owner, repo)
+		req, err = http.NewRequestWithContext(ctx, "POST", createURL, bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err = c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to create repository variable: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("GitHub API error creating variable: %d - %s", resp.StatusCode, string(body))
+		}
+		return nil
+	}
+
+	return fmt.Errorf("GitHub API error setting variable: %d", resp.StatusCode)
+}
+
+// DeleteRepositoryVariable removes a GitHub Actions variable from a repository.
+func (c *Client) DeleteRepositoryVariable(ctx context.Context, installationID int64, owner, repo, name string) error {
+	token, err := c.GetInstallationToken(ctx, installationID)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/variables/%s", owner, repo, name)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete repository variable: %w", err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil // Deleted or didn't exist — both are fine
+	}
+
+	return fmt.Errorf("GitHub API error deleting variable: %d", resp.StatusCode)
+}

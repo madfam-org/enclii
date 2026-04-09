@@ -10,6 +10,7 @@ set -euo pipefail
 # Configuration
 NAMESPACE="arc-runners"
 CONTROLLER_NAMESPACE="arc-system"
+SCALE_SET_PREFIX="${SCALE_SET_PREFIX:-madfam-runners}"  # Override via env: SCALE_SET_PREFIX=custom-runners
 DEFAULT_TIMEOUT=120
 
 # Colors for output
@@ -84,7 +85,7 @@ check_runner_pods() {
     local healthy_runners=0
 
     for color in blue green; do
-        local scale_set="enclii-runners-${color}"
+        local scale_set="${SCALE_SET_PREFIX}-${color}"
         local pods
         pods=$(kubectl get pods -n "${NAMESPACE}" \
             -l "actions.github.com/scale-set-name=${scale_set}" \

@@ -59,7 +59,7 @@ jobs:
     name: Validate Configuration
     # Use self-hosted runners for validation (they have cluster access)
     # Falls back to ubuntu-latest if self-hosted not available (bootstrap scenario)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     outputs:
       changes_detected: ${{ steps.changes.outputs.any_changed }}
     steps:
@@ -94,7 +94,7 @@ jobs:
             > /dev/null
 
           # Validate runner scale set values (blue)
-          helm template enclii-runners-blue \
+          helm template madfam-runners-blue \
             oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
             --version ${{ env.CHART_VERSION }} \
             --values infra/helm/arc/values-runner-set.yaml \
@@ -102,7 +102,7 @@ jobs:
             > /dev/null
 
           # Validate runner scale set values (green)
-          helm template enclii-runners-green \
+          helm template madfam-runners-green \
             oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
             --version ${{ env.CHART_VERSION }} \
             --values infra/helm/arc/values-runner-set.yaml \
@@ -138,7 +138,7 @@ jobs:
     if: |
       github.event_name != 'pull_request' &&
       (needs.validate.outputs.changes_detected == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'enclii-runners' || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     environment: production
     steps:
       - name: Check KUBECONFIG secret
@@ -254,7 +254,7 @@ jobs:
         run: |
           echo "Recording deployment metadata..."
           kubectl annotate autoscalingrunnerset \
-            enclii-runners-${{ steps.color.outputs.target }} \
+            madfam-runners-${{ steps.color.outputs.target }} \
             -n arc-runners \
             --overwrite \
             arc.enclii.dev/deployed-by="${{ github.actor }}" \
@@ -265,7 +265,7 @@ jobs:
     name: Verify Deployment
     needs: deploy
     # This runs on the NEW runners after the switch!
-    runs-on: enclii-runners
+    runs-on: madfam-runners-blue
     steps:
       - name: Checkout
         uses: actions/checkout@v6
