@@ -454,6 +454,80 @@ paths:
           description: Project not found
 
   # ============================================
+  # CI RUNNER CONFIGURATION
+  # ============================================
+  /projects/{slug}/ci-runner-config:
+    get:
+      summary: Get CI runner configuration
+      description: Retrieve the CI runner mode (GitHub-hosted or self-hosted) for a project.
+      tags: [projects]
+      operationId: getCIRunnerConfig
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CI runner configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode]
+                properties:
+                  mode:
+                    type: string
+                    enum: [github, self-hosted]
+                  message:
+                    type: string
+        '404':
+          description: Project not found
+    put:
+      summary: Update CI runner configuration
+      description: |
+        Change CI runner mode. When switching to self-hosted, sets ARC_BOOTSTRAP_COMPLETE=true
+        on the GitHub repo. Requires developer role.
+      tags: [projects]
+      operationId: updateCIRunnerConfig
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode:
+                  type: string
+                  enum: [github, self-hosted]
+      responses:
+        '200':
+          description: CI runner configuration updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode]
+                properties:
+                  mode:
+                    type: string
+                    enum: [github, self-hosted]
+                  message:
+                    type: string
+        '400':
+          description: Invalid request body or mode
+        '404':
+          description: Project not found
+
+  # ============================================
   # ENVIRONMENTS
   # ============================================
   /projects/{slug}/environments:
