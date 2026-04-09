@@ -120,4 +120,7 @@ tests/load/results/
 .docusaurus/
 
 # Private operational repo (cloned for reference only)
-internal-devops/
+internal-devops/*.pem
+*.key
+*.p12
+*.pfx
