@@ -11,11 +11,12 @@ data:
   auto-incidents-enabled: "true"
   auto-incident-threshold: "2"
   # Services to monitor for MADFAM Ecosystem (all projects)
+  # Updated: 2026-04-10 — 42 services across 15 groups
   # NOTE: Only services with working health endpoints are monitored.
   # Excluded to avoid false-alarm auto-incidents:
   #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
   #   - MES Admin (pravara-gateway not deployed; re-add when image exists)
-  #   - Yantra4D API, Karafiel API, MADFAM CMS (no /health endpoints)
+  #   - Yantra4D API, MADFAM CMS (no /health endpoints)
   # Re-add them when external repos add proper health endpoints.
   services-config: |
     [
@@ -189,7 +190,7 @@ data:
       },
       {
         "name": "AutoSwarm API",
-        "url": "https://agents-api.madfam.io/api/v1/health/health",
+        "url": "https://agents-api.madfam.io/health",
         "href": "https://agents-api.madfam.io",
         "group": "AutoSwarm Office",
         "description": "Agent orchestration API"
@@ -212,5 +213,74 @@ data:
         "href": "https://agents-ws.madfam.io",
         "group": "AutoSwarm Office",
         "description": "Real-time collaboration server"
+      },
+      {
+        "name": "Karafiel API",
+        "url": "https://kf-api.madfam.io/api/v1/health/",
+        "href": "https://kf-api.madfam.io",
+        "group": "Karafiel",
+        "description": "Combat accounting API"
+      },
+      {
+        "name": "Fortuna API",
+        "url": "https://api.fortuna.tube/health",
+        "href": "https://api.fortuna.tube",
+        "group": "Fortuna",
+        "description": "Problem intelligence API"
+      },
+      {
+        "name": "Fortuna Web",
+        "url": "https://fortuna.tube",
+        "group": "Fortuna",
+        "description": "Problem intelligence dashboard"
+      },
+      {
+        "name": "PhyneCRM",
+        "url": "https://crm.madfam.io",
+        "group": "PhyneCRM",
+        "description": "Customer relationship management"
+      },
+      {
+        "name": "NPM Registry",
+        "url": "https://npm.madfam.io",
+        "group": "Platform",
+        "description": "Private Verdaccio registry"
+      },
+      {
+        "name": "Rondelio Web",
+        "url": "https://rondel.io",
+        "group": "Rondelio",
+        "description": "Game intelligence platform"
+      },
+      {
+        "name": "Rondelio API",
+        "url": "https://api.rondel.io/health",
+        "href": "https://api.rondel.io",
+        "group": "Rondelio",
+        "description": "Game data API"
+      },
+      {
+        "name": "Rondelio Play",
+        "url": "https://play.rondel.io",
+        "group": "Rondelio",
+        "description": "Game simulator"
+      },
+      {
+        "name": "Coforma Studio",
+        "url": "https://coforma.studio",
+        "group": "Coforma",
+        "description": "Customer advisory boards"
+      },
+      {
+        "name": "Cotiza Studio",
+        "url": "https://cotiza.studio",
+        "group": "DigiFab",
+        "description": "Automated quoting platform"
+      },
+      {
+        "name": "CEQ Studio",
+        "url": "https://ceq.lol",
+        "group": "CEQ",
+        "description": "ComfyUI creative engine"
       }
     ]
