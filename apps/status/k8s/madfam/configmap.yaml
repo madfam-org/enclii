@@ -11,7 +11,7 @@ data:
   auto-incidents-enabled: "true"
   auto-incident-threshold: "2"
   # Services to monitor for MADFAM Ecosystem (all projects)
-  # Updated: 2026-04-10 — 42 services across 15 groups
+  # Updated: 2026-04-10 — 41 services across 15 groups (removed analytics proxy — Cloudflare Worker, not K8s)
   # NOTE: Only services with working health endpoints are monitored.
   # Excluded to avoid false-alarm auto-incidents:
   #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
@@ -44,13 +44,6 @@ data:
         "url": "https://docs.enclii.dev",
         "group": "Enclii",
         "description": "Platform documentation"
-      },
-      {
-        "name": "Analytics Proxy",
-        "url": "https://analytics.madfam.io/batch/",
-        "href": "https://analytics.madfam.io",
-        "group": "Enclii",
-        "description": "PostHog analytics proxy"
       },
       {
         "name": "Auth",

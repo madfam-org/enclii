@@ -37,7 +37,7 @@ patches:
       - op: add
         path: /spec/template/metadata/annotations
         value:
-          enclii.dev/configmap-version: "2026-04-10-v2"
+          enclii.dev/configmap-version: "2026-04-10-v3"
     target:
       kind: Deployment
       name: status
