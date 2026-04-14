@@ -152,13 +152,13 @@ data:
       },
       {
         "name": "Karafiel Web",
-        "url": "https://kf.madfam.io",
+        "url": "https://karafiel.mx",
         "group": "Karafiel",
         "description": "Wellness platform"
       },
       {
         "name": "Karafiel Admin",
-        "url": "https://kf-admin.madfam.io",
+        "url": "https://admin.karafiel.mx",
         "group": "Karafiel",
         "description": "Wellness ops console"
       },
@@ -209,8 +209,8 @@ data:
       },
       {
         "name": "Karafiel API",
-        "url": "https://kf-api.madfam.io/api/v1/health/",
-        "href": "https://kf-api.madfam.io",
+        "url": "https://api.karafiel.mx/api/v1/health/",
+        "href": "https://api.karafiel.mx",
         "group": "Karafiel",
         "description": "Combat accounting API"
       },

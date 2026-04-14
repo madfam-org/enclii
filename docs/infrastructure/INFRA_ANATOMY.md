@@ -296,14 +296,14 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | api.forgesight.quest | ✅ | 200 | 0.65s | API operational |
 | admin.forgesight.quest | ✅ | 200 | 0.61s | Admin operational |
 
-### Karafiel — kf.madfam.io (4 endpoints)
+### Karafiel — karafiel.mx (4 endpoints)
 
 | Endpoint | Status | Code | Latency | Notes |
 |----------|--------|------|---------|-------|
-| kf.madfam.io | ✅ | 307 | 0.60s | Redirect to app |
-| kf-app.madfam.io | ✅ | 307 | 0.63s | Auth redirect |
-| kf-admin.madfam.io | ✅ | 200 | 0.61s | Admin operational |
-| kf-api.madfam.io | ⚠️ | 404 | 0.70s | No health endpoint (needs external repo change) |
+| karafiel.mx | ✅ | 307 | 0.60s | Redirect to app |
+| app.karafiel.mx | ✅ | 307 | 0.63s | Auth redirect |
+| admin.karafiel.mx | ✅ | 200 | 0.61s | Admin operational |
+| api.karafiel.mx | ⚠️ | 404 | 0.70s | No health endpoint (needs external repo change) |
 
 ### Yantra4D — yantra4d.com (4 endpoints)
 
@@ -569,14 +569,14 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | api.forgesight.quest | forgesight-api.forgesight.svc:80 | 200 | |
 | admin.forgesight.quest | forgesight-admin.forgesight.svc:80 | 200 | |
 
-### Karafiel Routes (kf.madfam.io)
+### Karafiel Routes (karafiel.mx)
 
 | Hostname | Target Service | HTTP | Notes |
 |----------|---------------|------|-------|
-| kf.madfam.io | karafiel-web.karafiel.svc:80 | 307 | |
-| kf-app.madfam.io | karafiel-web.karafiel.svc:80 | 307 | Alias |
-| kf-admin.madfam.io | karafiel-admin.karafiel.svc:80 | 200 | |
-| kf-api.madfam.io | karafiel-api.karafiel.svc:80 | 404 | No health endpoint |
+| karafiel.mx | karafiel-web.karafiel.svc:80 | 307 | |
+| app.karafiel.mx | karafiel-web.karafiel.svc:80 | 307 | Alias |
+| admin.karafiel.mx | karafiel-admin.karafiel.svc:80 | 200 | |
+| api.karafiel.mx | karafiel-api.karafiel.svc:80 | 404 | No health endpoint |
 
 ### Yantra4D Routes (yantra4d.com)
 

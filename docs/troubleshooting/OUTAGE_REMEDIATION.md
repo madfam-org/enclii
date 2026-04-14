@@ -184,10 +184,10 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 | app.yantra4d.com | yantra4d | yantra4d-studio |
 | api.yantra4d.com | yantra4d | yantra4d-backend |
 | admin.yantra4d.com | yantra4d | yantra4d-admin |
-| kf.madfam.io | karafiel | karafiel-web |
-| kf-app.madfam.io | karafiel | karafiel-web |
-| kf-api.madfam.io | karafiel | karafiel-api |
-| kf-admin.madfam.io | karafiel | karafiel-admin |
+| karafiel.mx | karafiel | karafiel-web |
+| app.karafiel.mx | karafiel | karafiel-web |
+| api.karafiel.mx | karafiel | karafiel-api |
+| admin.karafiel.mx | karafiel | karafiel-admin |
 | forgesight.quest | forgesight | forgesight-www |
 | app.forgesight.quest | forgesight | forgesight-app |
 | admin.forgesight.quest | forgesight | forgesight-admin |

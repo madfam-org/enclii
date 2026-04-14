@@ -132,23 +132,6 @@
     "service": "http://karafiel-api.karafiel.svc.cluster.local:80"
   },
   {
-    "_comment": "=== KARAFIEL (legacy — kf.madfam.io, 301 redirect via Cloudflare Page Rules) ===",
-    "hostname": "kf.madfam.io",
-    "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
-  },
-  {
-    "hostname": "kf-app.madfam.io",
-    "service": "http://karafiel-web.karafiel.svc.cluster.local:80"
-  },
-  {
-    "hostname": "kf-admin.madfam.io",
-    "service": "http://karafiel-admin.karafiel.svc.cluster.local:80"
-  },
-  {
-    "hostname": "kf-api.madfam.io",
-    "service": "http://karafiel-api.karafiel.svc.cluster.local:80"
-  },
-  {
     "_comment": "=== MADFAM SITE ===",
     "hostname": "madfam.io",
     "service": "http://madfam-web.madfam-site.svc.cluster.local:80"
