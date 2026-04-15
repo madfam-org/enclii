@@ -11,7 +11,7 @@ data:
   auto-incidents-enabled: "true"
   auto-incident-threshold: "2"
   # Services to monitor for MADFAM Ecosystem (all projects)
-  # Updated: 2026-04-10 — 41 services across 15 groups (removed analytics proxy — Cloudflare Worker, not K8s)
+  # Updated: 2026-04-15 — 41 services across 15 groups (Karafiel URLs fixed to /login, AutoSwarm → Selva Office with selva.town domains)
   # NOTE: Only services with working health endpoints are monitored.
   # Excluded to avoid false-alarm auto-incidents:
   #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
@@ -152,15 +152,17 @@ data:
       },
       {
         "name": "Karafiel Web",
-        "url": "https://karafiel.mx",
+        "url": "https://karafiel.mx/login",
+        "href": "https://karafiel.mx",
         "group": "Karafiel",
-        "description": "Wellness platform"
+        "description": "Tax compliance platform"
       },
       {
         "name": "Karafiel Admin",
-        "url": "https://admin.karafiel.mx",
+        "url": "https://admin.karafiel.mx/login",
+        "href": "https://admin.karafiel.mx",
         "group": "Karafiel",
-        "description": "Wellness ops console"
+        "description": "Compliance operations console"
       },
       {
         "name": "MADFAM Website",
@@ -182,30 +184,31 @@ data:
         "description": "Manufacturing dashboard"
       },
       {
-        "name": "AutoSwarm API",
-        "url": "https://agents-api.madfam.io/health",
-        "href": "https://agents-api.madfam.io",
-        "group": "AutoSwarm Office",
+        "name": "Selva Landing",
+        "url": "https://selva.town",
+        "group": "Selva Office",
+        "description": "AI workforce landing page"
+      },
+      {
+        "name": "Selva API",
+        "url": "https://api.selva.town/health",
+        "href": "https://api.selva.town",
+        "group": "Selva Office",
         "description": "Agent orchestration API"
       },
       {
-        "name": "AutoSwarm UI",
-        "url": "https://agents.madfam.io",
-        "group": "AutoSwarm Office",
-        "description": "Agent management console"
+        "name": "Selva Demo",
+        "url": "https://app.selva.town/demo",
+        "href": "https://app.selva.town",
+        "group": "Selva Office",
+        "description": "Virtual office demo"
       },
       {
-        "name": "AutoSwarm Admin",
-        "url": "https://agents-admin.madfam.io",
-        "group": "AutoSwarm Office",
+        "name": "Selva Admin",
+        "url": "https://admin.selva.town/login",
+        "href": "https://admin.selva.town",
+        "group": "Selva Office",
         "description": "Admin operations console"
-      },
-      {
-        "name": "AutoSwarm Colyseus",
-        "url": "https://agents-ws.madfam.io/health",
-        "href": "https://agents-ws.madfam.io",
-        "group": "AutoSwarm Office",
-        "description": "Real-time collaboration server"
       },
       {
         "name": "Karafiel API",
