@@ -353,7 +353,7 @@ jobs:
           ./infra/scripts/arc/blue-green-switch.sh ${RESTORE_COLOR} --force
 
       - name: Create rollback issue
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.issues.create({
