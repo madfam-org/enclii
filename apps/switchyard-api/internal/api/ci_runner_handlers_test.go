@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,7 +30,7 @@ func setupCIRunnerTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) 
 
 	h := &Handler{
 		repos:  repos,
-		logger: logging.NewNopLogger(),
+		logger: newNopLogger(),
 	}
 
 	cleanup := func() { mockDB.Close() }

@@ -97,7 +97,7 @@ func (h *Handler) UpdateCIRunnerConfig(c *gin.Context) {
 		tokenResp, err := h.getJanuaToken(ctx, "github", idpToken)
 		if err == nil && tokenResp != nil {
 			// Find the GitHub repo for this project's services
-			services, _ := h.repos.Services.ListByProjectID(project.ID)
+			services, _ := h.repos.Services.ListByProject(project.ID)
 			for _, svc := range services {
 				if svc.GitRepo == "" {
 					continue
