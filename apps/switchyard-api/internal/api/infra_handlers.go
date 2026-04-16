@@ -120,7 +120,7 @@ func isCommandAllowed(cmd []string, allowlist []string) bool {
 // POST /v1/services/:id/exec
 // SecOps: admin-only, command allowlist, timeout cap, audit logged.
 func (h *Handler) ExecService(c *gin.Context) {
-	log := logging.FromContext(c)
+	ctx := c.Request.Context()
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
@@ -135,7 +135,9 @@ func (h *Handler) ExecService(c *gin.Context) {
 
 	// SecOps: command allowlist
 	if !isCommandAllowed(req.Command, execAllowedPrefixes) {
-		log.Warn("Exec command blocked by allowlist", "command", strings.Join(req.Command, " "))
+		h.logger.Warn(ctx, "Exec command blocked by allowlist",
+			logging.String("command", strings.Join(req.Command, " ")),
+		)
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "command not in allowlist",
 			"allowed": execAllowedPrefixes,
@@ -157,14 +159,14 @@ func (h *Handler) ExecService(c *gin.Context) {
 		env = "production"
 	}
 
-	// Resolve service → namespace → pod
-	svc, err := h.repos.Services.GetByID(c.Request.Context(), serviceID)
+	// Resolve service -> namespace -> pod
+	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(c.Request.Context(), svc.ProjectID)
+	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
@@ -175,7 +177,7 @@ func (h *Handler) ExecService(c *gin.Context) {
 
 	// Execute command via K8s API
 	stdout, stderr, exitCode, execErr := h.k8sClient.ExecCommand(
-		c.Request.Context(),
+		ctx,
 		namespace,
 		svc.Name,
 		req.Command,
@@ -185,7 +187,10 @@ func (h *Handler) ExecService(c *gin.Context) {
 	duration := time.Since(start).Milliseconds()
 
 	if execErr != nil {
-		log.Error("Exec failed", "service", svc.Name, "error", execErr)
+		h.logger.Error(ctx, "Exec failed",
+			logging.String("service", svc.Name),
+			logging.Error("error", execErr),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":       fmt.Sprintf("exec failed: %v", execErr),
 			"duration_ms": duration,
@@ -193,11 +198,11 @@ func (h *Handler) ExecService(c *gin.Context) {
 		return
 	}
 
-	log.Info("Exec completed",
-		"service", svc.Name,
-		"command", strings.Join(req.Command, " "),
-		"exit_code", exitCode,
-		"duration_ms", duration,
+	h.logger.Info(ctx, "Exec completed",
+		logging.String("service", svc.Name),
+		logging.String("command", strings.Join(req.Command, " ")),
+		logging.Field{Key: "exit_code", Value: exitCode},
+		logging.Field{Key: "duration_ms", Value: duration},
 	)
 
 	c.JSON(http.StatusOK, ExecResponse{
@@ -212,7 +217,7 @@ func (h *Handler) ExecService(c *gin.Context) {
 // RestartService triggers a rolling restart of a service.
 // POST /v1/services/:id/restart
 func (h *Handler) RestartService(c *gin.Context) {
-	log := logging.FromContext(c)
+	ctx := c.Request.Context()
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
@@ -231,25 +236,31 @@ func (h *Handler) RestartService(c *gin.Context) {
 		reason = "manual-restart"
 	}
 
-	svc, err := h.repos.Services.GetByID(c.Request.Context(), serviceID)
+	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(c.Request.Context(), svc.ProjectID)
+	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
 	}
 
-	if err := h.k8sClient.RollingRestart(c.Request.Context(), project.Slug, svc.Name); err != nil {
-		log.Error("Restart failed", "service", svc.Name, "error", err)
+	if err := h.k8sClient.RollingRestart(ctx, project.Slug, svc.Name); err != nil {
+		h.logger.Error(ctx, "Restart failed",
+			logging.String("service", svc.Name),
+			logging.Error("error", err),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("restart failed: %v", err)})
 		return
 	}
 
-	log.Info("Service restarted", "service", svc.Name, "reason", reason)
+	h.logger.Info(ctx, "Service restarted",
+		logging.String("service", svc.Name),
+		logging.String("reason", reason),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":      fmt.Sprintf("Rolling restart initiated for %s", svc.Name),
@@ -263,7 +274,7 @@ func (h *Handler) RestartService(c *gin.Context) {
 // ScaleService sets the replica count for a service.
 // POST /v1/services/:id/scale
 func (h *Handler) ScaleService(c *gin.Context) {
-	log := logging.FromContext(c)
+	ctx := c.Request.Context()
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
@@ -291,25 +302,31 @@ func (h *Handler) ScaleService(c *gin.Context) {
 		env = "production"
 	}
 
-	svc, err := h.repos.Services.GetByID(c.Request.Context(), serviceID)
+	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(c.Request.Context(), svc.ProjectID)
+	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
 	}
 
-	if err := h.k8sClient.ScaleDeployment(c.Request.Context(), project.Slug, svc.Name, req.Replicas); err != nil {
-		log.Error("Scale failed", "service", svc.Name, "error", err)
+	if err := h.k8sClient.ScaleDeployment(ctx, project.Slug, svc.Name, req.Replicas); err != nil {
+		h.logger.Error(ctx, "Scale failed",
+			logging.String("service", svc.Name),
+			logging.Error("error", err),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("scale failed: %v", err)})
 		return
 	}
 
-	log.Info("Service scaled", "service", svc.Name, "replicas", req.Replicas)
+	h.logger.Info(ctx, "Service scaled",
+		logging.String("service", svc.Name),
+		logging.Field{Key: "replicas", Value: req.Replicas},
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":      fmt.Sprintf("Scaled %s to %d replicas", svc.Name, req.Replicas),
@@ -323,7 +340,7 @@ func (h *Handler) ScaleService(c *gin.Context) {
 // POST /v1/services/:id/migrate
 // SecOps: admin-only, migration command allowlist, confirmation header required.
 func (h *Handler) MigrateService(c *gin.Context) {
-	log := logging.FromContext(c)
+	ctx := c.Request.Context()
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
@@ -359,13 +376,13 @@ func (h *Handler) MigrateService(c *gin.Context) {
 		env = "production"
 	}
 
-	svc, err := h.repos.Services.GetByID(c.Request.Context(), serviceID)
+	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(c.Request.Context(), svc.ProjectID)
+	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
@@ -373,7 +390,7 @@ func (h *Handler) MigrateService(c *gin.Context) {
 
 	start := time.Now()
 	stdout, stderr, exitCode, execErr := h.k8sClient.ExecCommand(
-		c.Request.Context(),
+		ctx,
 		project.Slug,
 		svc.Name,
 		req.Command,
@@ -382,7 +399,10 @@ func (h *Handler) MigrateService(c *gin.Context) {
 	duration := time.Since(start).Milliseconds()
 
 	if execErr != nil {
-		log.Error("Migration failed", "service", svc.Name, "error", execErr)
+		h.logger.Error(ctx, "Migration failed",
+			logging.String("service", svc.Name),
+			logging.Error("error", execErr),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":       fmt.Sprintf("migration failed: %v", execErr),
 			"stdout":      stdout,
@@ -392,11 +412,11 @@ func (h *Handler) MigrateService(c *gin.Context) {
 		return
 	}
 
-	log.Info("Migration completed",
-		"service", svc.Name,
-		"command", strings.Join(req.Command, " "),
-		"exit_code", exitCode,
-		"duration_ms", duration,
+	h.logger.Info(ctx, "Migration completed",
+		logging.String("service", svc.Name),
+		logging.String("command", strings.Join(req.Command, " ")),
+		logging.Field{Key: "exit_code", Value: exitCode},
+		logging.Field{Key: "duration_ms", Value: duration},
 	)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -412,26 +432,27 @@ func (h *Handler) MigrateService(c *gin.Context) {
 // GetDetailedHealth returns aggregated health status for a service.
 // GET /v1/services/:id/health/detailed
 func (h *Handler) GetDetailedHealth(c *gin.Context) {
+	ctx := c.Request.Context()
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
 		return
 	}
 
-	svc, err := h.repos.Services.GetByID(c.Request.Context(), serviceID)
+	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
 		return
 	}
 
-	project, err := h.repos.Projects.GetByID(c.Request.Context(), svc.ProjectID)
+	project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "project not found"})
 		return
 	}
 
 	// Get deployment status info from K8s
-	statusInfo, err := h.k8sClient.GetDeploymentStatusInfo(c.Request.Context(), project.Slug, svc.Name)
+	statusInfo, err := h.k8sClient.GetDeploymentStatusInfo(ctx, project.Slug, svc.Name)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  fmt.Sprintf("health check failed: %v", err),

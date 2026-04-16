@@ -1,13 +1,18 @@
 package k8s
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 // ListStatefulSets returns all statefulsets in a namespace
@@ -109,6 +114,7 @@ func (c *Client) RollingRestart(ctx context.Context, namespace, name string) err
 // DeploymentStatusInfo contains detailed deployment status information
 type DeploymentStatusInfo struct {
 	Replicas            int32
+	DesiredReplicas     int32 // From spec.replicas (what was requested)
 	UpdatedReplicas     int32
 	ReadyReplicas       int32
 	AvailableReplicas   int32
@@ -135,8 +141,15 @@ func (c *Client) GetDeploymentStatusInfo(ctx context.Context, namespace, name st
 		}
 	}
 
+	// Determine desired replicas from spec (defaults to 1 if unset)
+	var desiredReplicas int32 = 1
+	if deployment.Spec.Replicas != nil {
+		desiredReplicas = *deployment.Spec.Replicas
+	}
+
 	status := &DeploymentStatusInfo{
 		Replicas:            deployment.Status.Replicas,
+		DesiredReplicas:     desiredReplicas,
 		UpdatedReplicas:     deployment.Status.UpdatedReplicas,
 		ReadyReplicas:       deployment.Status.ReadyReplicas,
 		AvailableReplicas:   deployment.Status.AvailableReplicas,
@@ -147,4 +160,94 @@ func (c *Client) GetDeploymentStatusInfo(ctx context.Context, namespace, name st
 	}
 
 	return status, nil
+}
+
+// ExecCommand executes a command inside a running pod belonging to the given deployment.
+// It lists pods by label app={deploymentName}, picks the first ready pod, and uses
+// client-go's remotecommand package to create an SPDY executor against the pod's
+// /exec subresource. Returns stdout, stderr, exit code, and error.
+func (c *Client) ExecCommand(ctx context.Context, namespace, deploymentName string, command []string, timeout time.Duration) (string, string, int, error) {
+	// List pods matching the deployment's app label
+	podList, err := c.Clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", deploymentName),
+	})
+	if err != nil {
+		return "", "", -1, fmt.Errorf("failed to list pods for deployment %s: %w", deploymentName, err)
+	}
+
+	if len(podList.Items) == 0 {
+		return "", "", -1, fmt.Errorf("no pods found for deployment %s in namespace %s", deploymentName, namespace)
+	}
+
+	// Pick the first ready pod
+	var targetPod *corev1.Pod
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				targetPod = pod
+				break
+			}
+		}
+		if targetPod != nil {
+			break
+		}
+	}
+
+	if targetPod == nil {
+		return "", "", -1, fmt.Errorf("no ready pods found for deployment %s in namespace %s", deploymentName, namespace)
+	}
+
+	// Determine the container name (first container in the pod)
+	containerName := targetPod.Spec.Containers[0].Name
+
+	// Build the exec request against the pod's /exec subresource
+	execOpts := &corev1.PodExecOptions{
+		Container: containerName,
+		Command:   command,
+		Stdin:     false,
+		Stdout:    true,
+		Stderr:    true,
+		TTY:       false,
+	}
+
+	parameterCodec := runtime.NewParameterCodec(scheme.Scheme)
+	req := c.Clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(targetPod.Name).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(execOpts, parameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(c.config, "POST", req.URL())
+	if err != nil {
+		return "", "", -1, fmt.Errorf("failed to create SPDY executor: %w", err)
+	}
+
+	// Execute with timeout
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var stdout, stderr bytes.Buffer
+	streamErr := exec.StreamWithContext(execCtx, remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+
+	// Determine exit code from the error
+	exitCode := 0
+	if streamErr != nil {
+		// Check if the error contains an exit code (exec errors from the remote command)
+		if exitErr, ok := streamErr.(interface{ ExitStatus() int }); ok {
+			exitCode = exitErr.ExitStatus()
+		} else {
+			// Non-exit-code errors (network failures, timeouts, etc.)
+			return stdout.String(), stderr.String(), -1, fmt.Errorf("exec stream failed: %w", streamErr)
+		}
+	}
+
+	return stdout.String(), stderr.String(), exitCode, nil
 }

@@ -524,6 +524,13 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.DELETE("/addons/:id/bindings/:service_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.DeleteAddonBinding)
 			protected.GET("/services/:id/bindings", h.GetServiceBindings)
 
+			// Infrastructure Operations (exec, restart, scale, migrate, health)
+			protected.POST("/services/:id/exec", h.auth.RequireRole(string(types.RoleAdmin)), h.ExecService)
+			protected.POST("/services/:id/restart", h.auth.RequireRole(string(types.RoleAdmin)), h.RestartService)
+			protected.POST("/services/:id/scale", h.auth.RequireRole(string(types.RoleAdmin)), h.ScaleService)
+			protected.POST("/services/:id/migrate", h.auth.RequireRole(string(types.RoleAdmin)), h.MigrateService)
+			protected.GET("/services/:id/health/detailed", h.GetDetailedHealth)
+
 			// Serverless Functions (Enclii Functions - Scale-to-Zero)
 			// Global function listing (all functions user has access to)
 			protected.GET("/functions", h.ListAllFunctions)
