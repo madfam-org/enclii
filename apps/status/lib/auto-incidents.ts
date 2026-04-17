@@ -25,9 +25,12 @@ interface ActiveIncidentRow {
  * Detect persistent service failures and manage auto-incidents.
  *
  * Called after recordStatusSnapshot() in the /api/status/record handler.
- * For each service, checks the last `threshold` status_checks rows:
- * - All bad + no active incident → create "[Auto] {service} {Outage|Degraded}"
- * - All good + active auto-incident → resolve with "recovered automatically"
+ * For each service, checks a trailing window of status_checks:
+ * - Last `threshold` all bad + no active incident → create incident.
+ * - Last `threshold * 2` all good + active auto-incident → resolve.
+ *
+ * The asymmetric resolve window (2× create) is hysteresis: it prevents
+ * flapping services from creating/resolving an incident every cycle.
  */
 export async function detectAndManageIncidents(
   results: HealthCheckResult[],
@@ -35,6 +38,7 @@ export async function detectAndManageIncidents(
 ): Promise<{ created: string[]; resolved: string[] }> {
   const created: string[] = []
   const resolved: string[] = []
+  const resolveThreshold = threshold * 2
 
   for (const result of results) {
     const recent = await query<StatusCheckRow>(
@@ -42,15 +46,18 @@ export async function detectAndManageIncidents(
        WHERE service = $1
        ORDER BY checked_at DESC
        LIMIT $2`,
-      [result.service, threshold],
+      [result.service, resolveThreshold],
     )
 
     if (!recent || recent.rows.length < threshold) continue
 
-    const allBad = recent.rows.every(
+    const createWindow = recent.rows.slice(0, threshold)
+    const allBad = createWindow.every(
       (r) => r.status === 'outage' || r.status === 'degraded',
     )
-    const allGood = recent.rows.every((r) => r.status === 'operational')
+    const allGood =
+      recent.rows.length >= resolveThreshold &&
+      recent.rows.every((r) => r.status === 'operational')
 
     // Check for existing active incident for this service (any kind)
     const activeAny = await query<ActiveIncidentRow>(
@@ -64,7 +71,7 @@ export async function detectAndManageIncidents(
 
     // CREATE: persistent failure + no existing incident
     if (allBad && !hasActiveIncident) {
-      const worstStatus = recent.rows.some((r) => r.status === 'outage')
+      const worstStatus = createWindow.some((r) => r.status === 'outage')
         ? 'outage'
         : 'degraded'
       const statusLabel = worstStatus === 'outage' ? 'Outage' : 'Degraded'

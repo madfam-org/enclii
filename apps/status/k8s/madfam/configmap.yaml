@@ -11,7 +11,11 @@ data:
   auto-incidents-enabled: "true"
   auto-incident-threshold: "2"
   # Services to monitor for MADFAM Ecosystem (all projects)
-  # Updated: 2026-04-15 — 41 services across 15 groups (Karafiel URLs fixed to /login, AutoSwarm → Selva Office with selva.town domains)
+  # Updated: 2026-04-17 — added 8 services that were live in prod but missing
+  # from tracking (Avala, Cotiza API, Primavera3D, Nuit, Forj, Bloom Scroll/
+  # Almanac, Blueprint Harvester). See GAP_REMEDIATION_PLAN.md.
+  # Previous update: 2026-04-15 — 41 services across 15 groups (Karafiel URLs
+  # fixed to /login, AutoSwarm → Selva Office with selva.town domains)
   # NOTE: Only services with working health endpoints are monitored.
   # Excluded to avoid false-alarm auto-incidents:
   #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
@@ -278,5 +282,55 @@ data:
         "url": "https://ceq.lol",
         "group": "CEQ",
         "description": "ComfyUI creative engine"
+      },
+      {
+        "name": "Avala Web",
+        "url": "https://avala.studio",
+        "group": "Avala",
+        "description": "Learning verification platform"
+      },
+      {
+        "name": "Avala API",
+        "url": "https://api.avala.studio/health",
+        "href": "https://api.avala.studio",
+        "group": "Avala",
+        "description": "Learning verification API"
+      },
+      {
+        "name": "Cotiza API",
+        "url": "https://api.cotiza.studio/health",
+        "href": "https://api.cotiza.studio",
+        "group": "DigiFab",
+        "description": "Automated quoting API"
+      },
+      {
+        "name": "Primavera3D",
+        "url": "https://primavera3d.pro",
+        "group": "Primavera3D",
+        "description": "3D portfolio"
+      },
+      {
+        "name": "Nuit One",
+        "url": "https://nuit.one",
+        "group": "Nuit",
+        "description": "Audio platform"
+      },
+      {
+        "name": "Forj Design",
+        "url": "https://forj.design",
+        "group": "Forj",
+        "description": "Fabrication storefronts"
+      },
+      {
+        "name": "Almanac",
+        "url": "https://almanac.solar",
+        "group": "Bloom Scroll",
+        "description": "Slow web aggregator"
+      },
+      {
+        "name": "Blueprint Harvester",
+        "url": "https://blueprint.tube",
+        "group": "Blueprint Harvester",
+        "description": "3D model indexing"
       }
     ]
