@@ -1,0 +1,76 @@
+---
+# PrometheusRule: NPM Token Expiry Alerts
+# Fires when the npm.madfam.io registry token is approaching expiry.
+# The npm_token_expiry_days metric is pushed by the npm-token-rotation CronJob
+# to the Pushgateway after every rotation check.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: npm-token-expiry-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: npm-token-expiry-rules
+    app.kubernetes.io/part-of: enclii-platform
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: npm-registry
+      interval: 1h
+      rules:
+        # ---------------------------------------------------------------
+        # Warning: token expires in fewer than 14 days
+        # ---------------------------------------------------------------
+        - alert: NpmTokenExpiringSoon
+          expr: npm_token_expiry_days < 14
+          for: 1h
+          labels:
+            severity: warning
+            category: platform
+            service: verdaccio
+          annotations:
+            summary: "NPM registry token expires in {{ $value }} days"
+            description: >-
+              The npm.madfam.io Bearer token has fewer than 14 days until
+              expiry. The weekly rotation CronJob should have renewed it
+              automatically. Investigate the npm-token-rotation CronJob
+              logs in the npm-registry namespace.
+            runbook: "Check: kubectl logs -n npm-registry -l app.kubernetes.io/component=token-rotation --tail=50"
+
+        # ---------------------------------------------------------------
+        # Critical: token expires in fewer than 3 days
+        # ---------------------------------------------------------------
+        - alert: NpmTokenExpiryCritical
+          expr: npm_token_expiry_days < 3
+          for: 30m
+          labels:
+            severity: critical
+            category: platform
+            service: verdaccio
+          annotations:
+            summary: "NPM registry token expires in {{ $value }} days -- CI/CD at risk"
+            description: >-
+              The npm.madfam.io Bearer token has fewer than 3 days until
+              expiry. All CI/CD pipelines that install @madfam/* packages
+              will break when the token expires. Manually trigger the
+              rotation CronJob immediately.
+            runbook: "kubectl create job --from=cronjob/npm-token-rotation manual-rotation -n npm-registry"
+
+        # ---------------------------------------------------------------
+        # Warning: rotation CronJob has not run in over 9 days
+        # ---------------------------------------------------------------
+        - alert: NpmTokenRotationStale
+          expr: (time() - npm_token_rotation_last_run) > (9 * 86400)
+          for: 1h
+          labels:
+            severity: warning
+            category: platform
+            service: verdaccio
+          annotations:
+            summary: "NPM token rotation CronJob has not run in over 9 days"
+            description: >-
+              The npm-token-rotation CronJob is scheduled weekly (Sunday
+              02:00 UTC) but has not reported a successful run in over 9
+              days. The CronJob may be suspended, failing, or the
+              Pushgateway may be unreachable.
+            runbook: "kubectl get cronjob npm-token-rotation -n npm-registry -o yaml"

@@ -65,6 +65,9 @@ spec:
             - name: htpasswd
               mountPath: /verdaccio/conf/htpasswd
               subPath: htpasswd
+            - name: janua-auth-plugin
+              mountPath: /verdaccio/plugins/verdaccio-auth-janua
+              readOnly: true
             - name: storage
               mountPath: /verdaccio/storage
 
@@ -111,6 +114,9 @@ spec:
             items:
               - key: htpasswd
                 path: htpasswd
+        - name: janua-auth-plugin
+          configMap:
+            name: verdaccio-janua-plugin
         - name: storage
           persistentVolumeClaim:
             claimName: verdaccio-storage

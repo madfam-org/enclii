@@ -18,6 +18,9 @@ resources:
   - service.yaml
   - networkpolicy.yaml
   - hpa.yaml
+  - plugin-configmap.yaml
+  - token-rotation-cronjob.yaml
+  - npm-token-alert.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize

@@ -1,0 +1,14 @@
+{
+  "name": "verdaccio-auth-janua",
+  "version": "1.0.0",
+  "description": "Verdaccio auth plugin that validates tokens via Janua API key verification",
+  "main": "index.js",
+  "keywords": [
+    "verdaccio",
+    "auth",
+    "plugin",
+    "janua",
+    "api-key"
+  ],
+  "license": "AGPL-3.0"
+}
