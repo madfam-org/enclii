@@ -24,7 +24,8 @@ data:
       sort_packages: asc
       darkMode: true
 
-    # Authentication - htpasswd initially, upgrade to Janua OAuth later
+    # Authentication - htpasswd with extended TTL
+    # TODO(2026-04-16): Migrate to Janua API Key auth plugin (verdaccio-auth-janua)
     auth:
       htpasswd:
         file: /verdaccio/conf/htpasswd
@@ -32,14 +33,16 @@ data:
         algorithm: bcrypt
 
     # Security settings
+    # API tokens extended to 365d to prevent recurring CI/CD breakage.
+    # Automated rotation via Selva NPM tools (selva_npm_rotate_token).
     security:
       api:
         legacy: true
         jwt:
           sign:
-            expiresIn: 29d
+            expiresIn: 365d
           verify:
-            maxAge: 30d
+            maxAge: 366d
       web:
         sign:
           expiresIn: 7d
