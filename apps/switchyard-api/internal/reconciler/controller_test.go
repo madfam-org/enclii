@@ -390,12 +390,12 @@ func TestExponentialBackoff_Calculation(t *testing.T) {
 		attempt     int
 		wantBackoff time.Duration
 	}{
-		{attempt: 1, wantBackoff: 30 * time.Second},  // 30s * 2^0 = 30s
-		{attempt: 2, wantBackoff: 60 * time.Second},  // 30s * 2^1 = 60s
-		{attempt: 3, wantBackoff: 120 * time.Second}, // 30s * 2^2 = 120s
-		{attempt: 4, wantBackoff: 240 * time.Second}, // 30s * 2^3 = 240s
-		{attempt: 5, wantBackoff: 300 * time.Second}, // 30s * 2^4 = 480s, capped to 5m
-		{attempt: 8, wantBackoff: 300 * time.Second}, // well past cap
+		{attempt: 1, wantBackoff: 30 * time.Second},   // 30s * 2^0 = 30s
+		{attempt: 2, wantBackoff: 60 * time.Second},   // 30s * 2^1 = 60s
+		{attempt: 3, wantBackoff: 120 * time.Second},  // 30s * 2^2 = 120s
+		{attempt: 4, wantBackoff: 240 * time.Second},  // 30s * 2^3 = 240s
+		{attempt: 5, wantBackoff: 300 * time.Second},  // 30s * 2^4 = 480s, capped to 5m
+		{attempt: 8, wantBackoff: 300 * time.Second},  // well past cap
 		{attempt: 10, wantBackoff: 300 * time.Second}, // max retries, still capped
 	}
 

@@ -1242,10 +1242,10 @@ func TestDeployPipeline_LargeGitSHAHandling(t *testing.T) {
 
 func TestDeployPipeline_MatchWatchPath(t *testing.T) {
 	tests := []struct {
-		name     string
-		filePath string
+		name      string
+		filePath  string
 		watchPath string
-		want     bool
+		want      bool
 	}{
 		{"exact match", "go.mod", "go.mod", true},
 		{"directory prefix with slash", "apps/api/main.go", "apps/api/", true},
