@@ -10,18 +10,44 @@ data:
   response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
   auto-incidents-enabled: "true"
   auto-incident-threshold: "2"
-  # Services to monitor for MADFAM Ecosystem (all projects)
-  # Updated: 2026-04-17 — added 8 services that were live in prod but missing
-  # from tracking (Avala, Cotiza API, Primavera3D, Nuit, Forj, Bloom Scroll/
-  # Almanac, Blueprint Harvester). See GAP_REMEDIATION_PLAN.md.
-  # Previous update: 2026-04-15 — 41 services across 15 groups (Karafiel URLs
-  # fixed to /login, AutoSwarm → Selva Office with selva.town domains)
-  # NOTE: Only services with working health endpoints are monitored.
-  # Excluded to avoid false-alarm auto-incidents:
-  #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
-  #   - MES Admin (pravara-gateway not deployed; re-add when image exists)
-  #   - Yantra4D API, MADFAM CMS (no /health endpoints)
-  # Re-add them when external repos add proper health endpoints.
+  # Services monitored by status.madfam.io.
+  #
+  # Updated: 2026-04-17 (late) — 52 services across 16 groups after the
+  # status.madfam.io audit. Added 3 coverage gaps verified with live
+  # curl: app.karafiel.mx, enclii.dev (landing), sniper.madfam.io
+  # (foundry-scout / deal-sniper).
+  #
+  # Earlier 2026-04-17: added 8 services that were live in prod but
+  # missing from tracking (Avala, Cotiza API, Primavera3D, Nuit, Forj,
+  # Almanac / Bloom Scroll, Blueprint Harvester). Six of those
+  # currently return 502 because the repos exist + DNS + tunnels are
+  # wired but the pods aren't healthy; the status page correctly
+  # surfaces that outage rather than hiding it — remediation is on
+  # the service side, not the status page.
+  #
+  # Previous: 2026-04-15 — 41 services across 15 groups (Karafiel
+  # URLs fixed to /login, AutoSwarm → Selva Office on selva.town).
+  #
+  # Intentional exclusions — not a bug, do not add without thinking:
+  #   - status.madfam.io + status.enclii.dev — cannot reliably monitor
+  #     oneself. If the status page is down, its own up-check is
+  #     meaningless. Use the external StatusCake / UptimeRobot probe
+  #     (configured in Cloudflare) as the backstop.
+  #   - grafana.enclii.dev + metrics.enclii.dev — the monitoring
+  #     stack. Meta-monitoring your own monitoring creates blind
+  #     spots; monitor via external probe.
+  #   - ssh.madfam.io — Cloudflare tunnel endpoint, doesn't speak
+  #     HTTP. Probe failure == tunnel outage == status page is
+  #     probably broken too.
+  #   - agents-api.madfam.io, agents.madfam.io, agents-admin.madfam.io,
+  #     agents-ws.madfam.io — being retired by the pending Selva
+  #     cutover (selva.town replaces). Adding them would add flake
+  #     sources that get torn down in the same maintenance window.
+  #   - Vault (deferred — not initialized/unsealed yet).
+  #   - MES Admin (pravara-gateway image doesn't exist).
+  #   - api.yantra4d.com + cms.madfam.io — return 404 on / with no
+  #     documented /health path. Re-add once upstream exposes a probe
+  #     endpoint.
   services-config: |
     [
       {
@@ -332,5 +358,26 @@ data:
         "url": "https://blueprint.tube",
         "group": "Blueprint Harvester",
         "description": "3D model indexing"
+      },
+      {
+        "name": "Karafiel App",
+        "url": "https://app.karafiel.mx",
+        "href": "https://app.karafiel.mx",
+        "group": "Karafiel",
+        "description": "Self-serve tax-compliance workspace"
+      },
+      {
+        "name": "Enclii Landing",
+        "url": "https://enclii.dev",
+        "href": "https://enclii.dev",
+        "group": "Enclii",
+        "description": "Product landing page"
+      },
+      {
+        "name": "Deal Sniper",
+        "url": "https://sniper.madfam.io",
+        "href": "https://sniper.madfam.io",
+        "group": "Platform",
+        "description": "Hetzner auction intelligence (foundry-scout)"
       }
     ]
