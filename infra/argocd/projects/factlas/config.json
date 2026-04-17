@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "factlas",
+  "namespace": "factlas",
+  "partOf": "factlas",
+  "repoURL": "https://github.com/madfam-org/factlas.git"
+}
