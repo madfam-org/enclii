@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { timingSafeEqual } from 'crypto'
 import type { IncidentStatus, IncidentSeverity } from '@/lib/types'
 import {
   createIncident,
@@ -9,15 +8,13 @@ import {
   isDatabaseConfigured,
 } from '@/lib/incidents'
 import { ensureSchema } from '@/lib/status-history'
+import { timingSafeBearer } from '@/lib/auth'
 
 function isAuthorized(request: NextRequest): boolean {
-  const authHeader = request.headers.get('authorization')
-  const adminSecret = process.env.ADMIN_SECRET
-  if (!adminSecret || !authHeader) return false
-  const expected = Buffer.from(`Bearer ${adminSecret}`)
-  const received = Buffer.from(authHeader)
-  if (expected.length !== received.length) return false
-  return timingSafeEqual(expected, received)
+  return timingSafeBearer(
+    request.headers.get('authorization'),
+    process.env.ADMIN_SECRET,
+  )
 }
 
 /**

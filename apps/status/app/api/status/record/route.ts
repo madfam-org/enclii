@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { timingSafeEqual } from 'crypto'
 import { checkAllServices } from '@/lib/health-checker'
 import { getSiteConfig, getAutoIncidentConfig } from '@/lib/config'
 import {
@@ -9,14 +8,7 @@ import {
   pruneOldRecords,
 } from '@/lib/status-history'
 import { detectAndManageIncidents } from '@/lib/auto-incidents'
-
-function authorizedCron(authHeader: string | null, cronSecret: string): boolean {
-  if (!authHeader) return false
-  const expected = Buffer.from(`Bearer ${cronSecret}`)
-  const received = Buffer.from(authHeader)
-  if (expected.length !== received.length) return false
-  return timingSafeEqual(expected, received)
-}
+import { timingSafeBearer } from '@/lib/auth'
 
 /**
  * POST /api/status/record
@@ -36,7 +28,7 @@ export async function POST(request: Request) {
     )
   }
 
-  if (!authorizedCron(auth, cronSecret)) {
+  if (!timingSafeBearer(auth, cronSecret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
