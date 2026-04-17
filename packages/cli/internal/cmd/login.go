@@ -25,8 +25,10 @@ import (
 
 // OAuth configuration for Janua
 const (
-	// Janua OAuth endpoints - defaults to api.janua.dev (The Product)
-	// Override with ENCLII_OIDC_ISSUER for custom deployments (e.g., auth.madfam.io)
+	// Janua OAuth endpoints - defaults to auth.madfam.io (production SSO alias)
+	// Override with ENCLII_OIDC_ISSUER for custom deployments
+	// NOTE: Must use auth.madfam.io (not api.janua.dev) because Janua sets
+	// session cookies with Domain=.madfam.io — api.janua.dev won't receive them.
 	authorizePath = "/api/v1/oauth/authorize"
 	tokenPath     = "/api/v1/oauth/token"
 
@@ -43,7 +45,7 @@ func getDefaultIssuer() string {
 	if issuer := os.Getenv("ENCLII_OIDC_ISSUER"); issuer != "" {
 		return issuer
 	}
-	return "https://api.janua.dev"
+	return "https://auth.madfam.io"
 }
 
 // Credentials stores the OAuth tokens
