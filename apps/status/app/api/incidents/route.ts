@@ -8,12 +8,13 @@ import {
   isDatabaseConfigured,
 } from '@/lib/incidents'
 import { ensureSchema } from '@/lib/status-history'
+import { timingSafeBearer } from '@/lib/auth'
 
 function isAuthorized(request: NextRequest): boolean {
-  const authHeader = request.headers.get('authorization')
-  const adminSecret = process.env.ADMIN_SECRET
-  if (!adminSecret) return false
-  return authHeader === `Bearer ${adminSecret}`
+  return timingSafeBearer(
+    request.headers.get('authorization'),
+    process.env.ADMIN_SECRET,
+  )
 }
 
 /**

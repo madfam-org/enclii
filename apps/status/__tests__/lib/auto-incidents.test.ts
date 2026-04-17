@@ -139,11 +139,16 @@ describe('detectAndManageIncidents', () => {
     const results = [makeResult('API', 'operational')]
 
     mockQuery
-      // Recent checks -- all operational
+      // Recent checks -- resolveThreshold=4 operational rows needed for resolve
       .mockResolvedValueOnce({
-        rows: [{ status: 'operational' }, { status: 'operational' }],
+        rows: [
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+        ],
         command: 'SELECT',
-        rowCount: 2,
+        rowCount: 4,
         oid: 0,
         fields: [],
       })
@@ -219,11 +224,16 @@ describe('detectAndManageIncidents', () => {
         oid: 0,
         fields: [],
       })
-      // Web: recent checks all good
+      // Web: recent checks all good (resolveThreshold=4 rows)
       .mockResolvedValueOnce({
-        rows: [{ status: 'operational' }, { status: 'operational' }],
+        rows: [
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+        ],
         command: 'SELECT',
-        rowCount: 2,
+        rowCount: 4,
         oid: 0,
         fields: [],
       })
@@ -331,9 +341,14 @@ describe('detectAndManageIncidents', () => {
 
     mockQuery
       .mockResolvedValueOnce({
-        rows: [{ status: 'operational' }, { status: 'operational' }],
+        rows: [
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+        ],
         command: 'SELECT',
-        rowCount: 2,
+        rowCount: 4,
         oid: 0,
         fields: [],
       })
@@ -356,6 +371,33 @@ describe('detectAndManageIncidents', () => {
       expect.any(Error),
     )
     consoleSpy.mockRestore()
+  })
+
+  it('does NOT resolve when only `threshold` good checks exist (hysteresis)', async () => {
+    // Flapping service with only 2 good rows must not auto-resolve when
+    // resolveThreshold = threshold*2 = 4 rows are required.
+    const results = [makeResult('API', 'operational')]
+
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ status: 'operational' }, { status: 'operational' }],
+        command: 'SELECT',
+        rowCount: 2,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'auto-inc-1', title: '[Auto] API Outage' }],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+
+    const result = await detectAndManageIncidents(results, 2)
+
+    expect(result.resolved).toEqual([])
+    expect(mockUpdateIncident).not.toHaveBeenCalled()
   })
 
   it('skips when results are operational with no active incident', async () => {

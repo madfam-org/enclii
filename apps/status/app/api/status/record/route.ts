@@ -8,6 +8,7 @@ import {
   pruneOldRecords,
 } from '@/lib/status-history'
 import { detectAndManageIncidents } from '@/lib/auto-incidents'
+import { timingSafeBearer } from '@/lib/auth'
 
 /**
  * POST /api/status/record
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
     )
   }
 
-  if (auth !== `Bearer ${cronSecret}`) {
+  if (!timingSafeBearer(auth, cronSecret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
