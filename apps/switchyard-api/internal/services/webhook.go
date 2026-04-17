@@ -89,14 +89,14 @@ func matchesWatchPath(filePath, watchPath string) bool {
 
 // CreateReleaseRequest represents a request to create a release from a push event.
 type CreateReleaseRequest struct {
-	Service          *types.Service
-	GitSHA           string
-	GitBranch        string
-	CommitMessage    string
-	CommitAuthorName string
+	Service           *types.Service
+	GitSHA            string
+	GitBranch         string
+	CommitMessage     string
+	CommitAuthorName  string
 	CommitAuthorEmail string
-	RepoURL          string
-	Registry         string // Container registry prefix
+	RepoURL           string
+	Registry          string // Container registry prefix
 }
 
 // CreateReleaseForPush creates a release record for a service triggered by a push event.
@@ -129,8 +129,8 @@ func (s *WebhookService) CreateReleaseForPush(ctx context.Context, req *CreateRe
 
 	if err := s.repos.Releases.Create(release); err != nil {
 		s.logger.WithFields(logrus.Fields{
-			"service":  req.Service.Name,
-			"git_sha":  req.GitSHA,
+			"service": req.Service.Name,
+			"git_sha": req.GitSHA,
 		}).Error("Failed to create release for push event")
 		return nil, errors.Wrap(err, errors.ErrDatabaseError)
 	}

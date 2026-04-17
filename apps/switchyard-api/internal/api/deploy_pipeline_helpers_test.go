@@ -23,16 +23,16 @@ import (
 // --- Fixtures ---
 
 const (
-	testWebhookSecret     = "test-webhook-secret-12345"
-	testRoundhouseAPIKey  = "roundhouse-api-key-test"
-	testArgocdSecret      = "argocd-webhook-secret-test"
-	testRegistry          = "ghcr.io/test-org/test-project"
-	testGitHubToken       = "gh-test-token"
-	testRepoFullName      = "test-org/test-project"
-	testRepoCloneURL      = "https://github.com/test-org/test-project.git"
-	testRepoHTMLURL       = "https://github.com/test-org/test-project"
-	testRepoSSHURL        = "git@github.com:test-org/test-project.git"
-	testDefaultBranch     = "main"
+	testWebhookSecret    = "test-webhook-secret-12345"
+	testRoundhouseAPIKey = "roundhouse-api-key-test"
+	testArgocdSecret     = "argocd-webhook-secret-test"
+	testRegistry         = "ghcr.io/test-org/test-project"
+	testGitHubToken      = "gh-test-token"
+	testRepoFullName     = "test-org/test-project"
+	testRepoCloneURL     = "https://github.com/test-org/test-project.git"
+	testRepoHTMLURL      = "https://github.com/test-org/test-project"
+	testRepoSSHURL       = "git@github.com:test-org/test-project.git"
+	testDefaultBranch    = "main"
 )
 
 // newTestPushEvent creates a valid GitHub push webhook JSON payload.
@@ -272,8 +272,8 @@ func parseWebhookResponse(t *testing.T, w *httptest.ResponseRecorder) webhookRes
 }
 
 type callbackResponse struct {
-	Status  string `json:"status"`
-	Error   string `json:"error"`
+	Status string `json:"status"`
+	Error  string `json:"error"`
 }
 
 func parseCallbackResponse(t *testing.T, w *httptest.ResponseRecorder) callbackResponse {
