@@ -72,6 +72,9 @@ Learn more at https://enclii.dev`,
 	// Database inspection (P1.1 — `enclii db wal-status`)
 	rootCmd.AddCommand(NewDBCommand(cfg))
 
+	// Canary rollouts (P2.7 — `enclii deploy --canary=N%` + `enclii canary status|promote|rollback`)
+	rootCmd.AddCommand(NewCanaryCommand(cfg))
+
 	return rootCmd
 }
 
