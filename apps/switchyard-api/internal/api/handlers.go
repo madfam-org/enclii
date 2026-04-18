@@ -82,6 +82,11 @@ type Handler struct {
 	placementService      *services.PlacementService
 	driftService          *services.DriftService
 	costTrackingService   *services.CostTrackingService
+
+	// Consolidated audit surface (P1.5) — serves /v1/audit and /v1/audit/export
+	// by merging Janua + Switchyard + Nexus audit streams. Optional; if nil
+	// the routes return 503. See internal/audit/.
+	auditHandler *audit.Handler
 }
 
 // NewHandler creates a new API handler with all dependencies
@@ -213,6 +218,13 @@ func (h *Handler) SetDriftService(svc *services.DriftService) {
 // SetCostTrackingService sets the cost tracking service
 func (h *Handler) SetCostTrackingService(svc *services.CostTrackingService) {
 	h.costTrackingService = svc
+}
+
+// SetAuditHandler wires the consolidated audit surface (P1.5). Pass nil
+// to leave the /v1/audit endpoints returning 503 — useful in local-dev
+// setups without Janua/Nexus configured.
+func (h *Handler) SetAuditHandler(handler *audit.Handler) {
+	h.auditHandler = handler
 }
 
 // SetTunnelRoutesService sets the tunnel routes service for automatic cloudflared route management
@@ -495,10 +507,16 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/lifecycle/commit/:sha", h.GetLifecycleCommit)
 			protected.GET("/lifecycle/events", h.GetLifecycleEvents)
 
-			// Activity (Audit Logs)
+			// Activity (Audit Logs) — legacy single-source surface
 			protected.GET("/activity", h.GetActivity)
 			protected.GET("/activity/actions", h.GetActivityActions)
 			protected.GET("/activity/resource-types", h.GetActivityResourceTypes)
+
+			// Consolidated audit surface (P1.5) — aggregates Janua sessions,
+			// Switchyard lifecycle/audit, and 4 Selva RFC ledgers (via nexus-api).
+			// Self-or-admin RBAC; CSV export is admin-only.
+			protected.GET("/audit", h.AuditList)
+			protected.GET("/audit/export", h.AuditExport)
 
 			// Observability (Metrics & Monitoring)
 			protected.GET("/observability/metrics", h.GetMetricsSnapshot)

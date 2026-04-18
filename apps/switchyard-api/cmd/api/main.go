@@ -17,6 +17,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/api"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/audit"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/auth"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/builder"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/cache"
@@ -532,6 +533,32 @@ func main() {
 	if domainSyncService != nil {
 		domainSyncService.StartBackgroundSync(5 * time.Minute)
 		logrus.Info("✓ Domain background sync started (every 5 minutes)")
+	}
+
+	// Wire P1.5 consolidated audit surface. The aggregator is enabled if
+	// the local DB is reachable (always true here); Janua and Nexus
+	// sources self-disable when their tokens/URLs are empty, letting
+	// dev deployments run without external wiring.
+	{
+		auditSources := []audit.Source{
+			audit.NewSwitchyardSource(database), // direct-DB to this service's own audit tables
+		}
+		if cfg.JanuaAPIURL != "" && cfg.JanuaAdminToken != "" {
+			auditSources = append(auditSources, audit.NewJanuaClient(cfg.JanuaAPIURL, cfg.JanuaAdminToken))
+			logrus.Info("✓ Audit aggregator: Janua session source enabled")
+		} else {
+			logrus.Warn("⚠ Audit aggregator: Janua session source DISABLED (JANUA_ADMIN_TOKEN not set)")
+		}
+		if cfg.NexusAPIURL != "" && cfg.NexusAPIToken != "" {
+			auditSources = append(auditSources, audit.NewNexusClient(cfg.NexusAPIURL, cfg.NexusAPIToken))
+			logrus.Info("✓ Audit aggregator: Nexus (Selva RFCs 0005-0008) source enabled")
+		} else {
+			logrus.Warn("⚠ Audit aggregator: Nexus source DISABLED (NEXUS_API_URL/TOKEN not set)")
+		}
+		auditAgg := audit.NewAggregator(logrus.StandardLogger(), auditSources...)
+		auditH := audit.NewHandler(auditAgg, audit.NewGinAuthz(), logrus.StandardLogger())
+		apiHandler.SetAuditHandler(auditH)
+		logrus.Infof("✓ Consolidated audit surface wired at /v1/audit (sources=%d)", len(auditSources))
 	}
 
 	api.SetupRoutes(router, apiHandler)

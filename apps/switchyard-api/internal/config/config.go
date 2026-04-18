@@ -42,6 +42,18 @@ type Config struct {
 	// Janua Integration (for OAuth token retrieval)
 	JanuaAPIURL string // Base URL for Janua API (e.g., https://api.janua.dev)
 
+	// Consolidated Audit Surface (P1.5)
+	// JanuaAdminToken: machine token used to pull session audit rows from
+	// Janua's /api/v1/audit-logs endpoint (admin-only). When empty the
+	// audit aggregator skips the Janua source and the UI shows a gap.
+	JanuaAdminToken string
+	// NexusAPIURL: base URL for autoswarm-office nexus-api. Used by the
+	// audit aggregator to pull the 4 Selva RFC ledgers.
+	NexusAPIURL string
+	// NexusAPIToken: shared-secret worker token for nexus-api (matches
+	// autoswarm-office's WORKER_API_TOKEN). When empty, aggregator skips nexus.
+	NexusAPIToken string
+
 	// Kubernetes
 	KubeConfig  string
 	KubeContext string
@@ -168,6 +180,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("access-token-expire-minutes", 15)        // 15 minutes default (set to 480 for 8 hours)
 	viper.SetDefault("refresh-token-expire-days", 7)           // 7 days default
 	viper.SetDefault("janua-api-url", "https://api.janua.dev") // Janua API for OAuth tokens
+	viper.SetDefault("janua-admin-token", "")                  // JANUA_ADMIN_TOKEN — audit aggregator only
+	viper.SetDefault("nexus-api-url", "")                      // NEXUS_API_URL — audit aggregator only
+	viper.SetDefault("nexus-api-token", "")                    // NEXUS_API_TOKEN — audit aggregator only
 	viper.SetDefault("kube-config", os.Getenv("HOME")+"/.kube/config")
 	viper.SetDefault("kube-context", "kind-enclii")
 	viper.SetDefault("buildkit-addr", "docker://")
@@ -243,6 +258,9 @@ func Load() (*Config, error) {
 		AccessTokenExpireMinutes:   viper.GetInt("access-token-expire-minutes"),
 		RefreshTokenExpireDays:     viper.GetInt("refresh-token-expire-days"),
 		JanuaAPIURL:                viper.GetString("janua-api-url"),
+		JanuaAdminToken:            viper.GetString("janua-admin-token"),
+		NexusAPIURL:                viper.GetString("nexus-api-url"),
+		NexusAPIToken:              viper.GetString("nexus-api-token"),
 		KubeConfig:                 viper.GetString("kube-config"),
 		KubeContext:                viper.GetString("kube-context"),
 		BuildkitAddr:               viper.GetString("buildkit-addr"),
