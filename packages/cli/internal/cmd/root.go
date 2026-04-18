@@ -63,6 +63,9 @@ Learn more at https://enclii.dev`,
 	rootCmd.AddCommand(NewLogoutCommand(cfg))
 	rootCmd.AddCommand(NewWhoamiCommand(cfg))
 
+	// Self-serve signup (P3.2 Sprint 1 — browser-based stub)
+	rootCmd.AddCommand(NewSignupCommand(cfg))
+
 	// Admin commands
 	rootCmd.AddCommand(NewOnboardCommand(cfg))
 

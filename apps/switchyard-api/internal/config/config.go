@@ -177,6 +177,15 @@ type Config struct {
 	TenantExportR2AccessKeySecret string
 	TenantExportR2Bucket          string // default "enclii-backups"
 	TenantExportR2Prefix          string // default "tenant-exports"
+
+	// Self-Serve Signup (P3.2 Sprint 1)
+	// SignupEnabled gates the entire /v1/signup surface. Default false
+	// so the feature is invisible until an operator explicitly flips it.
+	// When false, all /v1/signup endpoints return 404.
+	SignupEnabled bool
+	// SelfServiceAPIBaseURL is the public-facing URL the OAuth callback
+	// bounces to (e.g. https://api.enclii.dev). Defaults to SelfURL.
+	SelfServiceAPIBaseURL string
 }
 
 func Load() (*Config, error) {
@@ -270,6 +279,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("webhook-master-key", "") // ENCLII_WEBHOOK_MASTER_KEY — base64 32-byte; empty disables feature
 	viper.SetDefault("webhook-worker-pool", 5) // ENCLII_WEBHOOK_WORKER_POOL — goroutine count
 
+	// Self-serve signup (P3.2 Sprint 1). Disabled by default — operator
+	// flips ENCLII_SIGNUP_ENABLED=true once the companion Janua changes
+	// and Resend templates are live.
+	viper.SetDefault("signup-enabled", false)
+	viper.SetDefault("self-service-api-base-url", "") // empty => fall back to self-url
+
 	// Parse log level
 	logLevelStr := viper.GetString("log-level")
 	logLevel, err := logrus.ParseLevel(logLevelStr)
@@ -361,6 +376,11 @@ func Load() (*Config, error) {
 		TenantExportR2AccessKeySecret: viper.GetString("tenant-export-r2-access-key-secret"),
 		TenantExportR2Bucket:          viper.GetString("tenant-export-r2-bucket"),
 		TenantExportR2Prefix:          viper.GetString("tenant-export-r2-prefix"),
+
+		// P3.2 Self-serve signup — disabled by default so the surface is
+		// invisible until an operator explicitly enables it.
+		SignupEnabled:         viper.GetBool("signup-enabled"),
+		SelfServiceAPIBaseURL: viper.GetString("self-service-api-base-url"),
 	}
 
 	// SEC-001: Validate required configuration

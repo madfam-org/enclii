@@ -23,6 +23,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/signup"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"
@@ -111,7 +112,12 @@ type Handler struct {
 	// Tenant data export (P3.6). When nil, the /v1/exports and
 	// /v1/projects/:slug/exports endpoints return 503.
 	tenantExportService *export.Service
+	// P3.2 Sprint 1. Nil => /v1/signup routes return 404. See signup_handlers.go.
+	signupService *signup.Service
 }
+
+// SetSignupService wires the P3.2 self-serve signup service.
+func (h *Handler) SetSignupService(svc *signup.Service) { h.signupService = svc }
 
 // SetBillingProxy attaches a BillingProxyConfig for the /billing/* routes.
 // Intended to be called from bootstrap after NewHandler; keeping the
@@ -354,6 +360,9 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	// API v1 routes
 	v1 := router.Group("/v1")
 	{
+		// Self-serve signup (P3.2 Sprint 1). See signup_handlers.go.
+		registerSignupRoutes(v1, h, authRateLimiter, strictAuthRateLimiter)
+
 		// Auth routes - Different endpoints based on auth mode
 		if h.config.AuthMode == "oidc" {
 			// ===== OIDC Mode (Production with Janua) =====
