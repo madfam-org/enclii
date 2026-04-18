@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -50,10 +51,15 @@ func (h *Handler) ListAllAddons(c *gin.Context) {
 	})
 }
 
-// CreateAddonRequest defines the request body for creating a database addon
+// CreateAddonRequest defines the request body for creating a database addon.
+//
+// P3.1 Sprint 1: Plan is the customer-facing knob. If omitted, defaults to
+// standard-0 in the service layer. Config is an operator-only override and is
+// honored for engine Version today; other fields come from the plan catalog.
 type CreateAddonRequest struct {
 	Name          string                     `json:"name" binding:"required"`
 	Type          types.DatabaseAddonType    `json:"type" binding:"required"`
+	Plan          string                     `json:"plan,omitempty"`
 	EnvironmentID *string                    `json:"environment_id,omitempty"`
 	Config        *types.DatabaseAddonConfig `json:"config,omitempty"`
 }
@@ -126,17 +132,24 @@ func (h *Handler) CreateAddon(c *gin.Context) {
 		config = *req.Config
 	}
 
+	// Get user sub (auth subject) — populated by auth middleware
+	userSub, _ := c.Get("userSub")
+
 	// Create the addon
 	createReq := &addons.CreateAddonRequest{
 		ProjectID:     project.ID,
 		EnvironmentID: environmentID,
 		Type:          req.Type,
 		Name:          req.Name,
+		Plan:          req.Plan,
 		Config:        config,
 		UserID:        userUUID,
 	}
 	if email, ok := userEmail.(string); ok {
 		createReq.UserEmail = email
+	}
+	if sub, ok := userSub.(string); ok {
+		createReq.UserSub = sub
 	}
 
 	addon, err := h.addonService.CreateAddon(ctx, createReq)
@@ -144,7 +157,22 @@ func (h *Handler) CreateAddon(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to create addon",
 			logging.String("project_slug", slug),
 			logging.String("addon_name", req.Name),
+			logging.String("plan", req.Plan),
 			logging.Error("error", err))
+		// Client error signaling: plan validation failures surface as 400;
+		// duplicate-name surfaces as 409; everything else is 500.
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "unknown plan"),
+			strings.Contains(msg, "not available"),
+			strings.Contains(msg, "is for engine"),
+			strings.Contains(msg, "unsupported addon type"):
+			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+			return
+		case strings.Contains(msg, "already exists in project"):
+			c.JSON(http.StatusConflict, gin.H{"error": msg})
+			return
+		}
 		middleware.AbortInternal(c, err)
 		return
 	}
@@ -281,7 +309,15 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 		return
 	}
 
-	if err := h.addonService.DeleteAddon(ctx, addonUUID); err != nil {
+	actor := addonActorFromContext(c)
+
+	if err := h.addonService.DeleteAddonBy(ctx, addonUUID, actor); err != nil {
+		// Treat "addon not found" as 404 so second-delete / unknown-id both
+		// surface as proper client errors (idempotency for destroy flows).
+		if err == sql.ErrNoRows || strings.Contains(err.Error(), "addon not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+			return
+		}
 		h.logger.Error(ctx, "Failed to delete addon",
 			logging.String("addon_id", addonID),
 			logging.Error("error", err))
@@ -292,6 +328,30 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 	h.logger.Info(ctx, "Addon deleted", logging.String("addon_id", addonID))
 
 	c.JSON(http.StatusOK, gin.H{"message": "Addon deleted successfully"})
+}
+
+// addonActorFromContext extracts actor fields from the authenticated request
+// context, for attribution in the addon event ledger.
+func addonActorFromContext(c *gin.Context) addons.EventActor {
+	actor := addons.EventActor{}
+	if raw, ok := c.Get("userID"); ok {
+		if s, ok := raw.(string); ok && s != "" {
+			if id, err := uuid.Parse(s); err == nil {
+				actor.UserID = &id
+			}
+		}
+	}
+	if raw, ok := c.Get("userSub"); ok {
+		if s, ok := raw.(string); ok {
+			actor.UserSub = s
+		}
+	}
+	if raw, ok := c.Get("userEmail"); ok {
+		if s, ok := raw.(string); ok {
+			actor.UserEmail = s
+		}
+	}
+	return actor
 }
 
 // CreateBindingRequest defines the request body for creating an addon binding
@@ -347,7 +407,7 @@ func (h *Handler) CreateAddonBinding(c *gin.Context) {
 		}
 	}
 
-	binding, err := h.addonService.CreateBinding(ctx, addonUUID, serviceUUID, envVarName)
+	binding, err := h.addonService.CreateBindingBy(ctx, addonUUID, serviceUUID, envVarName, addonActorFromContext(c))
 	if err != nil {
 		h.logger.Error(ctx, "Failed to create addon binding",
 			logging.String("addon_id", addonID),
@@ -389,7 +449,7 @@ func (h *Handler) DeleteAddonBinding(c *gin.Context) {
 		return
 	}
 
-	if err := h.addonService.DeleteBinding(ctx, addonUUID, serviceUUID); err != nil {
+	if err := h.addonService.DeleteBindingBy(ctx, addonUUID, serviceUUID, addonActorFromContext(c)); err != nil {
 		h.logger.Error(ctx, "Failed to delete addon binding",
 			logging.String("addon_id", addonID),
 			logging.String("service_id", serviceID),
@@ -430,5 +490,73 @@ func (h *Handler) GetServiceBindings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"bindings": bindings,
 		"count":    len(bindings),
+	})
+}
+
+// ListManagedDBPlans lists the available managed-DB plan catalog.
+// GET /v1/addons/plans?engine=postgres
+//
+// Public to any authenticated caller — plans are not tenant-scoped.
+func (h *Handler) ListManagedDBPlans(c *gin.Context) {
+	ctx := c.Request.Context()
+	engine := c.Query("engine")
+
+	if h.repos == nil || h.repos.ManagedDBPlans == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "plan catalog unavailable"})
+		return
+	}
+
+	plans, err := h.repos.ManagedDBPlans.ListAvailable(ctx, engine)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to list managed-db plans", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list plans"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"plans": plans,
+		"count": len(plans),
+	})
+}
+
+// GetAddonEvents returns lifecycle events for an addon.
+// GET /v1/addons/:id/events?limit=100
+func (h *Handler) GetAddonEvents(c *gin.Context) {
+	ctx := c.Request.Context()
+	addonID := c.Param("id")
+
+	addonUUID, err := uuid.Parse(addonID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid addon_id format"})
+		return
+	}
+
+	if h.repos == nil || h.repos.ManagedDBAddonEvents == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "event ledger unavailable"})
+		return
+	}
+
+	// Verify the addon exists — prevents info leak via "events on unknown id".
+	if _, err := h.addonService.GetAddon(ctx, addonUUID); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve addon"})
+		return
+	}
+
+	events, err := h.repos.ManagedDBAddonEvents.ListByAddon(ctx, addonUUID, 100)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to list addon events",
+			logging.String("addon_id", addonID),
+			logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list events"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"events": events,
+		"count":  len(events),
 	})
 }
