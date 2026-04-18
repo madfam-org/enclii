@@ -11,6 +11,8 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/madfam-org/enclii/apps/waybill/internal/aggregation"
+	"github.com/madfam-org/enclii/apps/waybill/internal/alerts"
+	"github.com/madfam-org/enclii/apps/waybill/internal/budgets"
 	"github.com/madfam-org/enclii/apps/waybill/internal/config"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
 	"github.com/robfig/cron/v3"
@@ -52,6 +54,34 @@ func main() {
 	collector := events.NewCollector(db, logger)
 	hourlyAggregator := aggregation.NewHourlyAggregator(db, collector, logger)
 
+	// P2.2: budget alert evaluator — posts to Dhanam on threshold crossings.
+	store := budgets.NewStore(db)
+	costReader := budgets.NewCostReader(db, budgets.PricingDollars{
+		ComputePerGBHour:  cfg.PriceComputePerGBHour,
+		BuildPerMinute:    cfg.PriceBuildPerMinute,
+		StoragePerGBMonth: cfg.PriceStoragePerGBMonth,
+		BandwidthPerGB:    cfg.PriceBandwidthPerGB,
+	})
+
+	var dispatcher alerts.Dispatcher
+	endpoint := os.Getenv("WAYBILL_ALERT_ENDPOINT")
+	secret := os.Getenv("WAYBILL_ALERT_SIGNING_KEY")
+	if endpoint != "" && secret != "" {
+		dispatcher = alerts.NewHTTPDispatcher(endpoint, secret, logger)
+	} else {
+		dispatcher = alerts.NewNoopDispatcher(logger)
+	}
+
+	evalInterval := 15 * time.Minute
+	if v := os.Getenv("WAYBILL_ALERT_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= time.Minute {
+			evalInterval = d
+		}
+	}
+	evaluator := alerts.NewEvaluator(db, store, costReader, dispatcher, logger, alerts.Config{
+		Interval: evalInterval,
+	})
+
 	// Create cron scheduler
 	c := cron.New(cron.WithSeconds())
 
@@ -79,6 +109,14 @@ func main() {
 	c.Start()
 	logger.Info("aggregator scheduler started")
 
+	// Budget alert evaluator on its own goroutine.
+	evalCtx, evalCancel := context.WithCancel(context.Background())
+	stopEvaluator := evaluator.Start(evalCtx)
+	logger.Info("budget alert evaluator started",
+		zap.Duration("interval", evalInterval),
+		zap.Bool("dispatcher_configured", endpoint != "" && secret != ""),
+	)
+
 	// Handle shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -89,6 +127,8 @@ func main() {
 	// Stop scheduler gracefully
 	ctx := c.Stop()
 	<-ctx.Done()
+	stopEvaluator()
+	evalCancel()
 
 	logger.Info("aggregator shutdown complete")
 }

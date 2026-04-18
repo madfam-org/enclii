@@ -7,9 +7,10 @@ import (
 
 // Server represents the API server
 type Server struct {
-	router   *gin.Engine
-	handlers *Handlers
-	logger   *zap.Logger
+	router       *gin.Engine
+	handlers     *Handlers
+	costHandlers *CostHandlers
+	logger       *zap.Logger
 }
 
 // ServerConfig contains server configuration
@@ -17,8 +18,10 @@ type ServerConfig struct {
 	InternalAPIKey string
 }
 
-// NewServer creates a new API server
-func NewServer(handlers *Handlers, cfg *ServerConfig, logger *zap.Logger) *Server {
+// NewServer creates a new API server. costHandlers may be nil during early
+// startup before the budgets store is wired — the server will simply omit
+// those routes.
+func NewServer(handlers *Handlers, costHandlers *CostHandlers, cfg *ServerConfig, logger *zap.Logger) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -26,9 +29,10 @@ func NewServer(handlers *Handlers, cfg *ServerConfig, logger *zap.Logger) *Serve
 	router.Use(requestLogger(logger))
 
 	s := &Server{
-		router:   router,
-		handlers: handlers,
-		logger:   logger,
+		router:       router,
+		handlers:     handlers,
+		costHandlers: costHandlers,
+		logger:       logger,
 	}
 
 	s.setupRoutes(cfg)
@@ -65,6 +69,11 @@ func (s *Server) setupRoutes(cfg *ServerConfig) {
 
 		// Plans
 		api.GET("/plans", s.handlers.GetPlans)
+
+		// Budgets + cost queries (P2.2)
+		if s.costHandlers != nil {
+			s.costHandlers.Register(api)
+		}
 	}
 }
 
