@@ -388,6 +388,14 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// deployments/:id/rollback endpoint above — ArgoCD path is the fallback.
 			protected.POST("/services/:id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.InstantRollback)
 
+			// Canary releases (P2.7). Replica-proportion traffic splitting with
+			// auto-promote after a validation window. See internal/reconciler/canary.go.
+			protected.POST("/services/:id/canary", h.auth.RequireRole(string(types.RoleDeveloper)), h.StartCanary)
+			protected.GET("/services/:id/canary", h.ListServiceCanaries)
+			protected.GET("/services/:id/canary/:rollout_id", h.GetCanary)
+			protected.POST("/services/:id/canary/:rollout_id/promote", h.auth.RequireRole(string(types.RoleDeveloper)), h.PromoteCanary)
+			protected.POST("/services/:id/canary/:rollout_id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.RollbackCanary)
+
 			// Real-time Logs (WebSocket streaming)
 			protected.GET("/services/:id/logs/stream", h.StreamServiceLogsWS)
 			protected.GET("/services/:id/logs/history", h.GetLogsHistory)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,11 +23,31 @@ func NewDeployCommand(cfg *config.Config) *cobra.Command {
 	var wait bool
 	var specFile string
 
+	// Canary flags (P2.7). If --canary is set, the deploy runs a canary
+	// release rather than a rolling update.
+	var canarySpec string
+	var validationWindow string
+	var smokeEndpoint string
+	var changeTicketURL string
+
 	cmd := &cobra.Command{
 		Use:   "deploy",
-		Short: "Build and deploy service",
-		Long:  "Build the current service and deploy it to the specified environment",
+		Short: "Build and deploy service (optionally as a canary)",
+		Long: `Build the current service and deploy it to the specified environment.
+
+Default strategy: rolling update.
+
+Canary strategy (P2.7):
+  enclii deploy --canary=20% [--validation-window=10m] [--smoke-endpoint=...]
+
+  Routes N% of traffic to the new digest via replica proportion, holds for the
+  validation window, then auto-promotes if healthy or auto-rolls-back if not.
+  Range: 5% — 50%. Requires service to have >= 2 replicas. Not supported for
+  StatefulSets.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if canarySpec != "" {
+				return deployServiceCanary(cfg, environment, specFile, canarySpec, validationWindow, smokeEndpoint, changeTicketURL)
+			}
 			return deployService(cfg, environment, wait, specFile)
 		},
 	}
@@ -34,6 +55,11 @@ func NewDeployCommand(cfg *config.Config) *cobra.Command {
 	cmd.Flags().StringVarP(&environment, "env", "e", "dev", "Environment to deploy to (dev, staging, prod)")
 	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
 	cmd.Flags().StringVarP(&specFile, "file", "f", "service.yaml", "Path to service.yaml specification file")
+
+	cmd.Flags().StringVar(&canarySpec, "canary", "", "Deploy as canary at this percentage (e.g. \"20%\" or \"20\"). Range 5-50.")
+	cmd.Flags().StringVar(&validationWindow, "validation-window", "10m", "How long the canary must stay healthy before auto-promote (e.g. 10m, 30m)")
+	cmd.Flags().StringVar(&smokeEndpoint, "smoke-endpoint", "", "Optional http(s) URL to probe during validation (returns 200 = healthy)")
+	cmd.Flags().StringVar(&changeTicketURL, "change-ticket", "", "Change ticket URL (required for production canary rollouts)")
 
 	return cmd
 }
@@ -243,6 +269,131 @@ func waitForBuild(ctx context.Context, apiClient *client.APIClient, serviceID, r
 			return ctx.Err()
 		}
 	}
+}
+
+// deployServiceCanary runs the canary-release deploy path. Builds the service
+// as usual, then starts a canary rollout via POST /v1/services/:id/canary and
+// tails the rollout until terminal (following the CLI `canary status -f`
+// convention).
+func deployServiceCanary(cfg *config.Config, environment, specFile, canarySpec, validationWindow, smokeEndpoint, changeTicketURL string) error {
+	// Parse `20%` or `20` into int.
+	pct, err := parseCanaryPercentage(canarySpec)
+	if err != nil {
+		return &exitcodes.ValidationError{Err: err}
+	}
+
+	// Parse validation window duration (e.g. "10m", "30m").
+	win, err := time.ParseDuration(validationWindow)
+	if err != nil {
+		return &exitcodes.ValidationError{Err: fmt.Errorf("invalid --validation-window: %w", err)}
+	}
+	winMinutes := int(win.Minutes())
+	if winMinutes < 1 {
+		winMinutes = 1
+	}
+
+	ctx := context.Background()
+	fmt.Printf("Canary deploy to %s: %d%% traffic, validation window %s\n", environment, pct, win)
+
+	// Build the service to get a fresh digest (reuses the existing build flow).
+	gitSHA, err := getCurrentGitSHA()
+	if err != nil {
+		return fmt.Errorf("get git sha: %w", err)
+	}
+	parser := spec.NewParser()
+	serviceSpec, err := parser.ParseServiceSpec(specFile)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", specFile, err)
+	}
+	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+	project, err := ensureProject(ctx, apiClient, serviceSpec.Metadata.Project)
+	if err != nil {
+		return err
+	}
+	service, err := ensureService(ctx, apiClient, project, serviceSpec)
+	if err != nil {
+		return err
+	}
+	if err := ensureEnvironment(ctx, apiClient, project.Slug, environment); err != nil {
+		return err
+	}
+
+	fmt.Printf("Building candidate release from %s...\n", gitSHA[:8])
+	release, err := apiClient.BuildService(ctx, service.ID.String(), gitSHA)
+	if err != nil {
+		return &exitcodes.BuildError{Err: fmt.Errorf("build: %w", err)}
+	}
+	if err := waitForBuild(ctx, apiClient, service.ID.String(), release.ID.String()); err != nil {
+		return &exitcodes.BuildError{Err: err}
+	}
+	fmt.Printf("Build ready: release %s\n", release.ID)
+
+	// Start the canary rollout.
+	startReq := client.StartCanaryRequest{
+		Digest:                  release.ID.String(), // API accepts release UUID or image digest
+		Percentage:              pct,
+		ValidationWindowMinutes: winMinutes,
+		SmokeEndpoint:           smokeEndpoint,
+		EnvironmentName:         environment,
+		ChangeTicketURL:         changeTicketURL,
+	}
+	resp, err := apiClient.StartCanary(ctx, service.ID.String(), startReq)
+	if err != nil {
+		return &exitcodes.DeployError{Err: err}
+	}
+	fmt.Printf("Canary rollout started: %s (actual traffic share %.1f%%)\n", resp.ID, resp.ActualPercentage)
+	fmt.Println("Tailing rollout until terminal state...")
+
+	// Tail the rollout.
+	rolloutID := resp.ID.String()
+	serviceID := service.ID.String()
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	var last types.CanaryRolloutState
+	for {
+		ro, err := apiClient.GetCanary(ctx, serviceID, rolloutID)
+		if err != nil {
+			return err
+		}
+		if ro.State != last {
+			fmt.Printf("  [%s] state=%s canary=%d/%d\n", time.Now().Format("15:04:05"), ro.State, ro.CanaryReplicas, ro.TotalReplicas)
+			last = ro.State
+		}
+		if ro.State.IsTerminal() {
+			switch ro.State {
+			case types.CanaryStateSucceeded:
+				fmt.Println("Canary succeeded.")
+				return nil
+			case types.CanaryStateAutoRolledBack:
+				return &exitcodes.DeployError{Err: fmt.Errorf("canary auto-rolled-back: %s", ro.RollbackReason)}
+			case types.CanaryStateManualRolledBack:
+				return &exitcodes.DeployError{Err: fmt.Errorf("canary manually rolled back: %s", ro.RollbackReason)}
+			case types.CanaryStateFailed:
+				return &exitcodes.DeployError{Err: fmt.Errorf("canary failed: %s", ro.LastError)}
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// parseCanaryPercentage accepts "20", "20%", or " 20 % " and returns the int.
+func parseCanaryPercentage(s string) (int, error) {
+	trimmed := strings.TrimSpace(s)
+	trimmed = strings.TrimSuffix(trimmed, "%")
+	trimmed = strings.TrimSpace(trimmed)
+	pct, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("invalid --canary percentage %q (use e.g. \"20%%\")", s)
+	}
+	if pct < 5 || pct > 50 {
+		return 0, fmt.Errorf("--canary must be 5-50%% (got %d%%)", pct)
+	}
+	return pct, nil
 }
 
 func waitForDeployment(ctx context.Context, apiClient *client.APIClient, serviceID string) error {
