@@ -1,0 +1,74 @@
+{
+  "name": "@madfam/enclii-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Enclii DevOps platform — projects, deployments, canary rollouts, logs, audit, lifecycle webhooks.",
+  "license": "AGPL-3.0",
+  "author": "MADFAM Engineering <engineering@madfam.io>",
+  "homepage": "https://enclii.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/madfam-org/enclii",
+    "directory": "packages/sdk-ts"
+  },
+  "bugs": {
+    "url": "https://github.com/madfam-org/enclii/issues"
+  },
+  "keywords": [
+    "enclii",
+    "devops",
+    "kubernetes",
+    "deployment",
+    "canary",
+    "webhooks",
+    "sdk"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.mjs",
+      "require": "./dist/node.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "generate-types": "openapi-typescript ../../docs/api/openapi.yaml -o src/types.generated.ts",
+    "verify-types": "node scripts/verify-types.mjs",
+    "prepublishOnly": "pnpm run build && pnpm run test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "@types/ws": "^8.5.10",
+    "openapi-typescript": "^7.4.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
