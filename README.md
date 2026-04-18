@@ -209,7 +209,32 @@ From [PRODUCTION_CHECKLIST.md](./docs/production/PRODUCTION_CHECKLIST.md):
 
 ## Quick Start
 
-### Prerequisites
+### Deploy your first service (5 minutes)
+
+If you just want to ship an app to Enclii, the fastest path is:
+
+```bash
+brew install enclii/tap/enclii   # or: curl -sSL https://get.enclii.dev | bash
+enclii login
+cd my-app && enclii init
+enclii deploy
+# → Live at https://dev.my-app.enclii.dev
+```
+
+**[Full 5-minute quickstart → docs.enclii.dev/quickstart](https://docs.enclii.dev/quickstart)**
+
+Migrating from another platform?
+
+- [From Vercel →](./docs/guides/migrating-from-vercel.md)
+- [From Railway →](./docs/guides/migrating-from-railway.md)
+- [From Heroku →](./docs/guides/migrating-from-heroku.md)
+
+### Run your own Enclii cluster
+
+This repository contains the full source for Enclii itself. If you're bootstrapping a self-hosted cluster (bare-metal or cloud), continue below. Most users don't need to do this — [app.enclii.dev](https://app.enclii.dev) is the hosted control plane.
+
+<details>
+<summary><b>Local development prerequisites</b></summary>
 
 **Core:**
 - Docker ≥ 24
@@ -227,7 +252,7 @@ From [PRODUCTION_CHECKLIST.md](./docs/production/PRODUCTION_CHECKLIST.md):
 brew install go node pnpm kind helm kubectl docker
 ```
 
-### NPM Registry Configuration
+**NPM Registry Configuration**
 
 Enclii uses MADFAM's private npm registry for internal packages. Configure your `.npmrc`:
 
@@ -243,9 +268,12 @@ Enclii uses MADFAM's private npm registry for internal packages. Configure your 
 
 `@enclii/*` and `@janua/*` packages have public read access — no token required for `npm install`. The `NPM_MADFAM_TOKEN` is only needed for publishing or installing private scopes (`@madfam/*`, `@dhanam/*`, etc.).
 
-**Note:** Enclii hosts the npm.madfam.io registry via Verdaccio. See [NPM Registry](./docs/infrastructure/npm-registry.md) for details.
+See [NPM Registry](./docs/infrastructure/npm-registry.md) for details.
 
-### Local Development (10 minutes)
+</details>
+
+<details>
+<summary><b>Local development (10 minutes)</b></summary>
 
 ```bash
 # 1. Clone and bootstrap
@@ -270,13 +298,16 @@ make build-cli
 ./bin/enclii logs api -f           # Tail logs
 ```
 
-[View detailed setup →](./docs/getting-started/QUICKSTART.md)
+[Detailed platform-contributor setup →](./docs/getting-started/QUICKSTART.md)
 
-### Production Deployment
+</details>
+
+<details>
+<summary><b>Self-hosted production deployment</b></summary>
 
 See [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md) for the complete 8-week implementation plan.
 
-**Bootstrap (Week 1-2):**
+**Bootstrap:**
 ```bash
 # Provision Hetzner cluster
 hcloud server create --name enclii-node-{1,2,3} --type cpx31
@@ -287,6 +318,8 @@ cloudflared tunnel create enclii-production
 # Deploy infrastructure
 kubectl apply -k infra/k8s/production
 ```
+
+</details>
 
 ---
 
@@ -327,10 +360,12 @@ enclii scale --min 5 --max 10 --service api --env prod
 **📚 [Complete Documentation Index →](./docs/README.md)**
 
 **Getting Started:**
-- [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md) - 8-week plan
-- [Production Readiness Audit](./docs/production/PRODUCTION_READINESS_AUDIT.md) - Current state
+- [5-minute Quickstart](./docs/quickstart.md) - Deploy your first service
+- [Template Catalog](./docs/templates.md) - Starter templates by framework
+- [Migration Index](./docs/guides/migrating.md) - From Vercel / Railway / Heroku
 - [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md) - Zero-touch repo onboarding
-- [Quick Start](./docs/getting-started/QUICKSTART.md) - Local dev in 10 minutes
+- [Platform Contributor Setup](./docs/getting-started/QUICKSTART.md) - Local dev in 10 minutes
+- [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md) - 8-week plan
 
 **Architecture:**
 - [Architecture Overview](./docs/architecture/ARCHITECTURE.md) - System design

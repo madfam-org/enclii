@@ -7,12 +7,35 @@ const sidebars: SidebarsConfig = {
       id: 'README',
       label: 'Overview',
     },
+    {
+      type: 'doc',
+      id: 'quickstart',
+      label: '5-minute Quickstart',
+    },
+    {
+      type: 'doc',
+      id: 'templates',
+      label: 'Template Catalog',
+    },
 
-    // Getting Started
+    // Migrating
     {
       type: 'category',
-      label: 'Getting Started',
+      label: 'Migrating to Enclii',
       collapsed: false,
+      items: [
+        'guides/migrating',
+        'guides/migrating-from-vercel',
+        'guides/migrating-from-railway',
+        'guides/migrating-from-heroku',
+      ],
+    },
+
+    // Getting Started (platform contributors)
+    {
+      type: 'category',
+      label: 'Platform Contributor Setup',
+      collapsed: true,
       items: [
         'getting-started/QUICKSTART',
         'getting-started/DEVELOPMENT',
@@ -26,8 +49,10 @@ const sidebars: SidebarsConfig = {
       label: 'Guides',
       items: [
         'guides/ONBOARDING_GUIDE',
+        'guides/SELF_HOSTING',
         'guides/RAILWAY_MIGRATION_GUIDE',
         'guides/VERCEL_MIGRATION_GUIDE',
+        'guides/HEROKU_MIGRATION_GUIDE',
         'guides/TESTING_GUIDE',
         'guides/cli-auth-setup',
         'guides/sso-deployment',
