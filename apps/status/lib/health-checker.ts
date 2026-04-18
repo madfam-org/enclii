@@ -145,6 +145,7 @@ export async function checkService(service: ServiceConfig): Promise<HealthCheckR
     url: service.url,
     ...(service.href && { href: service.href }),
     group: service.group,
+    ...(service.family && { family: service.family }),
     description: service.description,
     status,
     responseTime,

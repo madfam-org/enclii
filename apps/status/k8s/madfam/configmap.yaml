@@ -12,6 +12,25 @@ data:
   auto-incident-threshold: "2"
   # Services monitored by status.madfam.io.
   #
+  # Schema (RFC 0002 S1 — product family grouping):
+  #   - name         : display name
+  #   - url          : health probe URL
+  #   - href         : optional user-facing URL (falls back to url)
+  #   - group        : fine-grained product grouping (e.g. "Karafiel")
+  #   - family       : optional product family wrapping multiple groups
+  #                    (e.g. "MADFAM Platform"). Drives the two-level
+  #                    collapsible UI. Services without `family` fall into
+  #                    the "Other" family.
+  #   - description  : short description
+  #
+  # Product families (RFC 0002 S1):
+  #   MADFAM Platform      — avala, karafiel, dhanam, tezca, fortuna, phynecrm, enclii, janua
+  #   Selva Swarm          — selva-office services
+  #   Rondelio             — rondel.io family
+  #   Digital Fabrication  — digifab, yantra4d, pravara-mes, primavera3d, forj, forgesight
+  #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
+  #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
+  #
   # Updated: 2026-04-17 (late) — 52 services across 16 groups after the
   # status.madfam.io audit. Added 3 coverage gaps verified with live
   # curl: app.karafiel.mx, enclii.dev (landing), sniper.madfam.io
@@ -55,24 +74,28 @@ data:
         "url": "https://api.enclii.dev/health/ready",
         "href": "https://api.enclii.dev",
         "group": "Enclii",
+        "family": "MADFAM Platform",
         "description": "Control plane API"
       },
       {
         "name": "Enclii Dashboard",
         "url": "https://app.enclii.dev",
         "group": "Enclii",
+        "family": "MADFAM Platform",
         "description": "Web management console"
       },
       {
         "name": "Enclii Admin",
         "url": "https://admin.enclii.dev",
         "group": "Enclii",
+        "family": "MADFAM Platform",
         "description": "Infrastructure operations"
       },
       {
         "name": "Enclii Docs",
         "url": "https://docs.enclii.dev",
         "group": "Enclii",
+        "family": "MADFAM Platform",
         "description": "Platform documentation"
       },
       {
@@ -80,18 +103,21 @@ data:
         "url": "https://auth.madfam.io/health",
         "href": "https://auth.madfam.io",
         "group": "Janua",
+        "family": "MADFAM Platform",
         "description": "SSO authentication service"
       },
       {
         "name": "Janua Website",
         "url": "https://janua.dev",
         "group": "Janua",
+        "family": "MADFAM Platform",
         "description": "Product landing page"
       },
       {
         "name": "Janua Docs",
         "url": "https://docs.janua.dev",
         "group": "Janua",
+        "family": "MADFAM Platform",
         "description": "Authentication documentation"
       },
       {
@@ -99,30 +125,35 @@ data:
         "url": "https://api.dhan.am/health",
         "href": "https://api.dhan.am",
         "group": "Dhanam",
+        "family": "MADFAM Platform",
         "description": "Financial platform API"
       },
       {
         "name": "Dhanam Admin",
         "url": "https://admin.dhan.am",
         "group": "Dhanam",
+        "family": "MADFAM Platform",
         "description": "Financial operations console"
       },
       {
         "name": "Dhanam Web",
         "url": "https://dhan.am",
         "group": "Dhanam",
+        "family": "MADFAM Platform",
         "description": "Landing page"
       },
       {
         "name": "Dhanam App",
         "url": "https://app.dhan.am",
         "group": "Dhanam",
+        "family": "MADFAM Platform",
         "description": "User application"
       },
       {
         "name": "Tezca Web",
         "url": "https://tezca.mx",
         "group": "Tezca",
+        "family": "MADFAM Platform",
         "description": "Legal intelligence platform"
       },
       {
@@ -130,54 +161,63 @@ data:
         "url": "https://api.tezca.mx/health",
         "href": "https://api.tezca.mx",
         "group": "Tezca",
+        "family": "MADFAM Platform",
         "description": "Legal data API"
       },
       {
         "name": "Tezca Admin",
         "url": "https://admin.tezca.mx",
         "group": "Tezca",
+        "family": "MADFAM Platform",
         "description": "Legal ops console"
       },
       {
         "name": "Yantra4D Web",
         "url": "https://yantra4d.com",
         "group": "Yantra4D",
+        "family": "Digital Fabrication",
         "description": "3D printing platform"
       },
       {
         "name": "Yantra4D Studio",
         "url": "https://app.yantra4d.com",
         "group": "Yantra4D",
+        "family": "Digital Fabrication",
         "description": "3D design studio"
       },
       {
         "name": "Yantra4D Admin",
         "url": "https://admin.yantra4d.com",
         "group": "Yantra4D",
+        "family": "Digital Fabrication",
         "description": "Print operations console"
       },
       {
         "name": "Forgesight Web",
         "url": "https://forgesight.quest",
         "group": "Forgesight",
+        "family": "Digital Fabrication",
         "description": "Pricing intelligence platform"
       },
       {
         "name": "Forgesight App",
         "url": "https://app.forgesight.quest",
         "group": "Forgesight",
+        "family": "Digital Fabrication",
         "description": "Price tracking dashboard"
       },
       {
         "name": "Forgesight Admin",
         "url": "https://admin.forgesight.quest",
         "group": "Forgesight",
+        "family": "Digital Fabrication",
         "description": "Data operations console"
       },
       {
         "name": "Forgesight API",
         "url": "https://api.forgesight.quest",
         "group": "Forgesight",
+        "family": "Digital Fabrication",
         "description": "Pricing data API"
       },
       {
@@ -185,6 +225,7 @@ data:
         "url": "https://karafiel.mx/login",
         "href": "https://karafiel.mx",
         "group": "Karafiel",
+        "family": "MADFAM Platform",
         "description": "Tax compliance platform"
       },
       {
@@ -192,12 +233,14 @@ data:
         "url": "https://admin.karafiel.mx/login",
         "href": "https://admin.karafiel.mx",
         "group": "Karafiel",
+        "family": "MADFAM Platform",
         "description": "Compliance operations console"
       },
       {
         "name": "MADFAM Website",
         "url": "https://madfam.io",
         "group": "MADFAM Site",
+        "family": "MADFAM Corporate",
         "description": "Corporate website"
       },
       {
@@ -205,18 +248,21 @@ data:
         "url": "https://mes-api.madfam.io/health",
         "href": "https://mes-api.madfam.io",
         "group": "Pravara MES",
+        "family": "Digital Fabrication",
         "description": "Manufacturing execution API"
       },
       {
         "name": "MES Web",
         "url": "https://mes.madfam.io",
         "group": "Pravara MES",
+        "family": "Digital Fabrication",
         "description": "Manufacturing dashboard"
       },
       {
         "name": "Selva Landing",
         "url": "https://selva.town",
         "group": "Selva Office",
+        "family": "Selva Swarm",
         "description": "AI workforce landing page"
       },
       {
@@ -224,6 +270,7 @@ data:
         "url": "https://api.selva.town/health",
         "href": "https://api.selva.town",
         "group": "Selva Office",
+        "family": "Selva Swarm",
         "description": "Agent orchestration API"
       },
       {
@@ -231,6 +278,7 @@ data:
         "url": "https://app.selva.town/demo",
         "href": "https://app.selva.town",
         "group": "Selva Office",
+        "family": "Selva Swarm",
         "description": "Virtual office demo"
       },
       {
@@ -238,6 +286,7 @@ data:
         "url": "https://admin.selva.town/login",
         "href": "https://admin.selva.town",
         "group": "Selva Office",
+        "family": "Selva Swarm",
         "description": "Admin operations console"
       },
       {
@@ -245,6 +294,7 @@ data:
         "url": "https://api.karafiel.mx/api/v1/health/",
         "href": "https://api.karafiel.mx",
         "group": "Karafiel",
+        "family": "MADFAM Platform",
         "description": "Combat accounting API"
       },
       {
@@ -252,30 +302,35 @@ data:
         "url": "https://api.fortuna.tube/health",
         "href": "https://api.fortuna.tube",
         "group": "Fortuna",
+        "family": "MADFAM Platform",
         "description": "Problem intelligence API"
       },
       {
         "name": "Fortuna Web",
         "url": "https://fortuna.tube",
         "group": "Fortuna",
+        "family": "MADFAM Platform",
         "description": "Problem intelligence dashboard"
       },
       {
         "name": "PhyneCRM",
         "url": "https://crm.madfam.io",
         "group": "PhyneCRM",
+        "family": "MADFAM Platform",
         "description": "Customer relationship management"
       },
       {
         "name": "NPM Registry",
         "url": "https://npm.madfam.io",
         "group": "Platform",
+        "family": "MADFAM Corporate",
         "description": "Private Verdaccio registry"
       },
       {
         "name": "Rondelio Web",
         "url": "https://rondel.io",
         "group": "Rondelio",
+        "family": "Rondelio",
         "description": "Game intelligence platform"
       },
       {
@@ -283,36 +338,42 @@ data:
         "url": "https://api.rondel.io/health",
         "href": "https://api.rondel.io",
         "group": "Rondelio",
+        "family": "Rondelio",
         "description": "Game data API"
       },
       {
         "name": "Rondelio Play",
         "url": "https://play.rondel.io",
         "group": "Rondelio",
+        "family": "Rondelio",
         "description": "Game simulator"
       },
       {
         "name": "Coforma Studio",
         "url": "https://coforma.studio",
         "group": "Coforma",
+        "family": "Content & Creative",
         "description": "Customer advisory boards"
       },
       {
         "name": "Cotiza Studio",
         "url": "https://cotiza.studio",
         "group": "DigiFab",
+        "family": "Digital Fabrication",
         "description": "Automated quoting platform"
       },
       {
         "name": "CEQ Studio",
         "url": "https://ceq.lol",
         "group": "CEQ",
+        "family": "Content & Creative",
         "description": "ComfyUI creative engine"
       },
       {
         "name": "Avala Web",
         "url": "https://avala.studio",
         "group": "Avala",
+        "family": "MADFAM Platform",
         "description": "Learning verification platform"
       },
       {
@@ -320,6 +381,7 @@ data:
         "url": "https://api.avala.studio/health",
         "href": "https://api.avala.studio",
         "group": "Avala",
+        "family": "MADFAM Platform",
         "description": "Learning verification API"
       },
       {
@@ -327,36 +389,42 @@ data:
         "url": "https://api.cotiza.studio/health",
         "href": "https://api.cotiza.studio",
         "group": "DigiFab",
+        "family": "Digital Fabrication",
         "description": "Automated quoting API"
       },
       {
         "name": "Primavera3D",
         "url": "https://primavera3d.pro",
         "group": "Primavera3D",
+        "family": "Digital Fabrication",
         "description": "3D portfolio"
       },
       {
         "name": "Nuit One",
         "url": "https://nuit.one",
         "group": "Nuit",
+        "family": "Content & Creative",
         "description": "Audio platform"
       },
       {
         "name": "Forj Design",
         "url": "https://forj.design",
         "group": "Forj",
+        "family": "Digital Fabrication",
         "description": "Fabrication storefronts"
       },
       {
         "name": "Almanac",
         "url": "https://almanac.solar",
         "group": "Bloom Scroll",
+        "family": "Content & Creative",
         "description": "Slow web aggregator"
       },
       {
         "name": "Blueprint Harvester",
         "url": "https://blueprint.tube",
         "group": "Blueprint Harvester",
+        "family": "Content & Creative",
         "description": "3D model indexing"
       },
       {
@@ -364,6 +432,7 @@ data:
         "url": "https://app.karafiel.mx",
         "href": "https://app.karafiel.mx",
         "group": "Karafiel",
+        "family": "MADFAM Platform",
         "description": "Self-serve tax-compliance workspace"
       },
       {
@@ -371,6 +440,7 @@ data:
         "url": "https://enclii.dev",
         "href": "https://enclii.dev",
         "group": "Enclii",
+        "family": "MADFAM Platform",
         "description": "Product landing page"
       },
       {
@@ -378,6 +448,7 @@ data:
         "url": "https://sniper.madfam.io",
         "href": "https://sniper.madfam.io",
         "group": "Platform",
+        "family": "MADFAM Corporate",
         "description": "Hetzner auction intelligence (foundry-scout)"
       }
     ]
