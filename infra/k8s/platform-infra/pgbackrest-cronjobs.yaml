@@ -1,0 +1,343 @@
+---
+# pgBackRest scheduled operations (P1.1).
+#
+# Three CronJobs:
+#   1. pgbackrest-check     - every 15 min; `pgbackrest check` to verify
+#                             archive_command is working AND the repo is
+#                             reachable. Emits Prometheus textfile metrics
+#                             consumed by node-exporter's textfile collector.
+#   2. pgbackrest-backup-full  - Sunday 02:00 UTC; full backup (keep 7).
+#   3. pgbackrest-backup-diff  - Mon-Sat 02:00 UTC; differential (keep 3).
+#
+# Design notes:
+#   - All three exec into the running Postgres pod via kubectl. We avoid
+#     spinning up a fresh pgbackrest container because:
+#       a) it would not share the async spool with the primary, making
+#          async archive-push pointless
+#       b) backup/info/check must run with PGDATA access and the same
+#          config the sidecar uses
+#   - Service account `pgbackrest-runner` has minimal RBAC (exec into
+#     Postgres pod only, within the data namespace). See pgbackrest-rbac.yaml.
+#   - metrics.prom format is Prometheus textfile exporter:
+#       https://github.com/prometheus-community/node-exporter-textfile-collector-scripts
+#   - concurrencyPolicy: Forbid on all three — a full+diff running concurrently
+#     would corrupt manifests.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pgbackrest-runner
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+---
+# Scoped RBAC: exec into postgres pod in `data` ns only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pgbackrest-runner
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pgbackrest-runner
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+subjects:
+  - kind: ServiceAccount
+    name: pgbackrest-runner
+    namespace: data
+roleRef:
+  kind: Role
+  name: pgbackrest-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+# ConfigMap with the operator helper scripts used by all three CronJobs.
+# Keeping them here (not inline in the CronJob) makes the backup policy
+# auditable in git and runbook-linkable.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbackrest-cronjob-scripts
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+data:
+  check.sh: |
+    #!/bin/sh
+    # pgbackrest-check: verify archive_command and repo connectivity.
+    # Exits 0 on healthy, 1 on any failure. Emits a Prometheus textfile
+    # metric that node-exporter picks up.
+    set -e
+    METRICS_DIR="${METRICS_DIR:-/var/lib/node_exporter/textfile_collector}"
+    METRICS_FILE="${METRICS_DIR}/pgbackrest_check.prom"
+    TIMESTAMP=$(date +%s)
+
+    POD=$(kubectl -n data get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    if [ -z "$POD" ]; then
+      echo "ERROR: no postgres pod found" >&2
+      exit 1
+    fi
+
+    echo "[$(date -Iseconds)] Running pgbackrest check in pod $POD"
+    if kubectl -n data exec -c pgbackrest "$POD" -- pgbackrest --stanza=main check; then
+      STATUS=1
+      echo "[$(date -Iseconds)] pgbackrest check OK"
+    else
+      STATUS=0
+      echo "[$(date -Iseconds)] pgbackrest check FAILED"
+    fi
+
+    # Textfile export: pg_backup_check_healthy{stanza="main"} = 0|1
+    # Node-exporter's textfile collector publishes this alongside host
+    # metrics. Label naming matches the platform alerting rules.
+    if [ -d "$METRICS_DIR" ]; then
+      cat > "${METRICS_FILE}.tmp" <<EOF
+    # HELP pgbackrest_check_healthy Whether pgbackrest --stanza=main check succeeded (1) or not (0).
+    # TYPE pgbackrest_check_healthy gauge
+    pgbackrest_check_healthy{stanza="main"} ${STATUS}
+    # HELP pgbackrest_check_last_run_timestamp_seconds Unix time of the last pgbackrest check run.
+    # TYPE pgbackrest_check_last_run_timestamp_seconds gauge
+    pgbackrest_check_last_run_timestamp_seconds{stanza="main"} ${TIMESTAMP}
+    EOF
+      mv "${METRICS_FILE}.tmp" "${METRICS_FILE}"
+    fi
+
+    # Fail the CronJob if the check failed so AlertManager picks it up via
+    # kube_job_status_failed.
+    if [ "$STATUS" -ne 1 ]; then
+      exit 1
+    fi
+
+  backup-full.sh: |
+    #!/bin/sh
+    set -e
+    POD=$(kubectl -n data get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    echo "[$(date -Iseconds)] Running FULL backup in pod $POD"
+    kubectl -n data exec -c pgbackrest "$POD" -- \
+      pgbackrest --stanza=main --type=full --log-level-console=info backup
+    echo "[$(date -Iseconds)] FULL backup complete"
+
+  backup-diff.sh: |
+    #!/bin/sh
+    set -e
+    POD=$(kubectl -n data get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    echo "[$(date -Iseconds)] Running DIFFERENTIAL backup in pod $POD"
+    kubectl -n data exec -c pgbackrest "$POD" -- \
+      pgbackrest --stanza=main --type=diff --log-level-console=info backup
+    echo "[$(date -Iseconds)] DIFFERENTIAL backup complete"
+---
+# Every 15 minutes — this is the alerting heartbeat for WAL archive health.
+# If this CronJob fails 2+ runs in a row, AlertManager pages (see
+# prometheus-wal-archive-rules.yaml PostgresBackupCheckFailed).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pgbackrest-check
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup-check
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: pgbackrest-check
+        spec:
+          serviceAccountName: pgbackrest-runner
+          restartPolicy: Never
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+          containers:
+            - name: check
+              # bitnami/kubectl is the smallest audited kubectl image we
+              # already use elsewhere; pin version matches cluster k3s.
+              image: docker.io/bitnami/kubectl:1.33.7
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              command: ["/bin/sh", "/scripts/check.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: pgbackrest-cronjob-scripts
+                defaultMode: 0755
+            - name: tmp
+              emptyDir:
+                sizeLimit: 32Mi
+---
+# Full backup — weekly. Matches retention-full=7 (count): we keep the last
+# 7 fulls which, with this cadence, is ~7 weeks of retention.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pgbackrest-backup-full
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup-full
+    app.kubernetes.io/part-of: enclii
+spec:
+  # Sunday 02:00 UTC — off-peak for most timezones we care about.
+  schedule: "0 2 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200 # 2 hours — plenty for 10GiB PVC
+      template:
+        metadata:
+          labels:
+            app: pgbackrest-backup-full
+        spec:
+          serviceAccountName: pgbackrest-runner
+          restartPolicy: OnFailure
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+          containers:
+            - name: backup-full
+              image: docker.io/bitnami/kubectl:1.33.7
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              command: ["/bin/sh", "/scripts/backup-full.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: pgbackrest-cronjob-scripts
+                defaultMode: 0755
+            - name: tmp
+              emptyDir:
+                sizeLimit: 32Mi
+---
+# Differential backup — Mon-Sat 02:00 UTC.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pgbackrest-backup-diff
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup-diff
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "0 2 * * 1-6"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: pgbackrest-backup-diff
+        spec:
+          serviceAccountName: pgbackrest-runner
+          restartPolicy: OnFailure
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+          containers:
+            - name: backup-diff
+              image: docker.io/bitnami/kubectl:1.33.7
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              command: ["/bin/sh", "/scripts/backup-diff.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "10m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "200m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: pgbackrest-cronjob-scripts
+                defaultMode: 0755
+            - name: tmp
+              emptyDir:
+                sizeLimit: 32Mi

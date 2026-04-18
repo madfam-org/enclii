@@ -1,0 +1,72 @@
+# P1.1 — pgBackRest WAL-archiving ArgoCD wrapper.
+#
+# NOTE on layering:
+#   The Postgres Deployment itself (which now embeds the pgBackRest sidecar
+#   + init container + shared volumes) is synced by the existing
+#   `platform-infra-services` Application (auto-generated from
+#   infra/argocd/projects/platform-infra/config.json). See:
+#     - infra/k8s/platform-infra/postgres.yaml
+#     - infra/k8s/platform-infra/postgres-wal-config.yaml
+#     - infra/k8s/platform-infra/pgbackrest-config.yaml
+#     - infra/k8s/platform-infra/pgbackrest-cronjobs.yaml
+#
+#   This Application exists to give operators a single ArgoCD dashboard
+#   handle for the backup subsystem's Prometheus rules + runbook-adjacent
+#   monitoring config. It is intentionally a thin wrapper so we can pause
+#   alert changes without pausing the entire platform-infra sync.
+#
+# Operator actions before this Application becomes Healthy:
+#   1. Create the R2 credentials secret in the `data` namespace:
+#        see infra/k8s/platform-infra/pgbackrest-r2-credentials.yaml.template
+#   2. Schedule the Postgres restart window required to pick up
+#      archive_mode=on (see docs/runbooks/POSTGRES_WAL_ARCHIVING.md #2).
+#   3. Initialize the stanza ONCE, post-restart:
+#        kubectl -n data exec deploy/postgres -c pgbackrest -- \
+#          pgbackrest --stanza=main stanza-create
+#      (intentionally NOT automated — see runbook §3).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres-backup-monitoring
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: postgres-backup-monitoring
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: backup-monitoring
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    # PrometheusRule CRDs for WAL archive health live alongside other
+    # platform rules so Prometheus discovers them without additional config.
+    path: infra/k8s/production/monitoring/wal-archive-rules
+    directory:
+      recurse: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  # Surface the sync status with project-level labelling so it shows up in
+  # the backup dashboard group.
+  info:
+    - name: "Runbook"
+      value: "docs/runbooks/POSTGRES_WAL_ARCHIVING.md"
+    - name: "RPO target"
+      value: "≤5min continuous WAL + 60s archive_timeout"
+    - name: "Operator prereqs"
+      value: "R2 secret applied + Postgres restart done + stanza-create run"

@@ -11,28 +11,32 @@
 #   - Tears down `dr-test` at the end unless --keep is passed.
 #
 # Flow:
-#   1. Preflight (kubectl, secrets, connectivity).
-#   2. (Re)create `dr-test` namespace.
-#   3. Copy R2 + Postgres credentials from `enclii`/`data` into `dr-test`.
-#   4. Apply ephemeral Postgres 16 manifest, wait for readiness.
-#   5. Identify latest backup object in R2 via a throwaway aws-cli pod.
-#   6. Download backup into the Postgres pod's /tmp.
-#   7. Run pg_restore / psql (dump format auto-detected).
-#   8. Run sanity SELECTs against real tables, capturing counts + MAX(created_at).
-#   9. Compute phase timings, emit structured JSON + human log.
-#  10. Append row to internal-devops/runbooks/dr-log.md.
-#  11. Delete dr-test namespace (unless --keep).
+#   1.  Preflight (kubectl, secrets, connectivity).
+#   2.  (Re)create `dr-test` namespace.
+#   3.  Copy R2 + Postgres credentials from `enclii`/`data` into `dr-test`.
+#   4.  Apply ephemeral Postgres 16 manifest, wait for readiness.
+#   5.  Identify latest backup object in R2 via a throwaway aws-cli pod.
+#   6.  Download backup into the Postgres pod's /tmp.
+#   7.  Run pg_restore / psql (dump format auto-detected).
+#   8.  Run sanity SELECTs against real tables, capturing counts + MAX(created_at).
+#   9.  Compute phase timings, emit structured JSON + human log.
+#   10. Append LOGICAL row to internal-devops/runbooks/dr-log.md.
+#   11. (P1.1) Read pgbackrest info from prod sidecar — verify WAL archive freshness.
+#   12. (P1.1) PITR restore 5-min-ago into dr-test via one-shot pgbackrest pod.
+#   13. (P1.1) Append WAL/PITR row to dr-log.md.
+#   14. Delete dr-test namespace (unless --keep).
 #
 # Usage:
-#   ./scripts/dr-drill.sh [--dry-run] [--keep] [--operator <name>] [--backup-key <key>]
+#   ./scripts/dr-drill.sh [--dry-run] [--keep] [--operator <name>] [--backup-key <key>] [--skip-wal]
 #
 # Exit codes:
-#    0 = drill passed
+#    0 = drill passed (both logical + WAL/PITR)
 #   10 = preflight failed
 #   20 = R2 download failed
 #   30 = restore failed
 #   40 = sanity query failed
 #   50 = teardown failed
+#   60 = WAL/PITR phase failed (logical phase still counted as passed)
 
 set -euo pipefail
 
@@ -65,6 +69,18 @@ KEEP=false
 OPERATOR="${USER:-unknown}"
 BACKUP_KEY=""
 
+# P1.1: WAL / PITR drill phase is opt-out. Skip when pgBackRest is not yet
+# configured on the cluster (pre-Step-3 of POSTGRES_WAL_ARCHIVING.md).
+SKIP_WAL=false
+# Fail the WAL phase if the newest archive segment is older than this.
+# Stricter than the alerting threshold so drills catch RPO drift early.
+WAL_MAX_AGE_S="${WAL_MAX_AGE_S:-600}"
+
+# Production Postgres coordinates — read-only for WAL phase.
+PROD_POSTGRES_NS="${PROD_POSTGRES_NS:-data}"
+PROD_POSTGRES_DEPLOY="${PROD_POSTGRES_DEPLOY:-postgres}"
+PROD_POSTGRES_SIDECAR="${PROD_POSTGRES_SIDECAR:-pgbackrest}"
+
 # Colors (disabled if not a tty)
 if [ -t 1 ]; then
     C_RED='\033[0;31m'
@@ -92,6 +108,9 @@ Options:
   --operator <name>    Operator identity for the dr-log row (defaults to $USER).
   --backup-key <key>   Use a specific backup key instead of auto-discovering the latest.
                        Example: --backup-key postgres/20260414_030000.sql.gz
+  --skip-wal           Skip the P1.1 WAL/PITR validation phase. Use this
+                       if pgBackRest is not yet configured on the target
+                       cluster (before POSTGRES_WAL_ARCHIVING.md Step 3).
   -h | --help          Show this help.
 
 Environment overrides:
@@ -101,7 +120,13 @@ Environment overrides:
   SOURCE_R2_SECRET_NAME     R2 secret name (default: r2-backup-credentials)
   INTERNAL_DEVOPS_ROOT      Path to the internal-devops repo (default: /Users/aldoruizluna/labspace/internal-devops)
 
-Exit codes: 0 success; 10 preflight; 20 download; 30 restore; 40 query; 50 teardown.
+Exit codes: 0 success; 10 preflight; 20 download; 30 restore; 40 query; 50 teardown; 60 WAL/PITR.
+
+Environment (P1.1 WAL phase):
+  WAL_MAX_AGE_S             Fail WAL phase if newest archive > this age seconds (default: 600)
+  PROD_POSTGRES_NS          Production Postgres namespace (default: data)
+  PROD_POSTGRES_DEPLOY      Production Postgres deploy name (default: postgres)
+  PROD_POSTGRES_SIDECAR     pgBackRest sidecar container name (default: pgbackrest)
 USAGE
 }
 
@@ -115,6 +140,7 @@ while [ $# -gt 0 ]; do
         --keep)        KEEP=true; shift ;;
         --operator)    OPERATOR="$2"; shift 2 ;;
         --backup-key)  BACKUP_KEY="$2"; shift 2 ;;
+        --skip-wal)    SKIP_WAL=true; shift ;;
         -h|--help)     usage; exit 0 ;;
         *)             log_error "Unknown argument: $1"; usage; exit 10 ;;
     esac
@@ -558,6 +584,264 @@ HEADER
 }
 
 # ---------------------------------------------------------------------------
+# P1.1 — WAL / PITR validation
+#
+# Runs AFTER the logical restore succeeds. Does three things:
+#   (a) Reads `pgbackrest info` from the production Postgres pod's sidecar
+#       and checks that the latest archive-push timestamp is fresh.
+#   (b) Parses pg_stat_archiver on the production primary for sanity.
+#   (c) Performs a real PITR restore of a ~5-minute-ago point into the
+#       dr-test namespace using pgbackrest restore --type=time.
+#
+# Read-only on production. Destructive only inside the ephemeral dr-test
+# namespace which is torn down at the end.
+# ---------------------------------------------------------------------------
+
+wal_phase_enabled() {
+    if [ "$SKIP_WAL" = true ]; then
+        return 1
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        return 0
+    fi
+    local pod
+    pod="$(kubectl -n "${PROD_POSTGRES_NS}" get pod -l app="${PROD_POSTGRES_DEPLOY}" \
+           -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
+    if [ -z "$pod" ]; then
+        return 1
+    fi
+    if ! kubectl -n "${PROD_POSTGRES_NS}" get pod "$pod" \
+         -o jsonpath='{.spec.containers[*].name}' 2>/dev/null \
+         | tr ' ' '\n' | grep -q "^${PROD_POSTGRES_SIDECAR}$"; then
+        return 1
+    fi
+    return 0
+}
+
+wal_check_archive_freshness() {
+    log_step "Phase 8: Verify WAL archive freshness (read-only on prod)"
+    local start
+    start="$(now_s)"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] kubectl exec prod/postgres -c pgbackrest -- pgbackrest info --output=json"
+        WAL_LATEST_AGE_S=0
+        WAL_INFO_RESULT="dry-run"
+        WAL_INFO_S="$(elapsed "$start")"
+        return 0
+    fi
+
+    local pod
+    pod="$(kubectl -n "${PROD_POSTGRES_NS}" get pod -l app="${PROD_POSTGRES_DEPLOY}" \
+           -o jsonpath='{.items[0].metadata.name}')"
+
+    # pgbackrest info --output=json emits stanzas with archive + backup ranges.
+    # The sidecar has no jq; parse via the workstation's jq when available.
+    local info_json
+    if ! info_json="$(kubectl -n "${PROD_POSTGRES_NS}" exec "${pod}" -c "${PROD_POSTGRES_SIDECAR}" -- \
+                       pgbackrest --stanza=main info --output=json 2>&1)"; then
+        log_error "pgbackrest info failed:"
+        echo "${info_json}" | head -30 >&2
+        WAL_INFO_RESULT="info-cmd-failed"
+        WAL_INFO_S="$(elapsed "$start")"
+        return 1
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        local latest_archive_stop latest_backup_stop
+        latest_archive_stop="$(echo "${info_json}" | jq -r '
+            if type == "array" then .[0] else . end
+            | (.archive // []) | map(.max) | map(select(. != null)) | last // empty
+        ')"
+        latest_backup_stop="$(echo "${info_json}" | jq -r '
+            if type == "array" then .[0] else . end
+            | (.backup // []) | map(.timestamp.stop) | map(select(. != null)) | last // empty
+        ')"
+        log_info "latest archive segment: ${latest_archive_stop:-<none>}"
+        log_info "latest backup stop ts:  ${latest_backup_stop:-<none>}"
+
+        if [ -n "${latest_backup_stop}" ]; then
+            local now_s_val
+            now_s_val="$(date -u +%s)"
+            WAL_LATEST_AGE_S=$(( now_s_val - latest_backup_stop ))
+            log_info "latest backup age: ${WAL_LATEST_AGE_S}s (threshold ${WAL_MAX_AGE_S}s)"
+        else
+            WAL_LATEST_AGE_S=-1
+        fi
+    else
+        log_warn "jq not found on workstation — skipping precise freshness check"
+        echo "${info_json}" | head -40
+        WAL_LATEST_AGE_S=-1
+    fi
+
+    # Defensive: pg_stat_archiver cross-check.
+    local stat_json
+    if stat_json="$(kubectl -n "${PROD_POSTGRES_NS}" exec "${pod}" -c postgres -- \
+                     psql -U postgres -tAF'|' -c \
+                     "SELECT EXTRACT(EPOCH FROM (NOW() - last_archived_time))::int, failed_count FROM pg_stat_archiver;" 2>/dev/null)"; then
+        local last_age fail_count
+        last_age="$(echo "${stat_json}" | cut -d'|' -f1)"
+        fail_count="$(echo "${stat_json}" | cut -d'|' -f2)"
+        log_info "pg_stat_archiver: last_archived ${last_age:-?}s ago, failed_count=${fail_count:-?}"
+        WAL_PG_STAT_AGE_S="${last_age:--1}"
+        WAL_PG_STAT_FAILED="${fail_count:--1}"
+    else
+        log_warn "pg_stat_archiver query failed (exporter alerts cover this separately)"
+        # shellcheck disable=SC2034  # exposed for future JSON output extension
+        WAL_PG_STAT_AGE_S=-1
+        # shellcheck disable=SC2034  # exposed for future JSON output extension
+        WAL_PG_STAT_FAILED=-1
+    fi
+
+    WAL_INFO_S="$(elapsed "$start")"
+
+    if [ "${WAL_LATEST_AGE_S}" -gt 0 ] && [ "${WAL_LATEST_AGE_S}" -gt "${WAL_MAX_AGE_S}" ]; then
+        WAL_INFO_RESULT="stale:${WAL_LATEST_AGE_S}s>${WAL_MAX_AGE_S}s"
+        return 1
+    fi
+
+    WAL_INFO_RESULT="ok"
+    log_ok "WAL archive freshness check passed (${WAL_INFO_S}s)"
+    return 0
+}
+
+# PITR restore into dr-test. The namespace already exists from the logical
+# drill. We spawn a one-shot pgbackrest pod that writes the restored PGDATA
+# into an emptyDir and runs pg_controldata to prove the restore is coherent.
+wal_pitr_restore() {
+    log_step "Phase 9: PITR restore (5 minutes ago) into dr-test"
+    local start
+    start="$(now_s)"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] would compute T-5min, copy pgbackrest creds + config into dr-test,"
+        echo "  [dry-run]  run pgbackrest --stanza=main --type=time --target=<T-5min> restore"
+        PITR_RESTORE_RESULT="dry-run"
+        PITR_RESTORE_S="$(elapsed "$start")"
+        return 0
+    fi
+
+    local pitr_target
+    pitr_target="$(date -u -v-5M "+%Y-%m-%d %H:%M:%S+00" 2>/dev/null \
+                   || date -u -d '-5 minutes' "+%Y-%m-%d %H:%M:%S+00" 2>/dev/null)"
+    if [ -z "${pitr_target}" ]; then
+        log_error "cannot compute PITR target time"
+        PITR_RESTORE_RESULT="target-compute-failed"
+        PITR_RESTORE_S="$(elapsed "$start")"
+        return 1
+    fi
+    log_info "PITR target time: ${pitr_target}"
+
+    # Copy the pgbackrest R2 credentials + config ConfigMap into dr-test.
+    # Prod is read-only here.
+    kubectl get secret pgbackrest-r2-credentials -n "${PROD_POSTGRES_NS}" -o yaml 2>/dev/null \
+        | sed "s/namespace: ${PROD_POSTGRES_NS}/namespace: ${DR_NAMESPACE}/" \
+        | sed '/resourceVersion:/d' \
+        | sed '/uid:/d' \
+        | sed '/creationTimestamp:/d' \
+        | kubectl apply -f - || {
+            log_error "failed to copy pgbackrest-r2-credentials into ${DR_NAMESPACE}"
+            PITR_RESTORE_RESULT="secret-copy-failed"
+            PITR_RESTORE_S="$(elapsed "$start")"
+            return 1
+        }
+
+    kubectl get configmap pgbackrest-config -n "${PROD_POSTGRES_NS}" -o yaml 2>/dev/null \
+        | sed "s/namespace: ${PROD_POSTGRES_NS}/namespace: ${DR_NAMESPACE}/" \
+        | sed '/resourceVersion:/d' \
+        | sed '/uid:/d' \
+        | sed '/creationTimestamp:/d' \
+        | kubectl apply -f - || {
+            log_warn "pgbackrest-config ConfigMap copy failed — may break the restore pod"
+        }
+
+    # One-shot restore pod. We do NOT reuse the dr-postgres pod because its
+    # lifecycle is initdb + psql-restore, whereas pgbackrest restore needs
+    # an empty target directory it populates itself.
+    local restore_out
+    if ! restore_out="$(kubectl run pitr-restore --rm -i --quiet --restart=Never \
+                        --image=docker.io/pgbackrest/pgbackrest:2.54.2 \
+                        -n "${DR_NAMESPACE}" \
+                        --overrides='{
+                          "spec": {
+                            "containers": [{
+                              "name": "pitr-restore",
+                              "image": "docker.io/pgbackrest/pgbackrest:2.54.2",
+                              "command": ["/bin/sh","-c"],
+                              "args": ["set -e; mkdir -p /tmp/pgdata; chmod 700 /tmp/pgdata; pgbackrest --stanza=main --type=time --target=\"'"${pitr_target}"'\" --pg1-path=/tmp/pgdata --log-level-console=info restore; ls -la /tmp/pgdata | head -20; pg_controldata /tmp/pgdata | head -10"],
+                              "envFrom": [{"secretRef": {"name": "pgbackrest-r2-credentials"}}],
+                              "volumeMounts": [
+                                {"name":"config","mountPath":"/etc/pgbackrest/pgbackrest.conf","subPath":"pgbackrest.conf","readOnly":true}
+                              ]
+                            }],
+                            "volumes": [
+                              {"name":"config","configMap":{"name":"pgbackrest-config"}}
+                            ],
+                            "restartPolicy": "Never"
+                          }
+                        }' 2>&1)"; then
+        log_error "PITR restore pod failed:"
+        echo "${restore_out}" | tail -30 >&2
+        PITR_RESTORE_RESULT="restore-failed"
+        PITR_RESTORE_S="$(elapsed "$start")"
+        return 1
+    fi
+
+    if ! echo "${restore_out}" | grep -q "pg_control version number"; then
+        log_error "restored PGDATA did not pass pg_controldata"
+        echo "${restore_out}" | tail -30 >&2
+        PITR_RESTORE_RESULT="controldata-failed"
+        PITR_RESTORE_S="$(elapsed "$start")"
+        return 1
+    fi
+
+    log_info "pg_controldata on restored PGDATA:"
+    echo "${restore_out}" | grep -E "pg_control version|catalog version|system identifier|checkpoint" | head -4
+
+    PITR_RESTORE_S="$(elapsed "$start")"
+    PITR_RESTORE_RESULT="ok"
+    log_ok "PITR restore completed in ${PITR_RESTORE_S}s"
+    return 0
+}
+
+append_dr_log_wal() {
+    if [ ! -d "${INTERNAL_DEVOPS_ROOT}/runbooks" ]; then
+        log_warn "skipping WAL dr-log append: ${INTERNAL_DEVOPS_ROOT}/runbooks not found"
+        return 0
+    fi
+
+    local note="ok"
+    if [ "$SKIP_WAL" = true ]; then note="skipped (--skip-wal)"; fi
+    if [ "$DRY_RUN" = true ]; then note="dry-run"; fi
+    if [ -n "${WAL_INFO_RESULT:-}" ] && [ "${WAL_INFO_RESULT}" != "ok" ] && [ "${WAL_INFO_RESULT}" != "dry-run" ]; then
+        note="info:${WAL_INFO_RESULT}"
+    fi
+    if [ -n "${PITR_RESTORE_RESULT:-}" ] && [ "${PITR_RESTORE_RESULT}" != "ok" ] && [ "${PITR_RESTORE_RESULT}" != "dry-run" ]; then
+        note="${note}; pitr:${PITR_RESTORE_RESULT}"
+    fi
+
+    local wal_rpo_label
+    if [ "${SKIP_WAL}" = true ]; then
+        wal_rpo_label="skipped"
+    elif [ "${WAL_LATEST_AGE_S:-0}" -gt 0 ]; then
+        wal_rpo_label="${WAL_LATEST_AGE_S}s"
+    else
+        wal_rpo_label="unknown"
+    fi
+
+    local row
+    row="| ${RUN_TS_UTC} | ${OPERATOR} | pgbackrest/main | ${WAL_INFO_S:-0} | ${PITR_RESTORE_S:-0} | 0 | ${wal_rpo_label} | $(( ${WAL_INFO_S:-0} + ${PITR_RESTORE_S:-0} ))s | wal/pitr: ${note} |"
+
+    if [ "$DRY_RUN" = false ]; then
+        printf '%s\n' "${row}" >> "${DR_LOG}"
+        log_ok "appended WAL row to ${DR_LOG}"
+    else
+        echo "  [dry-run] would append WAL row to ${DR_LOG}:"
+        echo "    ${row}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Teardown
 # ---------------------------------------------------------------------------
 
@@ -601,17 +885,57 @@ main() {
     run_sanity_queries
     compute_metrics
     append_dr_log
+
+    # ------ P1.1: WAL / PITR phase -------------------------------------
+    # Runs before teardown so the dr-test namespace is still available for
+    # the PITR restore pod. Skipped cleanly if pgBackRest is not yet
+    # configured on the cluster (pre-Step-3 of POSTGRES_WAL_ARCHIVING.md)
+    # or if --skip-wal is passed.
+    local wal_exit=0
+    if wal_phase_enabled; then
+        wal_check_archive_freshness || wal_exit=60
+        if [ "${wal_exit}" -eq 0 ]; then
+            wal_pitr_restore || wal_exit=60
+        fi
+        append_dr_log_wal
+    else
+        if [ "${SKIP_WAL}" = true ]; then
+            log_warn "WAL phase skipped (--skip-wal). Appending skipped-row to dr-log."
+        else
+            log_warn "WAL phase skipped — pgBackRest sidecar not detected on ${PROD_POSTGRES_NS}/${PROD_POSTGRES_DEPLOY}."
+            log_warn "Run POSTGRES_WAL_ARCHIVING.md bootstrap, then re-run without --skip-wal."
+        fi
+        SKIP_WAL=true
+        append_dr_log_wal
+    fi
+    # -----------------------------------------------------------------
+
     teardown
 
     echo ""
-    log_ok "=== DR DRILL PASSED ==="
-    echo "  backup:     ${BACKUP_KEY}"
-    echo "  download:   ${PHASE_DOWNLOAD_S:-0}s"
-    echo "  restore:    ${PHASE_RESTORE_S:-0}s"
-    echo "  query:      ${PHASE_QUERY_S:-0}s"
-    echo "  rpo:        ${RPO_OBSERVED_HR}"
-    echo "  rto(proxy): ${RTO_OBSERVED_S}s"
+    if [ "${wal_exit}" -eq 0 ]; then
+        log_ok "=== DR DRILL PASSED ==="
+    else
+        log_warn "=== DR DRILL PARTIAL: logical OK, WAL/PITR FAILED ==="
+    fi
+    echo "  backup:         ${BACKUP_KEY}"
+    echo "  download:       ${PHASE_DOWNLOAD_S:-0}s"
+    echo "  restore:        ${PHASE_RESTORE_S:-0}s"
+    echo "  query:          ${PHASE_QUERY_S:-0}s"
+    echo "  rpo (logical):  ${RPO_OBSERVED_HR}"
+    echo "  rto(proxy):     ${RTO_OBSERVED_S}s"
+    if [ "${SKIP_WAL}" = false ]; then
+        echo "  wal info:       ${WAL_INFO_S:-0}s (${WAL_INFO_RESULT:-n/a})"
+        echo "  wal rpo:        ${WAL_LATEST_AGE_S:-n/a}s"
+        echo "  pitr restore:   ${PITR_RESTORE_S:-0}s (${PITR_RESTORE_RESULT:-n/a})"
+    else
+        echo "  wal phase:      SKIPPED"
+    fi
     echo ""
+
+    if [ "${wal_exit}" -ne 0 ]; then
+        exit "${wal_exit}"
+    fi
 }
 
 main "$@"

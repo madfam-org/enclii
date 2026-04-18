@@ -1,0 +1,168 @@
+---
+# PostgreSQL WAL archive monitoring (P1.1).
+#
+# Three alerts cover the failure modes that actually matter for RPO:
+#
+#   PostgresWALArchiveBehind   - archive_command has not successfully
+#                                shipped a segment recently (archiver
+#                                failing or backlogged).
+#   PostgresWALLagHigh         - observed WAL lag exceeds RPO target.
+#   PostgresBackupCheckFailed  - the 15-min `pgbackrest check` CronJob
+#                                failed its last run (repo unreachable,
+#                                credentials wrong, stanza corrupt).
+#
+# Plus an informational-severity alert for the disk-pressure safety net:
+#   PostgresWALSpoolDiskHigh   - spool PVC past 80% — WAL will start
+#                                blocking Postgres if it reaches 100%.
+#
+# Metric sources:
+#   - pg_stat_archiver_*                  → postgres-exporter (already deployed)
+#   - pgbackrest_check_healthy            → node-exporter textfile collector
+#                                            (written by pgbackrest-check CronJob)
+#   - kube_job_status_*                   → kube-state-metrics
+#   - kubelet_volume_stats_*_bytes        → kubelet
+#
+# Alert priorities chosen so oncall knows what to do:
+#   critical → page immediately (archiver down, 15min+ lag)
+#   warning  → investigate within business hours (catchup lag)
+#   info     → ticket; not a page
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: postgres-wal-archive
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: postgres-wal-archive
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: backup-monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: postgres-wal-archive
+      interval: 30s
+      rules:
+        # ------------------------------------------------------------------
+        # Archiver-fail detection.
+        # pg_stat_archiver exposes last_archived_time + last_failed_time.
+        # If last_failed_time > last_archived_time (most recent event was a
+        # failure) and Postgres has been up for >2min, the archiver is stuck.
+        #
+        # Rationale for 5m window: one transient R2 hiccup should NOT page
+        # oncall at 3am. Five minutes at archive_timeout=60s is still only a
+        # 5-minute RPO hit — inside the 5-min promise.
+        # ------------------------------------------------------------------
+        - alert: PostgresWALArchiveBehind
+          expr: |
+            (
+              pg_stat_archiver_failed_count - pg_stat_archiver_failed_count offset 5m > 0
+            )
+            and
+            (
+              (pg_stat_archiver_last_archive_age_seconds > 300)
+              or
+              (pg_stat_archiver_last_archive_age_seconds == 0)
+            )
+          for: 5m
+          labels:
+            severity: critical
+            category: platform
+            component: postgres-wal-archive
+          annotations:
+            summary: "Postgres WAL archiver is behind or failing"
+            description: |
+              pg_stat_archiver shows failed_count incrementing AND no successful
+              archive in >5min. RPO is at risk. Check pgbackrest sidecar logs:
+                kubectl -n data logs deploy/postgres -c pgbackrest --tail=100
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#failure-modes
+
+        # ------------------------------------------------------------------
+        # WAL lag threshold: directly computed from pg_stat_archiver age.
+        # Triggers at 5min — the RPO budget.
+        # ------------------------------------------------------------------
+        - alert: PostgresWALLagHigh
+          expr: pg_stat_archiver_last_archive_age_seconds > 300
+          for: 2m
+          labels:
+            severity: warning
+            category: platform
+            component: postgres-wal-archive
+          annotations:
+            summary: "Postgres WAL archive lag > 5 minutes"
+            description: |
+              Most recent WAL archive is {{ $value | humanizeDuration }} old.
+              RPO target is 5 minutes. This is a warning — if it persists and
+              the archiver is failing (see failed_count), PostgresWALArchiveBehind
+              will page.
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#wal-lag
+
+        # ------------------------------------------------------------------
+        # pgbackrest check CronJob failure.
+        # Reads the pgbackrest_check_healthy gauge written by the CronJob's
+        # textfile export. When the check CronJob itself doesn't run for >30m,
+        # the metric goes stale — covered by `stale` clause.
+        # ------------------------------------------------------------------
+        - alert: PostgresBackupCheckFailed
+          expr: |
+            (pgbackrest_check_healthy{stanza="main"} == 0)
+            or
+            (
+              time() - pgbackrest_check_last_run_timestamp_seconds{stanza="main"} > 2700
+            )
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+            component: postgres-wal-archive
+          annotations:
+            summary: "pgbackrest check has failed or is stale"
+            description: |
+              Either the most recent `pgbackrest check` returned non-zero
+              (repo unreachable, stanza corrupt, creds rejected), or the
+              check CronJob has not run in the last 45 minutes.
+              Investigate: kubectl -n data get jobs -l app=pgbackrest-check
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
+
+        # ------------------------------------------------------------------
+        # Spool PVC pressure. At 100%, archive-push starts blocking Postgres'
+        # own WAL rotation. We want the alert to fire loudly at 80% so ops
+        # has at least an hour of runway on a typical DB.
+        # ------------------------------------------------------------------
+        - alert: PostgresWALSpoolDiskHigh
+          expr: |
+            kubelet_volume_stats_used_bytes{namespace="data",persistentvolumeclaim="pgbackrest-spool-pvc"}
+            /
+            kubelet_volume_stats_capacity_bytes{namespace="data",persistentvolumeclaim="pgbackrest-spool-pvc"}
+            > 0.80
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+            component: postgres-wal-archive
+          annotations:
+            summary: "pgBackRest spool PVC over 80%"
+            description: |
+              Spool usage is {{ $value | humanizePercentage }} of 20Gi. If R2
+              is unreachable, this PVC will fill and archive_command will
+              start failing. Investigate R2 reachability first, then consider
+              an emergency resize.
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#spool-pressure
+
+        # ------------------------------------------------------------------
+        # Meta: absence-of-backup alert. If neither the full nor diff
+        # CronJob has succeeded in >36h, something is systemically wrong.
+        # ------------------------------------------------------------------
+        - alert: PostgresBackupJobsStale
+          expr: |
+            time() - max(kube_job_status_completion_time{namespace="data",job_name=~"pgbackrest-backup-.*"}) > 129600
+          for: 15m
+          labels:
+            severity: warning
+            category: platform
+            component: postgres-wal-archive
+          annotations:
+            summary: "No successful pgBackRest full/diff backup in >36h"
+            description: |
+              Last successful pgbackrest-backup-{{full|diff}} Job completion is
+              over 36 hours ago. Expected cadence: full weekly, diff daily.
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#backup-cadence
