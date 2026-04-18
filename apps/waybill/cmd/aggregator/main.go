@@ -2,21 +2,24 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/XSAM/otelsql"
 	_ "github.com/lib/pq"
+	"github.com/robfig/cron/v3"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.uber.org/zap"
+
 	"github.com/madfam-org/enclii/apps/waybill/internal/aggregation"
 	"github.com/madfam-org/enclii/apps/waybill/internal/alerts"
 	"github.com/madfam-org/enclii/apps/waybill/internal/budgets"
 	"github.com/madfam-org/enclii/apps/waybill/internal/config"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
-	"github.com/robfig/cron/v3"
-	"go.uber.org/zap"
+	"github.com/madfam-org/enclii/apps/waybill/internal/telemetry"
 )
 
 func main() {
@@ -38,8 +41,24 @@ func main() {
 		logger.Fatal("DATABASE_URL is required")
 	}
 
-	// Connect to database
-	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	// P2.5: OpenTelemetry — service.name=waybill-aggregator.
+	env := os.Getenv("APP_ENV")
+	otelShutdown := telemetry.SetupWithName(context.Background(), "waybill-aggregator", env, logger)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(ctx); err != nil {
+			logger.Warn("OpenTelemetry shutdown returned error", zap.Error(err))
+		}
+	}()
+
+	// Connect to database with otelsql — aggregator runs heavy SELECT/
+	// INSERT cycles on the hour; slow queries are the #1 suspect when
+	// aggregation latency grows. Child spans per query give us direct
+	// signal.
+	db, err := otelsql.Open("postgres", cfg.DatabaseURL,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+	)
 	if err != nil {
 		logger.Fatal("failed to connect to database", zap.Error(err))
 	}

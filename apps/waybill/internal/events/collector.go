@@ -8,8 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
+
+// tracer — events package emits spans under this name.
+var tracer = otel.Tracer("waybill/events")
 
 // Collector handles event ingestion
 type Collector struct {
@@ -25,8 +30,19 @@ func NewCollector(db *sql.DB, logger *zap.Logger) *Collector {
 	}
 }
 
-// Record stores a usage event
+// Record stores a usage event.
+//
+// Span "events.record" so we can attribute billing-event ingest latency
+// separately from the surrounding HTTP handler. event_type is a low-
+// cardinality attribute (well-known enum) — safe to tag.
 func (c *Collector) Record(ctx context.Context, req *EventRequest) (*UsageEvent, error) {
+	ctx, span := tracer.Start(ctx, "events.record")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("event.type", string(req.EventType)),
+		attribute.String("event.resource_type", string(req.ResourceType)),
+	)
+
 	event := &UsageEvent{
 		ID:           uuid.New(),
 		ProjectID:    req.ProjectID,

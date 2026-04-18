@@ -2,9 +2,11 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.uber.org/zap"
+
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/webhook"
-	"go.uber.org/zap"
 )
 
 // Server represents the API server
@@ -20,6 +22,9 @@ func NewServer(q *queue.RedisQueue, cfg *ServerConfig, logger *zap.Logger) *Serv
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	// OTel: emit a SERVER span for every inbound request before the logger
+	// so log lines captured during request processing carry trace_id.
+	router.Use(otelgin.Middleware("roundhouse"))
 	router.Use(requestLogger(logger))
 
 	handlers := NewHandlers(q, logger)

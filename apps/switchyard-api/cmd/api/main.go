@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"math/rand"
 	"net/http"
 	"os"
@@ -10,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/XSAM/otelsql"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/api"
@@ -36,6 +37,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/telemetry"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"
@@ -125,12 +127,57 @@ func main() {
 		logrus.Fatal("Failed to initialize logger:", err)
 	}
 
-	// Connect to database with connection pooling
-	database, err := sql.Open("postgres", cfg.DatabaseURL)
+	// -------------------------------------------------------------------
+	// P2.5: OpenTelemetry distributed tracing.
+	//
+	// Wired via packages/otel-go so every MADFAM Go service shares one
+	// SDK bootstrap path. The shared package:
+	//   - Exports spans to Tempo (tempo.observability.svc.cluster.local:4317)
+	//   - Applies parent-based sampling (default 0.1 prod / 1.0 elsewhere)
+	//   - Drops attributes whose keys look like credentials (password,
+	//     token, authorization, etc.) before they leave the process
+	//   - Installs a logrus hook so every log line with an active span
+	//     context carries trace_id + span_id (for Loki<->Tempo pivots)
+	//
+	// The returned shutdown is bounded to 5s — don't let a stuck exporter
+	// hold SIGTERM past the pod termination grace period.
+	//
+	// This replaces the earlier half-wired OTel in internal/logging, which
+	// never received an OTLP endpoint at boot and so silently dropped
+	// every span.
+	// -------------------------------------------------------------------
+	otelShutdown := telemetry.Setup(context.Background(), cfg.Environment)
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			logrus.WithError(err).Warn("OpenTelemetry shutdown returned error")
+		}
+	}()
+
+	// Connect to database with connection pooling.
+	//
+	// otelsql.Open wraps lib/pq so every query emits a child span with
+	// db.system=postgresql, db.statement sanitized. Queries inherit the
+	// trace context from the caller (e.g., the inbound HTTP request).
+	database, err := otelsql.Open("postgres", cfg.DatabaseURL,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+		otelsql.WithSpanOptions(otelsql.SpanOptions{
+			OmitConnPrepare: true, // reduces noise; prepared statements are per-conn
+			OmitRows:        true, // Rows iteration spans are rarely useful
+		}),
+	)
 	if err != nil {
 		logrus.Fatal("Failed to connect to database:", err)
 	}
 	defer func() { _ = database.Close() }()
+
+	// Register DB pool metrics with OTel (optional but cheap).
+	if err := otelsql.RegisterDBStatsMetrics(database,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+	); err != nil {
+		logrus.WithError(err).Warn("Failed to register DB stats metrics (non-fatal)")
+	}
 
 	// Configure connection pool (matches db.DefaultDatabaseConfig() settings)
 	database.SetMaxOpenConns(25)

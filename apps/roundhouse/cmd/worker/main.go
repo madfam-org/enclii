@@ -4,11 +4,14 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/config"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/telemetry"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/worker"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -24,6 +27,17 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
+
+	// P2.5: OpenTelemetry for worker binary. service.name=roundhouse-worker.
+	env := os.Getenv("APP_ENV")
+	otelShutdown := telemetry.SetupWithName(context.Background(), "roundhouse-worker", env, logger)
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			logger.Warn("OpenTelemetry shutdown returned error", zap.Error(err))
+		}
+	}()
 
 	// Validate required config
 	if cfg.RedisURL == "" {

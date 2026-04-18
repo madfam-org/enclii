@@ -13,14 +13,23 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/madfam-org/enclii/apps/roundhouse/internal/builder"
-	"github.com/madfam-org/enclii/apps/roundhouse/internal/config"
-	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/builder"
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/config"
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/telemetry"
 )
+
+// tracer — worker package emits spans under this name.
+var tracer = otel.Tracer("roundhouse/worker")
 
 // Processor handles build job processing
 type Processor struct {
@@ -107,14 +116,20 @@ func NewProcessor(cfg *config.Config, q *queue.RedisQueue, logger *zap.Logger) (
 	}
 
 	p := &Processor{
-		workerID:   workerID,
-		queue:      q,
-		builder:    b,
-		cfg:        cfg,
-		logger:     logger,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		semaphore:  make(chan struct{}, cfg.MaxConcurrentBuilds),
-		shutdown:   make(chan struct{}),
+		workerID: workerID,
+		queue:    q,
+		builder:  b,
+		cfg:      cfg,
+		logger:   logger,
+		// otelhttp.NewTransport emits CLIENT spans for every callback to
+		// Switchyard, linking the worker's job span to switchyard-api's
+		// inbound request via standard W3C traceparent propagation.
+		httpClient: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
+		semaphore: make(chan struct{}, cfg.MaxConcurrentBuilds),
+		shutdown:  make(chan struct{}),
 		callbackRetry: queue.CallbackRetryConfig{
 			MaxAttempts:     5,
 			InitialInterval: 10 * time.Second,
@@ -218,10 +233,24 @@ func (p *Processor) Start(ctx context.Context) error {
 }
 
 func (p *Processor) processJob(ctx context.Context, job *queue.BuildJob) {
+	// Span boundary for one build job — wraps status updates, builder
+	// execution, result storage, and callback. Failures mark the span as
+	// error so "error rate by span_name" in Tempo makes sense.
+	ctx, span := tracer.Start(ctx, "worker.processJob")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("job.id", job.ID.String()),
+		attribute.String("job.service_id", job.ServiceID.String()),
+		attribute.String("job.git_sha_short", shortSHA(job.GitSHA)),
+		attribute.String("job.build_mode", p.cfg.BuildMode),
+	)
+
 	logger := p.logger.With(
-		zap.String("job_id", job.ID.String()),
-		zap.String("service_id", job.ServiceID.String()),
-		zap.String("git_sha", job.GitSHA[:8]),
+		append([]zap.Field{
+			zap.String("job_id", job.ID.String()),
+			zap.String("service_id", job.ServiceID.String()),
+			zap.String("git_sha", shortSHA(job.GitSHA)),
+		}, telemetry.TraceIDFields(ctx)...)...,
 	)
 
 	logger.Info("processing job")
@@ -235,19 +264,30 @@ func (p *Processor) processJob(ctx context.Context, job *queue.BuildJob) {
 	buildCtx, cancel := context.WithTimeout(ctx, p.cfg.BuildTimeout)
 	defer cancel()
 
-	// Execute build using configured builder (Docker or Kaniko)
-	result, err := p.builder.Execute(buildCtx, job)
+	// Execute build using configured builder (Docker or Kaniko) — nested
+	// span so the timing attribution splits build vs. surrounding work.
+	buildCtxSpan, buildSpan := tracer.Start(buildCtx, "worker.build.Execute")
+	result, err := p.builder.Execute(buildCtxSpan, job)
+	buildSpan.End()
 
 	// Update final status
 	var finalStatus queue.JobStatus
 	if err != nil || !result.Success {
 		finalStatus = queue.StatusFailed
+		span.SetStatus(codes.Error, result.ErrorMessage)
+		if err != nil {
+			span.RecordError(err)
+		}
 		logger.Error("build failed",
 			zap.String("error", result.ErrorMessage),
 			zap.Float64("duration_secs", result.DurationSecs),
 		)
 	} else {
 		finalStatus = queue.StatusCompleted
+		span.SetAttributes(
+			attribute.String("image.uri_host", imageHost(result.ImageURI)),
+			attribute.Float64("build.duration_seconds", result.DurationSecs),
+		)
 		logger.Info("build completed",
 			zap.String("image_uri", result.ImageURI),
 			zap.Float64("duration_secs", result.DurationSecs),
@@ -456,4 +496,27 @@ func (p *Processor) Stats() map[string]interface{} {
 		"active_builds":   len(p.semaphore),
 		"available_slots": p.cfg.MaxConcurrentBuilds - len(p.semaphore),
 	}
+}
+
+// shortSHA returns the first 7 characters of a git SHA for use as a span
+// attribute. Avoids leaking full SHAs which can be 40 characters and bloat
+// trace payloads.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
+// imageHost returns just the registry host (e.g. "ghcr.io") from a full
+// image URI. Spans get the host but not the full image path — enough to
+// attribute egress by registry without leaking tenant-specific image
+// names into trace data.
+func imageHost(uri string) string {
+	for i, c := range uri {
+		if c == '/' {
+			return uri[:i]
+		}
+	}
+	return uri
 }
