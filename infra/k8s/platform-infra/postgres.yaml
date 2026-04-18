@@ -92,8 +92,12 @@ spec:
       # bumps a simple image tag change here.
       initContainers:
         - name: pgbackrest-binary
-          # Pinned image — bump via PR after testing in staging.
-          image: docker.io/pgbackrest/pgbackrest:2.54.2
+          # Community-maintained pgBackRest image. The official
+          # pgbackrest/pgbackrest repo on Docker Hub was removed; woblerr
+          # is the standard Alpine-based community image. Binary lives
+          # at /usr/bin/pgbackrest (same path as the old image), so the
+          # copy step below needs no change.
+          image: docker.io/woblerr/pgbackrest:2.55.1-alpine
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -234,7 +238,7 @@ spec:
         #   - Operator `kubectl exec` into the sidecar keeps pgbackrest ops
         #     off the Postgres container's attack surface.
         - name: pgbackrest
-          image: docker.io/pgbackrest/pgbackrest:2.54.2
+          image: docker.io/woblerr/pgbackrest:2.55.1-alpine
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
