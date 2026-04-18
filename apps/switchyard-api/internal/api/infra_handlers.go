@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // ── Request / Response types ────────────────────────────────────────
@@ -327,6 +329,33 @@ func (h *Handler) ScaleService(c *gin.Context) {
 		logging.String("service", svc.Name),
 		logging.Field{Key: "replicas", Value: req.Replicas},
 	)
+
+	// P2.3: fan out service.scaled to outbound webhook subscribers.
+	// Non-blocking — the HTTP response to the scale call is unaffected
+	// by webhook delivery success/failure. We snapshot primitives here
+	// before launching the goroutine so we never touch c after return.
+	if h.webhookDispatcher != nil {
+		data := map[string]any{
+			"service_id":   svc.ID.String(),
+			"service_name": svc.Name,
+			"env":          env,
+			"to_replicas":  req.Replicas,
+			"actor":        c.GetString("user_email"),
+		}
+		projectID := svc.ProjectID
+		svcName := svc.Name
+		go func() {
+			bg := context.Background()
+			if err := h.webhookDispatcher.Dispatch(
+				bg, projectID, nil,
+				types.OutboundEventServiceScaled, data,
+			); err != nil {
+				h.logger.Warn(bg, "service.scaled webhook dispatch failed",
+					logging.String("service", svcName),
+					logging.Error("dispatch_error", err))
+			}
+		}()
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":      fmt.Sprintf("Scaled %s to %d replicas", svc.Name, req.Replicas),

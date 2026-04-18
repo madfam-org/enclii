@@ -157,6 +157,15 @@ type Config struct {
 	// query_range calls. Default 32/min matches Vercel/Railway parity.
 	LokiQueryBudgetPerMinute int
 	LokiQueryBudgetBurst     int
+
+	// Outbound Lifecycle Webhooks (P2.3)
+	// WebhookMasterKeyB64 is a base64-encoded 32-byte key used to
+	// AES-256-GCM encrypt per-subscription signing secrets at rest.
+	// When unset, the entire outbound-webhook feature is disabled.
+	WebhookMasterKeyB64 string
+	// WebhookWorkerPool sizes the background delivery goroutine pool
+	// (default 5).
+	WebhookWorkerPool int
 }
 
 func Load() (*Config, error) {
@@ -246,6 +255,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("loki-query-budget-per-minute", 32) // per-caller
 	viper.SetDefault("loki-query-budget-burst", 8)
 
+	// Outbound lifecycle webhooks (P2.3)
+	viper.SetDefault("webhook-master-key", "") // ENCLII_WEBHOOK_MASTER_KEY — base64 32-byte; empty disables feature
+	viper.SetDefault("webhook-worker-pool", 5) // ENCLII_WEBHOOK_WORKER_POOL — goroutine count
+
 	// Parse log level
 	logLevelStr := viper.GetString("log-level")
 	logLevel, err := logrus.ParseLevel(logLevelStr)
@@ -327,6 +340,8 @@ func Load() (*Config, error) {
 		LokiURL:                    viper.GetString("loki-url"),
 		LokiQueryBudgetPerMinute:   viper.GetInt("loki-query-budget-per-minute"),
 		LokiQueryBudgetBurst:       viper.GetInt("loki-query-budget-burst"),
+		WebhookMasterKeyB64:        viper.GetString("webhook-master-key"),
+		WebhookWorkerPool:          viper.GetInt("webhook-worker-pool"),
 	}
 
 	// SEC-001: Validate required configuration
