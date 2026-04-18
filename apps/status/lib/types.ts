@@ -20,7 +20,11 @@ export interface ServiceConfig {
   name: string
   url: string          // Health check URL (used for monitoring)
   href?: string        // User-facing URL (used for links). Falls back to url.
-  group: string
+  group: string       // Fine-grained product grouping (e.g. "Karafiel", "Dhanam")
+  family?: string     // Optional product family (e.g. "MADFAM Platform"). When set,
+                      // the UI renders a family -> group -> services two-level accordion.
+                      // When absent for every service, the UI falls back to the existing
+                      // single-level group accordion (no behavioural change).
   description?: string
 }
 
@@ -32,6 +36,7 @@ export interface HealthCheckResult {
   url: string
   href?: string        // User-facing URL for display links
   group: string
+  family?: string      // Optional product family (see ServiceConfig.family)
   description?: string
   status: ServiceStatus
   responseTime: number | null

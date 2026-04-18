@@ -10,6 +10,9 @@ import { ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 
 const STORAGE_KEY = 'status-groups-expanded'
+const FAMILY_STORAGE_KEY = 'status-families-expanded'
+
+const DEFAULT_FAMILY = 'Other'
 
 function loadExpandedGroups(): Set<string> | null {
   try {
@@ -22,6 +25,20 @@ function loadExpandedGroups(): Set<string> | null {
 function saveExpandedGroups(groups: Set<string>) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...groups]))
+  } catch { /* SSR safety */ }
+}
+
+function loadExpandedFamilies(): Set<string> | null {
+  try {
+    const stored = localStorage.getItem(FAMILY_STORAGE_KEY)
+    if (stored) return new Set(JSON.parse(stored))
+  } catch { /* SSR or parse error */ }
+  return null
+}
+
+function saveExpandedFamilies(families: Set<string>) {
+  try {
+    localStorage.setItem(FAMILY_STORAGE_KEY, JSON.stringify([...families]))
   } catch { /* SSR safety */ }
 }
 
@@ -114,6 +131,107 @@ export function ServiceGroup({
                 thresholds={thresholds}
               />
             )
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface ServiceFamilyProps {
+  name: string
+  groupedServices: Array<[string, HealthCheckResult[]]>
+  uptimeData?: Record<string, UptimeData>
+  isExpanded: boolean
+  onToggle: () => void
+  variant?: 'card' | 'compact'
+  thresholds?: ResponseTimeThresholds
+  maxResponseTime?: number
+  expandedGroups: Set<string>
+  initialized: boolean
+  onToggleGroup: (name: string) => void
+}
+
+/**
+ * Family-level wrapper that groups multiple product `group`s under one
+ * collapsible product family header. Reuses ServiceGroup for inner rendering —
+ * does NOT change the service-level row layout.
+ */
+export function ServiceFamily({
+  name,
+  groupedServices,
+  uptimeData,
+  isExpanded,
+  onToggle,
+  variant = 'card',
+  thresholds,
+  maxResponseTime,
+  expandedGroups,
+  initialized,
+  onToggleGroup,
+}: ServiceFamilyProps) {
+  const allServices = groupedServices.flatMap(([, s]) => s)
+  const familyStatus = calculateOverallStatus(allServices)
+  const operationalCount = allServices.filter(s => s.status === 'operational').length
+  const operationalPct = allServices.length === 0
+    ? 100
+    : Math.round((operationalCount / allServices.length) * 100)
+
+  return (
+    <div className={cn(
+      'border border-border rounded-lg bg-card/30 overflow-hidden',
+      !isExpanded && familyStatus === 'outage' && 'border-l-4 border-l-status-outage',
+      !isExpanded && familyStatus === 'degraded' && 'border-l-4 border-l-status-degraded',
+      !isExpanded && familyStatus === 'maintenance' && 'border-l-4 border-l-status-maintenance',
+    )}>
+      <button
+        onClick={onToggle}
+        className={cn(
+          'w-full flex items-center justify-between p-4',
+          'hover:bg-muted/40 transition-colors text-left',
+        )}
+        aria-expanded={isExpanded}
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StatusBadge status={familyStatus} showLabel={false} size="sm" />
+          <h2 className="text-xl font-semibold">{name}</h2>
+          <span className="text-sm text-muted-foreground">
+            ({allServices.length} {allServices.length === 1 ? 'service' : 'services'},{' '}
+            {groupedServices.length} {groupedServices.length === 1 ? 'group' : 'groups'})
+          </span>
+          <span className={cn(
+            'text-xs font-mono',
+            operationalPct === 100
+              ? 'text-status-operational'
+              : operationalPct >= 75
+                ? 'text-status-degraded'
+                : 'text-status-outage',
+          )}>
+            {operationalPct}% operational
+          </span>
+        </div>
+        <ChevronDown
+          className={cn(
+            'size-5 text-muted-foreground transition-transform duration-200',
+            isExpanded && 'rotate-180',
+          )}
+        />
+      </button>
+
+      {isExpanded && (
+        <div className="border-t border-border p-3 space-y-3">
+          {groupedServices.map(([groupName, groupServices]) => (
+            <ServiceGroup
+              key={groupName}
+              name={groupName}
+              services={groupServices}
+              uptimeData={uptimeData}
+              variant={variant}
+              isExpanded={!initialized || expandedGroups.has(groupName)}
+              onToggle={() => onToggleGroup(groupName)}
+              thresholds={thresholds}
+              maxResponseTime={maxResponseTime}
+            />
           ))}
         </div>
       )}
@@ -223,6 +341,90 @@ export function ServiceList({
 
   // Before localStorage is loaded, default all expanded (SSR-safe)
   const isExpanded = (name: string) => !initialized || expandedGroups.has(name)
+
+  // --- Family-level grouping (S1) ---
+  // When any service has a `family`, wrap groups in family accordions. Otherwise
+  // fall back to the original single-level list so there's zero change for
+  // deployments that haven't opted in yet.
+  const hasFamilies = groupBy === 'group'
+    && services.some(s => s.family && s.family.length > 0)
+
+  // Build family -> group -> services mapping.
+  const familyMap = new Map<string, Map<string, HealthCheckResult[]>>()
+  if (hasFamilies) {
+    for (const [groupName, groupServices] of sortedGroups) {
+      // Family for this group = family of first member (fall back to "Other")
+      const family = groupServices[0]?.family ?? DEFAULT_FAMILY
+      if (!familyMap.has(family)) familyMap.set(family, new Map())
+      familyMap.get(family)!.set(groupName, groupServices)
+    }
+  }
+  const familyNames = [...familyMap.keys()].sort((a, b) => {
+    // Push "Other" to the end
+    if (a === DEFAULT_FAMILY) return 1
+    if (b === DEFAULT_FAMILY) return -1
+    return a.localeCompare(b)
+  })
+
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(
+    () => new Set(familyNames),
+  )
+
+  useEffect(() => {
+    if (!hasFamilies) return
+    const stored = loadExpandedFamilies()
+    if (stored) {
+      const valid = new Set([...stored].filter(f => familyNames.includes(f)))
+      setExpandedFamilies(valid)
+    }
+  }, [hasFamilies]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleFamily = useCallback((name: string) => {
+    setExpandedFamilies(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name); else next.add(name)
+      saveExpandedFamilies(next)
+      return next
+    })
+  }, [])
+
+  const isFamilyExpanded = (name: string) => !initialized || expandedFamilies.has(name)
+
+  if (hasFamilies) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-end">
+          <button
+            onClick={toggleAll}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronsUpDown className="size-3.5" />
+            {allExpanded ? 'Collapse All Groups' : 'Expand All Groups'}
+          </button>
+        </div>
+        {familyNames.map(familyName => {
+          const groupsInFamily = [...familyMap.get(familyName)!.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+          return (
+            <ServiceFamily
+              key={familyName}
+              name={familyName}
+              groupedServices={groupsInFamily}
+              uptimeData={uptimeData}
+              variant={variant}
+              isExpanded={isFamilyExpanded(familyName)}
+              onToggle={() => toggleFamily(familyName)}
+              thresholds={thresholds}
+              maxResponseTime={maxResponseTime}
+              expandedGroups={expandedGroups}
+              initialized={initialized}
+              onToggleGroup={toggleGroup}
+            />
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

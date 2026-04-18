@@ -82,6 +82,28 @@ describe('getSiteConfig', () => {
     expect(config.services[1].group).toBe('Core')
   })
 
+  it('preserves optional `family` field on services (RFC 0002 S1)', () => {
+    process.env.SERVICES_CONFIG = JSON.stringify([
+      {
+        name: 'Karafiel API',
+        url: 'https://api.karafiel.mx/health',
+        group: 'Karafiel',
+        family: 'MADFAM Platform',
+      },
+      {
+        // No family — legacy entry, should still parse.
+        name: 'Legacy Thing',
+        url: 'https://legacy.example.com',
+        group: 'Legacy',
+      },
+    ])
+
+    const config = getSiteConfig()
+    expect(config.services).toHaveLength(2)
+    expect(config.services[0].family).toBe('MADFAM Platform')
+    expect(config.services[1].family).toBeUndefined()
+  })
+
   it('falls back to defaults on invalid JSON', () => {
     process.env.SERVICES_CONFIG = 'not valid json {'
 
