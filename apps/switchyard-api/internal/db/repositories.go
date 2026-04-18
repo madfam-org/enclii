@@ -35,6 +35,7 @@ type Repositories struct {
 	DatabaseAddons      *DatabaseAddonRepository
 	Templates           *TemplateRepository
 	Webhooks            *WebhookRepository
+	OutboundWebhooks    *OutboundWebhookRepository
 	CIRuns              *CIRunRepository
 	Functions           *FunctionRepository
 
@@ -106,6 +107,7 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		DatabaseAddons:      NewDatabaseAddonRepositoryWithTx(tx),
 		Templates:           NewTemplateRepositoryWithTx(tx),
 		Webhooks:            NewWebhookRepositoryWithTx(tx),
+		OutboundWebhooks:    NewOutboundWebhookRepositoryWithTx(tx),
 		CIRuns:              NewCIRunRepositoryWithTx(tx),
 		Functions:           NewFunctionRepositoryWithTx(tx),
 
@@ -176,6 +178,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		DatabaseAddons:      NewDatabaseAddonRepository(db),
 		Templates:           NewTemplateRepository(db),
 		Webhooks:            NewWebhookRepository(db),
+		OutboundWebhooks:    NewOutboundWebhookRepository(db),
 		CIRuns:              NewCIRunRepository(db),
 		Functions:           NewFunctionRepository(db),
 

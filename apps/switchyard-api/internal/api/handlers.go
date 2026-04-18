@@ -24,6 +24,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -93,6 +94,14 @@ type Handler struct {
 	// /v1/services/:id/logs/tail against Loki. Optional; if nil the
 	// routes return 503. See internal/logstream/.
 	logsHandler *logstream.Handler
+
+	// Outbound lifecycle webhooks (P2.3). Dispatcher fans lifecycle
+	// events out to customer-configured HTTPS subscriptions; encryptor
+	// owns the at-rest crypto for signing secrets. Both optional — when
+	// nil the /webhooks endpoints return 503 and emitLifecycleEvent
+	// simply skips the fan-out step.
+	webhookDispatcher *webhooks.Dispatcher
+	webhookEncryptor  *webhooks.Encryptor
 }
 
 // NewHandler creates a new API handler with all dependencies
@@ -239,6 +248,16 @@ func (h *Handler) SetAuditHandler(handler *audit.Handler) {
 // already provide coverage.
 func (h *Handler) SetLogsHandler(handler *logstream.Handler) {
 	h.logsHandler = handler
+}
+
+// SetWebhookDispatcher wires the outbound lifecycle webhook fan-out
+// path (P2.3). When nil, emitLifecycleEvent skips dispatch and the
+// CRUD endpoints return 503. The encryptor is required alongside — it
+// is used both by the handler (create/rotate) and by the worker
+// (decrypting for signing at send time).
+func (h *Handler) SetWebhookDispatcher(d *webhooks.Dispatcher, enc *webhooks.Encryptor) {
+	h.webhookDispatcher = d
+	h.webhookEncryptor = enc
 }
 
 // SetTunnelRoutesService sets the tunnel routes service for automatic cloudflared route management
@@ -615,6 +634,23 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/projects/:slug/junctions", h.ListJunctions)
 			protected.GET("/junctions/:id", h.GetJunction)
 			protected.DELETE("/junctions/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteJunction)
+
+			// Outbound Lifecycle Webhooks (P2.3)
+			// Customer-configured HTTPS endpoints that receive signed
+			// deploy/rollback/scale events. Distinct from the
+			// notification-webhook Slack/Discord integrations above:
+			// these are HMAC-signed, at-least-once delivered, with
+			// retries + DLQ + redelivery controls.
+			protected.GET("/lifecycle-webhooks/event-types", h.GetOutboundWebhookEventTypes)
+			protected.POST("/projects/:slug/lifecycle-webhooks", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateOutboundWebhook)
+			protected.GET("/projects/:slug/lifecycle-webhooks", h.ListOutboundWebhooks)
+			protected.GET("/lifecycle-webhooks/:sub_id", h.GetOutboundWebhook)
+			protected.PATCH("/lifecycle-webhooks/:sub_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateOutboundWebhook)
+			protected.DELETE("/lifecycle-webhooks/:sub_id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteOutboundWebhook)
+			protected.POST("/lifecycle-webhooks/:sub_id/rotate-secret", h.auth.RequireRole(string(types.RoleDeveloper)), h.RotateOutboundWebhookSecret)
+			protected.POST("/lifecycle-webhooks/:sub_id/test", h.auth.RequireRole(string(types.RoleDeveloper)), h.TestOutboundWebhook)
+			protected.GET("/lifecycle-webhooks/:sub_id/deliveries", h.ListOutboundWebhookDeliveries)
+			protected.POST("/lifecycle-webhooks/:sub_id/deliveries/:delivery_id/redeliver", h.auth.RequireRole(string(types.RoleDeveloper)), h.RedeliverOutboundWebhook)
 
 			// Notification Webhooks (Slack/Discord/Telegram/Custom)
 			protected.POST("/projects/:slug/webhooks", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateWebhook)

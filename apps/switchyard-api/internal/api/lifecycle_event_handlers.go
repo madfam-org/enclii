@@ -442,23 +442,113 @@ func (h *Handler) findOrCreateReleaseWithStatus(ctx interface{ Value(any) any },
 	return release, nil
 }
 
-// emitLifecycleEvent is a helper to emit a lifecycle event (non-blocking, best-effort)
+// emitLifecycleEvent is a helper to emit a lifecycle event (non-blocking, best-effort).
+// It both (a) persists the canonical event into deployment_lifecycle_events and
+// (b) fans the event out to any configured outbound webhook subscriptions
+// for the owning project (P2.3). Both steps run in the same goroutine so
+// the fan-out sees the persisted event ID when available.
 func (h *Handler) emitLifecycleEvent(event *types.DeploymentLifecycleEvent) {
 	if event.TargetEnv == nil {
 		env := types.DeriveTargetEnv(event.Branch)
 		event.TargetEnv = &env
 	}
 	go func() {
-		if err := h.repos.LifecycleEvents.Create(
-			// Use background context since this runs async
-			context.Background(),
-			event,
-		); err != nil {
+		bgCtx := context.Background()
+		if err := h.repos.LifecycleEvents.Create(bgCtx, event); err != nil {
 			// Non-blocking — log but don't fail the parent operation
-			h.logger.Error(context.Background(), "Failed to emit lifecycle event (non-blocking)",
+			h.logger.Error(bgCtx, "Failed to emit lifecycle event (non-blocking)",
 				logging.String("event_type", event.EventType),
 				logging.String("repo", event.RepoFullName),
 				logging.Error("db_error", err))
+			// Even on persist failure we can still try to dispatch the
+			// webhook since the payload is self-contained — but we
+			// won't have a lifecycle_event_id to link back to.
 		}
+
+		// P2.3: fan out to outbound webhook subscriptions
+		h.dispatchOutboundWebhook(bgCtx, event)
 	}()
+}
+
+// dispatchOutboundWebhook translates an internal lifecycle event into
+// one of the public outbound event types and hands it to the
+// dispatcher. Events that don't map to a public type are silently
+// dropped (not every internal event is worth publishing).
+func (h *Handler) dispatchOutboundWebhook(ctx context.Context, event *types.DeploymentLifecycleEvent) {
+	if h.webhookDispatcher == nil || event.ProjectID == nil {
+		return
+	}
+	outboundType, ok := mapLifecycleToOutbound(event.EventType)
+	if !ok {
+		return
+	}
+	data := buildOutboundData(event)
+
+	var lifecycleID *uuid.UUID
+	if event.ID != uuid.Nil {
+		idCopy := event.ID
+		lifecycleID = &idCopy
+	}
+
+	if err := h.webhookDispatcher.Dispatch(ctx, *event.ProjectID, lifecycleID, outboundType, data); err != nil {
+		h.logger.Warn(ctx, "Outbound webhook dispatch failed (non-blocking)",
+			logging.String("event_type", string(outboundType)),
+			logging.String("project_id", event.ProjectID.String()),
+			logging.Error("dispatch_error", err))
+	}
+}
+
+// mapLifecycleToOutbound converts the internal lifecycle event types
+// (push_received / build_started / deploy_healthy / etc) to the public
+// outbound catalogue. Only events that are actionable for customers
+// are forwarded.
+func mapLifecycleToOutbound(internal string) (types.OutboundWebhookEventType, bool) {
+	switch internal {
+	case types.LifecycleDeployStarted:
+		return types.OutboundEventDeployStarted, true
+	case types.LifecycleDeploySynced, types.LifecycleDeployHealthy:
+		return types.OutboundEventDeploySucceeded, true
+	case types.LifecycleDeployFailed, types.LifecycleDeployDegraded:
+		return types.OutboundEventDeployFailed, true
+	// Rollback path uses ad-hoc event strings because the internal
+	// catalogue in deployment_lifecycle.go didn't include rollback
+	// when this was written. See instant_rollback_handlers.go —
+	// `deploy.rolled_back` success / `deploy.rollback_failed`.
+	case "deploy.rolled_back":
+		return types.OutboundEventRollbackSuccess, true
+	default:
+		return "", false
+	}
+}
+
+// buildOutboundData projects the internal DeploymentLifecycleEvent
+// into the public `data` payload. We keep the public surface narrow on
+// purpose — customers shouldn't depend on internal fields that may
+// churn (see OutboundWebhookAPIVersion for when we bump).
+func buildOutboundData(event *types.DeploymentLifecycleEvent) map[string]any {
+	data := map[string]any{
+		"repo_full_name": event.RepoFullName,
+		"commit_sha":     event.CommitSHA,
+		"branch":         event.Branch,
+	}
+	if event.DeploymentID != nil {
+		data["deployment_id"] = event.DeploymentID.String()
+	}
+	if event.ServiceID != nil {
+		data["service_id"] = event.ServiceID.String()
+	}
+	if event.ReleaseID != nil {
+		data["release_id"] = event.ReleaseID.String()
+	}
+	if event.TargetEnv != nil {
+		data["env"] = *event.TargetEnv
+	}
+	if event.Message != nil {
+		data["message"] = *event.Message
+	}
+	for k, v := range event.Metadata {
+		// Prefix metadata keys to avoid shadowing canonical fields.
+		data["meta_"+k] = v
+	}
+	return data
 }

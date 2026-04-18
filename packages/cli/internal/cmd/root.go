@@ -75,6 +75,9 @@ Learn more at https://enclii.dev`,
 	// Canary rollouts (P2.7 — `enclii deploy --canary=N%` + `enclii canary status|promote|rollback`)
 	rootCmd.AddCommand(NewCanaryCommand(cfg))
 
+	// Outbound lifecycle webhooks (P2.3)
+	rootCmd.AddCommand(NewWebhooksCommand(cfg))
+
 	return rootCmd
 }
 

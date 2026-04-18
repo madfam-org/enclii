@@ -38,6 +38,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"
 )
 
 // initRedisWithRetry attempts to connect to Redis with exponential backoff.
@@ -589,6 +590,40 @@ func main() {
 		} else {
 			logrus.Warn("⚠ Loki log tail DISABLED (ENCLII_LOKI_URL not set); /v1/services/:id/logs returns 503")
 		}
+	}
+
+	// -------------------------------------------------------------------
+	// P2.3: Outbound lifecycle webhooks — dispatcher + worker
+	// -------------------------------------------------------------------
+	// The master key is optional in dev (signing-secret storage disabled
+	// when absent — CRUD endpoints return 503 and emitLifecycleEvent
+	// skips the fan-out branch). In prod the secret must be mounted
+	// from the K8s Secret owned by the vault team.
+	if cfg.WebhookMasterKeyB64 != "" {
+		masterKey, err := webhooks.LoadMasterKey(cfg.WebhookMasterKeyB64)
+		if err != nil {
+			logrus.Fatalf("Invalid ENCLII_WEBHOOK_MASTER_KEY: %v", err)
+		}
+		encryptor, err := webhooks.NewEncryptor(masterKey)
+		if err != nil {
+			logrus.Fatalf("Init webhook encryptor: %v", err)
+		}
+		webhookLog := webhooks.NewLoggingAdapter(logger)
+		dispatcher := webhooks.NewDispatcher(repos, webhookLog)
+		apiHandler.SetWebhookDispatcher(dispatcher, encryptor)
+		workerCfg := webhooks.WorkerConfig{
+			PoolSize:       cfg.WebhookWorkerPool,
+			HTTPTimeout:    10 * time.Second,
+			ClaimBatchSize: 20,
+		}
+		worker := webhooks.NewWorker(workerCfg, repos, encryptor, webhookLog)
+		workerCtx, cancelWorker := context.WithCancel(context.Background())
+		go worker.Run(workerCtx)
+		// Ensure graceful shutdown stops the worker loop.
+		defer cancelWorker()
+		logrus.Infof("✓ Outbound lifecycle webhooks enabled (pool=%d)", workerCfg.PoolSize)
+	} else {
+		logrus.Warn("⚠ Outbound lifecycle webhooks DISABLED (ENCLII_WEBHOOK_MASTER_KEY unset)")
 	}
 
 	api.SetupRoutes(router, apiHandler)

@@ -257,6 +257,16 @@ export default function ProjectDetailPage() {
               </svg>
               Webhooks
             </Link>
+            <Link
+              href={`/projects/${slug}/lifecycle-webhooks`}
+              className="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-card hover:bg-accent"
+              title="Signed HTTPS webhooks for deploy/rollback/scale events"
+            >
+              <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Lifecycle
+            </Link>
             <button
               onClick={() => setShowCreateServiceForm(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-enclii-blue hover:bg-enclii-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue"
