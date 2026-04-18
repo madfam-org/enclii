@@ -72,6 +72,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     { name: 'Functions', href: '/functions' },
     { name: 'Domains', href: '/domains', tourId: 'domains' },
     { name: 'Activity', href: '/activity' },
+    { name: 'Audit', href: '/audit' },
   ];
 
   // At lg: first 7 inline, last 3 in "More" dropdown
