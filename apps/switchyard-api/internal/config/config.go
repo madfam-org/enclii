@@ -147,6 +147,16 @@ type Config struct {
 	// Enclii Repo Coordinates (for auto-committing ArgoCD apps)
 	EncliiRepoOwner string // ENCLII_ENCLII_REPO_OWNER - GitHub owner for Enclii repo (default: madfam-org)
 	EncliiRepoName  string // ENCLII_ENCLII_REPO_NAME - GitHub repo name (default: enclii)
+
+	// Loki — P2.1 in-UI log tail source. Defaults to the in-cluster
+	// DNS name at loki.monitoring.svc.cluster.local:3100 (installed by
+	// Fluent Bit → Loki Helm stack). Empty disables the /v1/services/:id/logs
+	// endpoints; UI degrades cleanly to a "logs unavailable" state.
+	LokiURL string
+	// LokiQueryBudgetPerMinute — per-caller token bucket rate for Loki
+	// query_range calls. Default 32/min matches Vercel/Railway parity.
+	LokiQueryBudgetPerMinute int
+	LokiQueryBudgetBurst     int
 }
 
 func Load() (*Config, error) {
@@ -231,6 +241,11 @@ func Load() (*Config, error) {
 	viper.SetDefault("enclii-repo-owner", "madfam-org") // ENCLII_ENCLII_REPO_OWNER
 	viper.SetDefault("enclii-repo-name", "enclii")      // ENCLII_ENCLII_REPO_NAME
 
+	// Loki (P2.1 in-UI log tail). Empty disables the feature cleanly.
+	viper.SetDefault("loki-url", "http://loki.monitoring.svc.cluster.local:3100")
+	viper.SetDefault("loki-query-budget-per-minute", 32) // per-caller
+	viper.SetDefault("loki-query-budget-burst", 8)
+
 	// Parse log level
 	logLevelStr := viper.GetString("log-level")
 	logLevel, err := logrus.ParseLevel(logLevelStr)
@@ -309,6 +324,9 @@ func Load() (*Config, error) {
 		AppBaseURL:                 viper.GetString("app-base-url"),
 		EncliiRepoOwner:            viper.GetString("enclii-repo-owner"),
 		EncliiRepoName:             viper.GetString("enclii-repo-name"),
+		LokiURL:                    viper.GetString("loki-url"),
+		LokiQueryBudgetPerMinute:   viper.GetInt("loki-query-budget-per-minute"),
+		LokiQueryBudgetBurst:       viper.GetInt("loki-query-budget-burst"),
 	}
 
 	// SEC-001: Validate required configuration

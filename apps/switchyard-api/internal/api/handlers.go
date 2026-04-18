@@ -14,6 +14,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
@@ -87,6 +88,11 @@ type Handler struct {
 	// by merging Janua + Switchyard + Nexus audit streams. Optional; if nil
 	// the routes return 503. See internal/audit/.
 	auditHandler *audit.Handler
+
+	// In-UI log tail (P2.1) — serves /v1/services/:id/logs and
+	// /v1/services/:id/logs/tail against Loki. Optional; if nil the
+	// routes return 503. See internal/logstream/.
+	logsHandler *logstream.Handler
 }
 
 // NewHandler creates a new API handler with all dependencies
@@ -225,6 +231,14 @@ func (h *Handler) SetCostTrackingService(svc *services.CostTrackingService) {
 // setups without Janua/Nexus configured.
 func (h *Handler) SetAuditHandler(handler *audit.Handler) {
 	h.auditHandler = handler
+}
+
+// SetLogsHandler wires the P2.1 in-UI log tail. Pass nil to leave the
+// /v1/services/:id/logs endpoints returning 503 — used in local-dev
+// setups without Loki, where the k8s-backed /logs/history + /logs/stream
+// already provide coverage.
+func (h *Handler) SetLogsHandler(handler *logstream.Handler) {
+	h.logsHandler = handler
 }
 
 // SetTunnelRoutesService sets the tunnel routes service for automatic cloudflared route management
@@ -393,6 +407,13 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/services/:id/logs/history", h.GetLogsHistory)
 			protected.POST("/services/:id/logs/search", h.SearchLogs)
 			protected.GET("/deployments/:id/logs/stream", h.StreamLogsWS)
+
+			// P2.1 — Loki-backed log tail for app.enclii.dev UI.
+			// /logs     returns a windowed, paginated historical slice.
+			// /logs/tail is a WebSocket that pushes entries as they land
+			// in Loki (typically <2s from ingest).
+			protected.GET("/services/:id/logs", h.loggedLogsQuery)
+			protected.GET("/services/:id/logs/tail", h.loggedLogsTail)
 			protected.GET("/services/:id/builds/:build_id/logs", h.GetBuildLogs)
 			protected.GET("/services/:id/builds/:build_id/logs/stream", h.StreamBuildLogsWS)
 

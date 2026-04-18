@@ -28,6 +28,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
@@ -559,6 +560,35 @@ func main() {
 		auditH := audit.NewHandler(auditAgg, audit.NewGinAuthz(), logrus.StandardLogger())
 		apiHandler.SetAuditHandler(auditH)
 		logrus.Infof("✓ Consolidated audit surface wired at /v1/audit (sources=%d)", len(auditSources))
+	}
+
+	// Wire P2.1 in-UI log tail. The feature self-disables cleanly when
+	// LOKI_URL is empty (endpoints 503 rather than 500). In production
+	// LOKI_URL defaults to the in-cluster DNS name, which works out of
+	// the box with the existing Fluent Bit → Loki deployment.
+	{
+		if cfg.LokiURL != "" {
+			lokiClient := logstream.NewLokiClient(cfg.LokiURL)
+			lokiLimiter := logstream.NewLimiter(
+				cfg.LokiQueryBudgetPerMinute,
+				cfg.LokiQueryBudgetBurst,
+			)
+			lokiResolver := logstream.NewRepoResolver(repos)
+			lokiAuthz := logstream.NewGinAuthz()
+			logsH := logstream.NewHandler(
+				lokiClient,
+				lokiResolver,
+				lokiAuthz,
+				lokiLimiter,
+				cfg.WebSocketAllowedOrigins,
+				logrus.StandardLogger(),
+			)
+			apiHandler.SetLogsHandler(logsH)
+			logrus.Infof("✓ Loki log tail wired at /v1/services/:id/logs (loki=%s, budget=%d/min)",
+				cfg.LokiURL, cfg.LokiQueryBudgetPerMinute)
+		} else {
+			logrus.Warn("⚠ Loki log tail DISABLED (ENCLII_LOKI_URL not set); /v1/services/:id/logs returns 503")
+		}
 	}
 
 	api.SetupRoutes(router, apiHandler)
