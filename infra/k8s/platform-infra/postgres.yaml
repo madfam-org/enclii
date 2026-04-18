@@ -320,18 +320,25 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          # Readiness cannot depend on R2 reachability: the sidecar is
+          # co-located with postgres, and the Service selector picks
+          # only pods where ALL containers are Ready. If the sidecar
+          # goes NotReady on R2 failure, postgres.data.svc drops its
+          # endpoint and every dependent service sees ECONNREFUSED —
+          # even though the DB itself is happily accepting connections.
+          # So readiness checks only process liveness; archive health
+          # is surfaced via Prometheus (pgbackrest_check_healthy metric
+          # from the pgbackrest-check CronJob).
           readinessProbe:
             exec:
               command:
-                - /bin/sh
-                - -c
-                - "test -f /tmp/pgbackrest-healthy"
-            initialDelaySeconds: 30
+                - pgrep
+                - -f
+                - pgbackrest
+            initialDelaySeconds: 5
             periodSeconds: 30
             timeoutSeconds: 5
-            # Allow 5 consecutive misses before NotReady — R2 transient
-            # latency should not flap readiness.
-            failureThreshold: 5
+            failureThreshold: 3
           livenessProbe:
             exec:
               command:
