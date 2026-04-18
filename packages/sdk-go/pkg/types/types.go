@@ -145,8 +145,12 @@ type Release struct {
 	SBOMFormat          string        `json:"sbom_format,omitempty" db:"sbom_format"`         // e.g., "cyclonedx-json", "spdx-json"
 	ImageSignature      string        `json:"image_signature,omitempty" db:"image_signature"` // Cosign signature
 	SignatureVerifiedAt *time.Time    `json:"signature_verified_at,omitempty" db:"signature_verified_at"`
-	CreatedAt           time.Time     `json:"created_at" db:"created_at"`
-	UpdatedAt           time.Time     `json:"updated_at" db:"updated_at"`
+	// FrameworkSlug is the canonical framework identifier detected by
+	// roundhouse at build time (matches packages/sdk-go/pkg/frameworks
+	// catalog). Legacy rows with NULL are served as empty string.
+	FrameworkSlug string    `json:"framework_slug,omitempty" db:"framework_slug"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // DeploymentEnriched represents a deployment with joined release and service data

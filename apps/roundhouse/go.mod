@@ -4,11 +4,14 @@ go 1.25.0
 
 replace github.com/madfam-org/enclii/packages/otel-go => ../../packages/otel-go
 
+replace github.com/madfam-org/enclii/packages/sdk-go => ../../packages/sdk-go
+
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/go-containerregistry v0.20.7
 	github.com/google/uuid v1.6.0
 	github.com/madfam-org/enclii/packages/otel-go v0.0.0-00010101000000-000000000000
+	github.com/madfam-org/enclii/packages/sdk-go v0.0.0-00010101000000-000000000000
 	github.com/redis/go-redis/v9 v9.6.3
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.11.1

@@ -62,6 +62,18 @@ func (r *ReleaseRepository) UpdateSignature(ctx context.Context, id uuid.UUID, s
 	return err
 }
 
+// UpdateFrameworkSlug stores the canonical framework slug detected by
+// roundhouse at build time. No-op when slug is empty so callers can
+// blindly forward the build callback without guard checks.
+func (r *ReleaseRepository) UpdateFrameworkSlug(ctx context.Context, id uuid.UUID, slug string) error {
+	if slug == "" {
+		return nil
+	}
+	query := `UPDATE releases SET framework_slug = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, slug, id)
+	return err
+}
+
 // UpdateMetadata updates commit metadata fields on an existing release.
 // Only non-empty fields in the provided release are written.
 func (r *ReleaseRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, commitMessage, commitAuthorName, commitAuthorEmail, gitBranch, repoURL string) error {
@@ -81,13 +93,13 @@ func (r *ReleaseRepository) UpdateMetadata(ctx context.Context, id uuid.UUID, co
 
 func (r *ReleaseRepository) GetByID(id uuid.UUID) (*types.Release, error) {
 	release := &types.Release{}
-	query := `SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE id = $1`
+	query := `SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE id = $1`
 
-	var sbom, sbomFormat, imageSignature, errorMessage sql.NullString
+	var sbom, sbomFormat, imageSignature, errorMessage, frameworkSlug sql.NullString
 	var signatureVerifiedAt sql.NullTime
 	err := r.db.QueryRow(query, id).Scan(
 		&release.ID, &release.ServiceID, &release.Version, &release.ImageURI,
-		&release.GitSHA, &release.Status, &sbom, &sbomFormat, &imageSignature, &signatureVerifiedAt, &errorMessage, &release.CreatedAt, &release.UpdatedAt,
+		&release.GitSHA, &release.Status, &sbom, &sbomFormat, &imageSignature, &signatureVerifiedAt, &errorMessage, &frameworkSlug, &release.CreatedAt, &release.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -114,11 +126,16 @@ func (r *ReleaseRepository) GetByID(id uuid.UUID) (*types.Release, error) {
 		release.ErrorMessage = &errorMessage.String
 	}
 
+	// Handle nullable framework slug (P3.5; older rows are NULL).
+	if frameworkSlug.Valid {
+		release.FrameworkSlug = frameworkSlug.String
+	}
+
 	return release, nil
 }
 
 func (r *ReleaseRepository) ListByService(serviceID uuid.UUID) ([]*types.Release, error) {
-	query := `SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE service_id = $1 ORDER BY created_at DESC`
+	query := `SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE service_id = $1 ORDER BY created_at DESC`
 
 	rows, err := r.db.Query(query, serviceID)
 	if err != nil {
@@ -129,10 +146,10 @@ func (r *ReleaseRepository) ListByService(serviceID uuid.UUID) ([]*types.Release
 	var releases []*types.Release
 	for rows.Next() {
 		release := &types.Release{}
-		var sbom, sbomFormat, imageSignature, errorMessage sql.NullString
+		var sbom, sbomFormat, imageSignature, errorMessage, frameworkSlug sql.NullString
 		var signatureVerifiedAt sql.NullTime
 
-		err := rows.Scan(&release.ID, &release.ServiceID, &release.Version, &release.ImageURI, &release.GitSHA, &release.Status, &sbom, &sbomFormat, &imageSignature, &signatureVerifiedAt, &errorMessage, &release.CreatedAt, &release.UpdatedAt)
+		err := rows.Scan(&release.ID, &release.ServiceID, &release.Version, &release.ImageURI, &release.GitSHA, &release.Status, &sbom, &sbomFormat, &imageSignature, &signatureVerifiedAt, &errorMessage, &frameworkSlug, &release.CreatedAt, &release.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -156,6 +173,11 @@ func (r *ReleaseRepository) ListByService(serviceID uuid.UUID) ([]*types.Release
 		// Handle nullable error message
 		if errorMessage.Valid {
 			release.ErrorMessage = &errorMessage.String
+		}
+
+		// Handle nullable framework slug (P3.5; older rows are NULL).
+		if frameworkSlug.Valid {
+			release.FrameworkSlug = frameworkSlug.String
 		}
 
 		releases = append(releases, release)
