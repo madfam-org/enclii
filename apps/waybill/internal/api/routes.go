@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +24,9 @@ func NewServer(handlers *Handlers, cfg *ServerConfig, logger *zap.Logger) *Serve
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	// OTel: inbound SERVER span per request. Placed before the logger
+	// middleware so trace_id is already on the context when we log.
+	router.Use(otelgin.Middleware("waybill-api"))
 	router.Use(requestLogger(logger))
 
 	s := &Server{

@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
@@ -16,6 +19,10 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+// tracer — reconciler package emits spans under this name so Tempo can
+// filter by span_name=reconciler.* to isolate reconcile-loop activity.
+var tracer = otel.Tracer("switchyard-api/reconciler")
 
 // Controller manages the reconciliation loop for all deployments
 type Controller struct {
@@ -220,8 +227,22 @@ func (c *Controller) worker(ctx context.Context, workerID int) {
 	}
 }
 
-// processWork handles a single reconciliation task
+// processWork handles a single reconciliation task.
+//
+// A span covers the whole reconcile tick so slow deployments show up as
+// wide spans in Tempo with their child k8s.*, db.*, and image-pull
+// sub-operations nested underneath.
 func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logger *logrus.Entry) *ReconcileResult {
+	ctx, span := tracer.Start(ctx, "reconciler.processWork")// SetAttributes is called after span start so values that
+	// include anything resembling a credential would still be filtered
+	// by the secret-attribute processor wired in packages/otel-go.
+
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("reconciler.deployment_id", work.DeploymentID),
+		attribute.Int("reconciler.attempt", work.Attempt),
+	)
+
 	logger = logger.WithFields(logrus.Fields{
 		"deployment": work.DeploymentID,
 		"attempt":    work.Attempt,
@@ -382,6 +403,16 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 		"duration": duration,
 		"message":  result.Message,
 	}).Info("Completed reconciliation work")
+
+	// Record outcome on the span so Tempo exemplars on the reconciler
+	// latency panel are routed correctly (success vs. error breakdown).
+	span.SetAttributes(attribute.Bool("reconciler.success", result.Success))
+	if !result.Success {
+		span.SetStatus(codes.Error, result.Message)
+		if result.Error != nil {
+			span.RecordError(result.Error)
+		}
+	}
 
 	return result
 }

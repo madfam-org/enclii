@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/sbom"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/signing"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
-	"github.com/sirupsen/logrus"
 )
+
+// tracer — builder package emits spans under this tracer name.
+var tracer = otel.Tracer("switchyard-api/builder")
 
 // Service orchestrates the complete build process: clone → build → SBOM → sign → cleanup
 type Service struct {
@@ -125,8 +132,20 @@ type CompleteBuildResult struct {
 	CacheImage    string              // Cache image URI used
 }
 
-// BuildFromGit clones a repository and builds it
+// BuildFromGit clones a repository and builds it.
+//
+// A parent span `builder.BuildFromGit` wraps the whole flow; each of the
+// four sub-steps (clone, build, sbom, sign) emits its own child span via
+// nested tracer.Start() calls below. That gives Tempo's service-graph
+// view a readable "what exactly is slow in a build" breakdown.
 func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitSHA string) *CompleteBuildResult {
+	ctx, span := tracer.Start(ctx, "builder.BuildFromGit")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("service.name", service.Name),
+		attribute.String("git.sha_short", shortSHA(gitSHA)),
+	)
+
 	start := time.Now()
 	result := &CompleteBuildResult{
 		GitSHA: gitSHA,
@@ -139,11 +158,15 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 
 	// Step 1: Clone the repository
 	result.Logs = append(result.Logs, fmt.Sprintf("Cloning repository: %s", service.GitRepo))
-	cloneResult := s.git.CloneRepository(buildCtx, service.GitRepo, gitSHA)
+	cloneCtx, cloneSpan := tracer.Start(buildCtx, "builder.clone")
+	cloneResult := s.git.CloneRepository(cloneCtx, service.GitRepo, gitSHA)
+	cloneSpan.End()
 
 	if !cloneResult.Success {
 		result.Error = fmt.Errorf("clone failed: %w", cloneResult.Error)
 		result.Logs = append(result.Logs, fmt.Sprintf("ERROR: %v", cloneResult.Error))
+		span.SetStatus(codes.Error, "clone failed")
+		span.RecordError(cloneResult.Error)
 		return result
 	}
 
@@ -161,7 +184,9 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 
 	// Step 2: Build the service
 	result.Logs = append(result.Logs, fmt.Sprintf("Starting build for service: %s", service.Name))
-	buildResult, err := s.builder.BuildService(buildCtx, service, gitSHA, cloneResult.Path)
+	buildCtxSpan, buildSpan := tracer.Start(buildCtx, "builder.build")
+	buildResult, err := s.builder.BuildService(buildCtxSpan, service, gitSHA, cloneResult.Path)
+	buildSpan.End()
 
 	if err != nil {
 		result.Error = fmt.Errorf("build failed: %w", err)
@@ -169,6 +194,8 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 			result.Logs = append(result.Logs, buildResult.Logs...)
 		}
 		result.Logs = append(result.Logs, fmt.Sprintf("ERROR: %v", err))
+		span.SetStatus(codes.Error, "build failed")
+		span.RecordError(err)
 		return result
 	}
 
@@ -182,7 +209,9 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 	// Step 3: Generate SBOM (if enabled)
 	if s.generateSBOM {
 		result.Logs = append(result.Logs, "Generating SBOM with Syft...")
-		sbomResult, err := s.sbomGen.GenerateFromImage(buildCtx, result.ImageURI, sbom.GetDefaultFormat())
+		sbomCtx, sbomSpan := tracer.Start(buildCtx, "builder.sbom")
+		sbomResult, err := s.sbomGen.GenerateFromImage(sbomCtx, result.ImageURI, sbom.GetDefaultFormat())
+		sbomSpan.End()
 
 		if err != nil {
 			// SBOM generation failure is non-fatal - log warning and continue
@@ -200,7 +229,9 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 	// Step 4: Sign image (if enabled)
 	if s.signImages {
 		result.Logs = append(result.Logs, "Signing image with Cosign...")
-		signResult, err := s.signer.SignImage(buildCtx, result.ImageURI)
+		signCtx, signSpan := tracer.Start(buildCtx, "builder.sign")
+		signResult, err := s.signer.SignImage(signCtx, result.ImageURI)
+		signSpan.End()
 
 		if err != nil {
 			// Image signing failure is non-fatal - log warning and continue
@@ -219,7 +250,24 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 	result.Logs = append(result.Logs, fmt.Sprintf("Build completed successfully in %v", result.Duration))
 	result.Logs = append(result.Logs, fmt.Sprintf("Image: %s", result.ImageURI))
 
+	span.SetAttributes(
+		attribute.Bool("build.cache_hit", result.CacheHit),
+		attribute.Bool("build.sbom_generated", result.SBOMGenerated),
+		attribute.Bool("build.image_signed", result.ImageSigned),
+		attribute.Float64("build.duration_seconds", result.Duration.Seconds()),
+	)
+
 	return result
+}
+
+// shortSHA returns the first 7 characters of a git SHA, or the whole
+// value if it's already shorter. Used on spans so full SHAs (which can
+// be 40 chars and leaky across UIs) don't bloat trace attributes.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }
 
 // ValidateService checks if a service can be built

@@ -7,9 +7,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/madfam-org/enclii/apps/waybill/internal/events"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
+
+	"github.com/madfam-org/enclii/apps/waybill/internal/events"
 )
+
+// tracer — aggregation package spans show up as "aggregation.*" in Tempo.
+var tracer = otel.Tracer("waybill/aggregation")
 
 // HourlyAggregator handles hourly usage aggregation
 type HourlyAggregator struct {
@@ -27,11 +34,21 @@ func NewHourlyAggregator(db *sql.DB, collector *events.Collector, logger *zap.Lo
 	}
 }
 
-// Run performs hourly aggregation for a specific hour
+// Run performs hourly aggregation for a specific hour.
+//
+// Wrapped in a single root span "aggregation.hourly" — the DB queries via
+// otelsql nest as child spans, so Tempo shows which exact SELECT/INSERT
+// dominated the 1-hour cycle.
 func (a *HourlyAggregator) Run(ctx context.Context, hour time.Time) error {
 	// Normalize to start of hour
 	hour = hour.Truncate(time.Hour)
 	nextHour := hour.Add(time.Hour)
+
+	ctx, span := tracer.Start(ctx, "aggregation.hourly")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("aggregation.hour", hour.Format(time.RFC3339)),
+	)
 
 	a.logger.Info("starting hourly aggregation",
 		zap.Time("hour", hour),
@@ -74,15 +91,23 @@ func (a *HourlyAggregator) Run(ctx context.Context, hour time.Time) error {
 		zap.Time("hour", hour),
 		zap.Int("projects", len(projectIDs)),
 	)
+	span.SetAttributes(attribute.Int("aggregation.projects_processed", len(projectIDs)))
 
 	return nil
 }
 
 func (a *HourlyAggregator) aggregateProject(ctx context.Context, projectID uuid.UUID, start, end time.Time) error {
+	ctx, span := tracer.Start(ctx, "aggregation.project")
+	defer span.End()
+	span.SetAttributes(attribute.String("project.id", projectID.String()))
+
 	eventList, err := a.collector.GetEventsByProject(ctx, projectID, start, end)
 	if err != nil {
+		span.SetStatus(codes.Error, "get events")
+		span.RecordError(err)
 		return err
 	}
+	span.SetAttributes(attribute.Int("events.count", len(eventList)))
 
 	// Calculate metrics
 	metrics := a.calculateMetrics(eventList, start, end)

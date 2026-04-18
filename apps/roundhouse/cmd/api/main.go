@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/api"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/config"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
-	"go.uber.org/zap"
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/telemetry"
 )
 
 func main() {
@@ -23,6 +27,22 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
+
+	// -------------------------------------------------------------------
+	// P2.5: OpenTelemetry distributed tracing (api binary).
+	// Uses service.name="roundhouse-api" so the Tempo service-graph
+	// shows api and worker as distinct nodes — that's the view operators
+	// want when diagnosing queue drain issues.
+	// -------------------------------------------------------------------
+	env := os.Getenv("APP_ENV")
+	otelShutdown := telemetry.SetupWithName(context.Background(), "roundhouse-api", env, logger)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(ctx); err != nil {
+			logger.Warn("OpenTelemetry shutdown returned error", zap.Error(err))
+		}
+	}()
 
 	// Validate required config
 	if cfg.RedisURL == "" {

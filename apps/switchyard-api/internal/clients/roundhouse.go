@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -20,13 +22,19 @@ type RoundhouseClient struct {
 	httpClient *http.Client
 }
 
-// NewRoundhouseClient creates a new Roundhouse API client
+// NewRoundhouseClient creates a new Roundhouse API client.
+//
+// The http.Client's Transport is wrapped in otelhttp.NewTransport so every
+// outbound request emits a CLIENT span with service.name=switchyard-api,
+// peer=roundhouse. These spans become the cross-service links in the
+// Tempo service-graph view.
 func NewRoundhouseClient(baseURL, apiKey string) *RoundhouseClient {
 	return &RoundhouseClient{
 		baseURL: baseURL,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 	}
 }

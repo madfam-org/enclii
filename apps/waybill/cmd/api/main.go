@@ -1,16 +1,21 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"log"
 	"os"
+	"time"
 
+	"github.com/XSAM/otelsql"
 	_ "github.com/lib/pq"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.uber.org/zap"
+
 	"github.com/madfam-org/enclii/apps/waybill/internal/api"
 	"github.com/madfam-org/enclii/apps/waybill/internal/config"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
 	"github.com/madfam-org/enclii/apps/waybill/internal/metering"
-	"go.uber.org/zap"
+	"github.com/madfam-org/enclii/apps/waybill/internal/telemetry"
 )
 
 func main() {
@@ -32,8 +37,28 @@ func main() {
 		logger.Fatal("DATABASE_URL is required")
 	}
 
-	// Connect to database
-	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	// P2.5: OpenTelemetry — service.name=waybill-api so waybill's two
+	// processes (api + aggregator) show up distinctly on the service
+	// graph. Both write to the same DB — cross-process traces via DB
+	// spans are meaningless, so no need for a shared service.name.
+	env := os.Getenv("APP_ENV")
+	otelShutdown := telemetry.SetupWithName(context.Background(), "waybill-api", env, logger)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(ctx); err != nil {
+			logger.Warn("OpenTelemetry shutdown returned error", zap.Error(err))
+		}
+	}()
+
+	// Connect to database with otelsql so every query gets a child span.
+	db, err := otelsql.Open("postgres", cfg.DatabaseURL,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+		otelsql.WithSpanOptions(otelsql.SpanOptions{
+			OmitConnPrepare: true,
+			OmitRows:        true,
+		}),
+	)
 	if err != nil {
 		logger.Fatal("failed to connect to database", zap.Error(err))
 	}
