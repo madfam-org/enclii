@@ -2,6 +2,10 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,13 +21,85 @@ func NewDeploymentRepository(db DBTX) *DeploymentRepository {
 	return &DeploymentRepository{db: db}
 }
 
+// ErrVersionAllocationConflict is returned when the (service_id, version_number)
+// UNIQUE constraint is violated during allocation. Callers should treat this as
+// a transient error and retry the enclosing transaction. Per the P2.6 contract
+// we never silently renumber or reuse: the conflict must bubble up to the app
+// layer so the retry is observable.
+var ErrVersionAllocationConflict = errors.New("deployment version allocation conflict")
+
+// Create inserts a deployment and allocates a semantic version number.
+//
+// Allocation contract (P2.6):
+//  1. Service ID must be set on the deployment (denormalized from releases).
+//  2. version_number is set to MAX(version_number)+1 for that service in the
+//     same SQL statement, so the read-compute-write is atomic per row.
+//  3. The UNIQUE (service_id, version_number) index catches any concurrent
+//     allocations that compute the same MAX value — we return
+//     ErrVersionAllocationConflict so the caller can retry the enclosing
+//     transaction (we do NOT silently retry-allocate at this layer).
+//
+// Callers should invoke Create inside r.WithTransaction when they want
+// atomic "allocate + record audit" semantics. The serialization guarantee
+// comes from the UNIQUE constraint, not from read locks.
 func (r *DeploymentRepository) Create(deployment *types.Deployment) error {
+	if deployment.ServiceID == nil {
+		// Historical call sites that pre-date P2.6 may not set ServiceID.
+		// We accept those at the storage layer (version_number stays NULL)
+		// so the schema change is non-breaking during the rollout window.
+		// New code paths MUST set ServiceID — the handlers enforce this.
+		return r.createWithoutVersion(deployment)
+	}
+	return r.createWithVersion(deployment)
+}
+
+// createWithVersion performs the allocate-and-insert in a single SQL
+// statement. The subquery reads MAX(version_number) for the target service;
+// the UNIQUE index on (service_id, version_number) ensures that if two
+// concurrent inserts observe the same MAX, exactly one succeeds and the
+// other receives a unique-violation we surface as ErrVersionAllocationConflict.
+func (r *DeploymentRepository) createWithVersion(deployment *types.Deployment) error {
 	deployment.ID = uuid.New()
 	deployment.CreatedAt = time.Now()
 	deployment.UpdatedAt = time.Now()
 
-	// Note: group_id and deploy_order columns don't exist in the database yet
-	// They're part of the deployment group feature that hasn't been migrated
+	query := `
+		INSERT INTO deployments (
+			id, release_id, environment_id, service_id, version_number,
+			replicas, status, health, created_at, updated_at
+		)
+		SELECT $1, $2, $3, $4,
+		       COALESCE(MAX(d.version_number), 0) + 1,
+		       $5, $6, $7, $8, $9
+		  FROM deployments d
+		 WHERE d.service_id = $4
+		RETURNING version_number
+	`
+	var version int
+	err := r.db.QueryRow(
+		query,
+		deployment.ID, deployment.ReleaseID, deployment.EnvironmentID,
+		*deployment.ServiceID,
+		deployment.Replicas, deployment.Status, deployment.Health,
+		deployment.CreatedAt, deployment.UpdatedAt,
+	).Scan(&version)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: service=%s", ErrVersionAllocationConflict, deployment.ServiceID)
+		}
+		return err
+	}
+	deployment.VersionNumber = &version
+	return nil
+}
+
+// createWithoutVersion is the legacy path for call sites that haven't been
+// updated to pass ServiceID. Allocates no version number.
+func (r *DeploymentRepository) createWithoutVersion(deployment *types.Deployment) error {
+	deployment.ID = uuid.New()
+	deployment.CreatedAt = time.Now()
+	deployment.UpdatedAt = time.Now()
+
 	query := `
 		INSERT INTO deployments (id, release_id, environment_id, replicas, status, health, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -31,6 +107,30 @@ func (r *DeploymentRepository) Create(deployment *types.Deployment) error {
 	_, err := r.db.Exec(query, deployment.ID, deployment.ReleaseID, deployment.EnvironmentID, deployment.Replicas, deployment.Status, deployment.Health, deployment.CreatedAt, deployment.UpdatedAt)
 	return err
 }
+
+// isUniqueViolation inspects the database error for a Postgres unique-violation
+// (SQLSTATE 23505) on the deployment allocation index. We match on the error
+// message to avoid a hard dependency on the pgx driver's typed errors — the
+// codebase uses database/sql + lib/pq and sqlmock in tests.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// lib/pq surfaces this as `pq: duplicate key value violates unique constraint "idx_deployments_service_version"`.
+	// Matching the constraint name keeps the check specific to our
+	// allocation path and avoids false positives from other UNIQUE indexes.
+	if strings.Contains(msg, "idx_deployments_service_version") {
+		return true
+	}
+	return strings.Contains(msg, "23505") &&
+		strings.Contains(msg, "service_id") &&
+		strings.Contains(msg, "version_number")
+}
+
+// sqlErrNoRows re-exported for external consumers that want to branch on
+// the "not found" sentinel without importing database/sql directly.
+var sqlErrNoRows = sql.ErrNoRows
 
 func (r *DeploymentRepository) UpdateStatus(id uuid.UUID, status types.DeploymentStatus, health types.HealthStatus) error {
 	query := `UPDATE deployments SET status = $1, health = $2, updated_at = NOW() WHERE id = $3`
@@ -47,13 +147,16 @@ func (r *DeploymentRepository) UpdateStatusWithError(id uuid.UUID, status types.
 
 func (r *DeploymentRepository) GetByID(ctx context.Context, id string) (*types.Deployment, error) {
 	deployment := &types.Deployment{}
-	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message,
+	                 service_id, version_number, created_at, updated_at
 	          FROM deployments WHERE id = $1`
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 		&deployment.Replicas, &deployment.Status, &deployment.Health,
-		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		&deployment.ErrorMessage,
+		&deployment.ServiceID, &deployment.VersionNumber,
+		&deployment.CreatedAt, &deployment.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -62,8 +165,32 @@ func (r *DeploymentRepository) GetByID(ctx context.Context, id string) (*types.D
 	return deployment, nil
 }
 
+// GetByServiceAndVersion resolves a deployment by (service_id, version_number).
+// Returns sql.ErrNoRows if no match exists — callers should surface this as a
+// 404 at the API boundary.
+func (r *DeploymentRepository) GetByServiceAndVersion(ctx context.Context, serviceID uuid.UUID, version int) (*types.Deployment, error) {
+	deployment := &types.Deployment{}
+	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message,
+	                 service_id, version_number, created_at, updated_at
+	          FROM deployments
+	          WHERE service_id = $1 AND version_number = $2`
+
+	err := r.db.QueryRowContext(ctx, query, serviceID, version).Scan(
+		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
+		&deployment.Replicas, &deployment.Status, &deployment.Health,
+		&deployment.ErrorMessage,
+		&deployment.ServiceID, &deployment.VersionNumber,
+		&deployment.CreatedAt, &deployment.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return deployment, nil
+}
+
 func (r *DeploymentRepository) ListByRelease(ctx context.Context, releaseID string) ([]*types.Deployment, error) {
-	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message,
+	                 service_id, version_number, created_at, updated_at
 	          FROM deployments WHERE release_id = $1 ORDER BY created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, releaseID)
@@ -78,7 +205,9 @@ func (r *DeploymentRepository) ListByRelease(ctx context.Context, releaseID stri
 		err := rows.Scan(
 			&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 			&deployment.Replicas, &deployment.Status, &deployment.Health,
-			&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+			&deployment.ErrorMessage,
+			&deployment.ServiceID, &deployment.VersionNumber,
+			&deployment.CreatedAt, &deployment.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -92,7 +221,8 @@ func (r *DeploymentRepository) ListByRelease(ctx context.Context, releaseID stri
 func (r *DeploymentRepository) GetLatestByService(ctx context.Context, serviceID string) (*types.Deployment, error) {
 	deployment := &types.Deployment{}
 	query := `
-		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health, d.error_message, d.created_at, d.updated_at
+		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health, d.error_message,
+		       d.service_id, d.version_number, d.created_at, d.updated_at
 		FROM deployments d
 		JOIN releases r ON d.release_id = r.id
 		WHERE r.service_id = $1
@@ -103,7 +233,9 @@ func (r *DeploymentRepository) GetLatestByService(ctx context.Context, serviceID
 	err := r.db.QueryRowContext(ctx, query, serviceID).Scan(
 		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 		&deployment.Replicas, &deployment.Status, &deployment.Health,
-		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		&deployment.ErrorMessage,
+		&deployment.ServiceID, &deployment.VersionNumber,
+		&deployment.CreatedAt, &deployment.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -115,7 +247,8 @@ func (r *DeploymentRepository) GetLatestByService(ctx context.Context, serviceID
 func (r *DeploymentRepository) GetByStatus(ctx context.Context, status types.DeploymentStatus) ([]*types.Deployment, error) {
 	// Note: group_id and deploy_order columns don't exist in the database yet
 	// They're part of the deployment group feature that hasn't been migrated
-	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+	query := `SELECT id, release_id, environment_id, replicas, status, health, error_message,
+	                 service_id, version_number, created_at, updated_at
 	          FROM deployments WHERE status = $1 ORDER BY created_at ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, status)
@@ -130,7 +263,9 @@ func (r *DeploymentRepository) GetByStatus(ctx context.Context, status types.Dep
 		err := rows.Scan(
 			&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 			&deployment.Replicas, &deployment.Status, &deployment.Health,
-			&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+			&deployment.ErrorMessage,
+			&deployment.ServiceID, &deployment.VersionNumber,
+			&deployment.CreatedAt, &deployment.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -144,7 +279,8 @@ func (r *DeploymentRepository) GetByStatus(ctx context.Context, status types.Dep
 
 // GetByServiceSince returns deployments for a service created after a given time, ordered by created_at ASC.
 func (r *DeploymentRepository) GetByServiceSince(ctx context.Context, serviceID string, since time.Time) ([]*types.Deployment, error) {
-	query := `SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health, d.error_message, d.created_at, d.updated_at
+	query := `SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health, d.error_message,
+	                 d.service_id, d.version_number, d.created_at, d.updated_at
 	          FROM deployments d
 	          JOIN releases r ON d.release_id = r.id
 	          WHERE r.service_id = $1 AND d.created_at >= $2
@@ -162,7 +298,9 @@ func (r *DeploymentRepository) GetByServiceSince(ctx context.Context, serviceID 
 		err := rows.Scan(
 			&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 			&deployment.Replicas, &deployment.Status, &deployment.Health,
-			&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+			&deployment.ErrorMessage,
+			&deployment.ServiceID, &deployment.VersionNumber,
+			&deployment.CreatedAt, &deployment.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -182,11 +320,13 @@ func (r *DeploymentRepository) ListAll(ctx context.Context, since *time.Time, li
 	}
 
 	if since != nil {
-		query = `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+		query = `SELECT id, release_id, environment_id, replicas, status, health, error_message,
+		                service_id, version_number, created_at, updated_at
 		         FROM deployments WHERE created_at >= $1 ORDER BY created_at DESC LIMIT $2`
 		args = []interface{}{*since, limit}
 	} else {
-		query = `SELECT id, release_id, environment_id, replicas, status, health, error_message, created_at, updated_at
+		query = `SELECT id, release_id, environment_id, replicas, status, health, error_message,
+		                service_id, version_number, created_at, updated_at
 		         FROM deployments ORDER BY created_at DESC LIMIT $1`
 		args = []interface{}{limit}
 	}
@@ -203,7 +343,9 @@ func (r *DeploymentRepository) ListAll(ctx context.Context, since *time.Time, li
 		err := rows.Scan(
 			&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 			&deployment.Replicas, &deployment.Status, &deployment.Health,
-			&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+			&deployment.ErrorMessage,
+			&deployment.ServiceID, &deployment.VersionNumber,
+			&deployment.CreatedAt, &deployment.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -222,7 +364,9 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 
 	baseQuery := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
-		       d.error_message, d.created_at, d.updated_at,
+		       d.error_message,
+		       d.version_number,
+		       d.created_at, d.updated_at,
 		       COALESCE(s.id, '00000000-0000-0000-0000-000000000000') as service_id,
 		       COALESCE(s.name, '') as service_name,
 		       COALESCE(r.git_sha, '') as git_sha,
@@ -261,7 +405,9 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 		var prNumber *int
 		err := rows.Scan(
 			&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
-			&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt,
+			&d.ErrorMessage,
+			&d.VersionNumber,
+			&d.CreatedAt, &d.UpdatedAt,
 			&d.ServiceID, &d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
 			&d.CommitAuthor, &d.CommitAuthorEmail,
 			&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
@@ -270,6 +416,11 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 			return nil, err
 		}
 		d.PRNumber = prNumber
+		// Denormalized ServiceID on the base struct mirrors the joined
+		// services.id so downstream code can trust Deployment.ServiceID
+		// without a separate lookup.
+		sid := d.ServiceID
+		d.Deployment.ServiceID = &sid
 		deployments = append(deployments, d)
 	}
 
@@ -280,7 +431,9 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (*types.DeploymentEnriched, error) {
 	query := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
-		       d.error_message, d.created_at, d.updated_at,
+		       d.error_message,
+		       d.version_number,
+		       d.created_at, d.updated_at,
 		       COALESCE(s.id, '00000000-0000-0000-0000-000000000000') as service_id,
 		       COALESCE(s.name, '') as service_name,
 		       COALESCE(r.git_sha, '') as git_sha,
@@ -301,7 +454,9 @@ func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (
 	var prNumber *int
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
-		&d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt,
+		&d.ErrorMessage,
+		&d.VersionNumber,
+		&d.CreatedAt, &d.UpdatedAt,
 		&d.ServiceID, &d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
 		&d.CommitAuthor, &d.CommitAuthorEmail,
 		&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
@@ -310,6 +465,10 @@ func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (
 		return nil, err
 	}
 	d.PRNumber = prNumber
+	// Mirror the joined service_id onto the embedded Deployment so the
+	// pointer field is populated consistently for downstream consumers.
+	sid := d.ServiceID
+	d.Deployment.ServiceID = &sid
 
 	return d, nil
 }
@@ -320,7 +479,7 @@ func (r *DeploymentRepository) FindDeployingByServiceAndSHA(ctx context.Context,
 	deployment := &types.Deployment{}
 	query := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
-		       d.error_message, d.created_at, d.updated_at
+		       d.error_message, d.service_id, d.version_number, d.created_at, d.updated_at
 		FROM deployments d
 		JOIN releases r ON d.release_id = r.id
 		WHERE r.service_id = $1 AND r.git_sha = $2 AND d.status = 'deploying'
@@ -330,7 +489,9 @@ func (r *DeploymentRepository) FindDeployingByServiceAndSHA(ctx context.Context,
 	err := r.db.QueryRowContext(ctx, query, serviceID, gitSHA).Scan(
 		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 		&deployment.Replicas, &deployment.Status, &deployment.Health,
-		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		&deployment.ErrorMessage,
+		&deployment.ServiceID, &deployment.VersionNumber,
+		&deployment.CreatedAt, &deployment.UpdatedAt,
 	)
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {
@@ -349,7 +510,7 @@ func (r *DeploymentRepository) FindDeployingByServiceAndReleaseSHA(ctx context.C
 	deployment := &types.Deployment{}
 	query := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
-		       d.error_message, d.created_at, d.updated_at
+		       d.error_message, d.service_id, d.version_number, d.created_at, d.updated_at
 		FROM deployments d
 		JOIN releases r ON d.release_id = r.id
 		WHERE r.service_id = $1 AND r.git_sha = $2 AND d.status = 'deploying'
@@ -359,7 +520,9 @@ func (r *DeploymentRepository) FindDeployingByServiceAndReleaseSHA(ctx context.C
 	err := r.db.QueryRowContext(ctx, query, serviceID, gitSHA).Scan(
 		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 		&deployment.Replicas, &deployment.Status, &deployment.Health,
-		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		&deployment.ErrorMessage,
+		&deployment.ServiceID, &deployment.VersionNumber,
+		&deployment.CreatedAt, &deployment.UpdatedAt,
 	)
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {
@@ -378,7 +541,7 @@ func (r *DeploymentRepository) FindRecentDeployingByService(ctx context.Context,
 	deployment := &types.Deployment{}
 	query := `
 		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
-		       d.error_message, d.created_at, d.updated_at
+		       d.error_message, d.service_id, d.version_number, d.created_at, d.updated_at
 		FROM deployments d
 		JOIN releases r ON d.release_id = r.id
 		WHERE r.service_id = $1 AND d.status = 'deploying' AND d.created_at >= $2
@@ -389,7 +552,9 @@ func (r *DeploymentRepository) FindRecentDeployingByService(ctx context.Context,
 	err := r.db.QueryRowContext(ctx, query, serviceID, cutoff).Scan(
 		&deployment.ID, &deployment.ReleaseID, &deployment.EnvironmentID,
 		&deployment.Replicas, &deployment.Status, &deployment.Health,
-		&deployment.ErrorMessage, &deployment.CreatedAt, &deployment.UpdatedAt,
+		&deployment.ErrorMessage,
+		&deployment.ServiceID, &deployment.VersionNumber,
+		&deployment.CreatedAt, &deployment.UpdatedAt,
 	)
 	if err != nil {
 		if err.Error() == "sql: no rows in result set" {

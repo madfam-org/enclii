@@ -73,6 +73,7 @@ type ReleaseRepositoryInterface interface {
 type DeploymentRepositoryInterface interface {
 	Create(deployment *types.Deployment) error
 	GetByID(ctx context.Context, id string) (*types.Deployment, error)
+	GetByServiceAndVersion(ctx context.Context, serviceID uuid.UUID, version int) (*types.Deployment, error)
 	UpdateStatus(id uuid.UUID, status types.DeploymentStatus, health types.HealthStatus) error
 	ListByRelease(ctx context.Context, releaseID string) ([]*types.Deployment, error)
 	GetLatestByService(ctx context.Context, serviceID string) (*types.Deployment, error)

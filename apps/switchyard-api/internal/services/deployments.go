@@ -160,11 +160,14 @@ func (s *DeploymentService) DeployService(ctx context.Context, req *DeployServic
 		"environment_id": req.EnvironmentID,
 	}).Info("Starting deployment")
 
-	// Create deployment record
+	// Create deployment record. ServiceID is denormalized from the release
+	// so the P2.6 version-number allocator can run without a join.
+	svcID := release.ServiceID
 	deployment := &types.Deployment{
 		ID:            uuid.New(),
 		ReleaseID:     releaseID,
 		EnvironmentID: environmentID,
+		ServiceID:     &svcID,
 		Replicas:      req.Replicas,
 		Status:        types.DeploymentStatusPending,
 		CreatedAt:     time.Now(),
@@ -176,7 +179,17 @@ func (s *DeploymentService) DeployService(ctx context.Context, req *DeployServic
 		return nil, errors.Wrap(err, errors.ErrDatabaseError)
 	}
 
-	// Audit log - OIDC users don't have local user row, use nil
+	// Audit log - OIDC users don't have local user row, use nil.
+	// Include the allocated version_number so operators see v{n} in audit
+	// UIs without having to re-query the deployment.
+	auditCtx := map[string]interface{}{
+		"release_id":     req.ReleaseID,
+		"environment_id": req.EnvironmentID,
+	}
+	if deployment.VersionNumber != nil {
+		auditCtx["version_number"] = *deployment.VersionNumber
+		auditCtx["version_label"] = deployment.VersionLabel()
+	}
 	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
@@ -186,10 +199,7 @@ func (s *DeploymentService) DeployService(ctx context.Context, req *DeployServic
 		ResourceID:   deployment.ID.String(),
 		ResourceName: fmt.Sprintf("deployment-%s", deployment.ID.String()[:8]),
 		Outcome:      "success",
-		Context: map[string]interface{}{
-			"release_id":     req.ReleaseID,
-			"environment_id": req.EnvironmentID,
-		},
+		Context:      auditCtx,
 	})
 
 	// Deployment will be picked up by reconciler
@@ -260,11 +270,18 @@ func (s *DeploymentService) Rollback(ctx context.Context, req *RollbackRequest) 
 		return nil, errors.Wrap(err, errors.ErrInvalidInput)
 	}
 
-	// Create new deployment with previous release
+	// Create new deployment with previous release. Per P2.6:
+	//   * This row gets a FRESH version_number (allocated in Create via
+	//     MAX(version_number)+1). Version numbers are NEVER reused, even
+	//     across rollbacks.
+	//   * The audit context captures rolled_back_from / rolled_back_to for
+	//     the "rolled back from v43 to v41 (applied as v44)" semantics.
+	svcID := release.ServiceID
 	newDeployment := &types.Deployment{
 		ID:            uuid.New(),
 		ReleaseID:     previousRelease.ID,
 		EnvironmentID: deployment.EnvironmentID,
+		ServiceID:     &svcID,
 		Replicas:      deployment.Replicas,
 		Status:        types.DeploymentStatusPending,
 		CreatedAt:     time.Now(),
@@ -276,7 +293,22 @@ func (s *DeploymentService) Rollback(ctx context.Context, req *RollbackRequest) 
 		return nil, errors.Wrap(err, errors.ErrDatabaseError)
 	}
 
-	// Audit log - OIDC users don't have local user row, use nil
+	// Audit log - OIDC users don't have local user row, use nil.
+	// Rollback audit context carries the v-number triple required by the
+	// P2.6 contract: rolled_back_from (current), rolled_back_to (target
+	// release's deployment if any), as_version (new row's v-number).
+	auditCtx := map[string]interface{}{
+		"previous_deployment": deployment.ID.String(),
+		"previous_release":    release.ID.String(),
+		"rolled_back_to":      previousRelease.ID.String(),
+	}
+	if deployment.VersionNumber != nil {
+		auditCtx["from_version"] = *deployment.VersionNumber
+	}
+	if newDeployment.VersionNumber != nil {
+		auditCtx["as_version"] = *newDeployment.VersionNumber
+		auditCtx["version_label"] = newDeployment.VersionLabel()
+	}
 	_ = s.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   req.UserEmail,
@@ -286,11 +318,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, req *RollbackRequest) 
 		ResourceID:   newDeployment.ID.String(),
 		ResourceName: fmt.Sprintf("rollback-%s", newDeployment.ID.String()[:8]),
 		Outcome:      "success",
-		Context: map[string]interface{}{
-			"previous_deployment": deployment.ID.String(),
-			"previous_release":    release.ID.String(),
-			"rolled_back_to":      previousRelease.ID.String(),
-		},
+		Context:      auditCtx,
 	})
 
 	return &RollbackResponse{

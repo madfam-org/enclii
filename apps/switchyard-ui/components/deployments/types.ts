@@ -7,6 +7,9 @@ export interface Deployment {
   health: 'healthy' | 'unhealthy' | 'unknown';
   created_at: string;
   updated_at: string;
+  // P2.6: Heroku-style semantic version. Monotonic per service, never
+  // reused even across rollbacks. Primary human-facing identifier.
+  version_number?: number;
   // Git and PR information
   git_sha?: string;
   git_branch?: string;
@@ -24,6 +27,12 @@ export interface Deployment {
   // Enriched fields from API joins
   service_id?: string;
   service_name?: string;
+}
+
+/** Formats a deployment's semantic version as "v42", or returns null. */
+export function deploymentVersionLabel(d: Pick<Deployment, 'version_number'>): string | null {
+  if (d.version_number == null) return null;
+  return `v${d.version_number}`;
 }
 
 export interface Release {
@@ -67,6 +76,10 @@ export interface InstantRollbackResponse {
   scaled_up: boolean;
   from_deployment_id?: string;
   to_deployment_id: string;
+  // P2.6: Heroku-style v-numbers for the from/to deployments. Optional
+  // because historical rows may pre-date the backfill.
+  from_version?: number;
+  to_version?: number;
   ready_replicas: number;
   strategy: 'instant_selector_flip';
   namespace: string;

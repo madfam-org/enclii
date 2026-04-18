@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/compliance"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
@@ -92,11 +94,15 @@ func (h *Handler) DeployService(c *gin.Context) {
 	}
 	environmentID := env.ID
 
-	// Create deployment record
+	// Create deployment record. ServiceID is denormalized from the release so
+	// the P2.6 version-number allocator can compute MAX(version_number) WHERE
+	// service_id = $1 without a join.
+	serviceIDForDeploy := release.ServiceID
 	deployment := &types.Deployment{
 		ID:            uuid.New(),
 		ReleaseID:     releaseID,
 		EnvironmentID: environmentID,
+		ServiceID:     &serviceIDForDeploy,
 		Replicas:      req.Replicas,
 		Status:        types.DeploymentStatusPending,
 		Health:        types.HealthStatusUnknown,
@@ -179,8 +185,32 @@ func (h *Handler) DeployService(c *gin.Context) {
 		deployment.Replicas = 1 // Default to 1 replica
 	}
 
-	if err := h.repos.Deployments.Create(deployment); err != nil {
-		h.logger.Error(ctx, "Failed to create deployment", logging.Error("db_error", err))
+	// Create the deployment with P2.6 version-number allocation. The UNIQUE
+	// (service_id, version_number) constraint can fire under concurrent
+	// deploys to the same service; we retry the TRANSACTION up to a small
+	// bound so the operator doesn't see a transient race. We do NOT
+	// silently retry-allocate at the repo layer — the retry is observable
+	// here (logged with attempt count).
+	const maxAllocAttempts = 3
+	var createErr error
+	for attempt := 1; attempt <= maxAllocAttempts; attempt++ {
+		createErr = h.repos.Deployments.Create(deployment)
+		if createErr == nil {
+			break
+		}
+		if !errors.Is(createErr, db.ErrVersionAllocationConflict) {
+			break
+		}
+		h.logger.Warn(ctx, "Version allocation conflict, retrying",
+			logging.String("service_id", serviceID.String()),
+			logging.Int("attempt", attempt))
+		// Reset the UUID/timestamps so the retried INSERT is a fresh row.
+		deployment.ID = uuid.New()
+		deployment.CreatedAt = time.Now()
+		deployment.UpdatedAt = time.Now()
+	}
+	if createErr != nil {
+		h.logger.Error(ctx, "Failed to create deployment", logging.Error("db_error", createErr))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create deployment"})
 		return
 	}
@@ -513,6 +543,60 @@ func (h *Handler) GetLatestDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"deployment": deployment,
 	})
+}
+
+// GetDeploymentByVersion looks up a deployment by (service_id, v{n}). Part of
+// P2.6 — the Heroku-style semantic version is the operator-facing identifier.
+//
+// Route: GET /v1/services/:id/deployments/v:version
+//
+// The version parameter is the integer component after the leading `v`
+// (e.g. `/v42` → 42). Returns 400 on malformed input, 404 when the
+// service/version pair doesn't exist.
+func (h *Handler) GetDeploymentByVersion(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	serviceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+		return
+	}
+
+	versionStr := c.Param("version")
+	// Accept either `42` (from `v:version` chi-style route) or `v42`
+	// (defensive — some clients may include the prefix). We normalize.
+	if len(versionStr) > 0 && (versionStr[0] == 'v' || versionStr[0] == 'V') {
+		versionStr = versionStr[1:]
+	}
+	version, err := strconv.Atoi(versionStr)
+	if err != nil || version <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid version number",
+			"hint":    "Use v{n} where n is a positive integer (e.g. v42)",
+			"example": "/v1/services/<service-id>/deployments/v42",
+		})
+		return
+	}
+
+	deployment, err := h.repos.Deployments.GetByServiceAndVersion(ctx, serviceID, version)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":      "Deployment version not found",
+				"service_id": serviceID.String(),
+				"version":    fmt.Sprintf("v%d", version),
+			})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get deployment by version",
+			logging.String("service_id", serviceID.String()),
+			logging.Int("version", version),
+			logging.Error("db_error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployment"})
+		return
+	}
+
+	c.JSON(http.StatusOK, deployment)
 }
 
 // GetDeployment returns a specific deployment by ID

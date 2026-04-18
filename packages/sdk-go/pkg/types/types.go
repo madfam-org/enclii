@@ -1,6 +1,9 @@
 package types
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -181,8 +184,45 @@ type Deployment struct {
 	Status        DeploymentStatus `json:"status" db:"status"`
 	Health        HealthStatus     `json:"health" db:"health"`
 	ErrorMessage  *string          `json:"error_message,omitempty" db:"error_message"` // Error from reconciliation failure
-	CreatedAt     time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at" db:"updated_at"`
+	// ServiceID is denormalized from releases.service_id to enforce the
+	// (service_id, version_number) UNIQUE constraint and speed the
+	// allocation query. Immutable after insert. Nullable for historical
+	// rows until the 010 backfill lands in every env.
+	ServiceID *uuid.UUID `json:"service_id,omitempty" db:"service_id"`
+	// VersionNumber is the Heroku-style semantic version for this deployment
+	// (v1, v2, …). Allocated monotonically per service at deploy-start;
+	// never reused even across rollbacks. See P2.6.
+	VersionNumber *int      `json:"version_number,omitempty" db:"version_number"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// VersionLabel returns the human-readable Heroku-style label ("v42") if the
+// deployment has been allocated a version, or the empty string otherwise.
+// Centralized so UI/CLI/API formatting stays consistent.
+func (d *Deployment) VersionLabel() string {
+	if d == nil || d.VersionNumber == nil {
+		return ""
+	}
+	return fmt.Sprintf("v%d", *d.VersionNumber)
+}
+
+// ParseVersionLabel parses a Heroku-style label ("v42") into its integer
+// component. Returns ok=false if the input is not a valid v-label (missing
+// prefix, non-integer, or <= 0). Leading/trailing whitespace is tolerated.
+func ParseVersionLabel(s string) (int, bool) {
+	trimmed := strings.TrimSpace(s)
+	if len(trimmed) < 2 {
+		return 0, false
+	}
+	if trimmed[0] != 'v' && trimmed[0] != 'V' {
+		return 0, false
+	}
+	n, err := strconv.Atoi(trimmed[1:])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 type DeploymentStatus string

@@ -37,6 +37,7 @@ import type {
   InstantRollbackRequest,
   InstantRollbackResponse,
 } from './types';
+import { deploymentVersionLabel } from './types';
 
 interface DeploymentsTabProps {
   serviceId: string;
@@ -243,7 +244,12 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 Rollback complete in {formatTookMS(rollbackResult.took_ms)}.{' '}
-                Traffic now serving <code className="font-mono">{shortId(rollbackResult.to_deployment_id)}</code>.
+                Traffic now serving{' '}
+                <code className="font-mono">
+                  {rollbackResult.to_version != null
+                    ? `v${rollbackResult.to_version}`
+                    : shortId(rollbackResult.to_deployment_id)}
+                </code>.
                 {rollbackResult.scaled_up && ' Target ReplicaSet was scaled up.'}
               </p>
             </div>
@@ -274,6 +280,10 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
             <Table>
               <TableHeader>
                 <TableRow>
+                  {/* P2.6: v-number is the primary label; digest shortsha
+                      is secondary. Keep the column narrow — most v-numbers
+                      fit in 4 chars. */}
+                  <TableHead className="w-20">Version</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Health</TableHead>
@@ -289,6 +299,19 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
                     className="cursor-pointer hover:bg-muted"
                     onClick={() => router.push(`/deployments/${deployment.id}`)}
                   >
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold font-mono text-sm">
+                          {deploymentVersionLabel(deployment) ?? '—'}
+                        </span>
+                        <span
+                          className="text-xs text-muted-foreground font-mono"
+                          title={deployment.id}
+                        >
+                          {shortId(deployment.id)}
+                        </span>
+                      </div>
+                    </TableCell>
                     <TableCell>{getStatusBadge(deployment.status)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
@@ -407,10 +430,27 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
             <DialogDescription>
               {selectedDeployment && currentDeployment ? (
                 <>
+                  {/* P2.6: prefer v-numbers in the confirm text. They're
+                      the operator-facing identifier — "v43 → v41" reads
+                      faster than hex. Fall back to git shortsha, then
+                      deployment-id shortsha. */}
                   Rollback <code className="font-mono">{serviceName}</code> from{' '}
-                  <code className="font-mono">{shortSha(currentDeployment.git_sha) ?? shortId(currentDeployment.id)}</code> to{' '}
-                  <code className="font-mono">{shortSha(selectedDeployment.git_sha) ?? shortId(selectedDeployment.id)}</code>?
-                  This will take ~30s. ArgoCD reconciles in the background afterwards.
+                  <code className="font-mono">
+                    {deploymentVersionLabel(currentDeployment)
+                      ?? shortSha(currentDeployment.git_sha)
+                      ?? shortId(currentDeployment.id)}
+                  </code>
+                  {' '}
+                  {deploymentVersionLabel(currentDeployment) && (
+                    <span className="text-xs text-muted-foreground">(current)</span>
+                  )}
+                  {' to '}
+                  <code className="font-mono">
+                    {deploymentVersionLabel(selectedDeployment)
+                      ?? shortSha(selectedDeployment.git_sha)
+                      ?? shortId(selectedDeployment.id)}
+                  </code>
+                  ? This will take ~30s. ArgoCD reconciles in the background afterwards.
                 </>
               ) : (
                 'Flip traffic to the selected deployment at the routing layer.'

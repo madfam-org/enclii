@@ -393,6 +393,12 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/services/:id/metrics", h.GetServiceResourceMetrics)
 			protected.GET("/services/:id/deployments", h.ListServiceDeployments)
 			protected.GET("/services/:id/deployments/latest", h.GetLatestDeployment)
+			// P2.6: lookup by Heroku-style v-number. Route accepts either
+			// the bare integer ("42") or the prefixed form ("v42") — the
+			// handler normalizes. We use a separate `/versions/:v` segment
+			// because gin can't register `:version` next to the static
+			// `latest` above (httprouter rejects the mix at boot).
+			protected.GET("/services/:id/versions/:version", h.GetDeploymentByVersion)
 			protected.GET("/deployments", h.ListAllDeployments)
 			protected.GET("/deployments/:id", h.GetDeployment)
 			protected.GET("/deployments/:id/logs", h.GetLogs)

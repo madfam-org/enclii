@@ -33,9 +33,14 @@ type InstantRollbackAPIResponse struct {
 	ScaledUp         bool   `json:"scaled_up"`
 	FromDeploymentID string `json:"from_deployment_id,omitempty"`
 	ToDeploymentID   string `json:"to_deployment_id"`
-	ReadyReplicas    int32  `json:"ready_replicas"`
-	Strategy         string `json:"strategy"`
-	Namespace        string `json:"namespace"`
+	// P2.6: surface the Heroku-style v-numbers so CLI/UI can render
+	// "v43 → v41" without a round-trip. Pointers because historical rows
+	// may not have version_number allocated yet.
+	FromVersion   *int   `json:"from_version,omitempty"`
+	ToVersion     *int   `json:"to_version,omitempty"`
+	ReadyReplicas int32  `json:"ready_replicas"`
+	Strategy      string `json:"strategy"`
+	Namespace     string `json:"namespace"`
 }
 
 // InstantRollback flips the K8s Service selector to route traffic to a
@@ -151,17 +156,35 @@ func (h *Handler) InstantRollback(c *gin.Context) {
 	if req.Reason == "" {
 		reasonPtr = nil
 	}
+	metadata := map[string]interface{}{
+		"took_ms":            result.TookMS,
+		"scaled_up":          result.ScaledUp,
+		"from_deployment_id": result.FromDeploymentID,
+		"to_deployment_id":   targetDeploymentID.String(),
+		"ready_replicas":     result.ReadyReplicas,
+		"change_ticket_url":  req.ChangeTicketURL,
+		"strategy":           "instant_selector_flip",
+		"reason":             ptrOrEmpty(reasonPtr),
+	}
+	// P2.6: include the target's v-number so audit UIs can render
+	// "rollback: v43 → v41" without re-querying. The "from" side isn't
+	// always known here (the k8s client returns the from-deployment UUID,
+	// which may or may not exist in our deployments table if this flip
+	// crossed the P2.6 migration boundary).
+	if targetDeployment.VersionNumber != nil {
+		metadata["to_version"] = *targetDeployment.VersionNumber
+		metadata["to_version_label"] = targetDeployment.VersionLabel()
+	}
+	if result.FromDeploymentID != "" {
+		if fromUUID, perr := uuid.Parse(result.FromDeploymentID); perr == nil {
+			if fromDep, derr := h.repos.Deployments.GetByID(ctx, fromUUID.String()); derr == nil && fromDep.VersionNumber != nil {
+				metadata["from_version"] = *fromDep.VersionNumber
+				metadata["from_version_label"] = fromDep.VersionLabel()
+			}
+		}
+	}
 	h.emitRollbackLifecycleEvent(service, env, targetDeployment, targetRelease, actor,
-		"deploy.rolled_back", "", map[string]interface{}{
-			"took_ms":            result.TookMS,
-			"scaled_up":          result.ScaledUp,
-			"from_deployment_id": result.FromDeploymentID,
-			"to_deployment_id":   targetDeploymentID.String(),
-			"ready_replicas":     result.ReadyReplicas,
-			"change_ticket_url":  req.ChangeTicketURL,
-			"strategy":           "instant_selector_flip",
-			"reason":             ptrOrEmpty(reasonPtr),
-		})
+		"deploy.rolled_back", "", metadata)
 
 	// Record metric — separate label from argocd-commit rollback so we can
 	// observe adoption.
@@ -175,12 +198,24 @@ func (h *Handler) InstantRollback(c *gin.Context) {
 		logging.String("actor", actor),
 	)
 
+	// Extract the version pointers resolved above (re-read from metadata to
+	// avoid another DB round-trip).
+	var fromVersion, toVersion *int
+	if v, ok := metadata["from_version"].(int); ok {
+		fromVersion = &v
+	}
+	if v, ok := metadata["to_version"].(int); ok {
+		toVersion = &v
+	}
+
 	c.JSON(http.StatusOK, InstantRollbackAPIResponse{
 		Message:          "Traffic flipped successfully",
 		TookMS:           result.TookMS,
 		ScaledUp:         result.ScaledUp,
 		FromDeploymentID: result.FromDeploymentID,
 		ToDeploymentID:   targetDeploymentID.String(),
+		FromVersion:      fromVersion,
+		ToVersion:        toVersion,
 		ReadyReplicas:    result.ReadyReplicas,
 		Strategy:         "instant_selector_flip",
 		Namespace:        env.KubeNamespace,

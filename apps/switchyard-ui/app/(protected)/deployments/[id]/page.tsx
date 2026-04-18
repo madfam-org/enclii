@@ -21,6 +21,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ArrowLeft, GitBranch, ExternalLink, RefreshCw, RotateCcw, Clock, Server, Container, Hash } from 'lucide-react';
 import { AuthorAvatar, CommitLink } from '@/components/git';
 import type { Deployment, RollbackResponse } from '@/components/deployments/types';
+import { deploymentVersionLabel } from '@/components/deployments/types';
 import { LogsTab } from '@/components/log-viewer/LogsTab';
 
 export default function DeploymentDetailPage() {
@@ -152,7 +153,10 @@ export default function DeploymentDetailPage() {
           <nav className="text-sm text-muted-foreground">
             <Link href="/deployments" className="hover:text-foreground">Deployments</Link>
             <span className="mx-2">/</span>
-            <span className="text-foreground font-mono">{deploymentId.slice(0, 8)}</span>
+            <span className="text-foreground font-mono">
+              {/* P2.6: prefer the Heroku-style v-number in breadcrumbs. */}
+              {deployment ? (deploymentVersionLabel(deployment) ?? deploymentId.slice(0, 8)) : deploymentId.slice(0, 8)}
+            </span>
           </nav>
         </div>
         <Button variant="outline" size="sm" onClick={fetchDeployment}>
@@ -184,7 +188,12 @@ export default function DeploymentDetailPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-xl">
-                  Deployment{deployment.service_name ? ` — ${deployment.service_name}` : ''}
+                  {/* P2.6: show v-number prominently in the page header.
+                      Fall back to "Deployment" when a v-number hasn't been
+                      allocated (historical rows pre-backfill, or rolling
+                      deploys during the migration window). */}
+                  {deploymentVersionLabel(deployment) ?? 'Deployment'}
+                  {deployment.service_name ? ` — ${deployment.service_name}` : ''}
                 </CardTitle>
                 <Badge variant={getStatusVariant(deployment.status)}>{deployment.status}</Badge>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getHealthColor(deployment.health)}`}>
