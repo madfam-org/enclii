@@ -1,192 +1,132 @@
 ---
-title: Overview
-description: Welcome to Enclii - an open source DevOps platform for containerized services
+title: Enclii Documentation
+description: Deploy, scale, and operate containerized services on infrastructure you own
 sidebar_position: 1
 tags: [overview, documentation, getting-started]
 ---
 
-# Enclii Documentation
+# Enclii
 
-**Welcome to the Enclii documentation!** This directory contains all technical documentation, guides, audit reports, and implementation notes.
+**Deploy, scale, and operate containerized services — on infrastructure you own.**
 
-## Current Status
+Open-source DevOps platform with production-grade Kubernetes, zero vendor lock-in, and Vercel/Railway/Heroku-style ergonomics.
 
-**Production:** 95% Ready (Beta) | **Live at:** [app.enclii.dev](https://app.enclii.dev)
+> **[→ Deploy your first service in 5 minutes](./quickstart.md)**
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| API | ✅ Running | api.enclii.dev |
-| UI | ✅ Running | app.enclii.dev |
-| Admin (Dispatch) | ✅ Running | admin.enclii.dev |
-| Auth | ✅ Janua SSO | auth.madfam.io |
-| Build Pipeline | ✅ Operational | GitHub webhooks + Buildpacks |
-| Docs | ✅ Running | docs.enclii.dev |
-| Status Page | ✅ Running | status.enclii.dev, status.madfam.io (24h timeline history) |
-| GitOps | ✅ ArgoCD | App-of-Apps (10 apps), auto-sync + self-heal |
-| Storage | ✅ Longhorn | CSI storage (single-node; ready for scaling) |
-| NetworkPolicies | ✅ ArgoCD App | Default-deny per namespace |
-| Vault | ⏳ Staged | Helm + ArgoCD app + tunnel route ready, pending cluster deploy |
-| PostHog | ⏳ Staged | Helm + ArgoCD app + tunnel route + SDKs ready, pending cluster deploy |
-| GPU Prep | ✅ Ready | Manifests staged, pending nodes |
+---
 
-## Quick Start
+## Pick your path
 
-**New to Enclii?** Start here:
-1. [Quickstart Guide](./getting-started/QUICKSTART.md) - Get up and running in 5 minutes
-2. [Development Setup](./getting-started/DEVELOPMENT.md) - Set up your development environment
-3. [Production Checklist](./production/PRODUCTION_CHECKLIST.md) - Deployment verification
+### 🚀 [Just try it →](./quickstart.md)
 
-**Want to understand the architecture?** Read:
-- [Architecture Overview](./architecture/ARCHITECTURE.md)
-- [API Documentation](/api-reference/)
+Install the CLI, sign in with GitHub, and deploy a live service in 5 minutes. No cluster, no YAML.
 
-**Need help?** Check:
-- [Troubleshooting](./troubleshooting/) - Solutions to common problems
-- [FAQ](./faq/) - Frequently asked questions
+### 🔁 [Migrate from Vercel, Railway, or Heroku →](./guides/migrating.md)
 
-**Building integrations?** Use:
-- [TypeScript SDK](./sdk/typescript/) - Programmatic access to Enclii
-- [CLI Reference](./cli/) - Command-line interface
+10-minute migration guides with feature-parity tables, env var import scripts, and DNS cutover steps.
 
-## Documentation Structure
+### ☸️ [Run your own cluster →](./guides/SELF_HOSTING.md)
 
-### 📚 Getting Started
-New developer onboarding and initial setup guides.
+Self-host Enclii end-to-end. Bare-metal or cloud, Kubernetes-native, GitOps-driven.
 
-- [Quickstart Guide](./getting-started/QUICKSTART.md) - Quick introduction and setup
-- [Development Setup](./getting-started/DEVELOPMENT.md) - Complete development environment configuration
-- [Build Setup](./getting-started/BUILD_SETUP.md) - Build system and tooling guide
+---
 
-### 🏗️ Architecture
-System design, architecture decisions, and API references.
+## Quick links
 
-- [Architecture Overview](./architecture/ARCHITECTURE.md) - System architecture and design patterns
-- [API Documentation](./architecture/API.md) - REST API reference and examples
-- [Blue Ocean Roadmap](./architecture/BLUE_OCEAN_ROADMAP.md) - Future architecture plans
+- [Template catalog](./templates.md) — starter repos for Next.js, FastAPI, Go, Rails, and more
+- [CLI reference](./cli/README.md) — every `enclii` command
+- [Service spec](./reference/service-spec.md) — `service.yaml` field-by-field
+- [Troubleshooting](./troubleshooting/) — build failures, deploy timeouts, auth issues
+- [FAQ](./faq/) — billing, security, migration FAQs
 
-### 📖 Guides
-User guides for common tasks and migrations.
+---
 
-- [Onboarding Guide](./guides/ONBOARDING_GUIDE.md) - Zero-touch repo onboarding
-- [Railway Migration Guide](./guides/RAILWAY_MIGRATION_GUIDE.md) - Migrating from Railway
-- [Vercel Migration Guide](./guides/VERCEL_MIGRATION_GUIDE.md) - Migrating from Vercel
-- [Heroku Migration Guide](./guides/HEROKU_MIGRATION_GUIDE.md) - Migrating from Heroku
-- [Testing Guide](./guides/TESTING_GUIDE.md) - Writing and running tests
-- [Database Operations](./guides/database-operations.md) - Database management and migrations
-- [CLI Auth Setup](./guides/cli-auth-setup.md) - CLI authentication configuration
-- [SSO Deployment](./guides/sso-deployment.md) - SSO configuration and deployment
+## Platform status
 
-### 🆘 Troubleshooting & FAQ
-Get help with common issues and answers to frequent questions.
+**Production:** 95% ready (Beta) · **Live at:** [app.enclii.dev](https://app.enclii.dev)
 
-- [Troubleshooting Index](./troubleshooting/) - Common problems and solutions
-- [API Errors](./troubleshooting/api-errors.md) - API error codes and fixes
-- [Build Failures](./troubleshooting/build-failures.md) - Build pipeline troubleshooting
-- [Deployment Issues](./troubleshooting/deployment-issues.md) - Deployment troubleshooting
-- [Auth Problems](./troubleshooting/auth-problems.md) - Authentication issues
-- [FAQ](./faq/) - Frequently asked questions
+| Component | Status |
+|-----------|--------|
+| API (`api.enclii.dev`) | ✅ Running |
+| Dashboard (`app.enclii.dev`) | ✅ Running |
+| Admin (`admin.enclii.dev`) | ✅ Running |
+| Auth (Janua SSO, `auth.madfam.io`) | ✅ Running |
+| Build pipeline | ✅ GitHub webhooks + Paketo buildpacks |
+| Docs (`docs.enclii.dev`) | ✅ Running |
+| Status (`status.enclii.dev`) | ✅ Running |
+| GitOps (ArgoCD, App-of-Apps) | ✅ Running |
+| Storage (Longhorn CSI) | ✅ Running |
+| Observability (OTel tracing) | ✅ Running |
+| Vault | ⏳ Staged |
+| PostHog | ⏳ Staged |
+| Managed databases | ⏳ P3.1 (landing) |
+| Self-serve signup | ⏳ P3.2 (landing) |
 
-### 📦 SDKs
-Client libraries for programmatic access.
+---
 
-- [TypeScript SDK](./sdk/typescript/) - Full TypeScript/JavaScript SDK
-- Go SDK: `packages/sdk-go/` — Go client library
+## Documentation structure
 
-### 🚀 Production
-Production deployment, readiness, and operational guides.
+This documentation is organized for two audiences: **users** who deploy services to Enclii, and **operators** who run the Enclii platform itself.
 
-- [Production Checklist](./production/PRODUCTION_CHECKLIST.md) - Production readiness assessment
-- [Production Deployment Roadmap](./production/PRODUCTION_DEPLOYMENT_ROADMAP.md) - Deployment timeline and milestones
-- [Gap Analysis](./production/GAP_ANALYSIS.md) - Feature comparison with Vercel and Railway
+### For users
 
-### ☸️ Infrastructure
-GitOps, storage, compute, and Kubernetes infrastructure. **[Infrastructure Index →](./infrastructure/README.md)**
+- **[Getting Started](./getting-started/QUICKSTART.md)** — local-dev loop, build tooling (for platform contributors)
+- **[Guides](./guides/ONBOARDING_GUIDE.md)** — onboarding, testing, database operations, SSO
+- **[CLI Reference](./cli/)** — every command with examples
+- **[SDKs](./sdk/typescript/)** — TypeScript and Go client libraries
+- **[Troubleshooting](./troubleshooting/)** and **[FAQ](./faq/)**
 
-**Core Infrastructure (Jan 2026):**
-- [GitOps with ArgoCD](./infrastructure/GITOPS.md) - App-of-Apps pattern, self-heal, sync operations
-- [Storage with Longhorn](./infrastructure/STORAGE.md) - Replicated CSI, StorageClasses, backup/recovery
-- [Cloudflare Integration](./infrastructure/CLOUDFLARE.md) - Zero-trust ingress, tunnel route automation
-- [External Secrets](./infrastructure/EXTERNAL_SECRETS.md) - Secret sync from external providers
+### For operators
 
-**Configuration Files:**
-- ArgoCD Apps: `infra/argocd/` — GitOps App-of-Apps configuration
-- Longhorn Values: `infra/helm/longhorn/` — Helm values for storage
-- GPU Node Setup: `infra/k8s/base/gpu/` — NVIDIA device plugin and tolerations
-- Kaniko Builds: `apps/roundhouse/k8s/kaniko-job-template.yaml` — Secure rootless container builds
-- Cloudflare Tunnel: `infra/k8s/production/cloudflared-unified.yaml` — Tunnel manifest
-- ARC Runners: `infra/argocd/apps/arc-runners.yaml` — GitHub Actions self-hosted runners
+- **[Architecture](./architecture/ARCHITECTURE.md)** — system design and decisions
+- **[Infrastructure](./infrastructure/README.md)** — GitOps, Longhorn, Cloudflare, External Secrets
+- **[Production](./production/PRODUCTION_CHECKLIST.md)** — deployment roadmap, gap analysis, anti-fragility
+- **[Runbooks](./runbooks/)** — incident response, cluster remediation, database recovery
+- **[Security](./security/)** and **[Compliance](./compliance/)** — secret rotation, SOC2 mapping
 
-### 🔍 Audits
-Browser-based audit reports from January 2026 are available in the `audits/` directory.
+### Implementation history
 
-> **Note:** Detailed audit reports (security, infrastructure, codebase, UI, dependencies, testing, technical debt) were produced during earlier development phases and have been archived. See `docs/archive/audits-nov-2025/` for the full set of historical audit documents.
+- **[Implementation notes](./implementation/)** — MVP, build pipeline, CLI completion reports
+- **[Audits](./audits/)** and **[archived reports](./archive/)** — historical audit trail
 
-### 🛠️ Implementation
-Implementation status reports and strategy documents.
+---
 
-- [Build Pipeline Implementation](./implementation/BUILD_PIPELINE_IMPLEMENTATION.md)
-- [CLI Implementation Complete](./implementation/CLI_IMPLEMENTATION_COMPLETE.md)
-- [MVP Implementation](./implementation/MVP_IMPLEMENTATION.md)
-- [Immediate Priorities Implementation](./implementation/IMMEDIATE_PRIORITIES_IMPLEMENTATION.md)
-- [Blue Ocean Implementation Status](./implementation/BLUE_OCEAN_IMPLEMENTATION_STATUS.md)
-- [Bootstrap Auth Strategy](./implementation/BOOTSTRAP_AUTH_STRATEGY.md)
-- [Main Integration Complete](./implementation/MAIN_INTEGRATION_COMPLETE.md)
+## Navigation by role
 
-### 📦 Archive
-Historical reports, completed progress tracking documents, and design artifacts are stored in the `archive/` directory. These are excluded from the docs site build but remain available in the repository for reference.
-
-## Navigation by Role
-
-| Role | Start Here |
+| Role | Start here |
 |------|-----------|
-| **Executives / CTOs** | [Production Checklist](./production/PRODUCTION_CHECKLIST.md), [Gap Analysis](./production/GAP_ANALYSIS.md) |
-| **Engineering Managers** | [Production Deployment Roadmap](./production/PRODUCTION_DEPLOYMENT_ROADMAP.md), [Testing Guide](./guides/TESTING_GUIDE.md) |
-| **DevOps / SRE** | [Infrastructure Index](./infrastructure/README.md), [Runbooks](./runbooks/CLUSTER_REMEDIATION_OPS.md) |
-| **Security Engineers** | [Kyverno Policies](./infrastructure/KYVERNO_POLICIES.md), [Secret Rotation Log](./security/SECRET_ROTATION_LOG.md) |
-| **Frontend Developers** | [Quickstart](./getting-started/QUICKSTART.md), [TypeScript SDK](./sdk/typescript/) |
-| **Backend Developers** | [Architecture](./architecture/ARCHITECTURE.md), [API Docs](./architecture/API.md), [Testing Guide](./guides/TESTING_GUIDE.md) |
-
-## Core Documentation (Root Directory)
-
-The following essential documents are located in the repository root:
-
-- `README.md` (repo root) — Main project README and overview
-- `CLAUDE.md` (repo root) — Instructions for Claude Code AI assistant
-- `SOFTWARE_SPEC.md` (repo root) — Complete software specification
-
-## Contributing to Documentation
-
-When adding new documentation:
-
-1. **Getting Started:** Add to `getting-started/` for onboarding content
-2. **Architecture:** Add to `architecture/` for system design docs
-3. **Guides:** Add to `guides/` for how-to guides and tutorials
-4. **Production:** Add to `production/` for deployment and operations
-5. **Audits:** Add to appropriate `audits/` subdirectory
-6. **Implementation:** Add to `implementation/` for status reports
-7. **Archive:** Move completed/historical docs to `archive/`
-
-**Remember to update this README.md when adding new documentation!**
-
-## Documentation Standards
-
-- Use clear, descriptive filenames in UPPERCASE with underscores
-- Include a summary/overview at the top of each document
-- Add navigation links to related documents
-- Keep README files in subdirectories for complex sections
-- Archive outdated documentation rather than deleting it
+| **New user deploying a service** | [5-minute quickstart](./quickstart.md) |
+| **Migrating from Vercel/Railway/Heroku** | [Migration index](./guides/migrating.md) |
+| **Platform contributor (local dev)** | [Local quickstart](./getting-started/QUICKSTART.md) |
+| **DevOps / SRE** | [Infrastructure](./infrastructure/README.md), [Runbooks](./runbooks/) |
+| **Security engineer** | [Kyverno policies](./infrastructure/KYVERNO_POLICIES.md), [Secret rotation log](./security/SECRET_ROTATION_LOG.md) |
+| **Frontend developer** | [Quickstart](./quickstart.md), [TypeScript SDK](./sdk/typescript/) |
+| **Backend developer** | [Architecture](./architecture/ARCHITECTURE.md), [API docs](./architecture/API.md), [Testing guide](./guides/TESTING_GUIDE.md) |
+| **Executive / CTO** | [Production checklist](./production/PRODUCTION_CHECKLIST.md), [Gap analysis](./production/GAP_ANALYSIS.md) |
 
 ---
 
-## Related Documentation
+## Getting help
 
-- **API Reference**: [OpenAPI Documentation](./api-reference/)
-- **CLI Reference**: [CLI Commands](./cli/)
-- **TypeScript SDK**: [SDK Documentation](./sdk/typescript/)
-- **Troubleshooting**: [Common Issues](./troubleshooting/)
-- **FAQ**: [Frequently Asked Questions](./faq/)
+- **CLI help:** `enclii --help` or `enclii <command> --help`
+- **Docs:** you are here ([docs.enclii.dev](https://docs.enclii.dev))
+- **Issues:** [github.com/madfam-org/enclii/issues](https://github.com/madfam-org/enclii/issues)
+- **Status page:** [status.enclii.dev](https://status.enclii.dev)
 
 ---
 
-**Last Updated:** 2026-03-20
-**Documentation Version:** 3.2 (Broken Links Fix)
+## Contributing to the docs
+
+When adding documentation:
+
+1. **User-facing tutorials** → `guides/`
+2. **Reference material** → `reference/` or `cli/commands/`
+3. **Operator runbooks** → `runbooks/`
+4. **Architecture and ADRs** → `architecture/`
+5. **Historical reports** → `archive/`
+
+Update `apps/docs-site/sidebars.ts` when adding a new top-level page.
+
+---
+
+**Last updated:** 2026-04-17 · **Documentation version:** 4.0 (Progressive onboarding)
