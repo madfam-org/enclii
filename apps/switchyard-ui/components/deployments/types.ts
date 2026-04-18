@@ -57,6 +57,27 @@ export interface RollbackResponse {
   current_deployment: Deployment;
 }
 
+/**
+ * Response from the instant (selector-flip) rollback endpoint.
+ * POST /v1/services/{id}/rollback
+ */
+export interface InstantRollbackResponse {
+  message: string;
+  took_ms: number;
+  scaled_up: boolean;
+  from_deployment_id?: string;
+  to_deployment_id: string;
+  ready_replicas: number;
+  strategy: 'instant_selector_flip';
+  namespace: string;
+}
+
+export interface InstantRollbackRequest {
+  target_deployment_id: string;
+  reason?: string;
+  change_ticket_url?: string;
+}
+
 export interface ReleasesListResponse {
   releases: Release[];
 }
