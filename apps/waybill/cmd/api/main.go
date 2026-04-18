@@ -7,6 +7,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/madfam-org/enclii/apps/waybill/internal/api"
+	"github.com/madfam-org/enclii/apps/waybill/internal/budgets"
 	"github.com/madfam-org/enclii/apps/waybill/internal/config"
 	"github.com/madfam-org/enclii/apps/waybill/internal/events"
 	"github.com/madfam-org/enclii/apps/waybill/internal/metering"
@@ -58,8 +59,18 @@ func main() {
 	// Create handlers
 	handlers := api.NewHandlers(collector, calculator, logger)
 
+	// P2.2: budgets + cost query handlers (spend visibility + threshold alerts).
+	store := budgets.NewStore(db)
+	costReader := budgets.NewCostReader(db, budgets.PricingDollars{
+		ComputePerGBHour:  cfg.PriceComputePerGBHour,
+		BuildPerMinute:    cfg.PriceBuildPerMinute,
+		StoragePerGBMonth: cfg.PriceStoragePerGBMonth,
+		BandwidthPerGB:    cfg.PriceBandwidthPerGB,
+	})
+	costHandlers := api.NewCostHandlers(store, costReader, logger)
+
 	// Create API server
-	server := api.NewServer(handlers, &api.ServerConfig{
+	server := api.NewServer(handlers, costHandlers, &api.ServerConfig{
 		InternalAPIKey: cfg.InternalAPIKey,
 	}, logger)
 

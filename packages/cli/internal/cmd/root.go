@@ -78,6 +78,9 @@ Learn more at https://enclii.dev`,
 	// Outbound lifecycle webhooks (P2.3)
 	rootCmd.AddCommand(NewWebhooksCommand(cfg))
 
+	// Spend visibility + budgets (P2.2)
+	rootCmd.AddCommand(NewBillingCommand(cfg))
+
 	return rootCmd
 }
 

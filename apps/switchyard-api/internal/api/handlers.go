@@ -102,6 +102,17 @@ type Handler struct {
 	// simply skips the fan-out step.
 	webhookDispatcher *webhooks.Dispatcher
 	webhookEncryptor  *webhooks.Encryptor
+
+	// Billing proxy (P2.2) — forwards /v1/projects/:slug/billing/* to Waybill
+	// after resolving the slug to a UUID. When nil the routes return 503.
+	billingProxy *BillingProxyConfig
+}
+
+// SetBillingProxy attaches a BillingProxyConfig for the /billing/* routes.
+// Intended to be called from bootstrap after NewHandler; keeping the
+// config optional keeps test handlers minimal.
+func (h *Handler) SetBillingProxy(cfg *BillingProxyConfig) {
+	h.billingProxy = cfg
 }
 
 // NewHandler creates a new API handler with all dependencies
@@ -479,6 +490,18 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.POST("/integrations/github/link", h.LinkGitHub)
 			protected.GET("/integrations/github/repos/:owner/:repo/branches", h.GetRepositoryBranches)
 			protected.POST("/integrations/github/repos/:owner/:repo/analyze", h.AnalyzeRepository)
+
+			// Billing + spend visibility (P2.2). Thin proxy to Waybill that
+			// resolves :slug → project UUID under the caller's RBAC, then
+			// forwards to the waybill service. Returns 503 when the proxy
+			// is not configured; exported via h.SetBillingProxy at bootstrap.
+			protected.GET("/projects/:slug/billing/cost", h.GetProjectBillingCost)
+			protected.GET("/projects/:slug/billing/budgets", h.ListProjectBudgets)
+			protected.POST("/projects/:slug/billing/budgets", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateProjectBudget)
+			protected.PATCH("/projects/:slug/billing/budgets/:budget_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateProjectBudget)
+			protected.DELETE("/projects/:slug/billing/budgets/:budget_id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProjectBudget)
+			protected.GET("/projects/:slug/billing/budgets/alerts", h.ListProjectBudgetAlerts)
+			protected.GET("/projects/:slug/billing/throttles", h.ListProjectThrottles)
 
 			// Deployment Groups (coordinated multi-service deployments)
 			protected.POST("/projects/:slug/environments/:env_name/deployment-groups", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateDeploymentGroup)
