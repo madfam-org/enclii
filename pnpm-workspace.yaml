@@ -2,6 +2,7 @@ packages:
   - "packages/shared-lib"
   - "packages/ui-components"
   - "packages/config"
+  - "packages/sdk-ts"
   - "apps/switchyard-ui"
   - "apps/dispatch"
   - "apps/status"

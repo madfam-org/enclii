@@ -113,6 +113,10 @@ tags:
     description: Advanced routing, ingress management, and certificate automation
   - name: infrastructure
     description: Infrastructure operations - exec, restart, scale, migrate, health
+  - name: canary
+    description: Canary rollout lifecycle (P2.7) - start, validate, promote, rollback
+  - name: lifecycle-webhooks
+    description: Outbound lifecycle webhook subscriptions (P2.3) - signed HMAC, DLQ
 
 paths:
   # ============================================
@@ -4528,6 +4532,412 @@ paths:
         '404':
           description: Junction not found
 
+  # ============================================
+  # P2.6 - v-number deployment resolution
+  # ============================================
+  /v1/services/{id}/versions/{version}:
+    get:
+      summary: Get deployment by v-number
+      description: |
+        Resolves a deployment by Heroku-style semantic version. Version numbers are
+        monotonic per service and never reused across rollbacks, so v42 unambiguously
+        identifies one historical deployment.
+      tags: [deployments]
+      operationId: getDeploymentByVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Service ID (UUID)
+          schema:
+            type: string
+            format: uuid
+        - name: version
+          in: path
+          required: true
+          description: Integer v-number (42 maps to "v42")
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '404':
+          description: No deployment found for that v-number
+
+  /v1/services/{id}/rollback:
+    post:
+      summary: Instant rollback (P0.5 selector flip)
+      description: |
+        Performs a service-selector flip rollback. Traffic shifts to the target
+        deployment's ReplicaSet in <30s when it's still running, <90s when it needs
+        to scale back up. ArgoCD reconciles the manifest change in the background.
+      tags: [deployments]
+      operationId: instantRollback
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstantRollbackRequest'
+      responses:
+        '200':
+          description: Rollback performed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstantRollbackResponse'
+        '400':
+          description: Validation error (e.g. prod rollback missing change ticket)
+        '404':
+          description: Target deployment not found
+
+  # ============================================
+  # P2.7 - Canary rollouts
+  # ============================================
+  /v1/services/{id}/canary:
+    post:
+      summary: Start canary rollout
+      description: |
+        Starts a canary rollout for a service. Splits traffic via replica-count
+        proportion (no service mesh). On auto-promote, a new stable deployment is
+        created from the canary digest, scaled up, health-gated, and the old
+        stable is scaled to 0 and deleted after a 15-minute soak.
+      tags: [canary]
+      operationId: startCanary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CanaryStartRequest'
+      responses:
+        '201':
+          description: Canary rollout started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanaryRolloutResponse'
+        '400':
+          description: Validation error
+        '409':
+          description: Rollout already in progress for this service
+
+  /v1/services/{id}/canary/{rollout_id}:
+    get:
+      summary: Get canary rollout state
+      tags: [canary]
+      operationId: getCanary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: rollout_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current rollout state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanaryRolloutResponse'
+        '404':
+          description: Rollout not found
+
+  /v1/services/{id}/canary/{rollout_id}/promote:
+    post:
+      summary: Promote canary immediately
+      description: Short-circuits validation window and promotes the canary now.
+      tags: [canary]
+      operationId: promoteCanary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: rollout_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Promotion scheduled
+        '409':
+          description: Rollout not in a promotable state
+
+  /v1/services/{id}/canary/{rollout_id}/rollback:
+    post:
+      summary: Manually roll back canary
+      description: Aborts the rollout and shifts all traffic back to stable.
+      tags: [canary]
+      operationId: rollbackCanary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: rollout_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Rollback reason (captured in audit log)
+      responses:
+        '202':
+          description: Rollback scheduled
+        '409':
+          description: Rollout already terminal
+
+  # ============================================
+  # P2.3 - Outbound lifecycle webhooks
+  # ============================================
+  /v1/projects/{slug}/lifecycle-webhooks:
+    get:
+      summary: List outbound webhook subscriptions for a project
+      tags: [lifecycle-webhooks]
+      operationId: listLifecycleWebhooks
+      parameters:
+        - $ref: '#/components/parameters/projectSlug'
+      responses:
+        '200':
+          description: Subscription list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OutboundWebhookSubscription'
+    post:
+      summary: Create a new webhook subscription
+      description: |
+        Creates a new outbound webhook subscription. The signing_secret in the
+        response is returned **exactly once** — the server stores only a SHA-256
+        hash and will never return the raw secret again. Callers must persist
+        the secret immediately.
+      tags: [lifecycle-webhooks]
+      operationId: createLifecycleWebhook
+      parameters:
+        - $ref: '#/components/parameters/projectSlug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutboundWebhookSubscriptionCreateRequest'
+      responses:
+        '201':
+          description: Subscription created (signing secret returned once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboundWebhookSubscriptionCreateResponse'
+        '400':
+          description: Validation error (URL must be https, invalid event types, etc.)
+
+  /v1/lifecycle-webhooks/{id}:
+    get:
+      summary: Show a webhook subscription
+      tags: [lifecycle-webhooks]
+      operationId: getLifecycleWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboundWebhookSubscription'
+        '404':
+          description: Subscription not found
+    patch:
+      summary: Update a webhook subscription
+      description: Only non-null fields are applied.
+      tags: [lifecycle-webhooks]
+      operationId: updateLifecycleWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutboundWebhookSubscriptionUpdateRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboundWebhookSubscription'
+    delete:
+      summary: Soft-delete a webhook subscription
+      tags: [lifecycle-webhooks]
+      operationId: deleteLifecycleWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+
+  /v1/lifecycle-webhooks/{id}/rotate-secret:
+    post:
+      summary: Rotate signing secret
+      description: |
+        Generates a new HMAC signing secret. The new secret is returned exactly
+        once and immediately becomes authoritative for all subsequent deliveries.
+      tags: [lifecycle-webhooks]
+      operationId: rotateLifecycleWebhookSecret
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Secret rotated (new secret returned once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboundWebhookSubscriptionCreateResponse'
+
+  /v1/lifecycle-webhooks/{id}/test:
+    post:
+      summary: Enqueue a synthetic test.ping event
+      tags: [lifecycle-webhooks]
+      operationId: testLifecycleWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Test delivery enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  delivery:
+                    $ref: '#/components/schemas/OutboundWebhookDelivery'
+
+  /v1/lifecycle-webhooks/{id}/deliveries:
+    get:
+      summary: List recent deliveries for a subscription
+      tags: [lifecycle-webhooks]
+      operationId: listLifecycleWebhookDeliveries
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/limit'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque pagination cursor from a prior response
+      responses:
+        '200':
+          description: Delivery list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deliveries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OutboundWebhookDelivery'
+                  next_cursor:
+                    type: string
+                    nullable: true
+
+  /v1/webhooks/event-types:
+    get:
+      summary: List all subscribable outbound webhook event types
+      tags: [lifecycle-webhooks]
+      operationId: listWebhookEventTypes
+      security: []
+      responses:
+        '200':
+          description: Event catalogue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event_types:
+                    type: array
+                    items:
+                      type: string
+
 components:
   securitySchemes:
     bearerAuth:
@@ -6345,6 +6755,334 @@ components:
         hint:
           type: string
           description: Troubleshooting hint
+
+    # ===== P0.5 Instant rollback =====
+    InstantRollbackRequest:
+      type: object
+      required:
+        - target_deployment_id
+      properties:
+        target_deployment_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        change_ticket_url:
+          type: string
+          description: Required for production environments
+
+    InstantRollbackResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        took_ms:
+          type: integer
+        scaled_up:
+          type: boolean
+        from_deployment_id:
+          type: string
+          format: uuid
+        to_deployment_id:
+          type: string
+          format: uuid
+        from_version:
+          type: integer
+          nullable: true
+          description: v-number of the deployment being rolled back from
+        to_version:
+          type: integer
+          nullable: true
+          description: v-number of the target deployment
+        ready_replicas:
+          type: integer
+        strategy:
+          type: string
+        namespace:
+          type: string
+
+    # ===== P2.7 Canary =====
+    CanaryStartRequest:
+      type: object
+      required:
+        - digest
+        - percentage
+      properties:
+        digest:
+          type: string
+          description: Image digest of the candidate (must already be built)
+        percentage:
+          type: integer
+          minimum: 5
+          maximum: 50
+        validation_window_minutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+        smoke_endpoint:
+          type: string
+        error_rate_threshold:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 0.5
+        environment_name:
+          type: string
+        change_ticket_url:
+          type: string
+        total_replicas:
+          type: integer
+
+    CanaryRolloutState:
+      type: string
+      enum:
+        - pending
+        - running
+        - validating
+        - promoting
+        - succeeded
+        - auto_rolled_back
+        - manual_rolled_back
+        - failed
+
+    CanaryRolloutResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        service_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        stable_deployment_id:
+          type: string
+          format: uuid
+        canary_deployment_id:
+          type: string
+          format: uuid
+        new_stable_deployment_id:
+          type: string
+          format: uuid
+          nullable: true
+        canary_digest:
+          type: string
+        canary_percentage:
+          type: integer
+        total_replicas:
+          type: integer
+        canary_replicas:
+          type: integer
+        stable_replicas:
+          type: integer
+        validation_window_seconds:
+          type: integer
+        smoke_endpoint:
+          type: string
+        error_rate_threshold:
+          type: number
+          format: float
+        state:
+          $ref: '#/components/schemas/CanaryRolloutState'
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        validating_started_at:
+          type: string
+          format: date-time
+          nullable: true
+        promoting_started_at:
+          type: string
+          format: date-time
+          nullable: true
+        terminal_at:
+          type: string
+          format: date-time
+          nullable: true
+        change_ticket_url:
+          type: string
+        last_error:
+          type: string
+        rollback_reason:
+          type: string
+        actual_percentage:
+          type: number
+          format: float
+          description: Computed percentage (canary_replicas / total_replicas)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # ===== P2.3 Outbound lifecycle webhooks =====
+    OutboundWebhookEventType:
+      type: string
+      enum:
+        - deploy.started
+        - deploy.succeeded
+        - deploy.failed
+        - rollback.succeeded
+        - secret.rotated
+        - service.scaled
+
+    OutboundWebhookSubscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+          description: Must be https://
+        secret_sha256_prefix:
+          type: string
+          description: First 8 chars of SHA-256(secret) for identifying which secret is active
+        event_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutboundWebhookEventType'
+          description: Empty array = subscribe to all event types
+        active:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_failure_at:
+          type: string
+          format: date-time
+          nullable: true
+        consecutive_failures:
+          type: integer
+        auto_disabled_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    OutboundWebhookSubscriptionCreateRequest:
+      type: object
+      required:
+        - name
+        - url
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+          description: Must be https://
+        event_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutboundWebhookEventType'
+
+    OutboundWebhookSubscriptionUpdateRequest:
+      type: object
+      description: Only non-null fields are applied
+      properties:
+        name:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+          nullable: true
+        event_types:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/OutboundWebhookEventType'
+        active:
+          type: boolean
+          nullable: true
+
+    OutboundWebhookSubscriptionCreateResponse:
+      type: object
+      properties:
+        subscription:
+          $ref: '#/components/schemas/OutboundWebhookSubscription'
+        signing_secret:
+          type: string
+          description: |
+            Raw signing secret — returned exactly once. Server only stores a
+            SHA-256 hash. Caller must persist immediately.
+        note:
+          type: string
+
+    OutboundWebhookDeliveryStatus:
+      type: string
+      enum: [pending, delivering, delivered, failed, dlq]
+
+    OutboundWebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        lifecycle_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_id:
+          type: string
+        event_type:
+          $ref: '#/components/schemas/OutboundWebhookEventType'
+        payload:
+          type: object
+          additionalProperties: true
+        payload_sha256:
+          type: string
+        attempt_number:
+          type: integer
+        status:
+          $ref: '#/components/schemas/OutboundWebhookDeliveryStatus'
+        http_status:
+          type: integer
+          nullable: true
+        response_snippet:
+          type: string
+        error_message:
+          type: string
+        attempted_at:
+          type: string
+          format: date-time
+          nullable: true
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_ms:
+          type: integer
+          nullable: true
+        next_retry_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
 
 security:
   - bearerAuth: []
