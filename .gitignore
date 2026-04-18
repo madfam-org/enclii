@@ -31,6 +31,13 @@ Thumbs.db
 # Logs
 *.log
 logs/
+# Whitelist P2.1 source trees whose natural names include "logs".
+# These are Next.js route segments + Playwright specs, not runtime log
+# artifacts — the generic `logs/` rule above would otherwise swallow them.
+!apps/switchyard-ui/app/**/logs/
+!apps/switchyard-ui/app/**/logs/**
+!apps/switchyard-ui/e2e/logs/
+!apps/switchyard-ui/e2e/logs/**
 
 # Database
 *.db
