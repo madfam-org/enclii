@@ -14,6 +14,7 @@ type Repositories struct {
 	Services            *ServiceRepository
 	Releases            *ReleaseRepository
 	Deployments         *DeploymentRepository
+	CanaryRollouts      *CanaryRolloutRepository
 	Users               *UserRepository
 	ProjectAccess       *ProjectAccessRepository
 	AuditLogs           *AuditLogRepository
@@ -84,6 +85,7 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		Services:            &ServiceRepository{db: tx},
 		Releases:            &ReleaseRepository{db: tx},
 		Deployments:         &DeploymentRepository{db: tx},
+		CanaryRollouts:      NewCanaryRolloutRepositoryWithTx(tx),
 		Users:               &UserRepository{db: tx},
 		ProjectAccess:       &ProjectAccessRepository{db: tx},
 		AuditLogs:           &AuditLogRepository{db: tx},
@@ -153,6 +155,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Services:            NewServiceRepository(db),
 		Releases:            NewReleaseRepository(db),
 		Deployments:         NewDeploymentRepository(db),
+		CanaryRollouts:      NewCanaryRolloutRepository(db),
 		Users:               NewUserRepository(db),
 		ProjectAccess:       NewProjectAccessRepository(db),
 		AuditLogs:           NewAuditLogRepository(db),
