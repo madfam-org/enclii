@@ -124,6 +124,11 @@ func (c *Controller) Start(ctx context.Context) error {
 	c.wg.Add(1)
 	go c.retryQueueProcessor(ctx)
 
+	// Start canary scheduler (P2.7) — advances active canary rollouts every
+	// CanaryTickInterval (15s). No-op if CanaryRollouts repo is nil.
+	c.wg.Add(1)
+	go c.canaryScheduler(ctx)
+
 	c.logger.WithField("workers", c.workers).Info("Reconciliation controller started")
 	return nil
 }
