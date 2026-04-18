@@ -152,6 +152,10 @@ spec:
             # R2_ACCOUNT_ID feeds the S3 endpoint template in pgbackrest.conf.
             - secretRef:
                 name: pgbackrest-r2-credentials
+                # Optional so Postgres starts even when the R2 creds
+                # haven't been provisioned yet. pgBackRest backups will
+                # fail loudly in that state, but the main DB stays up.
+                optional: true
           # P1.1: override the default command so the server loads our
           # conf.d include. The image's entrypoint is otherwise unchanged;
           # we just pass explicit -c include_dir so /etc/postgresql/conf.d
@@ -271,6 +275,10 @@ spec:
           envFrom:
             - secretRef:
                 name: pgbackrest-r2-credentials
+                # Optional so Postgres starts even when the R2 creds
+                # haven't been provisioned yet. pgBackRest backups will
+                # fail loudly in that state, but the main DB stays up.
+                optional: true
           volumeMounts:
             # Need PGDATA access for `check` / `backup` / `restore` commands.
             - name: postgres-storage
