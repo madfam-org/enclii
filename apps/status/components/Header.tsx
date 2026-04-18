@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { Activity, Menu, X, History, Home, Rss } from 'lucide-react'
+import { Activity, Menu, X, History, Home, Rss, Shield } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
@@ -19,6 +19,7 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
   const navItems = [
     { href: '/', label: 'Status', icon: Home },
     { href: '/incidents', label: 'Incident History', icon: History },
+    { href: '/trust', label: 'Trust', icon: Shield },
   ]
 
   return (
