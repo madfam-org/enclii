@@ -166,6 +166,17 @@ type Config struct {
 	// WebhookWorkerPool sizes the background delivery goroutine pool
 	// (default 5).
 	WebhookWorkerPool int
+
+	// Tenant Data Export (P3.6)
+	// R2 storage client credentials. Shared with the backups stream but
+	// segregated by bucket + prefix. When any of these are empty the
+	// tenant export service is left unwired and the /exports endpoints
+	// return 503 — consistent with how other optional surfaces degrade.
+	TenantExportR2AccountID       string
+	TenantExportR2AccessKeyID     string
+	TenantExportR2AccessKeySecret string
+	TenantExportR2Bucket          string // default "enclii-backups"
+	TenantExportR2Prefix          string // default "tenant-exports"
 }
 
 func Load() (*Config, error) {
@@ -342,6 +353,14 @@ func Load() (*Config, error) {
 		LokiQueryBudgetBurst:       viper.GetInt("loki-query-budget-burst"),
 		WebhookMasterKeyB64:        viper.GetString("webhook-master-key"),
 		WebhookWorkerPool:          viper.GetInt("webhook-worker-pool"),
+
+		// P3.6 Tenant data export — R2 credentials for the export tarball
+		// store. Left empty by default; wiring is optional.
+		TenantExportR2AccountID:       viper.GetString("tenant-export-r2-account-id"),
+		TenantExportR2AccessKeyID:     viper.GetString("tenant-export-r2-access-key-id"),
+		TenantExportR2AccessKeySecret: viper.GetString("tenant-export-r2-access-key-secret"),
+		TenantExportR2Bucket:          viper.GetString("tenant-export-r2-bucket"),
+		TenantExportR2Prefix:          viper.GetString("tenant-export-r2-prefix"),
 	}
 
 	// SEC-001: Validate required configuration

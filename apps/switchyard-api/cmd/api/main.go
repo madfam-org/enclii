@@ -566,6 +566,12 @@ func main() {
 		apiHandler.SetProvisioners(pgProv, pgbUpdater, secProv, r2Prov)
 	}
 
+	// P3.6: Tenant data export wiring (see tenant_export_wiring.go).
+	// Disabled when TENANT_EXPORT_R2_* env vars aren't set — endpoints
+	// return 503 in that case. Kept out of this file to keep main.go
+	// under the 800-line budget.
+	wireTenantExport(cfg, repos, apiHandler, emailService)
+
 	// Start admin reconciler (syncs cluster status, fleet, ArgoCD drift, costs every 60s)
 	adminReconciler := reconciler.NewAdminReconciler(repos, k8sClient, logrus.StandardLogger())
 	go func() {

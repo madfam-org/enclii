@@ -1,0 +1,85 @@
+---
+# P3.6 Tenant Data Export — retention cleanup
+#
+# Walks tenant_exports rows where status=ready and expires_at < now(),
+# deletes the R2 object (or index.json + parts for multi-part exports),
+# and flips the row to status=expired.
+#
+# The deletion is driven by the Switchyard API's /admin/tenant-exports/
+# cleanup endpoint — we don't talk to R2 from inside this pod to avoid
+# duplicating credentials. A missed run is caught by the staleness alert
+# (fires if no cleanup in 48h).
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tenant-export-cleanup
+  namespace: enclii-system
+  labels:
+    app.kubernetes.io/name: tenant-export-cleanup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+spec:
+  # Hourly — the retention window is 14 days, so hourly is plenty of
+  # precision and keeps the R2 LIST cost trivial.
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: tenant-export-cleanup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              image: docker.io/curlimages/curl:8.11.1
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 65534
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  echo "[$(date -u)] tenant-export cleanup starting"
+                  # Call the admin endpoint that enumerates expired rows
+                  # and purges their R2 objects. Uses the platform
+                  # service token; rate-limited to 1/request/minute in
+                  # the API.
+                  STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+                    -X POST \
+                    -H "Authorization: Bearer ${SWITCHYARD_SERVICE_TOKEN}" \
+                    "${SWITCHYARD_API_URL}/v1/admin/tenant-exports/cleanup")
+                  if [ "$STATUS" != "200" ]; then
+                    echo "[$(date -u)] cleanup FAILED status=$STATUS body=$(cat /tmp/resp.json)"
+                    exit 1
+                  fi
+                  echo "[$(date -u)] cleanup OK: $(cat /tmp/resp.json)"
+              env:
+                - name: SWITCHYARD_API_URL
+                  value: http://switchyard-api.enclii-system.svc.cluster.local:4200
+                - name: SWITCHYARD_SERVICE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: switchyard-service-token
+                      key: token
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"

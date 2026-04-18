@@ -200,3 +200,19 @@ func (s *EmailService) send(ctx context.Context, to, subject, htmlBody, textBody
 func (s *EmailService) IsEnabled() bool {
 	return s.enabled
 }
+
+// SendGeneric sends a plain-text transactional email. It's a thin wrapper
+// around send() exposed for services that need ad-hoc notifications
+// (e.g. tenant export readiness) without embedding HTML templates here.
+// When `to` is empty, the email is routed to the default admin list
+// configured via EMAIL_TO_ADMINS (no-op if neither to nor admin list is
+// configured).
+func (s *EmailService) SendGeneric(ctx context.Context, to, subject, body string) error {
+	if to == "" {
+		// Dev/staging with no admin mailing list: log and return.
+		s.logger.WithField("subject", subject).
+			Info("SendGeneric: no recipient, logging only")
+		return nil
+	}
+	return s.send(ctx, to, subject, "", body)
+}

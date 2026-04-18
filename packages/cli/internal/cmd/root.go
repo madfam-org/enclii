@@ -84,6 +84,9 @@ Learn more at https://enclii.dev`,
 	// Managed-DB addons (P3.1 Sprint 1)
 	rootCmd.AddCommand(NewAddonCommand(cfg))
 
+	// Tenant data export (P3.6)
+	rootCmd.AddCommand(NewExportCommand(cfg))
+
 	return rootCmd
 }
 
