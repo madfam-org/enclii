@@ -11,8 +11,10 @@ spec:
       maxSurge: 1
       maxUnavailable: 0
 ---
-# Note: Redis Sentinel (redis-sentinel.yaml) is staged for multi-node HA.
-# Single instance uses 1 replica with RWO PVC.
+# Note: Redis Sentinel HA cluster lives in a separate ArgoCD Application
+# (infra/argocd/apps/redis-sentinel.yaml). This Deployment remains the
+# switchyard-api single-instance cache in the `enclii` namespace and is
+# unaffected by the Sentinel rollout.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

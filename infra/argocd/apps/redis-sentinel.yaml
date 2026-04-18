@@ -1,0 +1,61 @@
+# Redis Sentinel HA Application — P1.3 of the 2026-04 Enclii remediation plan.
+#
+# Deploys a 3-replica Redis StatefulSet with co-located Sentinel to the `data`
+# namespace, IN PARALLEL with the existing single-instance `redis` Deployment.
+# Consumers migrate service-by-service per docs/runbooks/redis-sentinel-migration.md.
+#
+# Services created by this app:
+#   - redis-sentinel.data.svc.cluster.local:26379   (Sentinel-aware clients)
+#   - redis-ha-headless.data.svc.cluster.local      (per-pod DNS)
+#   - redis-master.data.svc.cluster.local:6379      (fallback / non-Sentinel)
+#
+# The existing `redis.data.svc.cluster.local:6379` Service remains untouched
+# for the duration of the gradual cutover.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redis-sentinel
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: redis-sentinel
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: cache-ha
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/redis-sentinel
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+
+  syncPolicy:
+    automated:
+      # prune=false during rollout so operators can intervene if Sentinel or
+      # replication misbehaves; flip to true after 2 weeks of clean operation.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    # StatefulSet volumeClaimTemplates are immutable after creation; ArgoCD
+    # should not flap on Longhorn-managed spec fields.
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
