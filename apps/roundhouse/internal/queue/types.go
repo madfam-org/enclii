@@ -58,6 +58,10 @@ type BuildResult struct {
 	DurationSecs   float64   `json:"duration_secs"`
 	ErrorMessage   string    `json:"error_message,omitempty"`
 	LogsURL        string    `json:"logs_url"`
+	// FrameworkSlug is the canonical framework identifier detected during
+	// the build (e.g. "nextjs", "go-fiber"). Matches the catalog in
+	// packages/sdk-go/pkg/frameworks. Empty when detection failed.
+	FrameworkSlug string `json:"framework_slug,omitempty"`
 }
 
 // WebhookPayload represents incoming webhook data

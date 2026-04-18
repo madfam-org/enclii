@@ -29,6 +29,10 @@ type BuildCallbackRequest struct {
 	DurationSecs   float64   `json:"duration_secs"`
 	ErrorMessage   string    `json:"error_message"`
 	LogsURL        string    `json:"logs_url"`
+	// FrameworkSlug is the canonical framework identifier detected during
+	// the build. Matches packages/sdk-go/pkg/frameworks catalog slugs.
+	// Empty when detection failed or roundhouse pre-dates this field.
+	FrameworkSlug string `json:"framework_slug,omitempty"`
 }
 
 // BuildCompleteCallback handles the callback from Roundhouse when a build finishes
@@ -151,6 +155,21 @@ func (h *Handler) processBuildCallback(ctx context.Context, req *BuildCallbackRe
 			} else {
 				h.logger.Info(ctx, "✓ Image signature stored successfully",
 					logging.String("release_id", req.ReleaseID.String()))
+			}
+		}
+
+		// Persist detected framework slug (non-fatal — detection can fail
+		// and the UI falls back to heuristic inference).
+		if req.FrameworkSlug != "" {
+			if err := h.repos.Releases.UpdateFrameworkSlug(ctx, req.ReleaseID, req.FrameworkSlug); err != nil {
+				h.logger.Warn(ctx, "Failed to store framework slug (non-fatal)",
+					logging.String("release_id", req.ReleaseID.String()),
+					logging.String("framework_slug", req.FrameworkSlug),
+					logging.Error("db_error", err))
+			} else {
+				h.logger.Info(ctx, "✓ Framework slug stored",
+					logging.String("release_id", req.ReleaseID.String()),
+					logging.String("framework_slug", req.FrameworkSlug))
 			}
 		}
 

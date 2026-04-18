@@ -28,7 +28,7 @@ func newReleaseMockDB(t *testing.T) (*ReleaseRepository, sqlmock.Sqlmock, func()
 var releaseGetColumns = []string{
 	"id", "service_id", "version", "image_uri", "git_sha", "status",
 	"sbom", "sbom_format", "image_signature", "signature_verified_at",
-	"error_message", "created_at", "updated_at",
+	"error_message", "framework_slug", "created_at", "updated_at",
 }
 
 func newTestRelease() *types.Release {
@@ -142,7 +142,7 @@ func TestReleaseRepository_GetByID(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 		sigTime := now.Add(-time.Minute)
 
-		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(releaseGetColumns).
 				AddRow(id, svcID, "v1.0.0", "ghcr.io/org/svc:v1.0.0", "abc123",
@@ -150,6 +150,7 @@ func TestReleaseRepository_GetByID(t *testing.T) {
 					"cyclonedx-sbom-content", "cyclonedx-json",
 					"cosign-sig-abc", sigTime,
 					nil,
+					nil, // framework_slug
 					now, now))
 
 		result, err := repo.GetByID(id)
@@ -174,12 +175,13 @@ func TestReleaseRepository_GetByID(t *testing.T) {
 		id := uuid.New()
 		now := time.Now().Truncate(time.Microsecond)
 
-		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(releaseGetColumns).
 				AddRow(id, uuid.New(), "v0.1.0", "img", "sha1",
 					types.ReleaseStatusBuilding,
 					nil, nil, nil, nil, nil,
+					nil, // framework_slug
 					now, now))
 
 		result, err := repo.GetByID(id)
@@ -199,13 +201,14 @@ func TestReleaseRepository_GetByID(t *testing.T) {
 		id := uuid.New()
 		now := time.Now().Truncate(time.Microsecond)
 
-		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(releaseGetColumns).
 				AddRow(id, uuid.New(), "v0.2.0", "img", "sha2",
 					types.ReleaseStatusFailed,
 					nil, nil, nil, nil,
 					"build failed: exit code 1",
+					nil, // framework_slug
 					now, now))
 
 		result, err := repo.GetByID(id)
@@ -221,7 +224,7 @@ func TestReleaseRepository_GetByID(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE id = \$1`).
+		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE id = \$1`).
 			WithArgs(id).
 			WillReturnError(sql.ErrNoRows)
 
@@ -474,14 +477,16 @@ func TestReleaseRepository_ListByService(t *testing.T) {
 				types.ReleaseStatusReady,
 				"sbom2", "cyclonedx-json", "sig2", sigTime,
 				nil,
+				"nextjs", // framework_slug
 				now, now).
 			AddRow(uuid.New(), svcID, "v1.0.0", "ghcr.io/org/svc:v1.0.0", "sha1",
 				types.ReleaseStatusReady,
 				nil, nil, nil, nil,
 				nil,
+				nil, // framework_slug (legacy row, before P3.5)
 				now.Add(-24*time.Hour), now.Add(-24*time.Hour))
 
-		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE service_id = \$1 ORDER BY created_at DESC`).
+		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE service_id = \$1 ORDER BY created_at DESC`).
 			WithArgs(svcID).
 			WillReturnRows(rows)
 
@@ -503,7 +508,7 @@ func TestReleaseRepository_ListByService(t *testing.T) {
 		defer cleanup()
 
 		svcID := uuid.New()
-		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, created_at, updated_at FROM releases WHERE service_id = \$1 ORDER BY created_at DESC`).
+		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE service_id = \$1 ORDER BY created_at DESC`).
 			WithArgs(svcID).
 			WillReturnRows(sqlmock.NewRows(releaseGetColumns))
 
@@ -539,10 +544,12 @@ func TestReleaseRepository_ListByService(t *testing.T) {
 			AddRow(uuid.New(), svcID, "v3.0.0", "img3", "sha3",
 				types.ReleaseStatusReady,
 				nil, nil, nil, nil, nil,
+				nil, // framework_slug
 				now, now).
 			AddRow(uuid.New(), svcID, "v2.0.0", "img2", "sha2",
 				types.ReleaseStatusFailed,
 				nil, nil, nil, nil, "OOM killed",
+				nil, // framework_slug
 				now.Add(-time.Hour), now.Add(-time.Hour))
 
 		mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status`).
@@ -558,3 +565,60 @@ func TestReleaseRepository_ListByService(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// --- UpdateFrameworkSlug ---
+
+func TestReleaseRepository_UpdateFrameworkSlug(t *testing.T) {
+	t.Run("writes slug when non-empty", func(t *testing.T) {
+		repo, mock, cleanup := newReleaseMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		mock.ExpectExec(`UPDATE releases SET framework_slug = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs("nextjs", id).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.UpdateFrameworkSlug(context.Background(), id, "nextjs")
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no-op for empty slug", func(t *testing.T) {
+		repo, mock, cleanup := newReleaseMockDB(t)
+		defer cleanup()
+
+		// No ExpectExec — an UPDATE would cause sqlmock to fail.
+		err := repo.UpdateFrameworkSlug(context.Background(), uuid.New(), "")
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+// --- GetByID populates FrameworkSlug ---
+
+func TestReleaseRepository_GetByID_FrameworkSlug(t *testing.T) {
+	repo, mock, cleanup := newReleaseMockDB(t)
+	defer cleanup()
+
+	id := uuid.New()
+	svcID := uuid.New()
+	now := time.Now().Truncate(time.Microsecond)
+
+	mock.ExpectQuery(`SELECT id, service_id, version, image_uri, git_sha, status, sbom, sbom_format, image_signature, signature_verified_at, error_message, framework_slug, created_at, updated_at FROM releases WHERE id = \$1`).
+		WithArgs(id).
+		WillReturnRows(sqlmock.NewRows(releaseGetColumns).
+			AddRow(id, svcID, "v1.0.0", "img", "sha",
+				types.ReleaseStatusReady,
+				nil, nil, nil, nil,
+				nil,
+				"go-fiber", // framework_slug
+				now, now))
+
+	result, err := repo.GetByID(id)
+	assert.NoError(t, err)
+	assert.Equal(t, "go-fiber", result.FrameworkSlug)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Silence unused import warning when sql isn't referenced above.
+var _ = sql.NullString{}

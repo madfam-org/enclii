@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/frameworks"
 	"go.uber.org/zap"
 )
 
@@ -79,6 +80,13 @@ func (e *Executor) Execute(ctx context.Context, job *queue.BuildJob) (*queue.Bui
 	// Clone repository
 	if err := e.cloneRepo(ctx, job, buildDir); err != nil {
 		return e.failResult(result, startTime, "clone failed: %v", err)
+	}
+
+	// Detect framework slug up-front so the result carries it even if
+	// subsequent build steps fail. Non-fatal — empty slug is acceptable.
+	if fw := e.detectFrameworkSlug(buildDir, job.BuildConfig.Context); fw != "" {
+		result.FrameworkSlug = fw
+		e.log(job.ID, "🧭 Framework detected: %s", fw)
 	}
 
 	// Detect or use specified build type
@@ -193,6 +201,56 @@ func (e *Executor) cloneRepo(ctx context.Context, job *queue.BuildJob, buildDir 
 
 	e.log(job.ID, "✅ Repository cloned at %s", job.GitSHA[:8])
 	return nil
+}
+
+// detectFrameworkSlug runs the shared framework detector against the
+// cloned source tree. Returns the empty string when detection fails.
+//
+// ctxPath is BuildConfig.Context (the monorepo subdir) — "" means
+// detect at repo root.
+func (e *Executor) detectFrameworkSlug(buildDir, ctxPath string) string {
+	root := buildDir
+	if ctxPath != "" && ctxPath != "." {
+		root = filepath.Join(buildDir, ctxPath)
+	}
+
+	// Gather top-level file names.
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	files := make([]string, 0, len(entries))
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			files = append(files, ent.Name())
+		}
+	}
+
+	// Load optional content for refinement.
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+
+	packageJSONRaw := read("package.json")
+	goMod := read("go.mod")
+	cargoToml := read("Cargo.toml")
+	requirements := read("requirements.txt")
+	pyproject := read("pyproject.toml")
+	gemfile := read("Gemfile")
+	mixExs := read("mix.exs")
+
+	fw := frameworks.DetectFromContents(
+		files, packageJSONRaw, goMod, cargoToml,
+		requirements, pyproject, gemfile, mixExs,
+	)
+	if fw == nil || fw.Slug == "unknown" {
+		return ""
+	}
+	return fw.Slug
 }
 
 func (e *Executor) detectBuildType(buildDir string, config *queue.BuildConfig) string {
