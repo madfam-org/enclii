@@ -32,6 +32,28 @@ spec:
       storage: 10Gi
   storageClassName: longhorn
 ---
+# P1.1: dedicated PVC for pgBackRest spool + async WAL queue. Kept separate
+# from the Postgres data PVC so spool growth never threatens database storage.
+# Sized for ~2GiB of in-flight WAL (archive-push-queue-max) plus several
+# hours of spool on an R2 outage. Upgradable in-place via Longhorn.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgbackrest-spool-pvc
+  namespace: data
+  labels:
+    app: postgres
+    app.kubernetes.io/name: pgbackrest
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: enclii
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -63,6 +85,39 @@ spec:
         fsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      # P1.1: initContainer copies the pgbackrest binary from the pgBackRest
+      # image into a shared volume so the Postgres container (which has no
+      # pgbackrest installed) can invoke it as archive_command. This keeps
+      # the official Postgres image untouched and makes pgBackRest version
+      # bumps a simple image tag change here.
+      initContainers:
+        - name: pgbackrest-binary
+          # Pinned image — bump via PR after testing in staging.
+          image: docker.io/pgbackrest/pgbackrest:2.54.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              cp /usr/bin/pgbackrest /opt/pgbackrest/bin/pgbackrest
+              chmod 755 /opt/pgbackrest/bin/pgbackrest
+              echo "pgbackrest copied: $(/opt/pgbackrest/bin/pgbackrest version)"
+          volumeMounts:
+            - name: pgbackrest-binary
+              mountPath: /opt/pgbackrest/bin
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
       containers:
         - name: postgres
           image: docker.io/library/postgres:15
@@ -87,6 +142,21 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+          envFrom:
+            # P1.1: R2 credentials + optional cipher passphrase. pgBackRest
+            # natively reads env vars named PGBACKREST_<OPTION_UPPER>.
+            # R2_ACCOUNT_ID feeds the S3 endpoint template in pgbackrest.conf.
+            - secretRef:
+                name: pgbackrest-r2-credentials
+          # P1.1: override the default command so the server loads our
+          # conf.d include. The image's entrypoint is otherwise unchanged;
+          # we just pass explicit -c include_dir so /etc/postgresql/conf.d
+          # is honored even when the base postgresql.conf is regenerated.
+          args:
+            - "-c"
+            - "config_file=/var/lib/postgresql/data/postgres/postgresql.conf"
+            - "-c"
+            - "include_dir=/etc/postgresql/conf.d"
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -95,6 +165,23 @@ spec:
               subPath: postgres
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d
+            # P1.1: mount pgbackrest binary + config + spool so
+            # archive_command can run inside the Postgres container.
+            - name: pgbackrest-binary
+              mountPath: /opt/pgbackrest/bin
+              readOnly: true
+            - name: pgbackrest-config
+              mountPath: /etc/pgbackrest/pgbackrest.conf
+              subPath: pgbackrest.conf
+              readOnly: true
+            - name: pgbackrest-spool
+              mountPath: /var/lib/pgbackrest
+            - name: pgbackrest-logs
+              mountPath: /var/log/pgbackrest
+            - name: postgres-wal-config
+              mountPath: /etc/postgresql/conf.d/wal-archive.conf
+              subPath: wal-archive.conf
+              readOnly: true
           resources:
             requests:
               memory: "256Mi"
@@ -131,6 +218,98 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 2
+        # ----------------------------------------------------------------
+        # P1.1: pgBackRest sidecar
+        # ----------------------------------------------------------------
+        # Responsibilities:
+        #   - Drains the async archive-push queue populated by Postgres'
+        #     archive_command, streaming WAL segments to R2.
+        #   - Serves as the `kubectl exec` target for operator runs of
+        #     `pgbackrest backup`, `info`, `check`, and `restore`.
+        #   - Deliberately does NOT run archive-push itself; Postgres drives
+        #     that via the shared binary in the main container.
+        # Why a sidecar and not a separate Job?
+        #   - archive-async=y spawns a background worker that needs to stay
+        #     resident to drain the spool.
+        #   - Operator `kubectl exec` into the sidecar keeps pgbackrest ops
+        #     off the Postgres container's attack surface.
+        - name: pgbackrest
+          image: docker.io/pgbackrest/pgbackrest:2.54.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 999        # align with postgres UID for PGDATA access
+            runAsGroup: 999
+            capabilities:
+              drop:
+                - ALL
+          # Long-running loop: run periodic self-check so pod Readiness is
+          # a genuine signal. Real archive work happens in the primary
+          # container's archive_command invocation (shared spool + binary).
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "[$(date -Iseconds)] pgbackrest sidecar starting"
+              echo "[$(date -Iseconds)] version: $(pgbackrest version)"
+              while true; do
+                if pgbackrest --stanza=main check >/dev/null 2>&1; then
+                  touch /tmp/pgbackrest-healthy
+                else
+                  rm -f /tmp/pgbackrest-healthy
+                fi
+                sleep 30
+              done
+          env:
+            - name: PGBACKREST_CONFIG
+              value: /etc/pgbackrest/pgbackrest.conf
+          envFrom:
+            - secretRef:
+                name: pgbackrest-r2-credentials
+          volumeMounts:
+            # Need PGDATA access for `check` / `backup` / `restore` commands.
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+              subPath: postgres
+            - name: pgbackrest-config
+              mountPath: /etc/pgbackrest/pgbackrest.conf
+              subPath: pgbackrest.conf
+              readOnly: true
+            - name: pgbackrest-spool
+              mountPath: /var/lib/pgbackrest
+            - name: pgbackrest-logs
+              mountPath: /var/log/pgbackrest
+            - name: pgbackrest-tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "test -f /tmp/pgbackrest-healthy"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            # Allow 5 consecutive misses before NotReady — R2 transient
+            # latency should not flap readiness.
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - -f
+                - pgbackrest
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            failureThreshold: 3
       volumes:
         - name: postgres-storage
           persistentVolumeClaim:
@@ -138,6 +317,32 @@ spec:
         - name: init-scripts
           configMap:
             name: postgres-init
+        # P1.1: shared tmpfs for the pgbackrest binary, populated by the
+        # initContainer from the pgbackrest image. Memory medium keeps the
+        # binary (~30MB) resident without a PVC round-trip.
+        - name: pgbackrest-binary
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        - name: pgbackrest-config
+          configMap:
+            name: pgbackrest-config
+            defaultMode: 0644
+        - name: postgres-wal-config
+          configMap:
+            name: postgres-wal-config
+            defaultMode: 0644
+        # Durable spool — survives pod restarts so WAL in flight is not lost.
+        - name: pgbackrest-spool
+          persistentVolumeClaim:
+            claimName: pgbackrest-spool-pvc
+        # Logs — emptyDir + stdout scraped by Fluent Bit.
+        - name: pgbackrest-logs
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: pgbackrest-tmp
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

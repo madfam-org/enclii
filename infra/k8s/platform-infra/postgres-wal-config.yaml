@@ -1,0 +1,58 @@
+---
+# Postgres server parameters required for WAL archiving (P1.1).
+#
+# Mounted at /etc/postgresql/conf.d/wal-archive.conf inside the Postgres
+# container and included from postgresql.conf via the image's standard
+# include_dir.
+#
+# **Requires a Postgres restart** (not just a reload) to take effect:
+#   - wal_level changes: require restart
+#   - archive_mode changes: require restart
+#   - max_wal_senders changes: require restart
+#
+# archive_command invokes pgBackRest in the sidecar via the shared
+# /var/run/pgbackrest socket-like directory. Because the Postgres container
+# has no pgbackrest binary, we use the sidecar-exec pattern: the primary
+# Postgres container writes to a shared volume, and the sidecar's cron-like
+# loop picks them up. But archive_command runs *inside* Postgres, so we
+# mount the pgbackrest binary read-only from an init container or we use
+# a shared-filesystem IPC approach.
+#
+# Simplest reliable pattern (used here): ship pgbackrest into the Postgres
+# container via a shared emptyDir populated by an initContainer from the
+# pgbackrest image. This keeps the Postgres image untouched and lets
+# archive_command be a plain `pgbackrest --stanza=main archive-push %p`.
+#
+# Knobs explained:
+#   wal_level=replica        - enough for archive + future streaming replica
+#   archive_mode=on          - PG will invoke archive_command for every completed WAL segment
+#   archive_command          - pgBackRest async-queue push; returns ok the moment it's queued
+#   archive_timeout=60       - force a WAL switch every 60s, capping RPO at ~1min even on idle DBs
+#   max_wal_senders=10       - slots for P1.2 streaming replicas (pre-wired)
+#   wal_keep_size=1024       - keep at least 1GB of WAL on disk in case archiver falls behind
+#   hot_standby=on           - allows read-only connections on future replicas
+#   restore_command          - present but commented; only used during PITR restore
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-wal-config
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: enclii
+data:
+  wal-archive.conf: |
+    # ----- WAL archiving (pgBackRest / R2) -----
+    wal_level = replica
+    archive_mode = on
+    archive_command = '/opt/pgbackrest/bin/pgbackrest --stanza=main archive-push %p'
+    archive_timeout = 60
+    max_wal_senders = 10
+    wal_keep_size = 1024
+    hot_standby = on
+
+    # Helpful defaults — not required for archiving but reduce operator
+    # surprise when they eventually add a replica (P1.2).
+    wal_compression = on
+    wal_sender_timeout = 60s
