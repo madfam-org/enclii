@@ -184,9 +184,11 @@ spec:
             fsGroup: 65532
           containers:
             - name: check
-              # bitnami/kubectl is the smallest audited kubectl image we
-              # already use elsewhere; pin version matches cluster k3s.
-              image: docker.io/bitnami/kubectl:1.33.7
+              # alpine/kubectl is actively-published by the Alpine project;
+              # bitnami/kubectl:1.33.7 was removed from Docker Hub in the
+              # Bitnami 2026 image-distribution change (sha-only tags only).
+              # 1.33.4 is the closest available to cluster k3s v1.33.7+k3s3.
+              image: docker.io/alpine/kubectl:1.33.4
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -251,7 +253,7 @@ spec:
             fsGroup: 65532
           containers:
             - name: backup-full
-              image: docker.io/bitnami/kubectl:1.33.7
+              image: docker.io/alpine/kubectl:1.33.4
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -314,7 +316,7 @@ spec:
             fsGroup: 65532
           containers:
             - name: backup-diff
-              image: docker.io/bitnami/kubectl:1.33.7
+              image: docker.io/alpine/kubectl:1.33.4
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
