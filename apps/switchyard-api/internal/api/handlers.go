@@ -371,6 +371,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/deployments/:id", h.GetDeployment)
 			protected.GET("/deployments/:id/logs", h.GetLogs)
 			protected.POST("/deployments/:id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.RollbackDeployment)
+			// Instant rollback via Service-selector flip (P0.5). Traffic flips in <30s
+			// for still-running targets, <90s for scale-back-up. Coexists with the
+			// deployments/:id/rollback endpoint above — ArgoCD path is the fallback.
+			protected.POST("/services/:id/rollback", h.auth.RequireRole(string(types.RoleDeveloper)), h.InstantRollback)
 
 			// Real-time Logs (WebSocket streaming)
 			protected.GET("/services/:id/logs/stream", h.StreamServiceLogsWS)

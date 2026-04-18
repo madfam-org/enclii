@@ -376,6 +376,35 @@ func (c *APIClient) RollbackDeployment(ctx context.Context, deploymentID string,
 	return nil
 }
 
+// InstantRollbackRequest is the body for POST /v1/services/{id}/rollback.
+type InstantRollbackRequest struct {
+	TargetDeploymentID string `json:"target_deployment_id"`
+	Reason             string `json:"reason,omitempty"`
+	ChangeTicketURL    string `json:"change_ticket_url,omitempty"`
+}
+
+// InstantRollbackResponse mirrors the API response.
+type InstantRollbackResponse struct {
+	Message          string `json:"message"`
+	TookMS           int64  `json:"took_ms"`
+	ScaledUp         bool   `json:"scaled_up"`
+	FromDeploymentID string `json:"from_deployment_id,omitempty"`
+	ToDeploymentID   string `json:"to_deployment_id"`
+	ReadyReplicas    int32  `json:"ready_replicas"`
+	Strategy         string `json:"strategy"`
+	Namespace        string `json:"namespace"`
+}
+
+// InstantRollback performs a selector-flip rollback — traffic shifts to the
+// target deployment's ReplicaSet in <30s for still-running targets.
+func (c *APIClient) InstantRollback(ctx context.Context, serviceID string, req InstantRollbackRequest) (*InstantRollbackResponse, error) {
+	var resp InstantRollbackResponse
+	if err := c.post(ctx, fmt.Sprintf("/v1/services/%s/rollback", serviceID), req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to perform instant rollback: %w", err)
+	}
+	return &resp, nil
+}
+
 // Health check
 func (c *APIClient) Health(ctx context.Context) (*HealthResponse, error) {
 	var health HealthResponse

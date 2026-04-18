@@ -22,34 +22,61 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { apiGet, apiPost } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { GitBranch, ExternalLink, RefreshCw, RotateCcw } from 'lucide-react';
+import { GitBranch, ExternalLink, RefreshCw, RotateCcw, Zap } from 'lucide-react';
 import { AuthorAvatar, CommitLink } from '@/components/git';
 import { formatDate, formatRelativeTime } from '@/lib/formatting';
-import type { Deployment, DeploymentsListResponse, RollbackResponse } from './types';
+import type {
+  Deployment,
+  DeploymentsListResponse,
+  InstantRollbackRequest,
+  InstantRollbackResponse,
+} from './types';
 
 interface DeploymentsTabProps {
   serviceId: string;
   serviceName: string;
 }
 
+/**
+ * Deployment history tab with Vercel-parity instant rollback.
+ *
+ * Clicking "Rollback to here" on any historical deploy row triggers a
+ * Service-selector flip via POST /v1/services/{id}/rollback. Traffic
+ * shifts in <30s for still-running targets, <90s when the ReplicaSet
+ * needs to scale back up. Production envs require a change_ticket_url
+ * in the request body (HITL gate) — surfaced via the confirmation modal.
+ */
 export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) {
   const router = useRouter();
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Rollback UX state
   const [rollingBack, setRollingBack] = useState<string | null>(null);
-  const [rollbackSuccess, setRollbackSuccess] = useState<string | null>(null);
+  const [rollbackResult, setRollbackResult] = useState<InstantRollbackResponse | null>(null);
+  const [rollbackErrorBanner, setRollbackErrorBanner] = useState<string | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [selectedDeployment, setSelectedDeployment] = useState<Deployment | null>(null);
+  const [currentDeployment, setCurrentDeployment] = useState<Deployment | null>(null);
+  const [reason, setReason] = useState('');
+  const [changeTicketURL, setChangeTicketURL] = useState('');
+  const [requireChangeTicket, setRequireChangeTicket] = useState(false);
 
   const fetchDeployments = useCallback(async () => {
     try {
       setError(null);
       const data = await apiGet<DeploymentsListResponse>(`/v1/services/${serviceId}/deployments`);
-      setDeployments(data.deployments || []);
+      const list = data.deployments || [];
+      setDeployments(list);
+      // Track current (live) deployment separately for the modal display.
+      setCurrentDeployment(list[0] ?? null);
     } catch (err) {
       console.error('Failed to fetch deployments:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch deployments');
@@ -64,31 +91,51 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
 
   usePolling(fetchDeployments, POLLING_SLOW);
 
-  const handleRollbackClick = (deploymentId: string) => {
-    setSelectedDeploymentId(deploymentId);
+  const openRollbackDialog = (target: Deployment) => {
+    setSelectedDeployment(target);
+    setReason('');
+    setChangeTicketURL('');
+    setRequireChangeTicket(false);
+    setRollbackErrorBanner(null);
     setConfirmDialogOpen(true);
   };
 
   const handleConfirmRollback = async () => {
-    if (!selectedDeploymentId) return;
+    if (!selectedDeployment) return;
+
+    const body: InstantRollbackRequest = {
+      target_deployment_id: selectedDeployment.id,
+    };
+    if (reason.trim()) body.reason = reason.trim();
+    if (changeTicketURL.trim()) body.change_ticket_url = changeTicketURL.trim();
 
     try {
-      setRollingBack(selectedDeploymentId);
-      setRollbackSuccess(null);
-      setError(null);
+      setRollingBack(selectedDeployment.id);
+      setRollbackResult(null);
+      setRollbackErrorBanner(null);
+
+      const resp = await apiPost<InstantRollbackResponse>(
+        `/v1/services/${serviceId}/rollback`,
+        body,
+      );
+
+      setRollbackResult(resp);
       setConfirmDialogOpen(false);
-
-      await apiPost<RollbackResponse>(`/v1/deployments/${selectedDeploymentId}/rollback`, {});
-
-      setRollbackSuccess(selectedDeploymentId);
-      // Refresh the deployments list
+      setSelectedDeployment(null);
       await fetchDeployments();
     } catch (err) {
-      console.error('Rollback failed:', err);
-      setError(err instanceof Error ? err.message : 'Rollback failed');
+      const message = err instanceof Error ? err.message : 'Rollback failed';
+      // The API returns 403 with a "change_ticket_url is required" message
+      // for production envs without a ticket. Surface it in-dialog and
+      // focus the change-ticket field rather than dismissing.
+      if (/change_ticket_url is required/i.test(message)) {
+        setRequireChangeTicket(true);
+        setRollbackErrorBanner('A change ticket URL is required for production rollbacks.');
+      } else {
+        setRollbackErrorBanner(message);
+      }
     } finally {
       setRollingBack(null);
-      setSelectedDeploymentId(null);
     }
   };
 
@@ -152,6 +199,8 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
     );
   }
 
+  const rollbackInProgress = rollingBack !== null;
+
   return (
     <>
       <Card>
@@ -166,13 +215,49 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
           </Button>
         </CardHeader>
         <CardContent>
-          {rollbackSuccess && (
-            <div className="mb-4 p-4 bg-status-success-muted border border-status-success/30 rounded-md">
+          {/* Rollback in-progress banner */}
+          {rollbackInProgress && (
+            <div
+              className="mb-4 p-4 bg-muted border border-border rounded-md flex items-center gap-3"
+              role="status"
+              aria-live="polite"
+              data-testid="rollback-in-progress"
+            >
+              <Spinner size="sm" />
+              <span className="text-sm">
+                Flipping traffic to <code className="font-mono">{shortId(rollingBack!)}</code>…
+              </span>
+            </div>
+          )}
+
+          {/* Success toast */}
+          {rollbackResult && !rollbackInProgress && (
+            <div
+              className="mb-4 p-4 bg-status-success-muted border border-status-success/30 rounded-md"
+              role="status"
+              aria-live="polite"
+              data-testid="rollback-success"
+            >
               <p className="text-status-success-foreground text-sm">
                 <svg aria-hidden="true" className="inline w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Rollback initiated successfully. The previous deployment is being restored.
+                Rollback complete in {formatTookMS(rollbackResult.took_ms)}.{' '}
+                Traffic now serving <code className="font-mono">{shortId(rollbackResult.to_deployment_id)}</code>.
+                {rollbackResult.scaled_up && ' Target ReplicaSet was scaled up.'}
+              </p>
+            </div>
+          )}
+
+          {/* Failure toast */}
+          {rollbackErrorBanner && !confirmDialogOpen && (
+            <div
+              className="mb-4 p-4 bg-status-error-muted border border-status-error/30 rounded-md"
+              role="alert"
+              data-testid="rollback-error"
+            >
+              <p className="text-status-error-foreground text-sm">
+                Rollback failed: {rollbackErrorBanner}
               </p>
             </div>
           )}
@@ -199,17 +284,21 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
               </TableHeader>
               <TableBody>
                 {deployments.map((deployment, index) => (
-                  <TableRow key={deployment.id} className="cursor-pointer hover:bg-muted" onClick={() => router.push(`/deployments/${deployment.id}`)}>
+                  <TableRow
+                    key={deployment.id}
+                    className="cursor-pointer hover:bg-muted"
+                    onClick={() => router.push(`/deployments/${deployment.id}`)}
+                  >
                     <TableCell>{getStatusBadge(deployment.status)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
-                        {/* PR Link */}
                         {deployment.pr_number && deployment.pr_url && (
                           <a
                             href={deployment.pr_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <span className="font-medium">PR #{deployment.pr_number}</span>
                             <ExternalLink className="h-3 w-3" />
@@ -220,7 +309,6 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
                             {deployment.pr_title}
                           </span>
                         )}
-                        {/* Git info with clickable commit link */}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           {deployment.git_branch && (
                             <span className="inline-flex items-center gap-1">
@@ -238,7 +326,6 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
                             />
                           )}
                         </div>
-                        {/* Fallback if no git info */}
                         {!deployment.git_sha && !deployment.pr_number && (
                           <span className="text-xs text-muted-foreground">Manual deploy</span>
                         )}
@@ -268,31 +355,37 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      {/* Only show rollback for non-first deployments that are running or failed */}
-                      {index > 0 && (deployment.status === 'running' || deployment.status === 'failed') && (
+                      {index === 0 && deployment.status === 'running' ? (
+                        <Badge variant="outline" className="text-status-success border-status-success">
+                          Current
+                        </Badge>
+                      ) : index > 0 && deployment.status === 'running' ? (
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={rollingBack === deployment.id}
-                          onClick={() => handleRollbackClick(deployment.id)}
+                          // Disable all rollback buttons while one is in flight.
+                          disabled={rollbackInProgress}
+                          aria-label={`Rollback to deployment ${shortId(deployment.id)}`}
+                          data-testid={`rollback-to-${deployment.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openRollbackDialog(deployment);
+                          }}
                         >
                           {rollingBack === deployment.id ? (
                             <>
                               <RefreshCw className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                              Rolling back...
+                              Flipping…
                             </>
                           ) : (
                             <>
-                              <RotateCcw className="w-4 h-4 mr-1" />
-                              Rollback
+                              <Zap className="w-4 h-4 mr-1" />
+                              Rollback to here
                             </>
                           )}
                         </Button>
-                      )}
-                      {index === 0 && deployment.status === 'running' && (
-                        <Badge variant="outline" className="text-status-success border-status-success">
-                          Current
-                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -304,24 +397,110 @@ export function DeploymentsTab({ serviceId, serviceName }: DeploymentsTabProps) 
       </Card>
 
       {/* Confirmation Dialog */}
-      <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
-        <DialogContent>
+      <Dialog open={confirmDialogOpen} onOpenChange={(open) => !rollbackInProgress && setConfirmDialogOpen(open)}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirm Rollback</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5" aria-hidden="true" />
+              Instant rollback
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to rollback this deployment? This will restore the previous deployment version and may cause a brief service interruption.
+              {selectedDeployment && currentDeployment ? (
+                <>
+                  Rollback <code className="font-mono">{serviceName}</code> from{' '}
+                  <code className="font-mono">{shortSha(currentDeployment.git_sha) ?? shortId(currentDeployment.id)}</code> to{' '}
+                  <code className="font-mono">{shortSha(selectedDeployment.git_sha) ?? shortId(selectedDeployment.id)}</code>?
+                  This will take ~30s. ArgoCD reconciles in the background afterwards.
+                </>
+              ) : (
+                'Flip traffic to the selected deployment at the routing layer.'
+              )}
             </DialogDescription>
           </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="rollback-reason">Reason (optional)</Label>
+              <Textarea
+                id="rollback-reason"
+                placeholder="e.g. 500s on /checkout after deploy; regression in commit abc123"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                disabled={rollbackInProgress}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="rollback-ticket">
+                Change ticket URL{' '}
+                {requireChangeTicket && <span className="text-status-error">*</span>}
+                <span className="text-xs text-muted-foreground ml-2">(required in production)</span>
+              </Label>
+              <Input
+                id="rollback-ticket"
+                type="url"
+                placeholder="https://..."
+                value={changeTicketURL}
+                onChange={(e) => setChangeTicketURL(e.target.value)}
+                disabled={rollbackInProgress}
+                aria-required={requireChangeTicket}
+                aria-invalid={requireChangeTicket && !changeTicketURL.trim()}
+              />
+            </div>
+
+            {rollbackErrorBanner && (
+              <div
+                className="text-sm text-status-error-foreground bg-status-error-muted border border-status-error/30 rounded-md p-3"
+                role="alert"
+              >
+                {rollbackErrorBanner}
+              </div>
+            )}
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDialogOpen(false)}
+              disabled={rollbackInProgress}
+            >
               Cancel
             </Button>
-            <Button onClick={handleConfirmRollback}>
-              Confirm Rollback
+            <Button
+              onClick={handleConfirmRollback}
+              disabled={rollbackInProgress}
+              data-testid="confirm-rollback"
+            >
+              {rollbackInProgress ? (
+                <>
+                  <RefreshCw className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                  Flipping…
+                </>
+              ) : (
+                'Flip traffic'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
+}
+
+// ------- helpers
+
+function shortId(id: string | undefined | null): string {
+  if (!id) return '';
+  return id.length >= 8 ? id.slice(0, 8) : id;
+}
+
+function shortSha(sha: string | undefined | null): string | null {
+  if (!sha) return null;
+  return sha.length >= 7 ? sha.slice(0, 7) : sha;
+}
+
+function formatTookMS(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
