@@ -12,6 +12,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/compliance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/export"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
@@ -106,6 +107,10 @@ type Handler struct {
 	// Billing proxy (P2.2) — forwards /v1/projects/:slug/billing/* to Waybill
 	// after resolving the slug to a UUID. When nil the routes return 503.
 	billingProxy *BillingProxyConfig
+
+	// Tenant data export (P3.6). When nil, the /v1/exports and
+	// /v1/projects/:slug/exports endpoints return 503.
+	tenantExportService *export.Service
 }
 
 // SetBillingProxy attaches a BillingProxyConfig for the /billing/* routes.
@@ -588,6 +593,17 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/activity", h.GetActivity)
 			protected.GET("/activity/actions", h.GetActivityActions)
 			protected.GET("/activity/resource-types", h.GetActivityResourceTypes)
+
+			// Tenant data export (P3.6). Customer-initiated per-project
+			// export: manifests + pg_dump + blob inventory + audit
+			// timeline + secret references (no values). 14-day R2 retention
+			// per tarball; row retains 90 days for audit. HITL approval in
+			// production. See docs/architecture/tenant-export.md.
+			protected.POST("/projects/:slug/exports", h.auth.RequireRole(string(types.RoleAdmin)), h.CreateTenantExport)
+			protected.GET("/projects/:slug/exports", h.ListTenantExports)
+			protected.GET("/exports/:export_id", h.GetTenantExport)
+			protected.POST("/exports/:export_id/approve", h.auth.RequireRole(string(types.RoleAdmin)), h.ApproveTenantExport)
+			protected.DELETE("/exports/:export_id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteTenantExport)
 
 			// Consolidated audit surface (P1.5) — aggregates Janua sessions,
 			// Switchyard lifecycle/audit, and 4 Selva RFC ledgers (via nexus-api).

@@ -61,6 +61,9 @@ type Repositories struct {
 	PropagationPolicies *PropagationPolicyRepository
 	DriftEvents         *DriftEventRepository
 	CostAllocations     *CostAllocationRepository
+
+	// Tenant data export (P3.6)
+	TenantExports *TenantExportRepository
 }
 
 // Ping checks database connectivity for health probes
@@ -208,5 +211,8 @@ func NewRepositories(db *sql.DB) *Repositories {
 		PropagationPolicies: NewPropagationPolicyRepository(db),
 		DriftEvents:         NewDriftEventRepository(db),
 		CostAllocations:     NewCostAllocationRepository(db),
+
+		// P3.6 Tenant export
+		TenantExports: NewTenantExportRepository(db),
 	}
 }
