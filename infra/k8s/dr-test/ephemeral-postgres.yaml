@@ -1,0 +1,200 @@
+---
+# Ephemeral Postgres 16 for DR drill restores.
+#
+# This manifest is applied by `scripts/dr-drill.sh` into the `dr-test` namespace.
+# It deliberately does NOT:
+#   - request Longhorn-replicated storage (emptyDir is fine — we want fast setup,
+#     no coupling to storage failures, and no chance of accidental cross-namespace
+#     PVC reuse).
+#   - persist data beyond pod lifetime (the whole point is throwaway).
+#   - expose itself outside the dr-test namespace.
+#
+# The container boots with POSTGRES_* envs from the transient `dr-postgres-credentials`
+# secret that the script creates in the same namespace just before apply.
+#
+# Kustomize-friendly: add a `kustomization.yaml` later if we want to overlay
+# (e.g. different Postgres versions to validate cross-version restores).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dr-postgres-init
+  namespace: dr-test
+  labels:
+    app.kubernetes.io/name: dr-postgres
+    app.kubernetes.io/component: dr-drill
+    app.kubernetes.io/part-of: enclii
+data:
+  # Empty init — the restore script handles schema + data. We only need the
+  # DB pre-created (postgres image does that from POSTGRES_DB env).
+  01-noop.sql: |
+    -- intentionally empty; dr-drill.sh pipes the full dump in afterwards.
+    SELECT 1;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dr-postgres
+  namespace: dr-test
+  labels:
+    app: dr-postgres
+    app.kubernetes.io/name: dr-postgres
+    app.kubernetes.io/component: dr-drill
+    app.kubernetes.io/part-of: enclii
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # single-pod ephemeral, no rolling updates needed
+  selector:
+    matchLabels:
+      app: dr-postgres
+  template:
+    metadata:
+      labels:
+        app: dr-postgres
+        app.kubernetes.io/name: dr-postgres
+        app.kubernetes.io/component: dr-drill
+    spec:
+      restartPolicy: Always
+      securityContext:
+        fsGroup: 999  # postgres group inside the official image
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # postgres needs to write to PGDATA
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: pg
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: dr-postgres-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dr-postgres-credentials
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: dr-postgres-credentials
+                  key: database
+            # Keep PGDATA inside the emptyDir so the container can chown it.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+      volumes:
+        # 10Gi ephemeral volume. If the real backup outgrows this, bump sizeLimit.
+        # We intentionally do NOT use Longhorn here — DR drill must not depend on
+        # the storage layer we might be testing recovery from.
+        - name: pgdata
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: init
+          configMap:
+            name: dr-postgres-init
+            defaultMode: 0444
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dr-postgres
+  namespace: dr-test
+  labels:
+    app.kubernetes.io/name: dr-postgres
+    app.kubernetes.io/component: dr-drill
+    app.kubernetes.io/part-of: enclii
+spec:
+  type: ClusterIP
+  selector:
+    app: dr-postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: pg
+      protocol: TCP
+---
+# NetworkPolicy: allow only same-namespace traffic. Prevents any accidental
+# cross-namespace reach-in during a drill.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dr-postgres-isolation
+  namespace: dr-test
+spec:
+  podSelector:
+    matchLabels:
+      app: dr-postgres
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}  # any pod in dr-test only
+      ports:
+        - port: 5432
+          protocol: TCP
+  egress:
+    # DNS (kube-dns). Required for pg_isready hostname resolution if we ever
+    # point it at a service instead of localhost.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Same-namespace egress (to aws-cli sidecar pods the script spins up).
+    - to:
+        - podSelector: {}
