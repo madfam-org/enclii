@@ -34,6 +34,8 @@ Internal name: `enclii-status`. Runs on port 4204 per
 | `/api/health` | GET | Liveness + DB readiness |
 | `/api/v2/summary.json` | GET | **Statuspage-compatible summary shim** |
 | `/feed.xml` | GET | Atom feed of incidents |
+| `/trust` | GET | **Trust center** — public SLA / RPO / RTO commitments |
+| `/trust/commitments.json` | GET | Machine-readable commitments snapshot |
 
 ### `/api/v2/summary.json`
 
