@@ -1,5 +1,16 @@
 # HashiCorp Vault Application
-# Deploys: Vault secrets management (via Helm)
+# Deploys: Vault secrets management (via Helm) in HA (Raft) mode
+# Bootstrap runbook: internal-devops/runbooks/vault-bootstrap.md  (P0.2)
+#
+# Post-sync operator procedure (see runbook):
+#   1. vault operator init  (Shamir 5-of-3)
+#   2. vault operator unseal <key> x 3
+#   3. vault audit enable file file_path=stderr  (CRITICAL — Fluent Bit picks up)
+#   4. vault auth enable kubernetes + configure
+#   5. vault secrets enable -version=2 -path=secret kv
+#   6. Apply internal-devops/templates/vault/selva-secret-writer-rbac.yaml
+#   7. Create vault-selva-writer policy + k8s auth role
+#   8. Rotate root token
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -10,6 +21,7 @@ metadata:
     app.kubernetes.io/name: vault
     app.kubernetes.io/part-of: enclii
     app.kubernetes.io/component: secrets-management
+    roadmap-item: p0-2
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -21,35 +33,47 @@ spec:
     targetRevision: 0.29.1  # Pin to specific stable version
     helm:
       valueFiles: []
-      # Reference values from the enclii repo
-      # ArgoCD Helm sources don't support external valueFiles,
-      # so values are inlined here matching infra/helm/vault/values.yaml
+      # Reference values from the enclii repo.
+      # ArgoCD Helm sources don't support external valueFiles, so values are
+      # inlined here matching infra/helm/vault/values.yaml.
+      # KEEP IN SYNC with that file when editing.
       values: |
         server:
           image:
             repository: docker.io/hashicorp/vault
             tag: "1.18.3"
 
-          standalone:
+          # HA mode with Raft integrated storage (replaces standalone/file).
+          # replicas=1 at launch — scale to 3 after P1.2 adds a 3rd
+          # non-tainted worker. Raft format supports in-place scale-up.
+          ha:
             enabled: true
-            config: |
-              ui = true
+            replicas: 1
+            raft:
+              enabled: true
+              setNodeId: true
+              config: |
+                ui = true
 
-              listener "tcp" {
-                tls_disable = 1
-                address     = "[::]:8200"
-                cluster_address = "[::]:8201"
+                listener "tcp" {
+                  tls_disable = 1
+                  address     = "[::]:8200"
+                  cluster_address = "[::]:8201"
 
-                telemetry {
-                  unauthenticated_metrics_access = true
+                  telemetry {
+                    unauthenticated_metrics_access = true
+                  }
                 }
-              }
 
-              storage "file" {
-                path = "/vault/data"
-              }
+                storage "raft" {
+                  path = "/vault/data"
+                }
 
-          # Disable hostNetwork to avoid hostPort Kyverno violation
+                service_registration "kubernetes" {}
+
+          standalone:
+            enabled: false
+
           hostNetwork: false
 
           service:
@@ -116,6 +140,18 @@ spec:
                     matchExpressions:
                       - key: node-role.kubernetes.io/control-plane
                         operator: Exists
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    topologyKey: kubernetes.io/hostname
+                    labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: vault
+
+          serviceAccount:
+            create: true
+            name: vault
 
         ui:
           enabled: true
@@ -136,7 +172,8 @@ spec:
       - ServerSideApply=true
       - RespectIgnoreDifferences=true
 
-  # Vault controller manages status fields and internal state dynamically
+  # Vault controller manages status fields and internal state dynamically.
+  # Ignore fields Vault writes at runtime that ArgoCD would otherwise flag as drift.
   ignoreDifferences:
     - group: ""
       kind: Service
@@ -148,3 +185,8 @@ spec:
       jsonPointers:
         - /data
         - /stringData
+    # StatefulSet volumeClaimTemplates get status fields Vault manages
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
