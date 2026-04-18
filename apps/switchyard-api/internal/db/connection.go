@@ -253,7 +253,7 @@ func (dm *DatabaseManager) PrepareStatements(ctx context.Context) (*PreparedStat
 		"SELECT id, project_id, name, git_repo, build_config, created_at, updated_at FROM services WHERE project_id = $1 ORDER BY created_at DESC":                           &stmts.ListServices,
 		"SELECT id, service_id, version, image_uri, git_sha, status, created_at, updated_at FROM releases WHERE id = $1":                                                     &stmts.GetRelease,
 		"SELECT id, service_id, version, image_uri, git_sha, status, created_at, updated_at FROM releases WHERE service_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3": &stmts.ListReleases,
-		"SELECT id, release_id, environment_id, replicas, status, health, created_at, updated_at FROM deployments WHERE id = $1":                                             &stmts.GetDeployment,
+		"SELECT id, release_id, environment_id, replicas, status, health, service_id, version_number, created_at, updated_at FROM deployments WHERE id = $1":                 &stmts.GetDeployment,
 		"UPDATE deployments SET status = $1, health = $2, updated_at = NOW() WHERE id = $3":                                                                                  &stmts.UpdateDeploymentStatus,
 	}
 

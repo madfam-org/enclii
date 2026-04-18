@@ -297,6 +297,17 @@ func (c *APIClient) GetDeployment(ctx context.Context, deploymentID string) (*ty
 	return &deployment, nil
 }
 
+// GetDeploymentByVersion resolves a deployment by Heroku-style semantic
+// version (P2.6). The `version` argument is the integer component of v{n};
+// passing 42 maps to /v1/services/<id>/versions/42.
+func (c *APIClient) GetDeploymentByVersion(ctx context.Context, serviceID string, version int) (*types.Deployment, error) {
+	var deployment types.Deployment
+	if err := c.get(ctx, fmt.Sprintf("/v1/services/%s/versions/%d", serviceID, version), &deployment); err != nil {
+		return nil, fmt.Errorf("failed to get deployment by version v%d: %w", version, err)
+	}
+	return &deployment, nil
+}
+
 func (c *APIClient) ListServiceDeployments(ctx context.Context, serviceID string) ([]*types.Deployment, error) {
 	var response struct {
 		Deployments []*types.Deployment `json:"deployments"`
@@ -390,9 +401,13 @@ type InstantRollbackResponse struct {
 	ScaledUp         bool   `json:"scaled_up"`
 	FromDeploymentID string `json:"from_deployment_id,omitempty"`
 	ToDeploymentID   string `json:"to_deployment_id"`
-	ReadyReplicas    int32  `json:"ready_replicas"`
-	Strategy         string `json:"strategy"`
-	Namespace        string `json:"namespace"`
+	// P2.6: Heroku-style v-numbers. Pointers because historical rows may
+	// not have version_number allocated yet.
+	FromVersion   *int   `json:"from_version,omitempty"`
+	ToVersion     *int   `json:"to_version,omitempty"`
+	ReadyReplicas int32  `json:"ready_replicas"`
+	Strategy      string `json:"strategy"`
+	Namespace     string `json:"namespace"`
 }
 
 // InstantRollback performs a selector-flip rollback — traffic shifts to the

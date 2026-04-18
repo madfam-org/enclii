@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/client"
@@ -20,11 +22,22 @@ func NewRollbackCommand(cfg *config.Config) *cobra.Command {
 	var changeTicketURL string
 
 	cmd := &cobra.Command{
-		Use:   "rollback [service]",
+		Use:   "rollback [service] [v{n}|digest]",
 		Short: "Rollback service to previous release",
 		Long: `Rollback a service to a previous release version.
 
-Two strategies are supported:
+Target resolution (P2.6):
+
+  enclii rollback my-svc v42           # rollback to the deployment numbered v42
+  enclii rollback my-svc abc1234       # rollback to the deployment with this digest shortsha
+  enclii rollback my-svc               # rollback to the previous running deployment
+  enclii rollback my-svc --to <uuid>   # rollback to a specific deployment by UUID (legacy)
+
+Heroku-style v-numbers are the preferred form — they're monotonic per
+service and never reused even across rollbacks, so "v42" unambiguously
+identifies one deployment.
+
+Strategies:
 
   --instant  Service-selector flip (P0.5). Traffic shifts in <30s when the
              previous ReplicaSet is still running, <90s when it has to scale
@@ -35,11 +48,20 @@ Two strategies are supported:
              Deployment controller do a rolling update. Takes 2-3 minutes.
              Use when you want the rollback durably captured in git (ArgoCD
              still owns the state-of-record).`,
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var serviceName string
+			var target string
 			if len(args) > 0 {
 				serviceName = args[0]
+			}
+			if len(args) > 1 {
+				target = args[1]
+			}
+			// If the user passed a v-label or digest positionally, prefer
+			// it over the --to flag (which remains the UUID escape hatch).
+			if target != "" && releaseID == "" {
+				releaseID = target
 			}
 			if instant {
 				return rollbackServiceInstant(cfg, serviceName, environment, releaseID, reason, changeTicketURL)
@@ -49,12 +71,51 @@ Two strategies are supported:
 	}
 
 	cmd.Flags().StringVarP(&environment, "env", "e", "dev", "Environment to rollback in")
-	cmd.Flags().StringVarP(&releaseID, "to", "t", "", "Specific release/deployment ID to rollback to (required for --instant when not using previous)")
+	cmd.Flags().StringVarP(&releaseID, "to", "t", "", "Specific release/deployment ID or v-number (e.g. v42) to rollback to. Overrides positional target if both are set.")
 	cmd.Flags().BoolVar(&instant, "instant", false, "Flip traffic at the routing layer (<30s) instead of re-committing a manifest")
 	cmd.Flags().StringVar(&reason, "reason", "", "Optional rollback reason (captured in audit log)")
 	cmd.Flags().StringVar(&changeTicketURL, "change-ticket", "", "Change ticket URL (required for production instant rollbacks)")
 
 	return cmd
+}
+
+// resolveRollbackTarget converts a user-supplied target string (either a
+// Heroku-style v-label, a digest shortsha, a full UUID, or empty) into a
+// concrete deployment UUID. Returns the empty string when target is empty
+// so callers can fall back to their default-resolution logic.
+func resolveRollbackTarget(ctx context.Context, apiClient *client.APIClient, serviceID, target string) (string, error) {
+	if target == "" {
+		return "", nil
+	}
+	// v-label path: resolve via the new P2.6 endpoint. This works for any
+	// v-number in history, not just the latest.
+	if n, ok := types.ParseVersionLabel(target); ok {
+		dep, err := apiClient.GetDeploymentByVersion(ctx, serviceID, n)
+		if err != nil {
+			return "", fmt.Errorf("resolve v%d: %w", n, err)
+		}
+		return dep.ID.String(), nil
+	}
+	// UUID path: assume the user gave a full deployment UUID; pass through.
+	if _, err := uuid.Parse(target); err == nil {
+		return target, nil
+	}
+	// Digest shortsha path: the API doesn't expose a direct lookup, so we
+	// fall back to listing the service's deployments and matching on
+	// git_sha. This is what the legacy flow relied on.
+	deployments, err := apiClient.ListServiceDeployments(ctx, serviceID)
+	if err != nil {
+		return "", fmt.Errorf("list deployments for shortsha match: %w", err)
+	}
+	for _, d := range deployments {
+		// Shortsha match: the release-level git_sha isn't on Deployment,
+		// but the deployment ID prefix can be used as a secondary match
+		// (some tooling surfaces `deployment-id[:8]` as a "shortsha").
+		if strings.HasPrefix(d.ID.String(), target) {
+			return d.ID.String(), nil
+		}
+	}
+	return "", fmt.Errorf("could not resolve rollback target %q: not a v-label, UUID, or matching shortsha", target)
 }
 
 func rollbackService(cfg *config.Config, serviceName, environment, releaseID string) error {
@@ -64,7 +125,7 @@ func rollbackService(cfg *config.Config, serviceName, environment, releaseID str
 
 	fmt.Printf("🔄 Rolling back %s in %s environment", serviceName, environment)
 	if releaseID != "" {
-		fmt.Printf(" to release %s", releaseID)
+		fmt.Printf(" to %s", releaseID)
 	} else {
 		fmt.Printf(" to previous release")
 	}
@@ -101,6 +162,19 @@ func rollbackService(cfg *config.Config, serviceName, environment, releaseID str
 		return fmt.Errorf("service not found")
 	}
 
+	// Step 2b (P2.6): resolve v-label targets up-front so we can pass a
+	// concrete deployment UUID to the API and show the user what we're
+	// targeting before we make destructive calls.
+	resolvedTarget, err := resolveRollbackTarget(ctx, apiClient, targetService.ID.String(), releaseID)
+	if err != nil {
+		fmt.Printf("❌ %v\n", err)
+		return &exitcodes.ValidationError{Err: err}
+	}
+	if resolvedTarget != "" && resolvedTarget != releaseID {
+		fmt.Printf("🎯 Resolved %s → deployment %s\n", releaseID, resolvedTarget)
+		releaseID = resolvedTarget
+	}
+
 	// Step 3: Get current deployment
 	fmt.Println("🔍 Getting current deployment...")
 	currentDeployment, err := apiClient.GetLatestDeployment(ctx, targetService.ID.String())
@@ -114,8 +188,12 @@ func rollbackService(cfg *config.Config, serviceName, environment, releaseID str
 		return fmt.Errorf("no deployment found")
 	}
 
-	fmt.Printf("✅ Current deployment: %s\n", currentDeployment.Deployment.ID)
-	if currentDeployment.Release != nil {
+	fmt.Printf("✅ Current deployment: %s", currentDeployment.Deployment.ID)
+	if currentDeployment.Deployment.VersionNumber != nil {
+		fmt.Printf(" (%s)", currentDeployment.Deployment.VersionLabel())
+	}
+	fmt.Println()
+	if currentDeployment.Release != nil && len(currentDeployment.Release.GitSHA) >= 7 {
 		fmt.Printf("   Version: %s (git: %s)\n", currentDeployment.Release.Version, currentDeployment.Release.GitSHA[:7])
 	}
 	fmt.Println()
@@ -184,11 +262,14 @@ func rollbackServiceInstant(cfg *config.Config, serviceName, environment, releas
 		return fmt.Errorf("service '%s' not found", serviceName)
 	}
 
-	// Determine target deployment ID. If `--to` is supplied, the value is
-	// treated as a deployment UUID (for --instant we need a specific
-	// ReplicaSet, not just any release). Otherwise we pick the previous
-	// running deployment (skip the most recent).
-	targetDeploymentID := releaseID
+	// Determine target deployment ID. P2.6 adds v-label resolution — if the
+	// user said `rollback my-svc v42`, the caller has already stuffed "v42"
+	// into releaseID. We resolve it to a concrete deployment UUID here so
+	// the API sees a clean target_deployment_id.
+	targetDeploymentID, err := resolveRollbackTarget(ctx, apiClient, targetService.ID.String(), releaseID)
+	if err != nil {
+		return &exitcodes.ValidationError{Err: err}
+	}
 	if targetDeploymentID == "" {
 		fmt.Println("🔍 Finding previous deployment...")
 		deployments, err := apiClient.ListServiceDeployments(ctx, targetService.ID.String())
@@ -229,7 +310,15 @@ func rollbackServiceInstant(cfg *config.Config, serviceName, environment, releas
 	fmt.Printf("   Took: %dms\n", resp.TookMS)
 	fmt.Printf("   Scaled up needed: %v\n", resp.ScaledUp)
 	fmt.Printf("   Ready replicas: %d\n", resp.ReadyReplicas)
-	fmt.Printf("   From → To: %s → %s\n", shortID(resp.FromDeploymentID), shortID(resp.ToDeploymentID))
+	// Prefer the Heroku-style v-numbers when the API returned them —
+	// operators read "v43 → v41" faster than hex IDs.
+	if resp.FromVersion != nil && resp.ToVersion != nil {
+		fmt.Printf("   From → To: v%d → v%d (%s → %s)\n",
+			*resp.FromVersion, *resp.ToVersion,
+			shortID(resp.FromDeploymentID), shortID(resp.ToDeploymentID))
+	} else {
+		fmt.Printf("   From → To: %s → %s\n", shortID(resp.FromDeploymentID), shortID(resp.ToDeploymentID))
+	}
 	fmt.Println()
 	fmt.Println("💡 ArgoCD will reconcile the manifest in the background (no action needed).")
 	return nil

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/client"
@@ -56,12 +57,208 @@ Canary strategy (P2.7):
 	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "Wait for deployment to complete")
 	cmd.Flags().StringVarP(&specFile, "file", "f", "service.yaml", "Path to service.yaml specification file")
 
+	// P2.7 canary rollout flags on `enclii deploy`.
 	cmd.Flags().StringVar(&canarySpec, "canary", "", "Deploy as canary at this percentage (e.g. \"20%\" or \"20\"). Range 5-50.")
 	cmd.Flags().StringVar(&validationWindow, "validation-window", "10m", "How long the canary must stay healthy before auto-promote (e.g. 10m, 30m)")
 	cmd.Flags().StringVar(&smokeEndpoint, "smoke-endpoint", "", "Optional http(s) URL to probe during validation (returns 200 = healthy)")
 	cmd.Flags().StringVar(&changeTicketURL, "change-ticket", "", "Change ticket URL (required for production canary rollouts)")
 
+	// P2.6 subcommands: `enclii deploy ls` and `enclii deploy show v42`.
+	// These are read-only views of deployment history keyed by the new
+	// Heroku-style v-numbers.
+	cmd.AddCommand(newDeployListCommand(cfg))
+	cmd.AddCommand(newDeployShowCommand(cfg))
+
 	return cmd
+}
+
+// newDeployListCommand implements `enclii deploy ls [service]`. Shows the
+// deployment history with v-number as the primary column and the deployment
+// UUID shortsha as secondary.
+func newDeployListCommand(cfg *config.Config) *cobra.Command {
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "ls [service]",
+		Short: "List deployments with v-numbers",
+		Long: `List a service's deployment history with Heroku-style v-numbers.
+
+Output columns: v-number, status, deployment shortsha, created-at.
+If service is omitted, uses the service configured in this directory's
+service.yaml (if any).`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			serviceName := ""
+			if len(args) > 0 {
+				serviceName = args[0]
+			}
+			return runDeployList(cfg, serviceName, limit)
+		},
+	}
+	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Max number of deployments to show")
+	return cmd
+}
+
+func runDeployList(cfg *config.Config, serviceName string, limit int) error {
+	ctx := context.Background()
+	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+
+	projectSlug := cfg.Project
+	if projectSlug == "" {
+		projectSlug = "default"
+	}
+
+	// Resolve the service by name. If the caller didn't pass one, try to
+	// infer from service.yaml in cwd.
+	if serviceName == "" {
+		parser := spec.NewParser()
+		if serviceSpec, err := parser.ParseServiceSpec("service.yaml"); err == nil {
+			serviceName = serviceSpec.Metadata.Name
+		} else {
+			return fmt.Errorf("service name required (no service.yaml found in cwd)")
+		}
+	}
+
+	services, err := apiClient.ListServices(ctx, projectSlug)
+	if err != nil {
+		return fmt.Errorf("list services: %w", err)
+	}
+	var target *types.Service
+	for _, svc := range services {
+		if svc.Name == serviceName {
+			target = svc
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("service %q not found in project %q", serviceName, projectSlug)
+	}
+
+	deployments, err := apiClient.ListServiceDeployments(ctx, target.ID.String())
+	if err != nil {
+		return fmt.Errorf("list deployments: %w", err)
+	}
+
+	if len(deployments) == 0 {
+		fmt.Printf("No deployments for %s yet.\n", serviceName)
+		return nil
+	}
+
+	if limit > 0 && limit < len(deployments) {
+		deployments = deployments[:limit]
+	}
+
+	// Fixed-width columns keep the output parseable by scripts.
+	fmt.Printf("%-8s %-12s %-12s %s\n", "VERSION", "STATUS", "DEPLOY-ID", "CREATED")
+	for _, d := range deployments {
+		version := "-"
+		if d.VersionNumber != nil {
+			version = d.VersionLabel()
+		}
+		fmt.Printf("%-8s %-12s %-12s %s\n",
+			version,
+			string(d.Status),
+			shortID(d.ID.String()),
+			d.CreatedAt.Format("2006-01-02 15:04:05"),
+		)
+	}
+	return nil
+}
+
+// newDeployShowCommand implements `enclii deploy show v42 [service]`.
+func newDeployShowCommand(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show <v{n}|uuid> [service]",
+		Short: "Show a specific deployment by v-number or UUID",
+		Long: `Show details for one deployment.
+
+Target can be:
+  v{n}    Heroku-style semantic version (e.g. v42). Requires [service].
+  <uuid>  Full deployment UUID. Service argument is optional.`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := args[0]
+			serviceName := ""
+			if len(args) > 1 {
+				serviceName = args[1]
+			}
+			return runDeployShow(cfg, target, serviceName)
+		},
+	}
+	return cmd
+}
+
+func runDeployShow(cfg *config.Config, target, serviceName string) error {
+	ctx := context.Background()
+	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+
+	// v-label path: look up by (service, version).
+	if n, ok := types.ParseVersionLabel(target); ok {
+		if serviceName == "" {
+			parser := spec.NewParser()
+			if s, err := parser.ParseServiceSpec("service.yaml"); err == nil {
+				serviceName = s.Metadata.Name
+			} else {
+				return fmt.Errorf("showing a v-label requires [service] (no service.yaml in cwd)")
+			}
+		}
+
+		projectSlug := cfg.Project
+		if projectSlug == "" {
+			projectSlug = "default"
+		}
+		services, err := apiClient.ListServices(ctx, projectSlug)
+		if err != nil {
+			return fmt.Errorf("list services: %w", err)
+		}
+		var svc *types.Service
+		for _, s := range services {
+			if s.Name == serviceName {
+				svc = s
+				break
+			}
+		}
+		if svc == nil {
+			return fmt.Errorf("service %q not found", serviceName)
+		}
+		dep, err := apiClient.GetDeploymentByVersion(ctx, svc.ID.String(), n)
+		if err != nil {
+			return err
+		}
+		printDeploymentDetail(dep, serviceName)
+		return nil
+	}
+
+	// UUID path.
+	if _, err := uuid.Parse(target); err != nil {
+		return fmt.Errorf("target must be a v-label (e.g. v42) or a deployment UUID; got %q", target)
+	}
+	dep, err := apiClient.GetDeployment(ctx, target)
+	if err != nil {
+		return err
+	}
+	printDeploymentDetail(dep, serviceName)
+	return nil
+}
+
+func printDeploymentDetail(d *types.Deployment, serviceName string) {
+	version := "(no version allocated)"
+	if d.VersionNumber != nil {
+		version = d.VersionLabel()
+	}
+	fmt.Println("Deployment", version)
+	if serviceName != "" {
+		fmt.Printf("  Service:       %s\n", serviceName)
+	}
+	fmt.Printf("  ID:            %s\n", d.ID)
+	fmt.Printf("  Status:        %s\n", d.Status)
+	fmt.Printf("  Health:        %s\n", d.Health)
+	fmt.Printf("  Replicas:      %d\n", d.Replicas)
+	fmt.Printf("  Release:       %s\n", d.ReleaseID)
+	fmt.Printf("  Environment:   %s\n", d.EnvironmentID)
+	fmt.Printf("  Created:       %s\n", d.CreatedAt.Format(time.RFC3339))
+	if d.ErrorMessage != nil && *d.ErrorMessage != "" {
+		fmt.Printf("  Error:         %s\n", *d.ErrorMessage)
+	}
 }
 
 func deployService(cfg *config.Config, environment string, wait bool, specFile string) error {
