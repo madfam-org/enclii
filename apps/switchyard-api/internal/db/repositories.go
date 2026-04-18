@@ -64,6 +64,9 @@ type Repositories struct {
 
 	// Tenant data export (P3.6)
 	TenantExports *TenantExportRepository
+
+	// Self-serve signup (P3.2 Sprint 1)
+	Signups *SignupRepository
 }
 
 // Ping checks database connectivity for health probes
@@ -138,6 +141,9 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		PropagationPolicies: NewPropagationPolicyRepositoryWithTx(tx),
 		DriftEvents:         NewDriftEventRepositoryWithTx(tx),
 		CostAllocations:     NewCostAllocationRepositoryWithTx(tx),
+
+		// P3.2 Self-serve signup
+		Signups: NewSignupRepositoryWithTx(tx),
 	}
 
 	// Execute the function with transaction repositories
@@ -214,5 +220,8 @@ func NewRepositories(db *sql.DB) *Repositories {
 
 		// P3.6 Tenant export
 		TenantExports: NewTenantExportRepository(db),
+
+		// P3.2 Self-serve signup
+		Signups: NewSignupRepository(db),
 	}
 }

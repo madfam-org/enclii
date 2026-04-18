@@ -12,6 +12,7 @@ import type { NextRequest } from "next/server";
 const publicPaths = [
   "/login",
   "/register",
+  "/signup",          // P3.2 self-serve signup wizard (public)
   "/auth/callback",
   "/api/auth",
   "/api/health",  // Health check endpoint for K8s probes

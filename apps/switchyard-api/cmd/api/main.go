@@ -572,6 +572,12 @@ func main() {
 	// under the 800-line budget.
 	wireTenantExport(cfg, repos, apiHandler, emailService)
 
+	// P3.2 Sprint 1 — self-serve signup. Disabled by default; operator
+	// flips ENCLII_SIGNUP_ENABLED=true once the Janua companion changes
+	// and Resend templates are in place. When disabled, /v1/signup
+	// endpoints return 404 (not 503 — we don't advertise the surface).
+	wireSignup(cfg, repos, apiHandler, k8sClient, emailService)
+
 	// Start admin reconciler (syncs cluster status, fleet, ArgoCD drift, costs every 60s)
 	adminReconciler := reconciler.NewAdminReconciler(repos, k8sClient, logrus.StandardLogger())
 	go func() {
