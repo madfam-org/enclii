@@ -1,0 +1,31 @@
+# Python compilation
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+src/*.egg-info/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtualenvs (local only — CI uses uv/tox)
+.venv/
+venv/
+
+# Editor
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# uv — library packages don't pin lockfiles (apps do)
+uv.lock
