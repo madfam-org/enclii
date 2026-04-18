@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "subtext",
+  "namespace": "subtext",
+  "partOf": "subtext",
+  "repoURL": "https://github.com/madfam-org/subtext.git"
+}
