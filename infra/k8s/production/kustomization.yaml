@@ -9,11 +9,14 @@ resources:
 # NOTE: cloudflared.yaml removed - using existing cloudflared in cloudflare-tunnel namespace
 # The cloudflare-tunnel namespace has working cloudflared pods with proper credentials
 # - cloudflared.yaml
-# Redis Sentinel (redis-sentinel.yaml) is NOT enabled on single-node cluster.
-# Reason: podAntiAffinity requires 3 different nodes; only 1 pod would schedule.
-# The base redis.yaml (single instance) is used instead.
-# Re-enable when multi-node cluster is deployed:
-# - redis-sentinel.yaml
+# Redis Sentinel HA is now an independent ArgoCD Application rather than part
+# of this kustomization. It deploys to the `data` namespace alongside the
+# existing single-instance Redis in `data` (not `enclii`). See:
+#   infra/argocd/apps/redis-sentinel.yaml   (ArgoCD Application)
+#   infra/k8s/redis-sentinel/               (Kustomize overlay)
+#   docs/runbooks/redis-sentinel-migration.md
+# The `redis` Deployment in `enclii` namespace (switchyard-api cache) is NOT
+# migrated to Sentinel in P1.3 — it is single-tenant and lower-criticality.
 # oidc-secrets.yaml not needed - using local mode with external JWKS
 # build-secrets.yaml not in git - apply manually via kubectl
 # - build-secrets.yaml

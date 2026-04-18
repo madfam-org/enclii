@@ -1,0 +1,504 @@
+---
+# Redis Sentinel HA StatefulSet for Enclii (P1.3 — 2026-04)
+#
+# Runs IN PARALLEL with the existing single-instance `redis` Deployment in the
+# same `data` namespace. Uses distinct Service names so consumers are not forced
+# to migrate all at once:
+#
+#   OLD (still live, do not touch in this PR):
+#     redis.data.svc.cluster.local:6379             — single-instance Deployment
+#
+#   NEW (this PR):
+#     redis-sentinel.data.svc.cluster.local:26379   — Sentinel-aware clients
+#     redis-ha-headless.data.svc.cluster.local      — per-pod DNS for replication
+#     redis-master.data.svc.cluster.local:6379      — fallback (points at current
+#                                                     master via Sentinel-managed
+#                                                     label selector)
+#
+# Auth: reuses the existing `redis-auth` Secret (key: `redis-password`) — same
+# password as single-instance Redis so consumers keep working when they cut over.
+# DO NOT rotate in this PR (see constraints in the associated plan PR).
+#
+# Quorum: 3 pods, 2-of-3 Sentinel majority. Pod anti-affinity is preferred (not
+# required) so the cluster can still run degraded on 2 nodes if one host is down.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-ha-config
+  namespace: data
+  labels:
+    app: redis-ha
+    app.kubernetes.io/name: redis-ha
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: enclii-infrastructure
+data:
+  redis.conf: |
+    # Redis server configuration (master + replicas use the same file;
+    # replicas are configured via `replicaof` appended by the init container).
+    bind 0.0.0.0
+    port 6379
+    protected-mode yes
+
+    # Memory management
+    maxmemory 512mb
+    maxmemory-policy allkeys-lru
+
+    # Persistence — AOF every second (matches single-instance Redis durability).
+    appendonly yes
+    appendfsync everysec
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+    # Replication — refuse writes if no replicas are caught up.
+    min-replicas-to-write 1
+    min-replicas-max-lag 10
+    replica-read-only yes
+
+    # Performance
+    tcp-keepalive 300
+    timeout 0
+    tcp-backlog 511
+    loglevel notice
+
+  sentinel.conf: |
+    # Sentinel configuration. Master set name: mymaster (standard convention).
+    port 26379
+    dir /data
+
+    # Master to monitor; quorum=2 (2-of-3 majority required for failover).
+    sentinel monitor mymaster redis-ha-0.redis-ha-headless.data.svc.cluster.local 6379 2
+    sentinel down-after-milliseconds mymaster 5000
+    sentinel failover-timeout mymaster 18000
+    sentinel parallel-syncs mymaster 1
+
+    # Auth is injected at pod startup by the init container (sentinel auth-pass).
+    # Announce pod IP so other Sentinels can reach us on the pod network.
+    sentinel announce-ip ${POD_IP}
+    sentinel announce-port 26379
+
+    # Resolve hostnames (Sentinel hands these to clients on failover discovery).
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redis-ha
+  namespace: data
+  labels:
+    app: redis-ha
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-ha
+  namespace: data
+  labels:
+    app: redis-ha
+    app.kubernetes.io/name: redis-ha
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: enclii-infrastructure
+spec:
+  serviceName: redis-ha-headless
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: redis-ha
+  template:
+    metadata:
+      labels:
+        app: redis-ha
+        app.kubernetes.io/name: redis-ha
+        app.kubernetes.io/component: cache
+        app.kubernetes.io/part-of: enclii-infrastructure
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+    spec:
+      serviceAccountName: redis-ha
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Prefer spreading across nodes; tolerate co-location if the cluster is
+      # short on schedulable nodes (foundry-builder-01 carries NoSchedule).
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: redis-ha
+                topologyKey: kubernetes.io/hostname
+
+      initContainers:
+        # Render per-pod redis.conf + sentinel.conf with the password injected.
+        - name: config-init
+          image: docker.io/library/redis:7-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              cp /tmp/redis.conf /etc/redis/redis.conf
+              cp /tmp/sentinel.conf /etc/redis/sentinel.conf
+
+              # Inject auth into redis.conf
+              echo ""                                        >> /etc/redis/redis.conf
+              echo "requirepass ${REDIS_PASSWORD}"           >> /etc/redis/redis.conf
+              echo "masterauth ${REDIS_PASSWORD}"            >> /etc/redis/redis.conf
+
+              # Inject auth into sentinel.conf
+              echo ""                                        >> /etc/redis/sentinel.conf
+              echo "sentinel auth-pass mymaster ${REDIS_PASSWORD}" >> /etc/redis/sentinel.conf
+              echo "requirepass ${REDIS_PASSWORD}"           >> /etc/redis/sentinel.conf
+
+              # Replicas follow redis-ha-0 on start. Sentinel will re-configure
+              # `replicaof` dynamically after the first failover.
+              if [ "$(hostname)" != "redis-ha-0" ]; then
+                echo "replicaof redis-ha-0.redis-ha-headless.data.svc.cluster.local 6379" \
+                  >> /etc/redis/redis.conf
+              fi
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config-template
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/redis
+
+      containers:
+        # 1) Redis server — shares the PVC at /data, config at /etc/redis.
+        - name: redis
+          image: docker.io/library/redis:7-alpine
+          command: ["redis-server", "/etc/redis/redis.conf"]
+          ports:
+            - containerPort: 6379
+              name: redis
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: /etc/redis
+            - name: data
+              mountPath: /data
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop: ["ALL"]
+
+        # 2) Sentinel — co-located with Redis, shares the PVC for sentinel state.
+        - name: sentinel
+          image: docker.io/library/redis:7-alpine
+          command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
+          ports:
+            - containerPort: 26379
+              name: sentinel
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -p 26379 ping 2>/dev/null | grep -q PONG
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -p 26379 ping 2>/dev/null | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: /etc/redis
+            - name: data
+              mountPath: /data
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop: ["ALL"]
+
+        # 3) redis_exporter — sidecar for Prometheus scraping.
+        - name: redis-exporter
+          image: docker.io/oliver006/redis_exporter:v1.55.0
+          ports:
+            - containerPort: 9121
+              name: metrics
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+            - name: REDIS_ADDR
+              value: "redis://localhost:6379"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop: ["ALL"]
+
+      volumes:
+        - name: config-template
+          configMap:
+            name: redis-ha-config
+        - name: config
+          emptyDir: {}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: redis-ha
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Headless Service — enables stable per-pod DNS:
+#   redis-ha-0.redis-ha-headless.data.svc.cluster.local
+#   redis-ha-1.redis-ha-headless.data.svc.cluster.local
+#   redis-ha-2.redis-ha-headless.data.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-headless
+  namespace: data
+  labels:
+    app: redis-ha
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
+    - port: 26379
+      targetPort: 26379
+      name: sentinel
+  selector:
+    app: redis-ha
+---
+# Sentinel Service — Sentinel-aware clients connect here and discover the
+# current master. This is the preferred connection target for new consumers.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel
+  namespace: data
+  labels:
+    app: redis-ha
+    app.kubernetes.io/component: sentinel
+spec:
+  type: ClusterIP
+  ports:
+    - port: 26379
+      targetPort: 26379
+      name: sentinel
+  selector:
+    app: redis-ha
+---
+# Master Service — fallback for clients that do NOT support Sentinel. Points
+# at all Redis pods; clients will hit whichever replies. Only `redis-ha-0` is
+# guaranteed-master on initial bring-up; after a failover, use Sentinel
+# discovery or restart the consumer to re-resolve.
+#
+# A future enhancement is to manage this selector dynamically via an operator
+# or Service-selector-flip sidecar. For now, the Sentinel Service is the
+# supported HA path; this Service is a compatibility shim.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  namespace: data
+  labels:
+    app: redis-ha
+    app.kubernetes.io/component: redis-master
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
+  selector:
+    app: redis-ha
+---
+# PDB — require at least 2 pods up. Protects quorum during voluntary
+# disruptions (node drain, rolling update).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-ha-pdb
+  namespace: data
+  labels:
+    app: redis-ha
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: redis-ha
+---
+# NetworkPolicy — allow ingress from consumers (ecosystem namespaces + enclii),
+# allow pod-to-pod replication, allow Prometheus scraping, DNS egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ha-network-policy
+  namespace: data
+  labels:
+    app: redis-ha
+spec:
+  podSelector:
+    matchLabels:
+      app: redis-ha
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Redis + Sentinel from any pod that declares redis egress via enclii.yaml.
+    # Consumers are across 9+ namespaces (dhanam, janua, enclii, karafiel, ...);
+    # we match on a consumer label rather than enumerate namespaces here.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              enclii.dev/redis-consumer: "true"
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 26379
+    # Redis-to-Redis replication and Sentinel gossip (same StatefulSet).
+    - from:
+        - podSelector:
+            matchLabels:
+              app: redis-ha
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 26379
+    # Prometheus scraping of the exporter sidecar.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9121
+  egress:
+    # DNS — kube-dns (any namespace matching the well-known CoreDNS service).
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Peer replication + sentinel gossip.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis-ha
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 26379
