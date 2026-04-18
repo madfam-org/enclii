@@ -37,7 +37,5 @@ async def test_instant_rollback(
         return httpx.Response(200, json=sample_deployment_payload)
 
     client = make_client(handler)
-    dep = await client.rollback.instant_rollback(
-        "svc_123", change_ticket_url="JIRA-42"
-    )
+    dep = await client.rollback.instant_rollback("svc_123", change_ticket_url="JIRA-42")
     assert dep.version_number == 42

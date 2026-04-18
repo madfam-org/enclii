@@ -31,9 +31,7 @@ class RollbackResource(Resource):
         API: ``POST /v1/deployments/{id}/rollback``. Requires ``developer``.
         If ``to_release`` is not supplied the previous release is chosen.
         """
-        request = RollbackRequest(
-            to_release=to_release, change_ticket_url=change_ticket_url
-        )
+        request = RollbackRequest(to_release=to_release, change_ticket_url=change_ticket_url)
         await self._client.post(
             f"/v1/deployments/{deployment_id}/rollback",
             json_body=request.model_dump(mode="json", exclude_none=True),
@@ -53,9 +51,7 @@ class RollbackResource(Resource):
 
         Returns the deployment that is now live.
         """
-        request = RollbackRequest(
-            to_release=to_release, change_ticket_url=change_ticket_url
-        )
+        request = RollbackRequest(to_release=to_release, change_ticket_url=change_ticket_url)
         data = await self._client.post(
             f"/v1/services/{service_id}/rollback",
             json_body=request.model_dump(mode="json", exclude_none=True),

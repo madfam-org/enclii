@@ -19,9 +19,7 @@ class SecretsResource(Resource):
         API: ``GET /v1/services/{id}/env-vars``. Secret values are masked.
         """
         data = await self._client.get(f"/v1/services/{service_id}/env-vars")
-        items = (
-            data if isinstance(data, list) else data.get("env_vars", [])
-        )
+        items = data if isinstance(data, list) else data.get("env_vars", [])
         return [EnvVarResponse.model_validate(v) for v in items]
 
     async def get(self, service_id: str, var_id: str) -> EnvVarResponse:
@@ -29,9 +27,7 @@ class SecretsResource(Resource):
 
         API: ``GET /v1/services/{id}/env-vars/{var_id}``.
         """
-        data = await self._client.get(
-            f"/v1/services/{service_id}/env-vars/{var_id}"
-        )
+        data = await self._client.get(f"/v1/services/{service_id}/env-vars/{var_id}")
         return EnvVarResponse.model_validate(data)
 
     async def create(
@@ -82,7 +78,5 @@ class SecretsResource(Resource):
         API: ``POST /v1/services/{id}/env-vars/{var_id}/reveal``. Requires
         ``developer``. Every call produces an audit entry.
         """
-        data = await self._client.post(
-            f"/v1/services/{service_id}/env-vars/{var_id}/reveal"
-        )
+        data = await self._client.post(f"/v1/services/{service_id}/env-vars/{var_id}/reveal")
         return EnvVarResponse.model_validate(data)

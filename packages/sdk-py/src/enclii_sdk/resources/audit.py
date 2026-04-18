@@ -55,9 +55,7 @@ class AuditResource(Resource):
             params["cursor"] = cursor
 
         data = await self._client.get("/v1/audit", params=params)
-        items_raw = (
-            data if isinstance(data, list) else data.get("items") or data.get("logs", [])
-        )
+        items_raw = data if isinstance(data, list) else data.get("items") or data.get("logs", [])
         next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
         total = data.get("total") if isinstance(data, dict) else None
         return AuditLogPage(
@@ -76,7 +74,5 @@ class AuditResource(Resource):
         API: ``GET /v1/activity``. Prefer :meth:`list` for new code.
         """
         data = await self._client.get("/v1/activity", params={"limit": limit})
-        items = (
-            data if isinstance(data, list) else data.get("items") or data.get("activity", [])
-        )
+        items = data if isinstance(data, list) else data.get("items") or data.get("activity", [])
         return [AuditLog.model_validate(it) for it in items]

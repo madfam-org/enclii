@@ -1,10 +1,19 @@
 """Pydantic v2 models for the Enclii Platform API.
 
-Models are hand-maintained to track the Go SDK's ``pkg/types`` package
-and the OpenAPI spec at ``docs/api/openapi.yaml``. Regeneration from
-OpenAPI is supported via ``scripts/generate_models.py`` for sections of
-the spec that are complete — canary rollouts and outbound webhooks are
-currently hand-written because they predate their OpenAPI entries.
+Two parallel model sets live here, by design:
+
+* **Hand-written modules** (``core.py``, ``webhooks.py``, ``canary.py``, ``jobs.py``,
+  ``logs.py``, ``secrets.py``, ``audit.py``, ``common.py``) — the consumer-facing API
+  surface, tracking the Go SDK's ``pkg/types`` package. These are what
+  ``from enclii_sdk import ...`` exposes and what the resource classes use.
+* **Generated module** (``generated.py``) — produced from ``docs/api/openapi.yaml``
+  via ``datamodel-code-generator``. Checked in as a reference for consumers
+  who want to work against the raw spec shape, and as a CI drift canary.
+
+Regenerate with ``make models`` (or ``scripts/generate_models.sh``).
+CI enforces the two stay in sync with the spec via ``make verify-models``.
+Outbound-webhook and canary models predate their OpenAPI entries, so the
+hand-written variants remain authoritative there.
 """
 
 from enclii_sdk.models.audit import AuditLog, AuditLogPage

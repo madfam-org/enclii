@@ -126,17 +126,13 @@ async def test_query_with_cursor(
 async def test_ws_url_scheme_conversion(base_url: str, expected_prefix: str) -> None:
     async with AsyncEncliiClient(base_url=base_url, token="x") as client:
         res = LogsResource(client)
-        url = res._build_ws_url(
-            "/v1/services/svc/logs/tail", level=None, search=None
-        )
+        url = res._build_ws_url("/v1/services/svc/logs/tail", level=None, search=None)
         assert url.startswith(expected_prefix)
         assert url.endswith("/v1/services/svc/logs/tail")
 
 
 async def test_ws_url_adds_level_and_search() -> None:
-    async with AsyncEncliiClient(
-        base_url="https://api.enclii.dev", token="x"
-    ) as client:
+    async with AsyncEncliiClient(base_url="https://api.enclii.dev", token="x") as client:
         res = LogsResource(client)
         url = res._build_ws_url(
             "/v1/services/svc/logs/tail",

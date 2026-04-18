@@ -32,9 +32,7 @@ class DeploymentsResource(Resource):
         API: ``GET /v1/deployments``.
         """
         data = await self._client.get("/v1/deployments")
-        return [
-            DeploymentEnriched.model_validate(d) for d in data.get("deployments", [])
-        ]
+        return [DeploymentEnriched.model_validate(d) for d in data.get("deployments", [])]
 
     async def latest(self, service_id: str) -> Deployment:
         """Fetch the most recent deployment for a service.
@@ -59,9 +57,7 @@ class DeploymentsResource(Resource):
         or the prefixed form (``"v42"``) — the server normalizes.
         """
         if version is None:
-            data = await self._client.get(
-                f"/v1/deployments/{service_id_or_deployment_id}"
-            )
+            data = await self._client.get(f"/v1/deployments/{service_id_or_deployment_id}")
         else:
             data = await self._client.get(
                 f"/v1/services/{service_id_or_deployment_id}/versions/{version}"

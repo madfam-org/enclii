@@ -59,9 +59,7 @@ async def test_list_audit_forwards_filters(
         return httpx.Response(200, json={"items": []})
 
     client = make_client(handler)
-    await client.audit.list(
-        actor="ci@madfam.io", action="deploy", resource_type="service"
-    )
+    await client.audit.list(actor="ci@madfam.io", action="deploy", resource_type="service")
     assert captured["params"]["actor"] == "ci@madfam.io"
     assert captured["params"]["action"] == "deploy"
     assert captured["params"]["resource_type"] == "service"

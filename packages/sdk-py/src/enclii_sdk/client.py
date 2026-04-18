@@ -357,9 +357,7 @@ class AsyncEncliiClient:
             raise ValidationError(message, **common_kwargs)
         if status == 429:
             retry_after = _parse_retry_after(response.headers.get("Retry-After"))
-            raise RateLimitError(
-                message, retry_after_seconds=retry_after, **common_kwargs
-            )
+            raise RateLimitError(message, retry_after_seconds=retry_after, **common_kwargs)
         if status >= 500:
             raise ServerError(message, **common_kwargs)
         raise EncliiError(message, **common_kwargs)

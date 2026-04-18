@@ -65,17 +65,14 @@ class LogsResource(Resource):
             params["until"] = _serialize_time(until)
         if level is not None:
             params["level"] = (
-                [level.value] if isinstance(level, LogLevel)
-                else [lvl.value for lvl in level]
+                [level.value] if isinstance(level, LogLevel) else [lvl.value for lvl in level]
             )
         if search:
             params["search"] = search
         if cursor:
             params["cursor"] = cursor
 
-        data = await self._client.get(
-            f"/v1/services/{service_id}/logs", params=params
-        )
+        data = await self._client.get(f"/v1/services/{service_id}/logs", params=params)
         return LogQueryResponse.model_validate(data)
 
     async def tail(
@@ -130,23 +127,15 @@ class LogsResource(Resource):
                         if ftype == "entry" and "entry" in frame:
                             yield LogEntry.model_validate(frame["entry"])
                         elif ftype == "error":
-                            raise EncliiError(
-                                f"server-side tail error: {frame.get('error')}"
-                            )
+                            raise EncliiError(f"server-side tail error: {frame.get('error')}")
                         # "dropped", "ping", "bye" frames are logged-only.
             except InvalidStatus as exc:
                 status = exc.response.status_code
                 if status == 401:
-                    raise AuthError(
-                        "WebSocket authentication failed", status_code=401
-                    ) from exc
+                    raise AuthError("WebSocket authentication failed", status_code=401) from exc
                 if status == 404:
-                    raise NotFoundError(
-                        f"service {service_id} not found", status_code=404
-                    ) from exc
-                raise NetworkError(
-                    f"WebSocket handshake failed (status={status})"
-                ) from exc
+                    raise NotFoundError(f"service {service_id} not found", status_code=404) from exc
+                raise NetworkError(f"WebSocket handshake failed (status={status})") from exc
             except (ConnectionClosed, OSError) as exc:
                 if not reconnect:
                     raise NetworkError(f"log tail disconnected: {exc}") from exc
@@ -173,9 +162,9 @@ class LogsResource(Resource):
         """Derive the ws(s):// URL from the configured base_url."""
         base = self._client.base_url
         if base.startswith("https://"):
-            ws_base = "wss://" + base[len("https://"):]
+            ws_base = "wss://" + base[len("https://") :]
         elif base.startswith("http://"):
-            ws_base = "ws://" + base[len("http://"):]
+            ws_base = "ws://" + base[len("http://") :]
         else:
             ws_base = base
         params = httpx.QueryParams()

@@ -61,7 +61,9 @@ def test_expired_timestamp_rejected() -> None:
     header = compute_signature_header(FAKE_TEST_SECRET, body, timestamp=old)
     with pytest.raises(WebhookSignatureError, match="tolerance"):
         verify(
-            body, header, FAKE_TEST_SECRET,
+            body,
+            header,
+            FAKE_TEST_SECRET,
             now=old + DEFAULT_TOLERANCE_SECONDS + 1,
         )
 
@@ -72,7 +74,9 @@ def test_future_timestamp_rejected() -> None:
     header = compute_signature_header(FAKE_TEST_SECRET, body, timestamp=future)
     with pytest.raises(WebhookSignatureError, match="tolerance"):
         verify(
-            body, header, FAKE_TEST_SECRET,
+            body,
+            header,
+            FAKE_TEST_SECRET,
             now=future - DEFAULT_TOLERANCE_SECONDS - 1,
         )
 

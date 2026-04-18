@@ -26,23 +26,15 @@ class WebhooksResource(Resource):
         API: ``GET /v1/lifecycle-webhooks/event-types``.
         """
         data = await self._client.get("/v1/lifecycle-webhooks/event-types")
-        return (
-            data
-            if isinstance(data, list)
-            else list(data.get("event_types", []))
-        )
+        return data if isinstance(data, list) else list(data.get("event_types", []))
 
     async def list(self, project_slug: str) -> list[OutboundWebhookSubscription]:
         """List subscriptions for a project.
 
         API: ``GET /v1/projects/{slug}/lifecycle-webhooks``.
         """
-        data = await self._client.get(
-            f"/v1/projects/{project_slug}/lifecycle-webhooks"
-        )
-        items = (
-            data if isinstance(data, list) else data.get("subscriptions", [])
-        )
+        data = await self._client.get(f"/v1/projects/{project_slug}/lifecycle-webhooks")
+        items = data if isinstance(data, list) else data.get("subscriptions", [])
         return [OutboundWebhookSubscription.model_validate(s) for s in items]
 
     async def create(
@@ -97,8 +89,7 @@ class WebhooksResource(Resource):
         event_types: list[OutboundWebhookEventType] | None = None
         if events is not None:
             event_types = [
-                e if isinstance(e, OutboundWebhookEventType)
-                else OutboundWebhookEventType(e)
+                e if isinstance(e, OutboundWebhookEventType) else OutboundWebhookEventType(e)
                 for e in events
             ]
         request = OutboundWebhookSubscriptionUpdateRequest(
@@ -131,9 +122,7 @@ class WebhooksResource(Resource):
         API: ``POST /v1/lifecycle-webhooks/{sub_id}/rotate-secret``.
         Requires ``developer``.
         """
-        data = await self._client.post(
-            f"/v1/lifecycle-webhooks/{subscription_id}/rotate-secret"
-        )
+        data = await self._client.post(f"/v1/lifecycle-webhooks/{subscription_id}/rotate-secret")
         return OutboundWebhookSubscriptionCreateResponse.model_validate(data)
 
     async def test(self, subscription_id: str) -> OutboundWebhookDelivery:
@@ -142,9 +131,7 @@ class WebhooksResource(Resource):
         API: ``POST /v1/lifecycle-webhooks/{sub_id}/test``. Requires
         ``developer``.
         """
-        data = await self._client.post(
-            f"/v1/lifecycle-webhooks/{subscription_id}/test"
-        )
+        data = await self._client.post(f"/v1/lifecycle-webhooks/{subscription_id}/test")
         # Handlers return `{"delivery": {...}}` envelope.
         if isinstance(data, dict) and "delivery" in data:
             return OutboundWebhookDelivery.model_validate(data["delivery"])
@@ -168,14 +155,10 @@ class WebhooksResource(Resource):
             f"/v1/lifecycle-webhooks/{subscription_id}/deliveries",
             params=params,
         )
-        items = (
-            data if isinstance(data, list) else data.get("deliveries", [])
-        )
+        items = data if isinstance(data, list) else data.get("deliveries", [])
         return [OutboundWebhookDelivery.model_validate(d) for d in items]
 
-    async def redeliver(
-        self, subscription_id: str, delivery_id: str
-    ) -> OutboundWebhookDelivery:
+    async def redeliver(self, subscription_id: str, delivery_id: str) -> OutboundWebhookDelivery:
         """Re-enqueue a historical delivery. Useful for DLQ recovery.
 
         API: ``POST /v1/lifecycle-webhooks/{sub_id}/deliveries/{delivery_id}/redeliver``.

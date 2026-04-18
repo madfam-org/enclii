@@ -70,9 +70,7 @@ async def test_404_raises_not_found(
     make_client: Callable[[Callable[[httpx.Request], httpx.Response]], AsyncEncliiClient],
 ) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            404, json={"error": "project not found", "details": "slug=missing"}
-        )
+        return httpx.Response(404, json={"error": "project not found", "details": "slug=missing"})
 
     client = make_client(handler)
     with pytest.raises(NotFoundError) as exc:
@@ -109,9 +107,7 @@ async def test_429_raises_rate_limit_with_retry_after(
 
     def handler(_: httpx.Request) -> httpx.Response:
         calls["n"] += 1
-        return httpx.Response(
-            429, json={"error": "slow down"}, headers={"Retry-After": "2"}
-        )
+        return httpx.Response(429, json={"error": "slow down"}, headers={"Retry-After": "2"})
 
     client = make_client(handler)
     with pytest.raises(RateLimitError) as exc:
@@ -210,14 +206,10 @@ async def test_context_manager_closes_owned_transport() -> None:
 
 async def test_external_transport_not_closed_by_sdk() -> None:
     """External transports must not be closed by aclose()."""
-    transport = httpx.MockTransport(
-        lambda _r: httpx.Response(200, json={"projects": []})
-    )
+    transport = httpx.MockTransport(lambda _r: httpx.Response(200, json={"projects": []}))
     http_client = httpx.AsyncClient(transport=transport, base_url="https://x")
 
-    client = AsyncEncliiClient(
-        base_url="https://x", token="t", http_client=http_client
-    )
+    client = AsyncEncliiClient(base_url="https://x", token="t", http_client=http_client)
     await client.aclose()
     assert http_client.is_closed is False
     await http_client.aclose()
@@ -225,6 +217,7 @@ async def test_external_transport_not_closed_by_sdk() -> None:
 
 def test_sync_wrapper_one_shot(monkeypatch: pytest.MonkeyPatch) -> None:
     """EncliiClient._run must execute an async call on a fresh loop."""
+
     async def fake_list(self):
         return ["ok"]
 
@@ -242,9 +235,11 @@ async def test_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """ENCLII_TOKEN is picked up when no token is passed explicitly."""
     monkeypatch.setenv("ENCLII_TOKEN", "enclii_env")
 
-    transport = httpx.MockTransport(lambda r: httpx.Response(
-        200, json={"projects": []}, headers={"X-Echo-Auth": r.headers["Authorization"]}
-    ))
+    transport = httpx.MockTransport(
+        lambda r: httpx.Response(
+            200, json={"projects": []}, headers={"X-Echo-Auth": r.headers["Authorization"]}
+        )
+    )
     http_client = httpx.AsyncClient(transport=transport, base_url="https://api.enclii.test")
     async with AsyncEncliiClient(
         base_url="https://api.enclii.test",
@@ -257,7 +252,9 @@ async def test_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_token_provider_refresh_is_called(
-    mock_transport_factory: Callable[[Callable[[httpx.Request], httpx.Response]], httpx.MockTransport],
+    mock_transport_factory: Callable[
+        [Callable[[httpx.Request], httpx.Response]], httpx.MockTransport
+    ],
 ) -> None:
     """Async token provider is invoked on every request."""
     calls = {"n": 0}

@@ -1,0 +1,74 @@
+name: SDK Python
+
+# Lint, typecheck, test, and verify model drift for the Python SDK.
+# Gated on changes to the SDK source or the OpenAPI spec it tracks.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/sdk-py/**"
+      - "docs/api/openapi.yaml"
+      - ".github/workflows/sdk-py.yml"
+  pull_request:
+    paths:
+      - "packages/sdk-py/**"
+      - "docs/api/openapi.yaml"
+      - ".github/workflows/sdk-py.yml"
+
+concurrency:
+  group: sdk-py-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: packages/sdk-py
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/sdk-py/pyproject.toml"
+
+      - name: Pin Python version
+        run: uv python pin ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check src tests
+
+      - name: Typecheck (mypy)
+        run: uv run mypy src
+        continue-on-error: true # strict mode is aspirational; track but don't block
+
+      - name: Run tests
+        run: uv run pytest -v
+
+      - name: Verify OpenAPI model drift
+        run: ./scripts/verify_models.sh
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Upload artefacts
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: enclii-sdk-py-dist
+          path: packages/sdk-py/dist/
+          retention-days: 14

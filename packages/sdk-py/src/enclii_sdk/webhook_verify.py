@@ -76,9 +76,7 @@ def verify(
     current = now if now is not None else time.time()
     skew = abs(current - timestamp)
     if skew > tolerance:
-        raise WebhookSignatureError(
-            f"timestamp outside {tolerance}s tolerance (skew={skew:.0f}s)"
-        )
+        raise WebhookSignatureError(f"timestamp outside {tolerance}s tolerance (skew={skew:.0f}s)")
 
     expected = _compute_hmac(secret, timestamp, body_bytes)
     if not hmac.compare_digest(expected, signature):

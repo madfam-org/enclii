@@ -205,20 +205,62 @@ AsyncEncliiClient(
 
 ## Development
 
+We use [uv](https://docs.astral.sh/uv/) for environment + build management and
+a small Makefile for the common targets.
+
 ```bash
-# Install dev deps
-pip install -e ".[dev]"
+# Install package + dev deps into a local venv
+make install          # ≡ uv sync --extra dev
 
-# Run tests
-pytest
+# Run the test suite (100+ tests, no network, MockTransport-based)
+make test
 
-# Lint
-ruff check src/ tests/
-mypy src/
+# Lint + format
+make lint
+make format
+make typecheck
 
-# Build wheel
-pip install build
-python -m build
+# Regenerate pydantic models from docs/api/openapi.yaml
+make models           # writes src/enclii_sdk/models/generated.py
+make verify-models    # CI: fails if generated.py has drifted from the spec
+
+# Build sdist + wheel into ./dist
+make build
+
+# Publish to PyPI (operator step, requires PYPI_TOKEN env)
+PYPI_TOKEN=pypi-... make publish
+```
+
+### Models: hand-written vs generated
+
+The public model surface (`Project`, `Deployment`, `CanaryRollout`, `LogEntry`,
+etc.) is **hand-maintained** in `src/enclii_sdk/models/` to track the Go SDK's
+`pkg/types` package. Resource classes use these hand-written models.
+
+An OpenAPI-generated mirror lives at `src/enclii_sdk/models/generated.py`,
+produced from `docs/api/openapi.yaml` via
+[`datamodel-code-generator`](https://docs.pydantic.dev/latest/integrations/datamodel_code_generator/).
+It's checked in as a reference for consumers who want to work directly against
+the raw spec shape, and CI enforces it stays in sync via
+`scripts/verify_models.sh` (invoked by `make verify-models`).
+
+## Publishing (operator)
+
+The package isn't on PyPI yet. An operator with a PyPI API token can ship it with:
+
+```bash
+cd packages/sdk-py
+uv build                                 # produces dist/enclii_sdk-0.1.0-*.whl + .tar.gz
+uv publish --token "$PYPI_TOKEN"         # one-shot upload to PyPI
+
+# or, using the Makefile:
+PYPI_TOKEN=pypi-... make publish
+```
+
+For test uploads first:
+
+```bash
+uv publish --publish-url https://test.pypi.org/legacy/ --token "$TEST_PYPI_TOKEN"
 ```
 
 ## Versioning

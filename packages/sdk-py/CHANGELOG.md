@@ -22,5 +22,12 @@ adheres to [Semantic Versioning](https://semver.org/).
 - WebSocket log tail via `websockets` with auto-reconnect.
 - Deployment lookup by Heroku-style v-number (`deployments.get(svc,
   version="v42")`).
-- 35+ test suite covering every resource, auth, retries, error mapping,
-  and webhook signature verification.
+- 100+ test suite covering every resource, auth, retries, error mapping,
+  webhook signature verification, and generated-model imports.
+- OpenAPI-driven pydantic models at `enclii_sdk.models.generated`,
+  regenerated via `make models` / `scripts/generate_models.sh` and
+  drift-checked in CI via `scripts/verify_models.sh`.
+- `packages/sdk-py/Makefile` with install/test/lint/format/typecheck/
+  models/verify-models/build/publish targets.
+- `.github/workflows/sdk-py.yml` CI matrix (Python 3.11/3.12/3.13):
+  lint + format + tests + OpenAPI drift check + build artefact upload.

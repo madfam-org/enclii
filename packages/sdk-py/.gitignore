@@ -26,3 +26,6 @@ venv/
 
 # OS
 .DS_Store
+
+# uv — library packages don't pin lockfiles (apps do)
+uv.lock

@@ -87,9 +87,7 @@ class CanaryResource(Resource):
 
         API: ``GET /v1/services/{id}/canary/{rollout_id}``.
         """
-        data = await self._client.get(
-            f"/v1/services/{service_id}/canary/{rollout_id}"
-        )
+        data = await self._client.get(f"/v1/services/{service_id}/canary/{rollout_id}")
         return CanaryRolloutResponse.model_validate(data)
 
     async def promote(self, service_id: str, rollout_id: str) -> CanaryRollout:
@@ -98,9 +96,7 @@ class CanaryResource(Resource):
         API: ``POST /v1/services/{id}/canary/{rollout_id}/promote``.
         Requires ``developer``.
         """
-        data = await self._client.post(
-            f"/v1/services/{service_id}/canary/{rollout_id}/promote"
-        )
+        data = await self._client.post(f"/v1/services/{service_id}/canary/{rollout_id}/promote")
         return CanaryRollout.model_validate(data)
 
     async def rollback(

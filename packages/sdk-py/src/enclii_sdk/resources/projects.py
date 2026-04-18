@@ -35,9 +35,7 @@ class ProjectsResource(Resource):
         API: ``POST /v1/projects``. Requires ``admin`` role.
         """
         request = CreateProjectRequest(name=name, slug=slug)
-        data = await self._client.post(
-            "/v1/projects", json_body=request.model_dump(mode="json")
-        )
+        data = await self._client.post("/v1/projects", json_body=request.model_dump(mode="json"))
         return Project.model_validate(data)
 
     async def delete(self, slug: str) -> None:

@@ -82,9 +82,7 @@ async def test_wait_for_running_succeeds(
         return httpx.Response(200, json=payload)
 
     client = make_client(handler)
-    dep = await client.deployments.wait_for_running(
-        "dep_123", timeout=5.0, poll_interval=0.01
-    )
+    dep = await client.deployments.wait_for_running("dep_123", timeout=5.0, poll_interval=0.01)
     assert dep.status.value == "running"
     assert state["i"] >= 3
 
