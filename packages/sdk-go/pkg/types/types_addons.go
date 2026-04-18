@@ -50,6 +50,7 @@ type DatabaseAddon struct {
 	EnvironmentID *uuid.UUID          `json:"environment_id,omitempty" db:"environment_id"`
 	Type          DatabaseAddonType   `json:"type" db:"type"`
 	Name          string              `json:"name" db:"name"`
+	Plan          string              `json:"plan" db:"plan"` // e.g. "standard-0"; FK to managed_db_plans.code
 	Status        DatabaseAddonStatus `json:"status" db:"status"`
 	StatusMessage string              `json:"status_message,omitempty" db:"status_message"`
 	Config        DatabaseAddonConfig `json:"config" db:"config"`

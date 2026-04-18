@@ -38,18 +38,27 @@ func (r *DatabaseAddonRepository) Create(ctx context.Context, addon *types.Datab
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
+	// Plan defaults to standard-0 for backward compatibility with any legacy
+	// callers that construct DatabaseAddon without explicitly setting Plan.
+	// New code paths (AddonService.CreateAddon post-P3.1) always set it.
+	plan := addon.Plan
+	if plan == "" {
+		plan = "standard-0"
+		addon.Plan = plan
+	}
+
 	query := `
 		INSERT INTO database_addons (
-			id, project_id, environment_id, type, name, status, status_message,
+			id, project_id, environment_id, type, name, plan, status, status_message,
 			config, k8s_namespace, k8s_resource_name, connection_secret,
 			host, port, database_name, username,
 			storage_used_bytes, connections_active,
 			created_by, created_by_email, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 	`
 	_, err = r.db.ExecContext(ctx, query,
 		addon.ID, addon.ProjectID, addon.EnvironmentID,
-		addon.Type, addon.Name, addon.Status, addon.StatusMessage,
+		addon.Type, addon.Name, plan, addon.Status, addon.StatusMessage,
 		configJSON, addon.K8sNamespace, addon.K8sResourceName, addon.ConnectionSecret,
 		addon.Host, addon.Port, addon.DatabaseName, addon.Username,
 		addon.StorageUsedBytes, addon.ConnectionsActive,
@@ -68,7 +77,7 @@ func (r *DatabaseAddonRepository) GetByID(ctx context.Context, id uuid.UUID) (*t
 	var provisionedAt, deletedAt, lastBackupAt sql.NullTime
 
 	query := `
-		SELECT id, project_id, environment_id, type, name, status, status_message,
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
@@ -77,7 +86,7 @@ func (r *DatabaseAddonRepository) GetByID(ctx context.Context, id uuid.UUID) (*t
 	`
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Status, &statusMsg,
+		&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Plan, &addon.Status, &statusMsg,
 		&configJSON, &k8sNs, &k8sRes, &connSecret,
 		&host, &port, &dbName, &username,
 		&addon.StorageUsedBytes, &addon.ConnectionsActive, &lastBackupAt,
@@ -153,7 +162,7 @@ func (r *DatabaseAddonRepository) GetByName(ctx context.Context, projectID uuid.
 	var provisionedAt, deletedAt, lastBackupAt sql.NullTime
 
 	query := `
-		SELECT id, project_id, environment_id, type, name, status, status_message,
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
@@ -163,7 +172,7 @@ func (r *DatabaseAddonRepository) GetByName(ctx context.Context, projectID uuid.
 	`
 
 	err := r.db.QueryRowContext(ctx, query, projectID, name).Scan(
-		&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Status, &statusMsg,
+		&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Plan, &addon.Status, &statusMsg,
 		&configJSON, &k8sNs, &k8sRes, &connSecret,
 		&host, &port, &dbName, &username,
 		&addon.StorageUsedBytes, &addon.ConnectionsActive, &lastBackupAt,
@@ -232,7 +241,7 @@ func (r *DatabaseAddonRepository) GetByName(ctx context.Context, projectID uuid.
 // ListByProject retrieves all database addons for a project
 func (r *DatabaseAddonRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]*types.DatabaseAddon, error) {
 	query := `
-		SELECT id, project_id, environment_id, type, name, status, status_message,
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
@@ -259,7 +268,7 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 
 	// Build query with IN clause
 	query := `
-		SELECT id, project_id, environment_id, type, name, status, status_message,
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
@@ -281,7 +290,7 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 // ListByType retrieves all database addons of a specific type for a project
 func (r *DatabaseAddonRepository) ListByType(ctx context.Context, projectID uuid.UUID, addonType types.DatabaseAddonType) ([]*types.DatabaseAddon, error) {
 	query := `
-		SELECT id, project_id, environment_id, type, name, status, status_message,
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
@@ -303,7 +312,7 @@ func (r *DatabaseAddonRepository) ListByType(ctx context.Context, projectID uuid
 // ListPending retrieves all addons in pending/provisioning state (for reconciler)
 func (r *DatabaseAddonRepository) ListPending(ctx context.Context) ([]*types.DatabaseAddon, error) {
 	query := `
-		SELECT id, project_id, environment_id, type, name, status, status_message,
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
@@ -335,7 +344,7 @@ func (r *DatabaseAddonRepository) scanAddons(rows *sql.Rows) ([]*types.DatabaseA
 		var provisionedAt, deletedAt, lastBackupAt sql.NullTime
 
 		err := rows.Scan(
-			&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Status, &statusMsg,
+			&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Plan, &addon.Status, &statusMsg,
 			&configJSON, &k8sNs, &k8sRes, &connSecret,
 			&host, &port, &dbName, &username,
 			&addon.StorageUsedBytes, &addon.ConnectionsActive, &lastBackupAt,

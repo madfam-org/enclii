@@ -42,7 +42,7 @@ func TestDatabaseAddonRepository_Create(t *testing.T) {
 		mock.ExpectExec(`INSERT INTO database_addons`).
 			WithArgs(
 				sqlmock.AnyArg(), addon.ProjectID, sqlmock.AnyArg(),
-				types.DatabaseAddonTypePostgres, "my-db", types.DatabaseAddonStatusPending, sqlmock.AnyArg(),
+				types.DatabaseAddonTypePostgres, "my-db", "standard-0", types.DatabaseAddonStatusPending, sqlmock.AnyArg(),
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 				sqlmock.AnyArg(), sqlmock.AnyArg(),
@@ -54,6 +54,8 @@ func TestDatabaseAddonRepository_Create(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEqual(t, uuid.Nil, addon.ID)
 		assert.Equal(t, types.DatabaseAddonStatusPending, addon.Status)
+		// Plan defaulted to standard-0 because caller left it blank.
+		assert.Equal(t, "standard-0", addon.Plan)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -71,7 +73,7 @@ func TestDatabaseAddonRepository_Create(t *testing.T) {
 		mock.ExpectExec(`INSERT INTO database_addons`).
 			WithArgs(
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
-				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 				sqlmock.AnyArg(), sqlmock.AnyArg(),
@@ -89,7 +91,7 @@ func TestDatabaseAddonRepository_Create(t *testing.T) {
 
 func TestDatabaseAddonRepository_GetByID(t *testing.T) {
 	addonGetColumns := []string{
-		"id", "project_id", "environment_id", "type", "name", "status", "status_message",
+		"id", "project_id", "environment_id", "type", "name", "plan", "status", "status_message",
 		"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
 		"host", "port", "database_name", "username",
 		"storage_used_bytes", "connections_active", "last_backup_at",
@@ -110,7 +112,7 @@ func TestDatabaseAddonRepository_GetByID(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows(addonGetColumns).
 				AddRow(id, projID,
 					sql.NullString{},
-					types.DatabaseAddonTypePostgres, "my-db", types.DatabaseAddonStatusReady,
+					types.DatabaseAddonTypePostgres, "my-db", "standard-0", types.DatabaseAddonStatusReady,
 					sql.NullString{String: "provisioned", Valid: true},
 					configJSON,
 					sql.NullString{String: "enclii", Valid: true},

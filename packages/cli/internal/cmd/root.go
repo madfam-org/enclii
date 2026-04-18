@@ -81,6 +81,9 @@ Learn more at https://enclii.dev`,
 	// Spend visibility + budgets (P2.2)
 	rootCmd.AddCommand(NewBillingCommand(cfg))
 
+	// Managed-DB addons (P3.1 Sprint 1)
+	rootCmd.AddCommand(NewAddonCommand(cfg))
+
 	return rootCmd
 }
 

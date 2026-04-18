@@ -612,11 +612,14 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Global addon listing (all addons user has access to)
 			protected.GET("/addons", h.ListAllAddons)
 			protected.GET("/databases", h.ListAllAddons) // Alias for better UX
+			// Managed-DB plan catalog (P3.1 Sprint 1)
+			protected.GET("/addons/plans", h.ListManagedDBPlans)
 			// Project-specific addon operations
 			protected.POST("/projects/:slug/addons", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateAddon)
 			protected.GET("/projects/:slug/addons", h.ListAddons)
 			protected.GET("/addons/:id", h.GetAddon)
 			protected.GET("/addons/:id/credentials", h.GetAddonCredentials)
+			protected.GET("/addons/:id/events", h.GetAddonEvents) // P3.1 Sprint 1: lifecycle ledger
 			protected.POST("/addons/:id/refresh", h.RefreshAddonStatus)
 			protected.DELETE("/addons/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteAddon)
 			protected.POST("/addons/:id/bindings", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateAddonBinding)

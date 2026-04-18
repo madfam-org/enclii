@@ -8,12 +8,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Migration 010 adds Heroku-style semantic version numbers to deployments
+// Migration 011 adds Heroku-style semantic version numbers to deployments
 // (P2.6). These tests exercise the invariants that matter at the migration
 // layer: idempotent backfill and a symmetric down migration.
+//
+// Note: filename historically "migration_010_test.go" from a pre-rename draft;
+// the actual on-disk migration number is 011. Kept under the legacy test file
+// name to preserve git blame continuity.
 
-//go:embed migrations/010_deployment_version_numbers.up.sql
-//go:embed migrations/010_deployment_version_numbers.down.sql
+//go:embed migrations/011_deployment_version_numbers.up.sql
+//go:embed migrations/011_deployment_version_numbers.down.sql
 var migration010FS embed.FS
 
 func readMigration010(t *testing.T, name string) string {
@@ -31,7 +35,7 @@ func readMigration010(t *testing.T, name string) string {
 // reruns migrations would renumber historical deployments, breaking the
 // P2.6 contract that version numbers are immutable post-allocation.
 func TestMigration010_BackfillIsIdempotent(t *testing.T) {
-	up := readMigration010(t, "010_deployment_version_numbers.up.sql")
+	up := readMigration010(t, "011_deployment_version_numbers.up.sql")
 
 	// Both UPDATE passes (service_id backfill and version_number backfill)
 	// must gate on IS NULL so re-running is a no-op.
@@ -60,7 +64,7 @@ func TestMigration010_BackfillIsIdempotent(t *testing.T) {
 // IF EXISTS so the automatic dirty-recovery in migrations.go can safely
 // invoke it even when the up migration partially applied.
 func TestMigration010_DownIsIdempotent(t *testing.T) {
-	down := readMigration010(t, "010_deployment_version_numbers.down.sql")
+	down := readMigration010(t, "011_deployment_version_numbers.down.sql")
 	assert.Contains(t, down, "DROP INDEX IF EXISTS idx_deployments_service_id")
 	assert.Contains(t, down, "DROP INDEX IF EXISTS idx_deployments_service_version")
 	assert.Contains(t, down, "DROP COLUMN IF EXISTS version_number")
@@ -74,7 +78,7 @@ func TestMigration010_DownIsIdempotent(t *testing.T) {
 // assignment is non-deterministic and a re-run on a fresh database could
 // produce different v-numbers.
 func TestMigration010_BackfillUsesDeterministicOrder(t *testing.T) {
-	up := readMigration010(t, "010_deployment_version_numbers.up.sql")
+	up := readMigration010(t, "011_deployment_version_numbers.up.sql")
 	// The ROW_NUMBER() window should partition by service and order by
 	// (created_at, id) so the result is stable.
 	assert.Contains(t, strings.ToLower(up), "partition by d.service_id")
