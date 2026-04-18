@@ -156,15 +156,23 @@ spec:
                 # haven't been provisioned yet. pgBackRest backups will
                 # fail loudly in that state, but the main DB stays up.
                 optional: true
-          # P1.1: override the default command so the server loads our
-          # conf.d include. The image's entrypoint is otherwise unchanged;
-          # we just pass explicit -c include_dir so /etc/postgresql/conf.d
-          # is honored even when the base postgresql.conf is regenerated.
+          # P1.1 note: `include_dir` cannot be set via `-c` — Postgres
+          # treats `include`/`include_dir` as file-directives processed
+          # during config parsing, not as runtime GUCs. Passing
+          # `-c include_dir=...` yields "unrecognized configuration
+          # parameter". The previous form crashed every pod.
+          #
+          # Until WAL archiving is re-enabled (needs the R2 secret that
+          # was never provisioned — tracked as follow-up to #102/#103),
+          # we don't need the conf.d include at all. When we re-enable
+          # archiving, do it one of:
+          #   - append `include_dir = '/etc/postgresql/conf.d'` to the
+          #     on-disk postgresql.conf (e.g. via an init-script), OR
+          #   - pass individual `-c archive_mode=on` etc. flags directly
+          #     (no include indirection).
           args:
             - "-c"
             - "config_file=/var/lib/postgresql/data/postgres/postgresql.conf"
-            - "-c"
-            - "include_dir=/etc/postgresql/conf.d"
           ports:
             - containerPort: 5432
           volumeMounts:
