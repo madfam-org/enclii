@@ -1,0 +1,327 @@
+name: Reusable — Build, sign, publish, pin
+
+# Reusable build-publish pipeline for MADFAM service repos (routecraft,
+# forj, bloom-scroll, blueprint-harvester, digifab-quoting, subtext, …).
+#
+# What it does, per service in the `services` matrix:
+#   1. Build with Docker Buildx (GHA cache)
+#   2. Push to GHCR as :${SHA} (no :latest — Kyverno disallows)
+#   3. Sign keyless with cosign (Fulcio + Rekor OIDC)
+#   4. Emit a digest artifact
+# Then, across all services once:
+#   5. kustomize edit set image → @sha256:<digest> in kustomization.yaml
+#   6. Commit the digest pin back to main (triggers ArgoCD sync)
+#   7. (optional) POST an Enclii lifecycle callback
+#
+# What it accepts:
+#   services:            JSON array of {name, dockerfile, paths?}
+#   image_prefix:        e.g. "ghcr.io/madfam-org/routecraft"
+#   kustomization_path:  e.g. "infra/k8s/production"
+#   cosign_release:      default "v2.4.3" (known-good on ARC runners)
+#   enclii_notify_event: default "image-digest-committed"; "" to skip notify
+#   ci_user_name / ci_user_email: identity on the digest-pin commit
+#   rebuild_all_paths:   regex; files matching this trigger "build all"
+#                         (workflow-file, manifests, etc.)
+#
+# Secrets it expects (via `secrets: inherit`):
+#   DOCKER_USERNAME / DOCKER_TOKEN (optional — soft-fail)
+#   ENCLII_API_URL / ENCLII_DEPLOY_TOKEN (optional — for callback)
+#   ENCLII_COMMIT_TOKEN (optional — PAT to push past branch protection;
+#                        falls through to GITHUB_TOKEN otherwise)
+#
+# Why this is safe:
+#   - Base-image-mirror preference lives in each repo's Dockerfiles
+#     (use `public.ecr.aws/docker/library/...` to sidestep Docker Hub
+#     rate limits; this workflow doesn't dictate the FROM line).
+#   - Cosign is pinned to a specific installer + release; unpinned
+#     installers break on self-hosted runners.
+#   - Docker Hub login is soft-fail: missing creds don't halt the run,
+#     and base-image pulls go through the mirror anyway.
+
+on:
+  workflow_call:
+    inputs:
+      services:
+        description: |
+          JSON array of service definitions. Example:
+          [{"name":"bff","dockerfile":"apps/bff/Dockerfile","paths":"apps/bff packages"},
+           {"name":"api","dockerfile":"apps/api/Dockerfile","paths":"apps/api"}]
+          The optional `paths` field enables change-detection on push
+          triggers — a service is only rebuilt when the diff touches
+          one of its paths.
+        required: true
+        type: string
+      image_prefix:
+        description: Image path prefix, e.g. "ghcr.io/madfam-org/routecraft".
+        required: true
+        type: string
+      kustomization_path:
+        description: Directory containing the kustomization.yaml to pin.
+        required: true
+        type: string
+      cosign_release:
+        description: cosign release tag.
+        required: false
+        type: string
+        default: v2.4.3
+      cosign_installer_ref:
+        description: sigstore/cosign-installer ref.
+        required: false
+        type: string
+        default: v3.7.0
+      enclii_notify_event:
+        description: Event name to POST to Enclii lifecycle (empty = skip).
+        required: false
+        type: string
+        default: image-digest-committed
+      ci_user_name:
+        description: git user.name for the digest-pin commit.
+        required: false
+        type: string
+        default: madfam-ci[bot]
+      ci_user_email:
+        description: git user.email for the digest-pin commit.
+        required: false
+        type: string
+        default: ci@madfam.io
+      rebuild_all_paths:
+        description: |
+          Extended regex; if any changed file matches, rebuild ALL
+          services (not just the ones whose `paths` changed). Typical
+          use: workflow file + k8s manifests.
+        required: false
+        type: string
+        default: '^(\.github/workflows/.*\.yml|infra/k8s/(production|overlays)/)'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  detect-changes:
+    name: Detect changed services
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    outputs:
+      matrix: ${{ steps.filter.outputs.matrix }}
+      any: ${{ steps.filter.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Compute service matrix
+        id: filter
+        env:
+          SERVICES_INPUT: ${{ inputs.services }}
+          REBUILD_ALL_PATHS: ${{ inputs.rebuild_all_paths }}
+        run: |
+          set -euo pipefail
+
+          services_all=$(printf '%s' "$SERVICES_INPUT" | jq -c .)
+          echo "Input services: $services_all"
+
+          # Manual re-dispatch with a service override — skip the change
+          # detection entirely and build what the user asked for.
+          override='${{ github.event.inputs.services || '' }}'
+          if [ -n "$override" ]; then
+            picked=$(echo "$services_all" | jq -c --arg list "$override" \
+              '[.[] | select(.name as $n | ($list | split(",")) | index($n))]')
+            echo "matrix=$picked" >> "$GITHUB_OUTPUT"
+            echo "any=$(echo "$picked" | jq 'length > 0')" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Change detection. `github.event.before` is empty on
+          # workflow_dispatch; fall through to HEAD~1 in that case.
+          changed=$(git diff --name-only "${{ github.event.before || '' }}" "${{ github.sha }}" 2>/dev/null \
+            || git diff --name-only HEAD~1 HEAD 2>/dev/null \
+            || true)
+          echo "Changed files:"
+          echo "${changed:-<none>}"
+
+          # Services whose `paths` glob-root matched a changed file.
+          # while-read (NOT `for row in $()`) preserves JSON with spaces.
+          picked='[]'
+          while IFS= read -r row; do
+            [ -z "$row" ] && continue
+            paths=$(echo "$row" | jq -r '.paths // empty')
+            [ -z "$paths" ] && continue
+            for p in $paths; do
+              if echo "$changed" | grep -q "^$p/"; then
+                picked=$(echo "$picked" | jq -c --argjson svc "$row" '. + [$svc]')
+                break
+              fi
+            done
+          done < <(echo "$services_all" | jq -c '.[]')
+
+          # Workflow / infra changes rebuild all services.
+          if echo "$changed" | grep -qE "$REBUILD_ALL_PATHS"; then
+            echo "rebuild_all triggered by infra/workflow change"
+            picked="$services_all"
+          fi
+
+          # Fallback: if a service has no `paths`, always build it
+          # (so minimal configs keep working).
+          no_paths=$(echo "$services_all" | jq -c '[.[] | select(.paths == null or .paths == "")]')
+          if [ "$(echo "$no_paths" | jq 'length')" != "0" ]; then
+            picked=$(jq -c -s '.[0] + .[1] | unique_by(.name)' <(echo "$picked") <(echo "$no_paths"))
+          fi
+
+          # Compact to single-line for GITHUB_OUTPUT.
+          picked=$(echo "$picked" | jq -c .)
+
+          echo "matrix=$picked" >> "$GITHUB_OUTPUT"
+          echo "any=$(echo "$picked" | jq 'length > 0')" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.service.name }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.any == 'true'
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Docker Hub login BEFORE buildx, so buildx picks up creds when
+      # its container starts. Conditional + soft-fail so missing creds
+      # don't halt — Dockerfiles should use `public.ecr.aws/docker/library/*`
+      # as their base anyway, but this keeps the auth path available
+      # when it IS configured.
+      - name: Log in to Docker Hub
+        if: ${{ env.DH_USER != '' && env.DH_TOKEN != '' }}
+        uses: docker/login-action@v3
+        continue-on-error: true
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+        env:
+          DH_USER: ${{ secrets.DOCKER_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+        with:
+          cosign-release: ${{ inputs.cosign_release }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          # No :latest — Kyverno `disallow-latest-tag` rejects.
+          tags: |
+            ${{ inputs.image_prefix }}/${{ matrix.service.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+
+      - name: Sign image (keyless, Fulcio/Rekor)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes "${{ inputs.image_prefix }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}"
+
+      - name: Emit digest artifact
+        run: |
+          mkdir -p digests
+          printf '%s=%s\n' "${{ matrix.service.name }}" "${{ steps.build.outputs.digest }}" \
+            > "digests/${{ matrix.service.name }}.txt"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.service.name }}
+          path: digests/
+
+  pin:
+    name: Commit digest pins
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # PAT if the caller provides ENCLII_COMMIT_TOKEN (to bypass
+          # branch protection); fall through to GITHUB_TOKEN otherwise.
+          token: ${{ secrets.ENCLII_COMMIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Download all digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Update kustomization image digests
+        env:
+          IMAGE_PREFIX: ${{ inputs.image_prefix }}
+          KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
+        run: |
+          set -euo pipefail
+          cd "$KUSTOMIZATION_PATH"
+          shopt -s nullglob
+          for f in ../../../digests/*.txt "$GITHUB_WORKSPACE"/digests/*.txt; do
+            [ -f "$f" ] || continue
+            line=$(cat "$f")
+            name="${line%%=*}"
+            digest="${line#*=}"
+            echo "Pinning $name to $digest"
+            kustomize edit set image "${IMAGE_PREFIX}/${name}=${IMAGE_PREFIX}/${name}@${digest}"
+          done
+
+      - name: Commit & push digest update
+        env:
+          CI_USER_NAME: ${{ inputs.ci_user_name }}
+          CI_USER_EMAIL: ${{ inputs.ci_user_email }}
+          KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
+        run: |
+          set -euo pipefail
+          git config user.name "$CI_USER_NAME"
+          git config user.email "$CI_USER_EMAIL"
+          target="${KUSTOMIZATION_PATH}/kustomization.yaml"
+          if git diff --quiet -- "$target"; then
+            echo "No digest changes to commit."
+            exit 0
+          fi
+          git add -- "$target"
+          git commit -m "ci: pin image digests from ${{ github.sha }}"
+          git push
+
+      - name: Notify enclii lifecycle
+        if: ${{ inputs.enclii_notify_event != '' && env.ENCLII_API_URL != '' }}
+        env:
+          ENCLII_API_URL: ${{ secrets.ENCLII_API_URL }}
+          ENCLII_DEPLOY_TOKEN: ${{ secrets.ENCLII_DEPLOY_TOKEN }}
+          EVENT: ${{ inputs.enclii_notify_event }}
+        run: |
+          curl -sS -X POST "$ENCLII_API_URL/v1/callbacks/lifecycle-event" \
+            -H "Authorization: Bearer $ENCLII_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"project\":\"${{ github.event.repository.name }}\",\"commit\":\"${{ github.sha }}\",\"event\":\"$EVENT\"}" \
+            || true
