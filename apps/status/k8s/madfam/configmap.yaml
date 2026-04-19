@@ -421,13 +421,6 @@ data:
         "description": "Slow web aggregator"
       },
       {
-        "name": "Blueprint Harvester",
-        "url": "https://blueprint.tube",
-        "group": "Blueprint Harvester",
-        "family": "Content & Creative",
-        "description": "3D model indexing"
-      },
-      {
         "name": "Karafiel App",
         "url": "https://app.karafiel.mx",
         "href": "https://app.karafiel.mx",
