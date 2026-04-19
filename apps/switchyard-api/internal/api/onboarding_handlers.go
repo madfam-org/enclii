@@ -135,6 +135,28 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		}
 	}
 
+	// Preventive hygiene gates: reject onboarding up-front if either
+	//   (a) the manifests reference a `:latest` / mutable / unpinned image, or
+	//   (b) the image has never been pushed to GHCR yet.
+	// See onboarding_image_gates.go for rationale and scope.
+	if gateResult, gateErr := h.runImageGates(ctx, parts[0], parts[1], manifestPath, branch); gateErr != nil {
+		h.logger.Warn(ctx, "Image gate transient failure (treating as soft block)",
+			logging.String("repo", req.RepoFullName),
+			logging.Error("error", gateErr))
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":  "failed to run image preflight checks",
+			"detail": gateErr.Error(),
+		})
+		return
+	} else if gateResult != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  gateResult.Message,
+			"gate":   gateResult.Gate,
+			"result": gateResult,
+		})
+		return
+	}
+
 	var steps []stepResult
 
 	encliiConfig := h.fetchAndParseEncliiYAML(ctx, req.RepoFullName, "HEAD")

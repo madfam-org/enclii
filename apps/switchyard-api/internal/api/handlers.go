@@ -779,6 +779,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 				// Repo Onboarding (self-service)
 				admin.POST("/onboard", h.OnboardRepo)
 				admin.POST("/onboard/preflight", h.PreflightOnboard)
+				admin.GET("/preflight", h.PreflightImageGates) // image gates preflight, see onboarding_image_gates.go
 				admin.GET("/onboard", h.ListOnboardings)
 				admin.GET("/onboard/:owner/:repo", h.GetOnboarding)
 
