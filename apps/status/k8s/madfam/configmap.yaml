@@ -24,12 +24,16 @@ data:
   #   - description  : short description
   #
   # Product families (RFC 0002 S1):
-  #   MADFAM Platform      — avala, karafiel, dhanam, tezca, fortuna, phynecrm, enclii, janua
+  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, enclii, janua
   #   Selva Swarm          — selva-office services
   #   Rondelio             — rondel.io family
   #   Digital Fabrication  — digifab, yantra4d, pravara-mes, primavera3d, forj, forgesight
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
+  #
+  # Updated: 2026-04-19 — 56 services across 17 groups. Added Factlas
+  # group (web, atlas, api, tiles) after the Geographic Fact Graph
+  # platform went live (all four endpoints verified 200 pre-add).
   #
   # Updated: 2026-04-17 (late) — 52 services across 16 groups after the
   # status.madfam.io audit. Added 3 coverage gaps verified with live
@@ -443,5 +447,34 @@ data:
         "group": "Platform",
         "family": "MADFAM Corporate",
         "description": "Hetzner auction intelligence (foundry-scout)"
+      },
+      {
+        "name": "Factlas Web",
+        "url": "https://factl.as",
+        "group": "Factlas",
+        "family": "MADFAM Platform",
+        "description": "Geographic Fact Graph — landing page"
+      },
+      {
+        "name": "Factlas Atlas",
+        "url": "https://app.factl.as",
+        "group": "Factlas",
+        "family": "MADFAM Platform",
+        "description": "2D/3D geospatial viewer"
+      },
+      {
+        "name": "Factlas API",
+        "url": "https://api.factl.as/health",
+        "href": "https://api.factl.as",
+        "group": "Factlas",
+        "family": "MADFAM Platform",
+        "description": "Geographic facts REST API"
+      },
+      {
+        "name": "Factlas Tiles",
+        "url": "https://tiles.factl.as",
+        "group": "Factlas",
+        "family": "MADFAM Platform",
+        "description": "COG / vector tile server (TiTiler)"
       }
     ]
