@@ -45,10 +45,17 @@ on:
         description: |
           JSON array of service definitions. Example:
           [{"name":"bff","dockerfile":"apps/bff/Dockerfile","paths":"apps/bff packages"},
-           {"name":"api","dockerfile":"apps/api/Dockerfile","paths":"apps/api"}]
-          The optional `paths` field enables change-detection on push
-          triggers — a service is only rebuilt when the diff touches
-          one of its paths.
+           {"name":"api","dockerfile":"apps/api/Dockerfile","paths":"apps/api"},
+           {"name":"web","context":"frontend","dockerfile":"frontend/Dockerfile","paths":"frontend"}]
+          Fields:
+            - name:       service name (becomes image suffix)
+            - dockerfile: path to Dockerfile from repo root
+            - context:    (optional) build context; defaults to "."
+                          Set this when the Dockerfile's COPY paths are
+                          relative to a subdir, not the repo root.
+            - paths:      (optional) space-separated paths for change
+                          detection on push triggers. Service is rebuilt
+                          when the diff touches any of its paths.
         required: true
         type: string
       image_prefix:
@@ -222,7 +229,11 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: .
+          # `context` defaults to "." (repo root). Services with a
+          # subdirectory build root (e.g. bloom-scroll's backend/ and
+          # frontend/, where Dockerfile COPY paths are relative to the
+          # subdir) can set it per-service in the matrix JSON.
+          context: ${{ matrix.service.context || '.' }}
           file: ${{ matrix.service.dockerfile }}
           platforms: linux/amd64
           push: true

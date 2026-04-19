@@ -56,6 +56,10 @@ jobs:
           {"name":"web",       "dockerfile":"apps/web/Dockerfile",       "paths":"apps/web packages"},
           {"name":"admin",     "dockerfile":"apps/admin/Dockerfile",     "paths":"apps/admin"}
         ]
+      # Per-service `context` is optional (defaults to "."). Set it when
+      # the Dockerfile's COPY paths are relative to a subdirectory
+      # rather than the repo root, e.g.:
+      #   {"name":"api","context":"backend","dockerfile":"backend/Dockerfile","paths":"backend"}
     secrets: inherit
     permissions:
       contents: write
