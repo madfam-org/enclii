@@ -378,7 +378,7 @@ data:
       },
       {
         "name": "Avala API",
-        "url": "https://api.avala.studio/health",
+        "url": "https://api.avala.studio/v1/health",
         "href": "https://api.avala.studio",
         "group": "Avala",
         "family": "MADFAM Platform",
