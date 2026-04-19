@@ -10,6 +10,7 @@ resources:
   - ../base
   - configmap.yaml
   - cronjob.yaml
+  - stale-outage-digest.yaml
 
 # Instance-specific labels
 commonLabels:

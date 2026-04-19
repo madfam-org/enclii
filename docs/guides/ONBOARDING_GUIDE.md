@@ -184,6 +184,45 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard/preflight" \
 
 This fetches YAML manifests from the repo, runs server-side dry-run against the cluster, and reports any violations (unqualified images, missing security context, etc.).
 
+### Preventive Image Hygiene Gates (auto-run on every onboard)
+
+Every call to `POST /v1/admin/onboard` runs two additional gates BEFORE ArgoCD Application creation. Either one returning a blocker aborts onboarding with HTTP 400 — there is no bypass flag. Both gates are also available side-effect-free via `GET /v1/admin/preflight?repo=owner/name`.
+
+**1. Image digest pinning** (`gate: image-digest-pinned`)
+
+Rejects onboarding if any workload manifest in `manifest_path` references a container image that is not pinned by `@sha256:` digest. Blocks `:latest`, mutable tags like `:v1.2.3` / `:main`, and images with no tag at all. This mirrors the cluster-side Kyverno `require-image-digest` policy, but catches the problem at onboarding instead of at first admission. Response shape:
+
+```json
+{
+  "error": "image must be digest-pinned (@sha256:...)",
+  "gate": "image-digest-pinned",
+  "result": { "digest_issues": [{"file": "deployment.yaml", "kind": "Deployment",
+    "name": "foo", "image": "ghcr.io/madfam-org/foo:latest",
+    "message": "image ... is not digest-pinned ...", "severity": "blocker"}] }
+}
+```
+
+Fix: change the manifest to reference `@sha256:<digest>`. If this is a greenfield repo, run your CI build once to produce a first digest, then commit it. The `kustomize edit set image name=image@sha256:…` pattern works here.
+
+**2. GHCR image existence** (`gate: image-exists`)
+
+Rejects onboarding if any `ghcr.io/<org>/<package>` image referenced by the manifests has not been pushed to GHCR yet (no package versions exist). Non-GHCR images (`docker.io/...`, `registry.k8s.io/...`, `nvcr.io/...`) are ignored. This catches the exact failure mode that produced "six services silently 502 for 4+ days" — status-page targets registered before CI ever built a first image. Response shape:
+
+```json
+{
+  "error": "no image has been pushed to GHCR yet; run CI to build and push first image before enclii onboarding",
+  "gate": "image-exists",
+  "result": { "missing_packages": [{"image": "ghcr.io/...", "org": "madfam-org",
+    "package": "avala/avala-web", "message": "no images pushed yet for ..."}] }
+}
+```
+
+Fix: trigger CI on the repo's `main` branch to build and push the image to GHCR, confirm the package appears in https://github.com/orgs/madfam-org/packages, then re-run onboarding.
+
+**Transient failures**: If the gate cannot reach GitHub or GHCR, onboarding returns HTTP 503 with `"detail"` populated — we do not silently pass because "we couldn't check". Retry when upstream is healthy.
+
+**No bypass**: These gates have no `--skip` flag and accept no request field to turn them off. If a legitimate exception exists (e.g. a tenant using a non-GHCR registry), the gate should be extended to ignore that registry explicitly — file an issue rather than adding a bypass.
+
 ### Standalone Provisioning (Ad-Hoc)
 
 For already-onboarded projects, use the standalone provision endpoints:

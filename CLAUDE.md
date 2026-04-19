@@ -395,6 +395,16 @@ See [EXTERNAL_REPO_DEPLOY.md](./docs/guides/EXTERNAL_REPO_DEPLOY.md) for the ful
 See [DEPLOYMENT_TRACKING.md](./docs/guides/DEPLOYMENT_TRACKING.md) for the lifecycle event API.
 See [ONBOARDING_GUIDE.md](./docs/guides/ONBOARDING_GUIDE.md) for adding new repos.
 
+### Preventive Status Hygiene (onboarding gates + stale-outage digest)
+
+Onboarding hardening added after the Apr 2026 audit found 6 services silently in outage for >4 days because the status page was tracking targets whose first image had never been pushed to GHCR. Three preventive measures live in the platform now, all in `apps/status/` and `apps/switchyard-api/internal/checks/`:
+
+1. **Image digest pinning gate** (`internal/checks/image_digest.go`) — rejects onboarding if any workload manifest references an image that isn't `@sha256:`-pinned. Blocks `:latest` and mutable tags; mirrors the cluster-side Kyverno `require-image-digest` policy but earlier. See `runImageGates()` in `apps/switchyard-api/internal/api/onboarding_image_gates.go`.
+2. **GHCR package existence gate** (`internal/checks/image_exists.go`) — rejects onboarding if any `ghcr.io/madfam-org/*` image referenced by the manifests has no versions pushed yet (GHCR 404 or empty versions list). Non-GHCR registries are ignored. Avoids "status page tracks a target that has never shipped a pod".
+3. **Stale-outage daily digest** — `apps/status/lib/stale-digest.ts` + `POST /api/status/stale-digest`. Scans `status_checks` for services that have been in outage/degraded for >24h continuously and posts a Slack-compatible summary to `STALE_DIGEST_WEBHOOK_URL` (or logs JSON to Loki when unset). Triggered daily at 14:00 UTC by `apps/status/k8s/{enclii,madfam}/stale-outage-digest.yaml` CronJobs. Silently no-ops when nothing is stale.
+
+Both onboarding gates also expose a side-effect-free `GET /v1/admin/preflight?repo=owner/name` endpoint for CI callers. No bypass flag — if a legitimate exception arises, extend the gate rather than opt out per-request. Full contract: [ONBOARDING_GUIDE.md § Preventive Image Hygiene Gates](./docs/guides/ONBOARDING_GUIDE.md#preventive-image-hygiene-gates-auto-run-on-every-onboard).
+
 ### Deploying a Service Change
 
 ```bash
@@ -626,6 +636,8 @@ kubectl get replicas.longhorn.io -n longhorn-system
 | Status shared config | `apps/status/lib/status-config.ts` (colors, labels, priority, incident config) |
 | Status E2E tests | `apps/status/tests/e2e/status-pages.spec.ts` |
 | Status unit tests | `apps/status/__tests__/lib/` (7 files, 129 tests: types, config, health-checker, auto-incidents, incidents, status-history, status-config) |
+| Status stale-outage digest | `apps/status/lib/stale-digest.ts` + `apps/status/app/api/status/stale-digest/route.ts` + `apps/status/k8s/{enclii,madfam}/stale-outage-digest.yaml` |
+| Onboarding image gates | `apps/switchyard-api/internal/checks/image_digest.go` (digest pin check), `image_exists.go` (GHCR package exists check), wiring in `apps/switchyard-api/internal/api/onboarding_image_gates.go` |
 
 ### Documentation
 

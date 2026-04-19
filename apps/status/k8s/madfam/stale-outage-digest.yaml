@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stale-outage-digest-madfam
+  namespace: enclii
+  labels:
+    app: stale-outage-digest-madfam
+    app.kubernetes.io/component: stale-outage-digest
+    app.kubernetes.io/instance: status-madfam
+spec:
+  # 14:00 UTC daily ~= 08:00 Mexico City (CST/CDT). Runs once a day.
+  schedule: "0 14 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: stale-outage-digest-madfam
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: digest
+              image: docker.io/curlimages/curl:8.5.0
+              command:
+                - curl
+                - -sf
+                - -X
+                - POST
+                - -H
+                - "Authorization: Bearer $(CRON_SECRET)"
+                - "http://status-madfam.enclii.svc.cluster.local/api/status/stale-digest"
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: status-secrets
+                      key: cron-secret
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 100
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi
+          restartPolicy: OnFailure
