@@ -1,0 +1,60 @@
+# Kyverno PolicyExceptions for Redpanda
+#
+# The upstream Redpanda Helm chart ships containers without explicit
+# capabilities.drop:[ALL] and uses docker.redpanda.com images that are
+# not signed by our cosign chain. Exceptions are scoped to the `data`
+# namespace with `app.kubernetes.io/name: redpanda` pod label so they
+# don't leak to any other workloads in the shared data namespace
+# (postgres, redis, backup jobs all keep their stricter posture).
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: redpanda-helm-chart
+  namespace: data
+spec:
+  exceptions:
+    - policyName: restrict-capabilities
+      ruleNames:
+        - drop-all-capabilities
+        - autogen-drop-all-capabilities
+    - policyName: restrict-image-registries
+      ruleNames:
+        - validate-registries
+        - autogen-validate-registries
+    - policyName: verify-image-signatures
+      ruleNames:
+        - verify-image
+        - autogen-verify-image
+        - autogen-cronjob-verify-image
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - check-non-root
+        - autogen-check-non-root
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: require-resources
+      ruleNames:
+        - validate-resources
+        - autogen-validate-resources
+    - policyName: require-health-probes
+      ruleNames:
+        - require-liveness-probe
+        - require-readiness-probe
+        - autogen-require-liveness-probe
+        - autogen-require-readiness-probe
+  match:
+    any:
+      - resources:
+          namespaces:
+            - data
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: redpanda
+          kinds:
+            - StatefulSet
+            - Pod
+            - ReplicaSet
+            - Job
