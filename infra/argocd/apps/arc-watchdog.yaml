@@ -1,0 +1,39 @@
+# ARC stuck-runner watchdog
+#
+# Auto-purges EphemeralRunner CRs that got stuck in Running state
+# referencing already-completed workflow runs — root cause of the
+# intermittent "queue sits still despite idle runners" behavior we
+# observed on 2026-04-19.
+#
+# Separate ArgoCD app because the main arc-runners/arc-runners-blue
+# apps are Helm-chart-based and won't auto-sync plain Kubernetes
+# YAML from the enclii repo.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-watchdog
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: arc-watchdog
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: platform-watchdog
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/arc
+    directory:
+      include: "stuck-runner-watchdog.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
