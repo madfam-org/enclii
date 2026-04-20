@@ -101,7 +101,13 @@ spec:
               max: 2Gi
 
         console:
-          enabled: false
+          # Redpanda Console UI for browsing topics, partitions, and
+          # consumer groups. Bundled as an inner Helm sub-chart; enabling
+          # it here creates a `redpanda-console` Deployment + ClusterIP
+          # Service on port 8080 in the data namespace. Cloudflared routes
+          # `redpanda.enclii.dev` → this service (see
+          # infra/k8s/production/redpanda-console-tunnel-route.md).
+          enabled: true
 
         config:
           cluster:

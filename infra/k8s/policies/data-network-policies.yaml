@@ -527,3 +527,31 @@ spec:
       ports:
         - protocol: TCP
           port: 6443
+
+# Allow Cloudflare tunnel -> Redpanda Console (port 8080)
+# Console is the only data-ns workload exposed externally; the Kafka
+# brokers themselves stay internal-only.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redpanda-console-ingress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: console
+      app.kubernetes.io/instance: redpanda
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflare-tunnel
+      ports:
+        - protocol: TCP
+          port: 8080
