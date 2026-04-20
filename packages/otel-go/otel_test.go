@@ -84,7 +84,7 @@ func TestResolveSamplerRatio_FromEnv(t *testing.T) {
 }
 
 func TestResolveSamplerRatio_ProductionDefault(t *testing.T) {
-	os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
+	_ = os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
 	assert.InDelta(t, 0.1, resolveSamplerRatio(Config{Environment: "production"}), 1e-9)
 	assert.InDelta(t, 1.0, resolveSamplerRatio(Config{Environment: "staging"}), 1e-9)
 	assert.InDelta(t, 1.0, resolveSamplerRatio(Config{Environment: ""}), 1e-9)
