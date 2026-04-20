@@ -39,6 +39,10 @@ spec:
       ruleNames:
         - validate-resources
         - autogen-validate-resources
+    - policyName: require-resource-limits
+      ruleNames:
+        - require-limits
+        - autogen-require-limits
     - policyName: require-health-probes
       ruleNames:
         - require-liveness-probe
