@@ -81,10 +81,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: watchdog
-              # bitnami/kubectl retired pinned tags in Aug 2025 (only publishes `latest`
-               # + signed digests now). bitnamilegacy/kubectl continues to publish
-               # pinned debian-12 tags, which preserve the GNU `date -d` semantics
-               # this script relies on.
+              # bitnamilegacy preserves pinned debian-12 tags; bitnami/kubectl only publishes `latest` since Aug 2025.
               image: bitnamilegacy/kubectl:1.33.4
               imagePullPolicy: IfNotPresent
               command:
