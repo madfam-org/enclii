@@ -1,0 +1,126 @@
+# Redpanda (Kafka-compatible streaming)
+# Deploys: 3-broker StatefulSet + Longhorn-backed 50Gi PVs (via Helm)
+# Purpose: Event streaming for the ecosystem. Routecraft's ingestion-svc
+#   was the first consumer; future workloads can pub/sub on topics here
+#   instead of standing up their own brokers. Wire-compatible with Kafka
+#   clients (no library changes needed).
+#
+# Deploys to the `data` namespace alongside postgres + redis. Access
+# from other namespaces is gated by the NetworkPolicy in
+# `infra/k8s/policies/redpanda-network-policies.yaml` — only namespaces
+# labeled `enclii.dev/data-access: "true"` can reach port 9092.
+#
+# Canonical values live in `infra/helm/redpanda/values.yaml` (mirror
+# when editing — ArgoCD's Helm source doesn't accept external
+# valueFiles, same constraint as KEDA).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redpanda
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: redpanda
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: streaming
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.redpanda.com
+    chart: redpanda
+    targetRevision: 5.9.20  # Pin; bump deliberately with release-notes read
+    helm:
+      values: |
+        image:
+          repository: docker.redpanda.com/redpandadata/redpanda
+          tag: v24.3.6
+
+        statefulset:
+          replicas: 3
+          podAntiAffinity:
+            topologyKey: kubernetes.io/hostname
+            type: hard
+
+        listeners:
+          kafka:
+            port: 9092
+            tls:
+              enabled: false
+          admin:
+            port: 9644
+            tls:
+              enabled: false
+          rpc:
+            port: 33145
+            tls:
+              enabled: false
+          schemaRegistry:
+            port: 8081
+            tls:
+              enabled: false
+          http:
+            port: 8082
+            tls:
+              enabled: false
+
+        external:
+          enabled: false
+
+        auth:
+          sasl:
+            enabled: false
+
+        tls:
+          enabled: false
+
+        storage:
+          persistentVolume:
+            enabled: true
+            storageClass: longhorn
+            size: 50Gi
+          tieredConfig: {}
+
+        resources:
+          cpu:
+            cores: 1
+            overprovisioned: false
+          memory:
+            enable_memory_locking: false
+            container:
+              max: 2Gi
+
+        console:
+          enabled: false
+
+        config:
+          cluster:
+            auto_create_topics_enabled: true
+            default_topic_partitions: 3
+            default_topic_replications: 3
+          tunable:
+            log_segment_size: 134217728
+            log_retention_ms: 604800000
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  # Redpanda's Helm chart installs CRDs the chart itself owns; ignore
+  # cluster-IP drift (new Services get IPs assigned at create time).
+  ignoreDifferences:
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs

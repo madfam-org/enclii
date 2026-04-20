@@ -1,0 +1,99 @@
+# Redpanda Helm values — canonical source of truth.
+#
+# ArgoCD's Helm source doesn't support external valueFiles, so the
+# same values are also inlined into `infra/argocd/apps/redpanda.yaml`.
+# If you change values here, mirror the change there (same pattern as
+# `infra/helm/keda/values.yaml` ↔ `infra/argocd/apps/keda.yaml`).
+#
+# Docs: https://docs.redpanda.com/current/reference/k-helm-spec/
+
+image:
+  # Pin to a specific Redpanda version for deterministic upgrades.
+  repository: docker.redpanda.com/redpandadata/redpanda
+  tag: v24.3.6
+
+# 3-broker StatefulSet: matches the cluster's 3-node layout; supports
+# replication.factor=3 on topics without squeezing the scheduler.
+statefulset:
+  replicas: 3
+  # Spread brokers across nodes (one per node) so a node failure
+  # never loses quorum.
+  podAntiAffinity:
+    topologyKey: kubernetes.io/hostname
+    type: hard
+  # NodePort tunnel routes are provisioned via NetworkPolicy + Service,
+  # not via host networking.
+
+# Internal Kafka API only — this cluster has no reason to expose
+# Kafka externally, and NetworkPolicy below isolates by namespace.
+listeners:
+  kafka:
+    port: 9092
+    tls:
+      enabled: false
+  admin:
+    port: 9644
+    tls:
+      enabled: false
+  rpc:
+    port: 33145
+    tls:
+      enabled: false
+  schemaRegistry:
+    port: 8081
+    tls:
+      enabled: false
+  http: # pandaproxy (Kafka REST)
+    port: 8082
+    tls:
+      enabled: false
+
+external:
+  enabled: false
+
+# SASL disabled — internal service, access controlled by NetworkPolicy.
+# Enable in a follow-up PR once the ecosystem's Kafka clients learn SCRAM-SHA-512
+# and the Vault ExternalSecret is wired (cf. `infra/k8s/base/external-secrets/vault-secrets/`).
+auth:
+  sasl:
+    enabled: false
+
+tls:
+  enabled: false
+
+# Persistent storage via Longhorn — 2-replica StorageClass across nodes
+# (per infra/helm/longhorn/values.yaml). 50 GiB per broker covers the
+# expected routecraft / future ecosystem log volume with headroom.
+storage:
+  persistentVolume:
+    enabled: true
+    storageClass: longhorn
+    size: 50Gi
+  tieredConfig: {}  # No S3 offload for now.
+
+# Per-broker resources. Right-sized for the 3-node 128/64/64 GB cluster
+# — 2 Gi reservation per broker leaves plenty for other workloads.
+resources:
+  cpu:
+    cores: 1
+    overprovisioned: false
+  memory:
+    enable_memory_locking: false
+    container:
+      max: 2Gi
+
+# Redpanda Console disabled initially (keeps the install minimal).
+# Re-enable + add a tunnel route in a follow-up PR for operators.
+console:
+  enabled: false
+
+# Tune for our modest cluster — auto-create topics so services can
+# self-provision without an ops ticket; clients set retention per-topic.
+config:
+  cluster:
+    auto_create_topics_enabled: true
+    default_topic_partitions: 3
+    default_topic_replications: 3
+  tunable:
+    log_segment_size: 134217728  # 128 MiB
+    log_retention_ms: 604800000  # 7 days

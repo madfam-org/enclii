@@ -433,3 +433,97 @@ spec:
       ports:
         - protocol: TCP
           port: 6443
+
+# Allow application namespaces -> Redpanda Kafka API (port 9092)
+# Same tenancy model as postgres/redis: only namespaces labeled
+# `enclii.dev/data-access: "true"` are allowed in. Schema Registry (8081)
+# and Pandaproxy (8082) open on the same rule so tooling that needs them
+# doesn't require an additional allow-list.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redpanda-ingress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda
+  policyTypes:
+    - Ingress
+  ingress:
+    # Client access (Kafka API + Schema Registry + Pandaproxy)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              enclii.dev/data-access: "true"
+      ports:
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+    # Intra-cluster RPC (broker ↔ broker) on port 33145. Redpanda brokers
+    # run as the same podSelector, so this allow-from-self rule keeps the
+    # quorum alive without opening 33145 to the rest of the cluster.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redpanda
+      ports:
+        - protocol: TCP
+          port: 33145
+    # Admin API — only allow from within the data namespace (so rpk
+    # can reach it via `kubectl exec` into any data pod, but no other
+    # namespace can poke broker internals).
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9644
+
+# Allow Redpanda broker pods to egress to peers + DNS + K8s API
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redpanda-egress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Peer brokers (RPC)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redpanda
+      ports:
+        - protocol: TCP
+          port: 33145
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9644
+    # K8s API server (for service account token refresh etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 6443
