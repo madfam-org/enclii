@@ -85,7 +85,10 @@ resources:
 # Redpanda Console disabled initially (keeps the install minimal).
 # Re-enable + add a tunnel route in a follow-up PR for operators.
 console:
-  enabled: false
+  # Redpanda Console UI for topics/partitions/consumer-groups browsing.
+  # Exposed internally on data/redpanda-console:8080; cloudflared routes
+  # redpanda.enclii.dev → this Service.
+  enabled: true
 
 # Tune for our modest cluster — auto-create topics so services can
 # self-provision without an ops ticket; clients set retention per-topic.
