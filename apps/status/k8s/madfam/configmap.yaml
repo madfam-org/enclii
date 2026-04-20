@@ -396,7 +396,7 @@ data:
       },
       {
         "name": "Cotiza API",
-        "url": "https://api.cotiza.studio/health",
+        "url": "https://api.cotiza.studio/api/docs",
         "href": "https://api.cotiza.studio",
         "group": "DigiFab",
         "family": "Digital Fabrication",
