@@ -1,0 +1,134 @@
+# Stuck-runner watchdog
+#
+# ARC's EphemeralRunner CRs sometimes stay in `Running` status long after
+# the GitHub job they reference has completed. When all 6 max-capacity
+# slots get pinned to these zombies, the listener sees no room for new
+# runners and queued jobs stall indefinitely (observed ~2x in a 90-min
+# window on 2026-04-19). Manual fix: `kubectl delete ephemeralrunner <name>`.
+#
+# This CronJob automates that fix. Every 5 min, list EphemeralRunners
+# older than 20 min whose referenced WORKFLOWRUNID has a conclusion
+# (completed, cancelled, failed), and delete them. The ARC controller
+# then creates fresh CRs that can pick up queued work.
+#
+# The 20-min threshold is well past the 5-min GitHub session cache +
+# 2-min buildx warmup, so we never kill a live runner.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stuck-runner-watchdog
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: platform-watchdog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stuck-runner-watchdog
+  namespace: arc-runners
+rules:
+  - apiGroups: ["actions.github.com"]
+    resources: ["ephemeralrunners"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stuck-runner-watchdog
+  namespace: arc-runners
+subjects:
+  - kind: ServiceAccount
+    name: stuck-runner-watchdog
+    namespace: arc-runners
+roleRef:
+  kind: Role
+  name: stuck-runner-watchdog
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stuck-runner-watchdog
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: platform-watchdog
+spec:
+  # Every 5 minutes. 20-min age threshold inside the script, so worst
+  # case a stuck runner is cleared within 25 min total.
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app: stuck-runner-watchdog
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: stuck-runner-watchdog
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: watchdog
+              image: bitnami/kubectl:1.33.7
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - -ec
+                - |
+                  set -euo pipefail
+                  THRESHOLD_SEC=1200  # 20 minutes
+
+                  # List all EphemeralRunners with creation timestamp +
+                  # the workflow run they reference (if any).
+                  kubectl -n arc-runners get ephemeralrunners \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.jobWorkflowRunId}{"\n"}{end}' \
+                    | while IFS='|' read -r name created run_id; do
+                      [ -z "$name" ] && continue
+
+                      # Use GNU date semantics via `date --date=` ; bitnami/kubectl
+                      # ships debian-slim which has GNU date.
+                      created_sec=$(date -d "$created" +%s)
+                      now=$(date +%s)
+                      age=$(( now - created_sec ))
+
+                      if [ "$age" -lt "$THRESHOLD_SEC" ]; then
+                        continue
+                      fi
+
+                      echo "candidate: $name (age ${age}s, workflow_run=$run_id)"
+
+                      # If no jobWorkflowRunId, it's a fresh CR waiting — leave alone.
+                      # (Stuck CRs have a run_id from a long-completed workflow.)
+                      if [ -z "$run_id" ]; then
+                        echo "  skip: no workflow run id"
+                        continue
+                      fi
+
+                      echo "  deleting stale EphemeralRunner $name"
+                      kubectl -n arc-runners delete ephemeralrunner "$name" --ignore-not-found
+                  done
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
