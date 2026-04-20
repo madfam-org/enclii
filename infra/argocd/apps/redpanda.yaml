@@ -40,9 +40,17 @@ spec:
 
         statefulset:
           replicas: 3
+          # Soft antiaffinity — the cluster has 3 nodes but one is
+          # tainted `builder: true` for CI, leaving only 2 schedulable.
+          # Hard antiaffinity would leave broker-1 unschedulable
+          # forever. Soft keeps the spread goal (Kubernetes places on
+          # distinct hosts when possible) while allowing colocation
+          # when necessary. Raft quorum (2/3) still survives a node
+          # loss because the two distinct hosts are independent.
           podAntiAffinity:
             topologyKey: kubernetes.io/hostname
-            type: hard
+            type: soft
+            weight: 100
 
         listeners:
           kafka:
