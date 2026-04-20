@@ -124,7 +124,10 @@ spec:
               cpu: "100m"
       containers:
         - name: postgres
-          image: docker.io/library/postgres:15
+          # pgvector/pgvector:pg15 is stock postgres:15 with the pgvector
+          # extension pre-installed (required by bloom-scroll's bloom_cards
+          # similarity search). Drop-in wire-compatible with postgres:15.
+          image: docker.io/pgvector/pgvector:pg15
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
