@@ -31,6 +31,12 @@ data:
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
   #
+  # Updated: 2026-04-20 — 57 services across 17 groups. Renamed
+  # "Bloom Scroll" group to "Almanac" (product brand) and split
+  # into Web + API rows after the netpol port-8080 fix brought both
+  # endpoints green (tunnel was dropping 100% of traffic at the
+  # NetworkPolicy layer since the web pod binds 8080 not 80).
+  #
   # Updated: 2026-04-19 — 56 services across 17 groups. Added Factlas
   # group (web, atlas, api, tiles) after the Geographic Fact Graph
   # platform went live (all four endpoints verified 200 pre-add).
@@ -418,11 +424,19 @@ data:
         "description": "Fabrication storefronts"
       },
       {
-        "name": "Almanac",
+        "name": "Almanac Web",
         "url": "https://almanac.solar",
-        "group": "Bloom Scroll",
+        "group": "Almanac",
         "family": "Content & Creative",
-        "description": "Slow web aggregator"
+        "description": "Slow web aggregator — 20 items, then stop"
+      },
+      {
+        "name": "Almanac API",
+        "url": "https://api.almanac.solar/health",
+        "href": "https://api.almanac.solar",
+        "group": "Almanac",
+        "family": "Content & Creative",
+        "description": "Serendipity curation + embeddings API"
       },
       {
         "name": "Karafiel App",
