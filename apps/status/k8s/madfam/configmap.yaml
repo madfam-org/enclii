@@ -490,5 +490,13 @@ data:
         "group": "Factlas",
         "family": "MADFAM Platform",
         "description": "COG / vector tile server (TiTiler)"
+      },
+      {
+        "name": "Blueprint Harvester",
+        "url": "https://blueprint.tube/health",
+        "href": "https://blueprint.tube",
+        "group": "Blueprint Harvester",
+        "family": "Content & Creative",
+        "description": "3D-file discovery / harvesting — spec-phase landing"
       }
     ]
