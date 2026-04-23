@@ -24,12 +24,19 @@ data:
   #   - description  : short description
   #
   # Product families (RFC 0002 S1):
-  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, enclii, janua
+  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, routecraft, enclii, janua
   #   Selva Swarm          — selva-office services
   #   Rondelio             — rondel.io family
   #   Digital Fabrication  — digifab, yantra4d, pravara-mes, primavera3d, forj, forgesight
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
+  #
+  # Updated: 2026-04-23 — 60 services across 25 groups. Added Routecraft
+  # group (Dashboard, BFF API, Admin) per request to track all Routecraft
+  # services. Internal services (auth-svc, scoring-svc, routing-svc,
+  # ingestion-svc, dossier-svc) are reached via the BFF and are covered
+  # transitively by the api.routecraft.app probe — no public domain of
+  # their own, so no point probing directly.
   #
   # Updated: 2026-04-20 — 57 services across 17 groups. Renamed
   # "Bloom Scroll" group to "Almanac" (product brand) and split
@@ -498,5 +505,27 @@ data:
         "group": "Blueprint Harvester",
         "family": "Content & Creative",
         "description": "3D-file discovery / harvesting — spec-phase landing"
+      },
+      {
+        "name": "Routecraft Dashboard",
+        "url": "https://routecraft.app",
+        "group": "Routecraft",
+        "family": "MADFAM Platform",
+        "description": "Trip Engine — city-date scoring dashboard"
+      },
+      {
+        "name": "Routecraft API",
+        "url": "https://api.routecraft.app/health",
+        "href": "https://api.routecraft.app",
+        "group": "Routecraft",
+        "family": "MADFAM Platform",
+        "description": "BFF / API gateway (fronts auth-svc, scoring-svc, routing-svc, ingestion-svc, dossier-svc)"
+      },
+      {
+        "name": "Routecraft Admin",
+        "url": "https://admin.routecraft.app",
+        "group": "Routecraft",
+        "family": "MADFAM Platform",
+        "description": "Operations console"
       }
     ]
