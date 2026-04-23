@@ -369,11 +369,13 @@ func (h *Handler) GetLogs(c *gin.Context) {
 	}
 
 	if follow {
-		// Stream logs via SSE
+		// Stream logs via SSE. CORS headers are set by the CORS middleware
+		// — do NOT override Access-Control-Allow-Origin here, or we negate
+		// the allowlist logic and re-introduce the "* + credentials" combo
+		// that audit 2026-04-23 H6 flagged.
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
-		c.Header("Access-Control-Allow-Origin", "*")
 
 		// Stream logs (simplified implementation)
 		c.String(http.StatusOK, logs)
