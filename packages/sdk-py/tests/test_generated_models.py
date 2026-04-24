@@ -47,7 +47,7 @@ def test_generated_login_request_validates_email() -> None:
     from enclii_sdk.models.generated import LoginRequest
 
     # Dummy test value (>=8 chars per spec), not a credential.
-    fake_pwd = "x" * 10  # noqa: S105
+    fake_pwd = "x" * 10
     LoginRequest(email="ok@example.com", password=fake_pwd)
     with pytest.raises(ValidationError):
         LoginRequest(email="not-an-email", password=fake_pwd)

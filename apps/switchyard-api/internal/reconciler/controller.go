@@ -233,7 +233,7 @@ func (c *Controller) worker(ctx context.Context, workerID int) {
 // wide spans in Tempo with their child k8s.*, db.*, and image-pull
 // sub-operations nested underneath.
 func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logger *logrus.Entry) *ReconcileResult {
-	ctx, span := tracer.Start(ctx, "reconciler.processWork")// SetAttributes is called after span start so values that
+	ctx, span := tracer.Start(ctx, "reconciler.processWork") // SetAttributes is called after span start so values that
 	// include anything resembling a credential would still be filtered
 	// by the secret-attribute processor wired in packages/otel-go.
 
