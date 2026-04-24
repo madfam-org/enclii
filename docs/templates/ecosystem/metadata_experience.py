@@ -239,4 +239,45 @@ REPOS = {
         ],
         'service_name_for_ops': '(n/a — blueprint repo)',
     },
+    'rondelio': {
+        'tagline': 'Game Intelligence Cloud + 8-bit themed platform UI — hosts cartridges on turnbased-engine.',
+        'description': (
+            "Rondelio is the MADFAM games platform: an 8-bit-themed React/Vite "
+            "UI layered on top of the `turnbased-engine` server that hosts TCG "
+            "and Eurogame cartridges (first cartridge: `stratum-tcg`). Game "
+            "Intelligence Cloud — matchmaking, lobby, gateway, simulator, and "
+            "asset pipeline integration with CEQ's `/v1/render` for dynamic "
+            "card art. Deployed behind `rondel.io`."
+        ),
+        'pillar': 'Games / Platform UI',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('rondelio-play', 'rondel.io', 8080),
+                ('rondelio-simulator', '(internal)', 7060),
+                ('rondelio-gateway', '(internal)', None),
+            ],
+            'namespace': 'rondelio',
+        },
+        'upstream_deps': [
+            'turnbased-engine (game engine + cartridge plugin system)',
+            'stratum-tcg (first cartridge — submoduled)',
+            'ceq (`/v1/render` for card art via `@ceq/sdk`)',
+            'postgres (game sessions, player progress)',
+            'redis (matchmaking + realtime)',
+            'janua (player auth)',
+        ],
+        'downstream_consumers': [
+            'external players',
+            'stratum-tcg release channel',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'REDIS_URL — realtime',
+            'JANUA_JWKS_URI — auth',
+            'CEQ_API_URL / CEQ_API_KEY — render-on-demand card art',
+        ],
+        'service_name_for_ops': 'rondelio-play',
+    },
 }
