@@ -1,0 +1,338 @@
+"""Per-repo metadata for the `fabrication` pillar of the MADFAM ecosystem.
+
+Consumed by the ECOSYSTEM.md generator. See `metadata/__init__.py` for
+the aggregated `REPOS_FULL` dict and `generator.py` for render logic.
+"""
+
+REPOS = {
+    'digifab-quoting': {
+        'tagline': "Cotiza Studio — MADFAM's universal quoting engine (fabrication + services).",
+        'description': "Cotiza Studio is MADFAM's quoting engine. Externally it's positioned as digital-fabrication-only (3D printing, CNC, laser, etc.), but internally it's dual-mode: **all** MADFAM quoting flows (including software/services) originate here. Tablaco and other dual-engagement clients use the services-mode primitives shipped in digifab-quoting #5. Domain: `cotiza.studio`.",
+        'pillar': 'Fabrication / Quoting',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('digifab-quoting-web', 'cotiza.studio', 3000),
+                ('digifab-quoting-api', 'api.cotiza.studio', 8000),
+                ('digifab-quoting-worker', '(background pricing jobs)', 8000),
+            ],
+            'namespace': 'digifab-quoting',
+        },
+        'upstream_deps': [
+            'forgesight (pricing oracle + vendor intelligence)',
+            'geom-core (mesh analysis for fab quotes)',
+            'postgres (quotes, customers, pricing rules)',
+            'janua (auth, multi-tenant)',
+            'dhanam (billing for accepted quotes)',
+        ],
+        'downstream_consumers': [
+            'phyne-crm (quote history federation)',
+            'pravara-mes (fab jobs created from accepted quotes)',
+            'karafiel (CFDI emission for accepted quotes)',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'JANUA_JWKS_URI — auth',
+            'FORGESIGHT_API_URL / FORGESIGHT_API_KEY — pricing oracle',
+            'DHANAM_WEBHOOK_SECRET — billing integration',
+            'CORS_ALLOWED_ORIGINS — explicit allowlist',
+        ],
+        'service_name_for_ops': 'digifab-quoting-api',
+    },
+    'forgesight': {
+        'tagline': 'Digital Fabrication Industry Intelligence — pricing + vendor feed consumed by Cotiza.',
+        'description': "Forgesight is **exclusively** a digital-fabrication industry intelligence platform. It tracks industry offerings + supporting details (capabilities, price curves, vendor performance, material availability) and feeds that intelligence to Cotiza Studio's pricing engine and to MADFAM's procurement decisions. Does **not** handle project management, engagement tracking, or client-facing flows — those belong to PhyneCRM / Cotiza. Domain: `forgesight.quest`.",
+        'pillar': 'Fabrication / Industry Intelligence',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('forgesight-www', 'forgesight.quest', 3000),
+                ('forgesight-app', 'app.forgesight.quest', 3001),
+                ('forgesight-api', 'api.forgesight.quest', 8000),
+                ('forgesight-admin', 'admin.forgesight.quest', 3002),
+                ('forgesight-pipeline', '(background scraper/ingest)', None),
+            ],
+            'namespace': 'forgesight',
+        },
+        'upstream_deps': [
+            'madfam-crawler (scraping-as-a-service for vendor sites)',
+            'postgres (vendor catalog, price history, capabilities)',
+            'janua (auth)',
+            'dhanam (subscriber billing)',
+        ],
+        'downstream_consumers': [
+            'digifab-quoting / cotiza (pricing oracle)',
+            'pravara-mes (vendor routing hints)',
+            'MADFAM procurement ops',
+            'external API subscribers',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'JANUA_JWKS_URI — auth (RS256, HS256 fallback fail-closed post-H3 audit)',
+            'CRAWLER_API_URL / CRAWLER_API_KEY — scrape dispatch',
+            'CORS_ALLOWED_ORIGINS — explicit allowlist',
+        ],
+        'service_name_for_ops': 'forgesight-api',
+    },
+    'forj': {
+        'tagline': 'Blockchain-capable fabrication storefront builder — 3D infinite-scroller UX, mint or fabricate.',
+        'description': 'Forj lets creators, curators, and merchants build immersive 3D-first infinite-scroller storefronts where shoppers can either fabricate on demand (routed to the nearest, cheapest, or most-sustainable fab node via Pravara) or mint the product as an NFT redeemable for physical fabrication later. Domain: `forj.design`.',
+        'pillar': 'Fabrication / Commerce',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('forj-web', 'forj.design', 3000),
+                ('forj-api', 'api.forj.design', 8000),
+                ('forj-dashboard', '(creator console)', 3001),
+            ],
+            'namespace': 'forj',
+        },
+        'upstream_deps': [
+            'pravara-mes (fab-node routing for on-demand orders)',
+            'dhanam (payments)',
+            'janua (creator + shopper auth)',
+            'on-chain L2 (NFT minting)',
+            'digifab-quoting (quote pricing for custom orders)',
+        ],
+        'downstream_consumers': [
+            'pravara-mes (fab jobs from accepted orders)',
+            'phyne-crm (order federation into customer portal)',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'JANUA_JWKS_URI — auth',
+            'PRAVARA_API_URL / PRAVARA_API_KEY — fab routing',
+            'DHANAM_WEBHOOK_SECRET — payment webhooks',
+            'EVM_RPC_URL / NFT_CONTRACT_ADDRESS — mint ops',
+            'CORS_ALLOWED_ORIGINS — explicit allowlist',
+        ],
+        'service_name_for_ops': 'forj-api',
+    },
+    'pravara-mes': {
+        'tagline': 'Cloud-native MES — owns fabrication-node routing and dispatch for physical jobs.',
+        'description': 'PravaraMES is the Manufacturing Execution System that owns fabrication-node routing and dispatch for all physical jobs in the MADFAM ecosystem. Universal machine connectivity (95%+ of digital fab machines), event-driven workflows, digital-twin simulation with real-time physics, and support for FDM, laser, CNC, and pen-plotting operations. Consumes accepted fab quotes from Cotiza and reports job status back into PhyneCRM for the client portal.',
+        'pillar': 'Fabrication / MES (physical dispatch)',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('pravara-ui', 'mes.madfam.io', 3000),
+                ('pravara-api', 'mes-api.madfam.io', 8000),
+                ('pravara-admin', 'mes-admin.madfam.io', 3001),
+                ('pravara-gateway', '(centrifugo ws gateway)', 8001),
+            ],
+            'namespace': 'pravara-mes',
+        },
+        'upstream_deps': [
+            'digifab-quoting / cotiza (accepted quote feed)',
+            'fab nodes (internal + partner — OPC-UA, MQTT, printer APIs)',
+            'postgres (jobs, nodes, schedules)',
+            'redis + centrifugo (realtime websocket fanout)',
+            'janua (operator auth)',
+        ],
+        'downstream_consumers': [
+            'phyne-crm (job status federation to client portal)',
+            'forj (accepted orders route into fab jobs here)',
+            'karafiel (completed-job CFDI emission)',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'REDIS_URL — realtime',
+            'JANUA_JWKS_URI — auth',
+            'CENTRIFUGO_TOKEN_HMAC_SECRET — ws auth',
+            'NODE_CONN_* — per-fab-node credentials',
+        ],
+        'service_name_for_ops': 'pravara-api',
+    },
+    'yantra4d': {
+        'tagline': 'Parametric CAD + "Hyperobjects Commons" — SDF-based geometry compiler with marketplace.',
+        'description': 'Yantra4D is a poly-kernel CAD engine: continuous SDF geometry compiler, manifest-driven parametric design, nanoscale material intelligence, interactive digital-twin simulation. Also hosts the "Hyperobjects Commons" marketplace where parametric designs can interface with each other via Common Denominator Geometry (standardized snaps, threads, joints). Domain: `yantra4d.com`.',
+        'pillar': 'Fabrication / CAD + Commons',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('yantra4d-landing', 'yantra4d.com', 3000),
+                ('yantra4d-studio', 'app.yantra4d.com', 3001),
+                ('yantra4d-backend', 'api.yantra4d.com', 8000),
+                ('yantra4d-admin', 'admin.yantra4d.com', 3002),
+            ],
+            'namespace': 'yantra4d',
+        },
+        'upstream_deps': [
+            'geom-core (C++ geometry analysis + WASM bindings)',
+            'postgres (catalog, user designs)',
+            'cloudflare R2 (asset storage)',
+            'janua (auth)',
+            'dhanam (billing for paid features)',
+            'selva (LLM-assisted design)',
+        ],
+        'downstream_consumers': [
+            'digifab-quoting (parametric designs → quotes)',
+            'forj (storefront listings)',
+            'pravara-mes (print-ready G-code export)',
+            'external creators (Hyperobjects Commons contributors)',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'R2_ACCESS_KEY_ID / R2_SECRET — asset storage',
+            'JANUA_JWKS_URI — auth',
+            'SELVA_BASE_URL — LLM routing',
+        ],
+        'service_name_for_ops': 'yantra4d-backend',
+    },
+    'geom-core': {
+        'tagline': 'High-performance C++ geometry library with Python and WASM bindings for 3D printing.',
+        'description': 'Zero-dependency C++17 core library for 3D geometry analysis: binary STL + STEP file parsing (OCCT optional), mesh analysis (volume, watertight, bounding box), printability checks, toolpath generation primitives. Consumed by yantra4d, digifab-quoting, blueprint-harvester, sim4d, and pravara-mes via Python bindings or WASM.',
+        'pillar': 'Fabrication / Geometry library',
+        'type': 'library',
+        'status': 'stable',
+        'production': {
+            'services': [],
+            'namespace': '(library — not deployed as a service)',
+        },
+        'upstream_deps': [
+            'C++17 standard library',
+            'Open CASCADE Technology (OCCT) — optional, for STEP',
+            'pybind11 (Python bindings)',
+            'emscripten (WASM target)',
+        ],
+        'downstream_consumers': [
+            'yantra4d, digifab-quoting, blueprint-harvester, sim4d, pravara-mes',
+        ],
+        'key_env': [
+            '(library — no runtime env)',
+        ],
+        'service_name_for_ops': '(n/a — library)',
+    },
+    'blueprint-harvester': {
+        'tagline': 'Scalable data engine for discovering, harvesting, annotating, and searching 3D-printable blueprints.',
+        'description': "Blueprint Harvester is the ecosystem's 3D-model indexing and benchmarking platform. Harvests meshes, CAD, programmatic CAD, and toolpaths from open repositories; annotates with quality + printability metadata; benchmarks against reference settings; exposes a searchable catalog via API and web. Services: api, auth, compliance, ingestion, ml, processing, search, slicing, workbench. Domain: `blueprint.tube`.",
+        'pillar': 'Fabrication / Data engine',
+        'type': 'service',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('blueprint-harvester-api', 'blueprint.tube', 8000),
+                ('blueprint-harvester-auth', '(internal)', 8005),
+                ('blueprint-harvester-compliance', '(internal)', 8007),
+                ('blueprint-harvester-ingestion', '(internal)', 8001),
+                ('blueprint-harvester-ml', '(internal)', 8008),
+                ('blueprint-harvester-processing', '(internal)', 8002),
+                ('blueprint-harvester-search', '(internal)', 8004),
+                ('blueprint-harvester-slicing', '(internal)', 8006),
+                ('blueprint-harvester-workbench', '(creator UI)', 3000),
+            ],
+            'namespace': 'blueprint-harvester',
+        },
+        'upstream_deps': [
+            'geom-core (mesh analysis)',
+            'postgres (catalog)',
+            'elasticsearch (search)',
+            'redis (task queue)',
+            'cloudflare R2 (asset storage)',
+            'janua (auth)',
+            'selva (LLM annotation)',
+        ],
+        'downstream_consumers': [
+            'digifab-quoting (pre-priced models)',
+            'forj (storefront seed catalog)',
+            'yantra4d (Hyperobjects Commons import)',
+            'pravara-mes (pre-sliced job templates)',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres catalog',
+            'ELASTICSEARCH_URL — search',
+            'REDIS_URL — task queue',
+            'R2_* — asset storage',
+            'JANUA_JWKS_URI — auth',
+        ],
+        'service_name_for_ops': 'blueprint-harvester-api',
+    },
+    'sim4d': {
+        'tagline': 'Web-first, node-based parametric CAD (alpha) — runs on real OCCT.wasm.',
+        'description': "Sim4D is MADFAM's browser-native parametric CAD environment. Runs on the real OCCT.wasm kernel (all 25 core OCCT operations verified); pre-compiled WASM binaries ship in the repo for instant use. Targets designers who want programmatic CAD without leaving the browser. Ships studio app, marketing site, and collaboration layer. Domain: `sim4d.com` / `sim4d.io`.",
+        'pillar': 'Fabrication / Parametric CAD',
+        'type': 'service',
+        'status': 'alpha',
+        'production': {
+            'services': [
+                ('sim4d-studio', 'app.sim4d.com', 3000),
+                ('sim4d-marketing', 'sim4d.com', 3001),
+                ('sim4d-collaboration', '(ws server)', 3002),
+            ],
+            'namespace': 'sim4d',
+        },
+        'upstream_deps': [
+            'occt.wasm (geometry kernel)',
+            'geom-core (server-side analysis)',
+            'postgres (user designs)',
+            'yjs / websocket (collaboration)',
+            'janua (auth via `@janua/react-sdk`)',
+        ],
+        'downstream_consumers': [
+            'digifab-quoting (design → quote)',
+            'pravara-mes (design → fab job)',
+        ],
+        'key_env': [
+            'DATABASE_URL — Postgres',
+            'JANUA_JWKS_URI — auth',
+            'COLLAB_WS_URL — collaboration server',
+        ],
+        'service_name_for_ops': 'sim4d-studio',
+    },
+    'primavera3d': {
+        'tagline': '3D modeling + digital fabrication services portfolio site.',
+        'description': "Primavera3D is a high-performance marketing and services site showcasing MADFAM's 3D modeling and digital fabrication capabilities — parametric design, visualization, immersive product experiences. Entry point for external clients discovering MADFAM fabrication services. Domain: `primavera3d.pro`.",
+        'pillar': 'Fabrication / Marketing',
+        'type': 'site',
+        'status': 'production',
+        'production': {
+            'services': [
+                ('primavera3d-web', 'primavera3d.pro', 3000),
+            ],
+            'namespace': 'primavera3d',
+        },
+        'upstream_deps': [
+            'cloudflare R2 (3D asset hosting)',
+            'phyne-crm (lead capture webhook)',
+        ],
+        'downstream_consumers': [
+            'phyne-crm (inbound leads)',
+            'digifab-quoting (inbound quote requests)',
+        ],
+        'key_env': [
+            'CRM_WEBHOOK_URL / CRM_WEBHOOK_SECRET — inbound lead routing',
+            'COTIZA_QUOTE_URL — quote-request CTA target',
+        ],
+        'service_name_for_ops': 'primavera3d-web',
+    },
+    'tablaco': {
+        'tagline': 'Tactile didactic instrument for logic + philosophy (3D-printable, customizable cubes).',
+        'description': "Tablaco is a physical product (3D-printable truth-table cubes with cantilever click mechanism) plus the associated parametric-design repo. Served as the 2026-04-19 pilot for MADFAM's first end-to-end dual engagement — fabrication + digital — and drove the services-mode primitives in Cotiza and the unified-engagement aggregate in PhyneCRM. See `project_tablaco_engagement` memory for the full flow.",
+        'pillar': 'Fabrication / Didactic product',
+        'type': 'product (physical + parametric)',
+        'status': 'in production (client engagement)',
+        'production': {
+            'services': [],
+            'namespace': 'tablaco',
+        },
+        'upstream_deps': [
+            'sim4d / yantra4d (parametric generation)',
+            'pravara-mes (fab routing for print orders)',
+            'digifab-quoting (cost+quote)',
+            'phyne-crm (engagement aggregate)',
+        ],
+        'downstream_consumers': [
+            'end customers (educators, makers)',
+            'phyne-crm engagement flow',
+        ],
+        'key_env': [
+            '(product repo — no service runtime)',
+        ],
+        'service_name_for_ops': '(n/a — product repo)',
+    },
+}
