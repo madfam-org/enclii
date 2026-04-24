@@ -155,12 +155,16 @@ func TestCORSMiddleware(t *testing.T) {
 			expectAllowOrigin: true,
 		},
 		{
-			name:              "no allowed origins configured",
+			// Audit 2026-04-23 H6: empty allowlist + AllowCredentials=true must
+			// NOT emit Access-Control-Allow-Origin. The request is processed
+			// (no abort — server-to-server callers with no Origin header still
+			// work) but the browser will block any credentialed response.
+			name:              "no allowed origins with credentials — fails closed",
 			allowedOrigins:    nil,
 			requestOrigin:     "https://example.com",
 			method:            "GET",
 			expectedStatus:    http.StatusOK,
-			expectAllowOrigin: true,
+			expectAllowOrigin: false,
 		},
 	}
 
@@ -213,6 +217,52 @@ func TestCORSMiddleware(t *testing.T) {
 				if w.Header().Get("Access-Control-Max-Age") != "3600" {
 					t.Errorf("Access-Control-Max-Age = %s, want 3600", w.Header().Get("Access-Control-Max-Age"))
 				}
+			}
+		})
+	}
+}
+
+// TestCORSNeverWildcardWithCredentials is a regression guard for audit
+// 2026-04-23 finding H6. Browsers block responses that combine
+// Access-Control-Allow-Origin: * with Access-Control-Allow-Credentials: true,
+// but until this fix switchyard-api was willing to emit that combo — plus a
+// stray Allow-Origin: * on the SSE log stream. This test asserts that no
+// config path can produce the wildcard-plus-credentials response.
+func TestCORSNeverWildcardWithCredentials(t *testing.T) {
+	cases := []struct {
+		name    string
+		origins []string
+	}{
+		{"explicit wildcard in allowlist", []string{"*"}},
+		{"empty allowlist", nil},
+		{"wildcard alongside specific origin", []string{"*", "https://example.com"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &SecurityConfig{
+				AllowedOrigins:   tc.origins,
+				AllowedMethods:   []string{"GET"},
+				AllowedHeaders:   []string{"Authorization"},
+				AllowCredentials: true,
+			}
+			m := NewSecurityMiddleware(config)
+			router := gin.New()
+			router.Use(m.CORSMiddleware())
+			router.GET("/t", func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			})
+
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("GET", "/t", nil)
+			req.Header.Set("Origin", "https://caller.example.com")
+			router.ServeHTTP(w, req)
+
+			if got := w.Header().Get("Access-Control-Allow-Origin"); got == "*" {
+				t.Fatalf("ACAO is wildcard while AllowCredentials=true: %q", got)
+			}
+			if w.Header().Get("Access-Control-Allow-Credentials") == "true" &&
+				w.Header().Get("Access-Control-Allow-Origin") == "*" {
+				t.Fatal("emitted both ACAC=true AND ACAO=* — forbidden by CORS spec")
 			}
 		})
 	}

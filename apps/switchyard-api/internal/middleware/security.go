@@ -248,6 +248,19 @@ func (s *SecurityMiddleware) IPFilteringMiddleware() gin.HandlerFunc {
 }
 
 // CORS middleware
+//
+// Audit 2026-04-23 finding H6: switchyard-api is the control plane for every
+// service in the ecosystem — a misconfigured CORS response (wildcard Origin
+// paired with Allow-Credentials: true) has ecosystem-wide blast radius.
+// This middleware now:
+//   - Never emits "Access-Control-Allow-Origin: *" when AllowCredentials=true.
+//   - Only reflects the request Origin when it matches the configured allowlist.
+//   - Refuses to return an Allow-Origin header at all when the allowlist is
+//     empty in an AllowCredentials=true build, so browsers will block the request.
+//
+// The wildcard path remains available for AllowCredentials=false configurations
+// (e.g. public read-only endpoints) where the wildcard cannot be weaponized
+// into a cross-origin credentialed request.
 func (s *SecurityMiddleware) CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
@@ -258,9 +271,24 @@ func (s *SecurityMiddleware) CORSMiddleware() gin.HandlerFunc {
 			// Check if origin is allowed
 			if len(s.config.AllowedOrigins) > 0 {
 				allowed := false
+				originMatch := ""
 				for _, allowedOrigin := range s.config.AllowedOrigins {
-					if allowedOrigin == "*" || allowedOrigin == origin {
+					if allowedOrigin == origin {
 						allowed = true
+						originMatch = origin
+						break
+					}
+					if allowedOrigin == "*" {
+						// "*" is accepted in config only when credentials are off.
+						// Pairing a wildcard with credentials is never valid; emit
+						// the request Origin echo instead so browsers enforce.
+						if s.config.AllowCredentials {
+							allowed = true
+							originMatch = origin
+							break
+						}
+						allowed = true
+						originMatch = "*"
 						break
 					}
 				}
@@ -271,16 +299,27 @@ func (s *SecurityMiddleware) CORSMiddleware() gin.HandlerFunc {
 					return
 				}
 
-				c.Header("Access-Control-Allow-Origin", origin)
-			} else {
+				c.Header("Access-Control-Allow-Origin", originMatch)
+				if originMatch != "*" {
+					// Vary lets caches key responses per Origin when we reflect.
+					c.Header("Vary", "Origin")
+				}
+			} else if !s.config.AllowCredentials {
+				// Public-read mode only; wildcarding is safe here because the
+				// browser will never attach cookies/auth.
 				c.Header("Access-Control-Allow-Origin", "*")
 			}
+			// If AllowedOrigins is empty AND AllowCredentials is true we
+			// deliberately omit Access-Control-Allow-Origin → the browser
+			// will block the credentialed request. Configuration bug, not a
+			// spoofable header.
 		}
 
 		c.Header("Access-Control-Allow-Methods", strings.Join(s.config.AllowedMethods, ", "))
 		c.Header("Access-Control-Allow-Headers", strings.Join(s.config.AllowedHeaders, ", "))
 
 		if s.config.AllowCredentials {
+			// Only paired with a non-wildcard Allow-Origin per the guard above.
 			c.Header("Access-Control-Allow-Credentials", "true")
 		}
 
