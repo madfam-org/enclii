@@ -227,7 +227,7 @@ jobs:
 
       - name: Build & push image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           # `context` defaults to "." (repo root). Services with a
           # subdirectory build root (e.g. bloom-scroll's backend/ and
