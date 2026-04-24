@@ -52,7 +52,7 @@ data:
       },
       {
         "name": "Analytics Proxy",
-        "url": "https://analytics.madfam.io/batch/",
+        "url": "https://analytics.madfam.io/static/array.js",
         "href": "https://analytics.madfam.io",
         "group": "Enclii",
         "family": "MADFAM Platform",

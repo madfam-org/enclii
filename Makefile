@@ -1,5 +1,5 @@
 .PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-reconcilers
-.PHONY: test test-integration test-coverage test-benchmark test-all lint
+.PHONY: test test-integration test-coverage test-benchmark test-all check-drift lint
 .PHONY: run-switchyard run-ui run-reconcilers run-all
 .PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check clean
 .PHONY: precommit e2e
@@ -81,6 +81,16 @@ test-benchmark:
 
 test-all: test test-integration test-coverage
 	@echo "✅ All tests completed successfully"
+
+# Tunnel-route drift check (JSON ↔ Terraform)
+# Compares expected-tunnel-config.json against cloudflare.tf.
+# NOTE: This only catches drift at the Terraform layer. The 31 ecosystem
+# routes added at runtime by switchyard-api's domain provisioner are
+# intentionally NOT in Terraform — see docs/infrastructure/INFRA_ANATOMY.md.
+# To compare against live Cloudflare state, use:
+#   cloudflared tunnel route ingress list enclii-production
+check-drift:
+	@./tests/golden/infra/tunnel-routes-test.sh
 
 # Linting
 lint:

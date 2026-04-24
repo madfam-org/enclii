@@ -31,6 +31,14 @@ if [[ ! -f "${EXPECTED_FILE}" ]]; then
     exit 1
 fi
 
+# Fail loudly if jq is missing — the script parses JSON via jq below.
+# Silent success on missing jq is how this whole script went unnoticed.
+if ! command -v jq >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: jq is required but not installed${NC}"
+    echo "Install with: brew install jq (macOS) or apt install jq (Linux)"
+    exit 1
+fi
+
 echo "Checking Terraform tunnel routes against expected config..."
 echo ""
 
