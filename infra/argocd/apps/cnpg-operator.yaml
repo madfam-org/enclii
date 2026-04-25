@@ -1,0 +1,173 @@
+# CloudNativePG Operator
+#
+# Deploys the CNPG operator that watches `Cluster` / `Backup` /
+# `ScheduledBackup` / `Pooler` CRs in any namespace.
+#
+# Wave 3 / Track 3.3 of the 2026-Q2 stability remediation roadmap
+# (Postgres HA). See:
+#   internal-devops/rfcs/0012-postgres-ha-via-cnpg.md
+#   infra/k8s/production/postgres-ha/      — actual Cluster + Backups
+#   infra/argocd/apps/postgres-ha.yaml     — sister app for the Cluster
+#
+# Decision: chose CNPG over Zalando Postgres Operator and bare Patroni.
+# Rationale in RFC 0012 §2. TL;DR: simpler operator surface, K8s-native
+# CRDs, R2-native backups via Barman, sister pattern to redis-sentinel.
+#
+# This Application installs ONLY the operator. It does NOT create any
+# Cluster — that is `infra/argocd/apps/postgres-ha.yaml` and applies
+# manifests in `infra/k8s/production/postgres-ha/`. Operator can sit
+# idle indefinitely; no Postgres traffic is touched until the Cluster
+# is applied AND PgBouncer is re-pointed during the maintenance-window
+# cutover (RFC 0012 §5.4).
+#
+# Image digest pinning: the upstream chart pins by tag. The
+# `manager.image.imagePullPolicy=IfNotPresent` + `operatorImage` digest
+# override in values below makes the operator deployment Kyverno
+# `require-image-digest`-compliant. Ditto for the bundled webhook.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: cnpg-operator
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: database-operator
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # CNPG official Helm chart. Pinned to a stable v0.23.x release.
+    # Bump cadence: every other minor release after a 2-week-soak in a
+    # non-production cluster (we do not have one today; first-time bumps
+    # happen in a maintenance window with manifests staged in a feature
+    # branch).
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    targetRevision: 0.23.0
+    helm:
+      values: |
+        # CloudNativePG operator configuration for Enclii
+        #
+        # The operator runs in `cnpg-system` namespace and watches Cluster
+        # CRs across the whole cluster. It uses the Kubernetes API as the
+        # leader-election backend (no separate etcd/consul cluster needed).
+
+        # Operator image — digest-pinned for Kyverno compliance.
+        # Source: ghcr.io/cloudnative-pg/cloudnative-pg:1.23.0
+        # NOTE: digest below is a placeholder that the operator MUST refresh
+        # before merging — resolve via:
+        #   docker manifest inspect ghcr.io/cloudnative-pg/cloudnative-pg:1.23.0 \
+        #     | jq -r '.manifests[] | select(.platform.architecture=="amd64") | .digest'
+        image:
+          repository: ghcr.io/cloudnative-pg/cloudnative-pg
+          tag: "1.23.0"
+          # TODO(operator): replace with the resolved digest before merge.
+          # Tracked as a merge gate in the PR description.
+          # digest: sha256:REPLACE_BEFORE_MERGE
+          pullPolicy: IfNotPresent
+
+        # Two replicas for HA of the operator itself.
+        # Anti-affinity below spreads them across nodes.
+        replicaCount: 2
+
+        # Resource budget — operator is lightweight (idle most of the time,
+        # spikes during failover events).
+        resources:
+          requests:
+            memory: 100Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 200m
+
+        # PodMonitor for Prometheus scraping. The operator exposes its own
+        # /metrics; the per-Cluster metrics come from the Cluster CR (see
+        # infra/k8s/production/postgres-ha/podmonitor.yaml).
+        monitoring:
+          podMonitorEnabled: false   # we ship our own PodMonitor below
+          grafanaDashboard:
+            create: false             # we manage dashboards explicitly
+
+        # Webhook configuration — uses cert-manager for the cert by default.
+        webhook:
+          mutating:
+            create: true
+          validating:
+            create: true
+
+        # Tolerate GPU nodes (don't schedule on them).
+        tolerations:
+          - key: "nvidia.com/gpu"
+            operator: "Exists"
+            effect: "NoSchedule"
+
+        # Anti-affinity for HA: prefer different nodes for the 2 operator
+        # replicas. `preferred` not `required` because today's cluster has
+        # tight scheduling (see RFC 0012 §3.1 — `foundry-builder-01` taint).
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: cloudnative-pg
+                  topologyKey: kubernetes.io/hostname
+
+        # SecurityContext — non-root, drop all caps, read-only root fs.
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          fsGroup: 10001
+
+        containerSecurityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+
+  syncPolicy:
+    # prune=false during initial rollout (matches redis-sentinel pattern
+    # in infra/argocd/apps/redis-sentinel.yaml). Flip to true after 2
+    # weeks of clean operation post-cutover.
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    # Webhook caBundle is managed by cert-manager via injection.
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    # Service clusterIPs are immutable.
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs

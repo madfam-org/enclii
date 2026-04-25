@@ -1,0 +1,102 @@
+---
+# NetworkPolicy for postgres-ha pods.
+#
+# Mirrors the existing pattern for the data namespace (compare with
+# infra/k8s/redis-sentinel/redis-ha.yaml NetworkPolicy at end of file).
+# Allows:
+#   - 5432 ingress from any namespace tagged enclii.dev/postgres-consumer
+#     (consumers across 9+ namespaces — dhanam, janua, enclii, karafiel,
+#      tezca, forgesight, fortuna, autoswarm, pravara-mes, ...)
+#   - 5432 ingress from pgbouncer pods in the data namespace
+#   - 9187 (CNPG metrics) ingress from monitoring namespace
+#   - 5432 between cluster pods (replication)
+#   - DNS egress (kube-dns)
+#   - HTTPS egress for R2 (Barman archive-push)
+#
+# We do NOT enumerate consumer namespaces here — consumers self-declare
+# via the namespace label, matching the redis-ha pattern.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ha
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: database-ha
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: postgres-ha
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 5432 from declared consumers (cross-namespace).
+    # IMPORTANT: today most ecosystem services route Postgres traffic
+    # through PgBouncer, NOT direct. The cross-namespace consumer rule
+    # below is for parity / future direct connections only. PgBouncer's
+    # rule below is what carries the actual production traffic.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              enclii.dev/postgres-consumer: "true"
+      ports:
+        - protocol: TCP
+          port: 5432
+    # 5432 from PgBouncer pods (same namespace).
+    - from:
+        - podSelector:
+            matchLabels:
+              app: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 5432
+    # 5432 between the cluster's own pods (replication).
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: postgres-ha
+      ports:
+        - protocol: TCP
+          port: 5432
+    # 9187 (CNPG metrics) from monitoring namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9187
+  egress:
+    # DNS — kube-dns.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Replication peer-to-peer.
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: postgres-ha
+      ports:
+        - protocol: TCP
+          port: 5432
+    # HTTPS egress for Barman → R2.
+    # We allow cluster-wide HTTPS rather than narrowing to R2's IP set
+    # (which rotates) — matches existing pgbackrest egress practice.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# Namespace label patch — the monitoring namespace must carry
+# `kubernetes.io/metadata.name: monitoring` for the ingress rule above
+# to match. K8s ≥1.21 sets this automatically, but documenting here.
+#
+# (Same situation for the consumer namespaces; the cluster-wide policy
+# in `infra/k8s/base/network-policies.yaml` documents the contract.)

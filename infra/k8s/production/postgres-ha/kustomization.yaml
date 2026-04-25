@@ -1,0 +1,36 @@
+# Postgres HA — Wave 3 / Track 3.3 of 2026-Q2 stability remediation.
+#
+# This kustomization is the source path for the ArgoCD `postgres-ha`
+# Application (see infra/argocd/apps/postgres-ha.yaml).
+#
+# It applies the CNPG Cluster CR, ScheduledBackup CR, monitoring rules,
+# and NetworkPolicy. The CNPG operator (separate ArgoCD Application:
+# infra/argocd/apps/cnpg-operator.yaml) MUST be running before this
+# kustomization can succeed — otherwise the Cluster CRD does not exist.
+#
+# Decision rationale: internal-devops/rfcs/0012-postgres-ha-via-cnpg.md
+# Failover drill: internal-devops/runbooks/postgres-failover-drill.md
+#
+# Cutover (the actual flip from single-instance to HA): operator-driven,
+# RFC §5.4 maintenance window. This kustomization is safe to deploy
+# immediately — it spins up a parallel Cluster that receives no traffic
+# until PgBouncer is re-pointed.
+#
+# r2-credentials.yaml.template is a TEMPLATE only — it is NOT included
+# in this kustomization. The actual Secret is applied manually before
+# this Cluster reconciles (post-Wave-2: managed by ESO from Vault).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: data
+
+resources:
+  - cluster.yaml
+  - scheduled-backup.yaml
+  - podmonitor.yaml
+  - network-policy.yaml
+
+commonLabels:
+  app.kubernetes.io/name: postgres-ha
+  app.kubernetes.io/component: database-ha
+  app.kubernetes.io/part-of: enclii
+  enclii.dev/managed-by: cnpg
