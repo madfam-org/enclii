@@ -1,8 +1,0 @@
-{
-  "branch": "main",
-  "manifestPath": "infra/k8s/production",
-  "name": "madlab",
-  "namespace": "madlab",
-  "partOf": "madlab",
-  "repoURL": "https://github.com/madfam-org/accionables-madlab.git"
-}
