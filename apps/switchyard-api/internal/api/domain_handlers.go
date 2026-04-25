@@ -17,9 +17,9 @@ import (
 )
 
 // AddCustomDomain adds a custom domain to a service
-// POST /api/v1/services/:service_id/domains
+// POST /api/v1/services/:id/domains
 func (h *Handler) AddCustomDomain(c *gin.Context) {
-	serviceID := c.Param("service_id")
+	serviceID := c.Param("id")
 	if serviceID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "service_id is required"})
 		return
@@ -147,9 +147,9 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 }
 
 // ListCustomDomains lists all custom domains for a service
-// GET /api/v1/services/:service_id/domains
+// GET /api/v1/services/:id/domains
 func (h *Handler) ListCustomDomains(c *gin.Context) {
-	serviceID := c.Param("service_id")
+	serviceID := c.Param("id")
 	if serviceID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "service_id is required"})
 		return
@@ -168,7 +168,7 @@ func (h *Handler) ListCustomDomains(c *gin.Context) {
 }
 
 // GetCustomDomain gets a specific custom domain
-// GET /api/v1/services/:service_id/domains/:domain_id
+// GET /api/v1/services/:id/domains/:domain_id
 func (h *Handler) GetCustomDomain(c *gin.Context) {
 	domainID := c.Param("domain_id")
 	if domainID == "" {
@@ -188,7 +188,7 @@ func (h *Handler) GetCustomDomain(c *gin.Context) {
 }
 
 // UpdateCustomDomain updates a custom domain
-// PATCH /api/v1/services/:service_id/domains/:domain_id
+// PATCH /api/v1/services/:id/domains/:domain_id
 func (h *Handler) UpdateCustomDomain(c *gin.Context) {
 	domainID := c.Param("domain_id")
 	if domainID == "" {
@@ -236,7 +236,7 @@ func (h *Handler) UpdateCustomDomain(c *gin.Context) {
 }
 
 // DeleteCustomDomain removes a custom domain
-// DELETE /api/v1/services/:service_id/domains/:domain_id
+// DELETE /api/v1/services/:id/domains/:domain_id
 func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 	domainID := c.Param("domain_id")
 	if domainID == "" {
@@ -285,7 +285,7 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 }
 
 // VerifyCustomDomain verifies domain ownership via DNS TXT record
-// POST /api/v1/services/:service_id/domains/:domain_id/verify
+// POST /api/v1/services/:id/domains/:domain_id/verify
 func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 	domainID := c.Param("domain_id")
 	if domainID == "" {

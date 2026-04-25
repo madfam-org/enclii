@@ -189,9 +189,9 @@ type AddDomainRequest struct {
 }
 
 // AddServiceDomain adds a domain to a service (enhanced version)
-// POST /api/v1/services/:service_id/domains
+// POST /api/v1/services/:id/domains
 func (h *Handler) AddServiceDomain(c *gin.Context) {
-	serviceID := c.Param("service_id")
+	serviceID := c.Param("id")
 	if serviceID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "service_id is required"})
 		return
