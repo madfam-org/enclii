@@ -45,6 +45,15 @@ template:
         effect: "NoSchedule"
     containers:
       - name: runner
+        # MADFAM hardened runner image: thin overlay on
+        # ghcr.io/actions/actions-runner that adds the system
+        # packages our CI needs (libatomic1 for pnpm; libasound2t64
+        # + libnss3 + libxkbcommon0 + libgbm1 for Playwright;
+        # jq + python3-pip for misc CI scripting).
+        # Built by .github/workflows/arc-runner-image.yml.
+        # Source: infra/docker/arc-runner/.
+        image: ghcr.io/madfam-org/enclii/arc-runner:stable
+        imagePullPolicy: IfNotPresent
         resources:
           requests:
             cpu: 500m
