@@ -33,6 +33,24 @@
     "service": "http://status-madfam.status.svc.cluster.local:80"
   },
   {
+    "_comment": "=== PER-PRODUCT STATUS PAGE ALIASES ===",
+    "_comment2": "All four route to the existing status-madfam service. Per-product filtering happens in the status app (filter-family ConfigMap key, future). Substantiates the '99.9% uptime' claim on each product's landing page.",
+    "hostname": "status.cotiza.studio",
+    "service": "http://status-madfam.status.svc.cluster.local:80"
+  },
+  {
+    "hostname": "status.dhan.am",
+    "service": "http://status-madfam.status.svc.cluster.local:80"
+  },
+  {
+    "hostname": "status.tezca.mx",
+    "service": "http://status-madfam.status.svc.cluster.local:80"
+  },
+  {
+    "hostname": "status.karafiel.mx",
+    "service": "http://status-madfam.status.svc.cluster.local:80"
+  },
+  {
     "_comment": "=== MONITORING (Protected by Zero Trust Access) ===",
     "hostname": "metrics.enclii.dev",
     "service": "http://prometheus.monitoring.svc.cluster.local:9090"
