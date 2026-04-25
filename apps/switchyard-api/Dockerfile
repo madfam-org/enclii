@@ -10,6 +10,7 @@ RUN apk add --no-cache git
 COPY go.work ./
 COPY apps/switchyard-api/go.mod apps/switchyard-api/go.sum ./apps/switchyard-api/
 COPY packages/sdk-go/go.mod ./packages/sdk-go/
+COPY packages/otel-go/go.mod packages/otel-go/go.sum ./packages/otel-go/
 
 # Create stub directories for other modules referenced in go.work
 RUN mkdir -p apps/reconcilers apps/roundhouse apps/waybill packages/cli && \
@@ -30,6 +31,7 @@ RUN go mod download
 WORKDIR /app
 COPY apps/switchyard-api/ ./apps/switchyard-api/
 COPY packages/sdk-go/ ./packages/sdk-go/
+COPY packages/otel-go/ ./packages/otel-go/
 
 # Build the application
 WORKDIR /app/apps/switchyard-api
