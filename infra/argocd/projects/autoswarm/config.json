@@ -1,6 +1,6 @@
 {
   "name": "autoswarm",
-  "repoURL": "https://github.com/madfam-org/autoswarm-office.git",
+  "repoURL": "https://github.com/madfam-org/selva-office.git",
   "branch": "main",
   "manifestPath": "infra/k8s/production",
   "namespace": "autoswarm",
