@@ -1,0 +1,161 @@
+name: Build ARC Runner Image
+
+# Builds and publishes the MADFAM hardened ARC runner image
+# (infra/docker/arc-runner) to GHCR.
+#
+# Why this runs on github-hosted ubuntu-latest, not on our self-hosted
+# ARC pool: chicken-and-egg. The whole point of this workflow is to
+# produce the runner image our ARC pool will consume. If we tried to
+# build it on the broken pool, the build would fail for the very
+# reasons we're fixing.
+#
+# Tag scheme:
+#   :<git-sha>  immutable, used for provenance + pre-merge testing
+#   :stable     moved to point at the latest main build
+#
+# See infra/docker/arc-runner/README.md for image rationale and the
+# rebuild cadence policy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/docker/arc-runner/**"
+      - ".github/workflows/arc-runner-image.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/docker/arc-runner/**"
+      - ".github/workflows/arc-runner-image.yml"
+  workflow_dispatch:
+    inputs:
+      tag_stable:
+        description: "Move :stable to point at this build (main only)."
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # for cosign keyless signing
+
+concurrency:
+  group: arc-runner-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/madfam-org/enclii/arc-runner
+
+jobs:
+  build:
+    name: Build + push arc-runner image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tag_sha: ${{ steps.meta.outputs.tag_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute tags
+        id: meta
+        run: |
+          TAG_SHA="${GITHUB_SHA::12}"
+          echo "tag_sha=${TAG_SHA}" >> "$GITHUB_OUTPUT"
+          # On main pushes (or workflow_dispatch with tag_stable=true on main),
+          # also publish :stable. Never on PRs.
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "publish_stable=true" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && \
+               [ "${GITHUB_REF}" = "refs/heads/main" ] && \
+               [ "${{ inputs.tag_stable }}" = "true" ]; then
+            echo "publish_stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_stable=false" >> "$GITHUB_OUTPUT"
+          fi
+          # PRs: build but don't push to keep the registry clean.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "push_image=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "push_image=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.meta.outputs.push_image == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble image tag list
+        id: tags
+        run: |
+          TAGS="${IMAGE_NAME}:${{ steps.meta.outputs.tag_sha }}"
+          if [ "${{ steps.meta.outputs.publish_stable }}" = "true" ]; then
+            TAGS="${TAGS}
+          ${IMAGE_NAME}:stable"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${TAGS}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/docker/arc-runner
+          file: infra/docker/arc-runner/Dockerfile
+          push: ${{ steps.meta.outputs.push_image == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          # Buildx cache via GHA cache backend — keeps rebuilds fast
+          # when only the Dockerfile changes but the base image is hot.
+          cache-from: type=gha,scope=arc-runner
+          cache-to: type=gha,mode=max,scope=arc-runner
+          labels: |
+            org.opencontainers.image.source=https://github.com/madfam-org/enclii
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            enclii.dev/component=arc-runner
+
+      - name: Install cosign
+        if: steps.meta.outputs.push_image == 'true'
+        uses: sigstore/cosign-installer@v3.7.0
+        with:
+          cosign-release: v2.4.3
+
+      - name: Sign image (keyless)
+        if: steps.meta.outputs.push_image == 'true'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          # Sign by digest, not tag — tags are mutable, digests aren't.
+          cosign sign --yes "${IMAGE_NAME}@${DIGEST}"
+
+      - name: Summary
+        run: |
+          {
+            echo "## ARC runner image build"
+            echo ""
+            echo "- Pushed: \`${{ steps.meta.outputs.push_image }}\`"
+            echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "- Tags:"
+            echo '```'
+            echo "${{ steps.tags.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "Consume from Helm values:"
+            echo '```yaml'
+            echo "image: ${IMAGE_NAME}:stable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
