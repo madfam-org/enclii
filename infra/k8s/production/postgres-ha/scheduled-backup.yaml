@@ -1,0 +1,39 @@
+---
+# CNPG ScheduledBackup — daily full backup to R2.
+#
+# Continuous WAL archiving is configured on the Cluster CR
+# (cluster.yaml `spec.backup.barmanObjectStore`); this CR adds a
+# nightly base backup so PITR has a reasonable replay floor.
+#
+# Cadence rationale:
+#   - Daily full at 02:30 UTC (just before pgbackrest's 03:00 daily,
+#     for the cutover window where both run in parallel).
+#   - Retention 30d on the Cluster CR ensures we keep at least a
+#     month of bases for PITR.
+#   - WAL archive is continuous (every ≤60s), so RPO target ≤5m is
+#     satisfied independent of base-backup cadence.
+#
+# Manual backups: operators run `kubectl create -f` against an
+# inline Backup CR (template in postgres-failover-drill.md §0.6
+# pre-flight).
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: postgres-ha-daily
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: database-ha
+    app.kubernetes.io/part-of: enclii
+spec:
+  # Daily at 02:30 UTC. Cron syntax with seconds field (CNPG default).
+  schedule: "0 30 2 * * *"
+  immediate: false   # do NOT take a backup right when this CR applies;
+                     # backup pipeline must be observed-healthy first
+                     # via the cutover runbook before backups run.
+  backupOwnerReference: self
+  cluster:
+    name: postgres-ha
+  # Include the WAL archive in the backup (default true; explicit for
+  # documentation).
+  method: barmanObjectStore

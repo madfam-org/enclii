@@ -1,0 +1,292 @@
+---
+# CloudNativePG Cluster — postgres-ha
+#
+# Wave 3 / Track 3.3 of the 2026-Q2 stability remediation roadmap.
+# Decision rationale: internal-devops/rfcs/0012-postgres-ha-via-cnpg.md
+#
+# Topology (RFC 0012 §3):
+#   - 3 instances (1 primary + 2 standbys)
+#   - synchronous replication on closest standby (RPO=0 for committed)
+#   - asynchronous replication on third instance (read-scaling + paranoia)
+#   - preferred (NOT required) anti-affinity until Decision #12 lands
+#     a 4th node (today's cluster has 3 nodes but `foundry-builder-01`
+#     is tainted NoSchedule for builder=true — so without preferred,
+#     2 of 3 instances would not schedule).
+#
+# Backup (RFC 0012 §3.3):
+#   - WAL archiving + base backups to R2 via Barman.
+#   - Same R2 bucket as P1.1 pgbackrest, distinct prefix
+#     (`s3://enclii-backups/cnpg/postgres-ha/`).
+#   - ScheduledBackup CR in scheduled-backup.yaml drives the cadence.
+#
+# Initialization:
+#   - Bootstrap from scratch (`initdb`). Existing data migrates via
+#     logical replication during cutover (RFC 0012 §5.3), NOT via this
+#     CR. This Cluster starts empty and is populated during the
+#     dual-write soak phase.
+#   - Once the soak completes, the cutover (RFC 0012 §5.4) flips
+#     PgBouncer to route here.
+#
+# Image digest pinning (Kyverno require-image-digest):
+#   `imageName` references a CNPG-blessed Postgres image. CNPG ships
+#   pinned versions; we add the digest below. The operator MUST refresh
+#   the digest before merging — see the cnpg-operator.yaml note.
+#
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-ha
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: database-ha
+    app.kubernetes.io/part-of: enclii
+spec:
+  # 3 instances. Bumping to 4 happens via PR after Decision #12 lands a
+  # 4th worker node (see internal-devops/runbooks/postgres-failover-drill.md §3).
+  instances: 3
+
+  # Pinned PostgreSQL version. We use the pgvector-enabled image because
+  # the existing single-instance Postgres is `pgvector/pgvector:pg15`
+  # (bloom-scroll, dhanam ML features depend on it). The CNPG community
+  # ships a pgvector flavor.
+  #
+  # TODO(operator): replace `tag` below with the resolved digest before
+  # merge. Tracked as a merge gate in the PR description.
+  imageName: ghcr.io/cloudnative-pg/postgresql:15.6-1
+  # imageName: ghcr.io/cloudnative-pg/postgresql@sha256:REPLACE_BEFORE_MERGE
+
+  # Primary update strategy: unsupervised — operator handles primary
+  # failover automatically. For supervised (manual approve), set to
+  # `supervised`. We pick unsupervised because the entire point of HA
+  # is automatic recovery.
+  primaryUpdateStrategy: unsupervised
+
+  # Postgres parameters. These are merged onto CNPG's defaults.
+  # We minimize overrides — CNPG's defaults are tuned for typical
+  # K8s deployments. Only set what differs from upstream.
+  postgresql:
+    parameters:
+      # Match what the existing single-instance uses for compatibility.
+      max_connections: "200"
+      shared_buffers: "256MB"
+      effective_cache_size: "768MB"
+      work_mem: "16MB"
+      maintenance_work_mem: "128MB"
+      random_page_cost: "1.1"            # SSD/NVMe
+      effective_io_concurrency: "200"
+      max_wal_size: "2GB"
+      min_wal_size: "256MB"
+      # Logging — match Loki ingest format used by Fluent Bit.
+      log_destination: "stderr"
+      logging_collector: "off"
+      log_min_duration_statement: "500"  # ms
+      log_line_prefix: "%t [%p] %q%u@%d "
+
+      # Sync replication: at least 1 standby must ack each commit.
+      # Quorum mode means: degrades to async if both standbys gone
+      # (writes continue + alert fires; do NOT use strict mode here).
+      synchronous_commit: "on"
+
+      # pgvector extension (matches existing pgvector/pgvector:pg15).
+      shared_preload_libraries: "pg_stat_statements,pgvector"
+
+  # Replication topology — RFC 0012 §3.1.
+  # CNPG synchronous mode "any 1" means: at least 1 of the standbys
+  # must confirm before commit. With 2 standbys, this gives us 1 sync +
+  # 1 async automatically, and survives losing either standby.
+  minSyncReplicas: 1
+  maxSyncReplicas: 1
+
+  # Resource budget per instance — same envelope as today's single
+  # instance × 3 (RFC 0012 §9 risk: memory headroom verified during
+  # dual-write phase).
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+  # Storage — Longhorn 2-replica matches existing PVC pattern.
+  storage:
+    size: 20Gi
+    storageClass: longhorn
+    # We do NOT want CNPG to re-create PVCs on instance replacement
+    # except in rebuild-from-empty cases. Default behavior is correct.
+
+  # Anti-affinity — RFC 0012 §3.1.
+  # `preferred` not `required` until Decision #12 lands the 4th node.
+  # `topologyKey: kubernetes.io/hostname` spreads pods across distinct
+  # nodes when possible.
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+    # Tolerate GPU nodes (don't schedule there). Mirrors existing pattern
+    # in keda.yaml, external-secrets-operator.yaml.
+    tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+
+  # Bootstrap: start from an empty database.
+  # During the cutover (RFC 0012 §5.3), we will set up logical replication
+  # FROM the existing single-instance INTO this cluster as a one-way
+  # mirror. That happens via post-bootstrap operator action (a SQL
+  # snippet documented in the runbook), NOT via this CR.
+  bootstrap:
+    initdb:
+      database: enclii
+      owner: enclii
+      # Locale + encoding match existing single-instance.
+      encoding: UTF8
+      localeCollate: en_US.utf8
+      localeCType: en_US.utf8
+      # Post-init SQL creates the placeholder roles. Per-database
+      # creation (forgesight, dhanam, karafiel, ...) happens during
+      # the cutover via the existing init-enclii.sh pattern, NOT here
+      # — those databases will arrive via logical replication.
+      postInitSQL:
+        - "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+        - "CREATE EXTENSION IF NOT EXISTS vector;"
+        - "GRANT pg_monitor TO enclii;"
+
+  # Superuser secret — CNPG auto-creates the secret if not specified,
+  # but we want a stable secret name for ESO + PgBouncer to reference.
+  # The secret will be created by ESO from Vault (post-Wave 2) at:
+  #   `data/postgres-ha-superuser`  (key: username/password)
+  #
+  # For initial bootstrap (before ESO is wired), apply manually:
+  #   kubectl -n data create secret generic postgres-ha-superuser \
+  #     --from-literal=username=postgres \
+  #     --from-literal=password='...'
+  enableSuperuserAccess: true
+  superuserSecret:
+    name: postgres-ha-superuser
+
+  # Backup configuration — RFC 0012 §3.3.
+  # Uses Barman against the same R2 bucket as P1.1 pgbackrest, with a
+  # distinct prefix to avoid stomping on the existing single-instance
+  # backups during the parallel-run period.
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://enclii-backups/cnpg/postgres-ha"
+      endpointURL: "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+      s3Credentials:
+        # ESO-managed secret (sister to pgbackrest-r2-credentials, see
+        # infra/k8s/platform-infra/pgbackrest-r2-credentials.yaml.template).
+        # The RFC's owner-action gate item 1 (R2 credential) covers this.
+        accessKeyId:
+          name: cnpg-r2-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-r2-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        # Compression — zstd matches what pgbackrest uses.
+        compression: zstd
+        maxParallel: 4
+      data:
+        compression: zstd
+        # Encryption: client-side AES-256 if we set the secret;
+        # otherwise server-side R2 default (still encrypted at rest).
+        # We default to server-side here for symmetry with how P1.1
+        # currently runs (no client-side AES).
+        encryption: ""
+    # Retention: 30 days (matches the existing pgbackrest retention).
+    retentionPolicy: "30d"
+
+  # Monitoring (PodMonitor in podmonitor.yaml). Built-in CNPG metrics
+  # endpoint on every instance pod at :9187/metrics.
+  monitoring:
+    enablePodMonitor: false   # we ship our own PodMonitor explicitly
+    customQueriesConfigMap:
+      - name: cnpg-custom-queries
+        key: queries.yaml
+
+  # Topology distribution — `inheritedMetadata` lets us tag every pod /
+  # service / PVC with these labels for Grafana dashboards.
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/part-of: enclii
+      app.kubernetes.io/component: database-ha
+      enclii.dev/managed-by: cnpg
+---
+# Custom queries ConfigMap — extra metrics for our Grafana dashboards.
+# CNPG's built-in metrics cover the basics; we add a few application-
+# level queries (drill_writes count, replication slot lag) used by the
+# failover drill runbook.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cnpg-custom-queries
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: database-ha
+    app.kubernetes.io/part-of: enclii
+data:
+  queries.yaml: |
+    # Replication slot lag — used during the failover drill to confirm
+    # zero-lag before the cutover.
+    pg_replication_slot:
+      query: |
+        SELECT
+          slot_name,
+          coalesce(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn), 0) AS lag_bytes,
+          active::int AS active
+        FROM pg_replication_slots
+      master: true
+      metrics:
+        - slot_name:
+            usage: LABEL
+            description: "Replication slot name"
+        - lag_bytes:
+            usage: GAUGE
+            description: "Bytes the slot is behind the primary's current WAL"
+        - active:
+            usage: GAUGE
+            description: "1 if the slot has a connected consumer, else 0"
+
+    # WAL archive freshness — alert if archiver hasn't shipped a WAL
+    # in over 5 min (matches the alert rule in podmonitor.yaml).
+    pg_stat_archiver_age:
+      query: |
+        SELECT
+          extract(epoch FROM (now() - last_archived_time))::int AS seconds_since_last_archive,
+          failed_count
+        FROM pg_stat_archiver
+      master: true
+      metrics:
+        - seconds_since_last_archive:
+            usage: GAUGE
+            description: "Seconds since the last successful WAL archive"
+        - failed_count:
+            usage: COUNTER
+            description: "Number of failed archive attempts"
+
+    # Sync vs async standby state — for dashboards.
+    pg_stat_replication_sync:
+      query: |
+        SELECT
+          application_name,
+          state,
+          sync_state,
+          coalesce(extract(epoch FROM replay_lag), 0)::int AS replay_lag_seconds
+        FROM pg_stat_replication
+      master: true
+      metrics:
+        - application_name:
+            usage: LABEL
+            description: "Standby instance name"
+        - state:
+            usage: LABEL
+            description: "Replication state (streaming, catchup, ...)"
+        - sync_state:
+            usage: LABEL
+            description: "sync, async, potential, quorum, or async"
+        - replay_lag_seconds:
+            usage: GAUGE
+            description: "Replay lag in seconds"

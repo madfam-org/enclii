@@ -1,0 +1,85 @@
+# Postgres HA Cluster Application
+#
+# Deploys the CNPG `Cluster` CR + `ScheduledBackup` CR + PodMonitor +
+# NetworkPolicy that together constitute the HA Postgres cluster
+# (`postgres-ha`) in the `data` namespace.
+#
+# This Application is the SISTER of `cnpg-operator.yaml`. The operator
+# Application installs the controller; this one applies the Cluster CR
+# that the controller reconciles.
+#
+# Wave 3 / Track 3.3 of the 2026-Q2 stability remediation roadmap.
+# See:
+#   internal-devops/rfcs/0012-postgres-ha-via-cnpg.md         (decision)
+#   internal-devops/runbooks/postgres-failover-drill.md       (drill)
+#   infra/k8s/production/postgres-ha/                         (manifests)
+#
+# The `Cluster` runs IN PARALLEL with the existing single-instance
+# `data/postgres` Deployment. Consumers do NOT migrate at deploy time;
+# migration is an operator-driven cutover (RFC 0012 §5.4).
+#
+# Services exposed by this Application (all in `data` namespace):
+#   postgres-ha-rw.data.svc.cluster.local:5432    primary (writes)
+#   postgres-ha-ro.data.svc.cluster.local:5432    standbys only (read replicas)
+#   postgres-ha-r.data.svc.cluster.local:5432     primary + standbys (any read)
+#
+# After the cutover (RFC 0012 §5.4), pgbouncer.ini is updated to point
+# at postgres-ha-rw. Until then, pgbouncer continues pointing at the old
+# `postgres.data.svc:5432` and this Cluster sits idle as a hot standby.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres-ha
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: database-ha
+  annotations:
+    # Deploy AFTER the operator (cnpg-operator must have its CRDs
+    # installed before we can apply Cluster CRs).
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/postgres-ha
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+
+  syncPolicy:
+    automated:
+      # prune=false during cutover so an accidental git revert
+      # does NOT delete a running Cluster (and thereby its PVCs).
+      # Flip to true 30 days after cutover (RFC 0012 §5.5).
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    # CNPG manages many fields on the Cluster status; ignore them all.
+    - group: postgresql.cnpg.io
+      kind: Cluster
+      jsonPointers:
+        - /status
+    # ScheduledBackup status is operator-managed.
+    - group: postgresql.cnpg.io
+      kind: ScheduledBackup
+      jsonPointers:
+        - /status

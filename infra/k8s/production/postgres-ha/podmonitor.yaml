@@ -1,0 +1,148 @@
+---
+# Prometheus PodMonitor for the postgres-ha Cluster.
+#
+# CNPG instance pods expose metrics on port 9187 by default. The
+# operator labels each pod with `cnpg.io/cluster: postgres-ha`, so
+# we select on that.
+#
+# This PodMonitor is consumed by the in-cluster Prometheus deployed
+# via infra/k8s/production/monitoring/prometheus.yaml. The scrape
+# config there is regex-driven and picks up any PodMonitor with the
+# `app.kubernetes.io/part-of: enclii` label.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: postgres-ha
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: database-ha
+    app.kubernetes.io/part-of: enclii
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: postgres-ha
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      path: /metrics
+      # CNPG metric labels include cluster + role (primary/standby).
+      # Drop pod IP to keep cardinality bounded.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_cnpg_io_cluster]
+          targetLabel: cluster
+        - sourceLabels: [__meta_kubernetes_pod_label_cnpg_io_instanceRole]
+          targetLabel: instance_role
+        - action: labeldrop
+          regex: pod
+---
+# PrometheusRule — alerts driven by the metrics above.
+#
+# Five rules:
+#   - CNPGClusterDegraded:          fewer than 3 ready instances
+#   - CNPGSyncReplicaLost:          synchronous standby missing
+#   - CNPGFailoverInProgress:       primary changed (informational)
+#   - CNPGBackupArchiveBehind:      WAL archiver behind ≥5 min
+#   - CNPGMultipleWritablePrimaries:split-brain detection (paranoid)
+#
+# Wired into AlertManager per existing config in
+# infra/k8s/production/monitoring/alertmanager.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: postgres-ha-rules
+  namespace: data
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: database-ha
+    app.kubernetes.io/part-of: enclii
+    # Match the existing rule discovery selector.
+    enclii.dev/prometheus-rules: "true"
+spec:
+  groups:
+    - name: postgres-ha.rules
+      interval: 30s
+      rules:
+        - alert: CNPGClusterDegraded
+          expr: |
+            cnpg_collector_instances_ready < 3
+          for: 2m
+          labels:
+            severity: critical
+            component: postgres-ha
+          annotations:
+            summary: "Postgres HA cluster has {{ $value }} of 3 instances ready"
+            description: |
+              The CNPG Cluster `postgres-ha` in `data` namespace has fewer
+              than 3 ready instances for over 2 minutes. Capacity for a
+              second failure is reduced or zero. Investigate via
+              `kubectl -n data get cluster postgres-ha`.
+            runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/postgres-failover-drill.md"
+
+        - alert: CNPGSyncReplicaLost
+          expr: |
+            cnpg_collector_sync_replicas == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: postgres-ha
+          annotations:
+            summary: "Postgres HA has no synchronous replica"
+            description: |
+              No standby is in `sync` state. Cluster is degraded to
+              async-only — RPO is no longer 0 for committed transactions.
+              The other standby will automatically promote to sync once
+              caught up; if this alert persists for >5 minutes, check
+              `pg_stat_replication` directly.
+            runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/postgres-failover-drill.md"
+
+        - alert: CNPGFailoverInProgress
+          expr: |
+            changes(cnpg_collector_primary_pod[5m]) > 0
+          for: 1m
+          labels:
+            severity: info
+            component: postgres-ha
+          annotations:
+            summary: "Postgres HA primary changed in the last 5 minutes"
+            description: |
+              The CNPG primary pod for `postgres-ha` changed. This may be
+              an expected drill (see postgres-failover-drill.md) or an
+              unexpected real failover. Verify by reading recent operator
+              logs: `kubectl -n cnpg-system logs -l app.kubernetes.io/name=cloudnative-pg`.
+
+        - alert: CNPGBackupArchiveBehind
+          expr: |
+            pg_stat_archiver_age_seconds_since_last_archive > 300
+          for: 5m
+          labels:
+            severity: critical
+            component: postgres-ha
+          annotations:
+            summary: "Postgres HA WAL archive is {{ $value }}s behind"
+            description: |
+              CNPG's WAL archiver has not shipped a segment to R2 in over
+              5 minutes. RPO commitment is at risk. Check operator logs
+              and R2 reachability. See runbook for recovery.
+            runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/postgres-wal-archiving.md"
+
+        - alert: CNPGMultipleWritablePrimaries
+          # If two pods both report `primary` role, that's split-brain.
+          # In a single-cluster K8s topology this should be impossible,
+          # but the alert is cheap insurance per RFC 0012 §4.
+          expr: |
+            count by (cluster) (cnpg_collector_pg_is_in_recovery == 0) > 1
+          for: 1m
+          labels:
+            severity: critical
+            component: postgres-ha
+            page: true
+          annotations:
+            summary: "Postgres HA has multiple writable primaries (SPLIT-BRAIN)"
+            description: |
+              More than one CNPG pod reports `pg_is_in_recovery() = false`.
+              This indicates split-brain; data divergence is likely. Stop
+              all writes (scale pgbouncer to 0) and follow the recovery
+              procedure in the failover drill runbook §4.
+            runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/postgres-failover-drill.md#4-recovery-from-split-brain-unlikely-but-documented"
