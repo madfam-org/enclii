@@ -28,6 +28,20 @@ name: Reusable — Build, sign, publish, pin
 #   ENCLII_API_URL / ENCLII_DEPLOY_TOKEN (optional — for callback)
 #   ENCLII_COMMIT_TOKEN (optional — PAT to push past branch protection;
 #                        falls through to GITHUB_TOKEN otherwise)
+#   NPM_MADFAM_TOKEN (required for repos consuming @janua/@madfam/@forj/@cotiza
+#                     scoped packages from npm.madfam.io)
+#
+# BuildKit secret: npmrc
+#   This workflow forwards `NPM_MADFAM_TOKEN` to `docker/build-push-action`
+#   as a BuildKit secret named `npmrc`. Consumer Dockerfiles MUST mount it
+#   on any `pnpm install` line that needs auth to npm.madfam.io:
+#
+#       RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=true \
+#           pnpm install --frozen-lockfile
+#
+#   The secret never lands in an image layer. Do NOT `COPY .npmrc ./`
+#   into the build context — the committed `.npmrc` only carries scope
+#   mappings and the auth token must come from the secret mount.
 #
 # Why this is safe:
 #   - Base-image-mirror preference lives in each repo's Dockerfiles
@@ -246,6 +260,14 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+          # BuildKit secret: forwarded to Dockerfiles via
+          #   RUN --mount=type=secret,id=npmrc,target=/root/.npmrc ...
+          # Carries the auth token for npm.madfam.io scoped packages
+          # (@janua, @madfam, @forj, @cotiza). Never lands in an image layer.
+          # Repos that don't consume private packages can still receive the
+          # secret harmlessly — it's only read when a Dockerfile mounts it.
+          secrets: |
+            npmrc=//npm.madfam.io/:_authToken=${{ secrets.NPM_MADFAM_TOKEN }}
 
       - name: Sign image (keyless, Fulcio/Rekor)
         env:
