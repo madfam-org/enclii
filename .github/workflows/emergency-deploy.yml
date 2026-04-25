@@ -137,6 +137,12 @@ jobs:
     if: always() && needs.emergency-build.result == 'success'
     permissions:
       contents: write
+      # GHCR image read requires explicit packages:read scope on the workflow
+      # token. Without it, `docker buildx imagetools inspect` HEADs return 403
+      # even after `docker login` succeeds — the token simply isn't authorized
+      # to read the manifest. Verified via run 24939981458 ("403 Forbidden"
+      # against /v2/madfam-org/enclii/switchyard-api/manifests/<sha>).
+      packages: read
 
     steps:
       - uses: actions/checkout@v6
