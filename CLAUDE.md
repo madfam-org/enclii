@@ -13,7 +13,7 @@ Enclii is an open source DevOps platform for deploying, scaling, and operating c
 **Build Pipeline:** GitHub webhook CI/CD with Buildpacks - **Operational**
 **GitOps:** ArgoCD App-of-Apps (28 apps across 22 namespaces) with self-heal - **Operational** (Jan 2026)
 **Storage:** Longhorn CSI v1.7.2 (17 volumes, 2-replica across nodes) - **Operational** (Jan 2026)
-**Last Audit:** Apr 7, 2026 — Production 530 recovery (server power-on, tunnel route fix, EX44 3rd node ordered), S110 remediation (Yantra4D domain migration, logging Kyverno fix, PostHog cleanup, CrashLoop fixes) ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
+**Last Audit:** Apr 25, 2026 — Stability remediation session: emergency-deploy GHCR auth + multi-arch digest pipeline restored (#136, #137); ARC custom runner image rolled out (#138); ApplicationSet madlab dedup (#140); Selva cutover Layer 1 (#141); ARC max-replicas baseline 2→12 (#143); bitnami/kubectl → bitnamilegacy purge across 5 CronJobs (#144). 15 owner decisions captured in [internal-devops/decisions/2026-04-25-owner-decisions-log.md](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-04-25-owner-decisions-log.md). Earlier: Apr 7, 2026 — Production 530 recovery, S110 remediation ([report](./docs/infrastructure/INFRA_ANATOMY.md)) ([capacity](./docs/infrastructure/CAPACITY_ROADMAP.md))
 
 ### Port Allocation
 
