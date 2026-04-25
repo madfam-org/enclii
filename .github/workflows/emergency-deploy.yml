@@ -158,25 +158,35 @@ jobs:
 
       - name: Update image digests from services.json
         run: |
+          set -euo pipefail
           UPDATED=0
           MODIFIED_FILES=""
           MATRIX='${{ needs.resolve-matrix.outputs.matrix }}'
 
-          echo "$MATRIX" | jq -c '.include[]' | while IFS= read -r line; do
+          # NOTE: digest resolution uses `docker buildx imagetools inspect`
+          # rather than `docker manifest inspect | jq -r '.digest'`. The
+          # manifest-inspect JSON has no top-level `.digest` field (it's
+          # either a manifest list with `.manifests[].digest` or a single
+          # manifest with no self-digest), so the previous code returned
+          # "null" → empty DIGEST → no-op `kustomize edit` → silent skip.
+          # buildx imagetools authenticates via the docker login above and
+          # prints `Digest: sha256:…` for both single-arch and index images.
+          while IFS= read -r line; do
             NAME=$(echo "$line" | jq -r '.name')
             IMAGE=$(echo "$line" | jq -r '.image')
             KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
             KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
 
-            DIGEST=$(docker manifest inspect ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }} 2>/dev/null | jq -r '.digest' || echo "")
-            if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
-              echo "Updating ${NAME}: ${KUSTOMIZE_IMAGE}@${DIGEST}"
-              (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
-              UPDATED=$((UPDATED + 1))
-            else
-              echo "⚠️ Could not resolve ${IMAGE} digest"
+            IMAGE_TAG="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
+            DIGEST=$(docker buildx imagetools inspect "$IMAGE_TAG" | awk '/^Digest:/{print $2; exit}')
+            if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+              echo "::error::Failed to resolve digest for $IMAGE_TAG"
+              exit 1
             fi
-          done
+            echo "Updating ${NAME}: ${KUSTOMIZE_IMAGE}@${DIGEST}"
+            (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
+            UPDATED=$((UPDATED + 1))
+          done < <(echo "$MATRIX" | jq -c '.include[]')
 
           echo "Updated $UPDATED service digest(s)"
 
