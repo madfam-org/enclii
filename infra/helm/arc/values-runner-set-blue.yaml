@@ -8,9 +8,16 @@
 
 runnerScaleSetName: "madfam-runners-blue"
 
-# Scale configuration — 2vCPU/4GB builder node, keep concurrency low
+# Scale configuration — builder node now spreads across foundry-builder-01
+# AND foundry-cp / foundry-worker-01 (see runtime nodeSelector relaxation in
+# values-runner-set.yaml). Lift max to 12 so ecosystem-wide CI bursts
+# (karafiel + forj + enclii merging on the same minute) drain in one wave
+# instead of queueing for 6+ minutes behind each other.
+# Live cluster currently runs at maxRunners=6 (out-of-band helm patch).
+# Apply this change with: helm upgrade madfam-runners-blue --reuse-values
+# --set maxRunners=12 in arc-runners namespace.
 minRunners: 1
-maxRunners: 2
+maxRunners: 12
 
 # Blue-specific labels for identification
 template:
