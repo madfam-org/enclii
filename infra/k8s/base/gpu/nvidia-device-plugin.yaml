@@ -82,7 +82,7 @@ spec:
           serviceAccountName: gpu-node-labeler
           containers:
             - name: labeler
-              image: bitnami/kubectl:1.33
+              image: bitnamilegacy/kubectl:1.33.4
               command:
                 - /bin/sh
                 - -c
