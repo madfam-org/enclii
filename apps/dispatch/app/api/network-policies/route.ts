@@ -66,10 +66,22 @@ function summarizePorts(ports: PortLike[] | undefined): string {
     .join(',')
 }
 
+interface RawNetworkPolicy {
+  metadata?: { name?: string; namespace?: string; creationTimestamp?: string | Date }
+  spec?: {
+    podSelector?: { matchLabels?: Record<string, string> }
+    policyTypes?: string[]
+    ingress?: { from?: PeerLike[]; ports?: PortLike[] }[]
+    egress?: { to?: PeerLike[]; ports?: PortLike[] }[]
+  }
+}
+
 async function fetchPolicies(): Promise<NetworkPolicySummary[]> {
   const api = networkingApi()
-  const list = await api.listNetworkPolicyForAllNamespaces()
-  return list.items.map((np) => {
+  const result = (await api.listNetworkPolicyForAllNamespaces()) as
+    | { body?: { items?: RawNetworkPolicy[] }; items?: RawNetworkPolicy[] }
+  const items: RawNetworkPolicy[] = result.body?.items ?? result.items ?? []
+  return items.map((np) => {
     const ingress = np.spec?.ingress ?? []
     const egress = np.spec?.egress ?? []
     const ingressSummary = ingress.map((rule) => {

@@ -46,14 +46,14 @@ interface ArgoApplicationItem {
 
 async function fetchApplications(): Promise<ArgoApplicationSummary[]> {
   const api = customObjectsApi()
-  const list = (await api.listNamespacedCustomObject({
-    group: ARGO_GROUP,
-    version: ARGO_VERSION,
-    namespace: ARGO_NAMESPACE,
-    plural: APPLICATIONS_PLURAL,
-  })) as { items?: ArgoApplicationItem[] }
+  const result = (await api.listNamespacedCustomObject(
+    ARGO_GROUP,
+    ARGO_VERSION,
+    ARGO_NAMESPACE,
+    APPLICATIONS_PLURAL
+  )) as { body: { items?: ArgoApplicationItem[] } }
 
-  return (list.items ?? []).map((item) => {
+  return (result.body.items ?? []).map((item) => {
     const status = item.status ?? {}
     const sync = status.sync ?? {}
     const health = status.health ?? {}

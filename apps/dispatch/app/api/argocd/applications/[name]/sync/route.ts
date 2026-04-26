@@ -39,16 +39,18 @@ export async function POST(
 
   try {
     const api = customObjectsApi()
+    // v0.22.x positional signature: patchNamespacedCustomObject(group, version,
+    // namespace, plural, name, body, dryRun?, fieldManager?, force?, options?).
     await api.patchNamespacedCustomObject(
-      {
-        group: ARGO_GROUP,
-        version: ARGO_VERSION,
-        namespace: ARGO_NAMESPACE,
-        plural: APPLICATIONS_PLURAL,
-        name,
-        body: { operation: { sync: {} } },
-      },
-      // ArgoCD uses merge-patch semantics for the operation field.
+      ARGO_GROUP,
+      ARGO_VERSION,
+      ARGO_NAMESPACE,
+      APPLICATIONS_PLURAL,
+      name,
+      { operation: { sync: {} } },
+      undefined,
+      undefined,
+      undefined,
       { headers: { 'Content-Type': 'application/merge-patch+json' } }
     )
 

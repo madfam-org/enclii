@@ -94,16 +94,21 @@ function inferRole(labels: Record<string, string> | undefined): TopologyNode['ro
   return 'worker'
 }
 
+function unwrap<T>(res: { body?: T } | T): T {
+  return (res as { body?: T }).body ?? (res as T)
+}
+
 async function fetchTopology(): Promise<TopologyResponse> {
   const core = coreApi()
   const apps = appsApi()
 
+  // v0.22.x returns { response, body }; later builds may return body directly.
   const [nodesRes, namespacesRes, podsRes, servicesRes, deploymentsRes] = await Promise.all([
-    core.listNode(),
-    core.listNamespace(),
-    core.listPodForAllNamespaces(),
-    core.listServiceForAllNamespaces(),
-    apps.listDeploymentForAllNamespaces(),
+    core.listNode().then((r) => unwrap(r)),
+    core.listNamespace().then((r) => unwrap(r)),
+    core.listPodForAllNamespaces().then((r) => unwrap(r)),
+    core.listServiceForAllNamespaces().then((r) => unwrap(r)),
+    apps.listDeploymentForAllNamespaces().then((r) => unwrap(r)),
   ])
 
   const nowMs = Date.now()

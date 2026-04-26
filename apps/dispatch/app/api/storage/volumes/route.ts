@@ -79,23 +79,17 @@ const ROBUSTNESS_RANK: Record<LonghornRobustness, number> = {
 async function fetchVolumes(): Promise<LonghornVolumeSummary[]> {
   const api = customObjectsApi()
 
-  const [volRes, repRes] = await Promise.all([
-    api.listNamespacedCustomObject({
-      group: LONGHORN_GROUP,
-      version: LONGHORN_VERSION,
-      namespace: LONGHORN_NAMESPACE,
-      plural: VOLUMES_PLURAL,
-    }) as Promise<{ items?: LonghornVolumeItem[] }>,
-    api.listNamespacedCustomObject({
-      group: LONGHORN_GROUP,
-      version: LONGHORN_VERSION,
-      namespace: LONGHORN_NAMESPACE,
-      plural: 'replicas',
-    }) as Promise<{ items?: LonghornReplicaItem[] }>,
+  const [volBody, repBody] = await Promise.all([
+    api
+      .listNamespacedCustomObject(LONGHORN_GROUP, LONGHORN_VERSION, LONGHORN_NAMESPACE, VOLUMES_PLURAL)
+      .then((r) => (r as { body: { items?: LonghornVolumeItem[] } }).body),
+    api
+      .listNamespacedCustomObject(LONGHORN_GROUP, LONGHORN_VERSION, LONGHORN_NAMESPACE, 'replicas')
+      .then((r) => (r as { body: { items?: LonghornReplicaItem[] } }).body),
   ])
 
   const replicasByVolume = new Map<string, VolumeReplica[]>()
-  for (const r of repRes.items ?? []) {
+  for (const r of repBody.items ?? []) {
     const volName = r.spec?.volumeName ?? ''
     const list = replicasByVolume.get(volName) ?? []
     list.push({
@@ -107,7 +101,7 @@ async function fetchVolumes(): Promise<LonghornVolumeSummary[]> {
     replicasByVolume.set(volName, list)
   }
 
-  return (volRes.items ?? []).map((v) => {
+  return (volBody.items ?? []).map((v) => {
     const name = v.metadata?.name ?? ''
     const sizeBytes = parseMemory(v.spec?.size)
     const k8sStatus = v.status?.kubernetesStatus ?? {}
