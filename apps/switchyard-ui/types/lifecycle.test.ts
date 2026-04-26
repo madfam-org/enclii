@@ -142,15 +142,14 @@ function makeEvent(
     created_at: string;
   },
 ): LifecycleEvent {
+  // Spread overrides last so its required keys (id/commit_sha/created_at)
+  // override the defaults below.
   return {
-    id: overrides.id,
     repo_full_name: 'org/repo',
-    commit_sha: overrides.commit_sha,
     branch: 'main',
     ref: 'refs/heads/main',
     event_type: 'push_received',
     source: 'github_webhook',
-    created_at: overrides.created_at,
     ...overrides,
   };
 }
