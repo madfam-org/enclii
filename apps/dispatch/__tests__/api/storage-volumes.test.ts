@@ -121,7 +121,9 @@ describe('GET /api/storage/volumes', () => {
   })
 
   it('returns 500 on Longhorn CR list failure', async () => {
+    // Both calls in Promise.all get a mock — Promise.all rejects on the first failure.
     mockListCustomObject.mockRejectedValueOnce(new Error('CRD not found'))
+    mockListCustomObject.mockResolvedValueOnce({ body: { items: [] } })
 
     const response = await GET()
     const body = (await response.json()) as { error: string }
