@@ -20,6 +20,36 @@ export interface CompactService {
   version?: string;
   replicas?: string;
   environment?: string;
+  // Image URI of the currently-running release. Digest-pinned in production by
+  // the Kyverno require-image-digest policy. Used to render the truncated
+  // digest chip so operators can confirm what's running before triggering a
+  // rollback. Source: Service.current_image_uri (parity audit gap #5).
+  currentImageUri?: string;
+}
+
+// Extracts the trailing digest fragment from a full image URI for display.
+// Inputs and outputs:
+//   "ghcr.io/madfam-org/svc@sha256:abc123def4567890" -> "sha256:abc123def4567"
+//   "ghcr.io/madfam-org/svc:v1.2.3"                  -> "v1.2.3"
+//   ""                                               -> ""
+// Tests cover both styles + the empty case.
+export function shortImageRef(uri: string | undefined | null): string {
+  if (!uri) return "";
+  const atIdx = uri.lastIndexOf("@");
+  if (atIdx >= 0) {
+    const digest = uri.slice(atIdx + 1);
+    // sha256:HEX — show the algo + first 12 chars of the hash
+    const colonIdx = digest.indexOf(":");
+    if (colonIdx >= 0) {
+      return `${digest.slice(0, colonIdx + 1)}${digest.slice(colonIdx + 1, colonIdx + 13)}`;
+    }
+    return digest.slice(0, 19);
+  }
+  const colonIdx = uri.lastIndexOf(":");
+  if (colonIdx >= 0 && colonIdx > uri.lastIndexOf("/")) {
+    return uri.slice(colonIdx + 1);
+  }
+  return "";
 }
 
 export interface CompactProject {
@@ -168,6 +198,15 @@ export function ProjectCardCompact({
                         <span className="truncate font-medium max-w-[100px]">
                           {service.name}
                         </span>
+                        {service.currentImageUri && (
+                          <span
+                            className="hidden shrink-0 rounded border border-border/40 bg-muted/30 px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground md:inline-block"
+                            title={service.currentImageUri}
+                            aria-label={`Running image: ${service.currentImageUri}`}
+                          >
+                            {shortImageRef(service.currentImageUri)}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-1 py-1">
