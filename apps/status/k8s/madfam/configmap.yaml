@@ -24,12 +24,18 @@ data:
   #   - description  : short description
   #
   # Product families (RFC 0002 S1):
-  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, routecraft, enclii, janua
+  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, routecraft, tulana, enclii, janua
   #   Selva Swarm          — selva-office services
   #   Rondelio             — rondel.io family
   #   Digital Fabrication  — digifab, yantra4d, pravara-mes, primavera3d, forj, forgesight
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
+  #
+  # Updated: 2026-04-26 — added Tulana group (Admin, API) per operator request.
+  # Tulana is the pricing-intelligence + PMF-measurement platform consumed by
+  # every product's billing module (RFC 0004 + RFC 0013). Tracking it here
+  # surfaces the deployment gap if api.tulana.madfam.io ever goes down or has
+  # not yet been deployed (initial probe will show it red until deploy lands).
   #
   # Updated: 2026-04-23 — 60 services across 25 groups. Added Routecraft
   # group (Dashboard, BFF API, Admin) per request to track all Routecraft
@@ -527,5 +533,20 @@ data:
         "group": "Routecraft",
         "family": "MADFAM Platform",
         "description": "Operations console"
+      },
+      {
+        "name": "Tulana Admin",
+        "url": "https://tulana.madfam.io",
+        "group": "Tulana",
+        "family": "MADFAM Platform",
+        "description": "Pricing intelligence + PMF measurement operator dashboard (RFC 0004 + RFC 0013)"
+      },
+      {
+        "name": "Tulana API",
+        "url": "https://api.tulana.madfam.io/health",
+        "href": "https://api.tulana.madfam.io",
+        "group": "Tulana",
+        "family": "MADFAM Platform",
+        "description": "/v1/recommendations + /v1/pmf endpoints consumed by every product's billing module"
       }
     ]
