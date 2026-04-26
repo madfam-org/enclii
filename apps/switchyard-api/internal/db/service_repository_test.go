@@ -289,6 +289,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		"k8s_namespace", "health", "status",
 		"desired_replicas", "ready_replicas", "last_health_check",
 		"last_deployment", "last_commit_message", "last_commit_branch",
+		"current_image_uri", "current_release_id", "current_release_created_at", "recent_releases",
 		"created_at", "updated_at",
 	}
 
@@ -300,12 +301,16 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
 
+		releaseID := uuid.New()
+		recentJSON := []byte(`[{"id":"` + releaseID.String() + `","version":"v1.2.3","image_uri":"ghcr.io/madfam-org/svc-1@sha256:abc123","git_sha":"deadbeef","status":"succeeded","created_at":"` + now.UTC().Format(time.RFC3339Nano) + `"}]`)
+
 		rows := sqlmock.NewRows(listByProjectColumns).
 			AddRow(uuid.New(), projID, "svc-1", "repo-1", "", bc,
 				true, "main", "production",
 				"enclii", "healthy", "running",
 				2, 2, now,
 				now, "feat: add feature", "main",
+				"ghcr.io/madfam-org/svc-1@sha256:abc123", releaseID.String(), now, recentJSON,
 				now, now)
 
 		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
@@ -323,6 +328,15 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		assert.Equal(t, "feat: add feature", results[0].LastCommitMsg)
 		assert.NotNil(t, results[0].K8sNamespace)
 		assert.Equal(t, "enclii", *results[0].K8sNamespace)
+		// New release-tracking fields surface to the dashboard so operators can
+		// see what's running without a follow-up round trip.
+		assert.Equal(t, "ghcr.io/madfam-org/svc-1@sha256:abc123", results[0].CurrentImageURI)
+		assert.NotNil(t, results[0].CurrentReleaseID)
+		assert.Equal(t, releaseID, *results[0].CurrentReleaseID)
+		assert.NotNil(t, results[0].CurrentReleaseCreatedAt)
+		assert.Len(t, results[0].RecentReleases, 1)
+		assert.Equal(t, "v1.2.3", results[0].RecentReleases[0].Version)
+		assert.Equal(t, "succeeded", results[0].RecentReleases[0].Status)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -349,13 +363,16 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
 
-		// Nullable fields set to nil
+		// Nullable fields set to nil. A service with no successful release ever
+		// (e.g., first-onboarding state where every build has failed) is a real
+		// case — the new release-tracking columns must all tolerate NULL.
 		rows := sqlmock.NewRows(listByProjectColumns).
 			AddRow(uuid.New(), projID, "svc-null", "repo", "", bc,
 				false, "main", "production",
 				nil, "unknown", "unknown",
 				0, 0, nil,
 				nil, nil, nil,
+				nil, nil, nil, []byte(`[]`),
 				now, now)
 
 		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
@@ -369,6 +386,10 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		assert.Nil(t, results[0].LastHealthCheck)
 		assert.Nil(t, results[0].LastDeployment)
 		assert.Empty(t, results[0].LastCommitMsg)
+		assert.Empty(t, results[0].CurrentImageURI)
+		assert.Nil(t, results[0].CurrentReleaseID)
+		assert.Nil(t, results[0].CurrentReleaseCreatedAt)
+		assert.Empty(t, results[0].RecentReleases)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

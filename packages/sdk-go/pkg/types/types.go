@@ -68,8 +68,26 @@ type Service struct {
 	LastDeployment   *time.Time   `json:"last_deployment,omitempty" db:"-"`
 	LastCommitMsg    string       `json:"last_commit_message,omitempty" db:"-"`
 	LastCommitBranch string       `json:"last_commit_branch,omitempty" db:"-"`
-	CreatedAt        time.Time    `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time    `json:"updated_at" db:"updated_at"`
+	// Current release tracking (populated by ListByProject from the latest deployment).
+	// Lets the dashboard show the running image digest + recent release history without
+	// a per-service round trip. CurrentImageURI is the digest-pinned image actually running.
+	CurrentImageURI         string           `json:"current_image_uri,omitempty" db:"-"`
+	CurrentReleaseID        *uuid.UUID       `json:"current_release_id,omitempty" db:"-"`
+	CurrentReleaseCreatedAt *time.Time       `json:"current_release_created_at,omitempty" db:"-"`
+	RecentReleases          []ReleaseSummary `json:"recent_releases,omitempty" db:"-"`
+	CreatedAt               time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt               time.Time        `json:"updated_at" db:"updated_at"`
+}
+
+// ReleaseSummary is a compact projection of recent releases joined into Service responses
+// so the dashboard can show the last few deploys without a separate query per service.
+type ReleaseSummary struct {
+	ID        uuid.UUID `json:"id"`
+	Version   string    `json:"version"`
+	ImageURI  string    `json:"image_uri"`
+	GitSHA    string    `json:"git_sha"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // HealthCheckConfig defines how Kubernetes probes should check service health

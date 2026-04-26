@@ -150,6 +150,10 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 }
 
 func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service, error) {
+	// recent_releases: last 5 releases per service as a JSON array. Built from a
+	// correlated subquery that pre-orders by created_at DESC + LIMIT 5 so the
+	// json_agg output is deterministic and the operator dashboard can render
+	// rollback-eligible deploys without a follow-up round trip.
 	query := `SELECT s.id, s.project_id, s.name, s.git_repo, COALESCE(s.app_path, '') as app_path, s.build_config,
 		s.auto_deploy, s.auto_deploy_branch, s.auto_deploy_env,
 		s.k8s_namespace, COALESCE(s.health, 'unknown') as health, COALESCE(s.status, 'unknown') as status,
@@ -158,6 +162,17 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		(SELECT MAX(d.created_at) FROM deployments d JOIN releases r ON d.release_id = r.id WHERE r.service_id = s.id) as last_deployment,
 		(SELECT r2.commit_message FROM releases r2 JOIN deployments d2 ON d2.release_id = r2.id WHERE r2.service_id = s.id ORDER BY d2.created_at DESC LIMIT 1) as last_commit_message,
 		(SELECT r3.git_branch FROM releases r3 JOIN deployments d3 ON d3.release_id = r3.id WHERE r3.service_id = s.id ORDER BY d3.created_at DESC LIMIT 1) as last_commit_branch,
+		(SELECT r4.image_uri FROM releases r4 WHERE r4.service_id = s.id AND r4.status = 'succeeded' ORDER BY r4.created_at DESC LIMIT 1) as current_image_uri,
+		(SELECT r5.id FROM releases r5 WHERE r5.service_id = s.id AND r5.status = 'succeeded' ORDER BY r5.created_at DESC LIMIT 1) as current_release_id,
+		(SELECT r6.created_at FROM releases r6 WHERE r6.service_id = s.id AND r6.status = 'succeeded' ORDER BY r6.created_at DESC LIMIT 1) as current_release_created_at,
+		(SELECT COALESCE(json_agg(rr ORDER BY rr.created_at DESC), '[]'::json)
+			FROM (
+				SELECT id, version, image_uri, git_sha, status, created_at
+				FROM releases
+				WHERE service_id = s.id
+				ORDER BY created_at DESC
+				LIMIT 5
+			) rr) as recent_releases,
 		s.created_at, s.updated_at
 		FROM services s WHERE s.project_id = $1 ORDER BY s.created_at DESC`
 
@@ -177,12 +192,17 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		var lastDeployment sql.NullTime
 		var lastCommitMsg sql.NullString
 		var lastCommitBranch sql.NullString
+		var currentImageURI sql.NullString
+		var currentReleaseID sql.NullString
+		var currentReleaseCreatedAt sql.NullTime
+		var recentReleasesJSON []byte
 
 		err := rows.Scan(&service.ID, &service.ProjectID, &service.Name, &service.GitRepo, &appPath, &buildConfigJSON,
 			&service.AutoDeploy, &service.AutoDeployBranch, &service.AutoDeployEnv,
 			&k8sNamespace, &service.Health, &service.Status,
 			&service.DesiredReplicas, &service.ReadyReplicas, &lastHealthCheck,
 			&lastDeployment, &lastCommitMsg, &lastCommitBranch,
+			&currentImageURI, &currentReleaseID, &currentReleaseCreatedAt, &recentReleasesJSON,
 			&service.CreatedAt, &service.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -205,6 +225,22 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		}
 		if lastCommitBranch.Valid {
 			service.LastCommitBranch = lastCommitBranch.String
+		}
+		if currentImageURI.Valid {
+			service.CurrentImageURI = currentImageURI.String
+		}
+		if currentReleaseID.Valid {
+			if id, parseErr := uuid.Parse(currentReleaseID.String); parseErr == nil {
+				service.CurrentReleaseID = &id
+			}
+		}
+		if currentReleaseCreatedAt.Valid {
+			service.CurrentReleaseCreatedAt = &currentReleaseCreatedAt.Time
+		}
+		if len(recentReleasesJSON) > 0 {
+			if err := json.Unmarshal(recentReleasesJSON, &service.RecentReleases); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal recent releases: %w", err)
+			}
 		}
 
 		if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
