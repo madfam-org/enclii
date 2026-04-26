@@ -81,6 +81,20 @@ func (r *Repositories) Ping(ctx context.Context) error {
 	return r.db.PingContext(ctx)
 }
 
+// DB returns the underlying *sql.DB for handlers that need to issue ad-hoc
+// queries which don't fit the existing repository scan paths. Use sparingly —
+// prefer adding a method to the appropriate repository when the query is
+// reusable. The Sentry observability handler uses this for the
+// (services.name, services.sentry_project_slug) lookup since the override
+// column is read on a single, narrow path and adding it to ServiceRepository
+// would inflate every existing scanner.
+func (r *Repositories) DB() *sql.DB {
+	if r == nil {
+		return nil
+	}
+	return r.db
+}
+
 // WithTransaction executes the given function within a database transaction.
 // If the function returns an error, the transaction is rolled back.
 // If the function succeeds, the transaction is committed.
