@@ -94,11 +94,12 @@ export function HealthBadge({
       );
       const svc = data.services?.find((s) => s.service_id === serviceId);
       if (svc) {
-        const status: HealthSummary['status'] = (
-          ['healthy', 'degraded', 'unhealthy'] as const
-        ).includes(svc.status as HealthSummary['status'])
-          ? (svc.status as HealthSummary['status'])
-          : 'unknown';
+        const KNOWN_STATUSES = ['healthy', 'degraded', 'unhealthy'] as const;
+        type KnownStatus = (typeof KNOWN_STATUSES)[number];
+        const status: HealthSummary['status'] =
+          KNOWN_STATUSES.includes(svc.status as KnownStatus)
+            ? (svc.status as KnownStatus)
+            : 'unknown';
         setSummary({ errorRate: svc.error_rate || 0, status });
       } else {
         setSummary({ errorRate: 0, status: 'unknown' });
