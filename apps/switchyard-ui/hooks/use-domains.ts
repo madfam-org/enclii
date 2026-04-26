@@ -1,0 +1,114 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { apiGet } from '@/lib/api';
+import { POLLING_SLOW } from '@/lib/constants';
+import { usePolling } from '@/hooks/use-polling';
+import type {
+  Domain,
+  DomainsListResponse,
+  DomainStats,
+} from '@/types/domain';
+
+interface UseDomainsResult {
+  domains: Domain[];
+  stats: DomainStats | null;
+  loading: boolean;
+  refreshing: boolean;
+  error: string | null;
+  /** True when the backend endpoint returned 404 (not yet deployed). */
+  endpointMissing: boolean;
+  lastSyncedAt: string | null;
+  refresh: () => Promise<void>;
+}
+
+/**
+ * Fetches all custom domains across the ecosystem and polls every
+ * POLLING_SLOW (30s) for updates. Pauses when the tab is hidden, via
+ * `usePolling`'s Page Visibility integration.
+ *
+ * Why 30s: domains change on the order of minutes/hours (DNS propagation,
+ * cert renewal). POLLING_SLOW matches the project-card freshness budget so
+ * the "last synced" badge stays meaningful, without hammering the API.
+ *
+ * Endpoint shape mirrors `apps/switchyard-api/internal/api/global_domains_handlers.go`.
+ * If the endpoint 404s the hook surfaces `endpointMissing=true` so the page
+ * can render a "backend pending" placeholder rather than an error toast.
+ */
+export function useDomains(limit = 200): UseDomainsResult {
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [stats, setStats] = useState<DomainStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [endpointMissing, setEndpointMissing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  const fetchAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Pull a generous page so the client-side filter/sort works without
+      // round-tripping. 200 covers the current ecosystem (~50 domains)
+      // ~4x over and still fits well inside a typical JSON budget.
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: '0',
+      });
+
+      const [list, statsResp] = await Promise.all([
+        apiGet<DomainsListResponse>(`/v1/domains?${params.toString()}`),
+        apiGet<DomainStats>('/v1/domains/stats').catch((e) => {
+          // Stats endpoint is auxiliary; don't fail the whole hook over it.
+          console.warn('Failed to fetch domain stats:', e);
+          return null;
+        }),
+      ]);
+
+      setDomains(list?.domains ?? []);
+      setStats(statsResp);
+      setError(null);
+      setEndpointMissing(false);
+      setLastSyncedAt(new Date().toISOString());
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load domains';
+      // Heuristic: treat "404" or "Not Found" as endpoint-missing so the page
+      // can render the placeholder instead of an error banner.
+      if (/404|not found/i.test(message)) {
+        setEndpointMissing(true);
+        setError(null);
+         
+        console.warn(
+          '[useDomains] /v1/domains endpoint not yet available — rendering placeholder',
+        );
+      } else {
+        setError(message);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [limit]);
+
+  // Initial load
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
+
+  // Background polling — pauses on hidden tab
+  usePolling(fetchAll, POLLING_SLOW, { enabled: !endpointMissing });
+
+  const refresh = useCallback(async () => {
+    await fetchAll();
+  }, [fetchAll]);
+
+  return {
+    domains,
+    stats,
+    loading,
+    refreshing,
+    error,
+    endpointMissing,
+    lastSyncedAt,
+    refresh,
+  };
+}
