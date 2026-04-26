@@ -24,10 +24,16 @@ githubConfigSecret: github-app-secret
 # GitHub may use the "Default" group which may have full repo access
 # If issues persist, an org admin needs to grant the Default group access to enclii repo
 
-# NOTE: DinD disabled for now - runners work without it
-# Jobs that need Docker will need to use setup-docker action or alternative
-# containerMode:
-#   type: "dind"
+# DinD enabled. Chart 0.14.0's dind-runner-container helper merges our
+# custom container spec (image, command, resources) with chart-injected
+# DOCKER_HOST env + dind-sock + work volume mounts. Sidecars added:
+#   - init container (copies /home/runner/externals to dind-externals)
+#   - dind sidecar (docker:dind, /var/run shared via emptyDir)
+# Required for workflows using `services:` (Postgres, Redis) or
+# `container:`. Chart's startup probe on dind has timeoutSeconds default
+# (no longer 1s as in the stale 2026-04-09 release).
+containerMode:
+  type: "dind"
 
 # Runner pod template - minimal customization, let ARC handle injection
 template:
@@ -46,14 +52,20 @@ template:
     containers:
       - name: runner
         # MADFAM hardened runner image: thin overlay on
-        # ghcr.io/actions/actions-runner that adds the system
-        # packages our CI needs (libatomic1 for pnpm; libasound2t64
-        # + libnss3 + libxkbcommon0 + libgbm1 for Playwright;
-        # jq + python3-pip for misc CI scripting).
+        # ghcr.io/actions/actions-runner that adds the system packages our
+        # CI needs (libatomic1 for pnpm; libasound2t64 + libnss3 +
+        # libxkbcommon0 + libgbm1 for Playwright; jq + python3-pip for
+        # misc CI scripting). Pinned to base 2.334.0.
         # Built by .github/workflows/arc-runner-image.yml.
         # Source: infra/docker/arc-runner/.
         image: ghcr.io/madfam-org/enclii/arc-runner:stable
         imagePullPolicy: IfNotPresent
+        # Explicit command — chart 0.14.0 does NOT inject one when user
+        # supplies a `containers:` block, and the runner image's CMD
+        # is /bin/bash (intentional, lets Dockerfile overlays inherit
+        # cleanly). Without this line, pods churn at exitCode 0 in <1s.
+        command:
+          - /home/runner/run.sh
         resources:
           requests:
             cpu: 500m
