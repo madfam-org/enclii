@@ -13,6 +13,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/export"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/integrations/sentry"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
@@ -114,6 +115,12 @@ type Handler struct {
 	tenantExportService *export.Service
 	// P3.2 Sprint 1. Nil => /v1/signup routes return 404. See signup_handlers.go.
 	signupService *signup.Service
+
+	// Sentry observability proxy (parity audit gap #9). Nil-safe — when the
+	// caller doesn't pre-wire one, GetSentryServiceStats lazily constructs
+	// from env. The endpoint returns a structured 503 when SENTRY_AUTH_TOKEN
+	// + SENTRY_ORG_SLUG are not both set so the UI hides the badge.
+	sentryClient *sentry.Client
 }
 
 // SetSignupService wires the P3.2 self-serve signup service.
@@ -626,6 +633,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/observability/health", h.GetServiceHealth)
 			protected.GET("/observability/errors", h.GetRecentErrors)
 			protected.GET("/observability/alerts", h.GetActiveAlerts)
+			// Sentry stats — parity audit gap #9. Admin-only because the
+			// Sentry token is operator-provisioned and the data is not
+			// otherwise exposed via tenant-scoped permissions.
+			protected.GET("/observability/sentry", h.auth.RequireRole(string(types.RoleAdmin)), h.GetSentryServiceStats)
 
 			// API Tokens (for CLI/CI/CD access)
 			protected.POST("/user/tokens", h.CreateAPIToken)
