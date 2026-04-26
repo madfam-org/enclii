@@ -58,6 +58,12 @@ template:
         # version tag would avoid this; deferred until the hardened MADFAM
         # overlay is fixed and re-pinned.
         imagePullPolicy: Always
+        # Explicit command — chart 0.14.0 does NOT inject one when user
+        # supplies a `containers:` block, and the upstream image's
+        # ENTRYPOINT alone exits clean without args. Without this line,
+        # pods churn at exitCode 0 in <1 second.
+        command:
+          - /home/runner/run.sh
         resources:
           requests:
             cpu: 500m
