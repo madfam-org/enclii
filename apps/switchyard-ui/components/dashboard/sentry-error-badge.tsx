@@ -45,7 +45,7 @@ export function SentryErrorBadge({
     return (
       <span
         className={cn(
-          'inline-flex items-center gap-1 text-[10px] text-muted-foreground',
+          'text-muted-foreground inline-flex items-center gap-1 text-[10px]',
           className,
         )}
         aria-label="Loading Sentry stats"
