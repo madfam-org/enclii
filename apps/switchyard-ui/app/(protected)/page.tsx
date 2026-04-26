@@ -49,6 +49,10 @@ interface ApiService {
   desired_replicas?: number;
   ready_replicas?: number;
   auto_deploy_env?: string;
+  // Surfaced by ListByProject as of switchyard-api PR #155 — the
+  // currently-running release's image URI (digest-pinned in production
+  // by Kyverno). Drives the digest chip in project-card-compact.tsx.
+  current_image_uri?: string;
 }
 
 const INITIAL_VISIBLE = 10;
@@ -130,6 +134,7 @@ export default function Dashboard() {
                 ? `${s.ready_replicas}/${s.desired_replicas}`
                 : undefined,
             environment: s.auto_deploy_env || undefined,
+            currentImageUri: s.current_image_uri || undefined,
           }));
 
           // Compute aggregate status
