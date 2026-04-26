@@ -69,10 +69,17 @@ type EncliiYAMLStatus struct {
 }
 
 // EncliiYAMLStatusEntry represents a single service entry on the status page.
+//
+// Schema mirrors the deployed `services-config` JSON so the regenerate
+// pipeline is a pure projection. Optional fields (href, family, description)
+// are preserved when set and omitted otherwise — an unset family lets the UI
+// fall back to the "Other" bucket per RFC 0002 S1.
 type EncliiYAMLStatusEntry struct {
 	Name        string `yaml:"name"`
 	URL         string `yaml:"url"`
+	Href        string `yaml:"href,omitempty"`
 	Group       string `yaml:"group"`
+	Family      string `yaml:"family,omitempty"`
 	Description string `yaml:"description,omitempty"`
 }
 
