@@ -67,6 +67,10 @@ type Repositories struct {
 
 	// Self-serve signup (P3.2 Sprint 1)
 	Signups *SignupRepository
+
+	// Namespace Discoverer (parity audit gap #2): tracks workloads
+	// observed in cluster with no matching service row.
+	DiscoveredOrphans *DiscoveredOrphanRepository
 }
 
 // Ping checks database connectivity for health probes
@@ -144,6 +148,9 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 
 		// P3.2 Self-serve signup
 		Signups: NewSignupRepositoryWithTx(tx),
+
+		// Parity audit gap #2: namespace discoverer
+		DiscoveredOrphans: NewDiscoveredOrphanRepository(tx),
 	}
 
 	// Execute the function with transaction repositories
@@ -223,5 +230,8 @@ func NewRepositories(db *sql.DB) *Repositories {
 
 		// P3.2 Self-serve signup
 		Signups: NewSignupRepository(db),
+
+		// Parity audit gap #2: namespace discoverer
+		DiscoveredOrphans: NewDiscoveredOrphanRepository(db),
 	}
 }
