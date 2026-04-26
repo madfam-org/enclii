@@ -22,6 +22,11 @@ spec:
       labels:
         app: dispatch
     spec:
+      # ServiceAccount with cluster-reader RBAC for live K8s queries
+      # (topology, ArgoCD applications, Longhorn volumes, NetworkPolicies).
+      # Bindings live in apps/dispatch/k8s/rbac.yaml.
+      serviceAccountName: dispatch
+      automountServiceAccountToken: true
       # Spread pods across nodes for HA
       topologySpreadConstraints:
         - maxSkew: 1
