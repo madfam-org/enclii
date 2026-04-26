@@ -804,6 +804,7 @@ pnpm test:e2e
 | react-sdk pre-existing test failures | Resolved | Session 102: Replaced empty div mocks with interactive form mocks, expanded useJanua context. 12/12 suites, 123/123 tests pass (janua `bdb7a31b`) |
 | Onboarding handler K8s API migration | Completed | Session 97: NetworkPolicies now applied via K8s API (`k8s.ApplyNetworkPolicies`) instead of git commit. No more writes to `infra/k8s/policies/` during onboarding |
 | pgbouncer egress type | Completed | Session 97: Added to netpolicy generator (port 6432 to data namespace). Available in `enclii.yaml` `network.services[].egress` |
+| Sentry integration (parity audit gap #9) | Ready (operator action: provision token) | Backend client + admin endpoint `GET /v1/observability/sentry` + UI `<SentryErrorBadge />` shipped. Endpoint returns 503 `{configured:false}` until operator patches `enclii-secrets` with `SENTRY_AUTH_TOKEN` + `SENTRY_ORG_SLUG=innovaciones-madfam-sas-de-cv`. UI hides the badge gracefully until then. Migration #019 adds optional `services.sentry_project_slug` override. Runbook: `docs/runbooks/SENTRY_INTEGRATION.md` |
 
 ---
 
