@@ -150,6 +150,13 @@ Key vars for local development (set in `.env`):
 - **NEVER add ecosystem-specific ExternalSecrets to the enclii repo** — ExternalSecrets for ecosystem apps belong in each repo's own `infra/k8s/` directory (self-provisioning pattern). The 18 ExternalSecret files in `infra/k8s/base/external-secrets/vault-secrets/` are platform infrastructure only
 - ArgoCD `network-policies` app has `prune: false` — removing files from git does NOT delete live cluster resources
 
+### Status Page Service Entries
+- Status entries for ecosystem services live in each repo's `enclii.yaml` `status.entries[]`
+- The platform configmaps (`apps/status/k8s/{enclii,madfam}/configmap.yaml`) are REGENERATED from source via `POST /v1/admin/status/regenerate` — do NOT hand-edit
+- Only services without an ecosystem repo (Janua, npm.madfam.io, sniper.madfam.io, MADFAM Website, enclii core) live in `coreEncliiServicesForMadfamSite()` in `apps/switchyard-api/internal/api/status_handlers.go`
+- Adding a hard-coded entry there is enforced against by `TestStatusHandler_CoreMadfamHasNoEcosystemRepoEntries` — if a product is later onboarded via `enclii.yaml`, remove its core entry in the same change
+- Operator runbook: `docs/runbooks/STATUS_REGENERATE.md`
+
 ### Config Reload (Stakater Reloader)
 - **Reloader is deployed cluster-wide** in the `reloader` namespace via `infra/argocd/apps/reloader.yaml` (chart 2.2.11, appVersion v1.4.16). Tier 1 rollout (Apr 2026) covers `status-madfam`, `status-enclii`, and `cloudflared`
 - **Opt-in only**: a Deployment auto-restarts on ConfigMap/Secret change ONLY if its **pod template** carries `reloader.stakater.com/match: "true"`. No annotation = no restart (safe default)
