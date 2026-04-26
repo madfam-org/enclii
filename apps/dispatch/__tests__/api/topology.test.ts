@@ -110,7 +110,7 @@ function fakePod(
 
 describe('GET /api/topology', () => {
   it('aggregates nodes, pods, services, deployments correctly', async () => {
-    mockListNode.mockResolvedValueOnce({
+    mockListNode.mockResolvedValueOnce({ body: {
       items: [fakeNode('foundry-cp', 'control-plane'), fakeNode('foundry-worker-01', 'worker')],
     })
     mockListNamespace.mockResolvedValueOnce({
@@ -171,9 +171,9 @@ describe('GET /api/topology', () => {
   })
 
   it('charges pod CPU/memory requests to their host node', async () => {
-    mockListNode.mockResolvedValueOnce({ items: [fakeNode('foundry-cp', 'control-plane')] })
-    mockListNamespace.mockResolvedValueOnce({ items: [{ metadata: { name: 'enclii' } }] })
-    mockListPod.mockResolvedValueOnce({
+    mockListNode.mockResolvedValueOnce({ items: [fakeNode('foundry-cp', 'control-plane')] } })
+    mockListNamespace.mockResolvedValueOnce({ body: { items: [{ metadata: { name: 'enclii' } }] } })
+    mockListPod.mockResolvedValueOnce({ body: {
       items: [
         fakePod('api-1', 'enclii', 'foundry-cp', 'Running', '500m', '256Mi'),
         fakePod('api-2', 'enclii', 'foundry-cp', 'Running', '500m', '256Mi'),
@@ -181,8 +181,8 @@ describe('GET /api/topology', () => {
         fakePod('pending-1', 'enclii', 'foundry-cp', 'Pending', '1000m', '1Gi'),
       ],
     })
-    mockListService.mockResolvedValueOnce({ items: [] })
-    mockListDeployment.mockResolvedValueOnce({ items: [] })
+    mockListService.mockResolvedValueOnce({ items: [] } })
+    mockListDeployment.mockResolvedValueOnce({ body: { items: [] } })
 
     const response = await GET()
     const body = (await response.json()) as Record<string, unknown>
@@ -194,10 +194,10 @@ describe('GET /api/topology', () => {
 
   it('returns 500 with descriptive error when K8s API fails', async () => {
     mockListNode.mockRejectedValueOnce(new Error('Forbidden: cluster role missing'))
-    mockListNamespace.mockResolvedValueOnce({ items: [] })
-    mockListPod.mockResolvedValueOnce({ items: [] })
-    mockListService.mockResolvedValueOnce({ items: [] })
-    mockListDeployment.mockResolvedValueOnce({ items: [] })
+    mockListNamespace.mockResolvedValueOnce({ body: { items: [] } })
+    mockListPod.mockResolvedValueOnce({ body: { items: [] } })
+    mockListService.mockResolvedValueOnce({ body: { items: [] } })
+    mockListDeployment.mockResolvedValueOnce({ body: { items: [] } })
 
     const response = await GET()
     const body = (await response.json()) as { error: string }

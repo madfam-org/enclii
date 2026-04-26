@@ -68,13 +68,15 @@ describe('GET /api/storage/volumes', () => {
   it('sorts faulted -> degraded -> healthy and computes summary', async () => {
     mockListCustomObject
       .mockResolvedValueOnce({
-        items: [
-          makeVolume('vol-healthy', 'healthy', 'attached'),
-          makeVolume('vol-faulted', 'faulted', 'detached'),
-          makeVolume('vol-degraded', 'degraded', 'attached'),
-        ],
+        body: {
+          items: [
+            makeVolume('vol-healthy', 'healthy', 'attached'),
+            makeVolume('vol-faulted', 'faulted', 'detached'),
+            makeVolume('vol-degraded', 'degraded', 'attached'),
+          ],
+        },
       })
-      .mockResolvedValueOnce({ items: [] }) // replicas
+      .mockResolvedValueOnce({ body: { items: [] } }) // replicas
 
     const response = await GET()
     const body = (await response.json()) as {
@@ -88,20 +90,22 @@ describe('GET /api/storage/volumes', () => {
 
   it('attaches replicas to their owning volume', async () => {
     mockListCustomObject
-      .mockResolvedValueOnce({ items: [makeVolume('vol-1', 'healthy', 'attached')] })
+      .mockResolvedValueOnce({ body: { items: [makeVolume('vol-1', 'healthy', 'attached')] } })
       .mockResolvedValueOnce({
-        items: [
-          {
-            metadata: { name: 'vol-1-r-aaaa' },
-            spec: { volumeName: 'vol-1', nodeID: 'foundry-cp' },
-            status: { currentState: 'running', mode: 'RW' },
-          },
-          {
-            metadata: { name: 'vol-1-r-bbbb' },
-            spec: { volumeName: 'vol-1', nodeID: 'foundry-worker-01' },
-            status: { currentState: 'running', mode: 'RW' },
-          },
-        ],
+        body: {
+          items: [
+            {
+              metadata: { name: 'vol-1-r-aaaa' },
+              spec: { volumeName: 'vol-1', nodeID: 'foundry-cp' },
+              status: { currentState: 'running', mode: 'RW' },
+            },
+            {
+              metadata: { name: 'vol-1-r-bbbb' },
+              spec: { volumeName: 'vol-1', nodeID: 'foundry-worker-01' },
+              status: { currentState: 'running', mode: 'RW' },
+            },
+          ],
+        },
       })
 
     const response = await GET()
