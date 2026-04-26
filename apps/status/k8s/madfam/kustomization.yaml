@@ -43,6 +43,20 @@ patches:
       kind: Deployment
       name: status
 
+  # Opt this Deployment in to Stakater Reloader (Tier 1).
+  # Reloader watches deployments carrying this annotation and restarts them
+  # when their referenced ConfigMaps/Secrets change. This complements the
+  # `enclii.dev/configmap-version` patch above (manual bump) by automating
+  # rollouts when the ConfigMap content changes without a version bump.
+  # Runbook: docs/runbooks/CONFIG_RELOAD_RUNBOOK.md
+  - patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations/reloader.stakater.com~1match
+        value: "true"
+    target:
+      kind: Deployment
+      name: status
+
   # Update configMapKeyRef to use overlay-specific ConfigMap
   - patch: |-
       apiVersion: apps/v1
