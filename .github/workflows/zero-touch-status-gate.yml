@@ -1,0 +1,60 @@
+name: Zero-Touch Status Gate
+
+# Blocks hand-edits to the platform status configmaps. Status entries for
+# ecosystem services must live in each repo's `enclii.yaml` `status.entries[]`
+# and reach the configmap via `POST /v1/admin/status/regenerate`. See the
+# `Status Page Service Entries` section in CLAUDE.md and the runbook at
+# docs/runbooks/STATUS_REGENERATE.md.
+#
+# Escape hatch: include `[allow-configmap-edit]` in any commit message of the
+# PR. This signals that an operator consciously overrode the gate (e.g.,
+# bootstrap/recovery scenario) — it does NOT bypass review.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/status/k8s/**/configmap.yaml'
+
+jobs:
+  guard:
+    name: Block hand-edits to platform configmaps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Inspect commit messages for escape hatch
+        id: escape
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          messages=$(git log --format='%B' "${base_sha}..${head_sha}")
+          if printf '%s\n' "$messages" | grep -qE '\[allow-configmap-edit\]'; then
+            echo "escape=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Escape hatch detected — at least one commit in this PR contains [allow-configmap-edit]. Reviewers MUST verify the rationale."
+          else
+            echo "escape=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail if configmap touched without escape hatch
+        if: steps.escape.outputs.escape != 'true'
+        run: |
+          echo "::error::"
+          echo "::error::Zero-touch policy violation: a platform status configmap was edited directly."
+          echo "::error::"
+          echo "::error::Files in this PR:"
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- 'apps/status/k8s/**/configmap.yaml'
+          echo "::error::"
+          echo "::error::Status entries for ecosystem services must live in their product's enclii.yaml status.entries[]."
+          echo "::error::Run POST /v1/admin/status/regenerate to project them into the configmap."
+          echo "::error::"
+          echo "::error::Runbook:        docs/runbooks/STATUS_REGENERATE.md"
+          echo "::error::Policy section: CLAUDE.md → 'Status Page Service Entries'"
+          echo "::error::"
+          echo "::error::If this is intentional (bootstrap, recovery, or a service without a repo),"
+          echo "::error::add [allow-configmap-edit] to one of the commit messages and re-push."
+          exit 1
