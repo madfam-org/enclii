@@ -13,6 +13,9 @@ import {
   Share2,
   Menu,
   X,
+  GitMerge,
+  HardDrive,
+  Lock,
 } from 'lucide-react'
 
 const navItems = [
@@ -23,6 +26,9 @@ const navItems = [
   { href: '/propagation', label: 'Propagation', icon: Share2 },
   { href: '/governance', label: 'Governance', icon: Shield },
   { href: '/topology', label: 'Topology', icon: Network },
+  { href: '/argocd', label: 'ArgoCD', icon: GitMerge },
+  { href: '/storage', label: 'Storage', icon: HardDrive },
+  { href: '/network-policies', label: 'Network Policies', icon: Lock },
 ]
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
