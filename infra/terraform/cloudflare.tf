@@ -21,6 +21,30 @@ resource "cloudflare_tunnel_config" "enclii" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_tunnel.enclii.id
 
+  # IMPORTANT: This Terraform resource owns ONLY the ~7 baseline platform
+  # routes declared below (api, app, metrics, grafana, landing, docs, status).
+  # The remaining ~31 ecosystem routes (dhanam, karafiel, forgesight, tezca,
+  # yantra4d, pravara-mes, etc.) are added at runtime by switchyard-api's
+  # domain provisioner via the Cloudflare API as services onboard.
+  #
+  # Without `ignore_changes = [config]`, every `terraform apply` would
+  # propose to DELETE all 31 runtime routes (because they are not in the
+  # TF state). Adding the lifecycle hint locks the tunnel-config block
+  # to drift-tolerant: TF can still destroy/recreate the resource when
+  # explicitly intended, but routine plan/apply cycles will not regress
+  # ecosystem ingress.
+  #
+  # Verification: `tests/golden/infra/tunnel-routes-test.sh` compares
+  # `expected-tunnel-config.json` against the TF declarations. The
+  # combined live state (TF + runtime) is asserted by the same test
+  # against the live Cloudflare API.
+  #
+  # See `claudedocs/enclii-remediation-plan-2026-04-24.md` §4 for the
+  # original architectural rationale; this block formalizes that decision.
+  lifecycle {
+    ignore_changes = [config]
+  }
+
   config {
     # Switchyard API
     ingress_rule {
