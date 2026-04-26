@@ -22,6 +22,8 @@ import { SubNavActionBar } from "@/components/dashboard/sub-nav-action-bar";
 import { UsageOverview } from "@/components/dashboard/usage-overview";
 import { SidebarAlerts } from "@/components/dashboard/sidebar-alerts";
 import { SidebarRecentPreviews } from "@/components/dashboard/sidebar-recent-previews";
+import { LastSyncBadge } from "@/components/dashboard/last-sync-badge";
+import { SystemHealthSummary } from "@/components/dashboard/system-health-summary";
 
 interface ApiProject {
   id: string;
@@ -65,6 +67,8 @@ export default function Dashboard() {
 
   const [projects, setProjects] = useState<CompactProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("updated");
@@ -77,6 +81,7 @@ export default function Dashboard() {
   const fetchProjects = useCallback(async () => {
     try {
       setError(null);
+      setRefreshing(true);
       const data = await apiGet<{ projects: ApiProject[] }>("/v1/projects");
       const apiProjects = data.projects || [];
 
@@ -188,11 +193,14 @@ export default function Dashboard() {
       );
 
       setProjects(compactProjects);
+      setLastSyncedAt(new Date().toISOString());
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch projects:", err);
       setError(err instanceof Error ? err.message : "Failed to load projects");
       setLoading(false);
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
@@ -308,11 +316,21 @@ export default function Dashboard() {
           onCreateProject={handleCreateProjectClick}
         />
 
+        {/* Freshness indicator (Gap #10): show last sync + manual refresh */}
+        <div className="mt-3 flex justify-end">
+          <LastSyncBadge
+            lastSyncedAt={lastSyncedAt}
+            onRefresh={fetchProjects}
+            refreshing={refreshing}
+          />
+        </div>
+
         {/* 3-Column Layout */}
         <div className="grid grid-cols-1 gap-6 mt-6 lg:grid-cols-12">
           {/* Left sidebar */}
           <aside className="lg:col-span-3 space-y-4">
             <UsageOverview variant="compact" />
+            <SystemHealthSummary />
             <SidebarAlerts />
             <SidebarRecentPreviews projects={projects} />
           </aside>

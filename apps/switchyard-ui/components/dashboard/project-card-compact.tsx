@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, GitBranch, Github } from "lucide-react";
+import { ExternalLink, GitBranch, GitMerge, Github } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/formatting";
-import { FrameworkIcon, FrameworkType } from "./framework-icon";
+import {
+  FrameworkIcon,
+  FrameworkType,
+  getFrameworkLabel,
+} from "./framework-icon";
+import { HealthBadge } from "./health-badge";
 
 export interface CompactService {
   id: string;
@@ -104,7 +109,7 @@ export function ProjectCardCompact({
           className,
         )}
       >
-        {/* Row 1: Framework icon + name + status dot */}
+        {/* Row 1: Framework icon + name + framework chip + status dot */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
             <FrameworkIcon
@@ -114,6 +119,14 @@ export function ProjectCardCompact({
             <span className="truncate text-sm font-semibold">
               {project.name}
             </span>
+            {project.framework && project.framework !== "unknown" && (
+              <span
+                className="hidden shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:inline-block"
+                aria-label={`Framework: ${getFrameworkLabel(project.framework)}`}
+              >
+                {getFrameworkLabel(project.framework)}
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {project.serviceCount !== undefined && (
@@ -240,8 +253,18 @@ export function ProjectCardCompact({
           </a>
         )}
 
-        {/* Row 5: Git branch + relative time */}
-        <div className="text-muted-foreground border-border/50 mt-auto flex items-center justify-between border-t pt-2 text-xs">
+        {/* Row 4c: Health badge for the lead service. */}
+        {services[0]?.id && (
+          <div className="mt-1.5 flex items-center">
+            <HealthBadge
+              serviceId={services[0].id}
+              serviceName={services[0].name}
+            />
+          </div>
+        )}
+
+        {/* Row 5: Git branch + relative time + view deployments */}
+        <div className="text-muted-foreground border-border/50 mt-auto flex items-center justify-between gap-2 border-t pt-2 text-xs">
           {project.lastDeployment?.branch ? (
             <div className="flex min-w-0 items-center gap-1">
               <GitBranch className="h-3 w-3 shrink-0" />
@@ -252,11 +275,28 @@ export function ProjectCardCompact({
           ) : (
             <span className="text-muted-foreground/50">-</span>
           )}
-          {project.lastDeployment?.timestamp && (
-            <span className="ml-2 shrink-0">
-              {formatRelativeTime(project.lastDeployment.timestamp)}
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {/*
+              Plain anchor (not <Link>) — the parent card is already a
+              <Link>, so we follow the same nesting pattern used by the
+              GitHub/domain links on this card. stopPropagation prevents
+              the parent Link from intercepting the click.
+            */}
+            <a
+              href={`/projects/${project.slug}/deployments`}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`View deployments for ${project.name}`}
+            >
+              <GitMerge className="h-3 w-3 shrink-0" />
+              <span>Deployments</span>
+            </a>
+            {project.lastDeployment?.timestamp && (
+              <span>
+                {formatRelativeTime(project.lastDeployment.timestamp)}
+              </span>
+            )}
+          </div>
         </div>
       </Card>
     </Link>
