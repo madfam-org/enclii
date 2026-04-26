@@ -165,6 +165,23 @@ type workloadLister interface {
 	ListWorkloads(ctx context.Context) ([]workloadRef, error)
 }
 
+// servicesView is the read+write subset of the services repository the
+// discoverer needs. Defining it as an interface lets tests inject a
+// fake that does not require sqlmock setup.
+// *db.ServiceRepository satisfies this interface.
+type servicesView interface {
+	ListAll(ctx context.Context) ([]*types.Service, error)
+	MarkReconciledHealthy(ctx context.Context, id uuid.UUID, desiredReplicas, readyReplicas int32) error
+	MarkReconciledZombie(ctx context.Context, id uuid.UUID) error
+}
+
+// orphansView is the write subset of the discovered_orphans repository.
+// *db.DiscoveredOrphanRepository satisfies this interface.
+type orphansView interface {
+	Upsert(ctx context.Context, o *db.DiscoveredOrphan) error
+	DeleteStale(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
 // reconcile runs a single classification pass. Errors are logged, never
 // returned — the loop must continue ticking even if a single pass fails
 // (e.g. transient K8s API server flake).
@@ -179,19 +196,20 @@ func (d *NamespaceDiscoverer) reconcile(ctx context.Context) {
 		return
 	}
 
-	d.reconcileWith(ctx, &realWorkloadLister{client: d.k8sClient})
+	d.reconcileWith(ctx, &realWorkloadLister{client: d.k8sClient}, d.repos.Services, d.repos.DiscoveredOrphans)
 }
 
-// reconcileWith is the testable core: it accepts an injected lister so unit
-// tests can drive deterministic scenarios without a live cluster.
-func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workloadLister) {
+// reconcileWith is the testable core: it accepts an injected lister, services
+// view, and orphans view so unit tests can drive deterministic scenarios
+// without a live cluster or database.
+func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workloadLister, svcs servicesView, orphans orphansView) {
 	workloads, err := lister.ListWorkloads(ctx)
 	if err != nil {
 		d.logger.WithError(err).Error("NamespaceDiscoverer: failed to list cluster workloads")
 		return
 	}
 
-	services, err := d.repos.Services.ListAll(ctx)
+	services, err := svcs.ListAll(ctx)
 	if err != nil {
 		d.logger.WithError(err).Error("NamespaceDiscoverer: failed to list services from DB")
 		return
@@ -223,7 +241,7 @@ func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workload
 		svc := pickServiceForWorkload(byName[wl.ServiceLabel], wl.Namespace)
 		if svc != nil {
 			matchedServiceIDs[svc.ID] = struct{}{}
-			if err := d.repos.Services.MarkReconciledHealthy(ctx, svc.ID, wl.ReplicasDesired, wl.ReplicasReady); err != nil {
+			if err := svcs.MarkReconciledHealthy(ctx, svc.ID, wl.ReplicasDesired, wl.ReplicasReady); err != nil {
 				d.logger.WithError(err).WithFields(logrus.Fields{
 					"service_id": svc.ID,
 					"namespace":  wl.Namespace,
@@ -243,7 +261,7 @@ func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workload
 			ReplicasDesired: wl.ReplicasDesired,
 			ReplicasReady:   wl.ReplicasReady,
 		}
-		if err := d.repos.DiscoveredOrphans.Upsert(ctx, orphan); err != nil {
+		if err := orphans.Upsert(ctx, orphan); err != nil {
 			d.logger.WithError(err).WithFields(logrus.Fields{
 				"namespace": wl.Namespace,
 				"name":      wl.Name,
@@ -268,7 +286,7 @@ func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workload
 		if svc.K8sNamespace == nil || *svc.K8sNamespace == "" {
 			continue
 		}
-		if err := d.repos.Services.MarkReconciledZombie(ctx, svc.ID); err != nil {
+		if err := svcs.MarkReconciledZombie(ctx, svc.ID); err != nil {
 			d.logger.WithError(err).WithField("service_id", svc.ID).Warn("NamespaceDiscoverer: failed to mark zombie")
 			continue
 		}
@@ -278,7 +296,7 @@ func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workload
 	// Reap orphans whose last_seen is older than the retention window —
 	// the workload is gone from cluster.
 	cutoff := time.Now().Add(-orphanRetention)
-	if reaped, err := d.repos.DiscoveredOrphans.DeleteStale(ctx, cutoff); err != nil {
+	if reaped, err := orphans.DeleteStale(ctx, cutoff); err != nil {
 		d.logger.WithError(err).Warn("NamespaceDiscoverer: failed to reap stale orphans")
 	} else if reaped > 0 {
 		d.logger.WithField("reaped", reaped).Info("NamespaceDiscoverer: reaped stale orphan rows")
