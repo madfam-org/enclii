@@ -45,15 +45,19 @@ template:
         effect: "NoSchedule"
     containers:
       - name: runner
-        # MADFAM hardened runner image: thin overlay on
-        # ghcr.io/actions/actions-runner that adds the system
-        # packages our CI needs (libatomic1 for pnpm; libasound2t64
-        # + libnss3 + libxkbcommon0 + libgbm1 for Playwright;
-        # jq + python3-pip for misc CI scripting).
-        # Built by .github/workflows/arc-runner-image.yml.
-        # Source: infra/docker/arc-runner/.
-        image: ghcr.io/madfam-org/enclii/arc-runner:stable
-        imagePullPolicy: IfNotPresent
+        # ROLLED BACK to upstream runner image 2026-04-26 after the hardened
+        # MADFAM overlay (ghcr.io/madfam-org/enclii/arc-runner:stable) was
+        # found to exit immediately on container start (exitCode 0, never
+        # invoked run.sh). The hardened image needs an explicit ENTRYPOINT
+        # or the Dockerfile must inherit FROM ghcr.io/actions/actions-runner
+        # WITHOUT overriding CMD. Followup: fix the overlay Dockerfile, then
+        # re-pin to :stable here.
+        image: ghcr.io/actions/actions-runner:latest
+        # Always pull when using :latest — Kyverno block-latest-ifnotpresent
+        # rejects :latest + IfNotPresent ("the Latest Trap"). Pinning to a
+        # version tag would avoid this; deferred until the hardened MADFAM
+        # overlay is fixed and re-pinned.
+        imagePullPolicy: Always
         resources:
           requests:
             cpu: 500m
