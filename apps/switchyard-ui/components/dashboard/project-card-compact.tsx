@@ -11,6 +11,7 @@ import {
   getFrameworkLabel,
 } from "./framework-icon";
 import { HealthBadge } from "./health-badge";
+import { SentryErrorBadge } from "./sentry-error-badge";
 
 export interface CompactService {
   id: string;
@@ -292,10 +293,17 @@ export function ProjectCardCompact({
           </a>
         )}
 
-        {/* Row 4c: Health badge for the lead service. */}
+        {/* Row 4c: Health + Sentry badges for the lead service.
+            SentryErrorBadge renders nothing when the operator hasn't
+            provisioned SENTRY_AUTH_TOKEN (parity audit gap #9), so this
+            row degrades gracefully on unconfigured deployments. */}
         {services[0]?.id && (
-          <div className="mt-1.5 flex items-center">
+          <div className="mt-1.5 flex items-center gap-1.5">
             <HealthBadge
+              serviceId={services[0].id}
+              serviceName={services[0].name}
+            />
+            <SentryErrorBadge
               serviceId={services[0].id}
               serviceName={services[0].name}
             />
