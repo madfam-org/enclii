@@ -24,20 +24,16 @@ githubConfigSecret: github-app-secret
 # GitHub may use the "Default" group which may have full repo access
 # If issues persist, an org admin needs to grant the Default group access to enclii repo
 
-# NOTE: DinD disabled in this revision. Chart 0.14.0 auto-injection of
-# the dind sidecar is silently bypassed when the user supplies a
-# template.spec.containers array (which we do, for image + resources +
-# command). Workflows using `services:` or `container:` will fail with
-# "Initialize containers" errors until we either:
-#   (a) Move to a chart version that supports both custom containers AND
-#       containerMode auto-injection, OR
-#   (b) Manually add a dind sidecar + init container to template.spec
-#       matching what chart 0.14.0 used to inject (docker:dind, shared
-#       /var/run socket via emptyDir, etc.)
-# Tracked as followup. For now, lint+test workflows work; service-using
-# workflows need a separate fix.
-# containerMode:
-#   type: "dind"
+# DinD enabled. Chart 0.14.0's dind-runner-container helper merges our
+# custom container spec (image, command, resources) with chart-injected
+# DOCKER_HOST env + dind-sock + work volume mounts. Sidecars added:
+#   - init container (copies /home/runner/externals to dind-externals)
+#   - dind sidecar (docker:dind, /var/run shared via emptyDir)
+# Required for workflows using `services:` (Postgres, Redis) or
+# `container:`. Chart's startup probe on dind has timeoutSeconds default
+# (no longer 1s as in the stale 2026-04-09 release).
+containerMode:
+  type: "dind"
 
 # Runner pod template - minimal customization, let ARC handle injection
 template:
