@@ -384,6 +384,14 @@ func main() {
 	}()
 	logrus.Info("✓ Function reconciler started (serverless functions with KEDA scale-to-zero)")
 
+	// Initialize and start namespace discoverer (parity audit gap #2):
+	// detects orphan workloads (in cluster, not in DB) and zombie services
+	// (DB record, no live workload) every RECONCILER_NAMESPACE_DISCOVERY_INTERVAL
+	// (default 5m). Read-only against the cluster.
+	namespaceDiscoverer := reconciler.NewNamespaceDiscoverer(repos, k8sClient, logrus.StandardLogger())
+	namespaceDiscoverer.Start(ctx)
+	logrus.Info("✓ Namespace discoverer started (orphan/zombie detection)")
+
 	// Initialize Roundhouse client (for async builds)
 	var roundhouseClient *clients.RoundhouseClient
 	if cfg.BuildMode == "roundhouse" {
@@ -751,6 +759,10 @@ func main() {
 	// Stop function reconciler
 	functionReconciler.Stop()
 	logrus.Info("Function reconciler stopped")
+
+	// Stop namespace discoverer
+	namespaceDiscoverer.Stop()
+	logrus.Info("Namespace discoverer stopped")
 
 	// Stop security middleware cleanup goroutine
 	securityMiddleware.Stop()

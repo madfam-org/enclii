@@ -348,6 +348,35 @@ func (r *ServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID
 	return err
 }
 
+// MarkReconciledHealthy updates the namespace-discoverer fields for a service
+// that is matched to a live K8s workload: clears zombie_since (if set) and
+// stamps last_reconciled_at, replica counts. Idempotent.
+func (r *ServiceRepository) MarkReconciledHealthy(ctx context.Context, id uuid.UUID, desiredReplicas, readyReplicas int32) error {
+	query := `UPDATE services
+		SET zombie_since = NULL,
+		    last_reconciled_at = NOW(),
+		    desired_replicas = $1,
+		    ready_replicas = $2,
+		    updated_at = NOW()
+		WHERE id = $3`
+	_, err := r.db.ExecContext(ctx, query, desiredReplicas, readyReplicas, id)
+	return err
+}
+
+// MarkReconciledZombie sets zombie_since to NOW() if it is currently NULL.
+// Called when the namespace discoverer cannot find a matching workload for a
+// service that has k8s_namespace pinned. Idempotent: subsequent calls are
+// no-ops while zombie_since is already set.
+func (r *ServiceRepository) MarkReconciledZombie(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE services
+		SET zombie_since = COALESCE(zombie_since, NOW()),
+		    last_reconciled_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, id)
+	return err
+}
+
 // Delete removes a service by ID
 func (r *ServiceRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM services WHERE id = $1`

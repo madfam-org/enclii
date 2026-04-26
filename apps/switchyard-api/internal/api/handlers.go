@@ -794,6 +794,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 
 				// Topology (admin-level)
 				admin.GET("/topology", h.GetAdminTopology)
+
+				// Namespace Discoverer (parity audit gap #2): live workloads
+				// found in cluster with no matching service row.
+				admin.GET("/discovered-orphans", h.ListDiscoveredOrphans)
 			}
 		}
 	}
