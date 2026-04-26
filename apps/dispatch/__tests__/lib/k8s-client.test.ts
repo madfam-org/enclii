@@ -5,7 +5,23 @@
  * environment / in-cluster ServiceAccount which the unit suite cannot
  * meaningfully exercise. Coverage of those code paths happens during
  * integration smoke testing against a real cluster.
+ *
+ * @kubernetes/client-node is mocked at module scope because it transitively
+ * imports jsonpath-plus, an ESM-only package Jest cannot transform without
+ * additional config. The pure helpers don't touch the SDK so the mock is benign.
  */
+jest.mock('@kubernetes/client-node', () => ({
+  KubeConfig: class {
+    loadFromCluster() {}
+    loadFromDefault() {}
+    makeApiClient() { return {} }
+  },
+  CoreV1Api: class {},
+  AppsV1Api: class {},
+  NetworkingV1Api: class {},
+  CustomObjectsApi: class {},
+}))
+
 import {
   cached,
   formatBytes,
