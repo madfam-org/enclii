@@ -85,6 +85,10 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "2000"
         prometheus.io/path: "/metrics"
+        # Tier 1 Reloader opt-in: restart cloudflared pods automatically
+        # when the cloudflared-config ConfigMap or cloudflared-enclii-token
+        # Secret change. Runbook: docs/runbooks/CONFIG_RELOAD_RUNBOOK.md
+        reloader.stakater.com/match: "true"
     spec:
       containers:
         - name: cloudflared
