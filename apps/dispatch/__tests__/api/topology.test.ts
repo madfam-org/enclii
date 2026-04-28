@@ -112,7 +112,7 @@ describe('GET /api/topology', () => {
   it('aggregates nodes, pods, services, deployments correctly', async () => {
     mockListNode.mockResolvedValueOnce({ body: {
       items: [fakeNode('foundry-cp', 'control-plane'), fakeNode('foundry-worker-01', 'worker')],
-    })
+    } })
     mockListNamespace.mockResolvedValueOnce({
       items: [
         { metadata: { name: 'enclii' } },
