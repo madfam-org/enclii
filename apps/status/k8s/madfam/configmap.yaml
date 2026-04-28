@@ -13,15 +13,24 @@ data:
   # Services monitored by status.madfam.io.
   #
   # Schema (RFC 0002 S1 — product family grouping):
-  #   - name         : display name
-  #   - url          : health probe URL
-  #   - href         : optional user-facing URL (falls back to url)
-  #   - group        : fine-grained product grouping (e.g. "Karafiel")
-  #   - family       : optional product family wrapping multiple groups
-  #                    (e.g. "MADFAM Platform"). Drives the two-level
-  #                    collapsible UI. Services without `family` fall into
-  #                    the "Other" family.
-  #   - description  : short description
+  #   - name             : display name
+  #   - url              : health probe URL
+  #   - href             : optional user-facing URL (falls back to url)
+  #   - group            : fine-grained product grouping (e.g. "Karafiel")
+  #   - family           : optional product family wrapping multiple groups
+  #                        (e.g. "MADFAM Platform"). Drives the two-level
+  #                        collapsible UI. Services without `family` fall into
+  #                        the "Other" family.
+  #   - description      : short description
+  #   - assertContains   : (optional) body must contain this string for 2xx
+  #                        responses to count as operational. Catches "shallow
+  #                        green" — service returns 200 + JSON but a downstream
+  #                        dep (DB/Redis/queue) is reported broken in the body.
+  #                        See RFC 0015 § Probe contract.
+  #   - assertNotContains: (optional) body must NOT contain this string. Used
+  #                        for negative markers like "status":"unhealthy",
+  #                        "down", "error" that some services include only
+  #                        when a dep failed.
   #
   # Product families (RFC 0002 S1):
   #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, routecraft, tulana, enclii, janua
@@ -149,7 +158,9 @@ data:
         "href": "https://api.dhan.am",
         "group": "Dhanam",
         "family": "MADFAM Platform",
-        "description": "Financial platform API"
+        "description": "Financial platform API",
+        "assertContains": "\"database\":{\"status\":\"up\"",
+        "assertNotContains": "\"status\":\"down\""
       },
       {
         "name": "Dhanam Admin",
@@ -272,7 +283,9 @@ data:
         "href": "https://mes-api.madfam.io",
         "group": "Pravara MES",
         "family": "Digital Fabrication",
-        "description": "Manufacturing execution API"
+        "description": "Manufacturing execution API",
+        "assertContains": "\"database\":{\"status\":\"healthy\"",
+        "assertNotContains": "\"database\":{\"status\":\"unhealthy\""
       },
       {
         "name": "MES Web",
@@ -315,6 +328,8 @@ data:
       {
         "name": "Karafiel API",
         "url": "https://api.karafiel.mx/api/v1/health/",
+        "assertContains": "\"database\": \"connected\"",
+        "assertNotContains": "\"database\": \"disconnected\"",
         "href": "https://api.karafiel.mx",
         "group": "Karafiel",
         "family": "MADFAM Platform",
@@ -449,7 +464,9 @@ data:
         "href": "https://api.almanac.solar",
         "group": "Almanac",
         "family": "Content & Creative",
-        "description": "Serendipity curation + embeddings API"
+        "description": "Serendipity curation + embeddings API",
+        "assertContains": "\"database\":{\"status\":\"ok\"",
+        "assertNotContains": "\"status\":\"error\""
       },
       {
         "name": "Karafiel App",
