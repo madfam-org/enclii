@@ -56,6 +56,16 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - RespectIgnoreDifferences=true
+          # ServerSideApply uses field-manager-based merge instead of
+          # client-side strategic merge. Required for Kyverno-managed
+          # annotations like `kyverno.io/verify-images` which are
+          # immutable post-mutation: client-side merge tries to PATCH
+          # the annotation and gets blocked by Kyverno's mutate webhook
+          # (`kyverno.io/verify-images annotation cannot be changed`).
+          # Server-side apply respects field ownership so Kyverno keeps
+          # the annotation while ArgoCD reconciles everything else.
+          # Surfaced 2026-04-28 by dhanam-services sync failure.
+          - ServerSideApply=true
       ignoreDifferences:
         # ArgoCD tracking label conflicts with kustomize commonLabels
         # Kyverno verify-images annotations (both deployment and pod template level)
