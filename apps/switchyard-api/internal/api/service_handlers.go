@@ -263,7 +263,7 @@ func (h *Handler) GetServiceSettings(c *gin.Context) {
 //
 // Response:
 //   - 200 OK: {services: Service[]} with id, name, project_id, current_image_uri,
-//             current_release_created_at, recent_releases
+//     current_release_created_at, recent_releases
 //   - 400 Bad Request: Missing git_repo parameter
 //   - 500 Internal Server Error: Failed to query services
 func (h *Handler) ListServicesByGitRepo(c *gin.Context) {
