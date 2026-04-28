@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "symbiosis-hcm",
+  "namespace": "symbiosis-hcm",
+  "partOf": "symbiosis-hcm",
+  "repoURL": "https://github.com/madfam-org/symbiosis-hcm.git"
+}
