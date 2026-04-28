@@ -73,21 +73,20 @@ export function LastSyncBadge({
   staleAfterSeconds = 60,
   className,
 }: LastSyncBadgeProps) {
-  const [tick, setTick] = useState(0);
+  // nowMs is stored in state so the React Compiler treats this component
+  // as pure — Date.now() is impure and cannot be called during render.
+  // The interval below ticks it forward so relative-time labels stay fresh.
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 5_000);
+    const id = setInterval(() => setNowMs(Date.now()), 5_000);
     return () => clearInterval(id);
   }, []);
-
-  // tick is intentionally unused — its only purpose is to drive re-render
-  // so the relative-time string stays current.
-  void tick;
 
   const { label, toneClass } = describeFreshness(
     lastSyncedAt,
     staleAfterSeconds,
-    Date.now(),
+    nowMs,
   );
 
   return (
