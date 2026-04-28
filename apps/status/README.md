@@ -86,13 +86,43 @@ Schema:
 ```jsonc
 {
   "name": "Karafiel API",
-  "url":  "https://api.karafiel.mx/health",      // probe URL
+  "url":  "https://api.karafiel.mx/health",      // probe URL (or user-facing link if probeUrl is set)
   "href": "https://api.karafiel.mx",              // optional user-facing link
   "group": "Karafiel",                            // fine-grained product
   "family": "MADFAM Platform",                    // optional — wraps groups
-  "description": "Combat accounting API"
+  "description": "Combat accounting API",
+
+  // --- Content-match assertions (optional) ---
+  // When any of these are set, the probe additionally reads the response
+  // body (capped at 1 MiB) and downgrades a 2xx to `degraded` when the
+  // content rule fails. Bodies are never read when no assertion is
+  // configured, so legacy services pay zero overhead.
+
+  "probeUrl":          "https://forgesight.quest/health",  // override: hit /health while `url` stays the human-friendly link
+  "assertContains":    "Karafiel marketplace",             // body MUST contain this string
+  "assertNotContains": "localhost:"                        // body MUST NOT contain this string
 }
 ```
+
+### Content-match assertions
+
+The audit at `claudedocs/status-page-audit-2026-04-28.md` documented four
+"surface-green-but-broken" services where a Flutter shell returned 200 with
+`localhost:8000` baked into the JS bundle — every API call inside the
+bundle failed, but the status page reported green. The three optional
+fields above close that gap:
+
+- **`probeUrl`** — separate the probe target from the user-facing link.
+  When unset, falls back to `url` (backwards compatible).
+- **`assertContains`** — fail when the body is missing a required marker
+  (e.g. "real app shipped, not React-Router scaffold").
+- **`assertNotContains`** — fail when the body contains a forbidden token
+  (e.g. bundle should NOT have `localhost:` baked in).
+
+A failed assertion produces `status: degraded` with one of two errors:
+`body missing required content` or `body contains forbidden content`.
+Rolling these out is a per-repo change — each ecosystem repo declares
+its own assertions in its `enclii.yaml` `status.entries[]`.
 
 ### Product families (RFC 0002 S1)
 

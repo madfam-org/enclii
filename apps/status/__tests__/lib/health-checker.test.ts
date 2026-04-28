@@ -29,9 +29,21 @@ function makeService(overrides?: Partial<ServiceConfig>): ServiceConfig {
   }
 }
 
-// Helper to create a mock Response-like object (jsdom lacks native Response)
-function fakeResponse(status: number): { status: number; ok: boolean } {
-  return { status, ok: status >= 200 && status < 300 }
+// Helper to create a mock Response-like object (jsdom lacks native Response).
+// Optional `body` opts in to the assertion path. `body` is exposed via a
+// `text()` thunk to mirror the production fetch Response shape used by
+// `readBodyCapped`'s fallback branch.
+function fakeResponse(
+  status: number,
+  body?: string
+): { status: number; ok: boolean; text?: () => Promise<string>; body?: null } {
+  const base = { status, ok: status >= 200 && status < 300 }
+  if (body === undefined) return base
+  return {
+    ...base,
+    body: null, // forces readBodyCapped() to use the response.text() fallback
+    text: () => Promise.resolve(body),
+  }
 }
 
 beforeEach(() => {
@@ -226,6 +238,102 @@ describe('checkService', () => {
     const result = await checkService(service)
 
     expect(result.description).toBe('Control plane API')
+  })
+})
+
+describe('checkService — content-match assertions', () => {
+  it('assertContains pass: 200 + body has the marker → operational', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, '<html>Karafiel marketplace v3.2.0</html>'))
+
+    const result = await checkService(
+      makeService({ assertContains: 'Karafiel marketplace' })
+    )
+
+    expect(result.status).toBe('operational')
+    expect(result.statusCode).toBe(200)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('assertContains fail: 200 + body missing the marker → degraded', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, '<html>React Router default scaffold</html>'))
+
+    const result = await checkService(
+      makeService({ assertContains: 'Karafiel marketplace' })
+    )
+
+    expect(result.status).toBe('degraded')
+    expect(result.statusCode).toBe(200)
+    expect(result.error).toBe('body missing required content')
+  })
+
+  it('assertNotContains pass: 200 + body lacks the forbidden token → operational', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, 'apiBase=https://api.almanac.solar'))
+
+    const result = await checkService(
+      makeService({ assertNotContains: 'localhost:' })
+    )
+
+    expect(result.status).toBe('operational')
+    expect(result.error).toBeUndefined()
+  })
+
+  it('assertNotContains fail: 200 + body has the forbidden token → degraded', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, 'apiBase=http://localhost:8000'))
+
+    const result = await checkService(
+      makeService({ assertNotContains: 'localhost:' })
+    )
+
+    expect(result.status).toBe('degraded')
+    expect(result.statusCode).toBe(200)
+    expect(result.error).toBe('body contains forbidden content')
+  })
+
+  it('does not read the body when no assertion is configured (legacy fast-path)', async () => {
+    // text() throwing would surface as a degraded body-read error; the fact
+    // that the result is operational proves text() was never invoked.
+    const text = jest.fn(() => {
+      throw new Error('text() should not be called when no assertion is set')
+    })
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      body: null,
+      text,
+    })
+
+    const result = await checkService(makeService())
+
+    expect(result.status).toBe('operational')
+    expect(text).not.toHaveBeenCalled()
+  })
+
+  it('honors probeUrl override while preserving url for display', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200))
+    global.fetch = fetchMock
+
+    const result = await checkService(
+      makeService({
+        url: 'https://forgesight.quest',
+        probeUrl: 'https://forgesight.quest/health',
+      })
+    )
+
+    expect(result.status).toBe('operational')
+    expect(result.url).toBe('https://forgesight.quest')
+    // Probe should hit the override, not the user-facing URL.
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://forgesight.quest/health',
+      expect.any(Object)
+    )
   })
 })
 

@@ -26,6 +26,19 @@ export interface ServiceConfig {
                       // When absent for every service, the UI falls back to the existing
                       // single-level group accordion (no behavioural change).
   description?: string
+
+  // Content-match assertions (optional). When any of these are set, the probe
+  // reads the response body (capped at 1 MiB) in addition to checking the HTTP
+  // status. Useful for catching surface-green-but-broken services such as a
+  // Flutter shell that returns 200 with `localhost:8000` baked into its bundle.
+  probeUrl?: string             // Optional override of the probe URL. When unset,
+                                // the probe falls back to `url` (backwards compatible).
+                                // Lets `url` stay the human-friendly link while the
+                                // probe hits a dedicated `/health` endpoint.
+  assertContains?: string       // If set, body must contain this string;
+                                // otherwise the service is reported degraded.
+  assertNotContains?: string    // If set, body must NOT contain this string;
+                                // otherwise the service is reported degraded.
 }
 
 /**
