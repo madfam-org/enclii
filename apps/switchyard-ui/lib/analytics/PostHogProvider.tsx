@@ -16,9 +16,13 @@
  *  - Tracks Next.js route changes via the App Router pathname.
  *  - Respects the browser Do-Not-Track signal.
  *  - Is a no-op when NEXT_PUBLIC_POSTHOG_KEY is not set.
+ *
+ * The route-tracker is split into its own component wrapped in Suspense
+ * because `useSearchParams` triggers a CSR bailout during static export
+ * (Next.js prerender of `/_not-found` would fail otherwise).
  */
 
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { initPostHog, getPostHog } from "./posthog";
 
@@ -26,18 +30,11 @@ interface PostHogProviderProps {
   children: React.ReactNode;
 }
 
-export function PostHogProvider({ children }: PostHogProviderProps) {
+function PostHogRouteTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const prevPathnameRef = useRef<string | null>(null);
 
-  // Initialize PostHog once on mount.
-  useEffect(() => {
-    initPostHog();
-  }, []);
-
-  // Track route changes (App Router does not fire popstate so we observe
-  // pathname changes via the hook).
   useEffect(() => {
     const ph = getPostHog();
     if (!ph) return;
@@ -54,7 +51,23 @@ export function PostHogProvider({ children }: PostHogProviderProps) {
     prevPathnameRef.current = pathname;
   }, [pathname, searchParams]);
 
+  return null;
+}
+
+export function PostHogProvider({ children }: PostHogProviderProps) {
+  // Initialize PostHog once on mount.
+  useEffect(() => {
+    initPostHog();
+  }, []);
+
   // No context provider needed -- posthog-js is a singleton.
   // Components use the helpers from ./posthog.ts directly.
-  return <>{children}</>;
+  return (
+    <>
+      <Suspense fallback={null}>
+        <PostHogRouteTracker />
+      </Suspense>
+      {children}
+    </>
+  );
 }
