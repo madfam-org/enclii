@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -244,15 +245,25 @@ func (h *Handler) GetServiceSettings(c *gin.Context) {
 }
 
 // ListServicesByGitRepo returns all services that use a specific git repository URL.
-// This is an internal endpoint used by Roundhouse for webhook-triggered preview environments.
+// This is a public endpoint (registered outside auth middleware in handlers.go)
+// originally used by Roundhouse for webhook-triggered preview environments.
+//
+// Pillar 3.5: the response is enriched with current_image_uri,
+// current_release_created_at, and recent_releases so the public status page
+// (status.enclii.dev / status.madfam.io) can detect stale images per service
+// without requiring auth. All three fields are non-sensitive: the image
+// digest is discoverable via GHCR public registry, and timestamps reveal no
+// secrets. The auth'd /v1/projects/:id/services path (ListByProject) keeps
+// its existing richer projection unchanged.
 //
 // Request:
-//   - Method: GET /v1/internal/services
+//   - Method: GET /v1/services
 //   - Query Parameters: git_repo (string) - Git repository URL to search for
-//   - Authorization: API key via X-API-Key or Authorization header
+//   - Authorization: none (public endpoint)
 //
 // Response:
-//   - 200 OK: {services: Service[]}
+//   - 200 OK: {services: Service[]} with id, name, project_id, current_image_uri,
+//             current_release_created_at, recent_releases
 //   - 400 Bad Request: Missing git_repo parameter
 //   - 500 Internal Server Error: Failed to query services
 func (h *Handler) ListServicesByGitRepo(c *gin.Context) {
@@ -274,19 +285,37 @@ func (h *Handler) ListServicesByGitRepo(c *gin.Context) {
 		return
 	}
 
-	// Convert to response format
+	// Pillar 3.5: enrich with current image + recent releases so the public
+	// status page can compute image-staleness without auth. Non-fatal on
+	// error — we log and continue with the base response so consumers that
+	// only need {id, name, project_id} keep working.
+	if err := h.repos.Services.EnrichWithLatestRelease(services); err != nil {
+		h.logger.Warn(ctx, "Failed to enrich services with release info; serving base response",
+			logging.String("git_repo", gitRepo),
+			logging.Error("error", err))
+	}
+
+	// Convert to response format. Fields current_image_uri,
+	// current_release_created_at, and recent_releases are emitted via
+	// `omitempty` so callers that don't read them are unaffected.
 	type serviceResponse struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		ProjectID string `json:"project_id"`
+		ID                      string                 `json:"id"`
+		Name                    string                 `json:"name"`
+		ProjectID               string                 `json:"project_id"`
+		CurrentImageURI         string                 `json:"current_image_uri,omitempty"`
+		CurrentReleaseCreatedAt *time.Time             `json:"current_release_created_at,omitempty"`
+		RecentReleases          []types.ReleaseSummary `json:"recent_releases,omitempty"`
 	}
 
 	result := make([]serviceResponse, 0, len(services))
 	for _, svc := range services {
 		result = append(result, serviceResponse{
-			ID:        svc.ID.String(),
-			Name:      svc.Name,
-			ProjectID: svc.ProjectID.String(),
+			ID:                      svc.ID.String(),
+			Name:                    svc.Name,
+			ProjectID:               svc.ProjectID.String(),
+			CurrentImageURI:         svc.CurrentImageURI,
+			CurrentReleaseCreatedAt: svc.CurrentReleaseCreatedAt,
+			RecentReleases:          svc.RecentReleases,
 		})
 	}
 

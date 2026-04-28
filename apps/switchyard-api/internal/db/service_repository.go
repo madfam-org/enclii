@@ -284,6 +284,66 @@ func (r *ServiceRepository) GetByGitRepo(gitRepoURL string) (*types.Service, err
 	return service, nil
 }
 
+// EnrichWithLatestRelease populates CurrentImageURI, CurrentReleaseCreatedAt,
+// and RecentReleases on each service by querying the releases table. This is
+// the same data ListByProject embeds inline via subqueries; it is broken out
+// here so callers that don't need the full dashboard projection (e.g. the
+// public ListServicesByGitRepo endpoint consumed by Pillar 4 image-staleness
+// detection) can opt in to image-age fields without paying for the rest.
+//
+// Performance: each service triggers two indexed lookups against
+// releases(service_id) — one for the latest succeeded release, one for the
+// last 5 releases — using idx_releases_service_id. Total cost is
+// O(N services * 2 indexed lookups). For the small N typical of
+// ListByGitRepo callers (1-5 services per repo), this is well under a
+// millisecond. If this is later called for project-wide listings, consider
+// folding the subqueries into the parent query as ListByProject already does.
+func (r *ServiceRepository) EnrichWithLatestRelease(services []*types.Service) error {
+	currentQuery := `SELECT image_uri, created_at FROM releases
+		WHERE service_id = $1 AND status = 'succeeded'
+		ORDER BY created_at DESC LIMIT 1`
+
+	recentQuery := `SELECT id, version, image_uri, git_sha, status, created_at FROM releases
+		WHERE service_id = $1
+		ORDER BY created_at DESC LIMIT 5`
+
+	for _, svc := range services {
+		// Latest succeeded release: drives current_image_uri + current_release_created_at.
+		var imageURI sql.NullString
+		var createdAt sql.NullTime
+		err := r.db.QueryRow(currentQuery, svc.ID).Scan(&imageURI, &createdAt)
+		if err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("failed to query current release for service %s: %w", svc.ID, err)
+		}
+		if imageURI.Valid {
+			svc.CurrentImageURI = imageURI.String
+		}
+		if createdAt.Valid {
+			t := createdAt.Time
+			svc.CurrentReleaseCreatedAt = &t
+		}
+
+		// Last 5 releases for the recent_releases array.
+		rows, err := r.db.Query(recentQuery, svc.ID)
+		if err != nil {
+			return fmt.Errorf("failed to query recent releases for service %s: %w", svc.ID, err)
+		}
+		var recent []types.ReleaseSummary
+		for rows.Next() {
+			var rs types.ReleaseSummary
+			if err := rows.Scan(&rs.ID, &rs.Version, &rs.ImageURI, &rs.GitSHA, &rs.Status, &rs.CreatedAt); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("failed to scan recent release for service %s: %w", svc.ID, err)
+			}
+			recent = append(recent, rs)
+		}
+		_ = rows.Close()
+		svc.RecentReleases = recent
+	}
+
+	return nil
+}
+
 // ListByGitRepo retrieves ALL services matching a git repository URL
 // Supports monorepos where multiple services share the same repo
 // Normalizes URLs to handle variations like .git suffix, trailing slashes
