@@ -548,5 +548,6 @@ data:
         "group": "Tulana",
         "family": "MADFAM Platform",
         "description": "/v1/recommendations + /v1/pmf endpoints consumed by every product's billing module"
-      }
-    ]
+      },
+    {"name": "Symbiosis HCM", "url": "https://hcm.madfam.io", "group": "Symbiosis HCM"}
+  ]
