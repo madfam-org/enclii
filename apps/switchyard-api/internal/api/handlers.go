@@ -794,6 +794,14 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 				admin.GET("/onboard", h.ListOnboardings)
 				admin.GET("/onboard/:owner/:repo", h.GetOnboarding)
 
+				// Reconcile services from K8s cluster — discovers deployments
+				// in a project's namespace and inserts missing services rows
+				// (or updates existing rows with NULL k8s_namespace). This is
+				// the recovery path for projects whose services rows never got
+				// created (audit 2026-04-29 found 17 such projects), and the
+				// repair path for services whose k8s_namespace was lost.
+				admin.POST("/projects/:slug/reconcile-services", h.ReconcileServicesFromCluster)
+
 				// Standalone Provisioning (ad-hoc for already-onboarded projects)
 				admin.POST("/provision/postgres", h.ProvisionPostgres)
 				admin.POST("/provision/secrets", h.ProvisionSecrets)

@@ -39,14 +39,35 @@ func (r *ServiceRepository) Create(service *types.Service) error {
 		return fmt.Errorf("failed to marshal build config: %w", err)
 	}
 
+	// k8s_namespace persisted so subsequent reads via ListAll/ListByProject
+	// can populate Service.K8sNamespace and the observability handler can
+	// probe the right namespace. Optional: NULL for services that haven't
+	// been onboarded to a specific namespace yet.
+	var k8sNs interface{}
+	if service.K8sNamespace != nil && *service.K8sNamespace != "" {
+		k8sNs = *service.K8sNamespace
+	} else {
+		k8sNs = nil
+	}
+
 	query := `
 		INSERT INTO services (id, project_id, name, git_repo, app_path, build_config,
-			auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
 	_, err = r.db.Exec(query, service.ID, service.ProjectID, service.Name, service.GitRepo,
 		service.AppPath, buildConfigJSON, service.AutoDeploy, service.AutoDeployBranch,
-		service.AutoDeployEnv, service.CreatedAt, service.UpdatedAt)
+		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt)
+	return err
+}
+
+// UpdateK8sNamespace sets the k8s_namespace column for an existing service.
+// Used by the reconcile-services-from-cluster admin endpoint to repair
+// services rows whose k8s_namespace column is NULL.
+func (r *ServiceRepository) UpdateK8sNamespace(ctx context.Context, serviceID uuid.UUID, namespace string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE services SET k8s_namespace = $1, updated_at = NOW() WHERE id = $2`,
+		namespace, serviceID)
 	return err
 }
 
