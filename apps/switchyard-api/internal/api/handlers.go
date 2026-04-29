@@ -511,6 +511,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.POST("/integrations/github/link", h.LinkGitHub)
 			protected.GET("/integrations/github/repos/:owner/:repo/branches", h.GetRepositoryBranches)
 			protected.POST("/integrations/github/repos/:owner/:repo/analyze", h.AnalyzeRepository)
+			// Batch repo metadata for the dashboard (visibility, stars,
+			// language, license, archived/template flags). 5-min in-memory
+			// cache; degrades gracefully when the user's GH token is missing.
+			protected.POST("/integrations/github/repos/metadata", h.GetRepoMetadataBatch)
 
 			// Billing + spend visibility (P2.2). Thin proxy to Waybill that
 			// resolves :slug → project UUID under the caller's RBAC, then

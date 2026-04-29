@@ -1,7 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, GitBranch, GitMerge, Github } from "lucide-react";
+import {
+  Archive,
+  Copy,
+  ExternalLink,
+  GitBranch,
+  GitFork,
+  GitMerge,
+  Github,
+  Globe,
+  Lock,
+  Star,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/formatting";
@@ -53,6 +64,25 @@ export function shortImageRef(uri: string | undefined | null): string {
   return "";
 }
 
+// At-a-glance repo metadata surfaced on the card. Populated by a single batch
+// call to /v1/integrations/github/repos/metadata after the project list loads.
+// `visibility === undefined` means "not fetched yet" (loading). `visibility ===
+// "unknown"` means "fetched but inaccessible" (404/403 from GitHub) — render
+// a neutral indicator and tooltip rather than guessing public/private.
+export interface CompactRepoMeta {
+  visibility?: "public" | "private" | "internal" | "unknown";
+  language?: string;
+  license?: string;
+  stars?: number;
+  forks?: number;
+  archived?: boolean;
+  fork?: boolean;
+  isTemplate?: boolean;
+  defaultBranch?: string;
+  pushedAt?: string;
+  description?: string;
+}
+
 export interface CompactProject {
   id: string;
   name: string;
@@ -60,6 +90,7 @@ export interface CompactProject {
   description?: string;
   framework?: FrameworkType | string;
   gitRepo?: string;
+  repoMeta?: CompactRepoMeta;
   domain?: string;
   lastDeployment?: {
     timestamp: string;
@@ -101,6 +132,41 @@ const aggregateStatusColor: Record<string, string> = {
   failing: "bg-status-error",
   unknown: "bg-muted-foreground",
 };
+
+// Hex colors for the language dot. Source: github-linguist's languages.yml
+// (subset — ecosystem-relevant only). Falling back to a neutral grey when
+// the language isn't one we've seen, which is fine: the dot is decorative.
+const languageColor: Record<string, string> = {
+  TypeScript: "#3178c6",
+  JavaScript: "#f1e05a",
+  Go: "#00ADD8",
+  Python: "#3572A5",
+  Rust: "#dea584",
+  Dart: "#00B4AB",
+  Ruby: "#701516",
+  Java: "#b07219",
+  Kotlin: "#A97BFF",
+  Swift: "#F05138",
+  Shell: "#89e051",
+  HCL: "#844FBA",
+  HTML: "#e34c26",
+  CSS: "#563d7c",
+  Vue: "#41b883",
+  Svelte: "#ff3e00",
+  Solidity: "#AA6746",
+  C: "#555555",
+  "C++": "#f34b7d",
+  "C#": "#178600",
+  PHP: "#4F5D95",
+};
+
+// Compact human-readable star/fork counts (1.2k, 3.4k, 12k).
+function formatCount(n: number | undefined): string {
+  if (n === undefined || n === null) return "";
+  if (n < 1000) return String(n);
+  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return Math.round(n / 1000) + "k";
+}
 
 const MAX_VISIBLE_TABLE_ROWS = 5;
 
@@ -279,7 +345,14 @@ export function ProjectCardCompact({
           <div className="mt-2 h-4" />
         )}
 
-        {/* Row 4b: GitHub repo */}
+        {/* Row 4b: GitHub repo + visibility indicator + repo flags.
+            The visibility icon (lock/globe) sits inline with the repo path so
+            operators can tell at-a-glance whether the underlying source is
+            public or private — the most common reason to read this card is
+            to confirm "is this safe to share / open externally?". When repo
+            metadata hasn't loaded yet, we render no icon (avoids flash of
+            wrong indicator); when GitHub returned 404/403, we render a
+            neutral question-mark variant via the "unknown" branch. */}
         {project.gitRepo && (
           <a
             href={project.gitRepo.startsWith('http') ? project.gitRepo : `https://github.com/${project.gitRepo}`}
@@ -290,8 +363,91 @@ export function ProjectCardCompact({
           >
             <Github className="h-3 w-3 shrink-0" />
             <span className="truncate">{project.gitRepo.replace(/^https?:\/\/github\.com\//, '')}</span>
+            {project.repoMeta?.visibility === "private" && (
+              <Lock
+                className="h-3 w-3 shrink-0 text-status-warning"
+                aria-label="Private repository"
+              />
+            )}
+            {project.repoMeta?.visibility === "public" && (
+              <Globe
+                className="h-3 w-3 shrink-0 text-status-success"
+                aria-label="Public repository"
+              />
+            )}
+            {project.repoMeta?.visibility === "internal" && (
+              <Lock
+                className="h-3 w-3 shrink-0 text-status-info"
+                aria-label="Internal repository"
+              />
+            )}
+            {project.repoMeta?.archived && (
+              <Archive
+                className="h-3 w-3 shrink-0 text-muted-foreground"
+                aria-label="Archived repository"
+              />
+            )}
+            {project.repoMeta?.fork && (
+              <GitFork
+                className="h-3 w-3 shrink-0 text-muted-foreground"
+                aria-label="Forked repository"
+              />
+            )}
+            {project.repoMeta?.isTemplate && (
+              <Copy
+                className="h-3 w-3 shrink-0 text-muted-foreground"
+                aria-label="Template repository"
+              />
+            )}
           </a>
         )}
+
+        {/* Row 4b-stats: small chip row with language dot + stars + license.
+            Only renders when at least one stat is populated, so unconfigured
+            (no GH token) deployments show no extra row instead of a blank
+            band. The card tolerates partial metadata: each chip is
+            individually conditional. */}
+        {project.repoMeta &&
+          (project.repoMeta.language ||
+            (project.repoMeta.stars && project.repoMeta.stars > 0) ||
+            project.repoMeta.license) && (
+            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+              {project.repoMeta.language && (
+                <span
+                  className="flex items-center gap-1"
+                  title={`Primary language: ${project.repoMeta.language}`}
+                >
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{
+                      backgroundColor:
+                        languageColor[project.repoMeta.language] || "#888",
+                    }}
+                    aria-hidden="true"
+                  />
+                  {project.repoMeta.language}
+                </span>
+              )}
+              {project.repoMeta.stars !== undefined &&
+                project.repoMeta.stars > 0 && (
+                  <span
+                    className="flex items-center gap-0.5"
+                    title={`${project.repoMeta.stars} stars`}
+                  >
+                    <Star className="h-2.5 w-2.5 shrink-0" />
+                    {formatCount(project.repoMeta.stars)}
+                  </span>
+                )}
+              {project.repoMeta.license && (
+                <span
+                  className="rounded border border-border/40 bg-muted/30 px-1 py-px font-mono leading-none"
+                  title={`License: ${project.repoMeta.license}`}
+                >
+                  {project.repoMeta.license}
+                </span>
+              )}
+            </div>
+          )}
 
         {/* Row 4c: Health + Sentry badges for the lead service.
             SentryErrorBadge renders nothing when the operator hasn't
