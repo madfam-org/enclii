@@ -64,8 +64,8 @@ func (h *Handler) ListFunctions(c *gin.Context) {
 func (h *Handler) ListAllFunctions(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Get user ID from context
-	userIDStr, exists := c.Get("userID")
+	// Get user ID from context — middleware uses snake_case "user_id"
+	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
 		return
@@ -152,9 +152,9 @@ func (h *Handler) CreateFunction(c *gin.Context) {
 		req.Config.Handler = types.FunctionRuntimeDefaults[req.Config.Runtime]
 	}
 
-	// Get user info from context
-	userID, _ := c.Get("userID")
-	userEmail, _ := c.Get("userEmail")
+	// Get user info from context (middleware uses snake_case keys)
+	userID, _ := c.Get("user_id")
+	userEmail, _ := c.Get("user_email")
 
 	var userUUID *uuid.UUID
 	if uid, ok := userID.(string); ok && uid != "" {

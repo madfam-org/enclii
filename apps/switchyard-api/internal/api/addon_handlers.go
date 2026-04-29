@@ -19,8 +19,11 @@ import (
 func (h *Handler) ListAllAddons(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Get user ID from context
-	userIDStr, exists := c.Get("userID")
+	// Get user ID from context. Middleware sets "user_id" (snake_case),
+	// not "userID" — the camelCase variant was a copy-paste typo that
+	// silently 401'd every /v1/databases + /v1/addons request from the
+	// dashboard, leaving the page empty for any authenticated user.
+	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
 		return
@@ -115,9 +118,9 @@ func (h *Handler) CreateAddon(c *gin.Context) {
 		environmentID = &envID
 	}
 
-	// Get user info from context
-	userID, _ := c.Get("userID")
-	userEmail, _ := c.Get("userEmail")
+	// Get user info from context (middleware uses snake_case keys)
+	userID, _ := c.Get("user_id")
+	userEmail, _ := c.Get("user_email")
 
 	var userUUID *uuid.UUID
 	if uid, ok := userID.(string); ok && uid != "" {
@@ -334,7 +337,7 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 // context, for attribution in the addon event ledger.
 func addonActorFromContext(c *gin.Context) addons.EventActor {
 	actor := addons.EventActor{}
-	if raw, ok := c.Get("userID"); ok {
+	if raw, ok := c.Get("user_id"); ok {
 		if s, ok := raw.(string); ok && s != "" {
 			if id, err := uuid.Parse(s); err == nil {
 				actor.UserID = &id
