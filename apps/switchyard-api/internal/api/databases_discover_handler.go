@@ -258,6 +258,8 @@ func sharedPostgresCandidates() []discoveryCandidate {
 		dbName  string
 		project string // exact project slug — must match a row in projects.slug
 	}{
+		{"avala", "avala"},
+		{"bloom_scroll", "bloom-scroll"},
 		{"ceq_production", "ceq"},
 		{"dhanam", "dhanam"},
 		{"dhanam_production", "dhanam"},
