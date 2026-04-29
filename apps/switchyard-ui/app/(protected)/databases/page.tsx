@@ -60,26 +60,38 @@ export default function DatabasesPage() {
   const fetchDatabases = async () => {
     try {
       setError(null);
-      // Fetch all projects first - API returns {projects: Project[]}
-      const projectsResponse = await apiGet<{projects: Project[]}>('/v1/projects');
+
+      // Single batched call replaces a per-project loop that fanned out
+      // ~25 sequential requests on cold load. /v1/databases is the
+      // backend alias for ListAllAddonsForUser (handlers.go:654) — it
+      // returns the full set in one query and respects the same RBAC
+      // boundary the per-project endpoint enforces. Projects are still
+      // fetched in parallel so the Create modal's project picker stays
+      // populated, but the addon list no longer waits on it.
+      const [databasesResponse, projectsResponse] = await Promise.all([
+        apiGet<{addons: DatabaseAddon[]; count: number}>('/v1/databases'),
+        apiGet<{projects: Project[]}>('/v1/projects'),
+      ]);
+
       const projectsData = projectsResponse?.projects || [];
       setProjects(projectsData);
 
-      // Fetch databases for each project
-      const allDatabases: DatabaseAddon[] = [];
-      for (const project of projectsData) {
-        try {
-          // API returns {addons: DatabaseAddon[], count: number}
-          const addonsResponse = await apiGet<{addons: DatabaseAddon[], count: number}>(`/v1/projects/${project.slug}/addons`);
-          const dbs = addonsResponse?.addons || [];
-          if (dbs.length > 0) {
-            allDatabases.push(...dbs.map(db => ({ ...db, project_name: project.name, project_slug: project.slug })));
-          }
-        } catch {
-          // Project might not have any databases, continue
-        }
-      }
-      setDatabases(allDatabases);
+      // Decorate each addon with project_name / project_slug so the
+      // existing card UI can render the project label without an extra
+      // lookup. Falls back to project_id when the project list missed
+      // a referenced project (rare — only happens during a project
+      // delete-while-rendering race).
+      const projectByID = new Map<string, Project>();
+      for (const p of projectsData) projectByID.set(p.id, p);
+      const decorated: DatabaseAddon[] = (databasesResponse?.addons || []).map((db) => {
+        const p = projectByID.get(db.project_id);
+        return {
+          ...db,
+          project_name: p?.name,
+          project_slug: p?.slug,
+        } as DatabaseAddon & { project_name?: string; project_slug?: string };
+      });
+      setDatabases(decorated);
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch databases:", err);
