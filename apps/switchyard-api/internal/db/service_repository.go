@@ -110,8 +110,12 @@ func (r *ServiceRepository) GetByName(name string) (*types.Service, error) {
 }
 
 func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, error) {
+	// k8s_namespace included so callers (notably the health/observability
+	// handler) can probe the right namespace for pod counts. Audit
+	// 2026-04-29 traced uniformly-zero pod counts back to ListAll
+	// dropping this column, forcing the caller to fall back to "default".
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at
+		auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at
 		FROM services ORDER BY created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query)
@@ -125,11 +129,12 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 		service := &types.Service{}
 		var buildConfigJSON []byte
 		var appPath sql.NullString
+		var k8sNamespace sql.NullString
 
 		err := rows.Scan(
 			&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 			&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-			&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt,
+			&service.AutoDeployEnv, &k8sNamespace, &service.CreatedAt, &service.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -137,6 +142,10 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 
 		if appPath.Valid {
 			service.AppPath = appPath.String
+		}
+		if k8sNamespace.Valid {
+			ns := k8sNamespace.String
+			service.K8sNamespace = &ns
 		}
 
 		if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
