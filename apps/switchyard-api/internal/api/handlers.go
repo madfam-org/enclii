@@ -806,6 +806,12 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 				// repair path for services whose k8s_namespace was lost.
 				admin.POST("/projects/:slug/reconcile-services", h.ReconcileServicesFromCluster)
 
+				// Database addon discovery + backfill — registers existing
+				// shared-postgres logical DBs and standalone Redis deploys
+				// as `database_addons` rows so /databases reflects reality.
+				// Idempotent (safe to re-run); see databases_discover_handler.go.
+				admin.POST("/databases/discover", h.DiscoverDatabases)
+
 				// Standalone Provisioning (ad-hoc for already-onboarded projects)
 				admin.POST("/provision/postgres", h.ProvisionPostgres)
 				admin.POST("/provision/secrets", h.ProvisionSecrets)

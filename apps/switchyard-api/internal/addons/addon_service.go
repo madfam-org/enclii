@@ -348,6 +348,38 @@ func (s *AddonService) GetCredentials(ctx context.Context, addonID uuid.UUID) (*
 		return nil, fmt.Errorf("addon is not ready (status: %s)", addon.Status)
 	}
 
+	// Discovered addons (registered by /v1/admin/databases/discover) don't
+	// own a per-addon K8s secret — they point at the shared `data/postgres`
+	// or to a same-namespace standalone Redis whose credentials live in
+	// the consuming product's existing secret. Return a partial credential
+	// surface (host/port/db_name) plus a clear ConnectionURI hint without
+	// the password, so operators can find the right secret manually
+	// instead of seeing a confusing "no connection secret" error.
+	if addon.Plan == "shared-discovered" {
+		creds := &types.DatabaseAddonCredentials{
+			Host:         addon.Host,
+			Port:         addon.Port,
+			DatabaseName: addon.DatabaseName,
+			Username:     addon.Username,
+			// Password intentionally empty — operator must look it up
+			// from the consuming pod's environment / its own Secret.
+			Password: "",
+		}
+		switch addon.Type {
+		case types.DatabaseAddonTypePostgres:
+			creds.ConnectionURI = fmt.Sprintf(
+				"postgresql://%s:<password-in-product-secret>@%s:%d/%s",
+				addon.Username, addon.Host, addon.Port, addon.DatabaseName,
+			)
+		case types.DatabaseAddonTypeRedis:
+			creds.ConnectionURI = fmt.Sprintf(
+				"redis://default:<password-in-product-secret>@%s:%d/%s",
+				addon.Host, addon.Port, addon.DatabaseName,
+			)
+		}
+		return creds, nil
+	}
+
 	provisioner, ok := s.provisioners[addon.Type]
 	if !ok {
 		return nil, fmt.Errorf("unsupported addon type: %s", addon.Type)
