@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -266,7 +267,10 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 		return []*types.DatabaseAddon{}, nil
 	}
 
-	// Build query with IN clause
+	// Build query with IN clause. lib/pq does not auto-convert []uuid.UUID
+	// to a postgres array — pq.Array() wraps it so `= ANY($1)` works. Without
+	// this wrap, /v1/databases returns 500 with
+	// `unsupported type []uuid.UUID, a slice of array`.
 	query := `
 		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
@@ -278,7 +282,14 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, projectIDs)
+	// Convert []uuid.UUID to []string for pq.Array — pq's UUID array support
+	// requires the elements to be stringable; uuid.UUID's String() handles it.
+	idStrings := make([]string, len(projectIDs))
+	for i, id := range projectIDs {
+		idStrings[i] = id.String()
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(idStrings))
 	if err != nil {
 		return nil, err
 	}

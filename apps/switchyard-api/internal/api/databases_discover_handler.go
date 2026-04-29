@@ -247,12 +247,20 @@ func sharedPostgresCandidates() []discoveryCandidate {
 		host = "postgres.data.svc.cluster.local"
 		port = 5432
 	)
+	// Each entry maps a logical postgres DB name to a registered project slug.
+	// If the project hasn't been onboarded as an Enclii project (no row in
+	// `projects`), the candidate is omitted here — surfacing it as "errored:
+	// project not found" was noisy and operators can't fix it from /databases
+	// anyway. The 3 currently-omitted DBs (cotiza_production, phyne_crm,
+	// rondelio_production) own no project row as of 2026-04-29; re-add them
+	// here once their owning projects are onboarded.
 	dbs := []struct {
 		dbName  string
-		project string // best-effort slug hint, may need fuzzy resolve
+		project string // exact project slug — must match a row in projects.slug
 	}{
+		{"avala", "avala"},
+		{"bloom_scroll", "bloom-scroll"},
 		{"ceq_production", "ceq"},
-		{"cotiza_production", "cotiza"},
 		{"dhanam", "dhanam"},
 		{"dhanam_production", "dhanam"},
 		{"enclii", "enclii"},
@@ -264,9 +272,7 @@ func sharedPostgresCandidates() []discoveryCandidate {
 		{"karafiel_db", "karafiel"},
 		{"madfam_site", "madfam-site"},
 		{"madlab", "accionables-madlab"},
-		{"phyne_crm", "phyne-crm"},
 		{"pravara", "pravara-mes"},
-		{"rondelio_production", "rondelio"},
 		{"routecraft", "routecraft"},
 		{"symbiosis_hcm", "symbiosis-hcm"},
 		{"tezca", "tezca"},
