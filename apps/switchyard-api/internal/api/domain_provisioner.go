@@ -139,13 +139,18 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 	// Determine namespace from the service's project record
 	namespace := h.resolveServiceNamespace(ctx, service, envName)
 
+	// Connect/keepAlive timeouts intentionally omitted: Cloudflare's
+	// Configuration API rejects them as quoted strings (`Bad Configuration:
+	// strconv.ParseInt: parsing "30s": invalid syntax`). Cloudflare's
+	// per-rule defaults (30s connect, 90s keepalive) match what we want,
+	// so dropping the explicit fields is functionally equivalent and
+	// avoids the API rejection. Re-introduce when our cloudflare client
+	// switches to numeric serialization.
 	routeSpec := &services.RouteSpec{
 		Hostname:         domain,
 		ServiceName:      service.Name,
 		ServiceNamespace: namespace,
 		ServicePort:      servicePort,
-		ConnectTimeout:   "30s",
-		KeepAliveTimeout: "90s",
 	}
 
 	if err := h.tunnelRoutesService.AddRoute(ctx, routeSpec); err != nil {
