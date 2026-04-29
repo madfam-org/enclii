@@ -1,0 +1,263 @@
+name: Status Page Health Regression Test
+
+# Pillar 5 of the architectural fix described in
+# claudedocs/ecosystem-deploy-+-status-architecture-2026-04-28.md.
+#
+# This is the "watcher of the watchers" — a daily, external sanity check that
+# the status page itself has not silently regressed. It runs three independent
+# checks against the deployed status page (status.madfam.io) and the underlying
+# Kubernetes deployment, and files (or appends to) a single GitHub issue when
+# any of them fail.
+#
+# The three checks:
+#   1. Pod-image freshness        — pod must be no more than 7 days behind
+#                                    the latest commit on apps/status/
+#   2. Configmap regenerate fresh — kustomization configmap-version annotation
+#                                    must have been bumped within the last 24h
+#   3. Assertion-effectiveness    — for any service with assertContains /
+#                                    assertNotContains, an external probe must
+#                                    agree with what the status page reports
+#
+# Failure mode: file a GH issue. No paging. No Slack. Boring on purpose.
+#
+# Idempotency: only one open issue at a time. Subsequent failures append a
+# comment to the existing issue rather than opening a duplicate.
+#
+# Cost: ~1 min runtime, 1 ubuntu-latest minute per day.
+
+on:
+  schedule:
+    # Daily at 14:00 UTC — same window as the existing stale-outage digest cron
+    # in apps/status/k8s/{enclii,madfam}/stale-outage-digest.yaml. Choosing the
+    # same window keeps the operator's "morning triage" timeline coherent.
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      image_staleness_days:
+        description: 'Threshold for pod image staleness (days)'
+        required: false
+        default: '7'
+        type: string
+      configmap_staleness_hours:
+        description: 'Threshold for configmap regenerate staleness (hours)'
+        required: false
+        default: '24'
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  health-regression:
+    name: Status page health regression
+    runs-on: ubuntu-latest
+    # Cap at 10 min — checks should complete in <2 min; cap protects against
+    # hung SSH/curl in degraded-network scenarios.
+    timeout-minutes: 10
+
+    env:
+      ISSUE_TITLE_PREFIX: '[Status-page health regression]'
+      IMAGE_STALENESS_DAYS: ${{ inputs.image_staleness_days || '7' }}
+      CONFIGMAP_STALENESS_HOURS: ${{ inputs.configmap_staleness_hours || '24' }}
+
+    steps:
+      - name: Checkout enclii
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history for `git log -- apps/status/`
+
+      - name: Install jq (sanity check)
+        run: |
+          # ubuntu-latest already ships jq, but verify so the failure mode is clear
+          # if a future runner image drops it.
+          jq --version
+          curl --version | head -1
+          gh --version | head -1
+
+      # ────────────────────────────────────────────────────────────────────
+      # SSH-via-cloudflared setup.
+      #
+      # Required for Checks #1 and #2 (pod / configmap inspection). The script
+      # gracefully degrades to "warn" findings (no alert) if these secrets are
+      # not configured, so this whole block is best-effort: it won't fail the
+      # workflow if the secrets are absent.
+      #
+      # Operator setup (one-time):
+      #   1. Provision an SSH key authorized on foundry-cp via the cloudflared
+      #      tunnel (see internal-devops/access/ssh-cloudflared.md).
+      #   2. Add repo secrets:
+      #        STATUS_HEALTH_SSH_KEY     : the private key (PEM)
+      #        STATUS_HEALTH_SSH_USER    : the SSH user (e.g. "operator")
+      #      Optional (if cloudflared service-token-only access is enabled):
+      #        STATUS_HEALTH_CF_CLIENT_ID
+      #        STATUS_HEALTH_CF_CLIENT_SECRET
+      #   3. Re-run the workflow; Check #1 and #2 will then produce concrete
+      #      findings instead of warns.
+      # ────────────────────────────────────────────────────────────────────
+      - name: Install cloudflared (best-effort)
+        id: install-cloudflared
+        continue-on-error: true
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+          cloudflared --version
+
+      - name: Configure SSH key (best-effort)
+        id: configure-ssh
+        # Skip cleanly when the SSH secret is not provisioned. The script will
+        # then emit "warn" findings for Checks #1/#2 instead of alerts. We
+        # cannot reference `secrets.*` directly in an `if:` expression on
+        # public repos due to GH context restrictions, so we always run the
+        # step and bail out internally if the secret is empty.
+        env:
+          STATUS_HEALTH_SSH_KEY: ${{ secrets.STATUS_HEALTH_SSH_KEY }}
+          STATUS_HEALTH_SSH_USER: ${{ secrets.STATUS_HEALTH_SSH_USER }}
+        run: |
+          if [[ -z "${STATUS_HEALTH_SSH_KEY:-}" ]]; then
+            echo "STATUS_HEALTH_SSH_KEY is not set; skipping SSH-cloudflared setup."
+            echo "Checks #1 and #2 will emit 'warn' findings (no alerts)."
+            exit 0
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$STATUS_HEALTH_SSH_KEY" > "$HOME/.ssh/cloudflared_id"
+          chmod 600 "$HOME/.ssh/cloudflared_id"
+          echo "SSH_PRIVATE_KEY_FILE=$HOME/.ssh/cloudflared_id" >> "$GITHUB_ENV"
+          echo "SSH_TUNNEL_USER=${STATUS_HEALTH_SSH_USER}" >> "$GITHUB_ENV"
+
+      - name: Run health regression test
+        id: run-checks
+        env:
+          GIT_REPO_ROOT: ${{ github.workspace }}
+          FINDINGS_FILE: ${{ github.workspace }}/findings.jsonl
+          STATUS_PAGE_URL: https://status.madfam.io
+          STATUS_API_URL: https://status.madfam.io/api/status
+          # SSH_PRIVATE_KEY_FILE and SSH_TUNNEL_USER are set conditionally above.
+          CF_ACCESS_CLIENT_ID: ${{ secrets.STATUS_HEALTH_CF_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.STATUS_HEALTH_CF_CLIENT_SECRET }}
+        # Don't fail the step on alert — we want to handle issue creation in a
+        # subsequent step. A non-zero exit just means "alerts present".
+        continue-on-error: true
+        run: |
+          chmod +x apps/status/scripts/health-regression-test.sh
+          set +e
+          apps/status/scripts/health-regression-test.sh
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [[ -f "${FINDINGS_FILE}" ]]; then
+            echo "findings_count=$(wc -l < ${FINDINGS_FILE} | tr -d ' ')" >> "$GITHUB_OUTPUT"
+            echo "alert_count=$(grep -c '"severity":"alert"' ${FINDINGS_FILE} || true)" >> "$GITHUB_OUTPUT"
+          else
+            echo "findings_count=0" >> "$GITHUB_OUTPUT"
+            echo "alert_count=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## Status Page Health Regression — $(date -u +'%Y-%m-%d %H:%M UTC')"
+            echo
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| Script exit code | ${{ steps.run-checks.outputs.exit_code }} |"
+            echo "| Findings (total) | ${{ steps.run-checks.outputs.findings_count }} |"
+            echo "| Alerts | ${{ steps.run-checks.outputs.alert_count }} |"
+            echo "| Image staleness threshold | ${IMAGE_STALENESS_DAYS} days |"
+            echo "| Configmap staleness threshold | ${CONFIGMAP_STALENESS_HOURS} hours |"
+            echo
+            if [[ -s findings.jsonl ]]; then
+              echo "### Findings"
+              echo
+              echo '```json'
+              cat findings.jsonl
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ────────────────────────────────────────────────────────────────────
+      # Issue management (idempotent).
+      #
+      # If alerts present:
+      #   - Search for an existing open issue matching ISSUE_TITLE_PREFIX
+      #   - If exists: append a comment with today's findings
+      #   - If not:    open a new issue with title containing the most severe
+      #                finding's title and a body with all findings
+      # ────────────────────────────────────────────────────────────────────
+      - name: File or update GH issue on alert
+        if: ${{ steps.run-checks.outputs.alert_count != '0' && steps.run-checks.outputs.alert_count != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE_PREFIX: ${{ env.ISSUE_TITLE_PREFIX }}
+        run: |
+          set -euo pipefail
+
+          # Build the issue body. JSON findings rendered as readable Markdown.
+          body_file=$(mktemp)
+          {
+            echo "**Run:** [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo "**Detected:** $(date -u +'%Y-%m-%d %H:%M UTC')"
+            echo "**Commit at scan:** \`${GITHUB_SHA}\`"
+            echo
+            echo "### Findings"
+            echo
+            jq -r '
+              "#### \(.check) — \(.severity)\n\n**\(.title)**\n\n\(.detail)\n"
+            ' findings.jsonl
+            echo
+            echo "---"
+            echo
+            echo "**About this issue**"
+            echo
+            echo "This is an automated report from the [Status Page Health Regression Test](.github/workflows/status-page-health.yml) workflow (Pillar 5 of the architectural fix). It runs daily and only files an issue when external sanity checks against status.madfam.io disagree with what the page is reporting."
+            echo
+            echo "**Architectural context:** [\`claudedocs/ecosystem-deploy-+-status-architecture-2026-04-28.md\`](claudedocs/ecosystem-deploy-+-status-architecture-2026-04-28.md)"
+            echo
+            echo "**To resolve:**"
+            echo "- Investigate the findings above"
+            echo "- For \`image-freshness\` alerts: check ArgoCD sync, pinned image digest in \`apps/status/k8s/madfam/kustomization.yaml\`"
+            echo "- For \`configmap-freshness\` alerts: check whether \`POST /v1/admin/status/regenerate\` is healthy; bump the \`enclii.dev/configmap-version\` annotation when changes ship"
+            echo "- For \`assertion-effectiveness\` alerts: verify the running pod image actually contains the assertContains/assertNotContains code paths (Pillar 3)"
+            echo "- Close this issue manually once verified resolved (next daily run will reopen if regression persists)"
+          } > "$body_file"
+
+          # Find existing open issue (idempotency).
+          existing_issue=$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --search "${ISSUE_TITLE_PREFIX} in:title" \
+            --state open \
+            --limit 1 \
+            --json number,title \
+            --jq '.[0].number // empty')
+
+          if [[ -n "$existing_issue" ]]; then
+            echo "Appending comment to existing issue #${existing_issue}"
+            gh issue comment "$existing_issue" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --body-file "$body_file"
+          else
+            # Build a title that surfaces the first/most-severe finding's title.
+            primary_title=$(jq -r '
+              select(.severity == "alert") | .title
+            ' findings.jsonl | head -1)
+            issue_title="${primary_title:-${ISSUE_TITLE_PREFIX} Daily check failed}"
+            echo "Opening new issue: ${issue_title}"
+            gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "$issue_title" \
+              --body-file "$body_file" \
+              --label "status-page,monitoring,automated" 2>/dev/null \
+            || gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "$issue_title" \
+              --body-file "$body_file"
+          fi
+
+      - name: Upload findings artifact
+        if: always() && steps.run-checks.outputs.findings_count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-regression-findings
+          path: findings.jsonl
+          retention-days: 30
