@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -418,6 +419,35 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 	// Check for unhealthy services
 	services, _ := h.repos.Services.ListAll(ctx)
 	for _, svc := range services {
+		// Replica mismatch — desired != ready (running but not all replicas up)
+		if svc.DesiredReplicas > 0 && svc.ReadyReplicas < svc.DesiredReplicas {
+			alerts = append(alerts, Alert{
+				ID:          "alert-service-replicas-" + svc.ID.String(),
+				Name:        "Service Replica Mismatch",
+				Severity:    "warning",
+				Status:      "firing",
+				Message:     fmt.Sprintf("Service %s has %d/%d ready replicas", svc.Name, svc.ReadyReplicas, svc.DesiredReplicas),
+				ServiceID:   svc.ID.String(),
+				ServiceName: svc.Name,
+				Value:       float64(svc.ReadyReplicas),
+				Threshold:   float64(svc.DesiredReplicas),
+				FiredAt:     now,
+			})
+		}
+		// Service registered but health is unhealthy (k8s probes failing)
+		if svc.Health == types.HealthStatusUnhealthy {
+			alerts = append(alerts, Alert{
+				ID:          "alert-service-unhealthy-" + svc.ID.String(),
+				Name:        "Service Unhealthy",
+				Severity:    "critical",
+				Status:      "firing",
+				Message:     "Service " + svc.Name + " is reporting unhealthy",
+				ServiceID:   svc.ID.String(),
+				ServiceName: svc.Name,
+				FiredAt:     now,
+			})
+		}
+
 		latestDep, err := h.repos.Deployments.GetLatestByService(ctx, svc.ID.String())
 		if err != nil || latestDep == nil {
 			continue
@@ -432,6 +462,37 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 				ServiceID:   svc.ID.String(),
 				ServiceName: svc.Name,
 				FiredAt:     now,
+			})
+		}
+	}
+
+	// Usage overage alerts — surface billing exposure on the dashboard so the
+	// operator can't miss compute/build/storage going materially over plan
+	// (audit 2026-04-29 caught a $311.91/mo overage hidden behind clamped
+	// usage gauges). 100% threshold is the included limit; we alert at 105%
+	// to avoid noise from rounding right at the boundary.
+	if usage, err := h.calculateUsage(ctx, now.AddDate(0, 0, -30), now); err == nil && usage != nil {
+		for _, m := range usage.Metrics {
+			if m.Included <= 0 {
+				continue // unlimited
+			}
+			pct := (m.Used / m.Included) * 100
+			if pct < 105 {
+				continue
+			}
+			severity := "warning"
+			if pct >= 200 {
+				severity = "critical"
+			}
+			alerts = append(alerts, Alert{
+				ID:        "alert-usage-overage-" + m.Type,
+				Name:      m.Label + " Over Plan Limit",
+				Severity:  severity,
+				Status:    "firing",
+				Message:   fmt.Sprintf("%s usage is %.0f%% of plan (cost so far: $%.2f)", m.Label, pct, m.Cost),
+				Value:     pct,
+				Threshold: 100,
+				FiredAt:   now,
 			})
 		}
 	}
