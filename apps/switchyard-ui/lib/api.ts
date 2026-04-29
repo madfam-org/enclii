@@ -148,11 +148,21 @@ async function fetchCSRFToken(): Promise<void> {
   }
 }
 
+// Default request timeout in ms. Cloudflare's edge timeout is ~100s; the
+// browser and UI must give up earlier so a slow endpoint surfaces as a
+// real error state instead of an indefinite spinner. 30s is generous
+// enough for a cold-start on the heaviest dashboard endpoints (usage
+// summary fan-out) and tight enough that a hung backend doesn't strand
+// the UI in "Loading..." for two minutes before failing.
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Make an authenticated API request with CSRF protection
  *
  * @param endpoint - API endpoint path (e.g., '/v1/projects')
- * @param options - Fetch options (method, body, etc.)
+ * @param options - Fetch options (method, body, etc.). Supports
+ *                  AbortSignal via options.signal; the helper composes
+ *                  it with its own DEFAULT_REQUEST_TIMEOUT_MS budget.
  * @returns Promise with the response
  */
 export async function apiRequest<T = unknown>(
@@ -175,11 +185,28 @@ export async function apiRequest<T = unknown>(
     ...options.headers,
   };
 
+  // Wire up a timeout via AbortController. If the caller passed their own
+  // signal we compose the two so cancellation from either source aborts
+  // the underlying fetch — important for React strict-mode cleanups and
+  // route changes during a slow request.
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+  const externalSignal = options.signal;
+  const onExternalAbort = () => timeoutController.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      timeoutController.abort();
+    } else {
+      externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+    }
+  }
+
   try {
     const response = await fetch(url, {
       ...options,
       headers,
       credentials: "include", // Include cookies for CSRF
+      signal: timeoutController.signal,
     });
 
     // Handle authentication errors with retry
@@ -196,6 +223,9 @@ export async function apiRequest<T = unknown>(
           ...options,
           headers: retryHeaders,
           credentials: "include",
+          // Reuse the same timeout controller so the retry inherits the
+          // request budget instead of doubling it.
+          signal: timeoutController.signal,
         });
 
         if (retryResponse.ok) {
@@ -265,8 +295,27 @@ export async function apiRequest<T = unknown>(
 
     return await response.json();
   } catch (error) {
+    // Surface timeouts (DOMException name='AbortError' from our own
+    // controller) as a friendlier error message so consumer components
+    // can render a clear "took too long" state instead of "Failed to
+    // fetch", which historically read as "service down" to operators.
+    if (error instanceof DOMException && error.name === "AbortError") {
+      // External cancellation (route change, strict-mode unmount) —
+      // re-throw the same kind so callers can ignore as needed.
+      if (externalSignal?.aborted) throw error;
+      const timeoutError = new Error(
+        `Request to ${endpoint} timed out after ${DEFAULT_REQUEST_TIMEOUT_MS / 1000}s`,
+      );
+      console.error(`API request timed out for ${endpoint}`);
+      throw timeoutError;
+    }
     console.error(`API request failed for ${endpoint}:`, error);
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    if (externalSignal) {
+      externalSignal.removeEventListener("abort", onExternalAbort);
+    }
   }
 }
 

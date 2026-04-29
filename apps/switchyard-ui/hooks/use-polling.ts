@@ -25,8 +25,20 @@ export function usePolling(
     savedCallback.current = callback;
   }, [callback]);
 
-  const tick = useCallback(() => {
-    savedCallback.current();
+  // Skip a tick if the previous one is still running. Without this guard,
+  // a slow API (e.g., /v1/observability/health under load) causes ticks
+  // to pile up faster than they resolve, producing the cascade of
+  // ERR_ABORTED requests visible in the dashboard's network panel and
+  // making "loading" indistinguishable from "broken" in the UI.
+  const inFlight = useRef(false);
+  const tick = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await savedCallback.current();
+    } finally {
+      inFlight.current = false;
+    }
   }, []);
 
   useEffect(() => {

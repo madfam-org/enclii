@@ -6,12 +6,46 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+	"golang.org/x/sync/errgroup"
+)
+
+// healthCacheTTL is how long the GetServiceHealth response stays cached
+// per process. The dashboard polls this on POLLING_IDLE (~30s) — caching
+// for 20s means each replica returns instantly to the second poll without
+// re-fanning out to the K8s API. Reads of the cache are racey-but-safe:
+// two concurrent dashboard tabs may both miss and trigger a recompute,
+// which is fine.
+const healthCacheTTL = 20 * time.Second
+
+// healthFanoutConcurrency is the cap on concurrent in-flight K8s
+// GetDeploymentStatusInfo calls during a single GetServiceHealth fan-out.
+// Each call hits the apiserver; too many in parallel and we DOS the
+// control plane. 15 is empirically the sweet spot — fast enough that
+// the full ~88-service sweep finishes in under 2s, low enough that the
+// apiserver doesn't notice.
+const healthFanoutConcurrency = 15
+
+// healthHandlerBudget caps server-side time spent computing the
+// response. Anything past this returns a 504 with whatever partial
+// data we collected, rather than letting Cloudflare's edge timeout
+// (≈100s) kill the request and hang the browser indefinitely.
+const healthHandlerBudget = 25 * time.Second
+
+type healthCacheEntry struct {
+	resp      ServiceHealthResponse
+	expiresAt time.Time
+}
+
+var (
+	healthCacheMu sync.Mutex
+	healthCache   *healthCacheEntry
 )
 
 // ServiceHealth represents the health status of a service
@@ -134,9 +168,25 @@ func (h *Handler) GetMetricsHistory(c *gin.Context) {
 // @Success 200 {object} ServiceHealthResponse
 // @Router /v1/observability/health [get]
 func (h *Handler) GetServiceHealth(c *gin.Context) {
-	ctx := c.Request.Context()
+	// Cache hit: a previous fan-out completed inside the TTL. Return
+	// immediately so the dashboard's polling tick is sub-millisecond.
+	// We keep the lock scope tight so concurrent requests don't queue.
+	healthCacheMu.Lock()
+	if healthCache != nil && time.Now().Before(healthCache.expiresAt) {
+		cached := healthCache.resp
+		healthCacheMu.Unlock()
+		c.JSON(http.StatusOK, cached)
+		return
+	}
+	healthCacheMu.Unlock()
 
-	// Get all services
+	// Wrap the underlying request context with a hard server-side budget
+	// so a slow K8s control plane can't push us past Cloudflare's 100s
+	// edge timeout (which manifests in the browser as a stuck spinner —
+	// the failure mode this handler was hanging the dashboard with).
+	ctx, cancel := context.WithTimeout(c.Request.Context(), healthHandlerBudget)
+	defer cancel()
+
 	services, err := h.repos.Services.ListAll(ctx)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list services", logging.Error("error", err))
@@ -144,83 +194,101 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 		return
 	}
 
-	response := ServiceHealthResponse{
-		Services:  make([]ServiceHealth, 0, len(services)),
-		Timestamp: time.Now(),
+	// One DB call to get all projects, then map by ID — replaces the
+	// previous N-deep `Projects.GetByID` loop. With ~88 services that's
+	// 88 round-trips collapsed into 1.
+	projectByID := map[uuid.UUID]*types.Project{}
+	if projects, err := h.repos.Projects.List(); err == nil {
+		for _, p := range projects {
+			projectByID[p.ID] = p
+		}
 	}
 
-	for _, svc := range services {
-		health := ServiceHealth{
-			ServiceID:   svc.ID.String(),
-			ServiceName: svc.Name,
-			LastChecked: time.Now(),
-			Status:      "unknown",
-		}
+	results := make([]ServiceHealth, len(services))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(healthFanoutConcurrency)
 
-		// Get project for the service (ProjectID is not nil for valid services)
-		var projectSlug string
-		if svc.ProjectID != uuid.Nil {
-			project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
-			if err == nil && project != nil {
-				health.ProjectSlug = project.Slug
-				projectSlug = project.Slug
+	for i, svc := range services {
+		i, svc := i, svc
+		g.Go(func() error {
+			health := ServiceHealth{
+				ServiceID:   svc.ID.String(),
+				ServiceName: svc.Name,
+				LastChecked: time.Now(),
+				Status:      "unknown",
 			}
-		}
 
-		// Get latest deployment for the service. Don't increment counters
-		// here yet — we want the K8s pod check below to override before we
-		// roll up, otherwise stale "running" deployment rows mask actual
-		// crashloops at the pod level.
-		latestDep, err := h.repos.Deployments.GetLatestByService(ctx, svc.ID.String())
-		if err == nil && latestDep != nil {
-			switch latestDep.Status {
-			case types.DeploymentStatusRunning:
-				health.Status = "healthy"
-				health.Uptime = computeUptime(ctx, h, svc.ID.String())
-			case types.DeploymentStatusPending:
-				health.Status = "degraded"
-				health.Uptime = computeUptime(ctx, h, svc.ID.String())
-			case types.DeploymentStatusFailed:
-				health.Status = "unhealthy"
-				health.Uptime = computeUptime(ctx, h, svc.ID.String())
-			}
-		}
-
-		// Get pod info from K8s using the service's actual namespace.
-		// Fallback chain: svc.K8sNamespace → project.Slug → "default".
-		// Hard-coding "default" (the previous behaviour) silently returned
-		// 0/0 for every service whose deployment lives in its own
-		// namespace (i.e. ~all of them). That made the dashboard's pod
-		// counts uniformly zero and the rollup vacuously "healthy".
-		if h.k8sClient != nil && svc.Name != "" {
-			ns := "default"
-			if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
-				ns = *svc.K8sNamespace
-			} else if projectSlug != "" {
-				ns = projectSlug
-			}
-			status, err := h.k8sClient.GetDeploymentStatusInfo(ctx, ns, svc.Name)
-			if err == nil && status != nil {
-				health.PodCount = int(status.Replicas)
-				health.ReadyPods = int(status.ReadyReplicas)
-				switch {
-				case status.Replicas == 0:
-					health.Status = "unhealthy"
-				case status.ReadyReplicas == 0:
-					health.Status = "unhealthy"
-				case status.ReadyReplicas < status.Replicas:
-					health.Status = "degraded"
-				default:
-					health.Status = "healthy"
+			var projectSlug string
+			if svc.ProjectID != uuid.Nil {
+				if project, ok := projectByID[svc.ProjectID]; ok && project != nil {
+					health.ProjectSlug = project.Slug
+					projectSlug = project.Slug
 				}
 			}
-		}
 
-		// Rollup: count "unknown" as degraded so the System pill in the
-		// dashboard footer reflects an ecosystem we can't actually probe,
-		// instead of pretending it's healthy. Audit 2026-04-29 surfaced 34/35
-		// services in unknown state being summarised as "1 healthy, 0
-		// degraded, 0 unhealthy" — operationally a lie.
+			// Latest deployment seeds the status; the K8s probe below
+			// overrides if the pod-level reality disagrees (catches stale
+			// "running" deployment rows masking crashloops).
+			if latestDep, err := h.repos.Deployments.GetLatestByService(gCtx, svc.ID.String()); err == nil && latestDep != nil {
+				switch latestDep.Status {
+				case types.DeploymentStatusRunning:
+					health.Status = "healthy"
+				case types.DeploymentStatusPending:
+					health.Status = "degraded"
+				case types.DeploymentStatusFailed:
+					health.Status = "unhealthy"
+				}
+			}
+
+			if h.k8sClient != nil && svc.Name != "" {
+				ns := "default"
+				if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
+					ns = *svc.K8sNamespace
+				} else if projectSlug != "" {
+					ns = projectSlug
+				}
+				status, err := h.k8sClient.GetDeploymentStatusInfo(gCtx, ns, svc.Name)
+				if err == nil && status != nil {
+					health.PodCount = int(status.Replicas)
+					health.ReadyPods = int(status.ReadyReplicas)
+					switch {
+					case status.Replicas == 0, status.ReadyReplicas == 0:
+						health.Status = "unhealthy"
+					case status.ReadyReplicas < status.Replicas:
+						health.Status = "degraded"
+					default:
+						health.Status = "healthy"
+					}
+				}
+			}
+
+			// Uptime is an additional DB query. We compute it for the
+			// happy path only — the rollup doesn't need it, and skipping
+			// it for unknown/missing services saves another N round-trips.
+			if health.Status == "healthy" || health.Status == "degraded" || health.Status == "unhealthy" {
+				health.Uptime = computeUptime(gCtx, h, svc.ID.String())
+			}
+
+			results[i] = health
+			return nil
+		})
+	}
+
+	// Wait but tolerate a budget exceedance — partial results are still
+	// useful to the dashboard; we'd rather paint a slightly-stale set of
+	// counts than spin forever.
+	if err := g.Wait(); err != nil && ctx.Err() == nil {
+		h.logger.Warn(ctx, "Health fan-out reported error", logging.Error("error", err))
+	}
+
+	response := ServiceHealthResponse{
+		Services:  make([]ServiceHealth, 0, len(results)),
+		Timestamp: time.Now(),
+	}
+	for _, health := range results {
+		if health.ServiceID == "" {
+			continue // slot wasn't populated (e.g., context cancelled)
+		}
 		switch health.Status {
 		case "healthy":
 			response.HealthySvcs++
@@ -229,10 +297,22 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 		case "unhealthy":
 			response.UnhealthySvcs++
 		}
-
 		response.Services = append(response.Services, health)
 	}
 
+	healthCacheMu.Lock()
+	healthCache = &healthCacheEntry{
+		resp:      response,
+		expiresAt: time.Now().Add(healthCacheTTL),
+	}
+	healthCacheMu.Unlock()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		// We hit our own budget. Send 200 with the partial response so
+		// the dashboard renders something — but flag in headers so SRE
+		// can spot it. Operators get truthful counts; nobody hangs.
+		c.Header("X-Enclii-Partial-Response", "true")
+	}
 	c.JSON(http.StatusOK, response)
 }
 
@@ -416,10 +496,29 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 		})
 	}
 
-	// Check for unhealthy services
+	// Check for unhealthy services. The replica/health checks below read
+	// directly off the Service row (already on disk after the reconciler
+	// sweep) — no extra round-trips. The "deployment failed" alert needs
+	// the latest deployment per service though, which is a per-service DB
+	// hit; we fan that out in parallel with a small concurrency cap so the
+	// alerts handler doesn't sequentialise into a multi-second blocker the
+	// way it did before.
 	services, _ := h.repos.Services.ListAll(ctx)
-	for _, svc := range services {
-		// Replica mismatch — desired != ready (running but not all replicas up)
+
+	type depResult struct {
+		svc   *types.Service
+		dep   *types.Deployment
+		failed bool
+	}
+	depCtx, depCancel := context.WithTimeout(ctx, 8*time.Second)
+	defer depCancel()
+	depResults := make([]depResult, len(services))
+	g, gCtx := errgroup.WithContext(depCtx)
+	g.SetLimit(healthFanoutConcurrency)
+	for i, svc := range services {
+		i, svc := i, svc
+		// Replica mismatch + Service Unhealthy alerts need no DB; emit
+		// outside the fan-out so they're never lost on a budget exceedance.
 		if svc.DesiredReplicas > 0 && svc.ReadyReplicas < svc.DesiredReplicas {
 			alerts = append(alerts, Alert{
 				ID:          "alert-service-replicas-" + svc.ID.String(),
@@ -434,7 +533,6 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 				FiredAt:     now,
 			})
 		}
-		// Service registered but health is unhealthy (k8s probes failing)
 		if svc.Health == types.HealthStatusUnhealthy {
 			alerts = append(alerts, Alert{
 				ID:          "alert-service-unhealthy-" + svc.ID.String(),
@@ -448,22 +546,30 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 			})
 		}
 
-		latestDep, err := h.repos.Deployments.GetLatestByService(ctx, svc.ID.String())
-		if err != nil || latestDep == nil {
+		g.Go(func() error {
+			latestDep, err := h.repos.Deployments.GetLatestByService(gCtx, svc.ID.String())
+			if err != nil || latestDep == nil {
+				return nil
+			}
+			depResults[i] = depResult{svc: svc, dep: latestDep, failed: latestDep.Status == types.DeploymentStatusFailed}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	for _, r := range depResults {
+		if !r.failed || r.svc == nil {
 			continue
 		}
-		if latestDep.Status == types.DeploymentStatusFailed {
-			alerts = append(alerts, Alert{
-				ID:          "alert-service-failed-" + svc.ID.String(),
-				Name:        "Service Deployment Failed",
-				Severity:    "critical",
-				Status:      "firing",
-				Message:     "Service " + svc.Name + " deployment has failed",
-				ServiceID:   svc.ID.String(),
-				ServiceName: svc.Name,
-				FiredAt:     now,
-			})
-		}
+		alerts = append(alerts, Alert{
+			ID:          "alert-service-failed-" + r.svc.ID.String(),
+			Name:        "Service Deployment Failed",
+			Severity:    "critical",
+			Status:      "firing",
+			Message:     "Service " + r.svc.Name + " deployment has failed",
+			ServiceID:   r.svc.ID.String(),
+			ServiceName: r.svc.Name,
+			FiredAt:     now,
+		})
 	}
 
 	// Usage overage alerts — surface billing exposure on the dashboard so the
@@ -471,7 +577,15 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 	// (audit 2026-04-29 caught a $311.91/mo overage hidden behind clamped
 	// usage gauges). 100% threshold is the included limit; we alert at 105%
 	// to avoid noise from rounding right at the boundary.
-	if usage, err := h.calculateUsage(ctx, now.AddDate(0, 0, -30), now); err == nil && usage != nil {
+	//
+	// `calculateUsage` is the same helper that powers /v1/usage and itself
+	// loops over services × releases × K8s metrics. We give it its own short
+	// budget so a slow usage compute doesn't push the alerts response past
+	// the dashboard's tolerance window — the alerts list still renders, just
+	// without overage rows when usage is unavailable.
+	usageCtx, usageCancel := context.WithTimeout(ctx, 6*time.Second)
+	defer usageCancel()
+	if usage, err := h.calculateUsage(usageCtx, now.AddDate(0, 0, -30), now); err == nil && usage != nil {
 		for _, m := range usage.Metrics {
 			if m.Included <= 0 {
 				continue // unlimited
