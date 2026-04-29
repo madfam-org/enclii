@@ -44,8 +44,15 @@ export function SidebarRecentPreviews({
       </CardHeader>
       <CardContent>
         {previews.length === 0 ? (
+          // Card derives previews from projects[].domain + lastDeployment.
+          // Empty state happens when (a) no project has both populated, or
+          // (b) services rows are missing (audit 2026-04-29 found 17 such
+          // projects — backfilled by /v1/admin/projects/:slug/reconcile-services).
+          // Distinguish empty from "feature unwired" so operators don't
+          // think their preview list is just being hidden.
           <p className="py-2 text-xs text-muted-foreground">
-            No active previews
+            No previews to surface yet — they'll appear here once a project
+            with a domain finishes its first deploy.
           </p>
         ) : (
           <div className="space-y-3">

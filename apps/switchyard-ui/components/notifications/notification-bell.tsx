@@ -11,7 +11,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -226,17 +225,30 @@ export function NotificationBell() {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-9 w-9 relative">
+        {/*
+         * Plain <button> (not the Button shadcn component) to avoid a
+         * Slot/forwardRef interaction that prevented Radix's
+         * DropdownMenuTrigger from receiving pointer events — the trigger's
+         * aria-expanded never flipped and the popover never mounted, even
+         * though the unread badge rendered correctly. Mirrors the working
+         * pattern used in components/navigation/user-menu.tsx.
+         */}
+        <button
+          type="button"
+          aria-label={
+            unreadCount > 0
+              ? `${unreadCount} unread notifications`
+              : 'Notifications'
+          }
+          className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-status-error text-white text-xs font-medium">
+            <span className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-status-error text-white text-xs font-medium pointer-events-none">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
-          <span className="sr-only">
-            {unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
-          </span>
-        </Button>
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <div className="flex items-center justify-between px-4 py-2">

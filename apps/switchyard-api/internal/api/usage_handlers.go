@@ -129,14 +129,16 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 		}
 	}
 
-	// Count custom domains
-	var totalDomains int
-	for _, svc := range services {
-		domains, err := h.repos.CustomDomains.GetByServiceID(ctx, svc.ID.String())
-		if err != nil {
-			continue
-		}
-		totalDomains += len(domains)
+	// Count custom domains via a single COUNT(*) on the platform table.
+	// Per-service iteration was missing orphan rows whose service_id no
+	// longer joins (audit 2026-04-29). Caveat: this counts only domains
+	// recorded in `custom_domains` — domains provisioned out-of-band via
+	// direct Cloudflare API (~40 in current state) aren't here. Fixing
+	// that requires a reconcile pass from cloudflare_tunnels routes back
+	// into custom_domains, tracked as a separate data-integrity workstream.
+	totalDomains := 0
+	if _, count, err := h.repos.CustomDomains.ListAll(ctx, nil, 1, 0); err == nil {
+		totalDomains = count
 	}
 
 	// Calculate compute usage from real K8s metrics

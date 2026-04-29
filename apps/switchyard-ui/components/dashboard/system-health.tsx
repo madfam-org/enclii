@@ -318,10 +318,20 @@ export function SystemHealthBadge({ className }: { className?: string }) {
     );
   }
 
+  // Backed by Switchyard API's own /health endpoint (DB+k8s+cache reachable).
+  // It is NOT a roll-up of platform-wide service health — that's surfaced in
+  // the dashboard's project cards + Alerts sidebar. Audit 2026-04-29 found
+  // the previous "System: healthy" label misled operators into thinking the
+  // pill reflected the platform when it really only reflected the API
+  // itself. Label is now scoped explicitly to "API".
   return (
     <span
       className={cn("flex items-center gap-1.5", className)}
-      title={`System: ${status}`}
+      title={
+        status === "healthy"
+          ? "Switchyard API: reachable (DB, k8s, cache OK). Platform-wide service health is shown on the dashboard cards and Alerts sidebar."
+          : `Switchyard API: ${status}`
+      }
       data-testid="system-health-badge"
     >
       <span
@@ -337,7 +347,7 @@ export function SystemHealthBadge({ className }: { className?: string }) {
         )}
       />
       <span className="text-xs text-muted-foreground hidden xl:inline">
-        {status === "healthy" ? "Operational" : "Issues"}
+        {status === "healthy" ? "API: ok" : "API: issues"}
       </span>
     </span>
   );
