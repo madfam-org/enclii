@@ -60,7 +60,9 @@ on:
           JSON array of service definitions. Example:
           [{"name":"bff","dockerfile":"apps/bff/Dockerfile","paths":"apps/bff packages"},
            {"name":"api","dockerfile":"apps/api/Dockerfile","paths":"apps/api"},
-           {"name":"web","context":"frontend","dockerfile":"frontend/Dockerfile","paths":"frontend"}]
+           {"name":"web","context":"frontend","dockerfile":"frontend/Dockerfile",
+            "paths":"frontend",
+            "build_args":"API_BASE_URL=https://api.almanac.solar"}]
           Fields:
             - name:       service name (becomes image suffix)
             - dockerfile: path to Dockerfile from repo root
@@ -70,6 +72,11 @@ on:
             - paths:      (optional) space-separated paths for change
                           detection on push triggers. Service is rebuilt
                           when the diff touches any of its paths.
+            - build_args: (optional) newline-separated KEY=VALUE pairs
+                          forwarded to `docker build --build-arg`. Use
+                          for compile-time-baked values (Flutter
+                          --dart-define, Next.js NEXT_PUBLIC_*).
+                          Without this, Dockerfile ARGs only see defaults.
                           NOTE: the `dockerfile` path AND its containing
                           directory are ALWAYS implicitly part of the
                           filter for services that declare any `paths`.
@@ -310,6 +317,17 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+          # Per-service build-args (one KEY=VALUE per line). Use this for
+          # compile-time-baked values like Flutter `--dart-define`, Next.js
+          # `NEXT_PUBLIC_*`, or any other value the Dockerfile reads via
+          # `ARG`. Add `"build_args": "K=V\nK2=V2"` to the service entry in
+          # the matrix JSON.
+          #
+          # Without this, Dockerfile ARGs only see their declared defaults
+          # — the trap that bit bloom-scroll (almanac.solar shipped a
+          # `localhost:8000` Flutter bundle) and karafiel (build-time
+          # NEXT_PUBLIC_API_URL silently dropping to localhost).
+          build-args: ${{ matrix.service.build_args || '' }}
           cache-from: type=gha,scope=${{ matrix.service.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
           # BuildKit secret: forwarded to Dockerfiles via
