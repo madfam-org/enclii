@@ -4,13 +4,41 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+)
+
+// usageCacheTTL is how long the /v1/usage response stays cached per
+// process. The dashboard's UsageOverview component does not poll on its
+// own (only on full refresh), so a 60s window is generous and
+// dramatically reduces the cost of the inevitable refresh-storm when an
+// operator opens 5 tabs.
+const usageCacheTTL = 60 * time.Second
+
+// usageHandlerBudget caps server-side time spent computing usage so a
+// slow K8s metrics-server can't run past Cloudflare's 100s edge timeout.
+// Same rationale as healthHandlerBudget.
+const usageHandlerBudget = 25 * time.Second
+
+// usageFanoutConcurrency caps concurrent in-flight DB queries (Releases
+// per service) and K8s metrics calls during usage computation.
+const usageFanoutConcurrency = 15
+
+type usageCacheEntry struct {
+	resp      UsageSummary
+	expiresAt time.Time
+}
+
+var (
+	usageCacheMu sync.Mutex
+	usageCache   *usageCacheEntry
 )
 
 // UsageMetric represents a single usage metric
@@ -67,14 +95,22 @@ const (
 // GetUsageSummary returns the current usage metrics for billing
 // GET /v1/usage
 func (h *Handler) GetUsageSummary(c *gin.Context) {
-	ctx := c.Request.Context()
+	usageCacheMu.Lock()
+	if usageCache != nil && time.Now().Before(usageCache.expiresAt) {
+		cached := usageCache.resp
+		usageCacheMu.Unlock()
+		c.JSON(http.StatusOK, cached)
+		return
+	}
+	usageCacheMu.Unlock()
 
-	// Get current billing period (1st of month to end of month)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), usageHandlerBudget)
+	defer cancel()
+
 	now := time.Now()
 	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	periodEnd := periodStart.AddDate(0, 1, 0).Add(-time.Second)
 
-	// Calculate usage from actual data
 	usage, err := h.calculateUsage(ctx, periodStart, periodEnd)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to calculate usage", logging.Error("error", err))
@@ -82,7 +118,17 @@ func (h *Handler) GetUsageSummary(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, usage)
+	usageCacheMu.Lock()
+	usageCache = &usageCacheEntry{
+		resp:      *usage,
+		expiresAt: time.Now().Add(usageCacheTTL),
+	}
+	usageCacheMu.Unlock()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		c.Header("X-Enclii-Partial-Response", "true")
+	}
+	c.JSON(http.StatusOK, *usage)
 }
 
 // GetCostBreakdown returns the cost breakdown for billing
@@ -112,22 +158,43 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 		return nil, err
 	}
 
-	// Count releases for build minutes
-	var totalBuilds int
-	var totalBuildMinutes float64
+	// Count releases for build minutes — fan out per-service queries with
+	// a concurrency cap. Sequential N+1 was producing ~N×DB-RTT latency
+	// on the dashboard's poll path; this collapses it to ~ceil(N/cap).
+	var (
+		buildMu           sync.Mutex
+		totalBuilds       int
+		totalBuildMinutes float64
+	)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(usageFanoutConcurrency)
 	for _, svc := range services {
-		releases, err := h.repos.Releases.ListByService(svc.ID)
-		if err != nil {
-			continue
-		}
-		for _, rel := range releases {
-			if rel.CreatedAt.After(periodStart) && rel.CreatedAt.Before(periodEnd) {
-				totalBuilds++
-				// Estimate 3 minutes per build (average for buildpacks)
-				totalBuildMinutes += 3.0
+		svc := svc
+		g.Go(func() error {
+			if gCtx.Err() != nil {
+				return nil
 			}
-		}
+			releases, err := h.repos.Releases.ListByService(svc.ID)
+			if err != nil {
+				return nil
+			}
+			var localBuilds int
+			var localMinutes float64
+			for _, rel := range releases {
+				if rel.CreatedAt.After(periodStart) && rel.CreatedAt.Before(periodEnd) {
+					localBuilds++
+					localMinutes += 3.0
+				}
+			}
+			buildMu.Lock()
+			totalBuilds += localBuilds
+			totalBuildMinutes += localMinutes
+			buildMu.Unlock()
+			return nil
+		})
 	}
+	_ = g.Wait()
+	_ = totalBuilds // tracked but not currently surfaced
 
 	// Count custom domains via a single COUNT(*) on the platform table.
 	// Per-service iteration was missing orphan rows whose service_id no
@@ -213,53 +280,71 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 	}, nil
 }
 
-// calculateRealComputeUsage calculates compute usage from real K8s metrics
+// calculateRealComputeUsage calculates compute usage from real K8s metrics.
+//
+// When metrics-server isn't installed in the cluster (current state per
+// /v1/usage/realtime returning `metrics_enabled: false`), every per-service
+// `GetServiceMetrics` call hits a guaranteed timeout; sequentially looping
+// 88 of those is what was hanging the dashboard. Cheap probe-once at the
+// top: ask for cluster metrics, and if we can't reach them, fall straight
+// to the size-based estimate without N more roundtrips.
+//
+// When metrics-server IS available, fan out the per-service probes with a
+// concurrency cap so the wall-clock cost is bounded.
 func (h *Handler) calculateRealComputeUsage(ctx context.Context, services []*types.Service, periodStart time.Time) float64 {
+	daysInPeriod := time.Since(periodStart).Hours() / 24
+	if daysInPeriod < 1 {
+		daysInPeriod = 1
+	}
+	estimate := float64(len(services)) * 5.0 * daysInPeriod
+
 	if h.k8sClient == nil {
-		// Fallback to estimation if K8s client not available
-		daysInPeriod := time.Since(periodStart).Hours() / 24
-		if daysInPeriod < 1 {
-			daysInPeriod = 1
-		}
-		return float64(len(services)) * 5.0 * daysInPeriod
+		return estimate
 	}
 
-	// Try to get real metrics from K8s metrics-server
-	var totalComputeGBHours float64
+	// Probe metrics-server availability cheaply via the cluster-wide
+	// endpoint. If it's not reachable, don't bother fanning out per-service
+	// — return the estimate so the handler stays fast.
+	probeCtx, probeCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer probeCancel()
+	cluster, err := h.k8sClient.GetClusterMetrics(probeCtx)
+	if err != nil || cluster == nil || !cluster.MetricsEnabled {
+		return estimate
+	}
 
+	hoursActive := time.Since(periodStart).Hours()
+	if hoursActive < 0 {
+		hoursActive = 0
+	}
+
+	var (
+		mu                  sync.Mutex
+		totalComputeGBHours float64
+	)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(usageFanoutConcurrency)
 	for _, svc := range services {
-		// Determine namespace for service
-		namespace := getServiceNamespace(svc)
-
-		// Get real-time metrics for the service
-		metrics, err := h.k8sClient.GetServiceMetrics(ctx, namespace, svc.Name)
-		if err != nil {
-			h.logger.Warn(ctx, "Failed to get metrics for service",
-				logging.String("service", svc.Name),
-				logging.Error("error", err))
-			// Fallback to estimate for this service
-			daysInPeriod := time.Since(periodStart).Hours() / 24
-			if daysInPeriod < 1 {
-				daysInPeriod = 1
+		svc := svc
+		g.Go(func() error {
+			if gCtx.Err() != nil {
+				return nil
 			}
-			totalComputeGBHours += 5.0 * daysInPeriod
-			continue
-		}
-
-		// Convert current memory usage to GB and extrapolate for the billing period
-		// Memory is in bytes, convert to GB
-		memoryGB := float64(metrics.TotalMemory) / (1024 * 1024 * 1024)
-
-		// Hours since period start (or service creation, whichever is later)
-		hoursActive := time.Since(periodStart).Hours()
-		if hoursActive < 0 {
-			hoursActive = 0
-		}
-
-		// GB-hours = memory in GB * hours active
-		totalComputeGBHours += memoryGB * hoursActive
+			ns := h.resolveK8sNamespace(gCtx, svc)
+			metrics, err := h.k8sClient.GetServiceMetrics(gCtx, ns, svc.Name)
+			if err != nil || metrics == nil {
+				mu.Lock()
+				totalComputeGBHours += 5.0 * daysInPeriod
+				mu.Unlock()
+				return nil
+			}
+			memoryGB := float64(metrics.TotalMemory) / (1024 * 1024 * 1024)
+			mu.Lock()
+			totalComputeGBHours += memoryGB * hoursActive
+			mu.Unlock()
+			return nil
+		})
 	}
-
+	_ = g.Wait()
 	return totalComputeGBHours
 }
 
@@ -271,10 +356,37 @@ func (h *Handler) calculateRealStorageUsage(ctx context.Context, services []*typ
 	return float64(len(services)) * 0.5
 }
 
-// getServiceNamespace determines the namespace for a service
+// resolveK8sNamespace determines the actual K8s namespace for a service.
+//
+// Fallback chain mirrors the reconciler's behaviour so usage metrics line
+// up with where the deployment actually runs:
+//
+//  1. svc.K8sNamespace if set on the row (the explicit, modern value)
+//  2. project.Slug looked up by ProjectID (the convention since R2 fix)
+//  3. "default" as a last-resort fallback
+//
+// The legacy `proj-{id8}` heuristic returned a namespace that didn't
+// exist for ~all services in the truthful state, which made every
+// metrics-server probe return 404 and cost us a full RTT per service.
+func (h *Handler) resolveK8sNamespace(ctx context.Context, svc *types.Service) string {
+	if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
+		return *svc.K8sNamespace
+	}
+	if svc.ProjectID != uuid.Nil && h.repos != nil && h.repos.Projects != nil {
+		if project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID); err == nil && project != nil && project.Slug != "" {
+			return project.Slug
+		}
+	}
+	return "default"
+}
+
+// getServiceNamespace is the legacy heuristic still consumed by older
+// helpers in this file. New code should use h.resolveK8sNamespace.
 func getServiceNamespace(svc *types.Service) string {
-	// Services are deployed to project namespaces like "proj-{project_id}"
-	if svc.ProjectID.String() != "" {
+	if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
+		return *svc.K8sNamespace
+	}
+	if svc.ProjectID != uuid.Nil {
 		return fmt.Sprintf("proj-%s", svc.ProjectID.String()[:8])
 	}
 	return "default"
