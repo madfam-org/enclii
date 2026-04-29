@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -227,7 +226,7 @@ func (h *Handler) calculateRealComputeUsage(ctx context.Context, services []*typ
 
 	for _, svc := range services {
 		// Determine namespace for service
-		namespace := getServiceNamespace(svc)
+		namespace := h.resolveK8sNamespace(ctx, svc)
 
 		// Get real-time metrics for the service
 		metrics, err := h.k8sClient.GetServiceMetrics(ctx, namespace, svc.Name)
@@ -269,11 +268,28 @@ func (h *Handler) calculateRealStorageUsage(ctx context.Context, services []*typ
 	return float64(len(services)) * 0.5
 }
 
-// getServiceNamespace determines the namespace for a service
-func getServiceNamespace(svc *types.Service) string {
-	// Services are deployed to project namespaces like "proj-{project_id}"
-	if svc.ProjectID.String() != "" {
-		return fmt.Sprintf("proj-%s", svc.ProjectID.String()[:8])
+// resolveK8sNamespace returns the K8s namespace for a service using the
+// same fallback chain as the observability handler:
+//
+//	svc.K8sNamespace → project.Slug → "default"
+//
+// The historical "proj-{first-8-of-project-id}" pattern was never how products
+// were actually deployed (real namespaces are bare slugs: karafiel, dhanam,
+// janua, etc.) — using it here meant every k8sClient.GetServiceMetrics call
+// hit a non-existent namespace and silently returned 0 pods, which is why
+// /v1/usage/realtime reports total_pods=0 even though 222 pods are running.
+//
+// Distinct from resolveServiceNamespace in domain_provisioner.go, which keys
+// on environment name and is used when provisioning routes into the cluster.
+// Here we just want "where do this service's pods actually run right now."
+func (h *Handler) resolveK8sNamespace(ctx context.Context, svc *types.Service) string {
+	if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
+		return *svc.K8sNamespace
+	}
+	if svc.ProjectID != uuid.Nil {
+		if project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID); err == nil && project != nil && project.Slug != "" {
+			return project.Slug
+		}
 	}
 	return "default"
 }
@@ -342,7 +358,7 @@ func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
 
 	// Get metrics for each service
 	for _, svc := range services {
-		namespace := getServiceNamespace(svc)
+		namespace := h.resolveK8sNamespace(ctx, svc)
 		sm := ServiceMetrics{
 			ServiceID:   svc.ID.String(),
 			ServiceName: svc.Name,
@@ -388,7 +404,7 @@ func (h *Handler) GetServiceResourceMetrics(c *gin.Context) {
 		return
 	}
 
-	namespace := getServiceNamespace(svc)
+	namespace := h.resolveK8sNamespace(ctx, svc)
 	response := ServiceMetrics{
 		ServiceID:   svc.ID.String(),
 		ServiceName: svc.Name,
