@@ -107,13 +107,14 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 	// Add tunnel route if tunnel routes service is configured
 	tunnelRouteAdded := false
 	if h.tunnelRoutesService != nil {
+		// Connect/keepAlive timeouts intentionally omitted — see
+		// domain_provisioner.go for the Cloudflare API quoted-string
+		// rejection that motivated dropping these fields.
 		routeSpec := &services.RouteSpec{
 			Hostname:         req.Domain,
 			ServiceName:      service.Name,
 			ServiceNamespace: fmt.Sprintf("enclii-%s", req.Environment),
 			ServicePort:      80, // K8s Service port (not container port)
-			ConnectTimeout:   "30s",
-			KeepAliveTimeout: "90s",
 		}
 
 		if err := h.tunnelRoutesService.AddRoute(ctx, routeSpec); err != nil {
