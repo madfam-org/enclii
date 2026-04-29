@@ -506,6 +506,71 @@ func TestServiceRepository_ListByGitRepo(t *testing.T) {
 	})
 }
 
+// --- EnrichWithLatestRelease ---
+
+// TestServiceRepository_EnrichWithLatestRelease covers the helper that
+// powers Pillar 3.5: the public ListServicesByGitRepo handler calls this to
+// add image-age fields to each returned service without going through the
+// monolithic ListByProject query.
+func TestServiceRepository_EnrichWithLatestRelease(t *testing.T) {
+	t.Run("populates current_image_uri and recent releases", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		svc := &types.Service{ID: uuid.New(), Name: "api"}
+		releaseID := uuid.New()
+		releaseCreated := time.Date(2026, 4, 27, 9, 0, 0, 0, time.UTC)
+
+		mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'succeeded'`).
+			WithArgs(svc.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"image_uri", "created_at"}).
+				AddRow("ghcr.io/madfam-org/api@sha256:f00", releaseCreated))
+
+		mock.ExpectQuery(`SELECT id, version, image_uri, git_sha, status, created_at FROM releases\s+WHERE service_id = \$1`).
+			WithArgs(svc.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "version", "image_uri", "git_sha", "status", "created_at"}).
+				AddRow(releaseID, "v1", "ghcr.io/madfam-org/api@sha256:f00", "deadbeef", "succeeded", releaseCreated))
+
+		err := repo.EnrichWithLatestRelease([]*types.Service{svc})
+		assert.NoError(t, err)
+		assert.Equal(t, "ghcr.io/madfam-org/api@sha256:f00", svc.CurrentImageURI)
+		require.NotNil(t, svc.CurrentReleaseCreatedAt)
+		assert.Equal(t, releaseCreated, svc.CurrentReleaseCreatedAt.UTC())
+		require.Len(t, svc.RecentReleases, 1)
+		assert.Equal(t, "v1", svc.RecentReleases[0].Version)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no succeeded release leaves fields unset", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		svc := &types.Service{ID: uuid.New(), Name: "fresh"}
+
+		mock.ExpectQuery(`SELECT image_uri, created_at FROM releases\s+WHERE service_id = \$1 AND status = 'succeeded'`).
+			WithArgs(svc.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"image_uri", "created_at"}))
+		mock.ExpectQuery(`SELECT id, version, image_uri, git_sha, status, created_at FROM releases\s+WHERE service_id = \$1`).
+			WithArgs(svc.ID).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "version", "image_uri", "git_sha", "status", "created_at"}))
+
+		err := repo.EnrichWithLatestRelease([]*types.Service{svc})
+		assert.NoError(t, err)
+		assert.Empty(t, svc.CurrentImageURI)
+		assert.Nil(t, svc.CurrentReleaseCreatedAt)
+		assert.Empty(t, svc.RecentReleases)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("empty service list is a no-op", func(t *testing.T) {
+		repo, _, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		err := repo.EnrichWithLatestRelease(nil)
+		assert.NoError(t, err)
+	})
+}
+
 // --- Update ---
 
 func TestServiceRepository_Update(t *testing.T) {
