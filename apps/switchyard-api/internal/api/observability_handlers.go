@@ -157,44 +157,76 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 		}
 
 		// Get project for the service (ProjectID is not nil for valid services)
+		var projectSlug string
 		if svc.ProjectID != uuid.Nil {
 			project, err := h.repos.Projects.GetByID(ctx, svc.ProjectID)
 			if err == nil && project != nil {
 				health.ProjectSlug = project.Slug
+				projectSlug = project.Slug
 			}
 		}
 
-		// Get latest deployment for the service
+		// Get latest deployment for the service. Don't increment counters
+		// here yet — we want the K8s pod check below to override before we
+		// roll up, otherwise stale "running" deployment rows mask actual
+		// crashloops at the pod level.
 		latestDep, err := h.repos.Deployments.GetLatestByService(ctx, svc.ID.String())
 		if err == nil && latestDep != nil {
 			switch latestDep.Status {
 			case types.DeploymentStatusRunning:
 				health.Status = "healthy"
 				health.Uptime = computeUptime(ctx, h, svc.ID.String())
-				response.HealthySvcs++
 			case types.DeploymentStatusPending:
 				health.Status = "degraded"
 				health.Uptime = computeUptime(ctx, h, svc.ID.String())
-				response.DegradedSvcs++
 			case types.DeploymentStatusFailed:
 				health.Status = "unhealthy"
 				health.Uptime = computeUptime(ctx, h, svc.ID.String())
-				response.UnhealthySvcs++
-			default:
-				health.Status = "unknown"
 			}
 		}
 
-		// Get pod info from K8s if available
+		// Get pod info from K8s using the service's actual namespace.
+		// Fallback chain: svc.K8sNamespace → project.Slug → "default".
+		// Hard-coding "default" (the previous behaviour) silently returned
+		// 0/0 for every service whose deployment lives in its own
+		// namespace (i.e. ~all of them). That made the dashboard's pod
+		// counts uniformly zero and the rollup vacuously "healthy".
 		if h.k8sClient != nil && svc.Name != "" {
-			status, err := h.k8sClient.GetDeploymentStatusInfo(ctx, "default", svc.Name)
+			ns := "default"
+			if svc.K8sNamespace != nil && *svc.K8sNamespace != "" {
+				ns = *svc.K8sNamespace
+			} else if projectSlug != "" {
+				ns = projectSlug
+			}
+			status, err := h.k8sClient.GetDeploymentStatusInfo(ctx, ns, svc.Name)
 			if err == nil && status != nil {
 				health.PodCount = int(status.Replicas)
 				health.ReadyPods = int(status.ReadyReplicas)
-				if status.Replicas > 0 && status.ReadyReplicas < status.Replicas {
+				switch {
+				case status.Replicas == 0:
+					health.Status = "unhealthy"
+				case status.ReadyReplicas == 0:
+					health.Status = "unhealthy"
+				case status.ReadyReplicas < status.Replicas:
 					health.Status = "degraded"
+				default:
+					health.Status = "healthy"
 				}
 			}
+		}
+
+		// Rollup: count "unknown" as degraded so the System pill in the
+		// dashboard footer reflects an ecosystem we can't actually probe,
+		// instead of pretending it's healthy. Audit 2026-04-29 surfaced 34/35
+		// services in unknown state being summarised as "1 healthy, 0
+		// degraded, 0 unhealthy" — operationally a lie.
+		switch health.Status {
+		case "healthy":
+			response.HealthySvcs++
+		case "degraded", "unknown":
+			response.DegradedSvcs++
+		case "unhealthy":
+			response.UnhealthySvcs++
 		}
 
 		response.Services = append(response.Services, health)

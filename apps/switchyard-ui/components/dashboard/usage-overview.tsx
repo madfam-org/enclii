@@ -148,6 +148,11 @@ export function UsageOverview({ className, variant = 'full' }: UsageOverviewProp
                   label={metric.label}
                   unit={metric.type === 'storage' || metric.type === 'bandwidth' ? 'bytes' : 'number'}
                   size="md"
+                  // `cost` from the API represents the metered overage cost
+                  // for this billing period when the user is over plan. Pass
+                  // it through so the gauge can show "+$X.XX this period"
+                  // beneath the percentage when applicable.
+                  overageCostUsd={metric.cost}
                 />
               );
             })}

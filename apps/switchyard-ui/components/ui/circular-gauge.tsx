@@ -245,6 +245,8 @@ interface UsageGaugeProps {
   size?: 'sm' | 'md' | 'lg';
   /** Additional class names */
   className?: string;
+  /** Optional overage cost in USD; rendered below the limit line when used>limit */
+  overageCostUsd?: number;
 }
 
 export function UsageGauge({
@@ -254,6 +256,7 @@ export function UsageGauge({
   unit = 'number',
   size = 'md',
   className,
+  overageCostUsd,
 }: UsageGaugeProps) {
   const sizeMap = {
     sm: { px: 80, stroke: 6 },
@@ -290,9 +293,33 @@ export function UsageGauge({
         showPercentage={false}
       />
       <span className="text-xs text-muted-foreground font-medium">{label}</span>
-      <span className="text-[10px] text-muted-foreground/70">
-        {unit === 'bytes' ? formatBytes(limit) : formatNumber(limit)} limit
-      </span>
+      {(() => {
+        // Show real percentage when over limit instead of clamping at 100%.
+        // 100% red rings hide actual overage like 1999% Build Minutes
+        // (9999/500), which obscures genuine billing surprises (audit
+        // 2026-04-29 found $310/mo overage invisible behind clamped bars).
+        const isOver = limit > 0 && used > limit;
+        const realPct = limit > 0 ? Math.round((used / limit) * 100) : 0;
+        if (isOver) {
+          return (
+            <>
+              <span className="text-[10px] font-mono font-semibold text-red-500 dark:text-red-400">
+                {realPct}% — {(unit === 'bytes' ? formatBytes(used - limit) : formatNumber(used - limit))} over {(unit === 'bytes' ? formatBytes(limit) : formatNumber(limit))}
+              </span>
+              {overageCostUsd != null && overageCostUsd > 0 && (
+                <span className="text-[10px] font-mono text-red-500 dark:text-red-400">
+                  +${overageCostUsd.toFixed(2)} this period
+                </span>
+              )}
+            </>
+          );
+        }
+        return (
+          <span className="text-[10px] text-muted-foreground/70">
+            {unit === 'bytes' ? formatBytes(limit) : formatNumber(limit)} limit
+          </span>
+        );
+      })()}
     </div>
   );
 }
