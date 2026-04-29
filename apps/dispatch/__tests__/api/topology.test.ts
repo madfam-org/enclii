@@ -171,7 +171,7 @@ describe('GET /api/topology', () => {
   })
 
   it('charges pod CPU/memory requests to their host node', async () => {
-    mockListNode.mockResolvedValueOnce({ items: [fakeNode('foundry-cp', 'control-plane')] } })
+    mockListNode.mockResolvedValueOnce({ body: { items: [fakeNode('foundry-cp', 'control-plane')] } })
     mockListNamespace.mockResolvedValueOnce({ body: { items: [{ metadata: { name: 'enclii' } }] } })
     mockListPod.mockResolvedValueOnce({ body: {
       items: [
@@ -180,8 +180,8 @@ describe('GET /api/topology', () => {
         // Pending pods should NOT be counted toward used capacity
         fakePod('pending-1', 'enclii', 'foundry-cp', 'Pending', '1000m', '1Gi'),
       ],
-    })
-    mockListService.mockResolvedValueOnce({ items: [] } })
+    } })
+    mockListService.mockResolvedValueOnce({ body: { items: [] } })
     mockListDeployment.mockResolvedValueOnce({ body: { items: [] } })
 
     const response = await GET()
