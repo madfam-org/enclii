@@ -1,0 +1,193 @@
+name: Test — build-publish detect-changes logic
+
+# Synthesizes diffs and a `services` matrix, runs the same change-detection
+# logic that lives in build-publish.yml's `detect-changes` job, and asserts
+# the right services are flagged.
+#
+# Add a new test case by appending to the `cases` array. Each case lists:
+#   - name:           short label (used in pass/fail output)
+#   - services:       JSON array passed to the matrix builder (same shape
+#                     as build-publish.yml's `services` input)
+#   - changed:        newline-separated list of changed file paths
+#                     (simulates `git diff --name-only` output)
+#   - expect_picked:  comma-separated service names expected to build
+#                     (sorted; "" for none)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/build-publish.yml'
+      - '.github/workflows/build-publish-test.yml'
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    name: Detect-changes contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run synthetic diff cases
+        env:
+          # Must match the default in build-publish.yml `inputs.rebuild_all_paths`.
+          REBUILD_ALL_PATHS: '^(\.github/workflows/.*\.yml|infra/k8s/(production|overlays)/)'
+        run: |
+          set -euo pipefail
+
+          # The detect-changes shell logic, lifted verbatim (minus
+          # GITHUB_OUTPUT plumbing) for offline testing. Keep this in sync
+          # with the `Compute service matrix` step in build-publish.yml.
+          run_detect() {
+            local services_all="$1"
+            local changed="$2"
+
+            local picked='[]'
+            while IFS= read -r row; do
+              [ -z "$row" ] && continue
+              local paths
+              paths=$(echo "$row" | jq -r '.paths // empty')
+              [ -z "$paths" ] && continue
+
+              local dockerfile df_dir
+              dockerfile=$(echo "$row" | jq -r '.dockerfile // empty')
+              df_dir=""
+              if [ -n "$dockerfile" ]; then
+                df_dir=$(dirname "$dockerfile")
+                [ "$df_dir" = "." ] && df_dir=""
+              fi
+
+              local effective_paths="$paths"
+              [ -n "$df_dir" ] && effective_paths="$effective_paths $df_dir"
+
+              local matched=0
+              for p in $effective_paths; do
+                p="${p%/}"
+                if echo "$changed" | grep -q "^$p/"; then
+                  picked=$(echo "$picked" | jq -c --argjson svc "$row" '. + [$svc]')
+                  matched=1
+                  break
+                fi
+              done
+              if [ "$matched" = "0" ] && [ -n "$dockerfile" ]; then
+                if echo "$changed" | grep -qFx "$dockerfile"; then
+                  picked=$(echo "$picked" | jq -c --argjson svc "$row" '. + [$svc]')
+                fi
+              fi
+            done < <(echo "$services_all" | jq -c '.[]')
+
+            if echo "$changed" | grep -qE "$REBUILD_ALL_PATHS"; then
+              picked="$services_all"
+            fi
+
+            local no_paths
+            no_paths=$(echo "$services_all" | jq -c '[.[] | select(.paths == null or .paths == "")]')
+            if [ "$(echo "$no_paths" | jq 'length')" != "0" ]; then
+              picked=$(jq -c -s '.[0] + .[1] | unique_by(.name)' <(echo "$picked") <(echo "$no_paths"))
+            fi
+
+            echo "$picked" | jq -r '[.[] | .name] | sort | join(",")'
+          }
+
+          fail=0
+          assert() {
+            local name="$1" services="$2" changed="$3" expect="$4"
+            local got
+            got=$(run_detect "$services" "$changed")
+            if [ "$got" = "$expect" ]; then
+              echo "PASS  $name -> [$got]"
+            else
+              echo "FAIL  $name -> got [$got], expected [$expect]"
+              fail=1
+            fi
+          }
+
+          # === Bloom-scroll PR #72 canary (the exact failure mode this fix targets) ===
+          BLOOM_SVC='[
+            {"name":"api","context":"backend","dockerfile":"backend/Dockerfile","paths":"backend"},
+            {"name":"web","context":"frontend","dockerfile":"frontend/Dockerfile","paths":"frontend"}
+          ]'
+          assert "bloom-scroll: Dockerfile-only diff under frontend/" \
+            "$BLOOM_SVC" \
+            $'frontend/Dockerfile' \
+            "web"
+          assert "bloom-scroll: backend code change picks api only" \
+            "$BLOOM_SVC" \
+            $'backend/app/main.py' \
+            "api"
+          assert "bloom-scroll: both dirs touched picks both" \
+            "$BLOOM_SVC" \
+            $'backend/app/main.py\nfrontend/lib/main.dart' \
+            "api,web"
+          assert "bloom-scroll: rebuild_all (workflow file change)" \
+            "$BLOOM_SVC" \
+            $'.github/workflows/ci.yml' \
+            "api,web"
+
+          # === Backward compat: forj-style "no paths" services build always ===
+          FORJ_SVC='[
+            {"name":"api","dockerfile":"apps/api/Dockerfile"},
+            {"name":"web","dockerfile":"Dockerfile"},
+            {"name":"admin","dockerfile":"apps/dashboard/Dockerfile"}
+          ]'
+          assert "forj: any change builds all (no paths declared)" \
+            "$FORJ_SVC" \
+            $'README.md' \
+            "admin,api,web"
+          assert "forj: targeted file change still builds all (no paths fallback)" \
+            "$FORJ_SVC" \
+            $'apps/api/main.go' \
+            "admin,api,web"
+
+          # === New behaviour: implicit dockerfile-dir broadens narrow paths ===
+          # If someone declares paths="services/foo/cmd" but their dockerfile
+          # is at services/foo/Dockerfile, a Dockerfile-only diff now triggers.
+          NARROW_SVC='[
+            {"name":"foo","dockerfile":"services/foo/Dockerfile","paths":"services/foo/cmd"}
+          ]'
+          assert "narrow path + Dockerfile bump now triggers via implicit dir" \
+            "$NARROW_SVC" \
+            $'services/foo/Dockerfile' \
+            "foo"
+          assert "narrow path + unrelated change still skipped" \
+            "$NARROW_SVC" \
+            $'services/bar/main.go' \
+            ""
+
+          # === Repo-root Dockerfile (forj web case if it had paths) ===
+          ROOT_DF_SVC='[
+            {"name":"web","dockerfile":"Dockerfile","paths":"src"}
+          ]'
+          assert "repo-root Dockerfile change triggers via exact match" \
+            "$ROOT_DF_SVC" \
+            $'Dockerfile' \
+            "web"
+          assert "repo-root Dockerfile: src change still triggers" \
+            "$ROOT_DF_SVC" \
+            $'src/index.ts' \
+            "web"
+          assert "repo-root Dockerfile: unrelated file does not trigger" \
+            "$ROOT_DF_SVC" \
+            $'README.md' \
+            ""
+
+          # === Routecraft-style multi-path (backward compat regression check) ===
+          RC_SVC='[
+            {"name":"bff","dockerfile":"apps/bff/Dockerfile","paths":"apps/bff packages"},
+            {"name":"www","dockerfile":"apps/www/Dockerfile","paths":"apps/www"}
+          ]'
+          assert "routecraft: shared packages/ change picks bff only" \
+            "$RC_SVC" \
+            $'packages/shared/index.ts' \
+            "bff"
+          assert "routecraft: www-only change picks www only" \
+            "$RC_SVC" \
+            $'apps/www/page.tsx' \
+            "www"
+
+          if [ "$fail" = "1" ]; then
+            echo
+            echo "One or more contract tests failed."
+            exit 1
+          fi
+          echo
+          echo "All detect-changes contract tests passed."

@@ -70,6 +70,14 @@ on:
             - paths:      (optional) space-separated paths for change
                           detection on push triggers. Service is rebuilt
                           when the diff touches any of its paths.
+                          NOTE: the `dockerfile` path AND its containing
+                          directory are ALWAYS implicitly part of the
+                          filter for services that declare any `paths`.
+                          So `dockerfile: "frontend/Dockerfile"` always
+                          watches `frontend/Dockerfile` and `frontend/**`,
+                          even if `paths` would otherwise miss them.
+                          Services that omit `paths` entirely keep the
+                          legacy "always build" behavior.
         required: true
         type: string
       image_prefix:
@@ -163,17 +171,61 @@ jobs:
 
           # Services whose `paths` glob-root matched a changed file.
           # while-read (NOT `for row in $()`) preserves JSON with spaces.
+          #
+          # The effective filter for each service is its declared `paths`
+          # PLUS implicit entries derived from its `dockerfile`:
+          #   1. The dockerfile path itself (exact match)
+          #   2. The directory containing the dockerfile (prefix match)
+          # This ensures Dockerfile-only diffs and any change under the
+          # dockerfile's home directory always trigger a rebuild — closing
+          # the "Dockerfile bump silently skipped" class of bug
+          # (bloom-scroll PR #72 / commit b9f7699 was the canary symptom).
+          #
+          # Backward-compatible: a service with no declared `paths` keeps
+          # falling through to the no-paths fallback below (which builds
+          # it on every push). We do NOT auto-add implicit paths to such
+          # services, because doing so would flip them from "always build"
+          # to "build only when their dir changed" — a behavior change
+          # forj and digifab-quoting explicitly rely on.
           picked='[]'
           while IFS= read -r row; do
             [ -z "$row" ] && continue
             paths=$(echo "$row" | jq -r '.paths // empty')
+            # Skip services with no declared paths — handled by the
+            # no-paths fallback below.
             [ -z "$paths" ] && continue
-            for p in $paths; do
+
+            dockerfile=$(echo "$row" | jq -r '.dockerfile // empty')
+            df_dir=""
+            if [ -n "$dockerfile" ]; then
+              df_dir=$(dirname "$dockerfile")
+              # Treat "." (dockerfile at repo root) as no implicit dir.
+              [ "$df_dir" = "." ] && df_dir=""
+            fi
+
+            effective_paths="$paths"
+            [ -n "$df_dir" ] && effective_paths="$effective_paths $df_dir"
+            echo "Service '$(echo "$row" | jq -r '.name')' effective filter: $effective_paths (dockerfile=$dockerfile)"
+
+            matched=0
+            # Prefix match: any change under one of the declared/implicit dirs.
+            for p in $effective_paths; do
+              # Strip trailing slash to normalize before re-adding it.
+              p="${p%/}"
               if echo "$changed" | grep -q "^$p/"; then
                 picked=$(echo "$picked" | jq -c --argjson svc "$row" '. + [$svc]')
+                matched=1
                 break
               fi
             done
+            # Exact-file match on the dockerfile itself (catches the
+            # repo-root Dockerfile case where df_dir is empty, AND
+            # protects against malformed prefix grep on edge filenames).
+            if [ "$matched" = "0" ] && [ -n "$dockerfile" ]; then
+              if echo "$changed" | grep -qFx "$dockerfile"; then
+                picked=$(echo "$picked" | jq -c --argjson svc "$row" '. + [$svc]')
+              fi
+            fi
           done < <(echo "$services_all" | jq -c '.[]')
 
           # Workflow / infra changes rebuild all services.
