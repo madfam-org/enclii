@@ -10,13 +10,13 @@ import (
 
 // ReconcileServicesResponse summarises what the reconcile pass did.
 type ReconcileServicesResponse struct {
-	ProjectSlug   string                       `json:"project_slug"`
-	Namespace     string                       `json:"namespace"`
-	Discovered    int                          `json:"discovered"`
-	Inserted      int                          `json:"inserted"`
-	Updated       int                          `json:"updated"`
-	AlreadyOK     int                          `json:"already_ok"`
-	Services      []ReconcileServicesServiceOK `json:"services"`
+	ProjectSlug string                       `json:"project_slug"`
+	Namespace   string                       `json:"namespace"`
+	Discovered  int                          `json:"discovered"`
+	Inserted    int                          `json:"inserted"`
+	Updated     int                          `json:"updated"`
+	AlreadyOK   int                          `json:"already_ok"`
+	Services    []ReconcileServicesServiceOK `json:"services"`
 }
 
 type ReconcileServicesServiceOK struct {
@@ -173,4 +173,3 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 	)
 	c.JSON(http.StatusOK, resp)
 }
-
