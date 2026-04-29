@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { usePolling } from "@/hooks/use-polling";
 import { POLLING_SLOW } from "@/lib/constants";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { useScope } from "@/contexts/ScopeContext";
 import { useTier } from "@/hooks/use-tier";
 import { PricingModal } from "@/components/modals/PricingModal";
@@ -13,6 +13,7 @@ import {
   ProjectCardCompact,
   ProjectCardCompactSkeleton,
   type CompactProject,
+  type CompactRepoMeta,
   type CompactService,
 } from "@/components/dashboard/project-card-compact";
 import { inferFrameworkFromContext } from "@/components/dashboard/framework-icon";
@@ -200,6 +201,82 @@ export default function Dashboard() {
       setProjects(compactProjects);
       setLastSyncedAt(new Date().toISOString());
       setLoading(false);
+
+      // Fan out one batch call to /v1/integrations/github/repos/metadata for
+      // the at-a-glance public/private indicator + key repo stats. Server
+      // caches results for 5 min; failures degrade gracefully (the card
+      // simply renders without the icon/chips). Done after the cards have
+      // mounted so the dashboard shows quickly and the metadata fills in.
+      const repoSlugs = Array.from(
+        new Set(
+          compactProjects
+            .map((p) => p.gitRepo)
+            .filter((r): r is string => !!r)
+            .map((r) =>
+              r
+                .replace(/^https?:\/\/github\.com\//, "")
+                .replace(/\.git$/, ""),
+            ),
+        ),
+      );
+      if (repoSlugs.length > 0) {
+        try {
+          const meta = await apiPost<{
+            repos: Record<string, {
+              visibility?: string;
+              language?: string;
+              license?: string;
+              stars?: number;
+              forks?: number;
+              archived?: boolean;
+              fork?: boolean;
+              is_template?: boolean;
+              default_branch?: string;
+              pushed_at?: string;
+              description?: string;
+            }>;
+            errors?: Record<string, string>;
+          }>("/v1/integrations/github/repos/metadata", {
+            repos: repoSlugs,
+          });
+          setProjects((prev) =>
+            prev.map((p) => {
+              if (!p.gitRepo) return p;
+              const key = p.gitRepo
+                .replace(/^https?:\/\/github\.com\//, "")
+                .replace(/\.git$/, "");
+              const m = meta.repos?.[key];
+              const errored = meta.errors?.[key];
+              if (!m && !errored) return p;
+              const repoMeta: CompactRepoMeta = m
+                ? {
+                    visibility:
+                      m.visibility === "public" ||
+                      m.visibility === "private" ||
+                      m.visibility === "internal"
+                        ? m.visibility
+                        : "unknown",
+                    language: m.language || undefined,
+                    license: m.license || undefined,
+                    stars: m.stars,
+                    forks: m.forks,
+                    archived: m.archived,
+                    fork: m.fork,
+                    isTemplate: m.is_template,
+                    defaultBranch: m.default_branch,
+                    pushedAt: m.pushed_at,
+                    description: m.description || undefined,
+                  }
+                : { visibility: "unknown" };
+              return { ...p, repoMeta };
+            }),
+          );
+        } catch (e) {
+          // Metadata is non-critical — dashboard already rendered. Log and
+          // move on. Card simply omits visibility chip when meta is absent.
+          console.warn("Failed to load repo metadata batch:", e);
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch projects:", err);
       setError(err instanceof Error ? err.message : "Failed to load projects");
