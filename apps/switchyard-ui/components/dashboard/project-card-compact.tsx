@@ -506,6 +506,126 @@ export function ProjectCardCompact({
   );
 }
 
+// List-row variant of ProjectCardCompact for the dashboard's "list" view mode.
+// Renders the same project as a single horizontal row optimized for scanning
+// many projects at once: framework icon + name + status dot + replicas count
+// + visibility chip + branch + relative timestamp. Skips the per-service
+// table — operators who need that detail click into /projects/{slug}. The
+// whole row is a Link so keyboard nav and middle-click "open in new tab"
+// work exactly as on the card variant.
+export function ProjectRowCompact({
+  project,
+  className,
+}: ProjectCardCompactProps) {
+  const aggregateStatus = project.aggregateStatus || "unknown";
+  const dotColor = aggregateStatusColor[aggregateStatus] || "bg-muted-foreground";
+  const branch = project.lastDeployment?.branch;
+  const commitMessage = project.lastDeployment?.commitMessage;
+  const timestamp = project.lastDeployment?.timestamp;
+
+  return (
+    <Link
+      href={`/projects/${project.slug}`}
+      className={cn(
+        "group relative flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset sm:gap-4 sm:px-4",
+        className,
+      )}
+      role="listitem"
+    >
+      {/* Framework icon */}
+      <FrameworkIcon
+        framework={project.framework || "unknown"}
+        size="sm"
+      />
+
+      {/* Project name + framework chip */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-sm font-semibold">{project.name}</span>
+        {project.framework && project.framework !== "unknown" && (
+          <span
+            className="hidden shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground md:inline-block"
+            aria-label={`Framework: ${getFrameworkLabel(project.framework)}`}
+          >
+            {getFrameworkLabel(project.framework)}
+          </span>
+        )}
+      </div>
+
+      {/* Replicas summary — hidden on narrow viewports to preserve space */}
+      {project.serviceCount !== undefined && (
+        <span
+          className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline-block"
+          aria-label={`${project.healthyCount ?? 0} of ${project.serviceCount} services healthy`}
+        >
+          {project.healthyCount ?? 0}/{project.serviceCount}
+        </span>
+      )}
+
+      {/* Visibility chip — lock/globe so operators can scan public-vs-private */}
+      {project.repoMeta?.visibility === "private" && (
+        <Lock
+          className="hidden h-3.5 w-3.5 shrink-0 text-status-warning sm:inline-block"
+          aria-label="Private repository"
+        />
+      )}
+      {project.repoMeta?.visibility === "public" && (
+        <Globe
+          className="hidden h-3.5 w-3.5 shrink-0 text-status-success sm:inline-block"
+          aria-label="Public repository"
+        />
+      )}
+      {project.repoMeta?.visibility === "internal" && (
+        <Lock
+          className="hidden h-3.5 w-3.5 shrink-0 text-status-info sm:inline-block"
+          aria-label="Internal repository"
+        />
+      )}
+
+      {/* Domain — only on wide viewports */}
+      {project.domain && (
+        <span className="hidden min-w-0 max-w-[180px] shrink-0 truncate text-xs text-muted-foreground lg:inline-block">
+          {project.domain}
+        </span>
+      )}
+
+      {/* Branch + commit message — flex column, only on wide viewports */}
+      {(branch || commitMessage) && (
+        <div className="hidden min-w-0 max-w-[280px] shrink-0 items-center gap-1.5 text-xs text-muted-foreground xl:flex">
+          {branch && (
+            <>
+              <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">{branch}</span>
+            </>
+          )}
+          {commitMessage && (
+            <span
+              className="truncate text-muted-foreground/70"
+              title={commitMessage}
+            >
+              · {commitMessage}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Relative timestamp */}
+      {timestamp && (
+        <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline-block">
+          {formatRelativeTime(timestamp)}
+        </span>
+      )}
+
+      {/* Status dot — always visible, rightmost anchor */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        <div
+          className={cn("h-2.5 w-2.5 rounded-full", dotColor)}
+          aria-label={`Status: ${aggregateStatus}`}
+        />
+      </div>
+    </Link>
+  );
+}
+
 export function ProjectCardCompactSkeleton() {
   return (
     <Card className="flex h-[240px] animate-pulse flex-col justify-between p-4">

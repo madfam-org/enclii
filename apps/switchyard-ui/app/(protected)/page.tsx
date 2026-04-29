@@ -12,6 +12,7 @@ import { Rocket } from "lucide-react";
 import {
   ProjectCardCompact,
   ProjectCardCompactSkeleton,
+  ProjectRowCompact,
   type CompactProject,
   type CompactRepoMeta,
   type CompactService,
@@ -385,9 +386,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
-      <div className="px-4 py-6 sm:px-0">
-        {/* Sub-Nav Action Bar */}
+    // max-w-screen-2xl + reduced horizontal padding so 1920px+ displays don't
+    // bleed gutters into wasted whitespace. Below lg the layout collapses to a
+    // single column with the sidebar moving below the project grid (mobile-first
+    // priority: see your projects first, then ecosystem state).
+    <div className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <div>
+        {/* Sub-Nav Action Bar (sticky-positioned with the page header to keep
+            search + view toggle reachable while scrolling project lists). */}
         <SubNavActionBar
           search={search}
           onSearchChange={setSearch}
@@ -398,8 +404,8 @@ export default function Dashboard() {
           onCreateProject={handleCreateProjectClick}
         />
 
-        {/* Freshness indicator (Gap #10): show last sync + manual refresh */}
-        <div className="mt-3 flex justify-end">
+        {/* Freshness indicator: last sync + manual refresh */}
+        <div className="mt-2 flex justify-end">
           <LastSyncBadge
             lastSyncedAt={lastSyncedAt}
             onRefresh={fetchProjects}
@@ -407,18 +413,27 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* 3-Column Layout */}
-        <div className="grid grid-cols-1 gap-6 mt-6 lg:grid-cols-12">
-          {/* Left sidebar */}
-          <aside className="lg:col-span-3 space-y-4">
+        {/* 3-column layout. On lg+ the left sidebar is sticky inside the
+            scroll container so usage / system health / alerts stay visible
+            as the user scrolls deep project lists — the most common UX
+            complaint was watching them disappear after 3 cards. Below lg
+            the sidebar order moves AFTER the projects grid (lg:order-1),
+            so mobile users hit projects first. */}
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+          {/* Left sidebar (sticky on lg+) */}
+          <aside
+            className="space-y-4 lg:sticky lg:top-20 lg:col-span-3 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 lg:order-1 order-2"
+            aria-label="Ecosystem snapshot"
+          >
             <UsageOverview variant="compact" />
             <SystemHealthSummary />
             <SidebarAlerts />
             <SidebarRecentPreviews projects={projects} />
           </aside>
 
-          {/* Main content */}
-          <div className="lg:col-span-9">
+          {/* Main content (projects). Below lg this comes first; on lg+ the
+              grid implicit order places it after the sidebar (col-span-9). */}
+          <div className="lg:col-span-9 lg:order-2 order-1">
             {filteredProjects.length === 0 ? (
               projects.length === 0 ? (
                 <div className="border-border rounded-lg border border-dashed py-16 text-center">
@@ -451,11 +466,31 @@ export default function Dashboard() {
               )
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {visibleProjects.map((project) => (
-                    <ProjectCardCompact key={project.id} project={project} />
-                  ))}
-                </div>
+                {viewMode === "list" ? (
+                  // List view: full-width rows. Each row keeps the most
+                  // operationally useful fields visible (status, replicas,
+                  // domain, last commit, age) and skips the per-service
+                  // table so the row stays scannable. Click → project page.
+                  <div
+                    className="divide-y divide-border/40 rounded-lg border border-border/60 bg-card overflow-hidden transition-opacity duration-150"
+                    role="list"
+                  >
+                    {visibleProjects.map((project) => (
+                      <ProjectRowCompact
+                        key={project.id}
+                        project={project}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  // Grid view: cards. xl breakpoint adds a 3rd column so
+                  // 1440px+ widescreen monitors don't waste edge space.
+                  <div className="grid grid-cols-1 gap-3 transition-opacity duration-150 sm:grid-cols-2 xl:grid-cols-3">
+                    {visibleProjects.map((project) => (
+                      <ProjectCardCompact key={project.id} project={project} />
+                    ))}
+                  </div>
+                )}
 
                 {hasMore && (
                   <div className="mt-6 flex justify-center">
