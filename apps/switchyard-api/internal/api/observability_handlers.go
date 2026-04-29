@@ -506,8 +506,8 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 	services, _ := h.repos.Services.ListAll(ctx)
 
 	type depResult struct {
-		svc   *types.Service
-		dep   *types.Deployment
+		svc    *types.Service
+		dep    *types.Deployment
 		failed bool
 	}
 	depCtx, depCancel := context.WithTimeout(ctx, 8*time.Second)
