@@ -490,6 +490,40 @@ func (h *Handler) GetDetailedHealth(c *gin.Context) {
 		return
 	}
 
+	// Fetch pods to calculate aggregate restart counts and populate pod details
+	podList, err := h.k8sClient.ListPods(ctx, project.Slug, fmt.Sprintf("enclii.dev/service=%s", svc.Name))
+	totalRestarts := 0
+	var pods []PodHealth
+	if err == nil && podList != nil {
+		for _, pod := range podList.Items {
+			podRestarts := 0
+			for _, containerStatus := range pod.Status.ContainerStatuses {
+				podRestarts += int(containerStatus.RestartCount)
+			}
+			totalRestarts += podRestarts
+
+			// Determine simple pod status
+			podPhase := string(pod.Status.Phase)
+			isReady := false
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == "Ready" && cond.Status == "True" {
+					isReady = true
+					break
+				}
+			}
+
+			pods = append(pods, PodHealth{
+				Name:     pod.Name,
+				Status:   podPhase,
+				Ready:    isReady,
+				Restarts: podRestarts,
+				Age:      time.Since(pod.CreationTimestamp.Time).Truncate(time.Second).String(),
+			})
+		}
+	} else {
+		h.logger.Warn(ctx, "Failed to list pods for detailed health", logging.Error("error", err))
+	}
+
 	// Determine overall health
 	status := "healthy"
 	if statusInfo.ReadyReplicas < statusInfo.DesiredReplicas {
@@ -503,9 +537,10 @@ func (h *Handler) GetDetailedHealth(c *gin.Context) {
 		Status:       status,
 		ServiceName:  svc.Name,
 		Environment:  c.DefaultQuery("env", "production"),
+		Pods:         pods,
 		TotalPods:    int(statusInfo.DesiredReplicas),
 		ReadyPods:    int(statusInfo.ReadyReplicas),
-		RestartCount: 0, // TODO: aggregate from pod status
+		RestartCount: totalRestarts,
 		CheckedAt:    time.Now().UTC().Format(time.RFC3339),
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -378,26 +379,29 @@ func TestGetAllowedOrigins(t *testing.T) {
 	}
 }
 
-// TODO: TestCleanupRateLimiters is disabled because CleanupRateLimiters method is not implemented
-// func TestCleanupRateLimiters(t *testing.T) {
-// 	middleware := NewSecurityMiddleware(nil)
-//
-// 	// Add many rate limiters
-// 	for i := 0; i < 100; i++ {
-// 		key := string(rune(i))
-// 		middleware.rateLimiters[key] = nil
-// 	}
-//
-// 	if len(middleware.rateLimiters) != 100 {
-// 		t.Errorf("Initial limiters count = %d, want 100", len(middleware.rateLimiters))
-// 	}
-//
-// 	// Start cleanup
-// 	middleware.CleanupRateLimiters()
-//
-// 	// Give the goroutine a moment to start
-// 	time.Sleep(10 * time.Millisecond)
-//
-// 	// The cleanup should run periodically, but we can't easily test the automatic cleanup
-// 	// Just verify the goroutine started without panicking
-// }
+func TestCleanupRateLimiters(t *testing.T) {
+	middleware := NewSecurityMiddleware(nil)
+
+	// Add many rate limiters with old access times
+	middleware.mutex.Lock()
+	oldTime := time.Now().Add(-2 * time.Hour)
+	for i := 0; i < 100; i++ {
+		key := string(rune(i))
+		middleware.rateLimiters[key] = &rateLimiterEntry{
+			limiter:    nil, // Doesn't matter for this test
+			lastAccess: oldTime,
+		}
+	}
+	middleware.mutex.Unlock()
+
+	if len(middleware.rateLimiters) != 100 {
+		t.Errorf("Initial limiters count = %d, want 100", len(middleware.rateLimiters))
+	}
+
+	// Start cleanup manually
+	middleware.CleanupRateLimiters()
+
+	if len(middleware.rateLimiters) != 0 {
+		t.Errorf("Limiters count after cleanup = %d, want 0", len(middleware.rateLimiters))
+	}
+}

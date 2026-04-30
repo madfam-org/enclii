@@ -76,6 +76,8 @@ type Service struct {
 	Status           string       `json:"status" db:"status"`                         // Service status: unknown, pending, running, failed
 	DesiredReplicas  int          `json:"desired_replicas" db:"desired_replicas"`     // Desired replica count from K8s
 	ReadyReplicas    int          `json:"ready_replicas" db:"ready_replicas"`         // Ready replica count from K8s
+	MinReplicas      *int         `json:"min_replicas,omitempty" db:"min_replicas"`
+	MaxReplicas      *int         `json:"max_replicas,omitempty" db:"max_replicas"`
 	LastHealthCheck  *time.Time   `json:"last_health_check,omitempty" db:"last_health_check"`
 	LastDeployment   *time.Time   `json:"last_deployment,omitempty" db:"-"`
 	LastCommitMsg    string       `json:"last_commit_message,omitempty" db:"-"`

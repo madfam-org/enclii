@@ -571,9 +571,15 @@ func (r *ServiceReconciler) generateHTTPScaledObject(req *ReconcileRequest, name
 	}
 
 	// Default to scaling to 10 if MaxReplicas is not set
-	// TODO: Add MinReplicas and MaxReplicas to the Service model in DB
 	maxReplicas := 10
 	minReplicas := 0
+
+	if req.Service.MaxReplicas != nil {
+		maxReplicas = *req.Service.MaxReplicas
+	}
+	if req.Service.MinReplicas != nil {
+		minReplicas = *req.Service.MinReplicas
+	}
 
 	scaledObj := &unstructured.Unstructured{
 		Object: map[string]interface{}{

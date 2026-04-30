@@ -515,25 +515,7 @@ func (s *SecurityMiddleware) startCleanupRoutine() {
 		for {
 			select {
 			case <-ticker.C:
-				s.mutex.Lock()
-				// Remove rate limiters that haven't been accessed in the last hour
-				cutoff := time.Now().Add(-1 * time.Hour)
-				removed := 0
-
-				for ip, entry := range s.rateLimiters {
-					if entry.lastAccess.Before(cutoff) {
-						delete(s.rateLimiters, ip)
-						removed++
-					}
-				}
-
-				if removed > 0 {
-					logrus.WithFields(logrus.Fields{
-						"removed_count": removed,
-						"remaining":     len(s.rateLimiters),
-					}).Info("Cleaned up inactive rate limiters")
-				}
-				s.mutex.Unlock()
+				s.CleanupRateLimiters()
 
 			case <-s.stopCleanup:
 				logrus.Info("Stopping rate limiter cleanup routine")
@@ -541,6 +523,30 @@ func (s *SecurityMiddleware) startCleanupRoutine() {
 			}
 		}
 	}()
+}
+
+// CleanupRateLimiters removes rate limiters that haven't been accessed recently
+func (s *SecurityMiddleware) CleanupRateLimiters() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Remove rate limiters that haven't been accessed in the last hour
+	cutoff := time.Now().Add(-1 * time.Hour)
+	removed := 0
+
+	for ip, entry := range s.rateLimiters {
+		if entry.lastAccess.Before(cutoff) {
+			delete(s.rateLimiters, ip)
+			removed++
+		}
+	}
+
+	if removed > 0 {
+		logrus.WithFields(logrus.Fields{
+			"removed_count": removed,
+			"remaining":     len(s.rateLimiters),
+		}).Info("Cleaned up inactive rate limiters")
+	}
 }
 
 // Stop gracefully shuts down the cleanup routine

@@ -46,6 +46,10 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 
 	// Build domain info list with environment names
 	domainInfos := make([]types.DomainInfo, 0, len(domains))
+	
+	requestedEnv := c.Query("env")
+	var filteredDomains []types.CustomDomain
+	
 	for _, domain := range domains {
 		// Get environment name
 		env, err := h.repos.Environments.GetByID(ctx, domain.EnvironmentID)
@@ -53,6 +57,12 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 		if err == nil && env != nil {
 			envName = env.Name
 		}
+
+		if requestedEnv != "" && envName != requestedEnv {
+			continue
+		}
+		
+		filteredDomains = append(filteredDomains, domain)
 
 		// Determine TLS status based on verification
 		tlsStatus := "pending"
@@ -90,12 +100,11 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 	}
 
 	// Build internal routes from routes table
-	// Note: Routes require environment context; get routes for all environments
-	// TODO: Consider filtering by environment when UI supports it
+	// Note: Routes require environment context
 	routes := []types.Route{}
-	if len(domains) > 0 {
+	if len(filteredDomains) > 0 {
 		// Use the first domain's environment for routes lookup
-		envRoutes, err := h.repos.Routes.GetByServiceAndEnvironment(ctx, serviceID, domains[0].EnvironmentID.String())
+		envRoutes, err := h.repos.Routes.GetByServiceAndEnvironment(ctx, serviceID, filteredDomains[0].EnvironmentID.String())
 		if err != nil {
 			h.logger.Error(ctx, "Failed to get routes", logging.Error("error", err))
 		} else {

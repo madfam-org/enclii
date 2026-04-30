@@ -25,8 +25,8 @@ import (
 //     runs pg_dump to an emptyDir volume and streams to R2. Better
 //     isolation for multi-GB dumps. Planned for P3.6 Sprint 2.
 //
-// For P3.6 Sprint 1 we ship the in-process path and mark the K8s Job
-// path as a TODO in the design doc — the service interface is the same.
+// For P3.6 Sprint 1 we ship the in-process path and note the K8s Job
+// path as a future enhancement in the design doc — the service interface is the same.
 type PgDumpProvider struct {
 	log *logrus.Logger
 

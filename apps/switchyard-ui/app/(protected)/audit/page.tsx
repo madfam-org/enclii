@@ -38,7 +38,7 @@ import {
   TableRow,
 } from "@enclii/ui-components/table";
 import { useAuth } from '@/contexts/AuthContext';
-import { apiGet } from '@/lib/api';
+import { apiGet, getAuthHeaders } from '@/lib/api';
 import { API_BASE_URL } from '@/lib/constants';
 
 // -----------------------------------------------------------------------
@@ -236,19 +236,32 @@ export default function AuditPage() {
 
   // CSV export: admin-only. We build the URL with the current filter
   // state and hand it to the browser; the backend streams CSV.
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     const params = buildQuery({ since, until, category, source, actor, target });
     params.delete('limit');
-    // Admin token is carried in Authorization via fetch; for a file
-    // download we fall back to a hidden anchor with credentials included.
-    // The API_BASE_URL value already points at the right switchyard-api.
     const url = `${API_BASE_URL}/v1/audit/export?${params.toString()}`;
-    // Using window.open ensures the browser uses the current session
-    // cookies + bearer (the Authorization header must be injected by our
-    // fetch wrapper; for now we open in a new tab to let browser prompt).
-    // TODO(p1.6): stream via fetch + Blob for Authorization-only setups
-    // that don't surface JWT as a cookie.
-    window.open(url, '_blank');
+    
+    try {
+      const response = await fetch(url, {
+        headers: getAuthHeaders(false),
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `audit-export-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Failed to export via fetch, falling back to window.open:', err);
+      window.open(url, '_blank');
+    }
   }, [since, until, category, source, actor, target]);
 
   return (

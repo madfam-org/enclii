@@ -88,7 +88,7 @@ async function attemptTokenRefresh(): Promise<boolean> {
  * Retrieves JWT token from localStorage (set by AuthContext)
  * Includes CSRF token for write operations
  */
-function getAuthHeaders(includeCSRF: boolean = false): HeadersInit {
+export function getAuthHeaders(includeCSRF: boolean = false): HeadersInit {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
