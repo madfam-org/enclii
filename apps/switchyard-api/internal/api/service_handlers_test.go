@@ -22,7 +22,7 @@ import (
 var serviceListByGitRepoColumns = []string{
 	"id", "project_id", "name", "git_repo", "app_path", "build_config",
 	"auto_deploy", "auto_deploy_branch", "auto_deploy_env",
-	"created_at", "updated_at",
+	"created_at", "updated_at", "jobs", "type", "region",
 }
 
 // setupServiceTestHandler builds a Handler with a sqlmock-backed Services
@@ -77,7 +77,7 @@ func TestListServicesByGitRepo_IncludesImageAgeFields(t *testing.T) {
 			serviceID, projectID, "api", "https://github.com/madfam-org/enclii", "",
 			[]byte(`{"type":"dockerfile"}`),
 			true, "main", "production",
-			time.Now(), time.Now(),
+			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))
 
 	// 2. EnrichWithLatestRelease: current succeeded release.
@@ -144,7 +144,7 @@ func TestListServicesByGitRepo_NoReleasesYet(t *testing.T) {
 			serviceID, projectID, "api", "https://github.com/madfam-org/enclii", "",
 			[]byte(`{"type":"dockerfile"}`),
 			true, "main", "production",
-			time.Now(), time.Now(),
+			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))
 
 	// Current succeeded release: none.
@@ -205,7 +205,7 @@ func TestListServicesByGitRepo_NoSensitiveFields(t *testing.T) {
 			serviceID, projectID, "api", "https://github.com/madfam-org/enclii", "apps/api",
 			[]byte(`{"type":"dockerfile","build_args":{"NPM_TOKEN":"super-secret"}}`),
 			true, "main", "production",
-			time.Now(), time.Now(),
+			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))
 	mock.ExpectQuery(`SELECT image_uri, created_at FROM releases`).
 		WithArgs(serviceID).

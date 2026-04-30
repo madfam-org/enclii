@@ -304,7 +304,7 @@ func TestListCronJobs_Empty(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
 		WithArgs("empty-project").
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
-			AddRow(projectID, "Empty Project", "empty-project", now, now))
+			AddRow(projectID, "Empty Project", "empty-project", "github", now, now))
 
 	// Return empty result set
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, schedule, command, image`).

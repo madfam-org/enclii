@@ -37,16 +37,28 @@ type Environment struct {
 	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 }
 
+// ServiceType defines the type of workload for a service
+type ServiceType string
+
+const (
+	ServiceTypeWeb      ServiceType = "web"
+	ServiceTypeWorker   ServiceType = "worker"
+	ServiceTypeFunction ServiceType = "function"
+)
+
 // Service represents a deployable application
 type Service struct {
 	ID          uuid.UUID   `json:"id" db:"id"`
 	ProjectID   uuid.UUID   `json:"project_id" db:"project_id"`
 	Name        string      `json:"name" db:"name"`
+	Type        ServiceType `json:"type" db:"type"`             // Workload type (web, worker, function)
+	Region      string      `json:"region" db:"region"`         // Deployment region (e.g., us-east)
 	GitRepo     string      `json:"git_repo" db:"git_repo"`
 	AppPath     string      `json:"app_path" db:"app_path"`       // Monorepo subdirectory path (e.g., "apps/api", "packages/web")
 	WatchPaths  []string    `json:"watch_paths" db:"watch_paths"` // Paths that trigger rebuild (e.g., ["apps/api/", "packages/shared/"])
 	BuildConfig BuildConfig `json:"build_config" db:"build_config"`
 	Volumes     []Volume    `json:"volumes,omitempty" db:"volumes"`
+	Jobs        []JobSpec   `json:"jobs,omitempty" db:"jobs"`
 	// HealthCheck configuration for Kubernetes probes
 	HealthCheck *HealthCheckConfig `json:"health_check,omitempty" db:"health_check"`
 	// Resource configuration for container limits
@@ -283,6 +295,16 @@ type ServiceSpecConfig struct {
 	Runtime RuntimeSpec `yaml:"runtime" json:"runtime"`
 	Env     []EnvVar    `yaml:"env,omitempty" json:"env,omitempty"`
 	Volumes []Volume    `yaml:"volumes,omitempty" json:"volumes,omitempty"`
+	Jobs    []JobSpec   `yaml:"jobs,omitempty" json:"jobs,omitempty"`
+}
+
+type JobSpec struct {
+	Name     string   `yaml:"name" json:"name"`
+	Schedule string   `yaml:"schedule" json:"schedule"`
+	Timezone string   `yaml:"timezone,omitempty" json:"timezone,omitempty"`
+	Command  []string `yaml:"command" json:"command"`
+	Timeout  int      `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Retries  int      `yaml:"retries,omitempty" json:"retries,omitempty"`
 }
 
 type BuildSpec struct {
@@ -293,6 +315,8 @@ type BuildSpec struct {
 type RuntimeSpec struct {
 	Port        int    `yaml:"port" json:"port"`
 	Replicas    int    `yaml:"replicas" json:"replicas"`
+	MinReplicas int    `yaml:"minReplicas,omitempty" json:"min_replicas,omitempty"`
+	MaxReplicas int    `yaml:"maxReplicas,omitempty" json:"max_replicas,omitempty"`
 	HealthCheck string `yaml:"healthCheck" json:"health_check"`
 }
 

@@ -11,7 +11,10 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // generateIngress creates an Ingress manifest for custom domains
@@ -29,6 +32,14 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 
 	pathType := networkingv1.PathTypePrefix
 
+	backendName := req.Service.Name
+	backendPort := int32(80)
+
+	if req.Service.Type == types.ServiceTypeFunction {
+		backendName = fmt.Sprintf("%s-interceptor", req.Service.Name)
+		backendPort = 8080 // KEDA Interceptor HTTP port
+	}
+
 	for _, domain := range req.CustomDomains {
 		// Default path if no routes specified
 		paths := []networkingv1.HTTPIngressPath{
@@ -37,9 +48,9 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 				PathType: &pathType,
 				Backend: networkingv1.IngressBackend{
 					Service: &networkingv1.IngressServiceBackend{
-						Name: req.Service.Name,
+						Name: backendName,
 						Port: networkingv1.ServiceBackendPort{
-							Number: 80,
+							Number: backendPort,
 						},
 					},
 				},
@@ -57,14 +68,20 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 					routePathType = networkingv1.PathTypeImplementationSpecific
 				}
 
+				routeBackendPort := int32(route.Port)
+				// If it's a function, all traffic MUST go to the interceptor port
+				if req.Service.Type == types.ServiceTypeFunction {
+					routeBackendPort = backendPort
+				}
+
 				paths = append(paths, networkingv1.HTTPIngressPath{
 					Path:     route.Path,
 					PathType: &routePathType,
 					Backend: networkingv1.IngressBackend{
 						Service: &networkingv1.IngressServiceBackend{
-							Name: req.Service.Name,
+							Name: backendName,
 							Port: networkingv1.ServiceBackendPort{
-								Number: int32(route.Port),
+								Number: routeBackendPort,
 							},
 						},
 					},
@@ -135,6 +152,17 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 	}
 
 	return ingress, nil
+}
+
+// applyHTTPScaledObject creates or updates a KEDA HTTPScaledObject
+func (r *ServiceReconciler) applyHTTPScaledObject(ctx context.Context, obj *unstructured.Unstructured) error {
+	err := r.k8sClient.ApplyUnstructured(ctx, obj.GetNamespace(), obj)
+	if err != nil {
+		return fmt.Errorf("failed to apply HTTPScaledObject: %w", err)
+	}
+
+	r.logger.WithField("httpscaledobject", obj.GetName()).Info("Applied HTTPScaledObject")
+	return nil
 }
 
 // applyIngress creates or updates an Ingress

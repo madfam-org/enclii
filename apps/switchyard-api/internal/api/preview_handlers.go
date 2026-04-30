@@ -45,7 +45,8 @@ type CreatePreviewCommentRequest struct {
 	YPosition *int   `json:"y_position,omitempty"`
 }
 
-// ListPreviews returns all preview environments for a service
+// ListPreviews returns preview environments for a service.
+// Accepts an optional ?pr_number=<int> query parameter to filter to a single PR preview.
 // GET /v1/services/:id/previews
 func (h *Handler) ListPreviews(c *gin.Context) {
 	serviceID := c.Param("id")
@@ -62,23 +63,50 @@ func (h *Handler) ListPreviews(c *gin.Context) {
 		return
 	}
 
-	previews, err := h.repos.PreviewEnvironments.ListByService(ctx, serviceUUID)
-	if err != nil {
-		// Gracefully handle missing table (migrations not applied)
-		if isTableNotExistError(err) {
-			h.logger.Warn(ctx, "Preview environments table not found, returning empty list",
-				logging.String("service_id", serviceID))
-			c.JSON(http.StatusOK, gin.H{
-				"previews": []*types.PreviewEnvironment{},
-				"count":    0,
-			})
+	var previews []*types.PreviewEnvironment
+
+	prNumberStr := c.Query("pr_number")
+	if prNumberStr != "" {
+		// If pr_number is provided, filter by it
+		var prNumber int
+		if _, err := fmt.Sscanf(prNumberStr, "%d", &prNumber); err == nil {
+			preview, err := h.repos.PreviewEnvironments.GetByServiceAndPR(ctx, serviceUUID, prNumber)
+			if err != nil && err != sql.ErrNoRows {
+				h.logger.Error(ctx, "Failed to get preview environment",
+					logging.String("service_id", serviceID),
+					logging.Int("pr_number", prNumber),
+					logging.Error("error", err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get preview"})
+				return
+			}
+			if preview != nil {
+				previews = append(previews, preview)
+			}
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pr_number format"})
 			return
 		}
-		h.logger.Error(ctx, "Failed to list preview environments",
-			logging.String("service_id", serviceID),
-			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list previews"})
-		return
+	} else {
+		// Otherwise, return all previews for the service
+		var err error
+		previews, err = h.repos.PreviewEnvironments.ListByService(ctx, serviceUUID)
+		if err != nil {
+			// Gracefully handle missing table (migrations not applied)
+			if isTableNotExistError(err) {
+				h.logger.Warn(ctx, "Preview environments table not found, returning empty list",
+					logging.String("service_id", serviceID))
+				c.JSON(http.StatusOK, gin.H{
+					"previews": []*types.PreviewEnvironment{},
+					"count":    0,
+				})
+				return
+			}
+			h.logger.Error(ctx, "Failed to list preview environments",
+				logging.String("service_id", serviceID),
+				logging.Error("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list previews"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -312,25 +340,8 @@ func (h *Handler) ClosePreview(c *gin.Context) {
 		return
 	}
 
-	// Scale down the Kubernetes deployment to 0 replicas (preserve for potential re-open)
-	previewNamespace := "enclii-preview-" + preview.PreviewSubdomain
-	if h.k8sClient != nil {
-		// Get service name for deployment
-		service, err := h.repos.Services.GetByID(preview.ServiceID)
-		if err == nil && service != nil {
-			deploymentName := service.Name
-			if err := h.k8sClient.ScaleDeployment(ctx, previewNamespace, deploymentName, 0); err != nil {
-				h.logger.Warn(ctx, "Failed to scale down preview deployment (may not exist)",
-					logging.String("preview_id", previewID),
-					logging.Error("error", err))
-				// Don't fail the request - preview is still marked as closed
-			} else {
-				h.logger.Info(ctx, "Preview deployment scaled to 0",
-					logging.String("preview_id", previewID),
-					logging.String("namespace", previewNamespace))
-			}
-		}
-	}
+	// Run full cleanup asynchronously (deletes namespace, K8s resources, CF tunnel)
+	go h.cleanupPreviewResources(preview)
 
 	h.logger.Info(ctx, "Preview environment closed",
 		logging.String("preview_id", previewID),
@@ -449,26 +460,8 @@ func (h *Handler) DeletePreview(c *gin.Context) {
 		return
 	}
 
-	// Delete the Kubernetes resources first
-	previewNamespace := "enclii-preview-" + preview.PreviewSubdomain
-	if h.k8sClient != nil {
-		// Get service name for deployment
-		service, err := h.repos.Services.GetByID(preview.ServiceID)
-		if err == nil && service != nil {
-			deploymentName := service.Name
-			if err := h.k8sClient.DeleteDeploymentAndService(ctx, previewNamespace, deploymentName); err != nil {
-				h.logger.Warn(ctx, "Failed to delete preview K8s resources (may not exist)",
-					logging.String("preview_id", previewID),
-					logging.String("namespace", previewNamespace),
-					logging.Error("error", err))
-				// Continue with database deletion even if K8s cleanup fails
-			} else {
-				h.logger.Info(ctx, "Preview K8s resources deleted",
-					logging.String("preview_id", previewID),
-					logging.String("namespace", previewNamespace))
-			}
-		}
-	}
+	// Run full cleanup asynchronously (deletes namespace, K8s resources, CF tunnel)
+	go h.cleanupPreviewResources(preview)
 
 	// Delete the preview from the database
 	if err := h.repos.PreviewEnvironments.Delete(ctx, previewUUID); err != nil {

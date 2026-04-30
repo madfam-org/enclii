@@ -8,9 +8,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -141,6 +143,16 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req *ReconcileRequest
 		}
 	}
 
+	// Generate CronJobs
+	cronJobs, err := r.generateCronJobs(req, namespace, secretName)
+	if err != nil {
+		return &ReconcileResult{
+			Success: false,
+			Message: "Failed to generate cron jobs",
+			Error:   err,
+		}
+	}
+
 	// Apply deployment
 	if err := r.applyDeployment(ctx, deployment); err != nil {
 		return &ReconcileResult{
@@ -159,13 +171,61 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req *ReconcileRequest
 		}
 	}
 
-	// Apply Ingress if custom domains are configured
+	// Apply CronJobs
+	for _, cj := range cronJobs {
+		if err := r.applyCronJob(ctx, cj); err != nil {
+			return &ReconcileResult{
+				Success: false,
+				Message: fmt.Sprintf("Failed to apply cron job %s", cj.Name),
+				Error:   err,
+			}
+		}
+	}
+
+	// Generate and Apply HTTPScaledObject for functions
 	k8sObjects := []string{
 		fmt.Sprintf("deployment/%s", deployment.Name),
 		fmt.Sprintf("service/%s", service.Name),
 	}
 
+	for _, cj := range cronJobs {
+		k8sObjects = append(k8sObjects, fmt.Sprintf("cronjob/%s", cj.Name))
+	}
+
+	containerPort, _ := parseContainerPort(req.EnvVars)
+	scaledObj, err := r.generateHTTPScaledObject(req, namespace, containerPort)
+	if err != nil {
+		return &ReconcileResult{
+			Success: false,
+			Message: "Failed to generate HTTPScaledObject",
+			Error:   err,
+		}
+	}
+
+	if scaledObj != nil {
+		if err := r.applyHTTPScaledObject(ctx, scaledObj); err != nil {
+			return &ReconcileResult{
+				Success: false,
+				Message: "Failed to apply HTTPScaledObject",
+				Error:   err,
+			}
+		}
+		k8sObjects = append(k8sObjects, fmt.Sprintf("httpscaledobject/%s", req.Service.Name))
+	}
+
 	if len(req.CustomDomains) > 0 {
+		if req.Service.Type == types.ServiceTypeFunction {
+			interceptorSvc := r.generateInterceptorService(req, namespace)
+			if err := r.applyService(ctx, interceptorSvc); err != nil {
+				return &ReconcileResult{
+					Success: false,
+					Message: "Failed to apply interceptor service",
+					Error:   err,
+				}
+			}
+			k8sObjects = append(k8sObjects, fmt.Sprintf("service/%s", interceptorSvc.Name))
+		}
+
 		ingress, err := r.generateIngress(req, namespace)
 		if err != nil {
 			return &ReconcileResult{
@@ -448,6 +508,34 @@ func (r *ServiceReconciler) applyService(ctx context.Context, service *corev1.Se
 	return nil
 }
 
+func (r *ServiceReconciler) applyCronJob(ctx context.Context, cronJob *batchv1.CronJob) error {
+	cjClient := r.k8sClient.Clientset.BatchV1().CronJobs(cronJob.Namespace)
+
+	// Try to get existing cronjob
+	existing, err := cjClient.Get(ctx, cronJob.Name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Create new cronjob
+			_, err = cjClient.Create(ctx, cronJob, metav1.CreateOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to create cronjob: %w", err)
+			}
+			r.logger.WithField("cronjob", cronJob.Name).Info("Created new cronjob")
+			return nil
+		}
+		return fmt.Errorf("failed to get existing cronjob: %w", err)
+	}
+
+	// Update existing cronjob
+	cronJob.ResourceVersion = existing.ResourceVersion
+	_, err = cjClient.Update(ctx, cronJob, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update cronjob: %w", err)
+	}
+	r.logger.WithField("cronjob", cronJob.Name).Info("Updated existing cronjob")
+	return nil
+}
+
 // ensureEnvSecret creates or updates a K8s Secret containing secret env vars
 // This ensures sensitive values are not exposed in Pod specs and are stored encrypted in etcd
 func (r *ServiceReconciler) ensureEnvSecret(ctx context.Context, req *ReconcileRequest, namespace, secretName string) error {
@@ -696,6 +784,31 @@ func (r *ServiceReconciler) Delete(ctx context.Context, namespace, serviceName s
 					"networkpolicy": np.Name,
 				}).WithError(err).Warn("Failed to delete NetworkPolicy")
 			}
+		}
+	}
+
+	// Delete CronJobs associated with this service
+	cjClient := r.k8sClient.Clientset.BatchV1().CronJobs(namespace)
+	cjList, err := cjClient.List(ctx, listOptions)
+	if err != nil && !errors.IsNotFound(err) {
+		r.logger.WithError(err).Warn("Failed to list CronJobs for deletion")
+	} else if cjList != nil {
+		for _, cj := range cjList.Items {
+			err = cjClient.Delete(ctx, cj.Name, metav1.DeleteOptions{})
+			if err != nil && !errors.IsNotFound(err) {
+				r.logger.WithFields(logrus.Fields{
+					"cronjob": cj.Name,
+				}).WithError(err).Warn("Failed to delete CronJob")
+			}
+		}
+	}
+
+	// Delete HTTPScaledObject
+	scaledObjGVR, _ := schema.ParseResourceArg("httpscaledobjects.v1alpha1.http.keda.sh")
+	if scaledObjGVR != nil {
+		err = r.k8sClient.DynamicClient.Resource(*scaledObjGVR).Namespace(namespace).Delete(ctx, serviceName, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			r.logger.WithError(err).Warn("Failed to delete HTTPScaledObject")
 		}
 	}
 

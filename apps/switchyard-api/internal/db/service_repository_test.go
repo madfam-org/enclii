@@ -37,9 +37,19 @@ func mustMarshalBuildConfig(t *testing.T, bc types.BuildConfig) []byte {
 }
 
 // serviceBasicColumns matches the columns returned by GetByID, GetByName, GetByGitRepo, ListAll, ListByGitRepo
+var serviceListAllColumns = []string{
+	"id", "project_id", "name", "git_repo", "app_path", "build_config",
+	"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "k8s_namespace", "created_at", "updated_at", "jobs", "type", "region",
+}
+
+var serviceGetByGitRepoColumns = []string{
+	"id", "project_id", "name", "git_repo", "app_path", "build_config",
+	"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at", "updated_at", "type", "region",
+}
+
 var serviceBasicColumns = []string{
 	"id", "project_id", "name", "git_repo", "app_path", "build_config",
-	"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at", "updated_at",
+	"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at", "updated_at", "jobs", "type", "region",
 }
 
 func newTestService() *types.Service {
@@ -48,6 +58,8 @@ func newTestService() *types.Service {
 		Name:             "test-svc",
 		GitRepo:          "https://github.com/org/repo",
 		AppPath:          "apps/api",
+		Type:             types.ServiceTypeWeb,
+		Region:           "default",
 		BuildConfig:      defaultBuildConfig(),
 		AutoDeploy:       true,
 		AutoDeployBranch: "main",
@@ -68,7 +80,7 @@ func TestServiceRepository_Create(t *testing.T) {
 			WithArgs(
 				sqlmock.AnyArg(), svc.ProjectID, "test-svc", "https://github.com/org/repo",
 				"apps/api", sqlmock.AnyArg(), true, "main", "production",
-				sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "web", "default",
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -87,6 +99,8 @@ func TestServiceRepository_Create(t *testing.T) {
 			ProjectID:   uuid.New(),
 			Name:        "defaults-svc",
 			GitRepo:     "https://github.com/org/repo",
+			Type:        types.ServiceTypeWeb,
+			Region:      "default",
 			BuildConfig: defaultBuildConfig(),
 			// AutoDeployBranch and AutoDeployEnv intentionally empty
 		}
@@ -95,7 +109,7 @@ func TestServiceRepository_Create(t *testing.T) {
 			WithArgs(
 				sqlmock.AnyArg(), svc.ProjectID, "defaults-svc", "https://github.com/org/repo",
 				"", sqlmock.AnyArg(), false, "main", "production",
-				sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "web", "default",
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -115,7 +129,7 @@ func TestServiceRepository_Create(t *testing.T) {
 			WithArgs(
 				sqlmock.AnyArg(), svc.ProjectID, "test-svc", "https://github.com/org/repo",
 				"apps/api", sqlmock.AnyArg(), true, "main", "production",
-				sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "web", "default",
 			).
 			WillReturnError(fmt.Errorf("constraint violation"))
 
@@ -141,7 +155,7 @@ func TestServiceRepository_GetByID(t *testing.T) {
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(serviceBasicColumns).
 				AddRow(id, projID, "svc1", "https://github.com/org/repo", "apps/api", bc,
-					true, "main", "production", now, now))
+					true, "main", "production", now, now, []byte(`[]`), "web", "default"))
 
 		result, err := repo.GetByID(id)
 		assert.NoError(t, err)
@@ -179,7 +193,7 @@ func TestServiceRepository_GetByID(t *testing.T) {
 			WithArgs(id).
 			WillReturnRows(sqlmock.NewRows(serviceBasicColumns).
 				AddRow(id, uuid.New(), "svc", "repo", "", []byte(`{invalid json}`),
-					false, "main", "production", now, now))
+					false, "main", "production", now, now, []byte(`[]`), "web", "default"))
 
 		result, err := repo.GetByID(id)
 		assert.Nil(t, result)
@@ -204,7 +218,7 @@ func TestServiceRepository_GetByName(t *testing.T) {
 			WithArgs("my-service").
 			WillReturnRows(sqlmock.NewRows(serviceBasicColumns).
 				AddRow(id, uuid.New(), "my-service", "https://github.com/org/repo", "", bc,
-					false, "main", "production", now, now))
+					false, "main", "production", now, now, []byte(`[]`), "web", "default"))
 
 		result, err := repo.GetByName("my-service")
 		assert.NoError(t, err)
@@ -235,7 +249,7 @@ func TestServiceRepository_ListAll(t *testing.T) {
 		defer cleanup()
 
 		mock.ExpectQuery(`SELECT id, project_id, name, git_repo.*FROM services ORDER BY created_at DESC`).
-			WillReturnRows(sqlmock.NewRows(serviceBasicColumns))
+			WillReturnRows(sqlmock.NewRows(serviceListAllColumns))
 
 		results, err := repo.ListAll(context.Background())
 		assert.NoError(t, err)
@@ -250,9 +264,9 @@ func TestServiceRepository_ListAll(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
 
-		rows := sqlmock.NewRows(serviceBasicColumns).
-			AddRow(uuid.New(), uuid.New(), "svc-a", "repo-a", "", bc, true, "main", "production", now, now).
-			AddRow(uuid.New(), uuid.New(), "svc-b", "repo-b", "apps/web", bc, false, "develop", "staging", now, now)
+		rows := sqlmock.NewRows(serviceListAllColumns).
+			AddRow(uuid.New(), uuid.New(), "svc-a", "repo-a", "", bc, true, "main", "production", nil, now, now, []byte(`[]`), "web", "default").
+			AddRow(uuid.New(), uuid.New(), "svc-b", "repo-b", "apps/web", bc, false, "develop", "staging", nil, now, now, []byte(`[]`), "web", "default")
 
 		mock.ExpectQuery(`SELECT id, project_id, name, git_repo.*FROM services ORDER BY created_at DESC`).
 			WillReturnRows(rows)
@@ -290,7 +304,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		"desired_replicas", "ready_replicas", "last_health_check",
 		"last_deployment", "last_commit_message", "last_commit_branch",
 		"current_image_uri", "current_release_id", "current_release_created_at", "recent_releases",
-		"created_at", "updated_at",
+		"created_at", "updated_at", "jobs", "type", "region",
 	}
 
 	t.Run("with results", func(t *testing.T) {
@@ -311,7 +325,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 				2, 2, now,
 				now, "feat: add feature", "main",
 				"ghcr.io/madfam-org/svc-1@sha256:abc123", releaseID.String(), now, recentJSON,
-				now, now)
+				now, now, []byte(`[]`), "web", "default")
 
 		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
 			WithArgs(projID).
@@ -373,7 +387,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 				0, 0, nil,
 				nil, nil, nil,
 				nil, nil, nil, []byte(`[]`),
-				now, now)
+				now, now, []byte(`[]`), "web", "default")
 
 		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
 			WithArgs(projID).
@@ -408,9 +422,9 @@ func TestServiceRepository_GetByGitRepo(t *testing.T) {
 
 		mock.ExpectQuery(`SELECT id, project_id, name, git_repo.*FROM services WHERE git_repo = \$1`).
 			WithArgs(repoURL).
-			WillReturnRows(sqlmock.NewRows(serviceBasicColumns).
+			WillReturnRows(sqlmock.NewRows(serviceGetByGitRepoColumns).
 				AddRow(id, uuid.New(), "svc", repoURL, "", bc,
-					true, "main", "production", now, now))
+					true, "main", "production", now, now, "web", "default"))
 
 		result, err := repo.GetByGitRepo(repoURL)
 		assert.NoError(t, err)
@@ -445,9 +459,9 @@ func TestServiceRepository_ListByGitRepo(t *testing.T) {
 
 		rows := sqlmock.NewRows(serviceBasicColumns).
 			AddRow(uuid.New(), uuid.New(), "api", "https://github.com/org/monorepo", "apps/api", bc,
-				true, "main", "production", now, now).
+				true, "main", "production", now, now, []byte(`[]`), "web", "default").
 			AddRow(uuid.New(), uuid.New(), "web", "https://github.com/org/monorepo", "apps/web", bc,
-				true, "main", "production", now, now)
+				true, "main", "production", now, now, []byte(`[]`), "web", "default")
 
 		mock.ExpectQuery(`SELECT id, project_id, name, git_repo`).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
@@ -592,7 +606,7 @@ func TestServiceRepository_Update(t *testing.T) {
 		mock.ExpectExec(`UPDATE services`).
 			WithArgs(
 				"updated-svc", "https://github.com/org/updated", "apps/new", sqlmock.AnyArg(),
-				true, "main", "staging", sqlmock.AnyArg(), svc.ID,
+				true, "main", "staging", sqlmock.AnyArg(), sqlmock.AnyArg(), "", "", svc.ID,
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -615,7 +629,7 @@ func TestServiceRepository_Update(t *testing.T) {
 		mock.ExpectExec(`UPDATE services`).
 			WithArgs(
 				"ghost", "", "", sqlmock.AnyArg(),
-				false, "", "", sqlmock.AnyArg(), svc.ID,
+				false, "", "", sqlmock.AnyArg(), sqlmock.AnyArg(), "", "", svc.ID,
 			).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
@@ -637,7 +651,7 @@ func TestServiceRepository_Update(t *testing.T) {
 		mock.ExpectExec(`UPDATE services`).
 			WithArgs(
 				"err-svc", "", "", sqlmock.AnyArg(),
-				false, "", "", sqlmock.AnyArg(), svc.ID,
+				false, "", "", sqlmock.AnyArg(), sqlmock.AnyArg(), "", "", svc.ID,
 			).
 			WillReturnError(fmt.Errorf("deadlock"))
 

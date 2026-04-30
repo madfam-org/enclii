@@ -20,6 +20,8 @@ type UpdateServiceRequest struct {
 	AutoDeploy       *bool              `json:"auto_deploy,omitempty"`
 	AutoDeployBranch *string            `json:"auto_deploy_branch,omitempty"`
 	AutoDeployEnv    *string            `json:"auto_deploy_env,omitempty"`
+	Type             *types.ServiceType `json:"type,omitempty"`
+	Region           *string            `json:"region,omitempty"`
 	BuildConfig      *types.BuildConfig `json:"build_config,omitempty"`
 }
 
@@ -78,6 +80,12 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	}
 	if req.AutoDeployEnv != nil {
 		service.AutoDeployEnv = *req.AutoDeployEnv
+	}
+	if req.Type != nil {
+		service.Type = *req.Type
+	}
+	if req.Region != nil {
+		service.Region = *req.Region
 	}
 	if req.BuildConfig != nil {
 		service.BuildConfig = *req.BuildConfig

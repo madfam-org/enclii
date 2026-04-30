@@ -334,7 +334,7 @@ func TestGetDefaultIssuer(t *testing.T) {
 	})
 
 	issuer := getDefaultIssuer()
-	assert.Equal(t, "https://api.janua.dev", issuer)
+	assert.Equal(t, "https://auth.madfam.io", issuer)
 
 	// Test with custom env var
 	os.Setenv("ENCLII_OIDC_ISSUER", "https://auth.custom.dev")

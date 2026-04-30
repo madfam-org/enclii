@@ -39,6 +39,16 @@ func (r *ServiceRepository) Create(service *types.Service) error {
 		return fmt.Errorf("failed to marshal build config: %w", err)
 	}
 
+	var jobsJSON []byte
+	if len(service.Jobs) > 0 {
+		jobsJSON, err = json.Marshal(service.Jobs)
+		if err != nil {
+			return fmt.Errorf("failed to marshal jobs: %w", err)
+		}
+	} else {
+		jobsJSON = []byte("[]")
+	}
+
 	// k8s_namespace persisted so subsequent reads via ListAll/ListByProject
 	// can populate Service.K8sNamespace and the observability handler can
 	// probe the right namespace. Optional: NULL for services that haven't
@@ -50,14 +60,21 @@ func (r *ServiceRepository) Create(service *types.Service) error {
 		k8sNs = nil
 	}
 
+	if service.Type == "" {
+		service.Type = types.ServiceTypeWeb
+	}
+	if service.Region == "" {
+		service.Region = "default"
+	}
+
 	query := `
 		INSERT INTO services (id, project_id, name, git_repo, app_path, build_config,
-			auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at, jobs, type, region)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	_, err = r.db.Exec(query, service.ID, service.ProjectID, service.Name, service.GitRepo,
 		service.AppPath, buildConfigJSON, service.AutoDeploy, service.AutoDeployBranch,
-		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt)
+		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt, jobsJSON, service.Type, service.Region)
 	return err
 }
 
@@ -74,16 +91,18 @@ func (r *ServiceRepository) UpdateK8sNamespace(ctx context.Context, serviceID uu
 func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 	service := &types.Service{}
 	var buildConfigJSON []byte
+	var jobsJSON []byte
 	var appPath sql.NullString
 
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at
+		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
 		FROM services WHERE id = $1`
 
 	err := r.db.QueryRow(query, id).Scan(
 		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 		&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt,
+		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
+		&service.Type, &service.Region,
 	)
 	if err != nil {
 		return nil, err
@@ -95,6 +114,12 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 
 	if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+	}
+
+	if len(jobsJSON) > 0 {
+		if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+		}
 	}
 
 	return service, nil
@@ -104,16 +129,18 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 func (r *ServiceRepository) GetByName(name string) (*types.Service, error) {
 	service := &types.Service{}
 	var buildConfigJSON []byte
+	var jobsJSON []byte
 	var appPath sql.NullString
 
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at
+		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
 		FROM services WHERE name = $1`
 
 	err := r.db.QueryRow(query, name).Scan(
 		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 		&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt,
+		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
+		&service.Type, &service.Region,
 	)
 	if err != nil {
 		return nil, err
@@ -125,6 +152,12 @@ func (r *ServiceRepository) GetByName(name string) (*types.Service, error) {
 
 	if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+	}
+
+	if len(jobsJSON) > 0 {
+		if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+		}
 	}
 
 	return service, nil
@@ -135,8 +168,8 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 	// handler) can probe the right namespace for pod counts. Audit
 	// 2026-04-29 traced uniformly-zero pod counts back to ListAll
 	// dropping this column, forcing the caller to fall back to "default".
-	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at
+		query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
+		auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
 		FROM services ORDER BY created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query)
@@ -149,13 +182,15 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 	for rows.Next() {
 		service := &types.Service{}
 		var buildConfigJSON []byte
+		var jobsJSON []byte
 		var appPath sql.NullString
 		var k8sNamespace sql.NullString
 
 		err := rows.Scan(
 			&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 			&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-			&service.AutoDeployEnv, &k8sNamespace, &service.CreatedAt, &service.UpdatedAt,
+			&service.AutoDeployEnv, &k8sNamespace, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
+			&service.Type, &service.Region,
 		)
 		if err != nil {
 			return nil, err
@@ -171,6 +206,12 @@ func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, erro
 
 		if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+		}
+
+		if len(jobsJSON) > 0 {
+			if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+			}
 		}
 
 		services = append(services, service)
@@ -203,7 +244,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 				ORDER BY created_at DESC
 				LIMIT 5
 			) rr) as recent_releases,
-		s.created_at, s.updated_at
+		s.created_at, s.updated_at, COALESCE(s.jobs, '[]'::jsonb) as jobs, s.type, s.region
 		FROM services s WHERE s.project_id = $1 ORDER BY s.created_at DESC`
 
 	rows, err := r.db.Query(query, projectID)
@@ -216,6 +257,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 	for rows.Next() {
 		service := &types.Service{}
 		var buildConfigJSON []byte
+		var jobsJSON []byte
 		var appPath sql.NullString
 		var k8sNamespace sql.NullString
 		var lastHealthCheck sql.NullTime
@@ -233,7 +275,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 			&service.DesiredReplicas, &service.ReadyReplicas, &lastHealthCheck,
 			&lastDeployment, &lastCommitMsg, &lastCommitBranch,
 			&currentImageURI, &currentReleaseID, &currentReleaseCreatedAt, &recentReleasesJSON,
-			&service.CreatedAt, &service.UpdatedAt)
+			&service.CreatedAt, &service.UpdatedAt, &jobsJSON, &service.Type, &service.Region)
 		if err != nil {
 			return nil, err
 		}
@@ -277,6 +319,12 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 			return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
 		}
 
+		if len(jobsJSON) > 0 {
+			if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+			}
+		}
+
 		services = append(services, service)
 	}
 
@@ -291,13 +339,14 @@ func (r *ServiceRepository) GetByGitRepo(gitRepoURL string) (*types.Service, err
 	var appPath sql.NullString
 
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at
+		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, type, region
 		FROM services WHERE git_repo = $1`
 
 	err := r.db.QueryRow(query, gitRepoURL).Scan(
 		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 		&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
 		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt,
+		&service.Type, &service.Region,
 	)
 	if err != nil {
 		return nil, err
@@ -383,7 +432,7 @@ func (r *ServiceRepository) ListByGitRepo(gitRepoURL string) ([]*types.Service, 
 
 	// Query with normalized URL matching (handles .git suffix variations)
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at
+		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
 		FROM services
 		WHERE REPLACE(REPLACE(git_repo, '.git', ''), 'https://github.com/', '') = $1
 		   OR git_repo = $2
@@ -409,23 +458,31 @@ func (r *ServiceRepository) ListByGitRepo(gitRepoURL string) ([]*types.Service, 
 	for rows.Next() {
 		service := &types.Service{}
 		var buildConfigJSON []byte
-		var appPath sql.NullString
+	var jobsJSON []byte
+	var appPath sql.NullString
 
-		if err := rows.Scan(
-			&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
-			&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-			&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
+	if err := rows.Scan(
+		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
+		&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
+		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
+		&service.Type, &service.Region,
+	); err != nil {
+		return nil, err
+	}
 
-		if appPath.Valid {
-			service.AppPath = appPath.String
-		}
+	if appPath.Valid {
+		service.AppPath = appPath.String
+	}
 
-		if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+	if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+	}
+
+	if len(jobsJSON) > 0 {
+		if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
 		}
+	}
 
 		services = append(services, service)
 	}
@@ -442,15 +499,25 @@ func (r *ServiceRepository) Update(ctx context.Context, service *types.Service) 
 		return fmt.Errorf("failed to marshal build config: %w", err)
 	}
 
+	var jobsJSON []byte
+	if len(service.Jobs) > 0 {
+		jobsJSON, err = json.Marshal(service.Jobs)
+		if err != nil {
+			return fmt.Errorf("failed to marshal jobs: %w", err)
+		}
+	} else {
+		jobsJSON = []byte("[]")
+	}
+
 	query := `
 		UPDATE services
 		SET name = $1, git_repo = $2, app_path = $3, build_config = $4,
-		    auto_deploy = $5, auto_deploy_branch = $6, auto_deploy_env = $7, updated_at = $8
-		WHERE id = $9
+		    auto_deploy = $5, auto_deploy_branch = $6, auto_deploy_env = $7, updated_at = $8, jobs = $9, type = $10, region = $11
+		WHERE id = $12
 	`
 	result, err := r.db.ExecContext(ctx, query,
 		service.Name, service.GitRepo, service.AppPath, buildConfigJSON,
-		service.AutoDeploy, service.AutoDeployBranch, service.AutoDeployEnv, service.UpdatedAt, service.ID)
+		service.AutoDeploy, service.AutoDeployBranch, service.AutoDeployEnv, service.UpdatedAt, jobsJSON, service.Type, service.Region, service.ID)
 	if err != nil {
 		return err
 	}

@@ -269,6 +269,41 @@ func (c *Client) DryRunApply(ctx context.Context, namespace string, obj map[stri
 	return err
 }
 
+// ApplyUnstructured creates or updates an unstructured resource (CRD).
+func (c *Client) ApplyUnstructured(ctx context.Context, namespace string, unstructuredObj *unstructured.Unstructured) error {
+	gvk := unstructuredObj.GroupVersionKind()
+	
+	// Build GVR from GroupVersionKind
+	gvr, err := resolveGVR(c, gvk.GroupVersion().String(), gvk.Kind)
+	if err != nil {
+		return fmt.Errorf("resolve resource for %s/%s: %w", gvk.GroupVersion().String(), gvk.Kind, err)
+	}
+
+	if namespace != "" && unstructuredObj.GetNamespace() == "" {
+		unstructuredObj.SetNamespace(namespace)
+	}
+
+	var resource dynamic.ResourceInterface
+	if namespace != "" {
+		resource = c.DynamicClient.Resource(gvr).Namespace(namespace)
+	} else {
+		resource = c.DynamicClient.Resource(gvr)
+	}
+
+	existing, err := resource.Get(ctx, unstructuredObj.GetName(), metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			_, err = resource.Create(ctx, unstructuredObj, metav1.CreateOptions{})
+			return err
+		}
+		return fmt.Errorf("failed to get existing resource: %w", err)
+	}
+
+	unstructuredObj.SetResourceVersion(existing.GetResourceVersion())
+	_, err = resource.Update(ctx, unstructuredObj, metav1.UpdateOptions{})
+	return err
+}
+
 func (c *Client) createOrUpdateDeployment(ctx context.Context, spec *DeploymentSpec) error {
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{

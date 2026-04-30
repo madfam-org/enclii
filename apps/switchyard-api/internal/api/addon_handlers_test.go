@@ -24,7 +24,7 @@ func TestAddonActorFromContext(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 
 		userID := uuid.New()
-		c.Set("userID", userID.String())
+		c.Set("user_id", userID.String())
 		c.Set("userSub", "auth0|123abc")
 		c.Set("userEmail", "dev@madfam.io")
 
@@ -49,7 +49,7 @@ func TestAddonActorFromContext(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 
-		c.Set("userID", "not-a-uuid")
+		c.Set("user_id", "not-a-uuid")
 		c.Set("userSub", "auth0|xyz")
 
 		actor := addonActorFromContext(c)
@@ -62,7 +62,7 @@ func TestAddonActorFromContext(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 
-		c.Set("userID", "")
+		c.Set("user_id", "")
 		actor := addonActorFromContext(c)
 		assert.Nil(t, actor.UserID)
 	})
