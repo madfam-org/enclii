@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { RefreshCw, Activity } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@enclii/ui-components/badge";
 import { DeploymentProgress, DeploymentProgressSkeleton, type DeploymentStage } from "@/components/dashboard/deployment-progress";
 import { AuthorAvatar, CommitLink } from "@/components/git";
 import { GitBranch } from "lucide-react";

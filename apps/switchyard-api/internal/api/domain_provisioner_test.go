@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"testing"
 
 	"github.com/google/uuid"
@@ -70,9 +71,9 @@ func TestProvisionDomainsFromYAML_EmptyDomains(t *testing.T) {
 		logger: newNopLogger(),
 	}
 
-	cfg := &EncliiYAML{
-		Spec: EncliiYAMLSpec{
-			Domains: []EncliiYAMLDomain{},
+	cfg := &manifest.EncliiYAML{
+		Spec: manifest.EncliiYAMLSpec{
+			Domains: []manifest.EncliiYAMLDomain{},
 		},
 	}
 
@@ -133,7 +134,7 @@ func TestProvisionSingleDomain_InvalidDomain(t *testing.T) {
 	h.provisionSingleDomain(context.Background(), &types.Service{
 		ID:   uuid.New(),
 		Name: "test-svc",
-	}, EncliiYAMLDomain{
+	}, manifest.EncliiYAMLDomain{
 		Name:        "invalid",
 		Environment: "production",
 	}, 80)

@@ -35,7 +35,7 @@ CONFIGS=(
     "infra/k8s/production/cloudflared-unified.yaml:production/cloudflared-unified.yaml.golden"
     "infra/k8s/production/security-patch.yaml:production/security-patch.yaml.golden"
     "infra/k8s/base/roundhouse.yaml:base/roundhouse.yaml.golden"
-    "apps/dispatch/k8s/deployment.yaml:apps/dispatch-deployment.yaml.golden"
+    "apps/admin-console/k8s/deployment.yaml:apps/admin-console-deployment.yaml.golden"
     "infra/k8s/production/kyverno-guards.yaml:production/kyverno-guards.yaml.golden"
     "infra/k8s/production/monitoring/prometheus.yaml:production/monitoring/prometheus.yaml.golden"
     "infra/k8s/production/monitoring/grafana.yaml:production/monitoring/grafana.yaml.golden"

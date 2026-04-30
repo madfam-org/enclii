@@ -38,7 +38,7 @@ CONFIGS=(
     "infra/k8s/production/monitoring/grafana.yaml:production/monitoring/grafana.yaml.golden"
     "infra/k8s/production/monitoring/alertmanager.yaml:production/monitoring/alertmanager.yaml.golden"
     "infra/k8s/base/roundhouse.yaml:base/roundhouse.yaml.golden"
-    "apps/dispatch/k8s/deployment.yaml:apps/dispatch-deployment.yaml.golden"
+    "apps/admin-console/k8s/deployment.yaml:apps/admin-console-deployment.yaml.golden"
     "infra/argocd/apps/monitoring.yaml:argocd/monitoring.yaml.golden"
     "infra/argocd/apps/storage.yaml:argocd/storage.yaml.golden"
     "infra/argocd/apps/external-secrets-operator.yaml:argocd/external-secrets-operator.yaml.golden"

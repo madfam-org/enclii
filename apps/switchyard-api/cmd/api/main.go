@@ -37,7 +37,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/telemetry"
+	telemetry "github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"

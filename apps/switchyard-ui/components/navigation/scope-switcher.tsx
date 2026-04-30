@@ -10,8 +10,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
+} from "@enclii/ui-components/dropdown-menu";
+import { Badge } from "@enclii/ui-components/badge";
 
 // =============================================================================
 // TYPES

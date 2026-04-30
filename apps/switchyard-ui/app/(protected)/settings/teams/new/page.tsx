@@ -4,9 +4,9 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Users, Building2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
+import { Label } from "@enclii/ui-components/label";
 import { Textarea } from '@/components/ui/textarea';
 import {
   Card,

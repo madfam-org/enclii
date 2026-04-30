@@ -7,7 +7,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { useScope } from "@/contexts/ScopeContext";
 import { useTier } from "@/hooks/use-tier";
 import { PricingModal } from "@/components/modals/PricingModal";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import { Rocket } from "lucide-react";
 import {
   ProjectCardCompact,

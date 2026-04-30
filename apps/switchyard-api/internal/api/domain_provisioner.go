@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 
 	"github.com/google/uuid"
 
@@ -21,7 +22,7 @@ import (
 func (h *Handler) provisionDomainsFromYAML(
 	ctx context.Context,
 	service *types.Service,
-	envConfig *EncliiYAML,
+	envConfig *manifest.EncliiYAML,
 ) {
 	if envConfig == nil || len(envConfig.Spec.Domains) == 0 {
 		return
@@ -37,7 +38,7 @@ func (h *Handler) provisionDomainsFromYAML(
 func (h *Handler) provisionSingleDomain(
 	ctx context.Context,
 	service *types.Service,
-	domainCfg EncliiYAMLDomain,
+	domainCfg manifest.EncliiYAMLDomain,
 	runtimePort int,
 ) {
 	domainName := domainCfg.Name

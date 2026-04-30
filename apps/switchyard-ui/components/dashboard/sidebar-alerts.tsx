@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, AlertTriangle, AlertOctagon, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@enclii/ui-components/badge";
 import { apiGet } from "@/lib/api";
 import { usePolling } from "@/hooks/use-polling";
 import { POLLING_SLOW } from "@/lib/constants";

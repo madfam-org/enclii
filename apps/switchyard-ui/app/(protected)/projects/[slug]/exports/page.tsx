@@ -22,8 +22,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from "@enclii/ui-components/dialog";
+import { Button } from "@enclii/ui-components/button";
 import { apiDelete, apiGet, apiPost } from '@/lib/api';
 
 type ExportStatus =

@@ -25,8 +25,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
 import { Spinner } from '@/components/ui/spinner';
 import { LastSyncBadge } from '@/components/dashboard/last-sync-badge';
 import { DomainsTable } from '@/components/domains/domains-table';

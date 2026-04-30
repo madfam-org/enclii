@@ -7,8 +7,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from "@enclii/ui-components/dialog";
+import { Button } from "@enclii/ui-components/button";
 import { TIER_CONFIG, type BlockedAction, type FoundryTier } from '@/lib/tiers';
 
 // =============================================================================

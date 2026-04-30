@@ -1,8 +1,8 @@
 "use client";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@enclii/ui-components/button";
+import { Badge } from "@enclii/ui-components/badge";
 import {
   MoreVertical,
   ExternalLink,
@@ -23,7 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@enclii/ui-components/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,

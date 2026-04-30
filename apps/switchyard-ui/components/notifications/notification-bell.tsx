@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@enclii/ui-components/dropdown-menu";
 import Link from 'next/link';
 import { apiGet } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';

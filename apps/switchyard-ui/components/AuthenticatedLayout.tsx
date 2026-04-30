@@ -15,7 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@enclii/ui-components/dropdown-menu";
 import { Menu, ChevronDown, Sun, Moon, Monitor } from 'lucide-react';
 import { useScrollShadow } from '@/hooks/use-scroll-shadow';
 import { ScopeSwitcher } from '@/components/navigation/scope-switcher';

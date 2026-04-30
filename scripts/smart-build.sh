@@ -10,7 +10,7 @@
 #
 # Examples:
 #   ./scripts/smart-build.sh apps/switchyard-api
-#   ./scripts/smart-build.sh apps/dispatch HEAD~5
+#   ./scripts/smart-build.sh apps/admin-console HEAD~5
 #   ./scripts/smart-build.sh packages/ui origin/main
 #
 # GitHub Actions Integration:
@@ -69,7 +69,7 @@ CHANGED_FILES=$(git diff --name-only "$BASE_REF" -- "$SERVICE_PATH" 2>/dev/null 
 # Also check for shared dependencies that should trigger rebuilds
 SHARED_DEPS=""
 case "$SERVICE_PATH" in
-    apps/switchyard-ui|apps/dispatch)
+    apps/switchyard-ui|apps/admin-console)
         # Frontend apps depend on packages/ui
         SHARED_DEPS=$(git diff --name-only "$BASE_REF" -- "packages/ui" 2>/dev/null || true)
         ;;

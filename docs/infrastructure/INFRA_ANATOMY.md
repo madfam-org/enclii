@@ -1128,7 +1128,7 @@ kubectl get nodes -o wide
 
 1. **dhanam-api CrashLoop** - Switched to TCP probes (commit: `9354dcb`)
 2. **Grafana CrashLoopBackOff** - Fixed PVC and ConfigMap (commit: `9354dcb`)
-3. **Dispatch Wrong Image Path** - Corrected to `ghcr.io/madfam-org/enclii/dispatch` (commit: `9354dcb`)
+3. **Dispatch Wrong Image Path** - Corrected to `ghcr.io/madfam-org/enclii/admin-console` (commit: `9354dcb`)
 4. **VPS Builder Node CNI** - Downgraded k3s to v1.33.7+k3s3 to match control plane
 5. **Cloudflared Consolidation** - Single unified config (commit: `4c17f1f`)
 6. **Kyverno CronJob Deadlock** - Set cleanup image to `latest` (commits: `39b3a72`, `7e4cbd4`, `9934b94`, `33b71ca`)

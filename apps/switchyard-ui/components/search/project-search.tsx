@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
+import { Input } from "@enclii/ui-components/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,8 +9,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
+} from "@enclii/ui-components/dropdown-menu";
+import { Button } from "@enclii/ui-components/button";
 import { Search, Filter, X, SortAsc, SortDesc } from 'lucide-react';
 
 export type ServiceStatus = 'healthy' | 'unhealthy' | 'unknown';

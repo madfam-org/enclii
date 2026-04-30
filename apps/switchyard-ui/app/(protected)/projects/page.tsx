@@ -7,7 +7,7 @@ import { useTier } from '@/hooks/use-tier';
 import { usePolling } from '@/hooks/use-polling';
 import { POLLING_SLOW } from '@/lib/constants';
 import { PricingModal } from '@/components/modals/PricingModal';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import { Plus, Rocket } from 'lucide-react';
 import {
   Dialog,
@@ -16,7 +16,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@enclii/ui-components/dialog";
 import {
   ProjectCardCompact,
   ProjectCardCompactSkeleton,

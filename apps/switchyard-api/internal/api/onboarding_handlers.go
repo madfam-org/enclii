@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"net/http"
 	"strings"
 
@@ -159,7 +160,7 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 
 	var steps []stepResult
 
-	encliiConfig := h.fetchAndParseEncliiYAML(ctx, req.RepoFullName, "HEAD")
+	encliiConfig := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, req.RepoFullName, "HEAD")
 
 	// Step: Find or create project
 	project, err := h.repos.Projects.GetBySlug(req.ProjectName)
@@ -532,7 +533,7 @@ func (h *Handler) GetOnboarding(c *gin.Context) {
 
 // convertNetworkSpec converts the parsed enclii.yaml network section into the
 // netpolicy package's NetworkSpec type (avoids circular import).
-func convertNetworkSpec(n *EncliiYAMLNetwork) netpolicy.NetworkSpec {
+func convertNetworkSpec(n *manifest.EncliiYAMLNetwork) netpolicy.NetworkSpec {
 	spec := netpolicy.NetworkSpec{}
 	for _, s := range n.Services {
 		spec.Services = append(spec.Services, netpolicy.ServiceSpec{
@@ -558,7 +559,7 @@ func convertNetworkSpec(n *EncliiYAMLNetwork) netpolicy.NetworkSpec {
 // registerStatusEntries auto-registers status page entries from enclii.yaml.
 // It reads the current configmap from GitHub, appends new entries idempotently,
 // and commits the update back. ArgoCD syncs the updated configmap.
-func (h *Handler) registerStatusEntries(ctx context.Context, projectName string, config *EncliiYAML) error {
+func (h *Handler) registerStatusEntries(ctx context.Context, projectName string, config *manifest.EncliiYAML) error {
 	if config.Spec.Status == nil {
 		return nil
 	}
@@ -573,7 +574,7 @@ func (h *Handler) registerStatusEntries(ctx context.Context, projectName string,
 	entries := status.Entries
 	if len(entries) == 0 && len(config.Spec.Domains) > 0 {
 		for _, d := range config.Spec.Domains {
-			entries = append(entries, EncliiYAMLStatusEntry{
+			entries = append(entries, manifest.EncliiYAMLStatusEntry{
 				Name:  d.Name,
 				URL:   "https://" + d.Name,
 				Group: projectName,

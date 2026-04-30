@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@enclii/ui-components/badge";
 import {
   Tooltip,
   TooltipContent,

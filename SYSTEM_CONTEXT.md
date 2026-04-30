@@ -29,9 +29,9 @@ Enclii is MADFAM's open source DevOps platform for deploying, scaling, and opera
 **Key Files:**
 | Purpose | Location |
 |---------|----------|
-| Middleware | `apps/dispatch/middleware.ts` |
-| Auth Context | `apps/dispatch/contexts/AuthContext.tsx` |
-| K8s Deployment | `apps/dispatch/k8s/deployment.yaml` |
+| Middleware | `apps/admin-console/middleware.ts` |
+| Auth Context | `apps/admin-console/contexts/AuthContext.tsx` |
+| K8s Deployment | `apps/admin-console/k8s/deployment.yaml` |
 
 ### Cloudflare Tunnel
 **Purpose:** Zero-trust ingress routing all external traffic through Cloudflare.
@@ -142,7 +142,7 @@ The following keys are **protected** and must never be removed from manifests:
 
 Next.js build-time environment variables (`NEXT_PUBLIC_*`) must be defined in:
 - `apps/switchyard-ui/Dockerfile`
-- `apps/dispatch/Dockerfile`
+- `apps/admin-console/Dockerfile`
 
 Specifically verify:
 - `NEXT_PUBLIC_JANUA_URL` - Required for SSO to work
@@ -167,7 +167,7 @@ Golden snapshots are maintained for:
 | `infra/k8s/production/cloudflared-unified.yaml` | `tests/golden/k8s/production/cloudflared-unified.yaml.golden` | Tunnel routes |
 | `infra/k8s/production/security-patch.yaml` | `tests/golden/k8s/production/security-patch.yaml.golden` | Security context |
 | `infra/k8s/base/roundhouse.yaml` | `tests/golden/k8s/base/roundhouse.yaml.golden` | Build pipeline |
-| `apps/dispatch/k8s/deployment.yaml` | `tests/golden/k8s/apps/dispatch-deployment.yaml.golden` | Admin UI |
+| `apps/admin-console/k8s/deployment.yaml` | `tests/golden/k8s/apps/admin-console-deployment.yaml.golden` | Admin UI |
 
 ### CI Integration
 

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePolling } from '@/hooks/use-polling';
 import { POLLING_SLOW } from '@/lib/constants';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import {

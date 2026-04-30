@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@enclii/ui-components/badge";
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 
 // P2.3: outbound lifecycle webhook subscriptions.

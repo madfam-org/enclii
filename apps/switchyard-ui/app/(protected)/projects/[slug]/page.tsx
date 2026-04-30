@@ -11,7 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@enclii/ui-components/dialog";
 import { Switch } from '@/components/ui/switch';
 
 interface Project {

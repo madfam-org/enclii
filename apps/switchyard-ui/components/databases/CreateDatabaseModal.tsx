@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
+import { Label } from "@enclii/ui-components/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@enclii/ui-components/select";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@enclii/ui-components/dialog";
 import { Spinner } from '@/components/ui/spinner';
 import type { DatabaseAddonType, Project } from "@/app/(protected)/databases/page";
 

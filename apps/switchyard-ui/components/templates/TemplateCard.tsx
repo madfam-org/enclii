@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import type { Template, TemplateCategory } from "@/app/(protected)/templates/page";
 
 interface TemplateCardProps {

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
+import { Label } from "@enclii/ui-components/label";
 import { Progress } from "@/components/ui/progress";
 import {
   ArrowRight,

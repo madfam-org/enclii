@@ -70,12 +70,12 @@
     },
     {
       "name": "dispatch",
-      "path": "apps/dispatch",
+      "path": "apps/admin-console",
       "type": "node",
-      "dockerfile": "apps/dispatch/Dockerfile",
+      "dockerfile": "apps/admin-console/Dockerfile",
       "image": "dispatch",
-      "kustomization": "apps/dispatch/k8s",
-      "kustomize_image": "ghcr.io/madfam-org/enclii/dispatch",
+      "kustomization": "apps/admin-console/k8s",
+      "kustomize_image": "ghcr.io/madfam-org/enclii/admin-console",
       "dependencies": ["packages/ui"],
       "scan": false,
       "deploy_check": null

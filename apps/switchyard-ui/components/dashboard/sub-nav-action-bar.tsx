@@ -1,13 +1,13 @@
 "use client";
 
 import { Plus, Globe, UserPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@enclii/ui-components/dropdown-menu";
 import {
   ProjectSearchFilter,
   type SortOption,

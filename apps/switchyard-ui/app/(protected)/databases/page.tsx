@@ -5,7 +5,7 @@ import { usePolling } from "@/hooks/use-polling";
 import { POLLING_NORMAL } from "@/lib/constants";
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";

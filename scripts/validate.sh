@@ -152,7 +152,7 @@ manifest_audit() {
     fi
 
     # --- dispatch deployment checks ---
-    DISPATCH="${REPO_ROOT}/apps/dispatch/k8s/deployment.yaml"
+    DISPATCH="${REPO_ROOT}/apps/admin-console/k8s/deployment.yaml"
     if [[ -f "${DISPATCH}" ]]; then
         echo ""
         echo "  Checking: dispatch/k8s/deployment.yaml"
@@ -193,7 +193,7 @@ manifest_audit() {
     echo ""
     echo "  Checking: Dockerfiles for NEXT_PUBLIC_JANUA_URL"
 
-    for dockerfile in "${REPO_ROOT}/apps/switchyard-ui/Dockerfile" "${REPO_ROOT}/apps/dispatch/Dockerfile"; do
+    for dockerfile in "${REPO_ROOT}/apps/switchyard-ui/Dockerfile" "${REPO_ROOT}/apps/admin-console/Dockerfile"; do
         if [[ -f "${dockerfile}" ]]; then
             basename_file=$(basename "$(dirname "${dockerfile}")")/$(basename "${dockerfile}")
             if grep -q "NEXT_PUBLIC_JANUA_URL" "${dockerfile}"; then

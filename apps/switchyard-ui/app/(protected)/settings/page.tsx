@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
+import { Badge } from "@enclii/ui-components/badge";
 import { Switch } from '@/components/ui/switch';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';

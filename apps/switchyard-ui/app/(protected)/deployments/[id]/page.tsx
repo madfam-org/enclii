@@ -6,8 +6,8 @@ import { POLLING_SLOW } from '@/lib/constants';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button } from "@enclii/ui-components/button";
+import { Badge } from "@enclii/ui-components/badge";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@enclii/ui-components/dialog";
 import { apiGet, apiPost } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
 import { ArrowLeft, GitBranch, ExternalLink, RefreshCw, RotateCcw, Clock, Server, Container, Hash } from 'lucide-react';

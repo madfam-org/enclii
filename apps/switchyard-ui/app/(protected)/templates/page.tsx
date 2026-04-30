@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import { apiGet, apiPost } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 import { TemplateCard } from "@/components/templates/TemplateCard";

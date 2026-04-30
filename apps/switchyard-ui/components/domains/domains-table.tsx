@@ -10,8 +10,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+} from "@enclii/ui-components/table";
+import { Badge } from "@enclii/ui-components/badge";
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/formatting';
 import {

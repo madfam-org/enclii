@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"net/http"
 	"strings"
 	"time"
@@ -124,7 +125,7 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 
 	// Fetch and parse enclii.yaml from the repo for domain auto-provisioning
 	// This is non-blocking — if the file doesn't exist or can't be parsed, we continue
-	encliiConfig := h.fetchAndParseEncliiYAML(ctx, event.Repository.FullName, gitSHA)
+	encliiConfig := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, event.Repository.FullName, gitSHA)
 
 	// Extract all changed files from the push event for monorepo path filtering
 	changedFiles := extractChangedFiles(&event)

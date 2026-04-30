@@ -126,8 +126,8 @@ jobs:
 
           # --- dispatch deployment ---
           echo ""
-          echo "Checking: apps/dispatch/k8s/deployment.yaml"
-          DISPATCH="apps/dispatch/k8s/deployment.yaml"
+          echo "Checking: apps/admin-console/k8s/deployment.yaml"
+          DISPATCH="apps/admin-console/k8s/deployment.yaml"
           for key in "imagePullSecrets:" "ALLOWED_ADMIN_DOMAINS" "ALLOWED_ADMIN_ROLES" "NEXT_PUBLIC_JANUA_URL"; do
             if grep -q "$key" "$DISPATCH" 2>/dev/null; then
               echo "  ✅ $key"
@@ -358,11 +358,11 @@ jobs:
         run: pnpm test -- --coverage
 
       - name: Install dispatch dependencies
-        working-directory: apps/dispatch
+        working-directory: apps/admin-console
         run: pnpm install --frozen-lockfile
 
       - name: Run dispatch tests
-        working-directory: apps/dispatch
+        working-directory: apps/admin-console
         run: pnpm test
 
       - name: Install status dependencies

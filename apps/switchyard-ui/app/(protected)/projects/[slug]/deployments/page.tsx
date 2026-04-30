@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, GitMerge } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import {
   DeploymentTimeline,
   TimelineFilters,

@@ -2,15 +2,15 @@
 
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button } from "@enclii/ui-components/button";
+import { Badge } from "@enclii/ui-components/badge";
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@enclii/ui-components/dropdown-menu";
 import { formatRelativeTime } from '@/lib/formatting';
 
 export type WebhookType = 'slack' | 'discord' | 'telegram' | 'custom';

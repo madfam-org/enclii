@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import { apiGet } from "@/lib/api";
 import { Spinner } from '@/components/ui/spinner';
 import type { DatabaseAddon, DatabaseAddonStatus, DatabaseAddonType } from "@/app/(protected)/databases/page";

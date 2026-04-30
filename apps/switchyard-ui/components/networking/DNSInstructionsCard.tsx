@@ -8,9 +8,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+} from "@enclii/ui-components/dialog";
+import { Button } from "@enclii/ui-components/button";
+import { Badge } from "@enclii/ui-components/badge";
 import { apiPost } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
 import { DomainInfo } from './types';

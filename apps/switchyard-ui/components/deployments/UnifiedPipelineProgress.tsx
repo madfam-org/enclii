@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { apiGet } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import type { UnifiedBuildStatus } from "@/lib/types/pipeline";
 import type { UnifiedPipelineProgressProps, PipelineStep } from "./pipeline-types";
 import { formatDuration, getStepStatusFromBuildStatus } from "./pipeline-utils";

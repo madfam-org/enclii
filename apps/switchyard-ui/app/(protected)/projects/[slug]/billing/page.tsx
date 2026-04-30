@@ -25,7 +25,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@enclii/ui-components/dialog";
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 

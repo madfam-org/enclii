@@ -4,6 +4,6 @@ packages:
   - "packages/config"
   - "packages/sdk-ts"
   - "apps/switchyard-ui"
-  - "apps/dispatch"
+  - "apps/admin-console"
   - "apps/status"
   - "apps/landing"

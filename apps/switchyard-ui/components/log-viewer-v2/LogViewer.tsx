@@ -19,8 +19,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
 import { API_BASE_URL } from '@/lib/constants';
 import { apiGet } from '@/lib/api';
 

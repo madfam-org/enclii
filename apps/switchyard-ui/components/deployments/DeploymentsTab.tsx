@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePolling } from '@/hooks/use-polling';
 import { POLLING_SLOW } from '@/lib/constants';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@enclii/ui-components/table";
 import {
   Dialog,
   DialogContent,
@@ -21,11 +21,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@enclii/ui-components/dialog";
+import { Input } from "@enclii/ui-components/input";
+import { Label } from "@enclii/ui-components/label";
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@enclii/ui-components/badge";
 import { apiGet, apiPost } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { GitBranch, ExternalLink, RefreshCw, RotateCcw, Zap } from 'lucide-react';

@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-} from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
+} from "@enclii/ui-components/dropdown-menu";
+import { Button } from "@enclii/ui-components/button";
 import { useThemeSkin } from './theme-provider';
 
 // =============================================================================

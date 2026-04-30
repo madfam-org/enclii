@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@enclii/ui-components/badge";
 import { cn } from "@/lib/utils";
 import type { AlertsResponse } from "../observability-types";
 

@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 
 import { Spinner } from '@/components/ui/spinner';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import { apiGet } from '@/lib/api';
 import { LogViewer } from '@/components/log-viewer-v2';
 

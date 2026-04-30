@@ -17,8 +17,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@enclii/ui-components/button";
+import { Badge } from "@enclii/ui-components/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { apiGet, apiPost } from "@/lib/api";
 

@@ -149,7 +149,7 @@ func (h *Handler) GetService(c *gin.Context) {
 
 // BulkServiceRequest represents a single service in a bulk import request
 type BulkServiceRequest struct {
-	Name             string `json:"name" binding:"required"`
+	Name             string            `json:"name" binding:"required"`
 	AppPath          string            `json:"app_path" binding:"required"`
 	Port             int               `json:"port"`
 	BuildCommand     string            `json:"build_command"`

@@ -18,7 +18,7 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@enclii/ui-components/badge";
 import type {
   StepIconProps,
   WorkflowRunItemProps,

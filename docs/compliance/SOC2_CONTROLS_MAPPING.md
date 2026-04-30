@@ -10,8 +10,8 @@ Mapping of SOC 2 Trust Services Criteria to Enclii platform implementations.
 | Control | Implementation | Evidence Source | Status |
 |---------|---------------|----------------|--------|
 | CC1.1 -- Organizational commitment to integrity and ethics | Code of conduct, conventional commit enforcement | `.github/CONTRIBUTING.md`, commit hooks via `make bootstrap` | Active |
-| CC1.2 -- Board/management oversight | RBAC roles (superadmin, admin, operator) enforced at API and UI layers | `apps/switchyard-api/internal/middleware/`, `apps/dispatch/middleware.ts` | Active |
-| CC1.3 -- Authority and responsibility | Role-based access with Janua SSO; admin domain restrictions | `apps/dispatch/contexts/AuthContext.tsx`, Janua OIDC config | Active |
+| CC1.2 -- Board/management oversight | RBAC roles (superadmin, admin, operator) enforced at API and UI layers | `apps/switchyard-api/internal/middleware/`, `apps/admin-console/middleware.ts` | Active |
+| CC1.3 -- Authority and responsibility | Role-based access with Janua SSO; admin domain restrictions | `apps/admin-console/contexts/AuthContext.tsx`, Janua OIDC config | Active |
 | CC1.4 -- Competence commitment | PR review requirements, CI gate enforcement | `.github/workflows/`, ArgoCD sync policies | Active |
 | CC1.5 -- Accountability | Audit logging on all API mutations | `apps/switchyard-api/internal/audit/middleware.go` | Active |
 

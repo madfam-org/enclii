@@ -67,7 +67,7 @@ image: prom/prometheus:v2.53.3
 image: prom/prometheus@sha256:abc123...
 
 # Mutable tag with Image Updater (application images only)
-image: ghcr.io/madfam-org/enclii/dispatch:latest
+image: ghcr.io/madfam-org/enclii/admin-console:latest
 # (Image Updater will convert to digest)
 ```
 
@@ -142,7 +142,7 @@ To find the current digest for an image:
 
 ```bash
 # For GHCR images
-skopeo inspect docker://ghcr.io/madfam-org/enclii/dispatch:latest | jq -r '.Digest'
+skopeo inspect docker://ghcr.io/madfam-org/enclii/admin-console:latest | jq -r '.Digest'
 
 # For Docker Hub images
 skopeo inspect docker://prom/prometheus:v2.53.3 | jq -r '.Digest'
@@ -171,7 +171,7 @@ crane digest prom/prometheus:v2.53.3
 |------------|-------|-----|----------|
 | switchyard-api | ghcr.io/madfam-org/switchyard-api | latest | Image Updater |
 | switchyard-ui | ghcr.io/madfam-org/enclii/switchyard-ui | latest | Image Updater |
-| dispatch | ghcr.io/madfam-org/enclii/dispatch | latest | Image Updater |
+| dispatch | ghcr.io/madfam-org/enclii/admin-console | latest | Image Updater |
 | docs-site | ghcr.io/madfam-org/enclii/docs-site | latest | Image Updater |
 | landing-page | ghcr.io/madfam-org/enclii/landing-page | latest | Image Updater |
 | status | ghcr.io/madfam-org/enclii/enclii-status | latest | Image Updater |

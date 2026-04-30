@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/sbom"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/signing"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -23,7 +23,7 @@ type Service struct {
 	git          *GitService
 	builder      *BuildpacksBuilder
 	buildCache   *BuildCache
-	sbomGen      *sbom.Generator
+	sbomGen      *provenance.Generator
 	signer       *signing.Signer
 	logger       *logrus.Logger
 	workDir      string
@@ -56,7 +56,7 @@ func NewService(cfg *Config, logger *logrus.Logger) *Service {
 		cfg.CachePrefix = "build-cache"
 	}
 
-	sbomGenerator := sbom.NewGenerator(5 * time.Minute)
+	sbomGenerator := provenance.NewGenerator(5 * time.Minute)
 	imageSigner := signing.NewSigner(true, 2*time.Minute) // Keyless signing by default
 
 	// Check if Syft is available (non-fatal if missing)
@@ -123,7 +123,7 @@ type CompleteBuildResult struct {
 	Logs          []string
 	Duration      time.Duration
 	ClonePath     string
-	SBOM          *sbom.SBOM          // Software Bill of Materials
+	SBOM          *provenance.SBOM          // Software Bill of Materials
 	SBOMFormat    string              // e.g., "cyclonedx-json"
 	SBOMGenerated bool                // Whether SBOM was successfully generated
 	Signature     *signing.SignResult // Image signature information
@@ -210,7 +210,7 @@ func (s *Service) BuildFromGit(ctx context.Context, service *types.Service, gitS
 	if s.generateSBOM {
 		result.Logs = append(result.Logs, "Generating SBOM with Syft...")
 		sbomCtx, sbomSpan := tracer.Start(buildCtx, "builder.sbom")
-		sbomResult, err := s.sbomGen.GenerateFromImage(sbomCtx, result.ImageURI, sbom.GetDefaultFormat())
+		sbomResult, err := s.sbomGen.GenerateFromImage(sbomCtx, result.ImageURI, provenance.GetDefaultFormat())
 		sbomSpan.End()
 
 		if err != nil {

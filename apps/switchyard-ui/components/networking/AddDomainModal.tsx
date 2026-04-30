@@ -8,10 +8,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@enclii/ui-components/dialog";
+import { Button } from "@enclii/ui-components/button";
+import { Input } from "@enclii/ui-components/input";
+import { Label } from "@enclii/ui-components/label";
 import { apiGet, apiPost } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
 import { Environment, AddDomainRequest, AddDomainResponse } from './types';

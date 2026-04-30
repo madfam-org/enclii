@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"net/http"
 	"strings"
 
@@ -264,7 +265,7 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 
 // fetchStatusEntriesForProject reads a project's enclii.yaml and extracts status entries.
 func (h *Handler) fetchStatusEntriesForProject(ctx context.Context, repoFullName string) []statusServiceEntry {
-	config := h.fetchAndParseEncliiYAML(ctx, repoFullName, "HEAD")
+	config := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, repoFullName, "HEAD")
 	if config == nil || config.Spec.Status == nil {
 		// Auto-derive from domains if no explicit status section
 		if config != nil && len(config.Spec.Domains) > 0 {

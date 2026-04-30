@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"strings"
 	"testing"
 
@@ -299,7 +300,7 @@ data:
 // Href + Family — a bug here would silently strip UI metadata on
 // regeneration even if the source enclii.yaml carries it.
 func TestStatusHandler_FetchStatusEntriesPropagatesHrefAndFamily(t *testing.T) {
-	src := EncliiYAMLStatusEntry{
+	src := manifest.EncliiYAMLStatusEntry{
 		Name:        "Routecraft API",
 		URL:         "https://api.routecraft.app/health",
 		Href:        "https://api.routecraft.app",

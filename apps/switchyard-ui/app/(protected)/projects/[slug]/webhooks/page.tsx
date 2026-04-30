@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from "@enclii/ui-components/button";
 import { Card, CardContent } from '@/components/ui/card';
 import { WebhookCard, Webhook, WebhookType, WebhookEventType } from '@/components/webhooks/WebhookCard';
 import { CreateWebhookModal, WebhookFormData } from '@/components/webhooks/CreateWebhookModal';

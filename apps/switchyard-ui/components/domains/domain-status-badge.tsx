@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@enclii/ui-components/badge";
 import { cn } from '@/lib/utils';
 import type { Domain, DomainHealthStatus } from '@/types/domain';
 

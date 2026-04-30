@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { CircularGauge } from '@/components/ui/circular-gauge';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@enclii/ui-components/badge";
 import {
   ChevronRight,
   ChevronDown,

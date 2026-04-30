@@ -6,7 +6,7 @@ settings:
 
 importers:
 
-  apps/dispatch:
+  apps/admin-console:
     dependencies:
       '@kubernetes/client-node':
         specifier: ^0.22.3

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from "@/components/ui/button";
+import { Button } from "@enclii/ui-components/button";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@enclii/ui-components/dialog";
 import { Spinner } from '@/components/ui/spinner';
 import type { TemplateCategory } from "@/app/(protected)/templates/page";
 

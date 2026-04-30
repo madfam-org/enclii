@@ -274,7 +274,7 @@ If parked: delete the DNS record; this PRD sits in `docs/architecture/` for futu
 ## References
 
 - `apps/switchyard-ui/` — developer dashboard (comparative reference)
-- `apps/dispatch/` — superuser admin (comparative reference)
+- `apps/admin-console/` — superuser admin (comparative reference)
 - `docs/architecture/SOFTWARE_SPEC.md` — overall Enclii architecture
 - Heroku Dev Center: <https://devcenter.heroku.com/articles/heroku-cli-commands#heroku-run> (closest comparable)
 - Railway console docs: <https://docs.railway.app/overview/ssh> (modern comparable)

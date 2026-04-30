@@ -13,7 +13,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-} from '@/components/ui/dropdown-menu';
+} from "@enclii/ui-components/dropdown-menu";
 import { useTheme } from 'next-themes';
 
 interface UserMenuProps {

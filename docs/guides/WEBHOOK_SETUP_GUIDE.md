@@ -125,7 +125,7 @@ After adding the webhook:
 **Build triggers:**
 - Changes to `apps/switchyard-api/**`
 - Changes to `apps/switchyard-ui/**`
-- Changes to `apps/dispatch/**`
+- Changes to `apps/admin-console/**`
 - Changes to `apps/roundhouse/**`
 - Changes to `apps/status/**`
 

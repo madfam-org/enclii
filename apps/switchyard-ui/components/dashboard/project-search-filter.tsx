@@ -1,15 +1,15 @@
 "use client";
 
 import { Search, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Input } from "@enclii/ui-components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+} from "@enclii/ui-components/select";
+import { Button } from "@enclii/ui-components/button";
 
 export type SortOption = "updated" | "name-asc" | "name-desc" | "newest";
 
