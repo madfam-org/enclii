@@ -4,6 +4,7 @@ dist/
 build/
 /api
 /worker
+apps/switchyard-api/api
 
 # Dependencies
 node_modules/
