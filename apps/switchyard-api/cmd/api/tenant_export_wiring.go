@@ -25,6 +25,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/export"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/storage"
 )
@@ -37,6 +38,7 @@ func wireTenantExport(
 	repos *db.Repositories,
 	apiHandler *api.Handler,
 	emailService *notifications.EmailService,
+	k8sClient *k8s.Client,
 ) {
 	if cfg.TenantExportR2AccountID == "" ||
 		cfg.TenantExportR2AccessKeyID == "" ||
@@ -71,7 +73,7 @@ func wireTenantExport(
 		ProjectAccess:  repos.ProjectAccess,
 		Storage:        r2Client,
 		BundleProvider: export.NewRepoBundleProvider(repos, logrus.StandardLogger()),
-		DumpProvider:   export.NewPgDumpProvider(logrus.StandardLogger()),
+		DumpProvider:   export.NewJobPgDumpProvider(logrus.StandardLogger(), k8sClient, r2Client, prefix),
 		BlobProvider:   export.NewR2BlobProvider(r2Client, nil, logrus.StandardLogger()),
 		Notifier:       export.NewEmailNotifier(emailService, cfg.AppBaseURL),
 		Logger:         logrus.StandardLogger(),

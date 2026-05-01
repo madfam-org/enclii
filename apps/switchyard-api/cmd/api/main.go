@@ -578,7 +578,7 @@ func main() {
 	// Disabled when TENANT_EXPORT_R2_* env vars aren't set — endpoints
 	// return 503 in that case. Kept out of this file to keep main.go
 	// under the 800-line budget.
-	wireTenantExport(cfg, repos, apiHandler, emailService)
+	wireTenantExport(cfg, repos, apiHandler, emailService, k8sClient)
 
 	// P3.2 Sprint 1 — self-serve signup. Disabled by default; operator
 	// flips ENCLII_SIGNUP_ENABLED=true once the Janua companion changes

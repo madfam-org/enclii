@@ -22,10 +22,13 @@ const DefaultMaxPartBytes int64 = 5 * 1024 * 1024 * 1024 // 5 GiB compressed
 // large pg_dump output separately; the largest a single Entry grows to is
 // a pg_dump (which we size-cap ourselves in the pgGatherer).
 type Entry struct {
-	Path    string    // e.g. "manifests/project.yaml"
-	Content []byte    // raw bytes
-	Mode    int64     // unix mode; 0644 default
-	ModTime time.Time // for tar header
+	Path          string
+	Content       []byte // raw bytes for small files
+	ContentReader func() (io.ReadCloser, error) // for streaming large files
+	ContentSize   int64  // must be provided if ContentReader is used
+	ContentSHA256 string // must be provided if ContentReader is used
+	Mode          int64  // unix mode; 0644 default
+	ModTime       time.Time
 }
 
 // Manifest is the top-level MANIFEST.json written into the tarball.
@@ -83,7 +86,11 @@ func (b *Builder) AddEntry(e Entry) {
 	if e.ModTime.IsZero() {
 		e.ModTime = time.Now().UTC()
 	}
-	b.runningSize += int64(len(e.Content))
+	if e.ContentReader != nil {
+		b.runningSize += e.ContentSize
+	} else {
+		b.runningSize += int64(len(e.Content))
+	}
 	b.entries = append(b.entries, e)
 }
 
@@ -150,17 +157,27 @@ func (b *Builder) Build() ([]Part, Manifest, error) {
 	for _, e := range sorted {
 		// Compute per-entry sha256 for the Manifest regardless of which
 		// part it ends up in.
-		sum := sha256.Sum256(e.Content)
+		var size int64
+		var sha string
+		if e.ContentReader != nil {
+			size = e.ContentSize
+			sha = e.ContentSHA256
+		} else {
+			size = int64(len(e.Content))
+			sum := sha256.Sum256(e.Content)
+			sha = "sha256:" + hex.EncodeToString(sum[:])
+		}
+
 		manifest.Files = append(manifest.Files, ManifestEntry{
 			Path:   e.Path,
-			Size:   int64(len(e.Content)),
-			SHA256: "sha256:" + hex.EncodeToString(sum[:]),
+			Size:   size,
+			SHA256: sha,
 		})
-		manifest.TotalBytes += int64(len(e.Content))
+		manifest.TotalBytes += size
 
 		// If adding this entry would blow the cap *and* we've already
 		// written at least one entry to the part, roll over.
-		if current.rawBytes > 0 && current.rawBytes+int64(len(e.Content)) > b.MaxPartBytes {
+		if current.rawBytes > 0 && current.rawBytes+size > b.MaxPartBytes {
 			finalized, err := current.finalize()
 			if err != nil {
 				return nil, Manifest{}, err
@@ -211,19 +228,39 @@ func newPartBuilder(idx int) *partBuilder {
 }
 
 func (p *partBuilder) writeEntry(e Entry) error {
+	var size int64
+	if e.ContentReader != nil {
+		size = e.ContentSize
+	} else {
+		size = int64(len(e.Content))
+	}
+
 	hdr := &tar.Header{
 		Name:    e.Path,
-		Size:    int64(len(e.Content)),
+		Size:    size,
 		Mode:    e.Mode,
 		ModTime: e.ModTime,
 	}
 	if err := p.tw.WriteHeader(hdr); err != nil {
 		return fmt.Errorf("tar header %s: %w", e.Path, err)
 	}
-	if _, err := p.tw.Write(e.Content); err != nil {
-		return fmt.Errorf("tar write %s: %w", e.Path, err)
+
+	if e.ContentReader != nil {
+		rc, err := e.ContentReader()
+		if err != nil {
+			return fmt.Errorf("open streaming content %s: %w", e.Path, err)
+		}
+		defer rc.Close()
+		if _, err := io.Copy(p.tw, rc); err != nil {
+			return fmt.Errorf("tar copy stream %s: %w", e.Path, err)
+		}
+	} else {
+		if _, err := p.tw.Write(e.Content); err != nil {
+			return fmt.Errorf("tar write %s: %w", e.Path, err)
+		}
 	}
-	p.rawBytes += int64(len(e.Content))
+
+	p.rawBytes += size
 	p.paths = append(p.paths, e.Path)
 	return nil
 }

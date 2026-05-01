@@ -1,78 +1,57 @@
 package export
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
-	"os/exec"
+	"io"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/storage"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
-// PgDumpProvider runs pg_dump for each addon and returns gzipped bytes.
-//
-// Two execution modes:
-//
-//  1. In-process (this file) — shell out to pg_dump directly. Reasonable
-//     for dev/staging and for small-to-moderate prod addons (<1 GB).
-//     Requires pg_dump on the API pod's PATH.
-//
-//  2. K8s Job (follow-up) — submit a Job into the `data` namespace that
-//     runs pg_dump to an emptyDir volume and streams to R2. Better
-//     isolation for multi-GB dumps. Planned for P3.6 Sprint 2.
-//
-// For P3.6 Sprint 1 we ship the in-process path and note the K8s Job
-// path as a future enhancement in the design doc — the service interface is the same.
-type PgDumpProvider struct {
-	log *logrus.Logger
-
-	// MaxDumpBytes caps the gzipped dump size per addon. Exceeding the
-	// cap produces a failed dump entry with a readable error rather than
-	// blowing memory. Default 2 GiB.
-	MaxDumpBytes int64
-
-	// Timeout is the per-addon pg_dump wall-clock cap. Default 30 min.
-	Timeout time.Duration
+type JobPgDumpProvider struct {
+	log       *logrus.Logger
+	k8sClient *k8s.Client
+	r2Client  *storage.R2Client
+	r2Prefix  string
+	Timeout   time.Duration
 }
 
-// NewPgDumpProvider builds a PgDumpProvider with sensible defaults.
-func NewPgDumpProvider(log *logrus.Logger) *PgDumpProvider {
+func NewJobPgDumpProvider(log *logrus.Logger, k8sClient *k8s.Client, r2Client *storage.R2Client, prefix string) *JobPgDumpProvider {
 	if log == nil {
 		log = logrus.StandardLogger()
 	}
-	return &PgDumpProvider{
-		log:          log,
-		MaxDumpBytes: 2 * 1024 * 1024 * 1024,
-		Timeout:      30 * time.Minute,
+	return &JobPgDumpProvider{
+		log:       log,
+		k8sClient: k8sClient,
+		r2Client:  r2Client,
+		r2Prefix:  prefix,
+		Timeout:   30 * time.Minute,
 	}
 }
 
-// Dump runs pg_dump for each addon and collects DBDumps. Failures per
-// addon are not fatal — the caller is responsible for surfacing partial
-// dumps. This matches the pipeline's overall philosophy: a partial export
-// is better than no export when a customer is trying to leave.
-func (p *PgDumpProvider) Dump(ctx context.Context, addons []*types.DatabaseAddon) ([]DBDump, error) {
+func (p *JobPgDumpProvider) Dump(ctx context.Context, addons []*types.DatabaseAddon) ([]DBDump, error) {
 	var out []DBDump
 	for _, a := range addons {
 		if a == nil || a.Type != types.DatabaseAddonTypePostgres {
-			// Non-Postgres addons not supported yet.
 			continue
 		}
 		dump, err := p.dumpOne(ctx, a)
 		if err != nil {
-			p.log.WithError(err).
-				WithField("addon", a.Name).
-				Warn("tenant export: pg_dump failed; continuing with other addons")
-			// Emit a DBDump with metadata only so the tarball still shows
-			// the addon existed.
+			p.log.WithError(err).WithField("addon", a.Name).Warn("tenant export: job pg_dump failed; continuing with other addons")
 			out = append(out, DBDump{
 				AddonName: a.Name,
 				AddonMeta: a,
-				SchemaSQL: []byte(fmt.Sprintf("-- pg_dump failed: %s\n", err)),
+				SchemaSQL: []byte(fmt.Sprintf("-- pg_dump failed: %v\n", err)),
 			})
 			continue
 		}
@@ -81,93 +60,146 @@ func (p *PgDumpProvider) Dump(ctx context.Context, addons []*types.DatabaseAddon
 	return out, nil
 }
 
-func (p *PgDumpProvider) dumpOne(ctx context.Context, a *types.DatabaseAddon) (DBDump, error) {
+func (p *JobPgDumpProvider) dumpOne(ctx context.Context, a *types.DatabaseAddon) (DBDump, error) {
 	dumpCtx, cancel := context.WithTimeout(ctx, p.Timeout)
 	defer cancel()
 
-	args := []string{
-		"-h", a.Host,
-		"-p", fmt.Sprintf("%d", portOr(a.Port, 5432)),
-		"-U", a.Username,
-		"-d", a.DatabaseName,
-		"--no-password",
-		"--format=custom",
-		"--verbose",
-		"--compress=0", // we gzip ourselves for deterministic output
-	}
+	dumpKey := fmt.Sprintf("%s/db-dumps/%s/dump.sql.gz", p.r2Prefix, a.ID.String())
+	schemaKey := fmt.Sprintf("%s/db-dumps/%s/schema.sql", p.r2Prefix, a.ID.String())
 
-	cmd := exec.CommandContext(dumpCtx, "pg_dump", args...)
-	// Credentials: pg_dump reads PGPASSWORD from the environment. The
-	// caller is expected to have exported it from the bound K8s secret
-	// before the pipeline runs — this provider is deliberately not in
-	// the credential-reading business (Vault's job). We pass through
-	// whatever the pod already has.
-	cmd.Env = append(cmd.Environ(), credentialEnvFor(a)...)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	start := time.Now()
-	if err := cmd.Run(); err != nil {
-		return DBDump{}, fmt.Errorf("pg_dump exec: %w (stderr: %s)", err, truncate(stderr.String(), 500))
-	}
-
-	raw := stdout.Bytes()
-	if int64(len(raw)) > p.MaxDumpBytes {
-		return DBDump{}, fmt.Errorf("pg_dump output %d bytes exceeds cap %d", len(raw), p.MaxDumpBytes)
-	}
-
-	// gzip the dump.
-	gz, err := gzipBytes(raw)
+	dumpURL, err := p.r2Client.GetPresignedUploadURL(dumpCtx, dumpKey, "application/gzip", p.Timeout)
 	if err != nil {
-		return DBDump{}, fmt.Errorf("gzip pg_dump: %w", err)
+		return DBDump{}, fmt.Errorf("presign dump URL: %w", err)
+	}
+	schemaURL, err := p.r2Client.GetPresignedUploadURL(dumpCtx, schemaKey, "application/sql", p.Timeout)
+	if err != nil {
+		return DBDump{}, fmt.Errorf("presign schema URL: %w", err)
 	}
 
-	// Schema-only pass for grep-ability.
-	schemaArgs := append([]string{"--schema-only", "--no-owner"}, args[:len(args)-2]...) // drop --compress=0
-	schemaCmd := exec.CommandContext(dumpCtx, "pg_dump", schemaArgs...)
-	schemaCmd.Env = cmd.Env
-	var schemaOut bytes.Buffer
-	var schemaErr bytes.Buffer
-	schemaCmd.Stdout = &schemaOut
-	schemaCmd.Stderr = &schemaErr
-	if err := schemaCmd.Run(); err != nil {
-		p.log.WithError(err).
-			WithField("stderr", truncate(schemaErr.String(), 200)).
-			WithField("addon", a.Name).
-			Warn("tenant export: schema dump failed (continuing with data dump only)")
+	jobName := fmt.Sprintf("pg-dump-%s", a.ID.String()[:8])
+	ns := a.K8sNamespace
+	if ns == "" {
+		ns = "default"
 	}
 
-	p.log.WithFields(logrus.Fields{
-		"addon":    a.Name,
-		"bytes":    len(gz),
-		"duration": time.Since(start),
-	}).Info("tenant export: pg_dump complete")
+	if a.ConnectionSecret == "" {
+		return DBDump{}, fmt.Errorf("addon has no connection secret")
+	}
+
+	// build script
+	script := fmt.Sprintf(`
+set -e
+export PGPASSWORD=$DB_PASSWORD
+echo "Starting schema dump..."
+pg_dump -h %s -p %d -U %s -d %s --no-password --schema-only --no-owner > schema.sql
+curl -f -s -S -X PUT -T schema.sql "%s"
+
+echo "Starting data dump..."
+pg_dump -h %s -p %d -U %s -d %s --no-password --format=custom --verbose --compress=0 | gzip > dump.sql.gz
+SIZE=$(stat -c%%s dump.sql.gz)
+SHA=$(sha256sum dump.sql.gz | awk '{print $1}')
+curl -f -s -S -X PUT -T dump.sql.gz "%s"
+
+echo "DUMP_METADATA: SIZE=$SIZE SHA256=$SHA"
+`, 
+		a.Host, portOr(a.Port, 5432), a.Username, a.DatabaseName, schemaURL,
+		a.Host, portOr(a.Port, 5432), a.Username, a.DatabaseName, dumpURL)
+
+	backoffLimit := int32(0)
+	ttl := int32(3600) // 1 hr cleanup
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: ns,
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit:            &backoffLimit,
+			TTLSecondsAfterFinished: &ttl,
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+					Containers: []corev1.Container{
+						{
+							Name:    "pg-dump",
+							Image:   "postgres:15-alpine",
+							Command: []string{"sh", "-c", script},
+							Env: []corev1.EnvVar{
+								{
+									Name: "DB_PASSWORD",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: a.ConnectionSecret,
+											},
+											Key: "password",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	p.log.WithField("job", jobName).Info("Creating pg_dump Job")
+	_, err = p.k8sClient.CreateJob(dumpCtx, ns, job)
+	if err != nil {
+		return DBDump{}, fmt.Errorf("create job: %w", err)
+	}
+
+	err = p.k8sClient.WaitForJob(dumpCtx, ns, jobName, p.Timeout)
+	if err != nil {
+		return DBDump{}, fmt.Errorf("wait job: %w", err)
+	}
+
+	logs, err := p.k8sClient.GetJobLogs(dumpCtx, ns, jobName)
+	if err != nil {
+		return DBDump{}, fmt.Errorf("get job logs: %w", err)
+	}
+
+	var size int64
+	var sha string
+	for _, line := range strings.Split(logs, "\n") {
+		if strings.HasPrefix(line, "DUMP_METADATA: ") {
+			parts := strings.Split(strings.TrimPrefix(line, "DUMP_METADATA: "), " ")
+			for _, part := range parts {
+				if strings.HasPrefix(part, "SIZE=") {
+					size, _ = strconv.ParseInt(strings.TrimPrefix(part, "SIZE="), 10, 64)
+				}
+				if strings.HasPrefix(part, "SHA256=") {
+					sha = "sha256:" + strings.TrimPrefix(part, "SHA256=")
+				}
+			}
+		}
+	}
+
+	if size == 0 || sha == "" {
+		snippet := logs
+		if len(snippet) > 500 {
+			snippet = snippet[len(snippet)-500:]
+		}
+		return DBDump{}, fmt.Errorf("failed to extract size/sha from logs. Logs snippet: %s", snippet)
+	}
+
+	schemaRc, err := p.r2Client.Download(ctx, schemaKey)
+	var schemaBytes []byte
+	if err == nil {
+		defer schemaRc.Close()
+		schemaBytes, _ = io.ReadAll(schemaRc)
+	} else {
+		p.log.WithError(err).Warn("failed to fetch schema from R2")
+	}
 
 	return DBDump{
-		AddonName: a.Name,
-		AddonMeta: a,
-		DumpGz:    gz,
-		SchemaSQL: schemaOut.Bytes(),
+		AddonName:  a.Name,
+		AddonMeta:  a,
+		DumpReader: func() (io.ReadCloser, error) { return p.r2Client.Download(context.Background(), dumpKey) },
+		DumpSize:   size,
+		DumpSHA256: sha,
+		SchemaSQL:  schemaBytes,
 	}, nil
-}
-
-// gzipBytes compresses b at best compression.
-func gzipBytes(b []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	gz, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := gz.Write(b); err != nil {
-		return nil, err
-	}
-	if err := gz.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 func portOr(p, def int) int {
@@ -175,29 +207,4 @@ func portOr(p, def int) int {
 		return def
 	}
 	return p
-}
-
-// credentialEnvFor returns the env-var bindings pg_dump needs for the
-// given addon. The provisioner binds a K8s secret to the API pod with a
-// stable key format (ENCLII_ADDON_<UPPER_NAME>_PG); here we just pass
-// through whatever is already in the process env. Returning an empty
-// slice lets pg_dump fail loudly in dev when nothing is wired, rather
-// than silently picking up a stale value.
-//
-// Sprint 2 replaces this with a K8s Job that mounts the addon secret as
-// a file and sets PGPASSFILE — the stronger isolation pattern.
-func credentialEnvFor(a *types.DatabaseAddon) []string {
-	// Intentionally empty in Sprint 1: the test path never exec's
-	// pg_dump, and production wiring is via the K8s Job follow-up. The
-	// function exists so the pipeline in dump_provider has a single
-	// seam to swap.
-	_ = a
-	return nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }

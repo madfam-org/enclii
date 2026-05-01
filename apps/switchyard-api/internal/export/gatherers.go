@@ -3,6 +3,7 @@ package export
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"time"
 
@@ -285,18 +286,24 @@ func AddAuditTimeline(b *Builder, events []AuditEvent, deployments []AuditEvent)
 // the caller is responsible for running pg_dump (either locally or via a
 // K8s Job) and gzipping.
 type DBDump struct {
-	AddonName string
-	AddonMeta *types.DatabaseAddon
-	DumpGz    []byte // custom-format pg_dump, already gzipped
-	SchemaSQL []byte // plain SQL schema (for grep-ability)
+	AddonName  string
+	AddonMeta  *types.DatabaseAddon
+	DumpGz     []byte // custom-format pg_dump, already gzipped
+	DumpReader func() (io.ReadCloser, error) // for streaming large dumps
+	DumpSize   int64  // must be provided if DumpReader is used
+	DumpSHA256 string // must be provided if DumpReader is used
+	SchemaSQL  []byte // plain SQL schema (for grep-ability)
 }
 
 func AddDatabaseDumps(b *Builder, dumps []DBDump) error {
 	for _, d := range dumps {
-		if len(d.DumpGz) > 0 {
+		if len(d.DumpGz) > 0 || d.DumpReader != nil {
 			b.AddEntry(Entry{
-				Path:    fmt.Sprintf("databases/%s/pg_dump.sql.gz", d.AddonName),
-				Content: d.DumpGz,
+				Path:          fmt.Sprintf("databases/%s/pg_dump.sql.gz", d.AddonName),
+				Content:       d.DumpGz,
+				ContentReader: d.DumpReader,
+				ContentSize:   d.DumpSize,
+				ContentSHA256: d.DumpSHA256,
 			})
 		}
 		if len(d.SchemaSQL) > 0 {
