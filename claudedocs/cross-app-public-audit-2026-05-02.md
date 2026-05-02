@@ -17,7 +17,7 @@ Severity legend: 🔴 high (action required) · 🟡 medium (track) · 🟢 low 
 
 | ID | Surface | Severity | Headline |
 | --- | --- | --- | --- |
-| ST-1 | status.enclii.dev | ✅ shipped | `https://api.enclii.dev/health/ready` returns 404 but page reports Switchyard API "Operational" — fixed by adding dependency-free `/health/public` endpoint and repointing both status configmaps + Go core defaults; commit pending in this branch |
+| ST-1 | status.enclii.dev | ✅ shipped (92987608) | `https://api.enclii.dev/health/ready` returns 404 but page reports Switchyard API "Operational" — fixed by adding dependency-free `/health/public` endpoint and repointing both status configmaps + Go core defaults |
 | ST-2 | status.enclii.dev | 🟡 | No build-info / commit SHA exposed — operators can't verify what version is live |
 | ST-3 | status.enclii.dev | 🟡 | Two configmaps drift wildly (12 services vs 60 services); stale comments reference services intentionally excluded but no programmatic enforcement |
 | ST-4 | status.enclii.dev | 🟢 | No CSP header on the Next.js render path |
