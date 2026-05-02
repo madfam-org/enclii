@@ -16,18 +16,29 @@ The `enclii` command-line interface provides developers with tools to deploy, ma
 brew install enclii/tap/enclii
 ```
 
-### Linux
-```bash
-curl -sSL https://get.enclii.dev | bash
-```
-
-### From Source
+### Linux / from source (any OS with Go 1.22+)
 ```bash
 git clone https://github.com/madfam-org/enclii.git
 cd enclii
-make build-cli
-./bin/enclii --version
+make install-cli           # builds + installs to /usr/local/bin/enclii
 ```
+
+Override the destination with `CLI_INSTALL_DIR`:
+
+```bash
+make install-cli CLI_INSTALL_DIR=$HOME/.local/bin
+```
+
+To build without installing:
+
+```bash
+make build-cli
+./bin/enclii version
+```
+
+### Windows
+
+Install via WSL2 and follow the Linux instructions above. A native PowerShell installer is on the roadmap.
 
 ## Authentication
 
@@ -68,6 +79,7 @@ enclii deploy --env production
 ### Authentication & identity
 | Command | Description |
 |---------|-------------|
+| [`signup`](./commands/signup.md) | Create a new Enclii account (browser-based) |
 | [`login`](./commands/login.md) | Authenticate with Enclii via SSO |
 | [`logout`](./commands/logout.md) | Clear local authentication credentials |
 | [`whoami`](./commands/whoami.md) | Display current authenticated user |
@@ -84,6 +96,7 @@ enclii deploy --env production
 | [`ps`](./commands/ps.md) | List services and their status |
 | [`logs`](./commands/logs.md) | Stream or fetch service logs |
 | [`rollback`](./commands/rollback.md) | Rollback to a previous deployment |
+| [`canary`](./commands/canary.md) | Manage in-flight canary rollouts |
 | [`services-delete`](./commands/services-delete.md) | Delete a service from a project |
 | [`services-sync`](./commands/services-sync.md) | Synchronize service configuration |
 | [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
@@ -96,12 +109,16 @@ enclii deploy --env production
 | [`functions`](./commands/functions.md) | Manage serverless functions (scale-to-zero) |
 | [`jobs`](./commands/jobs.md) | Manage cron and one-off scheduled jobs |
 | [`junctions`](./commands/junctions.md) | Manage routing rules and ingress configuration |
+| [`addon`](./commands/addon.md) | Manage database addons (managed Postgres) |
+| [`webhooks`](./commands/webhooks.md) | Manage outbound lifecycle webhook subscriptions |
 
 ### Teams & collaboration
 | Command | Description |
 |---------|-------------|
 | [`teams`](./commands/teams.md) | Manage teams, memberships, invitations |
 | [`integrations`](./commands/integrations.md) | Third-party integrations (GitHub) |
+| [`billing`](./commands/billing.md) | View spend, manage budgets, inspect alerts |
+| [`export`](./commands/export.md) | Export everything Enclii holds about your project |
 
 ### Observability & audit
 | Command | Description |
@@ -115,12 +132,14 @@ enclii deploy --env production
 |---------|-------------|
 | [`admin`](./commands/admin.md) | Platform operator commands (mirrors admin-console portal) |
 | [`vault`](./commands/vault.md) | Inspect cluster Vault deployment |
+| [`db`](./commands/db.md) | Inspect the platform database (read-only WAL status) |
 
 ### Local & meta
 | Command | Description |
 |---------|-------------|
 | [`local`](./commands/local.md) | Local development environment commands |
 | [`version`](./commands/version.md) | Display CLI version information (`--json` available) |
+| [`completion`](./commands/completion.md) | Generate shell autocompletion scripts |
 
 ## Global Flags
 
