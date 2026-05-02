@@ -31,6 +31,20 @@ export default {
     responseHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     responseHeaders.delete("X-Frame-Options");
 
+    // Strip upstream PostHog branding/reporting headers (AN-1, 2026-05-02).
+    // Drops report-to / nel / expect-ct verbatim, then any header whose name
+    // OR value contains "posthog" (case-insensitive). Preserves cache-control,
+    // content-type, etag, and other legitimate response headers.
+    responseHeaders.delete("report-to");
+    responseHeaders.delete("nel");
+    responseHeaders.delete("expect-ct");
+    for (const name of [...responseHeaders.keys()]) {
+      const value = responseHeaders.get(name) || "";
+      if (name.toLowerCase().includes("posthog") || value.toLowerCase().includes("posthog")) {
+        responseHeaders.delete(name);
+      }
+    }
+
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: responseHeaders });
     }
