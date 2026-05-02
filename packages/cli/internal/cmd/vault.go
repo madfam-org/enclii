@@ -94,6 +94,7 @@ initialize Vault after ArgoCD syncs the Application.`,
 // newVaultStatusCommand implements `enclii vault status`.
 func newVaultStatusCommand(cfg *config.Config) *cobra.Command {
 	var addrFlag string
+	var jsonOut bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -103,12 +104,69 @@ the initialization + seal state. No-op if Vault is not yet initialized
 (prints a hint pointing at the bootstrap runbook).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addr := resolveVaultAddr(addrFlag, cfg)
+			if jsonOut {
+				return runVaultStatusJSON(cmd.Context(), cmd.OutOrStdout(), addr)
+			}
 			return runVaultStatus(cmd.Context(), cmd.OutOrStdout(), addr)
 		},
 	}
 
 	cmd.Flags().StringVar(&addrFlag, "addr", "", "Override Vault address (default: cluster-internal DNS)")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON instead of human text")
 	return cmd
+}
+
+// runVaultStatusJSON emits a stable JSON document for scripting / agent use.
+// The shape is intentionally minimal — only fields safe to expose to agents.
+func runVaultStatusJSON(ctx context.Context, w io.Writer, addr string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, vaultHealthTimeout)
+	defer cancel()
+
+	url := addr + "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+
+	out := struct {
+		Address     string `json:"address"`
+		Reachable   bool   `json:"reachable"`
+		Initialized bool   `json:"initialized"`
+		Sealed      bool   `json:"sealed"`
+		Standby     bool   `json:"standby"`
+		Version     string `json:"version,omitempty"`
+		ClusterName string `json:"cluster_name,omitempty"`
+		Error       string `json:"error,omitempty"`
+	}{Address: addr}
+
+	resp, err := (&http.Client{Timeout: vaultHealthTimeout}).Do(req)
+	if err != nil {
+		out.Error = err.Error()
+		return json.NewEncoder(w).Encode(out)
+	}
+	defer resp.Body.Close()
+	out.Reachable = true
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		out.Error = err.Error()
+		return json.NewEncoder(w).Encode(out)
+	}
+	var health sysHealthResponse
+	if err := json.Unmarshal(body, &health); err != nil {
+		out.Error = "non-JSON body: " + err.Error()
+		return json.NewEncoder(w).Encode(out)
+	}
+	out.Initialized = health.Initialized
+	out.Sealed = health.Sealed
+	out.Standby = health.Standby
+	out.Version = health.Version
+	out.ClusterName = health.ClusterName
+	return json.NewEncoder(w).Encode(out)
 }
 
 // resolveVaultAddr walks the flag > env > default chain.

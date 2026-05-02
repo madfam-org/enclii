@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -86,6 +88,8 @@ func newSecretsListCommand(cfg *config.Config) *cobra.Command {
 	var envName string
 	var specFile string
 	var showAll bool
+	var jsonOut bool
+	var reveal bool
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -93,19 +97,25 @@ func newSecretsListCommand(cfg *config.Config) *cobra.Command {
 		Short:   "List secrets and environment variables",
 		Long: `List all secrets and environment variables for a service.
 
-Secret values are masked by default. Use --all to show metadata.
+Secret values are masked by the API by default. Pass --reveal to call the
+per-item reveal endpoint (logged for audit) and print actual values. Use
+--json for stable machine-readable output (CI/CD, agents).
 
 Examples:
   enclii secrets list
-  enclii secrets list --env production`,
+  enclii secrets list --env production
+  enclii secrets list --json
+  enclii secrets list --reveal       # values shown, audit-logged`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSecretsList(cfg, envName, specFile, showAll)
+			return runSecretsList(cfg, envName, specFile, showAll, jsonOut, reveal)
 		},
 	}
 
 	cmd.Flags().StringVarP(&envName, "env", "e", "", "Filter by environment")
 	cmd.Flags().StringVarP(&specFile, "file", "f", "service.yaml", "Path to service.yaml specification file")
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all metadata")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
+	cmd.Flags().BoolVar(&reveal, "reveal", false, "Reveal secret values (calls audit-logged reveal endpoint per item)")
 
 	return cmd
 }
@@ -239,7 +249,7 @@ func runSecretsSet(cfg *config.Config, keyValues []string, isSecret bool, envNam
 }
 
 // runSecretsList implements the secrets list command
-func runSecretsList(cfg *config.Config, envName, specFile string, showAll bool) error {
+func runSecretsList(cfg *config.Config, envName, specFile string, showAll, jsonOut, reveal bool) error {
 	ctx := context.Background()
 
 	// Parse service.yaml
@@ -273,6 +283,25 @@ func runSecretsList(cfg *config.Config, envName, specFile string, showAll bool) 
 	envVars, err := apiClient.ListEnvVars(ctx, service.ID.String(), envID)
 	if err != nil {
 		return fmt.Errorf("failed to list environment variables: %w", err)
+	}
+
+	// If --reveal, replace masked values with real ones via the audit-logged endpoint.
+	if reveal {
+		for i := range envVars {
+			if !envVars[i].IsSecret {
+				continue
+			}
+			val, rerr := apiClient.RevealEnvVar(ctx, service.ID.String(), envVars[i].ID.String())
+			if rerr != nil {
+				return fmt.Errorf("failed to reveal %s: %w", envVars[i].Key, rerr)
+			}
+			envVars[i].Value = val
+		}
+		fmt.Fprintln(os.Stderr, "⚠️  Secret values revealed - this action has been logged")
+	}
+
+	if jsonOut {
+		return emitSecretsJSON(envVars)
 	}
 
 	if len(envVars) == 0 {
@@ -309,6 +338,28 @@ func runSecretsList(cfg *config.Config, envName, specFile string, showAll bool) 
 	_ = w.Flush()
 
 	return nil
+}
+
+// emitSecretsJSON renders the env-var list as a stable JSON shape for agents.
+func emitSecretsJSON(envVars []client.EnvVarResponse) error {
+	type item struct {
+		Key       string `json:"key"`
+		Value     string `json:"value"`
+		IsSecret  bool   `json:"is_secret"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	out := make([]item, 0, len(envVars))
+	for _, ev := range envVars {
+		out = append(out, item{
+			Key:       ev.Key,
+			Value:     ev.Value,
+			IsSecret:  ev.IsSecret,
+			UpdatedAt: ev.UpdatedAt.Format(time.RFC3339),
+		})
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
 
 // runSecretsDelete implements the secrets delete command

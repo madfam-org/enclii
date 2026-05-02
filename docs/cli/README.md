@@ -65,27 +65,62 @@ enclii deploy --env production
 
 ## Commands Overview
 
+### Authentication & identity
 | Command | Description |
 |---------|-------------|
 | [`login`](./commands/login.md) | Authenticate with Enclii via SSO |
 | [`logout`](./commands/logout.md) | Clear local authentication credentials |
 | [`whoami`](./commands/whoami.md) | Display current authenticated user |
+| [`tokens`](./commands/tokens.md) | Manage personal API tokens (CI/CD) |
+
+### Projects, services, deployments
+| Command | Description |
+|---------|-------------|
 | [`init`](./commands/init.md) | Initialize a new service configuration |
+| [`projects`](./commands/projects.md) | List, create, inspect projects |
 | [`deploy`](./commands/deploy.md) | Deploy a service to an environment |
+| [`deployments`](./commands/deployments.md) | Query deployment runs (alias `deps`) |
+| [`releases`](./commands/releases.md) | List releases (build artifacts) for a service |
 | [`ps`](./commands/ps.md) | List services and their status |
 | [`logs`](./commands/logs.md) | Stream or fetch service logs |
 | [`rollback`](./commands/rollback.md) | Rollback to a previous deployment |
+| [`services-delete`](./commands/services-delete.md) | Delete a service from a project |
+| [`services-sync`](./commands/services-sync.md) | Synchronize service configuration |
+| [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
+
+### Configuration
+| Command | Description |
+|---------|-------------|
 | [`secrets`](./commands/secrets.md) | Manage service secrets and environment variables |
 | [`domains`](./commands/domains.md) | Manage custom domains for services |
 | [`functions`](./commands/functions.md) | Manage serverless functions (scale-to-zero) |
 | [`jobs`](./commands/jobs.md) | Manage cron and one-off scheduled jobs |
 | [`junctions`](./commands/junctions.md) | Manage routing rules and ingress configuration |
-| [`releases`](./commands/releases.md) | List releases (builds) for a service |
-| [`services delete`](./commands/services-delete.md) | Delete a service from a project |
-| [`services sync`](./commands/services-sync.md) | Synchronize service configuration |
+
+### Teams & collaboration
+| Command | Description |
+|---------|-------------|
+| [`teams`](./commands/teams.md) | Manage teams, memberships, invitations |
+| [`integrations`](./commands/integrations.md) | Third-party integrations (GitHub) |
+
+### Observability & audit
+| Command | Description |
+|---------|-------------|
+| [`observe`](./commands/observe.md) | Service metrics, health, errors, alerts (alias `metrics`) |
+| [`activity`](./commands/activity.md) | Lifecycle event feed |
+| [`audit`](./commands/audit.md) | Consolidated audit log + CSV export |
+
+### Platform operations (admin role)
+| Command | Description |
+|---------|-------------|
+| [`admin`](./commands/admin.md) | Platform operator commands (mirrors admin-console portal) |
+| [`vault`](./commands/vault.md) | Inspect cluster Vault deployment |
+
+### Local & meta
+| Command | Description |
+|---------|-------------|
 | [`local`](./commands/local.md) | Local development environment commands |
-| [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
-| [`version`](./commands/version.md) | Display CLI version information |
+| [`version`](./commands/version.md) | Display CLI version information (`--json` available) |
 
 ## Global Flags
 
@@ -93,49 +128,41 @@ These flags are available for all commands:
 
 | Flag | Description |
 |------|-------------|
-| `--config` | Path to config file (default: `~/.enclii/config.yaml`) |
-| `--project` | Override project context |
-| `--env` | Target environment (preview, staging, production) |
-| `--output`, `-o` | Output format: `table`, `json`, `yaml` |
-| `--verbose`, `-v` | Enable verbose output |
-| `--quiet`, `-q` | Suppress non-essential output |
+| `--api-endpoint` | API endpoint URL (default `https://api.enclii.dev`) |
+| `--api-token` | Authentication token (overrides stored credentials) |
+| `--log-level` | Log level: `debug`, `info`, `warn`, `error` |
 | `--help`, `-h` | Show help for any command |
+
+Most read subcommands across the CLI accept a `--json` flag for stable, machine-readable output. Most mutating subcommands accept `--force` to skip confirmation prompts.
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `ENCLII_API_URL` | API endpoint (default: `https://api.enclii.dev`) |
-| `ENCLII_TOKEN` | Authentication token (alternative to login) |
-| `ENCLII_PROJECT` | Default project ID |
-| `ENCLII_ENV` | Default environment |
+| `ENCLII_API_ENDPOINT` | API endpoint (default: `https://api.enclii.dev`) |
+| `ENCLII_API_TOKEN` | Authentication token (alternative to `enclii login`) |
+| `ENCLII_OIDC_ISSUER` | OIDC issuer URL for self-hosted deployments (default: `https://auth.madfam.io`) |
+| `ENCLII_OIDC_CLIENT_ID` | OIDC client ID for self-hosted deployments |
+| `ENCLII_VAULT_ADDR` / `VAULT_ADDR` | Override Vault address for `enclii vault status` |
+| `ENCLII_PROJECT` | Default project slug |
+| `ENCLII_ENVIRONMENT` | Default environment |
 | `ENCLII_LOG_LEVEL` | Logging verbosity: `debug`, `info`, `warn`, `error` |
-| `NO_COLOR` | Disable colored output |
 
-## Configuration File
+## Credentials Storage
 
-The CLI uses a YAML configuration file at `~/.enclii/config.yaml`:
+OAuth credentials are persisted to `~/.enclii/credentials.json` (mode `0600`):
 
-```yaml
-# API configuration
-api_url: https://api.enclii.dev
-
-# Authentication (managed by `enclii login`)
-auth:
-  token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
-  refresh_token: ...
-  expires_at: 2025-02-01T00:00:00Z
-
-# Default project and environment
-defaults:
-  project: proj_abc123
-  environment: staging
-
-# Output preferences
-output:
-  format: table
-  color: true
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "rt_...",
+  "token_type": "Bearer",
+  "expires_at": "2026-08-01T00:00:00Z",
+  "issuer": "https://auth.madfam.io"
+}
 ```
+
+Tokens are auto-refreshed on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present. Run `enclii login` again if the refresh token has been revoked.
 
 ## Exit Codes
 

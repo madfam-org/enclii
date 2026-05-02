@@ -158,7 +158,7 @@ func initiateExport(cfg *config.Config, slug string, wait bool, outPath string, 
 	req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("initiate export: %w", err)
 	}
@@ -229,7 +229,7 @@ func fetchExport(cfg *config.Config, exportID string) (*types.TenantExportDownlo
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func downloadExport(cfg *config.Config, exportID, outPath string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClientForDownload().Do(req)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
@@ -318,7 +318,7 @@ func listExports(cfg *config.Config, slug string, out io.Writer) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient().Do(req)
 	if err != nil {
 		return err
 	}

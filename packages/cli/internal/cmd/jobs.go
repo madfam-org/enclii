@@ -79,7 +79,7 @@ func jobsRequest(cfg *config.Config, method, path string, body interface{}) (*ht
 		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
 	}
 
-	return http.DefaultClient.Do(req)
+	return httpClient().Do(req)
 }
 
 // decodeOrError reads the response body and either decodes it into target

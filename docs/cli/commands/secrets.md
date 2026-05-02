@@ -47,6 +47,8 @@ enclii secrets list [flags]
 | `--env`, `-e` | string | | Filter by environment |
 | `--file`, `-f` | string | `service.yaml` | Path to service.yaml specification file |
 | `--all`, `-a` | bool | `false` | Show all metadata (environment, last updated) |
+| `--json` | bool | `false` | Emit machine-readable JSON instead of a table |
+| `--reveal` | bool | `false` | Reveal secret values via the audit-logged reveal endpoint (one call per secret) |
 
 ### `get`
 

@@ -90,16 +90,62 @@ Learn more at https://enclii.dev`,
 	// Tenant data export (P3.6)
 	rootCmd.AddCommand(NewExportCommand(cfg))
 
+	// Project resource management (containers for services/envs/secrets)
+	rootCmd.AddCommand(NewProjectsCommand(cfg))
+
+	// Team membership and invitations
+	rootCmd.AddCommand(NewTeamsCommand(cfg))
+
+	// Personal API tokens (CI/CD authentication)
+	rootCmd.AddCommand(NewTokensCommand(cfg))
+
+	// Platform operator commands (admin-console parity)
+	rootCmd.AddCommand(NewAdminCommand(cfg))
+
+	// Audit log + lifecycle activity feed (mirror /audit, /activity in switchyard-ui)
+	rootCmd.AddCommand(NewAuditCommand(cfg))
+	rootCmd.AddCommand(NewActivityCommand(cfg))
+
+	// Observability (mirror /observability page)
+	rootCmd.AddCommand(NewObserveCommand(cfg))
+
+	// Third-party integrations (GitHub today; more to come)
+	rootCmd.AddCommand(NewIntegrationsCommand(cfg))
+
+	// Deployment query surface (complements `deploy` and `releases`)
+	rootCmd.AddCommand(NewDeploymentsCommand(cfg))
+
 	return rootCmd
 }
 
+// Build metadata. Override at link time via:
+//
+//	go build -ldflags "-X github.com/madfam-org/enclii/packages/cli/internal/cmd.Version=v1.2.3 \
+//	                   -X github.com/madfam-org/enclii/packages/cli/internal/cmd.Commit=abc1234 \
+//	                   -X github.com/madfam-org/enclii/packages/cli/internal/cmd.BuildDate=2026-05-02T00:00:00Z"
+var (
+	Version   = "1.0.0-alpha"
+	Commit    = "development"
+	BuildDate = "unknown"
+)
+
 func NewVersionCommand() *cobra.Command {
-	return &cobra.Command{
+	var jsonOut bool
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Println("enclii version 1.0.0-alpha")
-			cmd.Println("Build: development")
+			if jsonOut {
+				_, _ = cmd.OutOrStdout().Write([]byte(
+					`{"version":"` + Version + `","commit":"` + Commit + `","build_date":"` + BuildDate + `"}` + "\n",
+				))
+				return
+			}
+			cmd.Printf("enclii version %s\n", Version)
+			cmd.Printf("Commit:     %s\n", Commit)
+			cmd.Printf("Build date: %s\n", BuildDate)
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
+	return cmd
 }

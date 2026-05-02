@@ -37,8 +37,15 @@ scoop install enclii
 ```bash
 git clone https://github.com/madfam-org/enclii.git
 cd enclii
-make build-cli
-./bin/enclii version
+make install-cli           # builds + installs to /usr/local/bin/enclii
+# or
+make build-cli && ./bin/enclii version
+```
+
+`install-cli` writes a stripped, version-injected binary (`-ldflags "-s -w -X ..."`) to `CLI_INSTALL_DIR` (default `/usr/local/bin`). Override the destination:
+
+```bash
+make install-cli CLI_INSTALL_DIR=$HOME/.local/bin
 ```
 
 ## Quick Start
@@ -62,58 +69,70 @@ enclii logs my-app -f
 
 ```
 packages/cli/
-├── cmd/
-│   └── enclii/           # Main entry point
-├── internal/
-│   ├── cmd/              # Command implementations
-│   │   ├── login.go      # Authentication commands
-│   │   ├── deploy.go     # Deployment commands
-│   │   ├── logs.go       # Log streaming
-│   │   ├── services.go   # Service management
-│   │   └── ...
-│   ├── api/              # API client
-│   ├── auth/             # OAuth/PKCE flow
-│   ├── config/           # Configuration management
-│   ├── output/           # Terminal output formatting
-│   └── websocket/        # WebSocket client (logs)
-└── docs/                 # CLI documentation
+├── cmd/enclii/                 # main package (binary entry point)
+└── internal/
+    ├── client/                 # typed HTTP client for the Switchyard API
+    │   ├── api.go              # core endpoints (projects, services, releases…)
+    │   ├── api_admin.go        # admin + functions endpoints
+    │   ├── api_canary.go       # canary rollout endpoints
+    │   └── api_streaming.go    # log/event streaming over WebSocket
+    ├── cmd/                    # one file per top-level Cobra command
+    │   ├── root.go             # AddCommand wiring + Version/Commit/BuildDate vars
+    │   ├── apirequest.go       # shared apiRequest, emitJSON, queryString helpers
+    │   ├── httpclient.go       # timeout-bearing http.Client factories
+    │   ├── login.go            # OAuth/PKCE flow against Janua
+    │   ├── teams.go projects.go tokens.go
+    │   ├── audit.go activity.go observe.go integrations.go deployments.go
+    │   ├── admin.go admin_*.go # platform operator subtree (mirrors admin-console)
+    │   └── …                   # one file per top-level group
+    ├── config/                 # ~/.enclii config + credentials, auto-refresh
+    ├── exitcodes/              # typed exit codes for non-zero returns
+    ├── helpers/                # cross-cutting helpers
+    └── spec/                   # service.yaml / enclii.yaml parser
 ```
 
 ## Commands
 
-See the [CLI Reference](../../docs/cli/README.md) for complete documentation.
+See the [CLI Reference](../../docs/cli/README.md) for the canonical, grouped index. The CLI ships ~38 top-level command groups; below is a non-exhaustive map of the most common.
 
 | Command | Description |
 |---------|-------------|
-| `login` | Authenticate via SSO |
-| `logout` | Clear credentials |
-| `whoami` | Show current user |
-| `init` | Initialize service config |
-| `deploy` | Deploy a service |
-| `ps` | List services |
-| `logs` | Stream service logs |
-| `rollback` | Rollback deployment |
-| `services sync` | Sync configuration |
-| `local` | Local development |
-| `version` | Show version info |
+| `login` / `logout` / `whoami` | OAuth/PKCE auth via Janua SSO |
+| `tokens` | Personal API tokens (CI/CD authentication) |
+| `init` / `projects` / `services-sync` / `services-delete` | Project + service lifecycle |
+| `deploy` / `rollback` / `releases` / `deployments` / `ps` / `logs` | Deployment operations |
+| `secrets` / `domains` / `functions` / `jobs` / `junctions` | Service configuration |
+| `teams` / `integrations` | Team management + GitHub integration |
+| `observe` / `activity` / `audit` | Metrics, lifecycle feed, audit log (CSV export) |
+| `admin` | Platform operator subtree: `fleet`, `topology`, `clusters`, `drift`, `propagation`, `governance`, `costs`, `vclusters` |
+| `vault` | Cluster Vault status (read-only) |
+| `local` | Local development environment |
+| `version` | Build version + commit (`--json` available) |
+
+Most read subcommands accept `--json`; mutations require `--force` to skip confirmation prompts.
 
 ## Development
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.25+
 
 ### Building
 
 ```bash
-# Build for current platform
-go build -o bin/enclii ./cmd/enclii
+# Build for the current platform (stripped + version-injected via Makefile)
+make build-cli
 
-# Build all platforms
-make build-cli-all
+# Manual build (no version injection)
+cd packages/cli && go build -o ../../bin/enclii ./cmd/enclii
 
-# Build with version info
-go build -ldflags "-X main.version=v0.5.0" -o bin/enclii ./cmd/enclii
+# Manual build with version metadata
+go build -ldflags "\
+  -s -w \
+  -X github.com/madfam-org/enclii/packages/cli/internal/cmd.Version=$(git describe --always --dirty) \
+  -X github.com/madfam-org/enclii/packages/cli/internal/cmd.Commit=$(git rev-parse --short HEAD) \
+  -X github.com/madfam-org/enclii/packages/cli/internal/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -o bin/enclii ./cmd/enclii
 ```
 
 ### Testing
@@ -138,21 +157,21 @@ golangci-lint run
 
 ## Configuration
 
-The CLI stores configuration in `~/.enclii/config.yaml`:
+OAuth credentials are stored at `~/.enclii/credentials.json` (mode `0600`):
 
-```yaml
-api_url: https://api.enclii.dev
-auth:
-  token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
-  refresh_token: ...
-  expires_at: 2025-02-01T00:00:00Z
-defaults:
-  project: proj_abc123
-  environment: staging
-output:
-  format: table
-  color: true
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "rt_...",
+  "token_type": "Bearer",
+  "expires_at": "2026-08-01T00:00:00Z",
+  "issuer": "https://auth.madfam.io"
+}
 ```
+
+Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present (see `internal/config/config.go`).
+
+Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN`, `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`).
 
 ## Authentication Flow
 
@@ -169,72 +188,15 @@ The CLI uses OAuth 2.0 with PKCE:
 
 ## API Client
 
-The CLI uses a generated API client:
-
-```go
-// internal/api/client.go
-type Client struct {
-    BaseURL    string
-    HTTPClient *http.Client
-    Token      string
-}
-
-func (c *Client) CreateDeployment(ctx context.Context, req *CreateDeploymentRequest) (*Deployment, error) {
-    // ...
-}
-```
+`internal/client/api.go` (and `api_admin.go`, `api_canary.go`, `api_streaming.go`) hold the typed `APIClient` covering projects, services, releases, deployments, env-vars, functions, and admin/onboarding endpoints. Commands without a typed method use the shared `apiRequest` helper in `internal/cmd/apirequest.go`, which wraps `httpClient()` (30s timeout) and adds auth + standard headers.
 
 ## Output Formatting
 
-The CLI supports multiple output formats:
-
-```go
-// internal/output/formatter.go
-type Formatter interface {
-    Format(data interface{}) string
-}
-
-type TableFormatter struct{}
-type JSONFormatter struct{}
-type YAMLFormatter struct{}
-```
-
-Usage:
-```bash
-enclii ps -o json
-enclii ps -o yaml
-enclii ps -o table  # default
-```
+The CLI prefers domain-appropriate human output (tables via `text/tabwriter`) and exposes `--json` on most read subcommands for stable machine-readable output. There is no global `-o` flag — `--json` is opt-in per command. Shared JSON emission goes through `emitJSON` in `internal/cmd/apirequest.go`.
 
 ## WebSocket Log Streaming
 
-Real-time logs use WebSocket:
-
-```go
-// internal/websocket/logs.go
-func StreamLogs(ctx context.Context, serviceID string, opts LogsOptions) (<-chan LogEntry, error) {
-    conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
-    if err != nil {
-        return nil, err
-    }
-
-    ch := make(chan LogEntry)
-    go func() {
-        defer close(ch)
-        for {
-            _, msg, err := conn.ReadMessage()
-            if err != nil {
-                return
-            }
-            var entry LogEntry
-            json.Unmarshal(msg, &entry)
-            ch <- entry
-        }
-    }()
-
-    return ch, nil
-}
-```
+`enclii logs -f` uses the streaming endpoints in `internal/client/api_streaming.go`. The implementation is built on `gorilla/websocket` and shares the same auth conventions as the typed `APIClient`.
 
 ## Release Process
 

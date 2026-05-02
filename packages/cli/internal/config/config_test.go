@@ -326,3 +326,57 @@ func TestGetCredentialsPath(t *testing.T) {
 		t.Errorf("GetCredentialsPath() = %q, want %q", path, want)
 	}
 }
+
+func TestShouldRefresh(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name string
+		c    *Credentials
+		want bool
+	}{
+		{"nil credentials", nil, false},
+		{"no access token", &Credentials{}, false},
+		{"already expired", &Credentials{AccessToken: "x", ExpiresAt: now.Add(-time.Hour)}, true},
+		{"within leeway", &Credentials{AccessToken: "x", ExpiresAt: now.Add(30 * time.Second)}, true},
+		{"comfortably valid", &Credentials{AccessToken: "x", ExpiresAt: now.Add(10 * time.Minute)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldRefresh(tt.c); got != tt.want {
+				t.Errorf("shouldRefresh() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSaveAndLoadCredentialsRoundtrip(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	want := &Credentials{
+		AccessToken:  "at",
+		RefreshToken: "rt",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(time.Hour).UTC().Truncate(time.Second),
+		Issuer:       "https://auth.example.com",
+	}
+	if err := saveCredentials(want); err != nil {
+		t.Fatalf("saveCredentials: %v", err)
+	}
+	// File mode must be 0600.
+	info, err := os.Stat(filepath.Join(tmp, ".enclii", "credentials.json"))
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0600 {
+		t.Errorf("file mode = %o, want 0600", mode)
+	}
+
+	got, err := loadCredentials()
+	if err != nil {
+		t.Fatalf("loadCredentials: %v", err)
+	}
+	if got.AccessToken != want.AccessToken || got.RefreshToken != want.RefreshToken {
+		t.Errorf("roundtrip mismatch: got %+v want %+v", got, want)
+	}
+}

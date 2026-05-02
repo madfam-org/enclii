@@ -72,7 +72,7 @@ func junctionsRequest(cfg *config.Config, method, path string, body interface{})
 		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
 	}
 
-	return http.DefaultClient.Do(req)
+	return httpClient().Do(req)
 }
 
 // junctionsDecodeOrError reads the response body and either decodes it into

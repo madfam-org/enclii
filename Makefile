@@ -1,4 +1,4 @@
-.PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-reconcilers
+.PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-reconcilers install-cli
 .PHONY: test test-integration test-coverage test-benchmark test-all check-drift lint
 .PHONY: run-switchyard run-ui run-reconcilers run-all
 .PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check clean
@@ -7,7 +7,16 @@
 # Variables
 REGISTRY ?= ghcr.io/madfam
 VERSION ?= $(shell git describe --always --dirty)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 KIND_CLUSTER_NAME ?= enclii
+
+# CLI build flags: strip symbols (-s -w) and inject version metadata.
+CLI_LDFLAGS = -s -w \
+	-X github.com/madfam-org/enclii/packages/cli/internal/cmd.Version=$(VERSION) \
+	-X github.com/madfam-org/enclii/packages/cli/internal/cmd.Commit=$(COMMIT) \
+	-X github.com/madfam-org/enclii/packages/cli/internal/cmd.BuildDate=$(BUILD_DATE)
+CLI_INSTALL_DIR ?= /usr/local/bin
 
 # Bootstrap development environment
 bootstrap:
@@ -44,8 +53,17 @@ build-api:
 	cd apps/switchyard-api && go build -o ../../bin/switchyard-api ./cmd/api
 
 build-cli:
-	@echo "🏗️ Building CLI..."
-	cd packages/cli && go build -o ../../bin/enclii ./cmd/enclii
+	@echo "🏗️ Building CLI ($(VERSION) / $(COMMIT))..."
+	cd packages/cli && CGO_ENABLED=0 go build -trimpath -ldflags "$(CLI_LDFLAGS)" -o ../../bin/enclii ./cmd/enclii
+	@echo "✅ Built bin/enclii ($$(du -h bin/enclii | cut -f1))"
+
+# Install the CLI to CLI_INSTALL_DIR (default /usr/local/bin) so agents and
+# shells in this workspace can invoke `enclii` directly. Override the
+# destination with `make install-cli CLI_INSTALL_DIR=$$HOME/.local/bin`.
+install-cli: build-cli
+	@echo "📦 Installing enclii to $(CLI_INSTALL_DIR)/enclii..."
+	@install -m 0755 bin/enclii $(CLI_INSTALL_DIR)/enclii
+	@echo "✅ enclii $$($(CLI_INSTALL_DIR)/enclii version --json 2>/dev/null || echo installed)"
 
 build-ui:
 	@echo "🏗️ Building UI..."
