@@ -22,7 +22,7 @@ Severity legend: 🔴 high (action required) · 🟡 medium (track) · 🟢 low 
 | ST-3 | status.enclii.dev | 🟡 | Two configmaps drift wildly (12 services vs 60 services); stale comments reference services intentionally excluded but no programmatic enforcement |
 | ST-4 | status.enclii.dev | 🟢 | No CSP header on the Next.js render path |
 | DC-1 | docs.enclii.dev | 🔴 | Deployed build dated `Mar 8 2026` (Cloudflare last-modified) but POSTHOG_INTEGRATION.md updated `Mar 14 2026` — live page shows **dead** `analytics.enclii.dev` host (returns 525) |
-| DC-2 | docs.enclii.dev | 🟡 | 23 source-only CLI commands have no docs (admin sub-tree, addon, audit, billing, canary, db, vault, webhooks, etc.) |
+| DC-2 | docs.enclii.dev | ✅ shipped (55e8340d) | Backfilled 9 top-level command pages: addon, billing, canary, completion, db, export, signup, vault, webhooks. `docs/cli/commands/*.md` 28 → 37 (+9, ~1,055 lines). Admin sub-tree was already documented in `admin.md`. |
 | DC-3 | docs.enclii.dev | 🟡 | No HSTS, no CSP, no X-Frame-Options on docs origin (Cloudflare-only TLS) |
 | DC-4 | docs.enclii.dev | 🟡 | Quickstart claims `Enclii CLI v0.5.x` but no version evidence in repo (no version embed); installer URL `get.enclii.dev` returns **HTTP 525** (origin SSL handshake failure) |
 | DC-5 | docs.enclii.dev | 🟢 | Footer copyright is dynamic-year-correct; no last-build marker exposed |
@@ -153,13 +153,23 @@ The actually-live host is `analytics.madfam.io` (the running Cloudflare Worker a
 
 **Recommendation**: trigger a docs site rebuild + redeploy. Add a CI check that fails if `apps/docs-site/build/` is older than the most recent `docs/**` change.
 
-#### 🟡 DC-2 — 23 CLI commands have no docs
+#### ✅ DC-2 — RESOLVED 2026-05-02 (commit `55e8340d`)
 
-Diff of `packages/cli/internal/cmd/*.go` (45 commands) vs `docs/cli/commands/*.md` (28 commands):
+Backfilled 9 top-level command pages. `docs/cli/commands/*.md` count: **28 → 37** (+9, ~1,055 lines added). Each page follows the canonical template established by `secrets.md`: H1 + Synopsis + Description + Subcommands (with flag tables) + Examples + Notes + Exit Codes + See Also.
 
-**Source-only (no docs)**: `addon`, `admin_clusters`, `admin_costs`, `admin_drift`, `admin_fleet`, `admin_governance`, `admin_propagation`, `admin_tenants`, `admin_topology`, `admin_vclusters`, `apirequest`, `billing`, `canary`, `db`, `export`, `httpclient`, `root`, `services_delete`, `services_sync`, `signup_os`, `vault`, `webhooks` (and a couple more). The `admin_*` family is operator-only and may be intentionally undocumented, but `db`, `canary`, `billing`, `vault`, `webhooks`, `addon` are user-facing primitives.
+| Command | Lines | Section in `docs/cli/README.md` |
+|---------|-------|---------------------------------|
+| `addon` | 135 | Configuration |
+| `billing` | 158 | Teams & collaboration |
+| `canary` | 113 | Projects, services, deployments |
+| `completion` | 90 | Local & meta |
+| `db` | 88 | Platform operations |
+| `export` | 127 | Teams & collaboration |
+| `signup` | 80 | Authentication & identity |
+| `vault` | 90 | Platform operations |
+| `webhooks` | 174 | Configuration |
 
-**Docs-only (no source)**: `logout`, `services-delete`, `services-sync`, `version`, `whoami` — these match real source files but with hyphenation differences (`services_delete.go` ↔ `services-delete.md`). Not a real gap.
+The original audit listed 23 commands but conflated the 9 admin sub-files (`admin_clusters.go`, `admin_fleet.go`, etc.) with separate docs gaps — the admin sub-tree is already documented in a single `admin.md` (246 lines) covering all subcommands. The remaining source-only files (`apirequest.go`, `httpclient.go`, `root.go`, `services_delete.go`, `services_sync.go`, `signup_os.go`) are either internal helpers (the first three) or hyphenation aliases of pages that already exist (`services-delete.md`, `services-sync.md`) or now ship as `signup.md`.
 
 #### 🟡 DC-4 — Quickstart references a CLI version with no source-of-truth, and `get.enclii.dev` is broken
 
