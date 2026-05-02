@@ -169,6 +169,19 @@ jobs:
           fi
           echo "✅ Manifest audit passed (including port consistency)!"
 
+  status-configmap-drift:
+    name: Status Configmap Drift (ST-3)
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Cheap (sub-second) — runs in parallel with lint.
+    # Enforces: enclii configmap ⊆ madfam configmap (by url), no in-file
+    # duplicates, well-formed JSON. See scripts/check-status-configmaps.sh
+    # for the full invariant list and rationale.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run status configmap drift check
+        run: ./scripts/check-status-configmaps.sh
+
   golden-config:
     name: Golden Config Check (Ratchet)
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
@@ -653,6 +666,15 @@ jobs:
           if [ -n "$NPM_MADFAM_TOKEN" ]; then
             BUILD_ARGS=$(printf '%s\nNPM_MADFAM_TOKEN=%s' "$BUILD_ARGS" "$NPM_MADFAM_TOKEN")
           fi
+          # Build identity for downstream observability (audit ST-2):
+          # services that surface a build banner (e.g. enclii-status footer)
+          # consume NEXT_PUBLIC_COMMIT_SHA / NEXT_PUBLIC_BUILD_DATE via
+          # ARG declarations in their Dockerfile. Services that don't
+          # declare the ARGs simply ignore these — `docker buildx`
+          # warns but does not fail on unrecognised build-args.
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          BUILD_ARGS=$(printf '%s\nNEXT_PUBLIC_COMMIT_SHA=%s\nNEXT_PUBLIC_BUILD_DATE=%s' \
+            "$BUILD_ARGS" "${{ github.sha }}" "$BUILD_DATE")
           echo "build_args<<EOF" >> $GITHUB_OUTPUT
           echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -1121,7 +1143,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, ecosystem-e2e]
+    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, ecosystem-e2e]
     if: always()
 
     steps:
@@ -1145,6 +1167,10 @@ jobs:
           fi
           if [ "${{ needs.golden-config.result }}" != "success" ]; then
             echo "❌ Golden config check failed (Operation Ratchet)"
+            exit 1
+          fi
+          if [ "${{ needs.status-configmap-drift.result }}" != "success" ]; then
+            echo "❌ Status configmap drift check failed (audit ST-3)"
             exit 1
           fi
           # Ecosystem E2E is only required on main branch pushes

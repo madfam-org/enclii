@@ -27,8 +27,16 @@ COPY --from=deps /app/status/node_modules ./status/node_modules
 # Build arguments for public env vars (defaults can be overridden at build time)
 ARG NEXT_PUBLIC_APP_URL=https://status.enclii.dev
 ARG SITE_NAME="Enclii Status"
+# Build identity (ST-2): exposed in the page footer so operators can
+# verify which version of the status app is live during incident triage.
+# CI passes `${{ github.sha }}` and ISO-8601 build date; defaults below
+# keep local builds working without surfacing a misleading SHA.
+ARG NEXT_PUBLIC_COMMIT_SHA=local
+ARG NEXT_PUBLIC_BUILD_DATE=unknown
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV SITE_NAME=$SITE_NAME
+ENV NEXT_PUBLIC_COMMIT_SHA=$NEXT_PUBLIC_COMMIT_SHA
+ENV NEXT_PUBLIC_BUILD_DATE=$NEXT_PUBLIC_BUILD_DATE
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the static site

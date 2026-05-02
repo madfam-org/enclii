@@ -111,6 +111,15 @@ export function Header({ siteName, siteUrl }: HeaderProps) {
 export function Footer({ siteName }: { siteName: string }) {
   const currentYear = new Date().getFullYear()
 
+  // Build identity (audit ST-2): surfaced so operators triaging an incident
+  // can verify which version of the page they're looking at. Both values
+  // are baked at Docker build time (apps/status/Dockerfile + next.config.ts).
+  // - `local` / `unknown` indicate a dev build, never a deployed image.
+  // - SHA is rendered as a 7-char short ref to keep the footer tidy.
+  const rawSha = process.env.NEXT_PUBLIC_COMMIT_SHA || 'local'
+  const shortSha = rawSha === 'local' ? 'local' : rawSha.slice(0, 7)
+  const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE || 'unknown'
+
   return (
     <footer className="border-t border-border py-8 mt-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -119,7 +128,7 @@ export function Footer({ siteName }: { siteName: string }) {
             <Activity className="size-4" />
             <span>{siteName}</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
             <Link
               href="/feed.xml"
               className="flex items-center gap-1.5 hover:text-foreground transition-colors"
@@ -128,6 +137,13 @@ export function Footer({ siteName }: { siteName: string }) {
               <Rss className="size-3.5" />
               <span>RSS</span>
             </Link>
+            <span
+              className="font-mono text-xs"
+              data-testid="build-info"
+              title={`commit ${rawSha} · built ${buildDate}`}
+            >
+              v{shortSha} · built {buildDate}
+            </span>
             <span>&copy; {currentYear} {siteName.replace(/ (System )?Status$/, '')}. All rights reserved.</span>
           </div>
         </div>

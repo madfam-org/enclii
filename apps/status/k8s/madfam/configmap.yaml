@@ -122,6 +122,14 @@ data:
         "description": "Platform documentation"
       },
       {
+        "name": "Analytics Proxy",
+        "url": "https://analytics.madfam.io/static/array.js",
+        "href": "https://analytics.madfam.io",
+        "group": "Enclii",
+        "family": "MADFAM Platform",
+        "description": "PostHog analytics proxy"
+      },
+      {
         "name": "Auth",
         "url": "https://auth.madfam.io/health",
         "href": "https://auth.madfam.io",
@@ -549,5 +557,9 @@ data:
         "family": "MADFAM Platform",
         "description": "/v1/recommendations + /v1/pmf endpoints consumed by every product's billing module"
       },
-    {"name": "Symbiosis HCM", "url": "https://hcm.madfam.io", "group": "Symbiosis HCM"}
-  ]
+      {
+        "name": "Symbiosis HCM",
+        "url": "https://hcm.madfam.io",
+        "group": "Symbiosis HCM"
+      }
+    ]
