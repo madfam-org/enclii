@@ -118,15 +118,27 @@ The 404-rather-than-403 choice keeps the impersonation surface opaque: a master 
 
 **Tests**: 27 new repo subtests (`team match` / `team mismatch` / `no rows` / `db error` × 7 methods including `GetTeamID`) + 9 handler subtests (acting-as / no-acting-as for each scoped list endpoint, plus four cases for the `enforceActingTeamForProject` helper). Full suite green.
 
-#### Round 5 — partial coverage
+#### Round 5 — partial coverage (resolved in Round 6)
 
 `GET /v1/audit` (consolidated audit surface, `internal/audit/handler.go`) was **not scoped** in this round. Rationale: the consolidated handler aggregates across six upstreams (Janua sessions, Switchyard `audit_logs`+`deployment_lifecycle_events`, four nexus-api Selva ledgers) via the `Aggregator`/`Source` interface. Each source has its own filtering vocabulary (Janua filters on user sub, Selva on resource path, etc.) — none accepts `team_id` today. Threading a `TeamID` through `audit.Query` and into every per-source `Fetch()` is a non-trivial cross-cutting change that's out of scope for "small repetitive per-handler updates".
 
-The legacy single-source view (`GET /v1/activity`, backed by `AuditLogRepository`) **is scoped** and gives the operator an honest tenant-bound view of switchyard mutations. The consolidated `/v1/audit` endpoint remains unscoped pending a follow-up that either (a) adds a `TeamID` field to `audit.Query` and a per-source mapper, or (b) post-filters the aggregator output by resolving each event's tenant from its source-specific identifiers.
+The legacy single-source view (`GET /v1/activity`, backed by `AuditLogRepository`) **is scoped** and gives the operator an honest tenant-bound view of switchyard mutations. ✅ Round 6 (below) lands the deferred consolidated-aggregator scoping using both push-down (switchyard source) and post-filter (Janua, Nexus) strategies.
 
-6. ⏳ **Next**: tenant-filter on consolidated `/v1/audit` — see "Round 5 — partial coverage" above.
-6. ⏳ **Next**: backfill migration that creates `teams` rows for each white-glove client and re-parents existing `projects` (currently `team_id IS NULL`) onto the right tenant. Idempotent; one-shot.
-7. ⏳ **Cleanup**: remove the "personal account" synthetic scope from the admin codepath entirely once tenant-filter middleware is live; reconfirm non-admin behavior in tests.
+### Round 6 — audit aggregator scoping (`<this commit>`)
+
+Threads `acting_team_id` through the consolidated `/v1/audit` aggregator that Round 5 explicitly punted on. Hybrid approach:
+
+- **`audit.Query` gains a `TeamID *uuid.UUID` field** (`internal/audit/event.go`). Nil = unscoped. The handler reads `middleware.ActingTeamID(c)` via the new `ActingTeamReader` shim (`audit.GinActingTeamReader`) and stamps it on the query for both `List` and `Export`.
+- **Switchyard source push-down** (`internal/audit/switchyard_source.go`): `audit_logs` query gains the same `project_id IN (… team_id = $N) OR acting_on_behalf_of_team_id = $N` clause that `AuditLogRepository.QueryByTeam` uses; `deployment_lifecycle_events` gains the same `project_id IN (…)` clause. `acting_on_behalf_of_team_id` is now read on every row and surfaced via `AuditEvent.ActingTeamID` for the "as &lt;tenant&gt;" badge enrichment.
+- **Janua + Selva post-filter**: neither upstream accepts a `team_id` parameter today, so the aggregator post-filters via a new `TeamResolver` interface (satisfied by `db.ProjectRepository.GetTeamID`) wrapped in a per-request memoising cache (`audit.cachingTeamResolver`). A row survives if its `ActingTeamID` matches OR its `projectID` resolves to the team. Conservative default: rows with no project linkage and no acting-team are dropped under team scoping (this is the documented Janua-login behaviour — those events have no tenant proof, so they don't appear in tenant-scoped reads).
+- **CSV export** (`/v1/audit/export`) gains a trailing `acting_team_id` column and applies the same scoping. Existing column-position consumers keep working.
+- **Tests**: 14 new subtests in `internal/audit/team_scope_test.go` covering switchyard SQL push-down (TeamID nil / match / mismatch), Janua post-filter fallback, Nexus post-filter fallback, aggregator-level keep/drop logic across `ActingTeamID` and `projectID` paths, no-resolver-wired safety net, handler dispatch (acting-as / no-session / query-threading white-box), and the caching resolver dedup.
+
+Wiring lives in `cmd/api/main.go`: `audit.NewAggregator(...).WithTeamResolver(repos.Projects)` plus `auditH.SetActingReader(audit.GinActingTeamReader{})`.
+
+6. ✅ **Round 6**: tenant-filter on consolidated `/v1/audit` — landed.
+7. ⏳ **Next**: backfill migration that creates `teams` rows for each white-glove client and re-parents existing `projects` (currently `team_id IS NULL`) onto the right tenant. Idempotent; one-shot.
+8. ⏳ **Cleanup**: remove the "personal account" synthetic scope from the admin codepath entirely once tenant-filter middleware is live; reconfirm non-admin behavior in tests.
 
 ## Implementation references
 

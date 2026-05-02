@@ -26,28 +26,34 @@ func TestSwitchyardSource_FetchesAuditLogsAndLifecycleEvents(t *testing.T) {
 
 	// Seed audit_logs with a single mutation row (login) and
 	// lifecycle_events with a deploy_healthy row.
+	// XC-2 Round 6: SELECT now also reads project_id, acting_on_behalf_of_team_id
+	// (audit_logs) and project_id (lifecycle_events).
 	auditRows := sqlmock.NewRows([]string{
 		"id", "timestamp", "actor_email", "actor_id", "action",
 		"resource_type", "resource_id", "resource_name",
 		"outcome", "ip_address", "user_agent", "context", "metadata",
+		"project_id", "acting_on_behalf_of_team_id",
 	}).AddRow(
 		uuid.New().String(),
 		time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC),
 		"alice@x.com", uuid.New().String(), "login",
 		"auth", "/v1/auth/login", "",
 		"success", "10.0.0.1", "curl/8", []byte(`{}`), []byte(`{}`),
+		nil, nil,
 	)
 	mock.ExpectQuery("SELECT .* FROM audit_logs").WillReturnRows(auditRows)
 
 	lcRows := sqlmock.NewRows([]string{
 		"id", "created_at", "event_type", "source", "message",
 		"repo_full_name", "commit_sha", "branch", "target_env", "metadata",
+		"project_id",
 	}).AddRow(
 		uuid.New().String(),
 		time.Date(2026, 4, 1, 12, 5, 0, 0, time.UTC),
 		"deploy_healthy", "argocd", "deployed",
 		"madfam-org/enclii", "abcdef1234567", "main", "production",
 		[]byte(`{"sender":"github-actions"}`),
+		nil,
 	)
 	mock.ExpectQuery("SELECT .* FROM deployment_lifecycle_events").WillReturnRows(lcRows)
 
@@ -104,18 +110,21 @@ func TestSwitchyardSource_DeployFailureOutcome(t *testing.T) {
 		"id", "timestamp", "actor_email", "actor_id", "action",
 		"resource_type", "resource_id", "resource_name",
 		"outcome", "ip_address", "user_agent", "context", "metadata",
+		"project_id", "acting_on_behalf_of_team_id",
 	})
 	mock.ExpectQuery("SELECT .* FROM audit_logs").WillReturnRows(auditRows)
 
 	lcRows := sqlmock.NewRows([]string{
 		"id", "created_at", "event_type", "source", "message",
 		"repo_full_name", "commit_sha", "branch", "target_env", "metadata",
+		"project_id",
 	}).AddRow(
 		uuid.New().String(),
 		time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC),
 		"build_failed", "github-actions", "compile error",
 		"madfam-org/enclii", "abc1234", "main", "production",
 		[]byte(`{}`),
+		nil,
 	)
 	mock.ExpectQuery("SELECT .* FROM deployment_lifecycle_events").WillReturnRows(lcRows)
 
@@ -139,6 +148,7 @@ func TestSwitchyardSource_DetailsPreserveContextJSON(t *testing.T) {
 		"id", "timestamp", "actor_email", "actor_id", "action",
 		"resource_type", "resource_id", "resource_name",
 		"outcome", "ip_address", "user_agent", "context", "metadata",
+		"project_id", "acting_on_behalf_of_team_id",
 	}).AddRow(
 		uuid.New().String(),
 		time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC),
@@ -147,6 +157,7 @@ func TestSwitchyardSource_DetailsPreserveContextJSON(t *testing.T) {
 		"success", "10.0.0.1", "curl/8",
 		[]byte(`{"method":"POST","status_code":201}`),
 		[]byte(`{"route":"/v1/services/:id/deploy"}`),
+		nil, nil,
 	)
 	mock.ExpectQuery("SELECT .* FROM audit_logs").WillReturnRows(auditRows)
 
@@ -156,6 +167,7 @@ func TestSwitchyardSource_DetailsPreserveContextJSON(t *testing.T) {
 	lcRows := sqlmock.NewRows([]string{
 		"id", "created_at", "event_type", "source", "message",
 		"repo_full_name", "commit_sha", "branch", "target_env", "metadata",
+		"project_id",
 	})
 	mock.ExpectQuery("SELECT .* FROM deployment_lifecycle_events").WillReturnRows(lcRows)
 

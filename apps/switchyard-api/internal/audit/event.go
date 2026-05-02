@@ -3,6 +3,8 @@ package audit
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Source identifies which upstream log supplied an AuditEvent.
@@ -76,7 +78,36 @@ type AuditEvent struct {
 	Outcome    string          `json:"outcome"`               // success | failure | denied
 	RequestID  string          `json:"request_id,omitempty"`  // upstream correlation id (if present)
 	Details    json.RawMessage `json:"details,omitempty"`     // raw source payload; schema varies by Source
+
+	// ActingTeamID is set on rows that were emitted while a master admin was
+	// acting on behalf of a tenant ("as <tenant>" badge). Today only the
+	// switchyard source populates this from audit_logs.acting_on_behalf_of_team_id
+	// (column added in migration 023_admin_acting_sessions). Selva and Janua
+	// rows leave it nil — they don't currently propagate the acting-as flag.
+	//
+	// XC-2 Round 6: surfaced separately from Details so the UI drawer can
+	// render the badge without re-parsing the JSON blob.
+	ActingTeamID *uuid.UUID `json:"acting_team_id,omitempty"`
+
+	// projectID is an internal-only field the aggregator consults when post-
+	// filtering by team for sources that can't push the filter to their
+	// upstream. It's never serialised — the “-” JSON tag keeps it out of the
+	// wire response and out of the CSV exporter (which uses explicit columns).
+	// Sources that know the project_id of a row should populate it; sources
+	// that don't (Janua) leave it zero, in which case the team post-filter
+	// drops the row when TeamID scoping is active.
+	projectID uuid.UUID `json:"-"`
 }
+
+// ProjectID exposes the (otherwise private) projectID field for use by the
+// aggregator's post-filter. Kept on the package internal surface so external
+// callers don't grow a dependency on it.
+func (e *AuditEvent) ProjectID() uuid.UUID { return e.projectID }
+
+// SetProjectID lets sources stamp the project id on each event during Fetch.
+// Used by SwitchyardSource (audit_logs.project_id, deployment_lifecycle_events.project_id)
+// and by NexusClient when nexus-api propagates a project id in details.
+func (e *AuditEvent) SetProjectID(id uuid.UUID) { e.projectID = id }
 
 // Query parameterizes a /v1/audit request. The aggregator uses this to
 // fan out to each source, and each source-specific client consumes only
@@ -97,6 +128,21 @@ type Query struct {
 	Sources    []string // empty = all
 	Limit      int      // capped at MaxLimit by the handler
 	Cursor     *time.Time
+
+	// TeamID, when non-nil, restricts every source's output to rows whose
+	// project_id belongs to that team. Set by the handler from
+	// middleware.ActingTeamID(c) — i.e. only when a master admin is currently
+	// acting on behalf of a tenant. Sources that can push the filter to their
+	// upstream do so; sources that can't (Janua, Nexus today) emit unscoped
+	// and the aggregator post-filters via the optional TeamResolver.
+	//
+	// nil = unscoped (admin or non-acting-as caller). Non-admin callers never
+	// reach this field — the handler's RBAC narrows them to their own actor
+	// instead, which is a different (and usually narrower) filter.
+	//
+	// XC-2 Round 6: this is the punted piece from Round 5 — see
+	// claudedocs/master-admin-tenant-switching.md.
+	TeamID *uuid.UUID
 }
 
 // MaxLimit bounds a single /v1/audit response. Pager fetches limit+1 from

@@ -29,6 +29,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	telemetry "github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
@@ -37,7 +38,6 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
-	telemetry "github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/validation"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/webhooks"
@@ -624,8 +624,14 @@ func main() {
 		} else {
 			logrus.Warn("⚠ Audit aggregator: Nexus source DISABLED (NEXUS_API_URL/TOKEN not set)")
 		}
-		auditAgg := audit.NewAggregator(logrus.StandardLogger(), auditSources...)
+		// XC-2 Round 6: aggregator gets a TeamResolver so non-team-aware
+		// sources (Janua, Nexus today) can be post-filtered when a master
+		// admin is acting-as a tenant. Switchyard source still pushes the
+		// filter to SQL — this is just the safety net for the others.
+		auditAgg := audit.NewAggregator(logrus.StandardLogger(), auditSources...).
+			WithTeamResolver(repos.Projects)
 		auditH := audit.NewHandler(auditAgg, audit.NewGinAuthz(), logrus.StandardLogger())
+		auditH.SetActingReader(audit.GinActingTeamReader{})
 		apiHandler.SetAuditHandler(auditH)
 		logrus.Infof("✓ Consolidated audit surface wired at /v1/audit (sources=%d)", len(auditSources))
 	}

@@ -2,7 +2,9 @@ package audit
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -36,6 +38,22 @@ func (g *ginAuthzChecker) IsAdmin(c *gin.Context) bool {
 		return r == types.RoleAdmin
 	}
 	return false
+}
+
+// GinActingTeamReader is the production ActingTeamReader. It defers to
+// middleware.ActingTeamID, which reads the value the ActingAsMiddleware
+// stashed in the gin context after validating the active acting-as session.
+//
+// Kept as a zero-value struct (rather than a function) so callers wire it
+// uniformly with NewGinAuthz.
+type GinActingTeamReader struct{}
+
+// ActingTeamID resolves the team a master admin is currently acting on
+// behalf of, or (uuid.Nil, false) if no session is active. Non-admin
+// callers always observe (uuid.Nil, false) — the middleware only sets the
+// context key after a defense-in-depth admin-role check.
+func (GinActingTeamReader) ActingTeamID(c *gin.Context) (uuid.UUID, bool) {
+	return middleware.ActingTeamID(c)
 }
 
 // ActorSub returns the caller's stable identifier for self-RBAC forcing.

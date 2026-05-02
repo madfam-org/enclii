@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // SwitchyardSource exposes Switchyard's local audit tables as a single
@@ -85,6 +87,13 @@ func (s *SwitchyardSource) Fetch(ctx context.Context, q Query) ([]AuditEvent, er
 // fetchAuditLogs pulls the middleware-written rows. These already have a
 // mature schema (actor_email, outcome, action, resource_*) that maps
 // almost 1:1 onto AuditEvent; the only translation is Category.
+//
+// XC-2 Round 6: when q.TeamID is set, the WHERE clause restricts to rows
+// whose project_id belongs to that team OR whose acting_on_behalf_of_team_id
+// already names that team (the latter covers cross-tenant operator actions
+// where the row was logged before any project linkage was established —
+// e.g. tenant.enter / tenant.exit themselves). Mirrors AuditLogRepository.
+// QueryByTeam from Round 5; see internal/db/audit_log_repository.go:53.
 func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit int) ([]AuditEvent, error) {
 	var conditions []string
 	var args []interface{}
@@ -116,6 +125,14 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 		args = append(args, q.Target)
 		argN++
 	}
+	if q.TeamID != nil {
+		conditions = append(conditions, fmt.Sprintf(
+			"(project_id IN (SELECT id FROM projects WHERE team_id = $%d) OR acting_on_behalf_of_team_id = $%d)",
+			argN, argN,
+		))
+		args = append(args, *q.TeamID)
+		argN++
+	}
 
 	where := ""
 	if len(conditions) > 0 {
@@ -125,11 +142,17 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 	// try to coerce the empty-string default back into inet — that path
 	// fails with `invalid input syntax for type inet: ""` and was the cause
 	// of /v1/audit returning a "switchyard upstream unavailable" banner.
+	//
+	// project_id and acting_on_behalf_of_team_id are nullable uuids; we
+	// cast both to text and rely on sql.NullString below so a NULL surfaces
+	// as the zero AuditEvent.projectID / nil ActingTeamID rather than a
+	// scan error.
 	query := fmt.Sprintf(`
 		SELECT id, timestamp, COALESCE(actor_email,''), COALESCE(actor_id::text,''),
 			action, resource_type, COALESCE(resource_id,''), COALESCE(resource_name,''),
 			COALESCE(outcome,'success'), COALESCE(ip_address::text,''), COALESCE(user_agent,''),
-			context, metadata
+			context, metadata,
+			project_id::text, acting_on_behalf_of_team_id::text
 		FROM audit_logs
 		%s
 		ORDER BY timestamp DESC
@@ -150,10 +173,12 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 			outcome, ip, ua                                                         string
 			ts                                                                      time.Time
 			contextJSON, metadataJSON                                               []byte
+			projectIDStr, actingTeamStr                                             sql.NullString
 		)
 		if err := rows.Scan(&id, &ts, &actorEmail, &actorID, &action,
 			&resourceType, &resourceID, &resourceName,
-			&outcome, &ip, &ua, &contextJSON, &metadataJSON); err != nil {
+			&outcome, &ip, &ua, &contextJSON, &metadataJSON,
+			&projectIDStr, &actingTeamStr); err != nil {
 			return nil, err
 		}
 
@@ -204,7 +229,7 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 			actor = actorEmail
 		}
 
-		out = append(out, AuditEvent{
+		ev := AuditEvent{
 			Timestamp:  ts,
 			Actor:      actor,
 			ActorEmail: actorEmail,
@@ -214,7 +239,21 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 			Target:     composeTarget(resourceType, resourceID),
 			Outcome:    normalizeOutcome(outcome),
 			Details:    raw,
-		})
+		}
+		// Stamp project + acting-team for downstream filtering and "as <tenant>"
+		// badge enrichment. Both come from columns on audit_logs; either may
+		// be NULL on legacy rows, in which case we leave the fields zero.
+		if projectIDStr.Valid {
+			if pid, perr := uuid.Parse(projectIDStr.String); perr == nil {
+				ev.SetProjectID(pid)
+			}
+		}
+		if actingTeamStr.Valid {
+			if tid, terr := uuid.Parse(actingTeamStr.String); terr == nil {
+				ev.ActingTeamID = &tid
+			}
+		}
+		out = append(out, ev)
 	}
 	return out, rows.Err()
 }
@@ -223,6 +262,12 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 // direct "actor" — they're emitted by CI (GitHub Actions webhook) — so
 // we derive the actor from the metadata payload when present, else fall
 // back to the literal "source" column (e.g. "github-actions").
+//
+// XC-2 Round 6: when q.TeamID is set, scope to rows whose project_id
+// belongs to that team. lifecycle_events.project_id is nullable (CI events
+// can land before the onboarding registry resolves the project), so a row
+// with NULL project_id is excluded from the team-scoped view — operators
+// looking at unbound CI traffic should drop out of acting-as mode.
 func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit int) ([]AuditEvent, error) {
 	var conditions []string
 	var args []interface{}
@@ -258,6 +303,14 @@ func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit in
 		args = append(args, q.Actor)
 		argN++
 	}
+	if q.TeamID != nil {
+		conditions = append(conditions, fmt.Sprintf(
+			"project_id IN (SELECT id FROM projects WHERE team_id = $%d)",
+			argN,
+		))
+		args = append(args, *q.TeamID)
+		argN++
+	}
 
 	where := ""
 	if len(conditions) > 0 {
@@ -265,7 +318,8 @@ func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit in
 	}
 	query := fmt.Sprintf(`
 		SELECT id, created_at, event_type, source, COALESCE(message,''),
-			repo_full_name, commit_sha, branch, COALESCE(target_env,''), metadata
+			repo_full_name, commit_sha, branch, COALESCE(target_env,''), metadata,
+			project_id::text
 		FROM deployment_lifecycle_events
 		%s
 		ORDER BY created_at DESC
@@ -285,9 +339,11 @@ func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit in
 			id, eventType, source, message, repo, sha, branch, env string
 			ts                                                     time.Time
 			metadataJSON                                           []byte
+			projectIDStr                                           sql.NullString
 		)
 		if err := rows.Scan(&id, &ts, &eventType, &source, &message,
-			&repo, &sha, &branch, &env, &metadataJSON); err != nil {
+			&repo, &sha, &branch, &env, &metadataJSON,
+			&projectIDStr); err != nil {
 			return nil, err
 		}
 
@@ -335,7 +391,7 @@ func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit in
 			actor = source // "github-actions" / "argocd" / "enclii-cli"
 		}
 
-		out = append(out, AuditEvent{
+		ev := AuditEvent{
 			Timestamp: ts,
 			Actor:     actor,
 			Source:    SourceSwitchyard,
@@ -344,7 +400,13 @@ func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit in
 			Target:    fmt.Sprintf("%s@%s", repo, shortSHA(sha)),
 			Outcome:   outcome,
 			Details:   raw,
-		})
+		}
+		if projectIDStr.Valid {
+			if pid, perr := uuid.Parse(projectIDStr.String); perr == nil {
+				ev.SetProjectID(pid)
+			}
+		}
+		out = append(out, ev)
 	}
 	return out, rows.Err()
 }

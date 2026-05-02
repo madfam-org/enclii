@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -40,6 +41,12 @@ type Handler struct {
 	// auth package. In production we wire it to a function that reads
 	// c.Get("role") and compares to types.RoleAdmin.
 	authz AuthzChecker
+
+	// actingReader, when non-nil, scopes admin queries to the tenant the
+	// caller is currently acting on behalf of (XC-2 Round 6). Nil = behave
+	// like Round 5 did, i.e. /v1/audit returns the unscoped cross-tenant
+	// view. Wired by SetActingReader so tests can stub it independently.
+	actingReader ActingTeamReader
 }
 
 // AuthzChecker abstracts the admin check so this package doesn't depend
@@ -49,9 +56,24 @@ type AuthzChecker interface {
 	ActorSub(c *gin.Context) string // Janua sub / user_id string for the caller
 }
 
+// ActingTeamReader resolves the team a master admin is currently acting on
+// behalf of (XC-2). Implemented in production by a thin wrapper around
+// middleware.ActingTeamID; abstracted here so the audit package doesn't
+// import switchyard's middleware package directly (which would cycle through
+// internal/db).
+type ActingTeamReader interface {
+	ActingTeamID(c *gin.Context) (uuid.UUID, bool)
+}
+
 // NewHandler wires a Handler.
 func NewHandler(agg *Aggregator, authz AuthzChecker, logger logrus.FieldLogger) *Handler {
 	return &Handler{aggregator: agg, authz: authz, logger: logger}
+}
+
+// SetActingReader wires the master-admin tenant-scope reader (XC-2 Round 6).
+// Pass nil to disable scoping (legacy Round 5 behaviour).
+func (h *Handler) SetActingReader(r ActingTeamReader) {
+	h.actingReader = r
 }
 
 // listResponse is the JSON shape emitted by GET /v1/audit.
@@ -102,10 +124,22 @@ func (h *Handler) List(c *gin.Context) {
 		q.Actor = callerSub
 	}
 
+	// XC-2 Round 6: when a master admin is acting-as a tenant, narrow the
+	// aggregator's output to that team's rows. Non-admins (already actor-
+	// narrowed above) and admins not acting-as anything fall through with
+	// q.TeamID == nil and the aggregator behaves exactly as before.
+	if h.actingReader != nil {
+		if teamID, ok := h.actingReader.ActingTeamID(c); ok {
+			tid := teamID
+			q.TeamID = &tid
+		}
+	}
+
 	span.SetAttributes(
 		attribute.Int("audit.limit", q.Limit),
 		attribute.Bool("audit.is_admin", isAdmin),
 		attribute.Bool("audit.has_cursor", q.Cursor != nil),
+		attribute.Bool("audit.team_scoped", q.TeamID != nil),
 		attribute.StringSlice("audit.sources", nonNilSlice(q.Sources)),
 		attribute.StringSlice("audit.categories", nonNilSlice(q.Categories)),
 	)
@@ -157,6 +191,15 @@ func (h *Handler) Export(c *gin.Context) {
 	q.Limit = MaxLimit
 	q.Cursor = nil
 
+	// XC-2 Round 6: same team scoping as List. CSV export of "all events"
+	// must not leak rows from other tenants while the caller is acting-as.
+	if h.actingReader != nil {
+		if teamID, ok := h.actingReader.ActingTeamID(c); ok {
+			tid := teamID
+			q.TeamID = &tid
+		}
+	}
+
 	filename := fmt.Sprintf("enclii-audit-%s.csv", time.Now().UTC().Format("20060102-150405"))
 	c.Writer.Header().Set("Content-Type", "text/csv")
 	c.Writer.Header().Set("Content-Disposition", "attachment; filename="+filename)
@@ -165,10 +208,14 @@ func (h *Handler) Export(c *gin.Context) {
 	w := csv.NewWriter(c.Writer)
 	defer w.Flush()
 
-	// Header row.
+	// Header row. acting_team_id is the XC-2 Round 6 enrichment column —
+	// non-empty only on rows emitted while a master admin was acting-as
+	// the named tenant. Appended at the end so existing CSV consumers
+	// that index by position keep working.
 	if err := w.Write([]string{
 		"timestamp", "actor", "actor_email", "source", "category",
 		"action", "target", "outcome", "request_id", "details",
+		"acting_team_id",
 	}); err != nil {
 		// Too late to change status — just log and return.
 		if h.logger != nil {
@@ -202,6 +249,10 @@ func (h *Handler) Export(c *gin.Context) {
 			if len(ev.Details) > 0 {
 				details = string(ev.Details)
 			}
+			actingTeam := ""
+			if ev.ActingTeamID != nil {
+				actingTeam = ev.ActingTeamID.String()
+			}
 			_ = w.Write([]string{
 				ev.Timestamp.UTC().Format(time.RFC3339Nano),
 				ev.Actor,
@@ -213,6 +264,7 @@ func (h *Handler) Export(c *gin.Context) {
 				ev.Outcome,
 				ev.RequestID,
 				details,
+				actingTeam,
 			})
 			written++
 		}

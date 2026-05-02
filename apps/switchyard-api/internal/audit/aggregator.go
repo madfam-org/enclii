@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,8 +30,9 @@ type Source interface {
 // correct for a SOC 2 audit surface — we'd rather show "we couldn't
 // reach Janua right now" than a 500 that hides the rest.
 type Aggregator struct {
-	sources []Source
-	logger  logrus.FieldLogger
+	sources      []Source
+	logger       logrus.FieldLogger
+	teamResolver TeamResolver // optional — when non-nil, enables team post-filter
 }
 
 // NewAggregator wires a fixed set of sources. Callers typically build
@@ -40,6 +42,16 @@ func NewAggregator(logger logrus.FieldLogger, sources ...Source) *Aggregator {
 		sources: sources,
 		logger:  logger,
 	}
+}
+
+// WithTeamResolver enables the XC-2 Round 6 post-filter for sources that
+// can't push a team_id filter to their upstream (Janua, Nexus today). The
+// switchyard source still scopes via SQL JOIN regardless. Pass nil to disable
+// post-filtering — the aggregator will then emit any team-tagged source's
+// rows verbatim and drop nothing on the basis of TeamResolver lookups.
+func (a *Aggregator) WithTeamResolver(r TeamResolver) *Aggregator {
+	a.teamResolver = r
+	return a
 }
 
 // FetchResult holds the merged page plus per-source diagnostic info.
@@ -102,6 +114,24 @@ func (a *Aggregator) Fetch(ctx context.Context, q Query) (*FetchResult, error) {
 		merged = append(merged, r.events...)
 	}
 
+	// XC-2 Round 6: team scoping post-filter. Sources that pushed the team
+	// filter to their upstream (currently only the switchyard source) emit
+	// only matching rows already; this loop is a no-op for them. Sources
+	// that emit unscoped (Janua, Nexus today) get filtered here via the
+	// per-event projectID + a per-request team lookup cache.
+	//
+	// Performance note: for each row from a non-team-aware source we do
+	// at most one ProjectRepository.GetTeamID lookup, deduped by the
+	// caching resolver. At current data volumes (≤2.5k rows/page across
+	// all sources) this is at worst a few dozen indexed lookups per
+	// request — negligible compared to the per-source HTTP roundtrips
+	// we already paid. TODO: revisit if Janua/Nexus rows-per-page grow
+	// past ~10k unique projects, at which point pushing a team filter to
+	// nexus-api would amortise better than post-filtering.
+	if q.TeamID != nil && a.teamResolver != nil {
+		merged = a.applyTeamFilter(ctx, merged, *q.TeamID)
+	}
+
 	// DESC merge. Go's sort is stable, and we rely on that only for
 	// reproducibility (events with equal timestamps will page in the
 	// same order across calls).
@@ -126,4 +156,43 @@ func (a *Aggregator) Fetch(ctx context.Context, q Query) (*FetchResult, error) {
 		NextCursor:   next,
 		SourceErrors: srcErrs,
 	}, nil
+}
+
+// applyTeamFilter walks the merged event slice and keeps only rows that
+// belong to teamID. The keep predicate (in order):
+//
+//  1. ev.ActingTeamID == teamID — switchyard rows emitted while a master
+//     admin was acting-as that tenant; trustworthy because the column was
+//     written under explicit operator intent.
+//  2. ev.projectID resolves (via the cached TeamResolver) to teamID.
+//
+// Any other state — projectID is uuid.Nil, project unknown, lookup error,
+// or team mismatch — drops the row. This is the conservative default for
+// tenant isolation: when in doubt, don't show it.
+func (a *Aggregator) applyTeamFilter(ctx context.Context, events []AuditEvent, teamID uuid.UUID) []AuditEvent {
+	resolver := newCachingTeamResolver(a.teamResolver)
+	out := events[:0] // reuse backing array — events is local to Fetch
+	for _, ev := range events {
+		if ev.ActingTeamID != nil && *ev.ActingTeamID == teamID {
+			out = append(out, ev)
+			continue
+		}
+		pid := ev.projectID
+		if pid == uuid.Nil {
+			// No project linkage on this row → can't prove ownership →
+			// drop. Janua login events fall in this bucket today; that's
+			// expected and documented under "Round 6 — partial coverage".
+			continue
+		}
+		t, err := resolver.GetTeamID(ctx, pid)
+		if err != nil || t == uuid.Nil {
+			// Unknown project, lookup error, or NULL team_id (personal
+			// account project) — drop under the conservative default.
+			continue
+		}
+		if t == teamID {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
