@@ -121,10 +121,14 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 	if len(conditions) > 0 {
 		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
+	// ip_address is `inet`. Cast to text BEFORE COALESCE so Postgres doesn't
+	// try to coerce the empty-string default back into inet — that path
+	// fails with `invalid input syntax for type inet: ""` and was the cause
+	// of /v1/audit returning a "switchyard upstream unavailable" banner.
 	query := fmt.Sprintf(`
 		SELECT id, timestamp, COALESCE(actor_email,''), COALESCE(actor_id::text,''),
 			action, resource_type, COALESCE(resource_id,''), COALESCE(resource_name,''),
-			COALESCE(outcome,'success'), COALESCE(ip_address,''), COALESCE(user_agent,''),
+			COALESCE(outcome,'success'), COALESCE(ip_address::text,''), COALESCE(user_agent,''),
 			context, metadata
 		FROM audit_logs
 		%s

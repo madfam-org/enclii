@@ -70,6 +70,73 @@ func TestAuditLogRepository_Log(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	// Regression test for the `pq: invalid input syntax for type inet: ""`
+	// crash hit on app.enclii.dev /v1/audit. When the request has no
+	// resolvable client IP, the writer must bind nil (SQL NULL) — not "".
+	t.Run("empty ip bound as nil", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		actorID := uuid.New()
+		log := &types.AuditLog{
+			ActorID:      &actorID,
+			ActorEmail:   "user@example.com",
+			ActorRole:    "admin",
+			Action:       "deploy",
+			ResourceType: "service",
+			ResourceID:   uuid.New().String(),
+			ResourceName: "my-service",
+			IPAddress:    "", // <-- the repro case
+			UserAgent:    "enclii-cli/1.0",
+			Outcome:      "success",
+			Context:      map[string]interface{}{},
+			Metadata:     map[string]interface{}{},
+		}
+
+		// Position 12 (1-indexed) is ip_address per the INSERT column
+		// list. We pin it to nil and leave the rest loose.
+		mock.ExpectExec(`INSERT INTO audit_logs`).
+			WithArgs(
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), nil, sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.Log(context.Background(), log)
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("whitespace ip bound as nil", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		log := &types.AuditLog{
+			ActorEmail: "user@example.com",
+			ActorRole:  "admin",
+			Action:     "deploy",
+			IPAddress:  "   ",
+			Outcome:    "success",
+			Context:    map[string]interface{}{},
+			Metadata:   map[string]interface{}{},
+		}
+
+		mock.ExpectExec(`INSERT INTO audit_logs`).
+			WithArgs(
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), nil, sqlmock.AnyArg(),
+				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.Log(context.Background(), log)
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("db error", func(t *testing.T) {
 		repo, mock, cleanup := newAuditLogMockDB(t)
 		defer cleanup()
@@ -124,6 +191,32 @@ func TestAuditLogRepository_Query(t *testing.T) {
 		assert.Len(t, results, 1)
 		assert.Equal(t, "deploy", results[0].Action)
 		assert.Equal(t, "user@test.com", results[0].ActorEmail)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("null ip scanned as empty string", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		now := time.Now().Truncate(time.Microsecond)
+		ctxJSON, _ := json.Marshal(map[string]interface{}{})
+		metaJSON, _ := json.Marshal(map[string]interface{}{})
+		actorID := uuid.New()
+
+		rows := sqlmock.NewRows(auditLogColumns).
+			AddRow(uuid.New(), now, &actorID, "user@test.com", "admin",
+				"deploy", "service", "svc-123", "my-service",
+				nil, nil, nil, "cli/1.0", // <-- ip_address is NULL
+				"success", ctxJSON, metaJSON)
+
+		mock.ExpectQuery(`SELECT id, timestamp, actor_id, actor_email`).
+			WithArgs(50, 0).
+			WillReturnRows(rows)
+
+		results, err := repo.Query(context.Background(), map[string]interface{}{}, 50, 0)
+		assert.NoError(t, err)
+		assert.Len(t, results, 1)
+		assert.Equal(t, "", results[0].IPAddress)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

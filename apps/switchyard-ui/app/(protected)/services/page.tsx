@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { usePolling } from "@/hooks/use-polling";
 import { POLLING_SLOW } from "@/lib/constants";
 import Link from "next/link";
@@ -22,16 +22,35 @@ interface ServiceOverview {
   replicas: string;
 }
 
-interface DashboardResponse {
-  stats: any;
-  activities: any[];
-  services: ServiceOverview[];
+// Subset of fields we need from /v1/projects/:slug/services payload.
+// Must match the SDK Service shape (see packages/sdk-go/pkg/types/types.go).
+interface ApiProject {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface ApiService {
+  id: string;
+  name: string;
+  health?: string;             // "healthy" | "unhealthy" | "unknown" | ""
+  status?: string;
+  desired_replicas?: number;
+  ready_replicas?: number;
+  auto_deploy_env?: string;
+}
+
+function normalizeStatus(health: string | undefined): ServiceStatus {
+  if (health === 'healthy') return 'healthy';
+  if (health === 'unhealthy') return 'unhealthy';
+  return 'unknown';
 }
 
 export default function ServicesPage() {
   const [services, setServices] = useState<ServiceOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [partialFailures, setPartialFailures] = useState<string[]>([]);
 
   // Filter and sort state
   const [filters, setFilters] = useState<FilterState>({
@@ -44,22 +63,79 @@ export default function ServicesPage() {
     order: 'asc',
   });
 
-  const fetchServices = async () => {
+  // Aggregate services across visible projects.
+  //
+  // Why not /v1/dashboard/stats? That endpoint bundles services with
+  // dashboard stats + activities; if any sibling query stalls, services
+  // get held hostage by the parent errgroup. Fanning out per-project
+  // here lets one slow project fail without blocking the whole page.
+  const fetchServices = useCallback(async () => {
     try {
       setError(null);
-      const data = await apiGet<DashboardResponse>(`/v1/dashboard/stats`);
-      setServices(data.services || []);
+      const projectsResp = await apiGet<{ projects: ApiProject[] }>('/v1/projects');
+      const projects = projectsResp.projects || [];
+
+      if (projects.length === 0) {
+        setServices([]);
+        setPartialFailures([]);
+        setLoading(false);
+        return;
+      }
+
+      // Promise.allSettled — never let a single project's 5xx black out
+      // the whole list. Surface failed project slugs so the user knows
+      // the data is incomplete instead of silently truncating it.
+      const results = await Promise.allSettled(
+        projects.map((p) =>
+          apiGet<{ services: ApiService[] }>(`/v1/projects/${p.slug}/services`).then(
+            (resp) => ({ project: p, services: resp.services || [] })
+          )
+        )
+      );
+
+      const aggregated: ServiceOverview[] = [];
+      const failed: string[] = [];
+      results.forEach((r, idx) => {
+        const project = projects[idx];
+        if (r.status === 'fulfilled') {
+          for (const svc of r.value.services) {
+            const desired = svc.desired_replicas ?? 0;
+            const ready = svc.ready_replicas ?? 0;
+            aggregated.push({
+              id: svc.id,
+              name: svc.name,
+              project_name: project.name,
+              project_slug: project.slug,
+              environment: svc.auto_deploy_env || 'production',
+              status: normalizeStatus(svc.health),
+              version: svc.status || 'N/A',
+              replicas: `${ready}/${desired}`,
+            });
+          }
+        } else {
+          failed.push(project.slug);
+          console.error(`Failed to load services for project ${project.slug}:`, r.reason);
+        }
+      });
+
+      setServices(aggregated);
+      setPartialFailures(failed);
       setLoading(false);
     } catch (err) {
-      console.error("Failed to fetch services:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch services");
+      console.error('Failed to fetch services:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to fetch services';
+      // Distinguish timeouts so users know to retry vs investigate.
+      const friendly = /timed out/i.test(msg)
+        ? 'Request took longer than expected. The API may be slow — please retry.'
+        : msg;
+      setError(friendly);
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchServices();
-  }, []);
+  }, [fetchServices]);
 
   usePolling(fetchServices, POLLING_SLOW);
 
@@ -189,6 +265,23 @@ export default function ServicesPage() {
           </Button>
         </div>
       </div>
+
+      {partialFailures.length > 0 && (
+        <Card className="border-status-warning/30 bg-status-warning-muted mb-4">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-status-warning">
+                Could not load services for {partialFailures.length} project(s):{' '}
+                <span className="font-mono">{partialFailures.join(', ')}</span>
+              </span>
+              <Button size="sm" variant="outline" onClick={fetchServices}>
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search and Filter */}
       <ProjectSearch

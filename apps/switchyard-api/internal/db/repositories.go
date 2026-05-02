@@ -71,6 +71,9 @@ type Repositories struct {
 	// Namespace Discoverer (parity audit gap #2): tracks workloads
 	// observed in cluster with no matching service row.
 	DiscoveredOrphans *DiscoveredOrphanRepository
+
+	// XC-2 master-admin acting sessions
+	AdminActingSessions *AdminActingSessionRepository
 }
 
 // Ping checks database connectivity for health probes
@@ -165,6 +168,9 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 
 		// Parity audit gap #2: namespace discoverer
 		DiscoveredOrphans: NewDiscoveredOrphanRepository(tx),
+
+		// XC-2 master-admin acting sessions
+		AdminActingSessions: NewAdminActingSessionRepository(tx),
 	}
 
 	// Execute the function with transaction repositories
@@ -247,5 +253,8 @@ func NewRepositories(db *sql.DB) *Repositories {
 
 		// Parity audit gap #2: namespace discoverer
 		DiscoveredOrphans: NewDiscoveredOrphanRepository(db),
+
+		// XC-2 master-admin acting sessions
+		AdminActingSessions: NewAdminActingSessionRepository(db),
 	}
 }

@@ -338,6 +338,12 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	router.GET("/health/live", h.LivenessProbe)
 	router.GET("/health/ready", h.ReadinessProbe)
 
+	// CSRF token issuance (no auth required — SPA fetches pre-auth so a
+	// token is ready by the time a write is attempted). See csrf_handler.go.
+	// Returns {csrf_token: "..."} + sets the csrf_token cookie + echoes the
+	// token in the X-CSRF-Token response header.
+	router.GET("/v1/csrf", h.IssueCSRFToken)
+
 	// Build status - public endpoint for cross-service commit status lookup
 	router.GET("/v1/builds/:commit_sha/status", h.GetBuildStatusByCommit)
 
@@ -637,10 +643,12 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/observability/health", h.GetServiceHealth)
 			protected.GET("/observability/errors", h.GetRecentErrors)
 			protected.GET("/observability/alerts", h.GetActiveAlerts)
-			// Sentry stats — parity audit gap #9. Admin-only because the
-			// Sentry token is operator-provisioned and the data is not
-			// otherwise exposed via tenant-scoped permissions.
-			protected.GET("/observability/sentry", h.auth.RequireRole(string(types.RoleAdmin)), h.GetSentryServiceStats)
+			// Sentry stats — parity audit gap #9. Admin-only at the data
+			// layer, but the role check is done inside the handler so a
+			// non-admin caller gets 200 OK with reason="forbidden" instead
+			// of 403/503 console spam on the dashboard. The Sentry token is
+			// operator-provisioned; non-admin users simply see "no errors".
+			protected.GET("/observability/sentry", h.GetSentryServiceStats)
 
 			// API Tokens (for CLI/CI/CD access)
 			protected.POST("/user/tokens", h.CreateAPIToken)
@@ -739,95 +747,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/templates/deployments/:id", h.GetTemplateDeployment)
 			protected.POST("/templates/import", h.auth.RequireRole(string(types.RoleDeveloper)), h.ImportTemplateFromGitHub)
 
-			// ============================================================
-			// Admin Control Plane (superuser-only)
-			// ============================================================
-			admin := protected.Group("/admin")
-			admin.Use(h.auth.RequireRole(string(types.RoleAdmin)))
-			{
-				// Fleet Management (Bare Metal Hosts)
-				admin.GET("/fleet", h.ListBareMetalHosts)
-				admin.GET("/fleet/:id", h.GetBareMetalHost)
-				admin.POST("/fleet", h.RegisterBareMetalHost)
-				admin.PUT("/fleet/:id/firmware", h.UpdateFirmware)
-				admin.PUT("/fleet/:id/partition", h.ConfigurePartition)
-				admin.POST("/fleet/:id/wipe", h.SecureWipe)
-				admin.PUT("/fleet/:id/power", h.SetPowerState)
-
-				// Cluster Management
-				admin.GET("/clusters", h.ListAdminClusters)
-				admin.GET("/clusters/:id", h.GetAdminCluster)
-				admin.POST("/clusters", h.RegisterCluster)
-				admin.PUT("/clusters/:id", h.UpdateCluster)
-				admin.DELETE("/clusters/:id", h.DeregisterCluster)
-
-				// Infrastructure Composition (Crossplane)
-				admin.GET("/resources", h.ListManagedResources)
-				admin.GET("/resources/:id", h.GetManagedResource)
-				admin.POST("/resources", h.CreateManagedResource)
-				admin.PUT("/resources/:id/policy", h.UpdateResourcePolicy)
-				admin.DELETE("/resources/:id", h.DeleteManagedResource)
-
-				// Virtual Clusters
-				admin.GET("/vclusters", h.ListVirtualClusters)
-				admin.GET("/vclusters/:id", h.GetVirtualCluster)
-				admin.POST("/vclusters", h.ProvisionVirtualCluster)
-				admin.DELETE("/vclusters/:id", h.TeardownVirtualCluster)
-				admin.GET("/vclusters/:id/kubeconfig", h.GetVClusterKubeconfig)
-
-				// Propagation Policies
-				admin.GET("/propagation", h.ListPropagationPolicies)
-				admin.GET("/propagation/:id", h.GetPropagationPolicy)
-				admin.POST("/propagation", h.CreatePropagationPolicy)
-				admin.DELETE("/propagation/:id", h.DeletePropagationPolicy)
-
-				// Drift & Governance
-				admin.GET("/drift", h.ListDriftEvents)
-				admin.GET("/drift/:id", h.GetDriftEvent)
-				admin.POST("/drift/:id/resolve", h.ResolveDrift)
-
-				// Cost Tracking
-				admin.GET("/costs", h.GetCostAllocations)
-				admin.GET("/costs/summary", h.GetCostSummary)
-				admin.POST("/costs/allocate", h.AllocateCost)
-
-				// Repo Onboarding (self-service)
-				admin.POST("/onboard", h.OnboardRepo)
-				admin.POST("/onboard/preflight", h.PreflightOnboard)
-				admin.GET("/preflight", h.PreflightImageGates) // image gates preflight, see onboarding_image_gates.go
-				admin.GET("/onboard", h.ListOnboardings)
-				admin.GET("/onboard/:owner/:repo", h.GetOnboarding)
-
-				// Reconcile services from K8s cluster — discovers deployments
-				// in a project's namespace and inserts missing services rows
-				// (or updates existing rows with NULL k8s_namespace). This is
-				// the recovery path for projects whose services rows never got
-				// created (audit 2026-04-29 found 17 such projects), and the
-				// repair path for services whose k8s_namespace was lost.
-				admin.POST("/projects/:slug/reconcile-services", h.ReconcileServicesFromCluster)
-
-				// Database addon discovery + backfill — registers existing
-				// shared-postgres logical DBs and standalone Redis deploys
-				// as `database_addons` rows so /databases reflects reality.
-				// Idempotent (safe to re-run); see databases_discover_handler.go.
-				admin.POST("/databases/discover", h.DiscoverDatabases)
-
-				// Standalone Provisioning (ad-hoc for already-onboarded projects)
-				admin.POST("/provision/postgres", h.ProvisionPostgres)
-				admin.POST("/provision/secrets", h.ProvisionSecrets)
-				admin.POST("/provision/r2", h.ProvisionR2)
-
-				// Status Page Management
-				admin.GET("/status/services", h.ListStatusServices)
-				admin.POST("/status/regenerate", h.RegenerateStatusConfig)
-
-				// Topology (admin-level)
-				admin.GET("/topology", h.GetAdminTopology)
-
-				// Namespace Discoverer (parity audit gap #2): live workloads
-				// found in cluster with no matching service row.
-				admin.GET("/discovered-orphans", h.ListDiscoveredOrphans)
-			}
+			// Admin Control Plane (superuser-only). Routes live in
+			// register_admin_routes.go to keep this file under the
+			// codebase-wide 800-line ceiling.
+			h.registerAdminRoutes(protected)
 		}
 	}
 }

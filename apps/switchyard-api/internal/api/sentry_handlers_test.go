@@ -11,6 +11,18 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/integrations/sentry"
 )
 
+// asAdmin is a tiny test-only middleware that pretends the caller is admin
+// by populating the user_role context key the handler reads via
+// callerIsAdmin(). The production routes mount this via JWTManager's
+// AuthMiddleware → RequireRole chain; tests stub it out here so they can
+// exercise the handler in isolation without spinning up a JWT signer.
+func asAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("user_role", "admin")
+		c.Next()
+	}
+}
+
 // TestGetSentryServiceStats_NotConfigured verifies the structured 200 OK path
 // — this is the contract the UI relies on to hide the badge gracefully.
 func TestGetSentryServiceStats_NotConfigured(t *testing.T) {
@@ -24,7 +36,7 @@ func TestGetSentryServiceStats_NotConfigured(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	_, engine := gin.CreateTestContext(w)
-	engine.GET("/v1/observability/sentry", h.GetSentryServiceStats)
+	engine.GET("/v1/observability/sentry", asAdmin(), h.GetSentryServiceStats)
 
 	req, _ := http.NewRequest(http.MethodGet,
 		"/v1/observability/sentry?service=11111111-1111-1111-1111-111111111111", nil)
@@ -40,8 +52,68 @@ func TestGetSentryServiceStats_NotConfigured(t *testing.T) {
 	if resp.Configured {
 		t.Errorf("expected configured=false when env vars unset")
 	}
+	if resp.Enabled {
+		t.Errorf("expected enabled=false when env vars unset")
+	}
 	if resp.Reason != "sentry_unconfigured" {
 		t.Errorf("expected reason=sentry_unconfigured, got %q", resp.Reason)
+	}
+	if resp.Errors == nil {
+		t.Errorf("expected errors=[] (non-nil) on disabled path, got nil")
+	}
+	if resp.Stats == nil {
+		t.Errorf("expected stats={} (non-nil) on disabled path, got nil")
+	}
+}
+
+// TestGetSentryServiceStats_NonAdminGetsForbiddenReason verifies the
+// in-handler role gate: an authenticated but non-admin caller must not
+// receive 403 (which would surface as console errors on every dashboard
+// poll). They get 200 OK with reason=forbidden so the badge renders
+// "no errors", same as the unconfigured path.
+func TestGetSentryServiceStats_NonAdminGetsForbiddenReason(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	clearSentryCacheForTest()
+
+	// Fully configured client to ensure we're not short-circuiting on
+	// IsConfigured(). The forbidden gate must trip before that check.
+	h := &Handler{
+		sentryClient: sentry.NewClientWithConfig("https://sentry.io", "org", "tok", nil),
+	}
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	// Note: no asAdmin() wrapper. We attach a developer role so
+	// callerIsAdmin() returns false.
+	engine.GET("/v1/observability/sentry", func(c *gin.Context) {
+		c.Set("user_role", "developer")
+		c.Next()
+	}, h.GetSentryServiceStats)
+
+	req, _ := http.NewRequest(http.MethodGet,
+		"/v1/observability/sentry?service=11111111-1111-1111-1111-111111111111", nil)
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for non-admin (graceful degradation), got %d (body: %s)",
+			w.Code, w.Body.String())
+	}
+	var resp SentryStatsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid response json: %v", err)
+	}
+	if resp.Configured || resp.Enabled {
+		t.Errorf("expected configured=false enabled=false for non-admin, got configured=%v enabled=%v",
+			resp.Configured, resp.Enabled)
+	}
+	if resp.Reason != "forbidden" {
+		t.Errorf("expected reason=forbidden, got %q", resp.Reason)
+	}
+	if resp.ErrorCount != nil {
+		t.Errorf("expected error_count=nil for forbidden reason, got %v", *resp.ErrorCount)
+	}
+	if resp.Errors == nil || len(resp.Errors) != 0 {
+		t.Errorf("expected errors=[], got %#v", resp.Errors)
 	}
 }
 

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -43,17 +44,21 @@ func (r *AuditLogRepository) Log(ctx context.Context, log *types.AuditLog) error
 	_, err = r.db.ExecContext(ctx, query,
 		log.ID, log.Timestamp, log.ActorID, log.ActorEmail, log.ActorRole, log.Action,
 		log.ResourceType, log.ResourceID, log.ResourceName,
-		log.ProjectID, log.EnvironmentID, log.IPAddress, log.UserAgent, log.Outcome,
+		log.ProjectID, log.EnvironmentID, normalizeInet(log.IPAddress), log.UserAgent, log.Outcome,
 		contextJSON, metadataJSON,
 	)
 	return err
 }
 
 func (r *AuditLogRepository) Query(ctx context.Context, filters map[string]interface{}, limit int, offset int) ([]*types.AuditLog, error) {
+	// Cast ip_address (inet) to text and let the Go side normalize NULLs to "".
+	// We avoid COALESCE(ip_address,'') because that forces Postgres to coerce
+	// the empty text literal back to inet, which fails with
+	// "invalid input syntax for type inet: \"\"".
 	query := `
 		SELECT id, timestamp, actor_id, actor_email, actor_role, action,
 		       resource_type, resource_id, resource_name,
-		       project_id, environment_id, ip_address, user_agent, outcome, context, metadata
+		       project_id, environment_id, ip_address::text, user_agent, outcome, context, metadata
 		FROM audit_logs
 		WHERE 1=1
 	`
@@ -96,15 +101,19 @@ func (r *AuditLogRepository) Query(ctx context.Context, filters map[string]inter
 	for rows.Next() {
 		log := &types.AuditLog{}
 		var contextJSON, metadataJSON []byte
+		var ipAddress sql.NullString
 
 		err := rows.Scan(
 			&log.ID, &log.Timestamp, &log.ActorID, &log.ActorEmail, &log.ActorRole, &log.Action,
 			&log.ResourceType, &log.ResourceID, &log.ResourceName,
-			&log.ProjectID, &log.EnvironmentID, &log.IPAddress, &log.UserAgent, &log.Outcome,
+			&log.ProjectID, &log.EnvironmentID, &ipAddress, &log.UserAgent, &log.Outcome,
 			&contextJSON, &metadataJSON,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if ipAddress.Valid {
+			log.IPAddress = ipAddress.String
 		}
 
 		if err := json.Unmarshal(contextJSON, &log.Context); err != nil {

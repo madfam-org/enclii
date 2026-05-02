@@ -20,16 +20,28 @@ import (
 // SentryStatsResponse is the JSON shape of GET /v1/observability/sentry.
 //
 // Field semantics — UI relies on these distinctions:
-//   - configured=false: env vars missing. UI must hide the badge.
+//   - configured=false: env vars missing OR caller lacks admin scope OR
+//     upstream is unreachable. UI hides the badge / renders "no errors".
 //   - configured=true + reason=no_sentry_project: token works but the project
 //     slug doesn't exist in the org. UI shows a neutral chip, not red.
 //   - configured=true + error_count!=nil: live data, render normally.
+//
+// Reason taxonomy (stable contract — frontend may switch on these):
+//   - "sentry_unconfigured"   — env vars not set
+//   - "no_sentry_project"     — project slug not found in org (soft 404)
+//   - "forbidden"             — caller authenticated but not admin
+//   - "upstream_unavailable"  — Sentry rate-limited, unauthorised, network err
+//
+// Mirror fields (Enabled/Errors/Stats) are an alias surface for newer
+// clients that prefer "enabled" semantics over the legacy "configured"
+// flag. Both are populated; the UI today reads `configured`+`error_count`.
 //
 // Cached for 60s per (service_id, stats_period) pair to absorb dashboard
 // polling. The cache is best-effort — a single-replica control plane
 // doesn't need a distributed cache.
 type SentryStatsResponse struct {
 	Configured        bool      `json:"configured"`
+	Enabled           bool      `json:"enabled"`
 	Reason            string    `json:"reason,omitempty"`
 	ServiceID         string    `json:"service_id,omitempty"`
 	SentryProjectSlug string    `json:"sentry_project_slug,omitempty"`
@@ -38,6 +50,45 @@ type SentryStatsResponse struct {
 	IssueCount        *int      `json:"issue_count,omitempty"`
 	OrgSlug           string    `json:"org_slug,omitempty"`
 	FetchedAt         time.Time `json:"fetched_at"`
+
+	// Errors is reserved for future per-issue listings. We always emit a
+	// non-nil empty slice so JSON consumers don't have to distinguish
+	// `null` from `[]` — matches the disabled-payload contract documented
+	// in the parity audit ("render no errors").
+	Errors []SentryErrorEntry `json:"errors"`
+
+	// Stats is a free-form bag for additional metrics (event counts by
+	// level, user-impact buckets, etc.) introduced in later passes.
+	// Empty {} on the disabled paths.
+	Stats map[string]interface{} `json:"stats"`
+}
+
+// SentryErrorEntry is a placeholder for per-issue rows when we surface them
+// in the dashboard. Currently always empty — the badge only needs counts.
+type SentryErrorEntry struct {
+	Title       string    `json:"title"`
+	Level       string    `json:"level"`
+	Count       int       `json:"count"`
+	LastSeen    time.Time `json:"last_seen"`
+	PermalinkID string    `json:"permalink_id,omitempty"`
+}
+
+// disabledSentryResponse builds the canonical "no Sentry data, render
+// gracefully" payload. Centralised so every short-circuit path emits the
+// same shape — frontend doesn't have to special-case reasons, just renders
+// the absence of errors.
+func disabledSentryResponse(serviceID, statsPeriod, reason string) SentryStatsResponse {
+	return SentryStatsResponse{
+		Configured:  false,
+		Enabled:     false,
+		Reason:      reason,
+		ServiceID:   serviceID,
+		StatsPeriod: statsPeriod,
+		ErrorCount:  nil,
+		FetchedAt:   time.Now().UTC(),
+		Errors:      []SentryErrorEntry{},
+		Stats:       map[string]interface{}{},
+	}
 }
 
 // sentryCacheTTL is intentionally short. Dashboards poll at 60s (POLLING_IDLE)
@@ -131,17 +182,26 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 	}
 	statsPeriod := strconv.Itoa(hours) + "h"
 
+	// Admin gate (in-handler, not middleware): the route is mounted under
+	// `protected.Use(AuthMiddleware)`, so by the time we get here the
+	// caller is authenticated — but they may not be admin. Returning 403
+	// would break the dashboard's per-service polling for every non-admin
+	// user; instead we emit a 200 OK with reason="forbidden" so the badge
+	// renders "no errors" exactly like the unconfigured case.
+	if !callerIsAdmin(c) {
+		c.JSON(http.StatusOK, disabledSentryResponse(
+			serviceUUID.String(), statsPeriod, "forbidden",
+		))
+		return
+	}
+
 	// Short-circuit on configuration. We do this BEFORE touching the DB
 	// so an unconfigured deployment doesn't pay an extra query per poll.
 	client := h.sentryClientOrDefault()
 	if !client.IsConfigured() {
-		c.JSON(http.StatusOK, SentryStatsResponse{
-			Configured:  false,
-			Reason:      "sentry_unconfigured",
-			ServiceID:   serviceUUID.String(),
-			StatsPeriod: statsPeriod,
-			FetchedAt:   time.Now().UTC(),
-		})
+		c.JSON(http.StatusOK, disabledSentryResponse(
+			serviceUUID.String(), statsPeriod, "sentry_unconfigured",
+		))
 		return
 	}
 
@@ -182,6 +242,7 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 		errCount := count
 		resp := SentryStatsResponse{
 			Configured:        true,
+			Enabled:           true,
 			ServiceID:         serviceUUID.String(),
 			SentryProjectSlug: projectSlug,
 			StatsPeriod:       statsPeriod,
@@ -189,6 +250,8 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 			IssueCount:        &errCount, // received-event count doubles as issue count for now
 			OrgSlug:           client.OrgSlug(),
 			FetchedAt:         time.Now().UTC(),
+			Errors:            []SentryErrorEntry{},
+			Stats:             map[string]interface{}{"error_count": errCount},
 		}
 		storeSentryCache(cacheKey, resp)
 		c.JSON(http.StatusOK, resp)
@@ -201,6 +264,7 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 		// repeated 404s during the 60s window.
 		resp := SentryStatsResponse{
 			Configured:        true,
+			Enabled:           true,
 			Reason:            "no_sentry_project",
 			ServiceID:         serviceUUID.String(),
 			SentryProjectSlug: projectSlug,
@@ -208,6 +272,8 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 			ErrorCount:        nil,
 			OrgSlug:           client.OrgSlug(),
 			FetchedAt:         time.Now().UTC(),
+			Errors:            []SentryErrorEntry{},
+			Stats:             map[string]interface{}{},
 		}
 		storeSentryCache(cacheKey, resp)
 		h.logger.Info(ctx, "sentry: no project for service",
@@ -217,43 +283,54 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 		c.JSON(http.StatusOK, resp)
 		return
 
-	case errors.Is(err, sentry.ErrUnauthorized):
-		h.logger.Error(ctx, "sentry: unauthorized — token rotated or scopes too narrow")
-		// 502 with masked details — never echo the token / never echo
-		// the upstream body (which could contain header fragments).
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":  "sentry upstream rejected our auth",
-			"reason": "sentry_unauthorized",
-		})
-		return
-
-	case errors.Is(err, sentry.ErrRateLimited):
-		h.logger.Error(ctx, "sentry: rate limited")
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":  "sentry rate limited",
-			"reason": "sentry_rate_limited",
-		})
-		return
-
 	case errors.Is(err, sentry.ErrUnconfigured):
 		// Shouldn't happen — we checked IsConfigured() above. Defence in depth.
-		c.JSON(http.StatusOK, SentryStatsResponse{
-			Configured: false,
-			Reason:     "sentry_unconfigured",
-			ServiceID:  serviceUUID.String(),
-			FetchedAt:  time.Now().UTC(),
-		})
+		c.JSON(http.StatusOK, disabledSentryResponse(
+			serviceUUID.String(), statsPeriod, "sentry_unconfigured",
+		))
+		return
+
+	case errors.Is(err, sentry.ErrUnauthorized),
+		errors.Is(err, sentry.ErrRateLimited):
+		// Sentry SaaS rejected us (token rotated, scopes too narrow, or
+		// rate-limited). Per the parity audit, the dashboard must not
+		// surface 5xx for these — the badge renders "no errors" instead.
+		// We log at error so operators still see token problems.
+		h.logger.Error(ctx, "sentry: upstream unavailable",
+			logging.Error("error", err))
+		c.JSON(http.StatusOK, disabledSentryResponse(
+			serviceUUID.String(), statsPeriod, "upstream_unavailable",
+		))
 		return
 
 	default:
+		// Network errors, timeouts, unexpected status codes. Same
+		// graceful-degradation policy: 200 OK with upstream_unavailable
+		// so polling consumers don't generate console noise.
 		h.logger.Error(ctx, "sentry: upstream error",
 			logging.Error("error", err))
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":  "sentry upstream error",
-			"reason": "sentry_upstream_error",
-		})
+		c.JSON(http.StatusOK, disabledSentryResponse(
+			serviceUUID.String(), statsPeriod, "upstream_unavailable",
+		))
 		return
 	}
+}
+
+// callerIsAdmin reports whether the authenticated caller carries the admin
+// (or superadmin) role. Mirrors the hierarchy in JWTManager.RequireRole so
+// the in-handler check stays consistent with route-level guards elsewhere
+// in the API. A missing user_role context value returns false — we treat
+// "no role attached" as no privilege rather than panicking.
+func callerIsAdmin(c *gin.Context) bool {
+	v, ok := c.Get("user_role")
+	if !ok {
+		return false
+	}
+	role, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return role == "admin" || role == "superadmin"
 }
 
 // resolveSentryProjectSlug returns the Sentry project slug for a service,

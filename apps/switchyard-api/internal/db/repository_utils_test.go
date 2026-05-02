@@ -1,0 +1,56 @@
+package db
+
+import "testing"
+
+func TestNormalizeGitURL(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"https://github.com/foo/bar/", "https://github.com/foo/bar"},
+		{"git@github.com:foo/bar", "https://github.com/foo/bar"},
+		{"https://github.com/foo/bar", "https://github.com/foo/bar"},
+	}
+	for _, tc := range cases {
+		if got := normalizeGitURL(tc.in); got != tc.want {
+			t.Errorf("normalizeGitURL(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestNormalizeInet covers the inet boundary helper that prevents the
+// `pq: invalid input syntax for type inet: ""` crash on audit_logs writes.
+// Empty / whitespace-only strings must come back as untyped nil so the
+// driver writes SQL NULL; valid IP literals must be passed through as
+// strings.
+func TestNormalizeInet(t *testing.T) {
+	t.Run("empty becomes nil", func(t *testing.T) {
+		if got := normalizeInet(""); got != nil {
+			t.Errorf("normalizeInet(\"\") = %v, want nil", got)
+		}
+	})
+
+	t.Run("whitespace becomes nil", func(t *testing.T) {
+		if got := normalizeInet("   "); got != nil {
+			t.Errorf("normalizeInet(\"   \") = %v, want nil", got)
+		}
+		if got := normalizeInet("\t\n"); got != nil {
+			t.Errorf("normalizeInet whitespace = %v, want nil", got)
+		}
+	})
+
+	t.Run("ipv4 passes through", func(t *testing.T) {
+		got := normalizeInet("10.0.0.1")
+		s, ok := got.(string)
+		if !ok || s != "10.0.0.1" {
+			t.Errorf("normalizeInet(\"10.0.0.1\") = %v, want \"10.0.0.1\"", got)
+		}
+	})
+
+	t.Run("ipv6 passes through", func(t *testing.T) {
+		got := normalizeInet("::1")
+		s, ok := got.(string)
+		if !ok || s != "::1" {
+			t.Errorf("normalizeInet(\"::1\") = %v, want \"::1\"", got)
+		}
+	})
+}

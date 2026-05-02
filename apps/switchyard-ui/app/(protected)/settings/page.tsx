@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from "@enclii/ui-components/button";
 import { Input } from "@enclii/ui-components/input";
@@ -8,14 +8,48 @@ import { Badge } from "@enclii/ui-components/badge";
 import { Switch } from '@/components/ui/switch';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface UserProfile {
   id: string;
   email: string;
   name: string;
-  avatar_url?: string;
-  created_at: string;
-  role: string;
+  avatarUrl?: string;
+  /** Always present; "—" when unknown (no profile endpoint exposes created_at yet). */
+  memberSinceLabel: string;
+  /** Pre-formatted display string (e.g. "Master Admin"). */
+  roleLabel: string;
+  /** First letter of name, or email local-part. Uppercase. Never literal "U" placeholder. */
+  initial: string;
+}
+
+/**
+ * Map raw role list from AuthContext to a human-readable badge label.
+ * - admin -> "Master Admin"
+ * - else: title-case the highest-priority role
+ * - empty -> "Member"
+ */
+function roleToLabel(roles: string[] | undefined): string {
+  if (!roles || roles.length === 0) return 'Member';
+  if (roles.includes('admin')) return 'Master Admin';
+  // Priority order: owner > maintainer > developer > viewer > others
+  const priority = ['owner', 'maintainer', 'developer', 'viewer'];
+  const sorted = [...roles].sort((a, b) => {
+    const ia = priority.indexOf(a);
+    const ib = priority.indexOf(b);
+    return (ia === -1 ? Infinity : ia) - (ib === -1 ? Infinity : ib);
+  });
+  const top = sorted[0];
+  return top.charAt(0).toUpperCase() + top.slice(1);
+}
+
+/** First uppercase letter of name, else first uppercase letter of email local-part. */
+function initialFor(name?: string | null, email?: string | null): string {
+  const fromName = name?.trim();
+  if (fromName) return fromName.charAt(0).toUpperCase();
+  const local = email?.split('@')[0]?.trim();
+  if (local) return local.charAt(0).toUpperCase();
+  return '?';
 }
 
 interface NotificationPrefs {
@@ -51,8 +85,8 @@ interface APITokenListResponse {
 }
 
 export default function SettingsPage() {
+  const { user, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [notifications, setNotifications] = useState<NotificationPrefs>({
     email_deployments: true,
     email_builds: true,
@@ -63,7 +97,26 @@ export default function SettingsPage() {
   const [tokens, setTokens] = useState<APIToken[]>([]);
   const [showNewToken, setShowNewToken] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
-  const [loading, setLoading] = useState(true);
+
+  // Profile is derived from AuthContext rather than fetched. The switchyard-api
+  // does not currently expose a /v1/users/me endpoint (only /v1/user/tokens).
+  // Adding a server endpoint is out of scope for this fidelity fix; once it
+  // exists, swap this useMemo for an apiGet<UserProfile>('/v1/users/me') call
+  // and surface created_at as the "Member since" value.
+  const profile = useMemo<UserProfile | null>(() => {
+    if (!user) return null;
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name || '',
+      avatarUrl: user.avatarUrl,
+      memberSinceLabel: '—', // em dash placeholder; not "Unknown" (misleading)
+      roleLabel: roleToLabel(user.roles),
+      initial: initialFor(user.name, user.email),
+    };
+  }, [user]);
+
+  const loading = authLoading;
 
   // Token-specific state
   const [tokensLoading, setTokensLoading] = useState(false);
@@ -86,27 +139,6 @@ export default function SettingsPage() {
     } finally {
       setTokensLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    // Load user profile from localStorage
-    setLoading(true);
-    const storedAuth = localStorage.getItem('auth');
-    if (storedAuth) {
-      try {
-        const auth = JSON.parse(storedAuth);
-        setProfile({
-          id: auth.user?.id || 'unknown',
-          email: auth.user?.email || 'user@example.com',
-          name: auth.user?.name || auth.user?.email?.split('@')[0] || 'User',
-          created_at: auth.user?.created_at || new Date().toISOString(),
-          role: auth.user?.role || 'developer',
-        });
-      } catch (e) {
-        console.error('Failed to parse auth:', e);
-      }
-    }
-    setLoading(false);
   }, []);
 
   // Fetch tokens when the tokens tab becomes active
@@ -260,9 +292,21 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-2xl font-bold">
-                    {profile?.name?.charAt(0).toUpperCase() || 'U'}
-                  </div>
+                  {profile?.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={profile.avatarUrl}
+                      alt={profile.name || profile.email}
+                      className="w-20 h-20 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      aria-label={`Avatar for ${profile?.name || profile?.email || 'user'}`}
+                      className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-2xl font-bold"
+                    >
+                      {profile?.initial || '?'}
+                    </div>
+                  )}
                   <div>
                     <Button variant="outline" size="sm">Change Avatar</Button>
                   </div>
@@ -270,24 +314,34 @@ export default function SettingsPage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Full Name</label>
-                    <Input defaultValue={profile?.name} />
+                    <label className="text-sm font-medium" htmlFor="profile-name">Full Name</label>
+                    <Input
+                      id="profile-name"
+                      key={`name-${profile?.id ?? 'anon'}`}
+                      defaultValue={profile?.name ?? ''}
+                      placeholder={profile ? 'Add your name' : ''}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Email</label>
-                    <Input defaultValue={profile?.email} disabled />
+                    <label className="text-sm font-medium" htmlFor="profile-email">Email</label>
+                    <Input
+                      id="profile-email"
+                      key={`email-${profile?.id ?? 'anon'}`}
+                      defaultValue={profile?.email ?? ''}
+                      disabled
+                    />
                     <p className="text-xs text-muted-foreground">Email cannot be changed</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Role:</span>
-                  <Badge variant="secondary">{profile?.role}</Badge>
+                  <Badge variant="secondary">{profile?.roleLabel ?? 'Member'}</Badge>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">
-                    Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
+                    Member since {profile?.memberSinceLabel ?? '—'}
                   </span>
                 </div>
 

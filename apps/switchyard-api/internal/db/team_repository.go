@@ -221,6 +221,60 @@ func (r *TeamRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*T
 	return teams, nil
 }
 
+// ListAll returns every team. Admin-only consumers (master-admin tenant
+// switcher) — non-admin handlers must use ListByUser.
+func (r *TeamRepository) ListAll(ctx context.Context) ([]*Team, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, slug, description, avatar_url, billing_email, owner_id, settings, created_at, updated_at
+		  FROM teams
+		 ORDER BY name ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var teams []*Team
+	for rows.Next() {
+		team := &Team{}
+		if err := rows.Scan(
+			&team.ID, &team.Name, &team.Slug, &team.Description, &team.AvatarURL,
+			&team.BillingEmail, &team.OwnerID, &team.Settings, &team.CreatedAt, &team.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		teams = append(teams, team)
+	}
+	return teams, rows.Err()
+}
+
+// CountProjectsByTeam returns a map of team_id → number of projects parented
+// to that team. Used by the master-admin tenant list to avoid N+1 fan-out.
+// Projects with team_id IS NULL ("personal") are not included in the map.
+func (r *TeamRepository) CountProjectsByTeam(ctx context.Context) (map[uuid.UUID]int, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT team_id, COUNT(*)
+		  FROM projects
+		 WHERE team_id IS NOT NULL
+		 GROUP BY team_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[uuid.UUID]int)
+	for rows.Next() {
+		var teamID uuid.UUID
+		var n int
+		if err := rows.Scan(&teamID, &n); err != nil {
+			return nil, err
+		}
+		out[teamID] = n
+	}
+	return out, rows.Err()
+}
+
 // TeamMemberRepository handles team membership operations
 type TeamMemberRepository struct {
 	db DBTX
