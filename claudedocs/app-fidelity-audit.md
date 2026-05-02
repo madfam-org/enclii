@@ -182,8 +182,36 @@ Not browser-walked in this pass beyond `/login` (verified PKCE redirect to Janua
 
 Folded means the underlying issue is the same as a parent finding.
 
-## What changes in this session
+## Remediation status (updated 2026-05-02)
 
-1. **XC-1 frontend label fix** (this PR): when the user has the `admin` role, render the scope chip + dropdown as `All tenants` rather than `Personal Account (Hobby)`, and hide the "Hobby" plan badge for admins. Pure frontend change, no API contract impact, ships safely.
-2. **XC-2 design doc** (this PR): committed as `claudedocs/master-admin-tenant-switching.md`. No backend/frontend change yet — the design needs review before implementation.
-3. Everything else triaged above is queued for follow-up sessions.
+After the audit landed, two follow-on rounds shipped.
+
+**Round 1 — `bc4c69b9`**
+- ✅ XC-1 — scope-switcher label / Hobby badge for master-admin (`apps/switchyard-ui/contexts/ScopeContext.tsx`, `components/navigation/scope-switcher.tsx`)
+- ✅ XC-2 *backend* — migration `023_admin_acting_sessions`, repository, four endpoints (`GET /v1/admin/tenants{,active}`, `POST .../:slug/enter`, `POST .../exit`), `audit_logs.acting_on_behalf_of_team_id` column. Frontend wiring landed in round 2.
+- ✅ XC-3 — `/v1/csrf` handler + Sentry handler returns 200+`{ enabled, errors, stats, reason }` instead of 503; 21 console errors per dashboard load eliminated.
+- ✅ AU-1 — `normalizeInet` boundary helper for the `inet` Postgres type; reader/writer/source SELECT all updated.
+- ✅ ST-1..5 — settings profile renders avatar initial, name, email, role pill ("Master Admin"), member-since placeholder.
+- ✅ SV-1 — `/services` rewritten to fan-out projects→services with `Promise.allSettled` + per-project Retry banner.
+- ✅ OB-1 — `/observability` per-panel state; one panel's 503 no longer freezes the page.
+
+**Round 2 — `eecf5728`**
+- ✅ XC-2 *frontend* — `ScopeContext.fetchScopes` admin path, switcher routes admin team-clicks through `enterTenant`, `AdminActingBanner` mounts above the topbar with countdown.
+- ✅ D-1 — Usage widget switches to absolute units for admin scope.
+- ✅ D-4 — Plan-overage alerts filtered out of the alerts sidebar for admin scope.
+- ✅ US-1..4 — `/usage` cost pill / donut / bar chart / cost table all hidden for admin scope; "Cluster utilization" header.
+
+**Round 3 — `<this commit>`**
+- ✅ XC-2 *handler tests* — 9 new sqlmock-backed tests for `admin_tenants_handlers.go` covering nil-repos guard, ListTenants happy path with project counts, EnterTenant slug requirement + cookie shape + duration cap, ExitTenant cookie clearing, ActiveTenant no-session / active-session / dangling-session paths.
+- ✅ XC-2 *CLI parity* — `enclii admin tenants list/active/enter/exit` so operators can act-as from a script with the same surface as the web app.
+- ✅ Doc updates — `docs/cli/commands/admin.md` documents the new tenants subtree; this audit file and `master-admin-tenant-switching.md` updated with shipped status.
+
+## Still open (queued, not shipped)
+
+- 🔴 **DM-1..4** — `/domains` inventory + Cloudflare-driven verification pipeline. Needs real backend integration.
+- 🔴 **Tenant-filter middleware** — the `ax_acting_as` cookie is set, the session is recorded, the banner renders, but the existing `/v1/projects` and friends do **not yet** filter by `acting_team_id`. Next architectural step: middleware that reads the cookie, validates the session, sets `c.acting_team_id`, and updates each list-style handler to consult it.
+- 🟡 **PR-1** — Projects vs Dashboard "latest deployment" inconsistency.
+- 🟡 **DB-1** — Replace bare "shared" memory label on /databases.
+- 🟡 **IG-1** — Replace marketing copy on `/integrations/janua` with operational status.
+- 🟢 **D-5** — Disambiguate "+ Add New…" CTA copy.
+- Cross-app audits: **admin.enclii.dev**, **status / docs / landing / npm / analytics**.

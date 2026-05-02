@@ -26,6 +26,7 @@ The tree:
 | `governance` | Manage governed resources and their policies |
 | `costs` | Inspect platform-level cost allocations and summaries |
 | `vclusters` | Manage virtual clusters (storage/infrastructure tab) |
+| `tenants` | Master-admin "acting as <tenant>" sessions (white-glove) |
 
 ## Fleet
 
@@ -224,6 +225,57 @@ enclii admin fleet wipe host-7
 # Type 'yes' again to confirm wipe: yes
 # Wipe initiated.
 ```
+
+## Tenants (master-admin acting-as)
+
+These commands mirror the scope switcher in the web app. They let an
+operator with the `admin` role list every tenant on the platform, open
+an "acting as <tenant>" session for a bounded window (default 4h, hard
+cap 24h), inspect the active session, and end it. Sessions are recorded
+in the `admin_acting_sessions` table and surfaced on `/audit` via
+`audit_logs.acting_on_behalf_of_team_id`.
+
+### `admin tenants list`
+
+```bash
+enclii admin tenants list [--json]
+```
+
+Lists every tenant with its slug, name, and project count.
+
+### `admin tenants active`
+
+```bash
+enclii admin tenants active [--json]
+```
+
+Returns the calling admin's currently open acting-as session, if any.
+Always exits `0` — "no active session" is not an error.
+
+### `admin tenants enter`
+
+```bash
+enclii admin tenants enter <slug> [--reason "<text>"] [--duration-seconds <n>] [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--reason` | string | — | Operator-supplied reason recorded in the audit log |
+| `--duration-seconds` | int | 14400 (4h) | Session length in seconds. Server-side cap is 24h |
+| `--json` | bool | `false` | Emit machine-readable JSON |
+
+Opens an acting-as session for the named tenant. Sets the
+`ax_acting_as` cookie when invoked from a browser; for the CLI the
+session is bound to your Bearer token's identity.
+
+### `admin tenants exit`
+
+```bash
+enclii admin tenants exit [--json]
+```
+
+Closes every open acting-as session for the calling admin and clears
+the cookie.
 
 ## Notes
 

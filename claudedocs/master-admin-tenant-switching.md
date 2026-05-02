@@ -87,11 +87,25 @@ This means the existing free-tier UX is preserved. The change is purely additive
 
 ## Phasing
 
-1. **Now (this session)**: design doc (this file) + small frontend label fix — drop `Personal Account (Hobby)` for admins, show `Master Admin` instead. No backend changes; no behavior change beyond the label.
-2. **Next PR**: create the `admin_acting_sessions` table, write the three new endpoints, write middleware. Server-only, no UI binding yet.
-3. **Next PR**: backfill migration for white-glove tenants. Add `team_members` rows for admin@madfam.io across all of them.
-4. **Next PR**: scope switcher rewrite (uses `/v1/admin/tenants`), banner, audit-row enrichment.
-5. **Cleanup PR**: delete the "personal account" synthetic scope concept on the admin codepath entirely; reconfirm non-admin behavior in tests.
+1. ✅ **Round 0 (`cc60e2e9`)**: design doc + frontend label fix — `Master Admin` chip with shield avatar replaces the synthetic `Personal Account (Hobby)`. No backend changes.
+2. ✅ **Round 1 (`bc4c69b9`)**: migration `023_admin_acting_sessions` (table + index + `audit_logs.acting_on_behalf_of_team_id` column), `AdminActingSessionRepository`, four endpoints (`GET /v1/admin/tenants{,active}`, `POST .../:slug/enter`, `POST .../exit`), gated under the existing admin role middleware.
+3. ✅ **Round 2 (`eecf5728`)**: scope switcher rewritten — admins fetch `/v1/admin/tenants`, picking a tenant fires `POST .../:slug/enter` and reloads, `AdminActingBanner` shows tenant + countdown + End-session.
+4. ✅ **Round 3 (`<this commit>`)**: handler-level tests for the four endpoints (sqlmock); `enclii admin tenants list/active/enter/exit` CLI commands; doc updates.
+5. ⏳ **Next**: tenant-filter middleware. Today the cookie is set and the audit row is enriched, but list-style handlers (`/v1/projects`, `/v1/services`, `/v1/deployments`) do not yet filter by `acting_team_id`. Need a small middleware that reads `ax_acting_as`, looks up the open session via `AdminActingSessionRepository.GetActive`, and stashes `team_id` in the gin context for downstream handlers to consult. Plus per-handler `WHERE team_id = ?` updates.
+6. ⏳ **Next**: backfill migration that creates `teams` rows for each white-glove client and re-parents existing `projects` (currently `team_id IS NULL`) onto the right tenant. Idempotent; one-shot.
+7. ⏳ **Cleanup**: remove the "personal account" synthetic scope from the admin codepath entirely once tenant-filter middleware is live; reconfirm non-admin behavior in tests.
+
+## Implementation references
+
+- Migration: `apps/switchyard-api/internal/db/migrations/023_admin_acting_sessions.up.sql`
+- Repository: `apps/switchyard-api/internal/db/admin_acting_session_repository.go`
+- Handlers: `apps/switchyard-api/internal/api/admin_tenants_handlers.go`
+- Handler tests: `apps/switchyard-api/internal/api/admin_tenants_handlers_test.go`
+- Routes: `apps/switchyard-api/internal/api/register_admin_routes.go`
+- Frontend context: `apps/switchyard-ui/contexts/ScopeContext.tsx`
+- Frontend banner: `apps/switchyard-ui/components/AdminActingBanner.tsx`
+- Frontend lib + tests: `apps/switchyard-ui/lib/admin-tenants.ts` + `lib/admin-tenants.test.ts`
+- CLI: `packages/cli/internal/cmd/admin_tenants.go` + tests in `admin_test.go`
 
 ## Open questions
 

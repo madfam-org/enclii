@@ -22,7 +22,7 @@ func TestNewAdminCommand_Subcommands(t *testing.T) {
 	cmd := newTestAdminCommand(t)
 	assert.Equal(t, "admin", cmd.Use)
 
-	expected := []string{"fleet", "topology", "clusters", "drift", "propagation", "governance", "costs", "vclusters"}
+	expected := []string{"fleet", "topology", "clusters", "drift", "propagation", "governance", "costs", "vclusters", "tenants"}
 	for _, name := range expected {
 		assert.NotNil(t, findSubcommand(cmd, name), "missing top-level admin subcommand: %s", name)
 	}
@@ -176,6 +176,25 @@ func TestAdminVClusters_Subcommands(t *testing.T) {
 	kc := findSubcommand(vc, "kubeconfig")
 	require.NotNil(t, kc)
 	assert.NotNil(t, kc.Flags().Lookup("out"))
+}
+
+func TestAdminTenants_Subcommands(t *testing.T) {
+	cmd := newTestAdminCommand(t)
+	tenants := findSubcommand(cmd, "tenants")
+	require.NotNil(t, tenants)
+	for _, sub := range []string{"list", "active", "enter", "exit"} {
+		assert.NotNil(t, findSubcommand(tenants, sub), "missing tenants subcommand: %s", sub)
+	}
+
+	enter := findSubcommand(tenants, "enter")
+	require.NotNil(t, enter)
+	assert.NotNil(t, enter.Flags().Lookup("reason"))
+	assert.NotNil(t, enter.Flags().Lookup("duration-seconds"))
+
+	for _, name := range []string{"list", "active", "enter", "exit"} {
+		sub := findSubcommand(tenants, name)
+		assert.NotNil(t, sub.Flags().Lookup("json"), "tenants %s must support --json", name)
+	}
 }
 
 func TestAdminCommand_RegisteredOnRoot(t *testing.T) {
