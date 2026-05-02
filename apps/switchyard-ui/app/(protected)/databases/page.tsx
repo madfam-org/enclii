@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { usePolling } from "@/hooks/use-polling";
 import { POLLING_NORMAL } from "@/lib/constants";
 import { toast } from 'sonner';
@@ -50,6 +51,7 @@ export interface Project {
 }
 
 export default function DatabasesPage() {
+  const searchParams = useSearchParams();
   const [databases, setDatabases] = useState<DatabaseAddon[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +59,15 @@ export default function DatabasesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  // Open the create modal when arriving via the dashboard's "+ Add New… >
+  // New database" dropdown (audit D-5). Mirrors the same pattern used by
+  // /projects?create=true.
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      setIsCreateModalOpen(true);
+    }
+  }, [searchParams]);
 
   const fetchDatabases = async () => {
     try {

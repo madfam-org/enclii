@@ -103,6 +103,11 @@ export interface CompactProject {
   services?: CompactService[];
   aggregateStatus?: "healthy" | "degraded" | "failing" | "unknown";
   updatedAt?: string;
+  // Tri-state outcome of resolving the latest deployment from the
+  // services fetch. Drives the empty-state copy on Row 3 so we don't
+  // claim "no deployments" when the upstream `/v1/projects/:slug/services`
+  // call rejected. See lib/project-deploy.ts (audit finding PR-1).
+  deployResolution?: "deployed" | "no-deploys" | "unknown";
 }
 
 interface ProjectCardCompactProps {
@@ -318,14 +323,23 @@ export function ProjectCardCompact({
           </div>
         )}
 
-        {/* Row 3: Commit message, description, or status summary */}
+        {/* Row 3: Commit message, description, or status summary.
+            Empty-state copy is driven by the tri-state `deployResolution`:
+            - "no-deploys": services loaded, none ever deployed -> explicit copy
+            - "unknown":    services fetch rejected -> em-dash, don't fabricate
+            - undefined:    legacy callers that didn't thread the field through
+            See lib/project-deploy.ts (audit finding PR-1). */}
         <p className="text-muted-foreground mt-2 truncate text-xs">
           {project.lastDeployment?.commitMessage ||
             project.description ||
             (services.length > 0 ? (
               <ServiceStatusSummary services={services} />
+            ) : project.deployResolution === "unknown" ? (
+              "—"
+            ) : project.deployResolution === "no-deploys" ? (
+              "No deployments yet"
             ) : (
-              "No recent deployments"
+              "No deployments yet"
             ))}
         </p>
 

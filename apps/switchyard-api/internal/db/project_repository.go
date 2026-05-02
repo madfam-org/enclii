@@ -83,6 +83,35 @@ func (r *ProjectRepository) List() ([]*types.Project, error) {
 	return projects, nil
 }
 
+// ListByTeam returns projects whose team_id matches the given team. Used by
+// the master-admin tenant-filter middleware to scope a list to the
+// currently-acted-on tenant. Projects with team_id IS NULL ("personal" /
+// unparented) are NOT included — that's the right behavior for impersonation
+// (the operator wants the tenant's view, not the platform-wide view).
+func (r *ProjectRepository) ListByTeam(ctx context.Context, teamID uuid.UUID) ([]*types.Project, error) {
+	query := `
+		SELECT id, name, slug, ci_runner_mode, created_at, updated_at
+		  FROM projects
+		 WHERE team_id = $1
+		 ORDER BY created_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var projects []*types.Project
+	for rows.Next() {
+		p := &types.Project{}
+		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.CIRunnerMode, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
+
 // UpdateCIRunnerMode sets the CI runner mode for a project
 func (r *ProjectRepository) UpdateCIRunnerMode(ctx context.Context, id uuid.UUID, mode types.CIRunnerMode) error {
 	query := `UPDATE projects SET ci_runner_mode = $1, updated_at = NOW() WHERE id = $2`

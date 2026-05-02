@@ -6,6 +6,7 @@ import { POLLING_SLOW } from '@/lib/constants';
 import { usePolling } from '@/hooks/use-polling';
 import type {
   Domain,
+  DomainCoverage,
   DomainsListResponse,
   DomainStats,
 } from '@/types/domain';
@@ -13,11 +14,24 @@ import type {
 interface UseDomainsResult {
   domains: Domain[];
   stats: DomainStats | null;
+  /**
+   * Coverage metadata returned by /v1/domains, or null when the backend
+   * predates the field (older API builds). The page uses this to render
+   * the "partial inventory" / "verifier stale" banners.
+   */
+  coverage: DomainCoverage | null;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
   /** True when the backend endpoint returned 404 (not yet deployed). */
   endpointMissing: boolean;
+  /**
+   * Timestamp of the last successful FETCH from /v1/domains. This is NOT
+   * the timestamp of the last verifier run — see `coverage` for that.
+   * The page deliberately surfaces both so operators can see when the API
+   * was last reached vs. when domains were last actually verified against
+   * Cloudflare.
+   */
   lastSyncedAt: string | null;
   refresh: () => Promise<void>;
 }
@@ -38,6 +52,7 @@ interface UseDomainsResult {
 export function useDomains(limit = 200): UseDomainsResult {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [stats, setStats] = useState<DomainStats | null>(null);
+  const [coverage, setCoverage] = useState<DomainCoverage | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +81,10 @@ export function useDomains(limit = 200): UseDomainsResult {
 
       setDomains(list?.domains ?? []);
       setStats(statsResp);
+      // Coverage is optional — older API builds won't ship it. Keep the
+      // null sentinel so the UI suppresses banners rather than showing
+      // misleading defaults like "0 of 0 projects covered".
+      setCoverage(list?.coverage ?? null);
       setError(null);
       setEndpointMissing(false);
       setLastSyncedAt(new Date().toISOString());
@@ -104,6 +123,7 @@ export function useDomains(limit = 200): UseDomainsResult {
   return {
     domains,
     stats,
+    coverage,
     loading,
     refreshing,
     error,

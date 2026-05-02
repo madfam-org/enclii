@@ -24,6 +24,7 @@ import {
   type CompactProject,
   type CompactRepoMeta,
 } from '@/components/dashboard/project-card-compact';
+import { resolveLatestDeployment } from '@/lib/project-deploy';
 import { type SortOption } from '@/components/dashboard/project-search-filter';
 import { SubNavActionBar } from '@/components/dashboard/sub-nav-action-bar';
 import { useViewMode } from '@/components/dashboard/view-toggle';
@@ -150,32 +151,14 @@ export default function ProjectsPage() {
                 ? "healthy"
                 : "degraded";
 
-          const latestService = services
-            .filter((s) => s.last_deployment)
-            .sort(
-              (a, b) =>
-                new Date(b.last_deployment).getTime() -
-                new Date(a.last_deployment).getTime()
-            )[0];
-
-          const lastDeployment = latestService
-            ? {
-                timestamp: latestService.last_deployment,
-                status: (latestService.status === 'running'
-                  ? 'success'
-                  : latestService.status === 'failed'
-                    ? 'failed'
-                    : latestService.status === 'deploying'
-                      ? 'building'
-                      : 'pending') as
-                  | 'success'
-                  | 'failed'
-                  | 'pending'
-                  | 'building',
-                branch: latestService.last_commit_branch || 'main',
-                commitMessage: latestService.last_commit_message || undefined,
-              }
-            : undefined;
+          // Single source of truth for "latest deployment" — see
+          // lib/project-deploy.ts. Both /dashboard and /projects must
+          // route through this helper or PR-1 (the empty-state drift)
+          // will regress.
+          const resolution = resolveLatestDeployment(
+            services,
+            result.status === 'fulfilled',
+          );
 
           return {
             id: project.id,
@@ -185,7 +168,8 @@ export default function ProjectsPage() {
             framework,
             domain,
             gitRepo,
-            lastDeployment,
+            lastDeployment: resolution.latest,
+            deployResolution: resolution.status,
             serviceCount: services.length,
             healthyCount,
             services: compactServices,

@@ -60,11 +60,39 @@ export interface Domain {
   service_id_label?: string; // human-friendly fallback when service join fails
 }
 
+/**
+ * DomainCoverage — best-effort metadata about how complete the domain
+ * inventory is and how fresh the verifier is. Mirrors the Go
+ * `DomainCoverage` struct in `global_domains_handlers.go`.
+ *
+ * The page uses this to:
+ *  - Show a "partial inventory" banner when projects_with_domains <
+ *    projects_total (operators need to run `enclii domains add`).
+ *  - Show a "verification stale" banner and badge rows as "Stale" when
+ *    oldest_unverified_age_seconds > 24h.
+ *  - Show a "Cloudflare integration not configured" banner when
+ *    sync_configured is false (rows will never auto-verify).
+ */
+export interface DomainCoverage {
+  sync_configured: boolean;
+  projects_total: number;
+  projects_with_domains: number;
+  domains_total: number;
+  /** -1 sentinel = no unverified rows, otherwise wall-clock age in seconds. */
+  oldest_unverified_age_seconds: number;
+}
+
 export interface DomainsListResponse {
   domains: Domain[];
   total: number;
   limit: number;
   offset: number;
+  /**
+   * Optional for backwards compatibility — older API builds (pre-coverage)
+   * won't return this field. The hook treats absence as "unknown" and the
+   * UI suppresses the coverage banner in that case.
+   */
+  coverage?: DomainCoverage;
 }
 
 export interface DomainStats {

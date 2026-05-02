@@ -6,6 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@enclii/ui-components/button";
 import { apiGet } from "@/lib/api";
 import { Spinner } from '@/components/ui/spinner';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+// Pure helper extracted to a sibling module so unit tests don't have to
+// load the whole React component tree (and its @enclii/ui-components
+// imports) just to verify the label/tooltip mapping. See DB-1.
+import { memoryDisplay } from "./memory-display";
 import type { DatabaseAddon, DatabaseAddonStatus, DatabaseAddonType } from "@/app/(protected)/databases/page";
 
 interface DatabaseCardProps {
@@ -134,12 +144,30 @@ export function DatabaseCard({ database, onDelete, isDeleting }: DatabaseCardPro
                   <span>{database.config.storage_gb} GB</span>
                 </div>
               )}
-              {database.config.memory && (
-                <div className="flex items-center text-sm">
-                  <span className="text-muted-foreground w-20">Memory:</span>
-                  <span>{database.config.memory}</span>
-                </div>
-              )}
+              {database.config.memory && (() => {
+                const { label, tooltip } = memoryDisplay(database.config.memory);
+                return (
+                  <div className="flex items-center text-sm">
+                    <span className="text-muted-foreground w-20">Memory:</span>
+                    {tooltip ? (
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help underline decoration-dotted underline-offset-2">
+                              {label}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs text-xs">
+                            {tooltip}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <span>{label}</span>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           )}
 

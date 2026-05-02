@@ -62,14 +62,26 @@ const HEALTH_CLASSES: Record<DomainHealthStatus, string> = {
 interface DomainStatusBadgeProps {
   domain: Domain;
   className?: string;
+  /**
+   * When true and the row resolves to "unknown", render the badge as
+   * "Stale" instead. Operator clarity (parity-audit gap DM-3): when the
+   * verifier hasn't run in 24h+ every "Unknown" is misleading — it
+   * implies "we just don't know yet" when the truth is "we haven't
+   * looked in a long time and what you see is DB state, not live state."
+   */
+  verifierStale?: boolean;
 }
 
 export function DomainStatusBadge({
   domain,
   className,
+  verifierStale = false,
 }: DomainStatusBadgeProps) {
   const health = deriveDomainHealth(domain);
-  const label = HEALTH_LABELS[health];
+  // "Stale" only meaningfully replaces "Unknown" — for active/failed/etc.
+  // we already have authoritative DB state to render.
+  const label =
+    health === 'unknown' && verifierStale ? 'Stale' : HEALTH_LABELS[health];
 
   const ariaLabel = `Domain status: ${label}`;
 

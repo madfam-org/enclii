@@ -125,6 +125,22 @@ func (s *ProjectService) ListProjects(ctx context.Context) ([]*types.Project, er
 	return projects, nil
 }
 
+// ListProjectsScoped lists projects filtered to a specific team. When teamID
+// is non-nil, only projects parented to that team are returned. When nil, the
+// behavior is identical to ListProjects (platform-wide view). Used by the
+// tenant-filter middleware when a master admin is acting-as a tenant.
+func (s *ProjectService) ListProjectsScoped(ctx context.Context, teamID *uuid.UUID) ([]*types.Project, error) {
+	if teamID == nil {
+		return s.ListProjects(ctx)
+	}
+	projects, err := s.repos.Projects.ListByTeam(ctx, *teamID)
+	if err != nil {
+		s.logger.Error("Failed to list projects by team", "team_id", teamID.String(), "error", err)
+		return nil, errors.Wrap(err, errors.ErrDatabaseError)
+	}
+	return projects, nil
+}
+
 // CreateServiceRequest represents a request to create a service
 type CreateServiceRequest struct {
 	ProjectID        string

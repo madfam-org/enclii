@@ -353,3 +353,56 @@ func TestProjectRepository_Delete(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// --- ListByTeam (XC-2 enforcement) ---
+
+func TestProjectRepository_ListByTeam(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		p := &types.Project{
+			ID: uuid.New(), Name: "Dhanam", Slug: "dhanam",
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at\s+FROM projects\s+WHERE team_id = \$1`).
+			WithArgs(teamID).
+			WillReturnRows(projectRow(p))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, p.Slug, out[0].Slug)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("empty result", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at\s+FROM projects\s+WHERE team_id = \$1`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(projectColumns))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`SELECT id, name, slug`).
+			WithArgs(teamID).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, err := repo.ListByTeam(context.Background(), teamID)
+		require.Error(t, err)
+	})
+}

@@ -35,6 +35,12 @@ export interface DomainsTableProps {
   filters: DomainsTableFilters;
   /** Defaults to "expiry-asc" (worst first) per spec. */
   initialSort?: SortKey;
+  /**
+   * When true, "Unknown" status badges render as "Stale" — the
+   * verification pipeline is wedged and the displayed status is DB
+   * state, not live state. Parity-audit gap DM-3.
+   */
+  verifierStale?: boolean;
 }
 
 type SortKey =
@@ -186,6 +192,7 @@ export function DomainsTable({
   domains,
   filters,
   initialSort = 'expiry-asc',
+  verifierStale = false,
 }: DomainsTableProps) {
   const [sort, setSort] = useState<SortKey>(initialSort);
 
@@ -312,7 +319,7 @@ export function DomainsTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    <DomainStatusBadge domain={d} />
+                    <DomainStatusBadge domain={d} verifierStale={verifierStale} />
                   </TableCell>
                   <TableCell>
                     <CertExpiryIndicator expiresAt={d.tls_expires_at} />
@@ -360,7 +367,7 @@ export function DomainsTable({
                 >
                   {d.domain}
                 </a>
-                <DomainStatusBadge domain={d} />
+                <DomainStatusBadge domain={d} verifierStale={verifierStale} />
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                 <dt className="text-muted-foreground">Project</dt>

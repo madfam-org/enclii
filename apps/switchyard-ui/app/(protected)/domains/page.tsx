@@ -31,6 +31,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { LastSyncBadge } from '@/components/dashboard/last-sync-badge';
 import { DomainsTable } from '@/components/domains/domains-table';
 import { describeCertExpiry } from '@/components/domains/cert-expiry-indicator';
+import {
+  CoverageBannerCard,
+  STALE_VERIFIER_THRESHOLD_SECONDS,
+  decideBanners,
+} from '@/components/domains/domain-coverage-banner';
 import { useDomains } from '@/hooks/use-domains';
 import { apiPost } from '@/lib/api';
 import type { DomainHealthStatus } from '@/types/domain';
@@ -49,6 +54,7 @@ export default function DomainsPage() {
   const {
     domains,
     stats,
+    coverage,
     loading,
     refreshing,
     error,
@@ -56,6 +62,13 @@ export default function DomainsPage() {
     lastSyncedAt,
     refresh,
   } = useDomains();
+
+  // Banners + verifier-stale decision are derived from `coverage` so the
+  // logic is pure and testable in `domain-coverage-banner.test.ts`.
+  const banners = useMemo(() => decideBanners(coverage), [coverage]);
+  const verifierStale =
+    coverage !== null &&
+    coverage.oldest_unverified_age_seconds > STALE_VERIFIER_THRESHOLD_SECONDS;
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DomainHealthStatus>(
@@ -155,31 +168,60 @@ export default function DomainsPage() {
             Centralized view of every custom domain across the ecosystem.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <LastSyncBadge
-            lastSyncedAt={lastSyncedAt}
-            onRefresh={refresh}
-            refreshing={refreshing}
-          />
-          <Button
-            onClick={handleSync}
-            disabled={syncing}
-            aria-label="Sync domains from Cloudflare"
-          >
-            {syncing ? (
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <LastSyncBadge
+              lastSyncedAt={lastSyncedAt}
+              onRefresh={refresh}
+              refreshing={refreshing}
+            />
+            <Button
+              onClick={handleSync}
+              disabled={syncing}
+              aria-label="Sync domains from Cloudflare"
+            >
+              {syncing ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Sync from Cloudflare
+                </>
+              )}
+            </Button>
+          </div>
+          {/* Sub-header that disambiguates the "synced just now" badge.
+              The badge tracks /v1/domains FETCH freshness — NOT verifier
+              freshness. Without this caption operators inferred (correctly,
+              given the badge wording) that a green "synced just now"
+              meant Cloudflare verification just succeeded. It does not.
+              See parity-audit gap DM-4. */}
+          <p className="text-muted-foreground text-xs">
+            Tracks API fetch freshness, not Cloudflare verification.
+            {summary.total > 0 && (
               <>
-                <Spinner size="sm" className="mr-2" />
-                Syncing...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                Sync from Cloudflare
+                {' '}
+                Verified {summary.healthy} of {summary.total} row
+                {summary.total === 1 ? '' : 's'}.
               </>
             )}
-          </Button>
+          </p>
         </div>
       </header>
+
+      {/* Coverage banners (sync-not-configured, inventory-incomplete,
+          verifier-stale). Rendered above the summary cards so operators
+          see the actionable state before drilling into per-row data. */}
+      {banners.length > 0 && (
+        <div className="space-y-2" role="region" aria-label="Domain inventory advisories">
+          {banners.map((b) => (
+            <CoverageBannerCard key={b.kind} banner={b} />
+          ))}
+        </div>
+      )}
 
       {syncError && (
         <Card className="border-status-error/40 bg-status-error-muted/20">
@@ -349,6 +391,7 @@ export default function DomainsPage() {
                 status: statusFilter,
                 project: projectFilter,
               }}
+              verifierStale={verifierStale}
             />
           )}
         </CardContent>

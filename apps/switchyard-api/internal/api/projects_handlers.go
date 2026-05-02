@@ -4,9 +4,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 )
@@ -91,8 +93,16 @@ func (h *Handler) CreateProject(c *gin.Context) {
 func (h *Handler) ListProjects(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Use service layer for listing projects
-	projects, err := h.projectService.ListProjects(ctx)
+	// XC-2: when the master admin is acting-as a tenant, filter the
+	// platform-wide list down to that tenant's projects. The middleware
+	// (middleware.ActingAsMiddleware) sets acting_team_id when an open
+	// session exists; absent it, behavior is unchanged.
+	var teamID *uuid.UUID
+	if id, ok := middleware.ActingTeamID(c); ok {
+		teamID = &id
+	}
+
+	projects, err := h.projectService.ListProjectsScoped(ctx, teamID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
 		return

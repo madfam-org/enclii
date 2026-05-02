@@ -201,17 +201,22 @@ After the audit landed, two follow-on rounds shipped.
 - ✅ D-4 — Plan-overage alerts filtered out of the alerts sidebar for admin scope.
 - ✅ US-1..4 — `/usage` cost pill / donut / bar chart / cost table all hidden for admin scope; "Cluster utilization" header.
 
-**Round 3 — `<this commit>`**
+**Round 3 — `3b5f5586`**
 - ✅ XC-2 *handler tests* — 9 new sqlmock-backed tests for `admin_tenants_handlers.go` covering nil-repos guard, ListTenants happy path with project counts, EnterTenant slug requirement + cookie shape + duration cap, ExitTenant cookie clearing, ActiveTenant no-session / active-session / dangling-session paths.
 - ✅ XC-2 *CLI parity* — `enclii admin tenants list/active/enter/exit` so operators can act-as from a script with the same surface as the web app.
 - ✅ Doc updates — `docs/cli/commands/admin.md` documents the new tenants subtree; this audit file and `master-admin-tenant-switching.md` updated with shipped status.
 
+**Round 4 — `<this commit>`**
+- ✅ **XC-2 enforcement** — `middleware.ActingAsMiddleware` reads `ax_acting_as`, validates the open session via `AdminActingSessionRepository.GetActive`, stashes `acting_team_id` in the gin context. `GET /v1/projects` now consults `middleware.ActingTeamID` and filters via the new `ProjectRepository.ListByTeam` + `ProjectService.ListProjectsScoped` so master-admin actually *sees only the acted-on tenant's projects*. Defense-in-depth: middleware is a no-op for non-admins. 8 new middleware tests + 3 repo tests, all green.
+- ✅ **DM-1..4 honesty** — `/v1/domains` returns a `coverage` block (`sync_configured`, `projects_total`, `projects_with_domains`, `domains_total`, `oldest_unverified_age_seconds`). UI surfaces three banners (`sync-not-configured`, `inventory-incomplete`, `verifier-stale`), relabels `Unknown` → `Stale` when the verifier is wedged, and clarifies "synced just now" tracks fetch freshness, not Cloudflare verification. Real Cloudflare integration deferred to a dedicated session — see `claudedocs/master-admin-tenant-switching.md` for the queue. 6 new backend tests + 11 frontend tests.
+- ✅ **PR-1** — One source of truth helper `lib/project-deploy.ts` consumed by both `/` (Dashboard) and `/projects`; a tri-state `deployed | no-deploys | unknown` resolution prevents drift between the two pages and never falsely claims "no deployments" when the upstream call rejected. 9 new tests.
+- ✅ **DB-1** — Bare `Memory: shared` replaced with `Shared (cluster pool)` + a tooltip explaining it's allocated from a pool and pointing at `enclii admin databases discover`. 3 new tests.
+- ✅ **IG-1** — `/integrations/janua` rewritten end-to-end (388→268 lines): pricing tiers, "Deploy Now" CTAs, marketing hero all dropped. New layout: Reachability probe (live `GET ${JANUA_BASE_URL}/api/v1/auth/me`), OAuth Client (issuer + client ID), Current Session (email/name/roles from `useAuth`).
+- ✅ **D-5** — Dashboard `+ Add New…` is now a `DropdownMenu` with explicit items: New project / New service / New database. `?create=true` query param wired on `/databases` to mirror the existing `/projects` create-modal pattern.
+
 ## Still open (queued, not shipped)
 
-- 🔴 **DM-1..4** — `/domains` inventory + Cloudflare-driven verification pipeline. Needs real backend integration.
-- 🔴 **Tenant-filter middleware** — the `ax_acting_as` cookie is set, the session is recorded, the banner renders, but the existing `/v1/projects` and friends do **not yet** filter by `acting_team_id`. Next architectural step: middleware that reads the cookie, validates the session, sets `c.acting_team_id`, and updates each list-style handler to consult it.
-- 🟡 **PR-1** — Projects vs Dashboard "latest deployment" inconsistency.
-- 🟡 **DB-1** — Replace bare "shared" memory label on /databases.
-- 🟡 **IG-1** — Replace marketing copy on `/integrations/janua` with operational status.
-- 🟢 **D-5** — Disambiguate "+ Add New…" CTA copy.
+- 🟡 **Tenant-filter on remaining list handlers** — `/v1/projects` is filtered. `/v1/services`, `/v1/deployments`, `/v1/domains`, `/v1/databases`, `/v1/audit`, `/v1/activity` need the same treatment. Each is a small, repetitive change against the now-existing `middleware.ActingTeamID` helper. Tracked for a follow-up.
+- 🟡 **Real Cloudflare verifier** — DM-1..4 honesty layer is in (banners + `Stale` badge), but the actual verification pipeline is gated on `ENCLII_CLOUDFLARE_*` secrets being wired to the deployment. Separate scope; needs ops involvement.
+- 🟡 **Inventory-by-scan** — domain inventory is registration-only today; a follow-up should merge `custom_domains` with a live Cloudflare DNS scan (or K8s `Ingress`/`HTTPRoute` set) so registrar-less domains appear automatically.
 - Cross-app audits: **admin.enclii.dev**, **status / docs / landing / npm / analytics**.

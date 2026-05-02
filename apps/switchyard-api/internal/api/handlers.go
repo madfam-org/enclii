@@ -415,6 +415,15 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 		protected := v1.Group("")
 		protected.Use(h.auth.AuthMiddleware())
 		protected.Use(h.auditMiddleware.AuditMiddleware())
+		// XC-2: when the caller is a master admin with an open
+		// `ax_acting_as` session, stash the acted-on team id in the
+		// gin context. Downstream list-style handlers (projects,
+		// services, deployments) consult middleware.ActingTeamID.
+		// No-op when AdminActingSessions/Teams repos aren't wired —
+		// keeps unit tests of legacy handlers unchanged.
+		protected.Use(middleware.ActingAsMiddleware(
+			middleware.NewRepoActingAsResolver(h.repos.AdminActingSessions, h.repos.Teams),
+		))
 		{
 			// Projects
 			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), middleware.RequireTierForProject(h.repos), h.CreateProject)

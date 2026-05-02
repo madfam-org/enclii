@@ -1,11 +1,13 @@
 "use client";
 
-import { Plus, Globe, UserPlus } from "lucide-react";
+import { Plus, Boxes, Database, Layers } from "lucide-react";
 import { Button } from "@enclii/ui-components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@enclii/ui-components/dropdown-menu";
 import {
@@ -45,7 +47,11 @@ export function SubNavActionBar({
         />
       </div>
 
-      {/* Right: View Toggle + Add New */}
+      {/* Right: View Toggle + Add New
+          The dropdown disambiguates the "+ Add New…" CTA (audit D-5).
+          Items route to existing creation surfaces: project (modal on
+          /projects), service (dedicated /services/new page), database
+          (modal on /databases via ?create=true; page reads the param). */}
       <div className="flex items-center gap-3">
         <ViewToggle
           value={viewMode}
@@ -56,26 +62,32 @@ export function SubNavActionBar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" data-tour="create-project">
+            <Button
+              size="sm"
+              data-tour="create-project"
+              aria-label="Create a project, service, or database"
+            >
               <Plus className="mr-1.5 h-4 w-4" />
               Add New...
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Create new</DropdownMenuLabel>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onCreateProject}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Project
+              <Boxes className="mr-2 h-4 w-4" />
+              <span>New project</span>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/domains?create=true">
-                <Globe className="mr-2 h-4 w-4" />
-                New Domain
+              <a href="/services/new">
+                <Layers className="mr-2 h-4 w-4" />
+                <span>New service</span>
               </a>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/settings/teams/new">
-                <UserPlus className="mr-2 h-4 w-4" />
-                New Team Member
+              <a href="/databases?create=true">
+                <Database className="mr-2 h-4 w-4" />
+                <span>New database</span>
               </a>
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,12 +21,56 @@ type DomainWithContext struct {
 	ProjectSlug     string `json:"project_slug,omitempty"`
 }
 
+// DomainCoverage describes how complete the domain inventory is and how
+// fresh the verification pipeline data is. The UI uses this to decide
+// whether to show a "partial inventory" banner and whether to relabel
+// stale "Unknown" rows as "Stale".
+//
+// Fields are deliberately conservative — they describe state already in
+// the database (and in-memory config) rather than reaching out to any
+// external system. No new tables, no new dependencies.
+type DomainCoverage struct {
+	// SyncConfigured is true when the Cloudflare verification service is
+	// wired into the API process. When false, no rows will ever transition
+	// out of "pending"/"unknown" without a manual `enclii domains add` +
+	// re-deploy of the API with credentials.
+	SyncConfigured bool `json:"sync_configured"`
+
+	// ProjectsTotal is the count of projects on this control plane. The
+	// UI compares this against ProjectsWithDomains to flag inventory gaps
+	// (projects whose production domain was never registered with
+	// `enclii domains add`).
+	ProjectsTotal int `json:"projects_total"`
+
+	// ProjectsWithDomains is the count of projects represented by at
+	// least one row in the returned domain set (post-filter).
+	ProjectsWithDomains int `json:"projects_with_domains"`
+
+	// DomainsTotal mirrors the page-level Total field for convenience —
+	// the UI's coverage banner only has the response body to look at.
+	DomainsTotal int `json:"domains_total"`
+
+	// OldestUnverifiedAgeSeconds is the wall-clock age of the
+	// least-recently-verified row that still has not been verified
+	// (verified_at IS NULL). When > 24h the UI badges every "Unknown"
+	// row as "Stale" and shows a global error banner: the verification
+	// pipeline has not run in too long.
+	//
+	// Falls back to row-creation time when verified_at is null, which
+	// means a freshly-created row will report "0s old" and a long-lived
+	// unverified row will accurately report its lifetime.
+	//
+	// -1 when there are no unverified rows (everything is verified).
+	OldestUnverifiedAgeSeconds int64 `json:"oldest_unverified_age_seconds"`
+}
+
 // DomainsListResponse represents the paginated domains response
 type DomainsListResponse struct {
-	Domains []DomainWithContext `json:"domains"`
-	Total   int                 `json:"total"`
-	Limit   int                 `json:"limit"`
-	Offset  int                 `json:"offset"`
+	Domains  []DomainWithContext `json:"domains"`
+	Total    int                 `json:"total"`
+	Limit    int                 `json:"limit"`
+	Offset   int                 `json:"offset"`
+	Coverage DomainCoverage      `json:"coverage"`
 }
 
 // GetAllDomains returns all custom domains across all services
@@ -100,11 +146,82 @@ func (h *Handler) GetAllDomains(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, DomainsListResponse{
-		Domains: enrichedDomains,
-		Total:   total,
-		Limit:   limit,
-		Offset:  offset,
+		Domains:  enrichedDomains,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+		Coverage: h.computeDomainCoverage(ctx, enrichedDomains, total),
 	})
+}
+
+// computeDomainCoverage builds the DomainCoverage block returned alongside
+// /v1/domains. Errors looking up project counts are swallowed — coverage is
+// best-effort metadata, not a hard failure mode for the listing endpoint.
+func (h *Handler) computeDomainCoverage(ctx context.Context, domains []DomainWithContext, total int) DomainCoverage {
+	// Total projects on the control plane. List() is non-paginated; the
+	// project table is small (single-digit-to-low-double-digit on every
+	// known cluster). If the call fails we leave ProjectsTotal at zero,
+	// which causes the UI to suppress the "inventory may be incomplete"
+	// banner — preferring silence to a spurious warning.
+	projectsTotal := 0
+	if h.repos != nil && h.repos.Projects != nil {
+		if projects, err := h.repos.Projects.List(); err == nil {
+			projectsTotal = len(projects)
+		} else {
+			h.logger.Warn(ctx, "Failed to count projects for domain coverage", logging.Error("error", err))
+		}
+	}
+
+	return buildDomainCoverage(domains, total, h.domainSyncService != nil, projectsTotal, time.Now())
+}
+
+// buildDomainCoverage is the pure subset of computeDomainCoverage — exported
+// only via tests. Keeps the algorithm decoupled from *Handler so we can
+// exercise edge cases (no domains, all verified, sync-not-configured)
+// without standing up a fake repo + logger.
+func buildDomainCoverage(domains []DomainWithContext, total int, syncConfigured bool, projectsTotal int, now time.Time) DomainCoverage {
+	cov := DomainCoverage{
+		SyncConfigured:             syncConfigured,
+		ProjectsTotal:              projectsTotal,
+		DomainsTotal:               total,
+		OldestUnverifiedAgeSeconds: -1,
+	}
+
+	// Distinct projects represented in the returned rows.
+	seen := make(map[string]struct{}, len(domains))
+	for _, d := range domains {
+		if d.ProjectSlug != "" {
+			seen[d.ProjectSlug] = struct{}{}
+		}
+	}
+	cov.ProjectsWithDomains = len(seen)
+
+	// Oldest row that is still unverified. We walk the page rather than
+	// issuing a second SQL query — domains pages are small (limit ≤100)
+	// and the repository layer doesn't expose a min(verified_at) helper.
+	// If a future operator paginates past the first page this metric
+	// represents only the visible page; that's an acceptable trade-off
+	// because the banner it powers is intentionally heuristic.
+	var oldestAge int64 = -1
+	for _, d := range domains {
+		if d.Verified {
+			continue
+		}
+		// Use VerifiedAt when present (e.g., previously verified then
+		// re-failed); otherwise fall back to CreatedAt so a freshly-
+		// added but never-verified row reports its true lifetime.
+		ref := d.CreatedAt
+		if d.VerifiedAt != nil {
+			ref = *d.VerifiedAt
+		}
+		age := int64(now.Sub(ref).Seconds())
+		if age > oldestAge {
+			oldestAge = age
+		}
+	}
+	cov.OldestUnverifiedAgeSeconds = oldestAge
+
+	return cov
 }
 
 // GetDomainStats returns statistics about domains
