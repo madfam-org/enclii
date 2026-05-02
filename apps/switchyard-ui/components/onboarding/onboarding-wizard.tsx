@@ -15,6 +15,9 @@ import {
   User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiPost } from "@/lib/api";
+import { useRouter } from "next/navigation";
+
 
 interface OnboardingWizardProps {
   onComplete?: (data: OnboardingData) => void;
@@ -38,7 +41,10 @@ const steps = [
 ];
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<OnboardingData>({
     profile: { name: "" },
     project: { name: "", slug: "" },
@@ -46,11 +52,28 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
   const progress = ((currentStep + 1) / steps.length) * 100;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      onComplete?.(data);
+      if (onComplete) {
+        onComplete(data);
+      } else {
+        try {
+          setIsSubmitting(true);
+          setError(null);
+          // Create the project via the backend API
+          await apiPost('/v1/projects', {
+            name: data.project.name,
+            slug: data.project.slug,
+          });
+          // Redirect to the newly created project
+          router.push(`/projects/${data.project.slug}`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to create project');
+          setIsSubmitting(false);
+        }
+      }
     }
   };
 
@@ -140,6 +163,11 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {error && (
+            <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+              {error}
+            </div>
+          )}
           {/* Profile Step */}
           {steps[currentStep].id === "profile" && (
             <div className="space-y-4">
@@ -238,12 +266,12 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             </Button>
             <Button
               onClick={handleNext}
-              disabled={!canProceed()}
+              disabled={!canProceed() || isSubmitting}
             >
               {currentStep === steps.length - 1 ? (
                 <>
-                  Go to Dashboard
-                  <Rocket className="h-4 w-4 ml-2" />
+                  {isSubmitting ? "Creating..." : "Go to Dashboard"}
+                  {!isSubmitting && <Rocket className="h-4 w-4 ml-2" />}
                 </>
               ) : (
                 <>

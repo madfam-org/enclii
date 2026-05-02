@@ -98,6 +98,21 @@ func TestGetProject(t *testing.T) {
 	}
 }
 
+func TestGetDashboardStats(t *testing.T) {
+	requireTestDB(t)
+	h, engine := setupIntegrationHandler(t)
+	engine.GET("/v1/dashboard/stats", h.GetDashboardStats)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/v1/dashboard/stats", nil)
+	engine.ServeHTTP(w, req)
+
+	// In test DB, this shouldn't 500 if DB is healthy.
+	if w.Code == http.StatusInternalServerError {
+		t.Errorf("unexpected 500 error: %s", w.Body.String())
+	}
+}
+
 func TestListBareMetalHostsIntegration(t *testing.T) {
 	requireTestDB(t)
 	h, engine := setupIntegrationHandler(t)

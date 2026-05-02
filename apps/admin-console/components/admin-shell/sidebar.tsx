@@ -16,7 +16,10 @@ import {
   GitMerge,
   HardDrive,
   Lock,
+  GitFork,
+  DollarSign,
 } from 'lucide-react'
+
 
 const navItems = [
   { href: '/domains', label: 'Domains', icon: Globe },
@@ -29,6 +32,8 @@ const navItems = [
   { href: '/argocd', label: 'ArgoCD', icon: GitMerge },
   { href: '/storage', label: 'Storage', icon: HardDrive },
   { href: '/network-policies', label: 'Network Policies', icon: Lock },
+  { href: '/drift', label: 'Drift Events', icon: GitFork },
+  { href: '/costs', label: 'Costs', icon: DollarSign },
 ]
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
