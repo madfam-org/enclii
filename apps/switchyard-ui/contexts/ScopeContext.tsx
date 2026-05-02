@@ -100,8 +100,28 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
     };
   }, []);
 
-  // Create personal scope from user
-  const createPersonalScope = useCallback((userId: string, email: string, name?: string): Scope => {
+  // Build the user's "own" scope. Master admins (users carrying the `admin`
+  // role on their JWT — see SEC-007 in switchyard-api auth middleware) get an
+  // explicit admin scope rather than the synthetic "Personal Account (Hobby)"
+  // label, since they're white-glove operators acting across tenants, not
+  // hobby-tier consumers. See claudedocs/master-admin-tenant-switching.md
+  // for the full design and follow-on backend work.
+  const createOwnScope = useCallback((
+    userId: string,
+    email: string,
+    name?: string,
+    roles?: string[],
+  ): Scope => {
+    const isMasterAdmin = !!roles?.includes('admin');
+    if (isMasterAdmin) {
+      return {
+        id: `admin-${userId}`,
+        type: 'admin' as ScopeType,
+        name: 'Master Admin',
+        slug: email.split('@')[0] || 'admin',
+        plan: 'Admin' as PlanTier,
+      };
+    }
     return {
       id: `personal-${userId}`,
       type: 'personal' as ScopeType,
@@ -129,7 +149,7 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
       const teams = response.teams || [];
 
       // Build scopes list: personal + teams
-      const personalScope = createPersonalScope(user.id, user.email, user.name);
+      const personalScope = createOwnScope(user.id, user.email, user.name, user.roles);
       const teamScopes = teams.map(teamToScope);
       const allScopes = [personalScope, ...teamScopes];
 
@@ -148,14 +168,14 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
 
       // Fallback to personal scope only
       if (user) {
-        const personalScope = createPersonalScope(user.id, user.email, user.name);
+        const personalScope = createOwnScope(user.id, user.email, user.name, user.roles);
         setScopes([personalScope]);
         setCurrentScope(personalScope);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, user, createPersonalScope, teamToScope]);
+  }, [isAuthenticated, user, createOwnScope, teamToScope]);
 
   // Initial fetch
   useEffect(() => {
@@ -243,4 +263,14 @@ export function useCurrentScopeId(): string | null {
 export function useIsTeamScope(): boolean {
   const { currentScope } = useScope();
   return currentScope?.type === 'team';
+}
+
+/**
+ * Hook to check if the current scope is the master-admin scope.
+ * Use this to gate admin-only UI affordances at the route level until the
+ * full tenant-switching API ships (see master-admin-tenant-switching.md).
+ */
+export function useIsAdminScope(): boolean {
+  const { currentScope } = useScope();
+  return currentScope?.type === 'admin';
 }

@@ -1,0 +1,725 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e7]:
+          - link "🚂 Enclii Switchyard" [ref=e8] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e9]: 🚂 Enclii
+            - generic [ref=e10]: Switchyard
+          - generic [ref=e11]: /
+          - button "Personal Account" [ref=e13] [cursor=pointer]:
+            - img [ref=e15]
+            - generic [ref=e18]: Personal Account
+            - img [ref=e19]
+        - generic [ref=e21]:
+          - button "⌘K" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+            - generic [ref=e26]: ⌘K
+          - button "Notifications" [ref=e27] [cursor=pointer]:
+            - img [ref=e28]
+          - button [ref=e32] [cursor=pointer]:
+            - img [ref=e34]
+      - generic [ref=e40]:
+        - link "Dashboard" [ref=e41] [cursor=pointer]:
+          - /url: /
+        - link "Projects" [ref=e42] [cursor=pointer]:
+          - /url: /projects
+        - link "Services" [ref=e43] [cursor=pointer]:
+          - /url: /services
+        - link "Deployments" [ref=e44] [cursor=pointer]:
+          - /url: /deployments
+        - link "Observability" [ref=e45] [cursor=pointer]:
+          - /url: /observability
+        - link "Templates" [ref=e46] [cursor=pointer]:
+          - /url: /templates
+        - link "Databases" [ref=e47] [cursor=pointer]:
+          - /url: /databases
+        - button "More" [ref=e48] [cursor=pointer]:
+          - text: More
+          - img [ref=e49]
+    - main [ref=e51]:
+      - generic [ref=e53]:
+        - generic [ref=e54]:
+          - generic [ref=e56]:
+            - generic [ref=e57]:
+              - img [ref=e58]
+              - textbox "Search projects..." [ref=e61]
+            - combobox [ref=e62] [cursor=pointer]:
+              - generic: Last updated
+              - img [ref=e63]
+          - generic [ref=e65]:
+            - radiogroup "View mode" [ref=e66]:
+              - radio "Grid view" [checked] [ref=e67] [cursor=pointer]:
+                - img [ref=e68]
+              - radio "List view" [ref=e73] [cursor=pointer]:
+                - img [ref=e74]
+            - button "Add New..." [ref=e75] [cursor=pointer]:
+              - img [ref=e76]
+              - text: Add New...
+        - generic [ref=e78]:
+          - status [ref=e79]: synced 5s ago
+          - button "Refresh now" [ref=e80] [cursor=pointer]:
+            - img [ref=e81]
+            - text: Refresh
+        - generic [ref=e86]:
+          - complementary "Ecosystem snapshot" [ref=e87]:
+            - generic [ref=e88]:
+              - heading "Usage" [level=3] [ref=e90]:
+                - img [ref=e91]
+                - text: Usage
+              - generic [ref=e94]:
+                - generic [ref=e95]:
+                  - generic [ref=e96]:
+                    - img [ref=e97]
+                    - generic [ref=e101]: 100%
+                  - generic [ref=e102]: Compute
+                - generic [ref=e103]:
+                  - generic [ref=e104]:
+                    - img [ref=e105]
+                    - generic [ref=e109]: 61%
+                  - generic [ref=e110]: Build Minutes
+                - generic [ref=e111]:
+                  - generic [ref=e112]:
+                    - img [ref=e113]
+                    - generic [ref=e117]: 100%
+                  - generic [ref=e118]: Storage
+                - generic [ref=e119]:
+                  - generic [ref=e120]:
+                    - img [ref=e121]
+                    - generic [ref=e125]: 8%
+                  - generic [ref=e126]: Bandwidth
+            - generic [ref=e127]:
+              - generic [ref=e128]:
+                - img [ref=e129]
+                - heading "System Health" [level=3] [ref=e131]
+              - paragraph [ref=e132]: Loading…
+            - generic [ref=e133]:
+              - heading "Alerts" [level=3] [ref=e135]:
+                - generic [ref=e136]: Alerts
+              - generic [ref=e138]:
+                - generic [ref=e141]:
+                  - paragraph [ref=e142]: Service Deployment Failed
+                  - paragraph [ref=e143]: just now
+                - generic [ref=e146]:
+                  - paragraph [ref=e147]: Service Deployment Failed
+                  - paragraph [ref=e148]: just now
+                - generic [ref=e151]:
+                  - paragraph [ref=e152]: Compute Over Plan Limit
+                  - paragraph [ref=e153]: just now
+                - generic [ref=e156]:
+                  - paragraph [ref=e157]: Build Minutes Over Plan Limit
+                  - paragraph [ref=e158]: just now
+                - generic [ref=e161]:
+                  - paragraph [ref=e162]: Storage Over Plan Limit
+                  - paragraph [ref=e163]: just now
+                - generic [ref=e166]:
+                  - paragraph [ref=e167]: Bandwidth Over Plan Limit
+                  - paragraph [ref=e168]: just now
+            - generic [ref=e169]:
+              - heading "Recent Previews" [level=3] [ref=e171]
+              - paragraph [ref=e173]: No previews to surface yet — they'll appear here once a project with a domain finishes its first deploy.
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - link [ref=e176] [cursor=pointer]:
+                - /url: /projects/dhanam
+                - generic [ref=e177]:
+                  - generic [ref=e178]:
+                    - generic [ref=e179]:
+                      - img "Next.js" [ref=e181]:
+                        - img [ref=e182]
+                      - generic [ref=e184]: Dhanam
+                      - 'generic "Framework: Next.js" [ref=e185]': Next.js
+                    - generic [ref=e187]: 3/3
+                  - table [ref=e190]:
+                    - rowgroup [ref=e191]:
+                      - row "Service Status Replicas Env" [ref=e192]:
+                        - columnheader "Service" [ref=e193]
+                        - columnheader "Status" [ref=e194]
+                        - columnheader "Replicas" [ref=e195]
+                        - columnheader "Env" [ref=e196]
+                    - rowgroup [ref=e197]:
+                      - row "dhanam-admin Running 2/2 production" [ref=e198]:
+                        - cell "dhanam-admin" [ref=e199]:
+                          - generic [ref=e202]: dhanam-admin
+                        - cell "Running" [ref=e203]:
+                          - generic [ref=e204]: Running
+                        - cell "2/2" [ref=e205]
+                        - cell "production" [ref=e206]
+                      - row "dhanam-api Running 2/2 production" [ref=e207]:
+                        - cell "dhanam-api" [ref=e208]:
+                          - generic [ref=e211]: dhanam-api
+                        - cell "Running" [ref=e212]:
+                          - generic [ref=e213]: Running
+                        - cell "2/2" [ref=e214]
+                        - cell "production" [ref=e215]
+                      - row "dhanam-web Running 2/2 production" [ref=e216]:
+                        - cell "dhanam-web" [ref=e217]:
+                          - generic [ref=e220]: dhanam-web
+                        - cell "Running" [ref=e221]:
+                          - generic [ref=e222]: Running
+                        - cell "2/2" [ref=e223]
+                        - cell "production" [ref=e224]
+                  - paragraph [ref=e225]: "feat(api): compliance document ingestion pipeline - Add ComplianceRecord to Prisma schema with document key, Karafiel 1:1 link, and tier-based retention policy fields (20_YEARS for admin, etc.) - Add SQL migration 20260501000000_add_compliance_records - KarafielService: dispatch structured transaction metadata + R2 provenance URI; graceful fallback with PENDING receipt when unconfigured - DocumentExtractionService: native GPT-4o-mini vision extraction for PDF/images; automatic fallback to Selva (/v1/chat/completions) when confidence < 0.5 or failure - ComplianceIngestController: POST /v1/compliance/ingest multipart endpoint; resolves retention prefix from subscription tier (admin → retention-20y); full pipeline: upload → extract → Karafiel seal → ComplianceRecord persist - Register @fastify/multipart in main.ts (25MB limit, 1 file per request) - Wire all new services into ManualAssetsModule with HttpModule OPENAI_API_KEY and SELVA_API_KEY and KARAFIEL_API_KEY should be added as secrets via: enclii secrets set KEY=value --service dhanam-api"
+                  - link "madfam-org/dhanam" [ref=e227]:
+                    - /url: https://github.com/madfam-org/dhanam
+                    - img [ref=e228]
+                    - generic [ref=e231]: madfam-org/dhanam
+                  - generic "Loading health" [ref=e233]:
+                    - img [ref=e234]
+                  - generic [ref=e236]:
+                    - generic [ref=e237]:
+                      - img [ref=e238]
+                      - generic [ref=e242]: main
+                    - generic [ref=e243]:
+                      - link "View deployments for Dhanam" [ref=e244]:
+                        - /url: /projects/dhanam/deployments
+                        - img [ref=e245]
+                        - generic [ref=e249]: Deployments
+                      - generic [ref=e250]: 8h ago
+              - link "Unknown factlas 3/4 Service Status Replicas Env factlas-tiles Running 1/1 production factlas-atlas Running 1/1 production factlas-api Running 1/1 production factlas Unknown 0/0 production 3 running, 1 unknown madfam-org/factlas Loading health main View deployments for factlas 1d ago" [ref=e251] [cursor=pointer]:
+                - /url: /projects/factlas
+                - generic [ref=e252]:
+                  - generic [ref=e253]:
+                    - generic [ref=e254]:
+                      - img "Unknown" [ref=e256]:
+                        - img [ref=e257]
+                      - generic [ref=e259]: factlas
+                    - generic [ref=e261]: 3/4
+                  - table [ref=e264]:
+                    - rowgroup [ref=e265]:
+                      - row "Service Status Replicas Env" [ref=e266]:
+                        - columnheader "Service" [ref=e267]
+                        - columnheader "Status" [ref=e268]
+                        - columnheader "Replicas" [ref=e269]
+                        - columnheader "Env" [ref=e270]
+                    - rowgroup [ref=e271]:
+                      - row "factlas-tiles Running 1/1 production" [ref=e272]:
+                        - cell "factlas-tiles" [ref=e273]:
+                          - generic [ref=e276]: factlas-tiles
+                        - cell "Running" [ref=e277]:
+                          - generic [ref=e278]: Running
+                        - cell "1/1" [ref=e279]
+                        - cell "production" [ref=e280]
+                      - row "factlas-atlas Running 1/1 production" [ref=e281]:
+                        - cell "factlas-atlas" [ref=e282]:
+                          - generic [ref=e285]: factlas-atlas
+                        - cell "Running" [ref=e286]:
+                          - generic [ref=e287]: Running
+                        - cell "1/1" [ref=e288]
+                        - cell "production" [ref=e289]
+                      - row "factlas-api Running 1/1 production" [ref=e290]:
+                        - cell "factlas-api" [ref=e291]:
+                          - generic [ref=e294]: factlas-api
+                        - cell "Running" [ref=e295]:
+                          - generic [ref=e296]: Running
+                        - cell "1/1" [ref=e297]
+                        - cell "production" [ref=e298]
+                      - row "factlas Unknown 0/0 production" [ref=e299]:
+                        - cell "factlas" [ref=e300]:
+                          - generic [ref=e303]: factlas
+                        - cell "Unknown" [ref=e304]:
+                          - generic [ref=e305]: Unknown
+                        - cell "0/0" [ref=e306]
+                        - cell "production" [ref=e307]
+                  - paragraph [ref=e308]: 3 running, 1 unknown
+                  - link "madfam-org/factlas" [ref=e310]:
+                    - /url: https://github.com/madfam-org/factlas
+                    - img [ref=e311]
+                    - generic [ref=e314]: madfam-org/factlas
+                  - generic "Loading health" [ref=e316]:
+                    - img [ref=e317]
+                  - generic [ref=e319]:
+                    - generic [ref=e320]:
+                      - img [ref=e321]
+                      - generic [ref=e325]: main
+                    - generic [ref=e326]:
+                      - link "View deployments for factlas" [ref=e327]:
+                        - /url: /projects/factlas/deployments
+                        - img [ref=e328]
+                        - generic [ref=e332]: Deployments
+                      - generic [ref=e333]: 1d ago
+              - link "Unknown routecraft 8/9 Service Status Replicas Env scoring-svc Running 2/2 production routing-svc Running 2/2 production routecraft-www Running 1/1 production routecraft-dashboard Running 2/2 production routecraft-bff Unknown 0/2 production +4 more services 8 running, 1 unknown Loading health main View deployments for routecraft 2d ago" [ref=e334] [cursor=pointer]:
+                - /url: /projects/routecraft
+                - generic [ref=e335]:
+                  - generic [ref=e336]:
+                    - generic [ref=e337]:
+                      - img "Unknown" [ref=e339]:
+                        - img [ref=e340]
+                      - generic [ref=e342]: routecraft
+                    - generic [ref=e344]: 8/9
+                  - table [ref=e347]:
+                    - rowgroup [ref=e348]:
+                      - row "Service Status Replicas Env" [ref=e349]:
+                        - columnheader "Service" [ref=e350]
+                        - columnheader "Status" [ref=e351]
+                        - columnheader "Replicas" [ref=e352]
+                        - columnheader "Env" [ref=e353]
+                    - rowgroup [ref=e354]:
+                      - row "scoring-svc Running 2/2 production" [ref=e355]:
+                        - cell "scoring-svc" [ref=e356]:
+                          - generic [ref=e359]: scoring-svc
+                        - cell "Running" [ref=e360]:
+                          - generic [ref=e361]: Running
+                        - cell "2/2" [ref=e362]
+                        - cell "production" [ref=e363]
+                      - row "routing-svc Running 2/2 production" [ref=e364]:
+                        - cell "routing-svc" [ref=e365]:
+                          - generic [ref=e368]: routing-svc
+                        - cell "Running" [ref=e369]:
+                          - generic [ref=e370]: Running
+                        - cell "2/2" [ref=e371]
+                        - cell "production" [ref=e372]
+                      - row "routecraft-www Running 1/1 production" [ref=e373]:
+                        - cell "routecraft-www" [ref=e374]:
+                          - generic [ref=e377]: routecraft-www
+                        - cell "Running" [ref=e378]:
+                          - generic [ref=e379]: Running
+                        - cell "1/1" [ref=e380]
+                        - cell "production" [ref=e381]
+                      - row "routecraft-dashboard Running 2/2 production" [ref=e382]:
+                        - cell "routecraft-dashboard" [ref=e383]:
+                          - generic [ref=e386]: routecraft-dashboard
+                        - cell "Running" [ref=e387]:
+                          - generic [ref=e388]: Running
+                        - cell "2/2" [ref=e389]
+                        - cell "production" [ref=e390]
+                      - row "routecraft-bff Unknown 0/2 production" [ref=e391]:
+                        - cell "routecraft-bff" [ref=e392]:
+                          - generic [ref=e395]: routecraft-bff
+                        - cell "Unknown" [ref=e396]:
+                          - generic [ref=e397]: Unknown
+                        - cell "0/2" [ref=e398]
+                        - cell "production" [ref=e399]
+                      - row "+4 more services" [ref=e400]:
+                        - cell "+4 more services" [ref=e401]
+                  - paragraph [ref=e402]: 8 running, 1 unknown
+                  - generic "Loading health" [ref=e405]:
+                    - img [ref=e406]
+                  - generic [ref=e408]:
+                    - generic [ref=e409]:
+                      - img [ref=e410]
+                      - generic [ref=e414]: main
+                    - generic [ref=e415]:
+                      - link "View deployments for routecraft" [ref=e416]:
+                        - /url: /projects/routecraft/deployments
+                        - img [ref=e417]
+                        - generic [ref=e421]: Deployments
+                      - generic [ref=e422]: 2d ago
+              - 'link "Next.js nuit-one Framework: Next.js 2/2 Service Status Replicas Env nuit-one-web Running 2/2 production nuit-one-api Running 2/2 production 2 running Loading health main View deployments for nuit-one 2d ago" [ref=e423] [cursor=pointer]':
+                - /url: /projects/nuit-one
+                - generic [ref=e424]:
+                  - generic [ref=e425]:
+                    - generic [ref=e426]:
+                      - img "Next.js" [ref=e428]:
+                        - img [ref=e429]
+                      - generic [ref=e431]: nuit-one
+                      - 'generic "Framework: Next.js" [ref=e432]': Next.js
+                    - generic [ref=e434]: 2/2
+                  - table [ref=e437]:
+                    - rowgroup [ref=e438]:
+                      - row "Service Status Replicas Env" [ref=e439]:
+                        - columnheader "Service" [ref=e440]
+                        - columnheader "Status" [ref=e441]
+                        - columnheader "Replicas" [ref=e442]
+                        - columnheader "Env" [ref=e443]
+                    - rowgroup [ref=e444]:
+                      - row "nuit-one-web Running 2/2 production" [ref=e445]:
+                        - cell "nuit-one-web" [ref=e446]:
+                          - generic [ref=e449]: nuit-one-web
+                        - cell "Running" [ref=e450]:
+                          - generic [ref=e451]: Running
+                        - cell "2/2" [ref=e452]
+                        - cell "production" [ref=e453]
+                      - row "nuit-one-api Running 2/2 production" [ref=e454]:
+                        - cell "nuit-one-api" [ref=e455]:
+                          - generic [ref=e458]: nuit-one-api
+                        - cell "Running" [ref=e459]:
+                          - generic [ref=e460]: Running
+                        - cell "2/2" [ref=e461]
+                        - cell "production" [ref=e462]
+                  - paragraph [ref=e463]: 2 running
+                  - generic "Loading health" [ref=e466]:
+                    - img [ref=e467]
+                  - generic [ref=e469]:
+                    - generic [ref=e470]:
+                      - img [ref=e471]
+                      - generic [ref=e475]: main
+                    - generic [ref=e476]:
+                      - link "View deployments for nuit-one" [ref=e477]:
+                        - /url: /projects/nuit-one/deployments
+                        - img [ref=e478]
+                        - generic [ref=e482]: Deployments
+                      - generic [ref=e483]: 2d ago
+              - 'link "Next.js karafiel Framework: Next.js 5/7 Service Status Replicas Env karafiel-worker Running 3/3 production karafiel-web Running 1/1 production karafiel-beat Running 1/1 production karafiel-api Running 2/2 production karafiel-admin Running 1/1 production +2 more services 5 running, 2 unknown madfam-org/karafiel Loading health main View deployments for karafiel 3d ago" [ref=e484] [cursor=pointer]':
+                - /url: /projects/karafiel
+                - generic [ref=e485]:
+                  - generic [ref=e486]:
+                    - generic [ref=e487]:
+                      - img "Next.js" [ref=e489]:
+                        - img [ref=e490]
+                      - generic [ref=e492]: karafiel
+                      - 'generic "Framework: Next.js" [ref=e493]': Next.js
+                    - generic [ref=e495]: 5/7
+                  - table [ref=e498]:
+                    - rowgroup [ref=e499]:
+                      - row "Service Status Replicas Env" [ref=e500]:
+                        - columnheader "Service" [ref=e501]
+                        - columnheader "Status" [ref=e502]
+                        - columnheader "Replicas" [ref=e503]
+                        - columnheader "Env" [ref=e504]
+                    - rowgroup [ref=e505]:
+                      - row "karafiel-worker Running 3/3 production" [ref=e506]:
+                        - cell "karafiel-worker" [ref=e507]:
+                          - generic [ref=e510]: karafiel-worker
+                        - cell "Running" [ref=e511]:
+                          - generic [ref=e512]: Running
+                        - cell "3/3" [ref=e513]
+                        - cell "production" [ref=e514]
+                      - row "karafiel-web Running 1/1 production" [ref=e515]:
+                        - cell "karafiel-web" [ref=e516]:
+                          - generic [ref=e519]: karafiel-web
+                        - cell "Running" [ref=e520]:
+                          - generic [ref=e521]: Running
+                        - cell "1/1" [ref=e522]
+                        - cell "production" [ref=e523]
+                      - row "karafiel-beat Running 1/1 production" [ref=e524]:
+                        - cell "karafiel-beat" [ref=e525]:
+                          - generic [ref=e528]: karafiel-beat
+                        - cell "Running" [ref=e529]:
+                          - generic [ref=e530]: Running
+                        - cell "1/1" [ref=e531]
+                        - cell "production" [ref=e532]
+                      - row "karafiel-api Running 2/2 production" [ref=e533]:
+                        - cell "karafiel-api" [ref=e534]:
+                          - generic [ref=e537]: karafiel-api
+                        - cell "Running" [ref=e538]:
+                          - generic [ref=e539]: Running
+                        - cell "2/2" [ref=e540]
+                        - cell "production" [ref=e541]
+                      - row "karafiel-admin Running 1/1 production" [ref=e542]:
+                        - cell "karafiel-admin" [ref=e543]:
+                          - generic [ref=e546]: karafiel-admin
+                        - cell "Running" [ref=e547]:
+                          - generic [ref=e548]: Running
+                        - cell "1/1" [ref=e549]
+                        - cell "production" [ref=e550]
+                      - row "+2 more services" [ref=e551]:
+                        - cell "+2 more services" [ref=e552]
+                  - paragraph [ref=e553]: 5 running, 2 unknown
+                  - link "madfam-org/karafiel" [ref=e555]:
+                    - /url: https://github.com/madfam-org/karafiel
+                    - img [ref=e556]
+                    - generic [ref=e559]: madfam-org/karafiel
+                  - generic "Loading health" [ref=e561]:
+                    - img [ref=e562]
+                  - generic [ref=e564]:
+                    - generic [ref=e565]:
+                      - img [ref=e566]
+                      - generic [ref=e570]: main
+                    - generic [ref=e571]:
+                      - link "View deployments for karafiel" [ref=e572]:
+                        - /url: /projects/karafiel/deployments
+                        - img [ref=e573]
+                        - generic [ref=e577]: Deployments
+                      - generic [ref=e578]: 3d ago
+              - 'link "Python pravara-mes Framework: Python 7/13 Service Status Replicas Env visualization-engine Unknown 0/0 production video-streaming Unknown 0/0 production telemetry-worker Running 1/1 production redis-pravara Running 1/1 production pravara-ui Running 1/1 production +8 more services 7 running, 6 unknown madfam-org/pravara-mes Loading health main View deployments for pravara-mes 3d ago" [ref=e579] [cursor=pointer]':
+                - /url: /projects/pravara-mes
+                - generic [ref=e580]:
+                  - generic [ref=e581]:
+                    - generic [ref=e582]:
+                      - img "Python" [ref=e584]:
+                        - img [ref=e585]
+                      - generic [ref=e587]: pravara-mes
+                      - 'generic "Framework: Python" [ref=e588]': Python
+                    - generic [ref=e590]: 7/13
+                  - table [ref=e593]:
+                    - rowgroup [ref=e594]:
+                      - row "Service Status Replicas Env" [ref=e595]:
+                        - columnheader "Service" [ref=e596]
+                        - columnheader "Status" [ref=e597]
+                        - columnheader "Replicas" [ref=e598]
+                        - columnheader "Env" [ref=e599]
+                    - rowgroup [ref=e600]:
+                      - row "visualization-engine Unknown 0/0 production" [ref=e601]:
+                        - cell "visualization-engine" [ref=e602]:
+                          - generic [ref=e605]: visualization-engine
+                        - cell "Unknown" [ref=e606]:
+                          - generic [ref=e607]: Unknown
+                        - cell "0/0" [ref=e608]
+                        - cell "production" [ref=e609]
+                      - row "video-streaming Unknown 0/0 production" [ref=e610]:
+                        - cell "video-streaming" [ref=e611]:
+                          - generic [ref=e614]: video-streaming
+                        - cell "Unknown" [ref=e615]:
+                          - generic [ref=e616]: Unknown
+                        - cell "0/0" [ref=e617]
+                        - cell "production" [ref=e618]
+                      - row "telemetry-worker Running 1/1 production" [ref=e619]:
+                        - cell "telemetry-worker" [ref=e620]:
+                          - generic [ref=e623]: telemetry-worker
+                        - cell "Running" [ref=e624]:
+                          - generic [ref=e625]: Running
+                        - cell "1/1" [ref=e626]
+                        - cell "production" [ref=e627]
+                      - row "redis-pravara Running 1/1 production" [ref=e628]:
+                        - cell "redis-pravara" [ref=e629]:
+                          - generic [ref=e632]: redis-pravara
+                        - cell "Running" [ref=e633]:
+                          - generic [ref=e634]: Running
+                        - cell "1/1" [ref=e635]
+                        - cell "production" [ref=e636]
+                      - row "pravara-ui Running 1/1 production" [ref=e637]:
+                        - cell "pravara-ui" [ref=e638]:
+                          - generic [ref=e641]: pravara-ui
+                        - cell "Running" [ref=e642]:
+                          - generic [ref=e643]: Running
+                        - cell "1/1" [ref=e644]
+                        - cell "production" [ref=e645]
+                      - row "+8 more services" [ref=e646]:
+                        - cell "+8 more services" [ref=e647]
+                  - paragraph [ref=e648]: 7 running, 6 unknown
+                  - link "madfam-org/pravara-mes" [ref=e650]:
+                    - /url: https://github.com/madfam-org/pravara-mes
+                    - img [ref=e651]
+                    - generic [ref=e654]: madfam-org/pravara-mes
+                  - generic "Loading health" [ref=e656]:
+                    - img [ref=e657]
+                  - generic [ref=e659]:
+                    - generic [ref=e660]:
+                      - img [ref=e661]
+                      - generic [ref=e665]: main
+                    - generic [ref=e666]:
+                      - link "View deployments for pravara-mes" [ref=e667]:
+                        - /url: /projects/pravara-mes/deployments
+                        - img [ref=e668]
+                        - generic [ref=e672]: Deployments
+                      - generic [ref=e673]: 3d ago
+              - 'link "Next.js madfam-site Framework: Next.js 2/3 Service Status Replicas Env madfam-web Running 2/2 production madfam-cms Running 1/1 production madfam-site Unknown 0/0 production 2 running, 1 unknown madfam-org/madfam-site Loading health main View deployments for madfam-site 3d ago" [ref=e674] [cursor=pointer]':
+                - /url: /projects/madfam-site
+                - generic [ref=e675]:
+                  - generic [ref=e676]:
+                    - generic [ref=e677]:
+                      - img "Next.js" [ref=e679]:
+                        - img [ref=e680]
+                      - generic [ref=e682]: madfam-site
+                      - 'generic "Framework: Next.js" [ref=e683]': Next.js
+                    - generic [ref=e685]: 2/3
+                  - table [ref=e688]:
+                    - rowgroup [ref=e689]:
+                      - row "Service Status Replicas Env" [ref=e690]:
+                        - columnheader "Service" [ref=e691]
+                        - columnheader "Status" [ref=e692]
+                        - columnheader "Replicas" [ref=e693]
+                        - columnheader "Env" [ref=e694]
+                    - rowgroup [ref=e695]:
+                      - row "madfam-web Running 2/2 production" [ref=e696]:
+                        - cell "madfam-web" [ref=e697]:
+                          - generic [ref=e700]: madfam-web
+                        - cell "Running" [ref=e701]:
+                          - generic [ref=e702]: Running
+                        - cell "2/2" [ref=e703]
+                        - cell "production" [ref=e704]
+                      - row "madfam-cms Running 1/1 production" [ref=e705]:
+                        - cell "madfam-cms" [ref=e706]:
+                          - generic [ref=e709]: madfam-cms
+                        - cell "Running" [ref=e710]:
+                          - generic [ref=e711]: Running
+                        - cell "1/1" [ref=e712]
+                        - cell "production" [ref=e713]
+                      - row "madfam-site Unknown 0/0 production" [ref=e714]:
+                        - cell "madfam-site" [ref=e715]:
+                          - generic [ref=e718]: madfam-site
+                        - cell "Unknown" [ref=e719]:
+                          - generic [ref=e720]: Unknown
+                        - cell "0/0" [ref=e721]
+                        - cell "production" [ref=e722]
+                  - paragraph [ref=e723]: 2 running, 1 unknown
+                  - link "madfam-org/madfam-site" [ref=e725]:
+                    - /url: https://github.com/madfam-org/madfam-site
+                    - img [ref=e726]
+                    - generic [ref=e729]: madfam-org/madfam-site
+                  - generic "Loading health" [ref=e731]:
+                    - img [ref=e732]
+                  - generic [ref=e734]:
+                    - generic [ref=e735]:
+                      - img [ref=e736]
+                      - generic [ref=e740]: main
+                    - generic [ref=e741]:
+                      - link "View deployments for madfam-site" [ref=e742]:
+                        - /url: /projects/madfam-site/deployments
+                        - img [ref=e743]
+                        - generic [ref=e747]: Deployments
+                      - generic [ref=e748]: 3d ago
+              - 'link "Next.js symbiosis-hcm Framework: Next.js 2/3 Service Status Replicas Env hcm-landing Running 2/2 production hcm-api Running 2/2 production symbiosis-hcm Unknown 0/0 production 2 running, 1 unknown madfam-org/symbiosis-hcm Loading health - View deployments for symbiosis-hcm" [ref=e749] [cursor=pointer]':
+                - /url: /projects/symbiosis-hcm
+                - generic [ref=e750]:
+                  - generic [ref=e751]:
+                    - generic [ref=e752]:
+                      - img "Next.js" [ref=e754]:
+                        - img [ref=e755]
+                      - generic [ref=e757]: symbiosis-hcm
+                      - 'generic "Framework: Next.js" [ref=e758]': Next.js
+                    - generic [ref=e760]: 2/3
+                  - table [ref=e763]:
+                    - rowgroup [ref=e764]:
+                      - row "Service Status Replicas Env" [ref=e765]:
+                        - columnheader "Service" [ref=e766]
+                        - columnheader "Status" [ref=e767]
+                        - columnheader "Replicas" [ref=e768]
+                        - columnheader "Env" [ref=e769]
+                    - rowgroup [ref=e770]:
+                      - row "hcm-landing Running 2/2 production" [ref=e771]:
+                        - cell "hcm-landing" [ref=e772]:
+                          - generic [ref=e775]: hcm-landing
+                        - cell "Running" [ref=e776]:
+                          - generic [ref=e777]: Running
+                        - cell "2/2" [ref=e778]
+                        - cell "production" [ref=e779]
+                      - row "hcm-api Running 2/2 production" [ref=e780]:
+                        - cell "hcm-api" [ref=e781]:
+                          - generic [ref=e784]: hcm-api
+                        - cell "Running" [ref=e785]:
+                          - generic [ref=e786]: Running
+                        - cell "2/2" [ref=e787]
+                        - cell "production" [ref=e788]
+                      - row "symbiosis-hcm Unknown 0/0 production" [ref=e789]:
+                        - cell "symbiosis-hcm" [ref=e790]:
+                          - generic [ref=e793]: symbiosis-hcm
+                        - cell "Unknown" [ref=e794]:
+                          - generic [ref=e795]: Unknown
+                        - cell "0/0" [ref=e796]
+                        - cell "production" [ref=e797]
+                  - paragraph [ref=e798]: 2 running, 1 unknown
+                  - link "madfam-org/symbiosis-hcm" [ref=e800]:
+                    - /url: https://github.com/madfam-org/symbiosis-hcm
+                    - img [ref=e801]
+                    - generic [ref=e804]: madfam-org/symbiosis-hcm
+                  - generic "Loading health" [ref=e806]:
+                    - img [ref=e807]
+                  - generic [ref=e809]:
+                    - generic [ref=e810]: "-"
+                    - link "View deployments for symbiosis-hcm" [ref=e812]:
+                      - /url: /projects/symbiosis-hcm/deployments
+                      - img [ref=e813]
+                      - generic [ref=e817]: Deployments
+              - 'link "Go accionables-madlab Framework: Go 2/2 Service Status Replicas Env madlab-server Running 1/1 production madlab-client Running 1/1 production Push to main by aldoruizluna: fix(infra/tf): add lifecycle ignore_changes to cloudflare_tunnel_config (#161... madfam-org/enclii Loading health main View deployments for accionables-madlab 5d ago" [ref=e818] [cursor=pointer]':
+                - /url: /projects/accionables-madlab
+                - generic [ref=e819]:
+                  - generic [ref=e820]:
+                    - generic [ref=e821]:
+                      - img "Go" [ref=e823]:
+                        - img [ref=e824]
+                      - generic [ref=e826]: accionables-madlab
+                      - 'generic "Framework: Go" [ref=e827]': Go
+                    - generic [ref=e829]: 2/2
+                  - table [ref=e832]:
+                    - rowgroup [ref=e833]:
+                      - row "Service Status Replicas Env" [ref=e834]:
+                        - columnheader "Service" [ref=e835]
+                        - columnheader "Status" [ref=e836]
+                        - columnheader "Replicas" [ref=e837]
+                        - columnheader "Env" [ref=e838]
+                    - rowgroup [ref=e839]:
+                      - row "madlab-server Running 1/1 production" [ref=e840]:
+                        - cell "madlab-server" [ref=e841]:
+                          - generic [ref=e844]: madlab-server
+                        - cell "Running" [ref=e845]:
+                          - generic [ref=e846]: Running
+                        - cell "1/1" [ref=e847]
+                        - cell "production" [ref=e848]
+                      - row "madlab-client Running 1/1 production" [ref=e849]:
+                        - cell "madlab-client" [ref=e850]:
+                          - generic [ref=e853]: madlab-client
+                        - cell "Running" [ref=e854]:
+                          - generic [ref=e855]: Running
+                        - cell "1/1" [ref=e856]
+                        - cell "production" [ref=e857]
+                  - paragraph [ref=e858]: "Push to main by aldoruizluna: fix(infra/tf): add lifecycle ignore_changes to cloudflare_tunnel_config (#161..."
+                  - link "madfam-org/enclii" [ref=e860]:
+                    - /url: https://github.com/madfam-org/enclii
+                    - img [ref=e861]
+                    - generic [ref=e864]: madfam-org/enclii
+                  - generic "Loading health" [ref=e866]:
+                    - img [ref=e867]
+                  - generic [ref=e869]:
+                    - generic [ref=e870]:
+                      - img [ref=e871]
+                      - generic [ref=e875]: main
+                    - generic [ref=e876]:
+                      - link "View deployments for accionables-madlab" [ref=e877]:
+                        - /url: /projects/accionables-madlab/deployments
+                        - img [ref=e878]
+                        - generic [ref=e882]: Deployments
+                      - generic [ref=e883]: 5d ago
+              - 'link "Next.js forj Framework: Next.js 2/3 Service Status Replicas Env forj-web Running 2/2 production forj-api Unknown 0/2 production forj-admin Running 1/1 production 2 running, 1 unknown Loading health - View deployments for forj" [ref=e884] [cursor=pointer]':
+                - /url: /projects/forj
+                - generic [ref=e885]:
+                  - generic [ref=e886]:
+                    - generic [ref=e887]:
+                      - img "Next.js" [ref=e889]:
+                        - img [ref=e890]
+                      - generic [ref=e892]: forj
+                      - 'generic "Framework: Next.js" [ref=e893]': Next.js
+                    - generic [ref=e895]: 2/3
+                  - table [ref=e898]:
+                    - rowgroup [ref=e899]:
+                      - row "Service Status Replicas Env" [ref=e900]:
+                        - columnheader "Service" [ref=e901]
+                        - columnheader "Status" [ref=e902]
+                        - columnheader "Replicas" [ref=e903]
+                        - columnheader "Env" [ref=e904]
+                    - rowgroup [ref=e905]:
+                      - row "forj-web Running 2/2 production" [ref=e906]:
+                        - cell "forj-web" [ref=e907]:
+                          - generic [ref=e910]: forj-web
+                        - cell "Running" [ref=e911]:
+                          - generic [ref=e912]: Running
+                        - cell "2/2" [ref=e913]
+                        - cell "production" [ref=e914]
+                      - row "forj-api Unknown 0/2 production" [ref=e915]:
+                        - cell "forj-api" [ref=e916]:
+                          - generic [ref=e919]: forj-api
+                        - cell "Unknown" [ref=e920]:
+                          - generic [ref=e921]: Unknown
+                        - cell "0/2" [ref=e922]
+                        - cell "production" [ref=e923]
+                      - row "forj-admin Running 1/1 production" [ref=e924]:
+                        - cell "forj-admin" [ref=e925]:
+                          - generic [ref=e928]: forj-admin
+                        - cell "Running" [ref=e929]:
+                          - generic [ref=e930]: Running
+                        - cell "1/1" [ref=e931]
+                        - cell "production" [ref=e932]
+                  - paragraph [ref=e933]: 2 running, 1 unknown
+                  - generic "Loading health" [ref=e936]:
+                    - img [ref=e937]
+                  - generic [ref=e939]:
+                    - generic [ref=e940]: "-"
+                    - link "View deployments for forj" [ref=e942]:
+                      - /url: /projects/forj/deployments
+                      - img [ref=e943]
+                      - generic [ref=e947]: Deployments
+            - button "Show More (15 remaining)" [ref=e949] [cursor=pointer]
+    - contentinfo [ref=e950]:
+      - generic [ref=e952]:
+        - generic [ref=e953]:
+          - link "Docs" [ref=e954] [cursor=pointer]:
+            - /url: https://docs.enclii.dev
+          - link "SDKs" [ref=e955] [cursor=pointer]:
+            - /url: https://docs.enclii.dev/sdks
+          - link "Contact" [ref=e956] [cursor=pointer]:
+            - /url: https://enclii.dev/contact
+          - link "Legal" [ref=e957] [cursor=pointer]:
+            - /url: https://enclii.dev/legal
+        - generic [ref=e958]:
+          - 'generic "Switchyard API: reachable (DB, k8s, cache OK). Platform-wide service health is shown on the dashboard cards and Alerts sidebar." [ref=e959]'
+          - generic [ref=e961]:
+            - button "Light theme" [ref=e962] [cursor=pointer]:
+              - img [ref=e963]
+            - button "Dark theme" [ref=e969] [cursor=pointer]:
+              - img [ref=e970]
+            - button "Auto theme" [ref=e972] [cursor=pointer]:
+              - img [ref=e973]
+  - region "Notifications alt+T"
+  - alert [ref=e975]

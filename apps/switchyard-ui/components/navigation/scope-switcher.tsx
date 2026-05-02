@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Check, ChevronDown, Plus, User, Users } from 'lucide-react';
+import { Check, ChevronDown, Plus, Shield, User, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -17,8 +17,8 @@ import { Badge } from "@enclii/ui-components/badge";
 // TYPES
 // =============================================================================
 
-export type ScopeType = 'personal' | 'team';
-export type PlanTier = 'Hobby' | 'Pro' | 'Team' | 'Enterprise';
+export type ScopeType = 'personal' | 'team' | 'admin';
+export type PlanTier = 'Hobby' | 'Pro' | 'Team' | 'Enterprise' | 'Admin';
 
 export interface Scope {
   id: string;
@@ -77,6 +77,21 @@ function ScopeAvatar({ scope, size = 'sm' }: { scope: Scope; size?: 'sm' | 'md' 
     );
   }
 
+  // Master-admin scope shows a distinct shield (white-glove operator).
+  if (scope.type === 'admin') {
+    return (
+      <div
+        className={cn(
+          sizeClasses,
+          'rounded-full flex items-center justify-center',
+          'bg-amber-500/15 text-amber-500'
+        )}
+      >
+        <Shield className="h-3 w-3" />
+      </div>
+    );
+  }
+
   // Personal scope shows user icon, team shows initials
   if (scope.type === 'personal') {
     return (
@@ -127,6 +142,10 @@ function PlanBadge({ plan }: { plan: PlanTier }) {
       className: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
       label: 'Enterprise',
     },
+    Admin: {
+      className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+      label: 'Master',
+    },
   };
 
   const variant = variants[plan];
@@ -154,7 +173,9 @@ export function ScopeSwitcher({
 }: ScopeSwitcherProps) {
   const [open, setOpen] = React.useState(false);
 
-  // Separate personal and team scopes
+  // Separate scopes by type. Admin scopes get their own header so master-admin
+  // operators are never labelled as a "Personal Account".
+  const adminScopes = scopes.filter((s) => s.type === 'admin');
   const personalScopes = scopes.filter((s) => s.type === 'personal');
   const teamScopes = scopes.filter((s) => s.type === 'team');
 
@@ -186,9 +207,41 @@ export function ScopeSwitcher({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
+        {/* Master-admin Section */}
+        {adminScopes.length > 0 && (
+          <>
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal flex items-center gap-1">
+              <Shield className="h-3 w-3" />
+              Master Admin
+            </DropdownMenuLabel>
+            {adminScopes.map((scope) => (
+              <DropdownMenuItem
+                key={scope.id}
+                onClick={() => handleScopeSelect(scope)}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <ScopeAvatar scope={scope} size="md" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm">{scope.name}</span>
+                    <PlanBadge plan={scope.plan} />
+                  </div>
+                  <span className="text-xs text-muted-foreground truncate block">
+                    {scope.slug}
+                  </span>
+                </div>
+                {currentScope.id === scope.id && (
+                  <Check className="h-4 w-4 text-enclii-blue flex-shrink-0" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+
         {/* Personal Accounts Section */}
         {personalScopes.length > 0 && (
           <>
+            {adminScopes.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
               Personal Account
             </DropdownMenuLabel>
