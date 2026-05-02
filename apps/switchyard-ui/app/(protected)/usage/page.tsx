@@ -21,6 +21,8 @@ import {
   Legend,
 } from 'recharts';
 import { apiGet } from '@/lib/api';
+import { useIsAdminScope } from '@/contexts/ScopeContext';
+import { formatBytes } from '@/lib/formatting';
 
 interface UsageMetric {
   type: string;
@@ -113,6 +115,7 @@ const iconMap: Record<string, React.ReactNode> = {
 };
 
 export default function UsagePage() {
+  const isAdmin = useIsAdminScope();
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [costs, setCosts] = useState<CostBreakdown | null>(null);
   const [realtime, setRealtime] = useState<RealtimeMetrics | null>(null);
@@ -188,9 +191,13 @@ export default function UsagePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Infrastructure Usage</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {isAdmin ? 'Cluster utilization' : 'Infrastructure Usage'}
+          </h1>
           <p className="text-muted-foreground">
-            Monitor your resource usage and infrastructure costs for the current period
+            {isAdmin
+              ? 'Live cluster metrics. Plan-tier billing is not applied to master-admin scope.'
+              : 'Monitor your resource usage and infrastructure costs for the current period'}
           </p>
         </div>
         <Button variant="outline" onClick={fetchData}>
@@ -201,8 +208,9 @@ export default function UsagePage() {
         </Button>
       </div>
 
-      {/* Period & Usage Summary */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Period & Usage Summary. Admin scope hides the Infrastructure Cost
+          pill — there's no plan to bill against (audit US-1). */}
+      <div className={`grid gap-4 ${isAdmin ? '' : 'md:grid-cols-2'}`}>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Current Period</CardTitle>
@@ -217,18 +225,20 @@ export default function UsagePage() {
             <p className="text-xs text-muted-foreground">Metering period</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Infrastructure Cost</CardTitle>
-            <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">${usage?.total_cost.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">Resource usage this period</p>
-          </CardContent>
-        </Card>
+        {!isAdmin && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Infrastructure Cost</CardTitle>
+              <svg aria-hidden="true" className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">${usage?.total_cost.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground">Resource usage this period</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Real-time Resource Metrics */}
@@ -353,13 +363,20 @@ export default function UsagePage() {
         </Card>
       )}
 
-      {/* Usage Meters & Cost Breakdown */}
-      <div className="grid gap-6 md:grid-cols-2">
+      {/* Usage Meters & Cost Breakdown.
+          Admin scope: drop the Cost Breakdown donut and render Resource
+          Usage in absolute units (no denominator, no progress bar) so we
+          don't fabricate plan-limit utilization (audit D-1, US-2). */}
+      <div className={`grid gap-6 ${isAdmin ? '' : 'md:grid-cols-2'}`}>
         {/* Usage Meters */}
         <Card>
           <CardHeader>
             <CardTitle>Resource Usage</CardTitle>
-            <CardDescription>Current usage against included allocations</CardDescription>
+            <CardDescription>
+              {isAdmin
+                ? 'Current cluster usage in absolute units. No plan limits applied.'
+                : 'Current usage against included allocations'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {usage?.metrics.map((metric) => {
@@ -368,6 +385,27 @@ export default function UsagePage() {
                 ? 0
                 : Math.min((metric.used / metric.included) * 100, 100);
               const overLimit = !isUnlimited && metric.used > metric.included;
+
+              if (isAdmin) {
+                // Absolute-value row, no denominator, no progress bar.
+                // Storage / bandwidth come from the API as bytes; format
+                // accordingly. Render "—" if the value isn't usable.
+                const displayUsed =
+                  metric.used === null || metric.used === undefined || Number.isNaN(metric.used)
+                    ? '—'
+                    : metric.type === 'storage' || metric.type === 'bandwidth'
+                      ? formatBytes(metric.used)
+                      : `${formatNumber(metric.used)} ${metric.unit}`;
+                return (
+                  <div key={metric.type} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">{iconMap[metric.type]}</span>
+                      <span className="font-medium">{metric.label}</span>
+                    </div>
+                    <span className="font-mono text-foreground">{displayUsed}</span>
+                  </div>
+                );
+              }
 
               return (
                 <div key={metric.type} className="space-y-2">
@@ -419,80 +457,86 @@ export default function UsagePage() {
           </CardContent>
         </Card>
 
-        {/* Cost Breakdown Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Cost Breakdown</CardTitle>
-            <CardDescription>Usage costs by category</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {costChartData.length > 0 ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={costChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={2}
-                      dataKey="value"
-                      label={({ name, value }) => `${name}: $${value.toFixed(2)}`}
-                    >
-                      {costChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, '']} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-64 text-muted-foreground">
-                <div className="text-center">
-                  <svg aria-hidden="true" className="w-12 h-12 mx-auto mb-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="font-medium">No overage charges</p>
-                  <p className="text-sm">You&apos;re within your plan limits</p>
+        {/* Cost Breakdown Pie Chart — hidden for master-admin scope. */}
+        {!isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Cost Breakdown</CardTitle>
+              <CardDescription>Usage costs by category</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {costChartData.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={costChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={2}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: $${value.toFixed(2)}`}
+                      >
+                        {costChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, '']} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                <div className="flex items-center justify-center h-64 text-muted-foreground">
+                  <div className="text-center">
+                    <svg aria-hidden="true" className="w-12 h-12 mx-auto mb-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="font-medium">No overage charges</p>
+                    <p className="text-sm">You&apos;re within your plan limits</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Usage Bar Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Usage Overview</CardTitle>
-          <CardDescription>Comparing used resources against included allocations</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={usageChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip
-                  formatter={(value: number, name: string) => [
-                    name === 'percentage' ? `${value.toFixed(1)}%` : value.toFixed(1),
-                    name === 'used' ? 'Used' : name === 'included' ? 'Included' : 'Usage %',
-                  ]}
-                />
-                <Legend />
-                <Bar dataKey="used" fill="#3b82f6" name="Used" />
-                <Bar dataKey="included" fill="#e5e7eb" name="Included" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Usage Bar Chart — hidden for master-admin (compares used vs.
+          included allocation, which doesn't apply to a self-hosted scope). */}
+      {!isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Usage Overview</CardTitle>
+            <CardDescription>Comparing used resources against included allocations</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={usageChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      name === 'percentage' ? `${value.toFixed(1)}%` : value.toFixed(1),
+                      name === 'used' ? 'Used' : name === 'included' ? 'Included' : 'Usage %',
+                    ]}
+                  />
+                  <Legend />
+                  <Bar dataKey="used" fill="#3b82f6" name="Used" />
+                  <Bar dataKey="included" fill="#e5e7eb" name="Included" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Cost Details Table */}
+      {/* Cost Details Table — hidden for master-admin (no overage / billing). */}
+      {!isAdmin && (
       <Card>
         <CardHeader>
           <CardTitle>Detailed Cost Summary</CardTitle>
@@ -553,10 +597,13 @@ export default function UsagePage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {/* Footer Note */}
+      {/* Footer Note — admin-scope footer reflects no-billing posture. */}
       <p className="text-sm text-muted-foreground text-center">
-        Infrastructure usage estimates are updated hourly. Customer billing is handled by Dhanam.
+        {isAdmin
+          ? 'Cluster utilization estimates update hourly. Plan-tier billing does not apply to master-admin scope.'
+          : 'Infrastructure usage estimates are updated hourly. Customer billing is handled by Dhanam.'}
       </p>
     </div>
   );

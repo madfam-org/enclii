@@ -22,6 +22,7 @@ import { ScopeSwitcher } from '@/components/navigation/scope-switcher';
 import { UserMenu } from '@/components/navigation/user-menu';
 import { useScope } from '@/contexts/ScopeContext';
 import { useTheme } from 'next-themes';
+import { AdminActingBanner } from '@/components/AdminActingBanner';
 
 interface AuthenticatedLayoutProps {
   children: React.ReactNode;
@@ -57,7 +58,16 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isScrolled, shadowClass } = useScrollShadow();
-  const { currentScope, scopes, switchScope } = useScope();
+  const {
+    currentScope,
+    scopes,
+    switchScope,
+    isActing,
+    actingTenant,
+    enterTenant,
+    exitActingSession,
+  } = useScope();
+  const isAdminViewer = !!user?.roles?.includes('admin');
   const { theme, setTheme } = useTheme();
 
   // All navigation items for the bottom bar
@@ -123,6 +133,10 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
       {/* Auth Error Banner - shows session expiry, auth failures, etc. */}
       <AuthErrorBanner />
 
+      {/* Master-admin "Acting as <tenant>" banner — renders nothing when no
+          acting-as session is open or the user is not an admin. */}
+      <AdminActingBanner />
+
       {/* Two-Level Navbar */}
       <header className={`bg-background border-b border-border sticky top-0 z-50 transition-shadow duration-200 overflow-x-hidden ${isScrolled ? shadowClass : ''}`}>
         {/* Top bar: Logo + scope + actions */}
@@ -144,6 +158,15 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                         currentScope={currentScope}
                         onScopeChange={switchScope}
                         onCreateTeam={() => router.push('/settings/teams/new')}
+                        isAdminViewer={isAdminViewer}
+                        isActing={isActing}
+                        actingTenant={actingTenant}
+                        onEnterTenant={(scope) => {
+                          void enterTenant(scope.slug);
+                        }}
+                        onExitActingSession={() => {
+                          void exitActingSession();
+                        }}
                       />
                     </div>
                   </>
@@ -191,6 +214,17 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
                           onCreateTeam={() => {
                             setMobileMenuOpen(false);
                             router.push('/settings/teams/new');
+                          }}
+                          isAdminViewer={isAdminViewer}
+                          isActing={isActing}
+                          actingTenant={actingTenant}
+                          onEnterTenant={(scope) => {
+                            setMobileMenuOpen(false);
+                            void enterTenant(scope.slug);
+                          }}
+                          onExitActingSession={() => {
+                            setMobileMenuOpen(false);
+                            void exitActingSession();
                           }}
                         />
                       </div>

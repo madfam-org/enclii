@@ -4,6 +4,12 @@ import * as React from 'react';
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { apiGet, apiPost } from '@/lib/api';
+import {
+  enterTenantSession,
+  exitTenantSession,
+  fetchActiveActingSession,
+  fetchAdminTenants,
+} from '@/lib/admin-tenants';
 import type { Scope, ScopeType, PlanTier } from '@/components/navigation/scope-switcher';
 
 // =============================================================================
@@ -24,6 +30,33 @@ interface Team {
   updated_at: string;
 }
 
+// Shape returned by GET /v1/admin/tenants. Keep in sync with
+// switchyard-api/internal/api/admin_tenants_handlers.go (TenantListResponse).
+// Admins receive the global tenant list; non-admins continue to use the
+// existing /v1/teams endpoint, which is membership-scoped.
+export interface AdminTenant {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  avatar_url?: string | null;
+  billing_email?: string | null;
+  member_count?: number;
+  project_count?: number;
+  last_deploy_at?: string | null;
+  created_at: string;
+}
+
+// Shape returned by GET /v1/admin/tenants/active and the enter/exit endpoints.
+// `active=false` means no acting-as session; in that case `tenant` is absent.
+export interface ActiveActingSession {
+  active: boolean;
+  tenant?: AdminTenant;
+  started_at?: string;
+  expires_at?: string;
+  reason?: string;
+}
+
 interface ScopeContextType {
   // State
   scopes: Scope[];
@@ -31,10 +64,20 @@ interface ScopeContextType {
   isLoading: boolean;
   error: string | null;
 
+  // Acting-as state (master-admin only)
+  actingTenant: Scope | null;
+  actingExpiresAt: string | null;
+  isActing: boolean;
+
   // Actions
   switchScope: (scope: Scope) => void;
   refreshScopes: () => Promise<void>;
   createTeam: (data: CreateTeamInput) => Promise<Team>;
+
+  // Acting-as actions
+  enterTenant: (slug: string, reason?: string) => Promise<void>;
+  exitActingSession: () => Promise<void>;
+  refreshActingSession: () => Promise<void>;
 }
 
 interface CreateTeamInput {
@@ -42,6 +85,36 @@ interface CreateTeamInput {
   slug: string;
   description?: string;
   billing_email?: string;
+}
+
+// =============================================================================
+// PURE HELPERS (exported for unit testing)
+// =============================================================================
+
+/**
+ * Translate a TenantListResponse from /v1/admin/tenants into a Scope.
+ * Admin tenants are surfaced under the existing "Teams" section so the menu
+ * reads: Master Admin → Teams (one per tenant). The `plan` defaults to
+ * `'Team'` because the admin endpoint does not expose subscription tier.
+ */
+export function adminTenantToScope(tenant: AdminTenant): Scope {
+  return {
+    id: tenant.id,
+    type: 'team' as ScopeType,
+    name: tenant.name,
+    slug: tenant.slug,
+    plan: 'Team' as PlanTier,
+    avatarUrl: tenant.avatar_url || undefined,
+  };
+}
+
+/**
+ * Translate an ActiveActingSession payload into a Scope, or `null` if no
+ * session is active. Used to drive the "Acting as <tenant>" UI.
+ */
+export function activeSessionToScope(session: ActiveActingSession | null | undefined): Scope | null {
+  if (!session || !session.active || !session.tenant) return null;
+  return adminTenantToScope(session.tenant);
 }
 
 // =============================================================================
@@ -87,6 +160,10 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
   const [currentScope, setCurrentScope] = useState<Scope | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actingTenant, setActingTenant] = useState<Scope | null>(null);
+  const [actingExpiresAt, setActingExpiresAt] = useState<string | null>(null);
+
+  const isMasterAdmin = !!user?.roles?.includes('admin');
 
   // Transform team to scope
   const teamToScope = useCallback((team: Team): Scope => {
@@ -112,8 +189,8 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
     name?: string,
     roles?: string[],
   ): Scope => {
-    const isMasterAdmin = !!roles?.includes('admin');
-    if (isMasterAdmin) {
+    const isAdmin = !!roles?.includes('admin');
+    if (isAdmin) {
       return {
         id: `admin-${userId}`,
         type: 'admin' as ScopeType,
@@ -131,7 +208,8 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
     };
   }, []);
 
-  // Fetch all available scopes
+  // Fetch all available scopes. Admins pull the global tenant list from
+  // /v1/admin/tenants; everyone else stays on /v1/teams (membership-scoped).
   const fetchScopes = useCallback(async () => {
     if (!isAuthenticated || !user) {
       setScopes([]);
@@ -144,33 +222,40 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
       setError(null);
       setIsLoading(true);
 
-      // Fetch teams from API
-      const response = await apiGet<{ teams: Team[] }>('/v1/teams');
-      const teams = response.teams || [];
+      const ownScope = createOwnScope(user.id, user.email, user.name, user.roles);
+      const isAdmin = !!user.roles?.includes('admin');
 
-      // Build scopes list: personal + teams
-      const personalScope = createOwnScope(user.id, user.email, user.name, user.roles);
-      const teamScopes = teams.map(teamToScope);
-      const allScopes = [personalScope, ...teamScopes];
+      let tenantScopes: Scope[];
+      if (isAdmin) {
+        const tenants = await fetchAdminTenants();
+        tenantScopes = tenants.map(adminTenantToScope);
+      } else {
+        const response = await apiGet<{ teams: Team[] }>('/v1/teams');
+        const teams = response.teams || [];
+        tenantScopes = teams.map(teamToScope);
+      }
+
+      // Master Admin first, then teams.
+      const allScopes = [ownScope, ...tenantScopes];
 
       setScopes(allScopes);
 
-      // Restore selected scope or default to personal
+      // Restore selected scope or default to the user's own scope.
       const savedScopeId = scopeStorage.get();
       const savedScope = savedScopeId
         ? allScopes.find(s => s.id === savedScopeId)
         : null;
 
-      setCurrentScope(savedScope || personalScope);
+      setCurrentScope(savedScope || ownScope);
     } catch (err) {
       console.error('Failed to fetch scopes:', err);
       setError(err instanceof Error ? err.message : 'Failed to load teams');
 
-      // Fallback to personal scope only
+      // Fallback to own scope only
       if (user) {
-        const personalScope = createOwnScope(user.id, user.email, user.name, user.roles);
-        setScopes([personalScope]);
-        setCurrentScope(personalScope);
+        const ownScope = createOwnScope(user.id, user.email, user.name, user.roles);
+        setScopes([ownScope]);
+        setCurrentScope(ownScope);
       }
     } finally {
       setIsLoading(false);
@@ -207,11 +292,98 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
     return team;
   }, [fetchScopes, teamToScope, switchScope]);
 
+  // ==========================================================================
+  // ACTING-AS SESSION (master admin only)
+  // ==========================================================================
+
+  // Cookie is HttpOnly so we always re-derive acting state from the API.
+  const refreshActingSession = useCallback(async () => {
+    if (!isMasterAdmin) {
+      setActingTenant(null);
+      setActingExpiresAt(null);
+      return;
+    }
+    try {
+      const session = await fetchActiveActingSession();
+      setActingTenant(activeSessionToScope(session));
+      setActingExpiresAt(session?.active ? session.expires_at ?? null : null);
+    } catch (err) {
+      // A failed poll shouldn't blow up the app; just clear the banner so
+      // operators don't act on stale state.
+      console.error('Failed to fetch active acting session:', err);
+      setActingTenant(null);
+      setActingExpiresAt(null);
+    }
+  }, [isMasterAdmin]);
+
+  // POST /v1/admin/tenants/:slug/enter, then hard-reload so every cached
+  // page-level fetch re-runs under the new ax_acting_as cookie scope.
+  const enterTenant = useCallback(async (slug: string, reason?: string) => {
+    if (!isMasterAdmin) {
+      setError('Only master admins can enter a tenant.');
+      return;
+    }
+    try {
+      setError(null);
+      const session = await enterTenantSession(slug, reason);
+      setActingTenant(activeSessionToScope(session));
+      setActingExpiresAt(session?.active ? session.expires_at ?? null : null);
+      // Hard reload so SWR caches, server components, and per-page fetches
+      // all re-issue under the new cookie.
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to enter tenant';
+      console.error('enterTenant failed:', err);
+      setError(msg);
+      throw err;
+    }
+  }, [isMasterAdmin]);
+
+  // POST /v1/admin/tenants/exit, clear local state, hard-reload.
+  const exitActingSession = useCallback(async () => {
+    try {
+      setError(null);
+      await exitTenantSession();
+      setActingTenant(null);
+      setActingExpiresAt(null);
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to end acting session';
+      console.error('exitActingSession failed:', err);
+      setError(msg);
+      throw err;
+    }
+  }, []);
+
+  // Initial poll + refresh on window focus so an externally-expired or
+  // server-side-revoked session updates the UI without a manual refresh.
+  useEffect(() => {
+    if (!isMasterAdmin) {
+      setActingTenant(null);
+      setActingExpiresAt(null);
+      return;
+    }
+    refreshActingSession();
+    const onFocus = () => {
+      refreshActingSession();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', onFocus);
+      return () => window.removeEventListener('focus', onFocus);
+    }
+  }, [isMasterAdmin, refreshActingSession]);
+
   // Clear state on logout
   useEffect(() => {
     if (!isAuthenticated) {
       setScopes([]);
       setCurrentScope(null);
+      setActingTenant(null);
+      setActingExpiresAt(null);
       scopeStorage.clear();
     }
   }, [isAuthenticated]);
@@ -225,9 +397,15 @@ export function ScopeProvider({ children }: ScopeProviderProps) {
     currentScope,
     isLoading,
     error,
+    actingTenant,
+    actingExpiresAt,
+    isActing: !!actingTenant,
     switchScope,
     refreshScopes: fetchScopes,
     createTeam,
+    enterTenant,
+    exitActingSession,
+    refreshActingSession,
   };
 
   return (

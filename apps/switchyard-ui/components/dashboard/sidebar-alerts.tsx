@@ -10,12 +10,28 @@ import { POLLING_SLOW } from "@/lib/constants";
 import { formatRelativeTime } from "@/lib/formatting";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useIsAdminScope } from "@/contexts/ScopeContext";
 
 interface Alert {
   id: string;
   name: string;
   severity: "critical" | "warning" | "info";
   fired_at: string;
+}
+
+/**
+ * Plan-tier overage alerts emitted by switchyard-api
+ * (observability_handlers.go ~line 602) all use the
+ * `alert-usage-overage-<metric>` ID prefix. Master-admin scope is
+ * self-hosted — there is no plan to be over — so these are suppressed.
+ * The alert name "<Metric> Over Plan Limit" is checked as a defensive
+ * fallback in case the ID scheme changes.
+ */
+function isPlanOverageAlert(a: Alert): boolean {
+  return (
+    a.id.startsWith("alert-usage-overage-") ||
+    /Over Plan Limit$/i.test(a.name)
+  );
 }
 
 interface AlertsResponse {
@@ -42,6 +58,7 @@ const severityConfig = {
 };
 
 export function SidebarAlerts({ className }: { className?: string }) {
+  const isAdmin = useIsAdminScope();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -51,8 +68,19 @@ export function SidebarAlerts({ className }: { className?: string }) {
       const data = await apiGet<AlertsResponse>(
         "/v1/observability/alerts?limit=5",
       );
-      setAlerts(data.alerts || []);
-      setTotal(data.total || 0);
+      const raw = data.alerts || [];
+      const rawTotal = data.total || 0;
+      // For master-admin scope, drop plan-tier overage alerts entirely —
+      // they're fabricated for a self-hosted cluster (audit D-4).
+      // Adjust `total` so the badge reflects only real alerts.
+      if (isAdmin) {
+        const dropped = raw.filter(isPlanOverageAlert).length;
+        setAlerts(raw.filter((a) => !isPlanOverageAlert(a)));
+        setTotal(Math.max(0, rawTotal - dropped));
+      } else {
+        setAlerts(raw);
+        setTotal(rawTotal);
+      }
     } catch {
       // Silently fail — alerts are supplementary
       setAlerts([]);
@@ -60,7 +88,7 @@ export function SidebarAlerts({ className }: { className?: string }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchAlerts();
