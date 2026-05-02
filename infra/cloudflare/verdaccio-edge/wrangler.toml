@@ -1,0 +1,19 @@
+name = "verdaccio-edge"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Route: npm.madfam.io/*
+# Configure in Cloudflare dashboard: Workers & Pages → verdaccio-edge → Settings → Triggers
+# Add route: npm.madfam.io/* (zone: madfam.io)
+#
+# Or use wrangler:
+#   npx wrangler deploy --env production
+#
+# Purpose (NP-2): strip Verdaccio version fingerprint from dashboard HTML.
+# All non-HTML traffic (package metadata, tarballs, /-/ping, /-/v1/search 401)
+# is proxied verbatim — npm CLI behavior is unchanged.
+
+[env.production]
+routes = [
+  { pattern = "npm.madfam.io/*", zone_name = "madfam.io" }
+]

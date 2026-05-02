@@ -14,6 +14,18 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # NP-1 (2026-05-02): block anonymous metadata enumeration via /-/v1/search.
+    # Verdaccio's V1 search endpoint honored package access rules ($all for
+    # @janua/@enclii) and leaked names/versions/repo URLs. Returns 401 with a
+    # JSON body matching npm CLI expectations so authenticated `npm search`
+    # against this registry still surfaces a clean error. Direct package fetches
+    # (/<scope>/<name>, /<scope>/<name>/-/<tarball>) remain unauthenticated for
+    # public-read scopes — verified by curl after rollout.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location ~ ^/-/v1/search {
+        default_type application/json;
+        return 401 '{"error":"search disabled: use direct package URLs (/@scope/name) or `npm view @scope/name`"}';
+      }
 spec:
   ingressClassName: nginx
   tls:

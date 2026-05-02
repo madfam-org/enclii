@@ -147,6 +147,13 @@ data:
         enabled: true
 
     # Feature flags
+    # NP-1 (2026-05-02): search disabled to prevent anonymous metadata enumeration
+    # of @janua/* and @enclii/* (public-read scopes). Direct package fetches via
+    # /<scope>/<name> remain unauthenticated as documented; the npm CLI does not
+    # require /-/v1/search to install. Operators looking up packages should use
+    # `npm view @janua/<pkg>` or browse via direct URLs.
+    # Belt-and-suspenders: ingress.yaml also returns 401 on /-/v1/search to cover
+    # any Verdaccio version where this flag's behavior differs.
     experiments:
       changePassword: true
-      search: true
+      search: false
