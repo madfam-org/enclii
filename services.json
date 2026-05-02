@@ -100,7 +100,7 @@
       "image": "docs-site",
       "kustomization": "infra/k8s/production",
       "kustomize_image": "docs-site",
-      "dependencies": [],
+      "dependencies": ["docs"],
       "scan": false,
       "deploy_check": null
     }

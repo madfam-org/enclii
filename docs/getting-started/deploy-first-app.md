@@ -18,17 +18,18 @@ Get your application running on Enclii in under 5 minutes.
 brew install enclii/tap/enclii
 ```
 
-### Linux
+### Linux / from source (any OS with Go 1.22+)
 
 ```bash
-curl -sSL https://get.enclii.dev | bash
+git clone https://github.com/madfam-org/enclii.git
+cd enclii
+make install-cli           # builds + installs to /usr/local/bin/enclii
 ```
 
 ### Verify Installation
 
 ```bash
 enclii version
-# Output: Enclii CLI v0.5.x
 ```
 
 ---

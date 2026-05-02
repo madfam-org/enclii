@@ -263,7 +263,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Enclii CLI
-        run: curl -sSL https://get.enclii.dev | bash
+        run: |
+          git clone --depth 1 https://github.com/madfam-org/enclii.git /tmp/enclii
+          make -C /tmp/enclii install-cli CLI_INSTALL_DIR=/usr/local/bin
 
       - name: Deploy to Staging
         env:

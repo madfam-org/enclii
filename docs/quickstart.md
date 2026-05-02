@@ -24,20 +24,20 @@ This is the fastest path from zero to a live URL. You will install the CLI, sign
 brew install enclii/tap/enclii
 ```
 
-**Linux:**
+**Linux / from source (any OS with Go 1.22+):**
 ```bash
-curl -sSL https://get.enclii.dev | bash
+git clone https://github.com/madfam-org/enclii.git
+cd enclii
+make install-cli           # builds + installs to /usr/local/bin/enclii
 ```
 
-**Windows (PowerShell):**
-```powershell
-iwr -useb https://get.enclii.dev/install.ps1 | iex
-```
+To install to a custom directory: `make install-cli CLI_INSTALL_DIR=$HOME/.local/bin`.
+
+**Windows:** install via WSL2 and follow the Linux instructions above. A native PowerShell installer is on the roadmap — track [issue tracker](https://github.com/madfam-org/enclii/issues) for updates.
 
 Verify:
 ```bash
-enclii --version
-# Enclii CLI v0.5.x
+enclii version
 ```
 
 If `enclii: command not found`, restart your shell or add `$HOME/.local/bin` to `PATH`.

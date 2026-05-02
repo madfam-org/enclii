@@ -14,7 +14,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'doc',
-      id: 'templates',
+      id: 'templates/templates',
       label: 'Template Catalog',
     },
 

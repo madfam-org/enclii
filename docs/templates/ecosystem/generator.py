@@ -107,11 +107,12 @@ ENCLII_CLI_REF = dedent("""
     # macOS
     brew install enclii/tap/enclii
 
-    # Linux
-    curl -sSL https://get.enclii.dev | bash
+    # Linux / from source (any OS with Go 1.22+)
+    git clone https://github.com/madfam-org/enclii.git
+    cd enclii && make install-cli
 
-    # From source (in the enclii repo)
-    make build-cli && ./bin/enclii --version
+    # Build only (no install)
+    make build-cli && ./bin/enclii version
     ```
 
     ### Auth
