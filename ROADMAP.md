@@ -20,6 +20,10 @@
 | Custom Domains | ✅ Production | Cloudflare for SaaS (100 free) |
 | OIDC Authentication | ✅ Production | Janua SSO integration |
 | GitHub OAuth | ✅ Production | Repo imports, linked accounts |
+| Cost Allocation (Waybill) | ✅ Beta | Admin Console module live |
+| Drift Detection | ✅ Production | Admin Console module live |
+| UI Resilience | ✅ Production | 100% Error/Loading coverage |
+
 
 ### Janua (Auth Platform) - ✅ 95% Auth0 Parity
 
@@ -178,7 +182,8 @@ spec:
 ---
 
 #### Cost Showback & Budget Alerts (Waybill)
-**Priority:** P1 | **Effort:** 2-3 weeks
+**Priority:** P1 | **Status:** ✅ Beta | **Effort:** 2-3 weeks
+
 
 **Scope:**
 - Per-service resource metering (CPU, memory, storage, bandwidth)
@@ -209,6 +214,14 @@ spec:
 - Cold start < 500ms target
 - Go, Python, Node.js, Rust support
 - Edge middleware via Nginx/Lua
+
+#### Multilingual Support (i18n)
+**Priority:** P1 | **Status:** 🏗️ In Progress
+**Goal:** Spanish-first (default), English, and Portuguese support.
+- Hybrid URL strategy (cookie-based + query shareability)
+- `next-intl` infrastructure planned
+- Blocker: Registry access for `@janua/ui`
+
 
 ---
 
@@ -294,8 +307,10 @@ spec:
 | 2026-01-15 | SMS MFA, Adaptive MFA, Breach Detection added to Q1 |
 | 2026-01-15 | Sovereign Serverless study initiated |
 | 2026-02-25 | Q1 progress update: ArgoCD remediation (17 apps stable), npm-registry operational, Longhorn single-replica, monitoring exporters deployed. Identity rebranded from "Railway-style PaaS" to "open source DevOps platform". Waybill, Timetable, Junctions, Signal, Lockbox remain planned/unimplemented |
+| 2026-05-01 | Platform Hardening Sweep: 100% error/loading boundary coverage across Switchyard and Dispatch. Waybill (Costs) and Drift modules launched in Admin Console. Multilingual (i18n) roadmap established (Spanish-first). |
+
 
 ---
 
 *Roadmap is subject to change based on community feedback and strategic priorities.*
-*Last updated: February 25, 2026*
+*Last updated: May 1, 2026*
