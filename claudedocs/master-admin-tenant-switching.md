@@ -87,7 +87,8 @@ This means the existing free-tier UX is preserved. The change is purely additive
 
 ## Phasing
 
-1. ✅ **Round 0 (`cc60e2e9`)**: design doc + frontend label fix — `Master Admin` chip with shield avatar replaces the synthetic `Personal Account (Hobby)`. No backend changes.
+1. ✅ **Round 7 (`<this commit>`)**: re-parenting migration `024_reparent_projects_to_teams` — the seed data the entire XC-2 stack was waiting on. Creates 20 `teams` rows (19 white-glove client teams + `madfam-platform` for internal infra), parents the 25 audited projects to their respective tenants, backfills `team_members` so `admin@madfam.io` is `owner` on every team. Fully idempotent (`ON CONFLICT (slug) DO NOTHING` for inserts; `WHERE team_id IS NULL` guard on every UPDATE). Symmetric down migration. 6 regression tests in `migration_024_test.go` covering idempotency, NOT EXISTS guard, email-based admin resolution, up/down slug symmetry, and a no-bare-transaction-marker check. **The XC-2 acting-as filter that's been live since Round 4 finally has tenant data to filter against.**
+2. ✅ **Round 0 (`cc60e2e9`)**: design doc + frontend label fix — `Master Admin` chip with shield avatar replaces the synthetic `Personal Account (Hobby)`. No backend changes.
 2. ✅ **Round 1 (`bc4c69b9`)**: migration `023_admin_acting_sessions` (table + index + `audit_logs.acting_on_behalf_of_team_id` column), `AdminActingSessionRepository`, four endpoints (`GET /v1/admin/tenants{,active}`, `POST .../:slug/enter`, `POST .../exit`), gated under the existing admin role middleware.
 3. ✅ **Round 2 (`eecf5728`)**: scope switcher rewritten — admins fetch `/v1/admin/tenants`, picking a tenant fires `POST .../:slug/enter` and reloads, `AdminActingBanner` shows tenant + countdown + End-session.
 4. ✅ **Round 3 (`<this commit>`)**: handler-level tests for the four endpoints (sqlmock); `enclii admin tenants list/active/enter/exit` CLI commands; doc updates.
