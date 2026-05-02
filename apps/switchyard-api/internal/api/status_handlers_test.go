@@ -107,7 +107,7 @@ data:
 `)
 
 	services := []statusServiceEntry{
-		{Name: "Enclii API", URL: "https://api.enclii.dev/health/ready", Group: "Enclii", Family: "MADFAM Platform"},
+		{Name: "Enclii API", URL: "https://api.enclii.dev/health/public", Group: "Enclii", Family: "MADFAM Platform"},
 	}
 
 	out, err := generateStatusConfigmap(statusSiteMadfam, services, existing)

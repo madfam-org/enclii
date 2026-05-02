@@ -17,7 +17,7 @@ Severity legend: 🔴 high (action required) · 🟡 medium (track) · 🟢 low 
 
 | ID | Surface | Severity | Headline |
 | --- | --- | --- | --- |
-| ST-1 | status.enclii.dev | 🔴 | `https://api.enclii.dev/health/ready` returns 404 but page reports Switchyard API "Operational" |
+| ST-1 | status.enclii.dev | ✅ shipped | `https://api.enclii.dev/health/ready` returns 404 but page reports Switchyard API "Operational" — fixed by adding dependency-free `/health/public` endpoint and repointing both status configmaps + Go core defaults; commit pending in this branch |
 | ST-2 | status.enclii.dev | 🟡 | No build-info / commit SHA exposed — operators can't verify what version is live |
 | ST-3 | status.enclii.dev | 🟡 | Two configmaps drift wildly (12 services vs 60 services); stale comments reference services intentionally excluded but no programmatic enforcement |
 | ST-4 | status.enclii.dev | 🟢 | No CSP header on the Next.js render path |
@@ -74,6 +74,8 @@ But `https://status.enclii.dev/` reports Switchyard API as Operational (no `aria
 **Hypothesis** (cannot confirm without cluster access): the status pod probes via in-cluster service URL (different routing than public Cloudflare tunnel) so the public URL is truly broken but internal probe succeeds. Either way, the public health URL listed on the status page does not work for users — and if Cloudflare goes down, status will still claim green.
 
 **Recommendation**: either (a) fix the `/health/ready` route on the public Cloudflare tunnel for `api.enclii.dev`, or (b) add a tunnel route, or (c) update the configmap to point at a working public URL.
+
+**Resolution (2026-05-02)**: Shipped option (c) plus a new dependency-free public probe endpoint. `/health/ready` deliberately stays auth-anonymous-but-DB-dependent (used by k8s readiness probe + internal callers). A new `GET /health/public` was added at `apps/switchyard-api/internal/api/health_handlers.go:PublicHealth` and wired in `handlers.go:347` — it returns `{ok, service, version, time}` without touching DB / cache / k8s. Both status configmaps (`apps/status/k8s/enclii/configmap.yaml:26`, `apps/status/k8s/madfam/configmap.yaml:97`) and both Go core defaults (`apps/switchyard-api/internal/api/status_handlers.go:65,97`) now point at `/health/public`. Tests in `apps/switchyard-api/internal/api/health_handlers_test.go` assert: anonymous 200, no auth required, no component-status leak. The status page will need the next configmap roll-out + the next Cloudflare tunnel route fix to verify live, but the in-repo fidelity lie is closed and CI now guards against regression.
 
 #### 🟡 ST-3 — Two configmaps with drift and stale exclusion comments
 

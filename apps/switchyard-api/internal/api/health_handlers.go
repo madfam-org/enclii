@@ -219,6 +219,32 @@ func (h *Handler) LivenessProbe(c *gin.Context) {
 	})
 }
 
+// PublicHealth is the anonymous, dependency-free liveness signal exposed for
+// status-page probes (status.enclii.dev / status.madfam.io). It must:
+//
+//   - never require auth, cookies, or CSRF
+//   - never reach into the database, cache, or kubernetes API
+//   - never leak diagnostic detail an attacker could fingerprint
+//
+// We deliberately do NOT call h.repos / h.cache / h.k8sClient here. Those
+// readiness signals belong on /health/ready (deep) and /health (component
+// breakdown), both of which require the API process to also have its
+// downstreams up. /health/public answers exactly one question: "is the API
+// HTTP server itself up and serving anonymous requests?" That is what a
+// public status page should claim about a backend, and nothing more.
+//
+// Returning {ok, service, version, time} keeps the response small, gives
+// operators a way to verify which build answered, and avoids any
+// information disclosure that a deeper health check would expose.
+func (h *Handler) PublicHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"service": "switchyard-api",
+		"version": "0.1.0",
+		"time":    time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 // ReadinessProbe checks if the service is ready to accept traffic
 // This checks critical dependencies (database) before returning healthy
 func (h *Handler) ReadinessProbe(c *gin.Context) {

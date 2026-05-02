@@ -23,7 +23,7 @@ data:
     [
       {
         "name": "Switchyard API",
-        "url": "https://api.enclii.dev/health/ready",
+        "url": "https://api.enclii.dev/health/public",
         "href": "https://api.enclii.dev",
         "group": "Enclii",
         "family": "MADFAM Platform",

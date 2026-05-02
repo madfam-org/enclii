@@ -62,7 +62,7 @@ func (s statusSiteTarget) configmapName() string {
 // an "ecosystem app" with its own enclii.yaml registering status entries.
 func coreEncliiServicesForEncliiSite() []statusServiceEntry {
 	return []statusServiceEntry{
-		{Name: "Switchyard API", URL: "https://api.enclii.dev/health/ready", Href: "https://api.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Control plane API"},
+		{Name: "Switchyard API", URL: "https://api.enclii.dev/health/public", Href: "https://api.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Control plane API"},
 		{Name: "Web Dashboard", URL: "https://app.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Web management console"},
 		{Name: "Admin Console", URL: "https://admin.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Infrastructure operations"},
 		{Name: "Documentation", URL: "https://docs.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Platform documentation"},
@@ -94,7 +94,7 @@ func coreEncliiServicesForEncliiSite() []statusServiceEntry {
 func coreEncliiServicesForMadfamSite() []statusServiceEntry {
 	return []statusServiceEntry{
 		// Enclii platform itself.
-		{Name: "Enclii API", URL: "https://api.enclii.dev/health/ready", Href: "https://api.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Control plane API"},
+		{Name: "Enclii API", URL: "https://api.enclii.dev/health/public", Href: "https://api.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Control plane API"},
 		{Name: "Enclii Dashboard", URL: "https://app.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Web management console"},
 		{Name: "Enclii Admin", URL: "https://admin.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Infrastructure operations"},
 		{Name: "Enclii Docs", URL: "https://docs.enclii.dev", Group: "Enclii", Family: "MADFAM Platform", Description: "Platform documentation"},

@@ -337,6 +337,15 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	router.GET("/health", h.Health)
 	router.GET("/health/live", h.LivenessProbe)
 	router.GET("/health/ready", h.ReadinessProbe)
+	// /health/public is the dependency-free anonymous liveness signal used
+	// by status.enclii.dev / status.madfam.io. It exists separately from
+	// /health/ready because /health/ready checks the database (so it can
+	// flap with backend readiness even when the API itself is fine), and
+	// because the deeper variants are intentionally unsuitable for a
+	// public probe (no DB/cache/k8s state should leak through a public
+	// status page). See health_handlers.go:PublicHealth and ST-1 in
+	// claudedocs/cross-app-public-audit-2026-05-02.md.
+	router.GET("/health/public", h.PublicHealth)
 
 	// CSRF token issuance (no auth required — SPA fetches pre-auth so a
 	// token is ready by the time a write is attempted). See csrf_handler.go.

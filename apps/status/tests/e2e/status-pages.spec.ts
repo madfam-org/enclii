@@ -74,7 +74,11 @@ test.describe('Status Page Verification', () => {
             (s: { service: string }) => s.service === 'Switchyard API'
           );
           if (switchyardApi) {
-            expect(switchyardApi.url).toContain('/health/ready');
+            // ST-1 (claudedocs/cross-app-public-audit-2026-05-02.md): the
+            // public probe URL is /health/public — anonymous, dependency-free,
+            // distinct from /health/ready which checks the database and is
+            // intentionally not exposed publicly.
+            expect(switchyardApi.url).toContain('/health/public');
             expect(switchyardApi.href).toBe('https://api.enclii.dev');
             console.log('Switchyard API href correctly set:', switchyardApi.href);
           }
@@ -387,7 +391,8 @@ test.describe('Status Page Verification', () => {
             (s: { service: string }) => s.service === 'Enclii API'
           );
           if (encliiApi) {
-            expect(encliiApi.url).toContain('/health/ready');
+            // See ST-1 note above — public probe is /health/public.
+            expect(encliiApi.url).toContain('/health/public');
             expect(encliiApi.href).toBe('https://api.enclii.dev');
             console.log('Enclii API href correctly set:', encliiApi.href);
           }
