@@ -91,7 +91,40 @@ This means the existing free-tier UX is preserved. The change is purely additive
 2. ✅ **Round 1 (`bc4c69b9`)**: migration `023_admin_acting_sessions` (table + index + `audit_logs.acting_on_behalf_of_team_id` column), `AdminActingSessionRepository`, four endpoints (`GET /v1/admin/tenants{,active}`, `POST .../:slug/enter`, `POST .../exit`), gated under the existing admin role middleware.
 3. ✅ **Round 2 (`eecf5728`)**: scope switcher rewritten — admins fetch `/v1/admin/tenants`, picking a tenant fires `POST .../:slug/enter` and reloads, `AdminActingBanner` shows tenant + countdown + End-session.
 4. ✅ **Round 3 (`<this commit>`)**: handler-level tests for the four endpoints (sqlmock); `enclii admin tenants list/active/enter/exit` CLI commands; doc updates.
-5. ⏳ **Next**: tenant-filter middleware. Today the cookie is set and the audit row is enriched, but list-style handlers (`/v1/projects`, `/v1/services`, `/v1/deployments`) do not yet filter by `acting_team_id`. Need a small middleware that reads `ax_acting_as`, looks up the open session via `AdminActingSessionRepository.GetActive`, and stashes `team_id` in the gin context for downstream handlers to consult. Plus per-handler `WHERE team_id = ?` updates.
+5. ✅ **Round 4 (`4a180eb6`)**: tenant-filter middleware. `middleware.ActingAsMiddleware` reads `ax_acting_as`, validates the open session via `AdminActingSessionRepository.GetActive`, stashes `acting_team_id` in the gin context. `GET /v1/projects` consults `middleware.ActingTeamID` and filters via the new `ProjectRepository.ListByTeam` + `ProjectService.ListProjectsScoped`.
+
+### Round 5 — handler coverage (`<this commit>`)
+
+`/v1/projects` was the seed; Round 5 rolls the same dispatch out to every other tenant-bound list/detail surface. Each scoped handler reads `middleware.ActingTeamID(c)` and either (a) calls a `*ByTeam` repo method when acting-as is active, or (b) falls back to the unscoped path for non-admin / non-acting callers.
+
+**Scoped list endpoints** (acting-as → `*ByTeam` repo dispatch):
+- `GET /v1/deployments` — `DeploymentRepository.ListAllEnrichedByTeam` (joins releases+services+projects)
+- `GET /v1/activity` — `AuditLogRepository.QueryByTeam` (matches both `project_id → projects.team_id` and `acting_on_behalf_of_team_id`)
+- `GET /v1/databases` (and the `/v1/addons` alias) — `DatabaseAddonRepository.ListByTeam` (joins projects)
+- `GET /v1/domains` — `CustomDomainRepository.ListAllByTeam` (joins services+projects)
+
+**Per-resource detail endpoints** (acting-as → 404 on cross-tenant id, via shared helper `Handler.enforceActingTeamForProject`):
+- `GET /v1/services/:id`
+- `GET /v1/services/:id/deployments`
+- `GET /v1/services/:id/deployments/latest`
+- `GET /v1/services/:id/versions/:version`
+- `GET /v1/deployments/:id`
+- `GET /v1/services/:id/domains`, `GET /v1/services/:id/domains/:domain_id`
+- `GET /v1/addons/:id`
+
+The 404-rather-than-403 choice keeps the impersonation surface opaque: a master admin scoped into "tenant A" must not be able to fingerprint "tenant B" resources by guessing UUIDs.
+
+**Repo additions**: `ProjectRepository.GetTeamID` (one-shot lookup for the 403 helper), `ServiceRepository.ListByTeam`, `DeploymentRepository.ListAllEnrichedByTeam`, `DatabaseAddonRepository.ListByTeam`, `CustomDomainRepository.ListAllByTeam`, `AuditLogRepository.QueryByTeam`. All exclude rows whose project's `team_id IS NULL` — same convention as Round 4.
+
+**Tests**: 27 new repo subtests (`team match` / `team mismatch` / `no rows` / `db error` × 7 methods including `GetTeamID`) + 9 handler subtests (acting-as / no-acting-as for each scoped list endpoint, plus four cases for the `enforceActingTeamForProject` helper). Full suite green.
+
+#### Round 5 — partial coverage
+
+`GET /v1/audit` (consolidated audit surface, `internal/audit/handler.go`) was **not scoped** in this round. Rationale: the consolidated handler aggregates across six upstreams (Janua sessions, Switchyard `audit_logs`+`deployment_lifecycle_events`, four nexus-api Selva ledgers) via the `Aggregator`/`Source` interface. Each source has its own filtering vocabulary (Janua filters on user sub, Selva on resource path, etc.) — none accepts `team_id` today. Threading a `TeamID` through `audit.Query` and into every per-source `Fetch()` is a non-trivial cross-cutting change that's out of scope for "small repetitive per-handler updates".
+
+The legacy single-source view (`GET /v1/activity`, backed by `AuditLogRepository`) **is scoped** and gives the operator an honest tenant-bound view of switchyard mutations. The consolidated `/v1/audit` endpoint remains unscoped pending a follow-up that either (a) adds a `TeamID` field to `audit.Query` and a per-source mapper, or (b) post-filters the aggregator output by resolving each event's tenant from its source-specific identifiers.
+
+6. ⏳ **Next**: tenant-filter on consolidated `/v1/audit` — see "Round 5 — partial coverage" above.
 6. ⏳ **Next**: backfill migration that creates `teams` rows for each white-glove client and re-parents existing `projects` (currently `team_id IS NULL`) onto the right tenant. Idempotent; one-shot.
 7. ⏳ **Cleanup**: remove the "personal account" synthetic scope from the admin codepath entirely once tenant-filter middleware is live; reconfirm non-admin behavior in tests.
 

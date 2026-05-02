@@ -163,12 +163,77 @@ func (r *ServiceRepository) GetByName(name string) (*types.Service, error) {
 	return service, nil
 }
 
+// ListByTeam returns every service whose parent project belongs to the given
+// team. Mirror of ListAll's column shape — no per-service release/health
+// subqueries, callers that need those use ListByProject. Used by the master-
+// admin tenant-filter middleware (XC-2 Round 5) when an acting-as session
+// scopes a global services view to a single tenant.
+//
+// Services whose projects.team_id IS NULL ("personal" / unparented) are NOT
+// returned — same convention as ProjectRepository.ListByTeam: when a master
+// admin is acting-as a tenant, they see exactly that tenant's resources.
+func (r *ServiceRepository) ListByTeam(ctx context.Context, teamID uuid.UUID) ([]*types.Service, error) {
+	query := `SELECT s.id, s.project_id, s.name, s.git_repo, COALESCE(s.app_path, '') as app_path, s.build_config,
+		s.auto_deploy, s.auto_deploy_branch, s.auto_deploy_env, s.k8s_namespace, s.created_at, s.updated_at, COALESCE(s.jobs, '[]'::jsonb) as jobs, s.type, s.region
+		FROM services s
+		JOIN projects p ON p.id = s.project_id
+		WHERE p.team_id = $1
+		ORDER BY s.created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var services []*types.Service
+	for rows.Next() {
+		service := &types.Service{}
+		var buildConfigJSON []byte
+		var jobsJSON []byte
+		var appPath sql.NullString
+		var k8sNamespace sql.NullString
+
+		err := rows.Scan(
+			&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
+			&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
+			&service.AutoDeployEnv, &k8sNamespace, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
+			&service.Type, &service.Region,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if appPath.Valid {
+			service.AppPath = appPath.String
+		}
+		if k8sNamespace.Valid {
+			ns := k8sNamespace.String
+			service.K8sNamespace = &ns
+		}
+
+		if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+		}
+
+		if len(jobsJSON) > 0 {
+			if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+			}
+		}
+
+		services = append(services, service)
+	}
+
+	return services, rows.Err()
+}
+
 func (r *ServiceRepository) ListAll(ctx context.Context) ([]*types.Service, error) {
 	// k8s_namespace included so callers (notably the health/observability
 	// handler) can probe the right namespace for pod counts. Audit
 	// 2026-04-29 traced uniformly-zero pod counts back to ListAll
 	// dropping this column, forcing the caller to fall back to "default".
-		query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
+	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
 		auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
 		FROM services ORDER BY created_at DESC`
 
@@ -458,31 +523,31 @@ func (r *ServiceRepository) ListByGitRepo(gitRepoURL string) ([]*types.Service, 
 	for rows.Next() {
 		service := &types.Service{}
 		var buildConfigJSON []byte
-	var jobsJSON []byte
-	var appPath sql.NullString
+		var jobsJSON []byte
+		var appPath sql.NullString
 
-	if err := rows.Scan(
-		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
-		&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
-		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
-		&service.Type, &service.Region,
-	); err != nil {
-		return nil, err
-	}
-
-	if appPath.Valid {
-		service.AppPath = appPath.String
-	}
-
-	if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
-	}
-
-	if len(jobsJSON) > 0 {
-		if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+		if err := rows.Scan(
+			&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
+			&appPath, &buildConfigJSON, &service.AutoDeploy, &service.AutoDeployBranch,
+			&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
+			&service.Type, &service.Region,
+		); err != nil {
+			return nil, err
 		}
-	}
+
+		if appPath.Valid {
+			service.AppPath = appPath.String
+		}
+
+		if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal build config: %w", err)
+		}
+
+		if len(jobsJSON) > 0 {
+			if err := json.Unmarshal(jobsJSON, &service.Jobs); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal jobs: %w", err)
+			}
+		}
 
 		services = append(services, service)
 	}

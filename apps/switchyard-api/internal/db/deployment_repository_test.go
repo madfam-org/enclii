@@ -857,6 +857,92 @@ func TestDeploymentRepository_GetByServiceAndVersion(t *testing.T) {
 	})
 }
 
+// --- ListAllEnrichedByTeam (XC-2 Round 5 enforcement) ---
+
+// enrichedColumns mirrors the column shape returned by ListAllEnriched and
+// ListAllEnrichedByTeam. Note: service_id is non-nullable here (an inner JOIN
+// guarantees it).
+var enrichedColumns = []string{
+	"id", "release_id", "environment_id", "replicas", "status", "health",
+	"error_message", "version_number", "created_at", "updated_at",
+	"service_id", "service_name",
+	"git_sha", "git_branch", "commit_message", "commit_author", "commit_author_email",
+	"pr_number", "pr_title", "pr_url", "repo_url",
+}
+
+func TestDeploymentRepository_ListAllEnrichedByTeam(t *testing.T) {
+	t.Run("team match returns rows", func(t *testing.T) {
+		repo, mock, cleanup := newDeploymentMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		depID := uuid.New()
+		releaseID := uuid.New()
+		envID := uuid.New()
+		svcID := uuid.New()
+		now := time.Now()
+
+		mock.ExpectQuery(`(?s)FROM deployments d\s+JOIN releases r ON d\.release_id = r\.id\s+JOIN services s ON r\.service_id = s\.id\s+JOIN projects p ON p\.id = s\.project_id\s+WHERE p\.team_id = \$1`).
+			WithArgs(teamID, 50).
+			WillReturnRows(sqlmock.NewRows(enrichedColumns).AddRow(
+				depID, releaseID, envID, 1, "running", "healthy",
+				"", 7, now, now,
+				svcID, "api",
+				"deadbeef", "main", "fix bug", "Dev", "dev@example.com",
+				nil, "", "", "https://github.com/o/r",
+			))
+
+		out, err := repo.ListAllEnrichedByTeam(context.Background(), teamID, nil, 0)
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, "api", out[0].ServiceName)
+		assert.Equal(t, svcID, out[0].ServiceID)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("team mismatch returns empty", func(t *testing.T) {
+		repo, mock, cleanup := newDeploymentMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)JOIN projects p ON p\.id = s\.project_id\s+WHERE p\.team_id = \$1`).
+			WithArgs(teamID, 50).
+			WillReturnRows(sqlmock.NewRows(enrichedColumns))
+
+		out, err := repo.ListAllEnrichedByTeam(context.Background(), teamID, nil, 0)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no rows", func(t *testing.T) {
+		repo, mock, cleanup := newDeploymentMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE p\.team_id = \$1`).
+			WithArgs(teamID, 50).
+			WillReturnRows(sqlmock.NewRows(enrichedColumns))
+
+		out, err := repo.ListAllEnrichedByTeam(context.Background(), teamID, nil, 0)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newDeploymentMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE p\.team_id = \$1`).
+			WithArgs(teamID, 50).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, err := repo.ListAllEnrichedByTeam(context.Background(), teamID, nil, 0)
+		require.Error(t, err)
+	})
+}
+
 // --- helper ---
 
 func ptrStr(s string) *string {

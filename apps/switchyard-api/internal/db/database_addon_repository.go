@@ -298,6 +298,34 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 	return r.scanAddons(rows)
 }
 
+// ListByTeam retrieves every database addon whose project belongs to the
+// given team. Used by the master-admin tenant-filter middleware (XC-2
+// Round 5) when an acting-as session scopes /v1/databases (and the
+// /v1/addons alias) to a single tenant. Addons whose projects.team_id IS
+// NULL ("personal" / unparented) are NOT returned — same convention as
+// ProjectRepository.ListByTeam.
+func (r *DatabaseAddonRepository) ListByTeam(ctx context.Context, teamID uuid.UUID) ([]*types.DatabaseAddon, error) {
+	query := `
+		SELECT a.id, a.project_id, a.environment_id, a.type, a.name, a.plan, a.status, a.status_message,
+		       a.config, a.k8s_namespace, a.k8s_resource_name, a.connection_secret,
+		       a.host, a.port, a.database_name, a.username,
+		       a.storage_used_bytes, a.connections_active, a.last_backup_at,
+		       a.created_by, a.created_by_email, a.created_at, a.updated_at, a.provisioned_at, a.deleted_at
+		FROM database_addons a
+		JOIN projects p ON p.id = a.project_id
+		WHERE p.team_id = $1 AND a.deleted_at IS NULL
+		ORDER BY a.created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanAddons(rows)
+}
+
 // ListByType retrieves all database addons of a specific type for a project
 func (r *DatabaseAddonRepository) ListByType(ctx context.Context, projectID uuid.UUID, addonType types.DatabaseAddonType) ([]*types.DatabaseAddon, error) {
 	query := `

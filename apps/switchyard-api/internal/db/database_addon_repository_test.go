@@ -251,3 +251,84 @@ func TestDatabaseAddonRepository_Delete(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// --- ListByTeam (XC-2 Round 5 enforcement) ---
+
+func TestDatabaseAddonRepository_ListByTeam(t *testing.T) {
+	addonScanColumns := []string{
+		"id", "project_id", "environment_id", "type", "name", "plan", "status", "status_message",
+		"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
+		"host", "port", "database_name", "username",
+		"storage_used_bytes", "connections_active", "last_backup_at",
+		"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at", "deleted_at",
+	}
+
+	t.Run("team match returns rows", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		addonID := uuid.New()
+		projID := uuid.New()
+		now := time.Now()
+
+		mock.ExpectQuery(`(?s)FROM database_addons a\s+JOIN projects p ON p\.id = a\.project_id\s+WHERE p\.team_id = \$1 AND a\.deleted_at IS NULL`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(addonScanColumns).AddRow(
+				addonID, projID, nil,
+				types.DatabaseAddonTypePostgres, "tenant-db", "standard-0", types.DatabaseAddonStatusReady, "",
+				[]byte("{}"), nil, nil, nil,
+				nil, nil, nil, nil,
+				int64(0), 0, nil,
+				nil, "", now, now, nil, nil,
+			))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, "tenant-db", out[0].Name)
+		assert.Equal(t, projID, out[0].ProjectID)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("team mismatch returns empty", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE p\.team_id = \$1 AND a\.deleted_at IS NULL`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(addonScanColumns))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("no rows", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE p\.team_id`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(addonScanColumns))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE p\.team_id`).
+			WithArgs(teamID).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, err := repo.ListByTeam(context.Background(), teamID)
+		require.Error(t, err)
+	})
+}

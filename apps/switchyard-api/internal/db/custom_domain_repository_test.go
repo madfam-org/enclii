@@ -367,3 +367,86 @@ func TestCustomDomainRepository_DeleteByServiceID(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// --- ListAllByTeam (XC-2 Round 5 enforcement) ---
+
+func TestCustomDomainRepository_ListAllByTeam(t *testing.T) {
+	listAllByTeamColumns := append([]string{}, customDomainColumns...)
+	listAllByTeamColumns = append(listAllByTeamColumns, "service_name", "environment_name")
+
+	t.Run("team match returns rows + count", func(t *testing.T) {
+		repo, mock, cleanup := newCustomDomainMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		domID := uuid.New()
+		svcID := uuid.New()
+		envID := uuid.New()
+		now := time.Now()
+
+		mock.ExpectQuery(`(?s)SELECT COUNT\(\*\) FROM custom_domains cd\s+JOIN services s ON cd\.service_id = s\.id\s+JOIN projects p ON p\.id = s\.project_id\s+WHERE p\.team_id = \$1`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+		mock.ExpectQuery(`(?s)FROM custom_domains cd\s+JOIN services s ON cd\.service_id = s\.id\s+JOIN projects p ON p\.id = s\.project_id\s+LEFT JOIN environments e ON cd\.environment_id = e\.id\s+WHERE p\.team_id = \$1`).
+			WithArgs(teamID, 50, 0).
+			WillReturnRows(sqlmock.NewRows(listAllByTeamColumns).AddRow(
+				domID, svcID, envID, "api.tenant.com", true, true, "letsencrypt-prod",
+				now, now, nil, "api", "production",
+			))
+
+		out, total, err := repo.ListAllByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.NoError(t, err)
+		require.Equal(t, 1, total)
+		require.Len(t, out, 1)
+		assert.Equal(t, "api.tenant.com", out[0].Domain)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("team mismatch returns empty + zero count", func(t *testing.T) {
+		repo, mock, cleanup := newCustomDomainMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)SELECT COUNT\(\*\) FROM custom_domains cd`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`(?s)FROM custom_domains cd\s+JOIN services s`).
+			WithArgs(teamID, 50, 0).
+			WillReturnRows(sqlmock.NewRows(listAllByTeamColumns))
+
+		out, total, err := repo.ListAllByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.NoError(t, err)
+		assert.Equal(t, 0, total)
+		assert.Empty(t, out)
+	})
+
+	t.Run("no rows", func(t *testing.T) {
+		repo, mock, cleanup := newCustomDomainMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)SELECT COUNT\(\*\) FROM custom_domains cd`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectQuery(`(?s)FROM custom_domains cd`).
+			WithArgs(teamID, 50, 0).
+			WillReturnRows(sqlmock.NewRows(listAllByTeamColumns))
+
+		_, _, err := repo.ListAllByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.NoError(t, err)
+	})
+
+	t.Run("db error on count", func(t *testing.T) {
+		repo, mock, cleanup := newCustomDomainMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)SELECT COUNT\(\*\) FROM custom_domains cd`).
+			WithArgs(teamID).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, _, err := repo.ListAllByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.Error(t, err)
+	})
+}

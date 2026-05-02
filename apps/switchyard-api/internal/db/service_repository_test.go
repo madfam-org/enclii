@@ -752,3 +752,74 @@ func TestServiceRepository_Delete(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// --- ListByTeam (XC-2 Round 5 enforcement) ---
+
+func TestServiceRepository_ListByTeam(t *testing.T) {
+	t.Run("team match returns rows", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		svcID := uuid.New()
+		projID := uuid.New()
+		now := time.Now()
+		bc := mustMarshalBuildConfig(t, defaultBuildConfig())
+
+		mock.ExpectQuery(`(?s)FROM services s\s+JOIN projects p ON p\.id = s\.project_id\s+WHERE p\.team_id = \$1`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(serviceListAllColumns).AddRow(
+				svcID, projID, "api", "https://github.com/org/repo", "",
+				bc, true, "main", "production", "team-a-prod", now, now, []byte("[]"), "web", "default",
+			))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, "api", out[0].Name)
+		assert.Equal(t, projID, out[0].ProjectID)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("team mismatch returns empty", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)FROM services s\s+JOIN projects p ON p\.id = s\.project_id\s+WHERE p\.team_id = \$1`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(serviceListAllColumns))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no rows", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)FROM services s\s+JOIN projects p`).
+			WithArgs(teamID).
+			WillReturnRows(sqlmock.NewRows(serviceListAllColumns))
+
+		out, err := repo.ListByTeam(context.Background(), teamID)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newServiceMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)FROM services s\s+JOIN projects p`).
+			WithArgs(teamID).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, err := repo.ListByTeam(context.Background(), teamID)
+		require.Error(t, err)
+	})
+}

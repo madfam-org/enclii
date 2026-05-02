@@ -4,11 +4,47 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+// enforceActingTeamForProject is the shared 403 guard for per-resource detail
+// endpoints in the XC-2 tenant-filter rollout (Round 5). When the caller is
+// acting-as a tenant, any resource whose owning project does not belong to
+// that tenant must be invisible — we return 404 (not 403) so a master admin
+// scoped into "tenant A" can't fingerprint "tenant B" resources by id.
+//
+// Returns true when the request should proceed; false when the handler has
+// already written a response (404 / 500) and must abort. ProjectID may be
+// uuid.Nil for resources we couldn't resolve to a project — in that case we
+// fail closed (treat as mismatch) only when the caller is acting-as.
+func (h *Handler) enforceActingTeamForProject(c *gin.Context, projectID uuid.UUID) bool {
+	actingTeamID, ok := middleware.ActingTeamID(c)
+	if !ok {
+		return true
+	}
+	if projectID == uuid.Nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		return false
+	}
+	teamID, err := h.repos.Projects.GetTeamID(c.Request.Context(), projectID)
+	if err != nil {
+		// Either the project disappeared or the lookup failed — either way
+		// we cannot prove tenant ownership, so refuse the read. 404 keeps
+		// the impersonation surface opaque.
+		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		return false
+	}
+	if teamID != actingTeamID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		return false
+	}
+	return true
+}
 
 // CreateService creates a new service in a project.
 //
@@ -141,6 +177,14 @@ func (h *Handler) GetService(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get service"})
 		}
+		return
+	}
+
+	// XC-2 Round 5: when the master admin is acting-as a tenant, a service
+	// whose project belongs to a different team must be invisible. 404
+	// rather than 403 so the impersonation surface doesn't leak that the
+	// id exists in some other tenant.
+	if !h.enforceActingTeamForProject(c, service.ProjectID) {
 		return
 	}
 

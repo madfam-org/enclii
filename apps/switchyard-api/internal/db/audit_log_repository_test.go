@@ -248,3 +248,74 @@ func TestAuditLogRepository_Query(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// --- QueryByTeam (XC-2 Round 5 enforcement) ---
+
+func TestAuditLogRepository_QueryByTeam(t *testing.T) {
+	t.Run("team match returns rows owned by team", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		actorID := uuid.New()
+		projID := uuid.New()
+		now := time.Now()
+		emptyJSON, _ := json.Marshal(map[string]any{})
+
+		mock.ExpectQuery(`(?s)WHERE \(\s*project_id IN \(SELECT id FROM projects WHERE team_id = \$1\)\s+OR acting_on_behalf_of_team_id = \$1\s*\)`).
+			WithArgs(teamID, 50, 0).
+			WillReturnRows(sqlmock.NewRows(auditLogColumns).AddRow(
+				uuid.New(), now, &actorID, "tenant@x.com", "developer",
+				"deploy", "service", uuid.New().String(), "api",
+				&projID, nil, nil, "enclii",
+				"success", emptyJSON, emptyJSON,
+			))
+
+		out, err := repo.QueryByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, "deploy", out[0].Action)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("team mismatch returns empty", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE \(\s*project_id IN \(SELECT id FROM projects WHERE team_id = \$1\)`).
+			WithArgs(teamID, 50, 0).
+			WillReturnRows(sqlmock.NewRows(auditLogColumns))
+
+		out, err := repo.QueryByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("no rows", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE \(\s*project_id IN`).
+			WithArgs(teamID, 50, 0).
+			WillReturnRows(sqlmock.NewRows(auditLogColumns))
+
+		out, err := repo.QueryByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newAuditLogMockDB(t)
+		defer cleanup()
+
+		teamID := uuid.New()
+		mock.ExpectQuery(`(?s)WHERE \(\s*project_id IN`).
+			WithArgs(teamID, 50, 0).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, err := repo.QueryByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
+		require.Error(t, err)
+	})
+}

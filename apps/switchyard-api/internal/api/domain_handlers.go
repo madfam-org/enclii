@@ -158,6 +158,16 @@ func (h *Handler) ListCustomDomains(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// XC-2 Round 5: 403 (rendered as 404) cross-tenant reads when acting-as.
+	svcUUID, parseErr := uuid.Parse(serviceID)
+	if parseErr == nil {
+		if svc, sErr := h.repos.Services.GetByID(svcUUID); sErr == nil && svc != nil {
+			if !h.enforceActingTeamForProject(c, svc.ProjectID) {
+				return
+			}
+		}
+	}
+
 	domains, err := h.repos.CustomDomains.GetByServiceID(ctx, serviceID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list custom domains", logging.Error("error", err))
@@ -183,6 +193,13 @@ func (h *Handler) GetCustomDomain(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "custom domain not found"})
 		return
+	}
+
+	// XC-2 Round 5: 404 cross-tenant detail reads when acting-as.
+	if svc, sErr := h.repos.Services.GetByID(domain.ServiceID); sErr == nil && svc != nil {
+		if !h.enforceActingTeamForProject(c, svc.ProjectID) {
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"domain": domain})

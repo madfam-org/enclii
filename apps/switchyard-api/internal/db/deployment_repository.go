@@ -427,6 +427,85 @@ func (r *DeploymentRepository) ListAllEnriched(ctx context.Context, since *time.
 	return deployments, nil
 }
 
+// ListAllEnrichedByTeam mirrors ListAllEnriched but adds a project-team filter:
+// only deployments whose owning service's project belongs to the given team
+// are returned. Used by the master-admin tenant-filter middleware (XC-2
+// Round 5) when an acting-as session scopes /v1/deployments to a single
+// tenant. Deployments orphaned from a service (LEFT JOIN matching no row) are
+// excluded — without a service we can't resolve a team, and surfacing them
+// to a master admin acting-as a tenant would defeat the impersonation guard.
+func (r *DeploymentRepository) ListAllEnrichedByTeam(ctx context.Context, teamID uuid.UUID, since *time.Time, limit int) ([]*types.DeploymentEnriched, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	// Inner JOINs on releases + services + projects: scoping to a team
+	// requires every deployment to resolve to a project, so the LEFT JOINs
+	// from the unscoped path don't make sense here.
+	baseQuery := `
+		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
+		       d.error_message,
+		       d.version_number,
+		       d.created_at, d.updated_at,
+		       s.id as service_id,
+		       COALESCE(s.name, '') as service_name,
+		       COALESCE(r.git_sha, '') as git_sha,
+		       COALESCE(r.git_branch, '') as git_branch,
+		       COALESCE(r.commit_message, '') as commit_message,
+		       COALESCE(r.commit_author_name, '') as commit_author,
+		       COALESCE(r.commit_author_email, '') as commit_author_email,
+		       r.pr_number,
+		       COALESCE(r.pr_title, '') as pr_title,
+		       COALESCE(r.pr_url, '') as pr_url,
+		       COALESCE(r.repo_url, '') as repo_url
+		FROM deployments d
+		JOIN releases r ON d.release_id = r.id
+		JOIN services s ON r.service_id = s.id
+		JOIN projects p ON p.id = s.project_id
+		WHERE p.team_id = $1`
+
+	var query string
+	var args []interface{}
+
+	if since != nil {
+		query = baseQuery + ` AND d.created_at >= $2 ORDER BY d.created_at DESC LIMIT $3`
+		args = []interface{}{teamID, *since, limit}
+	} else {
+		query = baseQuery + ` ORDER BY d.created_at DESC LIMIT $2`
+		args = []interface{}{teamID, limit}
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var deployments []*types.DeploymentEnriched
+	for rows.Next() {
+		d := &types.DeploymentEnriched{}
+		var prNumber *int
+		err := rows.Scan(
+			&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
+			&d.ErrorMessage,
+			&d.VersionNumber,
+			&d.CreatedAt, &d.UpdatedAt,
+			&d.ServiceID, &d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
+			&d.CommitAuthor, &d.CommitAuthorEmail,
+			&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
+		)
+		if err != nil {
+			return nil, err
+		}
+		d.PRNumber = prNumber
+		sid := d.ServiceID
+		d.Deployment.ServiceID = &sid
+		deployments = append(deployments, d)
+	}
+
+	return deployments, rows.Err()
+}
+
 // GetByIDEnriched retrieves a single deployment with joined release and service data
 func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (*types.DeploymentEnriched, error) {
 	query := `

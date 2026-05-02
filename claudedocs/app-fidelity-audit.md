@@ -216,7 +216,7 @@ After the audit landed, two follow-on rounds shipped.
 
 ## Still open (queued, not shipped)
 
-- 🟡 **Tenant-filter on remaining list handlers** — `/v1/projects` is filtered. `/v1/services`, `/v1/deployments`, `/v1/domains`, `/v1/databases`, `/v1/audit`, `/v1/activity` need the same treatment. Each is a small, repetitive change against the now-existing `middleware.ActingTeamID` helper. Tracked for a follow-up.
+- ✅ **Tenant-filter on remaining list handlers** (XC-2 Round 5, `<this commit>`) — `/v1/deployments`, `/v1/activity`, `/v1/databases` (+ `/v1/addons` alias), `/v1/domains` now consult `middleware.ActingTeamID` and dispatch to new `*ByTeam` repo methods. Per-resource detail endpoints (`GET /v1/services/:id`, `/v1/deployments/:id`, `/v1/services/:id/deployments`, `/v1/addons/:id`, `/v1/services/:id/domains{,/:id}`) gain a 404 cross-tenant guard via the shared `Handler.enforceActingTeamForProject` helper. 27 repo subtests + 9 handler subtests, all green. The consolidated `/v1/audit` (multi-source aggregator) is intentionally still unscoped — see `claudedocs/master-admin-tenant-switching.md` "Round 5 — partial coverage" for the rationale and the follow-up plan.
 - 🟡 **Real Cloudflare verifier** — DM-1..4 honesty layer is in (banners + `Stale` badge), but the actual verification pipeline is gated on `ENCLII_CLOUDFLARE_*` secrets being wired to the deployment. Separate scope; needs ops involvement.
 - 🟡 **Inventory-by-scan** — domain inventory is registration-only today; a follow-up should merge `custom_domains` with a live Cloudflare DNS scan (or K8s `Ingress`/`HTTPRoute` set) so registrar-less domains appear automatically.
 - Cross-app audits: **admin.enclii.dev**, **status / docs / landing / npm / analytics**.

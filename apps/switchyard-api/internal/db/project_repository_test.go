@@ -406,3 +406,63 @@ func TestProjectRepository_ListByTeam(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// --- GetTeamID (XC-2 Round 5 enforcement helper) ---
+
+func TestProjectRepository_GetTeamID(t *testing.T) {
+	t.Run("returns team id when set", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		projID := uuid.New()
+		teamID := uuid.New()
+
+		mock.ExpectQuery(`SELECT team_id FROM projects WHERE id = \$1`).
+			WithArgs(projID).
+			WillReturnRows(sqlmock.NewRows([]string{"team_id"}).AddRow(teamID))
+
+		out, err := repo.GetTeamID(context.Background(), projID)
+		require.NoError(t, err)
+		assert.Equal(t, teamID, out)
+	})
+
+	t.Run("returns uuid.Nil when team_id is null (personal)", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		projID := uuid.New()
+		mock.ExpectQuery(`SELECT team_id FROM projects WHERE id = \$1`).
+			WithArgs(projID).
+			WillReturnRows(sqlmock.NewRows([]string{"team_id"}).AddRow(nil))
+
+		out, err := repo.GetTeamID(context.Background(), projID)
+		require.NoError(t, err)
+		assert.Equal(t, uuid.Nil, out)
+	})
+
+	t.Run("not found returns ErrNoRows", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		projID := uuid.New()
+		mock.ExpectQuery(`SELECT team_id FROM projects WHERE id = \$1`).
+			WithArgs(projID).
+			WillReturnError(sql.ErrNoRows)
+
+		_, err := repo.GetTeamID(context.Background(), projID)
+		assert.ErrorIs(t, err, sql.ErrNoRows)
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		projID := uuid.New()
+		mock.ExpectQuery(`SELECT team_id FROM projects WHERE id = \$1`).
+			WithArgs(projID).
+			WillReturnError(fmt.Errorf("connection refused"))
+
+		_, err := repo.GetTeamID(context.Background(), projID)
+		require.Error(t, err)
+	})
+}

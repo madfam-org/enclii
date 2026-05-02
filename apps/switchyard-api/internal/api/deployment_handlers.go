@@ -16,6 +16,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/compliance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -520,6 +521,18 @@ func (h *Handler) GetLatestDeployment(c *gin.Context) {
 		return
 	}
 
+	// XC-2 Round 5: cross-tenant guard.
+	if _, isActing := middleware.ActingTeamID(c); isActing {
+		svc, sErr := h.repos.Services.GetByID(serviceID)
+		var projectID uuid.UUID
+		if sErr == nil && svc != nil {
+			projectID = svc.ProjectID
+		}
+		if !h.enforceActingTeamForProject(c, projectID) {
+			return
+		}
+	}
+
 	// Get latest deployment for this service
 	deployment, err := h.repos.Deployments.GetLatestByService(ctx, serviceID.String())
 	if err != nil {
@@ -562,6 +575,18 @@ func (h *Handler) GetDeploymentByVersion(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
+	}
+
+	// XC-2 Round 5: cross-tenant guard.
+	if _, isActing := middleware.ActingTeamID(c); isActing {
+		svc, sErr := h.repos.Services.GetByID(serviceID)
+		var projectID uuid.UUID
+		if sErr == nil && svc != nil {
+			projectID = svc.ProjectID
+		}
+		if !h.enforceActingTeamForProject(c, projectID) {
+			return
+		}
 	}
 
 	versionStr := c.Param("version")
@@ -622,6 +647,17 @@ func (h *Handler) GetDeployment(c *gin.Context) {
 		return
 	}
 
+	// XC-2 Round 5: 403 guard for master-admin acting-as scope.
+	if _, isActing := middleware.ActingTeamID(c); isActing {
+		var projectID uuid.UUID
+		if svc, sErr := h.repos.Services.GetByID(deployment.ServiceID); sErr == nil && svc != nil {
+			projectID = svc.ProjectID
+		}
+		if !h.enforceActingTeamForProject(c, projectID) {
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, deployment)
 }
 
@@ -633,6 +669,19 @@ func (h *Handler) ListServiceDeployments(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
+	}
+
+	// XC-2 Round 5: refuse cross-tenant reads when acting-as. Resolve the
+	// service's project up front so we can 404 before doing any work.
+	if _, isActing := middleware.ActingTeamID(c); isActing {
+		svc, sErr := h.repos.Services.GetByID(serviceID)
+		var projectID uuid.UUID
+		if sErr == nil && svc != nil {
+			projectID = svc.ProjectID
+		}
+		if !h.enforceActingTeamForProject(c, projectID) {
+			return
+		}
 	}
 
 	// Get all releases for this service
@@ -658,39 +707,6 @@ func (h *Handler) ListServiceDeployments(c *gin.Context) {
 		"service_id":  serviceID,
 		"deployments": allDeployments,
 		"count":       len(allDeployments),
-	})
-}
-
-// ListAllDeployments returns all deployments across services
-func (h *Handler) ListAllDeployments(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	var since *time.Time
-	if sinceStr := c.Query("since"); sinceStr != "" {
-		// Parse duration like "24h", "7d", "1h"
-		if d, err := time.ParseDuration(sinceStr); err == nil {
-			t := time.Now().Add(-d)
-			since = &t
-		}
-	}
-
-	limit := 50
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-			limit = l
-		}
-	}
-
-	deployments, err := h.repos.Deployments.ListAllEnriched(ctx, since, limit)
-	if err != nil {
-		h.logger.Error(ctx, "Failed to list all deployments", logging.Error("db_error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve deployments"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"deployments": deployments,
-		"count":       len(deployments),
 	})
 }
 

@@ -35,13 +35,23 @@ func (h *Handler) ListAllAddons(c *gin.Context) {
 		return
 	}
 
-	// Check if addon service is available
-	if h.addonService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "addon service not available"})
-		return
+	// XC-2 Round 5: when the master admin is acting-as a tenant, bypass the
+	// per-user project-access lookup and return only the tenant's addons.
+	// The repository handles the projects.team_id join directly so the
+	// master admin sees the tenant's view, not their own. Note: the
+	// repo-only path doesn't require addonService, so the 503 guard below
+	// only applies to the unscoped user-fallback path.
+	var addons []*types.DatabaseAddon
+	if teamID, ok := middleware.ActingTeamID(c); ok {
+		addons, err = h.repos.DatabaseAddons.ListByTeam(ctx, teamID)
+	} else {
+		// Check if addon service is available
+		if h.addonService == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "addon service not available"})
+			return
+		}
+		addons, err = h.addonService.ListAllAddonsForUser(ctx, userID)
 	}
-
-	addons, err := h.addonService.ListAllAddonsForUser(ctx, userID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list all addons", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list addons"})
@@ -243,6 +253,11 @@ func (h *Handler) GetAddon(c *gin.Context) {
 		}
 		h.logger.Error(ctx, "Failed to get addon", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get addon"})
+		return
+	}
+
+	// XC-2 Round 5: 404 cross-tenant detail reads when acting-as.
+	if !h.enforceActingTeamForProject(c, addon.ProjectID) {
 		return
 	}
 

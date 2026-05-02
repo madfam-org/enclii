@@ -237,6 +237,84 @@ func (r *CustomDomainRepository) DeleteByServiceID(ctx context.Context, serviceI
 	return nil
 }
 
+// ListAllByTeam mirrors ListAll but adds a project-team filter via the
+// custom_domains -> services -> projects chain. Used by the master-admin
+// tenant-filter middleware (XC-2 Round 5) when an acting-as session scopes
+// /v1/domains to a single tenant. Domains whose owning project has team_id
+// IS NULL are NOT returned — same convention as ProjectRepository.ListByTeam.
+func (r *CustomDomainRepository) ListAllByTeam(ctx context.Context, teamID uuid.UUID, filters map[string]interface{}, limit, offset int) ([]types.CustomDomain, int, error) {
+	baseQuery := `
+		SELECT cd.id, cd.service_id, cd.environment_id, cd.domain, cd.verified,
+		       cd.tls_enabled, cd.tls_issuer, cd.created_at, cd.updated_at, cd.verified_at,
+		       s.name as service_name, e.name as environment_name
+		FROM custom_domains cd
+		JOIN services s ON cd.service_id = s.id
+		JOIN projects p ON p.id = s.project_id
+		LEFT JOIN environments e ON cd.environment_id = e.id
+		WHERE p.team_id = $1
+	`
+	countQuery := `
+		SELECT COUNT(*) FROM custom_domains cd
+		JOIN services s ON cd.service_id = s.id
+		JOIN projects p ON p.id = s.project_id
+		WHERE p.team_id = $1
+	`
+
+	args := []interface{}{teamID}
+	argIdx := 2
+
+	if verified, ok := filters["verified"].(bool); ok {
+		baseQuery += fmt.Sprintf(" AND cd.verified = $%d", argIdx)
+		countQuery += fmt.Sprintf(" AND cd.verified = $%d", argIdx)
+		args = append(args, verified)
+		argIdx++
+	}
+	if tlsEnabled, ok := filters["tls_enabled"].(bool); ok {
+		baseQuery += fmt.Sprintf(" AND cd.tls_enabled = $%d", argIdx)
+		countQuery += fmt.Sprintf(" AND cd.tls_enabled = $%d", argIdx)
+		args = append(args, tlsEnabled)
+		argIdx++
+	}
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count custom domains by team: %w", err)
+	}
+
+	baseQuery += fmt.Sprintf(" ORDER BY cd.created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query custom domains by team: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var domains []types.CustomDomain
+	for rows.Next() {
+		var domain types.CustomDomain
+		var serviceName, environmentName sql.NullString
+		if err := rows.Scan(
+			&domain.ID,
+			&domain.ServiceID,
+			&domain.EnvironmentID,
+			&domain.Domain,
+			&domain.Verified,
+			&domain.TLSEnabled,
+			&domain.TLSIssuer,
+			&domain.CreatedAt,
+			&domain.UpdatedAt,
+			&domain.VerifiedAt,
+			&serviceName,
+			&environmentName,
+		); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan custom domain: %w", err)
+		}
+		domains = append(domains, domain)
+	}
+	return domains, total, nil
+}
+
 // ListAll retrieves all custom domains with optional filters
 func (r *CustomDomainRepository) ListAll(ctx context.Context, filters map[string]interface{}, limit, offset int) ([]types.CustomDomain, int, error) {
 	// Build query with filters

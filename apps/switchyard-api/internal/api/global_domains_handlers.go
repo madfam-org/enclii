@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -112,8 +113,18 @@ func (h *Handler) GetAllDomains(c *gin.Context) {
 		}
 	}
 
-	// Query domains
-	domains, total, err := h.repos.CustomDomains.ListAll(ctx, filters, limit, offset)
+	// XC-2 Round 5: when acting-as a tenant, scope to that tenant's
+	// services' domains. Same response shape; only the result set narrows.
+	var (
+		domains []types.CustomDomain
+		total   int
+		err     error
+	)
+	if teamID, ok := middleware.ActingTeamID(c); ok {
+		domains, total, err = h.repos.CustomDomains.ListAllByTeam(ctx, teamID, filters, limit, offset)
+	} else {
+		domains, total, err = h.repos.CustomDomains.ListAll(ctx, filters, limit, offset)
+	}
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list domains", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})

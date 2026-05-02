@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -62,8 +63,19 @@ func (h *Handler) GetActivity(c *gin.Context) {
 		}
 	}
 
-	// Query audit logs
-	logs, err := h.repos.AuditLogs.Query(ctx, filters, limit, offset)
+	// XC-2 Round 5: when the master admin is acting-as a tenant, scope the
+	// activity feed to rows owned by that tenant — either rows whose
+	// project_id resolves to the team, or rows emitted while a master
+	// admin was acting-as that team (acting_on_behalf_of_team_id).
+	var (
+		logs []*types.AuditLog
+		err  error
+	)
+	if teamID, ok := middleware.ActingTeamID(c); ok {
+		logs, err = h.repos.AuditLogs.QueryByTeam(ctx, teamID, filters, limit, offset)
+	} else {
+		logs, err = h.repos.AuditLogs.Query(ctx, filters, limit, offset)
+	}
 	if err != nil {
 		h.logger.Error(ctx, "Failed to query activity logs", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch activity"})

@@ -112,6 +112,31 @@ func (r *ProjectRepository) ListByTeam(ctx context.Context, teamID uuid.UUID) ([
 	return projects, rows.Err()
 }
 
+// GetTeamID returns the team_id (or uuid.Nil if NULL/personal) for the given
+// project. Used by the master-admin tenant-filter middleware (XC-2 Round 5)
+// to enforce 403 guards on per-resource detail endpoints (services, deploys,
+// domains, addons): when the caller is acting-as a tenant, a resource whose
+// project belongs to a different team must be invisible.
+//
+// Returns sql.ErrNoRows when the project does not exist. We deliberately
+// return uuid.Nil (no error) for an existing project with a NULL team_id so
+// the caller can compare "this project has no team" vs "team mismatch"
+// without an extra branch.
+func (r *ProjectRepository) GetTeamID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	var teamID uuid.NullUUID
+	err := r.db.QueryRowContext(ctx,
+		`SELECT team_id FROM projects WHERE id = $1`,
+		projectID,
+	).Scan(&teamID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !teamID.Valid {
+		return uuid.Nil, nil
+	}
+	return teamID.UUID, nil
+}
+
 // UpdateCIRunnerMode sets the CI runner mode for a project
 func (r *ProjectRepository) UpdateCIRunnerMode(ctx context.Context, id uuid.UUID, mode types.CIRunnerMode) error {
 	query := `UPDATE projects SET ci_runner_mode = $1, updated_at = NOW() WHERE id = $2`
