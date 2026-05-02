@@ -11,7 +11,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/integrations/sentry"
 )
 
-// TestGetSentryServiceStats_NotConfigured verifies the structured 503 path
+// TestGetSentryServiceStats_NotConfigured verifies the structured 200 OK path
 // — this is the contract the UI relies on to hide the badge gracefully.
 func TestGetSentryServiceStats_NotConfigured(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -30,8 +30,8 @@ func TestGetSentryServiceStats_NotConfigured(t *testing.T) {
 		"/v1/observability/sentry?service=11111111-1111-1111-1111-111111111111", nil)
 	engine.ServeHTTP(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when unconfigured, got %d (body: %s)", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK when unconfigured, got %d (body: %s)", w.Code, w.Body.String())
 	}
 	var resp SentryStatsResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {

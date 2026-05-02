@@ -28,6 +28,7 @@ import type {
   TabDefinition,
 } from "./observability-types";
 import { MetricsTab, HealthTab, ErrorsTab, AlertsTab } from "./tabs";
+import { BarChart2, Activity, AlertTriangle, Bell, Clock, CheckCircle2, RefreshCw } from "lucide-react";
 
 // =============================================================================
 // TAB DEFINITIONS
@@ -37,58 +38,22 @@ const tabs: TabDefinition[] = [
   {
     id: "metrics",
     label: "Metrics",
-    icon: (
-      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-        />
-      </svg>
-    ),
+    icon: <BarChart2 className="h-4 w-4" />,
   },
   {
     id: "health",
     label: "Service Health",
-    icon: (
-      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-        />
-      </svg>
-    ),
+    icon: <Activity className="h-4 w-4" />,
   },
   {
     id: "errors",
     label: "Errors",
-    icon: (
-      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-      </svg>
-    ),
+    icon: <AlertTriangle className="h-4 w-4" />,
   },
   {
     id: "alerts",
     label: "Alerts",
-    icon: (
-      <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-        />
-      </svg>
-    ),
+    icon: <Bell className="h-4 w-4" />,
   },
 ];
 
@@ -188,20 +153,7 @@ export default function ObservabilityPage() {
             <option value="7d">Last 7 days</option>
           </select>
           <Button variant="outline" onClick={fetchData}>
-            <svg
-              aria-hidden="true"
-              className="mr-2 h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
+            <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
         </div>
@@ -212,20 +164,7 @@ export default function ObservabilityPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Error Rate</CardTitle>
-            <svg
-              aria-hidden="true"
-              className="h-4 w-4 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -238,20 +177,7 @@ export default function ObservabilityPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Latency</CardTitle>
-            <svg
-              aria-hidden="true"
-              className="h-4 w-4 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -264,20 +190,7 @@ export default function ObservabilityPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Healthy Services</CardTitle>
-            <svg
-              aria-hidden="true"
-              className="h-4 w-4 text-status-success"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <CheckCircle2 className="h-4 w-4 text-status-success" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-status-success">
@@ -295,25 +208,14 @@ export default function ObservabilityPage() {
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
-            <svg
-              aria-hidden="true"
+            <Bell
               className={cn(
                 "h-4 w-4",
                 alerts && alerts.critical_count > 0
                   ? "text-status-error"
                   : "text-muted-foreground"
               )}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
+            />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{alerts?.alerts.length || 0}</div>

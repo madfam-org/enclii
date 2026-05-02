@@ -12,6 +12,7 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 import { FunctionCard, CreateFunctionModal } from "@/components/functions";
 import type { Function, FunctionConfig } from "@/components/functions";
+import { Plus, AlertCircle, Box } from "lucide-react";
 
 interface Project {
   id: string;
@@ -117,20 +118,7 @@ export default function FunctionsPage() {
           </p>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)}>
-          <svg
-            aria-hidden="true"
-            className="mr-2 h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <Plus className="mr-2 h-4 w-4" />
           Create Function
         </Button>
       </div>
@@ -195,9 +183,7 @@ export default function FunctionsPage() {
         <Card className="border-destructive">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-destructive">
-              <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <AlertCircle className="h-5 w-5" />
               <span>{error}</span>
             </div>
           </CardContent>
@@ -217,9 +203,7 @@ export default function FunctionsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="rounded-full bg-muted p-4 mb-4">
-              <svg aria-hidden="true" className="h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+              <Box className="h-8 w-8 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-semibold mb-1">No functions yet</h3>
             <p className="text-muted-foreground text-center mb-4 max-w-sm">

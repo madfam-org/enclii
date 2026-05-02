@@ -13,6 +13,11 @@ import { PreviewsTab, RecentPreviews } from "@/components/previews";
 import { SettingsTab } from "@/components/settings";
 import { LogsTab } from "@/components/log-viewer";
 import { DeploymentsTab, BuildLogsViewer } from "@/components/deployments";
+import { Button } from "@enclii/ui-components/button";
+import { ChevronLeft, Activity, FileText, RefreshCw } from "lucide-react";
+import { HealthBadge } from "@/components/dashboard/health-badge";
+import { SentryErrorBadge } from "@/components/dashboard/sentry-error-badge";
+import { formatRelativeTime } from "@/lib/formatting";
 
 interface ServiceDetail {
   id: string;
@@ -75,36 +80,12 @@ export default function ServiceDetailPage() {
     }
   }, [serviceId]);
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case "healthy":
-        return "bg-status-success-muted text-status-success-foreground";
-      case "unhealthy":
-        return "bg-status-error-muted text-status-error-foreground";
-      default:
-        return "bg-muted text-muted-foreground";
-    }
-  };
-
-  const getEnvironmentBadgeClass = (env: string) => {
-    switch (env) {
-      case "production":
-        return "bg-status-success-muted text-status-success-foreground";
-      case "staging":
-        return "bg-status-warning-muted text-status-warning-foreground";
-      default:
-        return "bg-status-info-muted text-status-info-foreground";
-    }
-  };
-
   if (loading) {
     return (
       <div className="container mx-auto py-8">
         <div className="mb-6">
-          <Link href="/services" className="text-primary hover:text-primary/80 flex items-center gap-1">
-            <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+          <Link href="/services" className="text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors text-sm">
+            <ChevronLeft className="w-4 h-4" />
             Back to Services
           </Link>
         </div>
@@ -124,10 +105,8 @@ export default function ServiceDetailPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="mb-6">
-          <Link href="/services" className="text-primary hover:text-primary/80 flex items-center gap-1">
-            <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+          <Link href="/services" className="text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors text-sm">
+            <ChevronLeft className="w-4 h-4" />
             Back to Services
           </Link>
         </div>
@@ -136,18 +115,12 @@ export default function ServiceDetailPage() {
             <div className="text-center">
               <p className="text-status-error font-medium mb-4">{error}</p>
               <div className="space-x-4">
-                <button
-                  onClick={fetchService}
-                  className="inline-flex items-center px-4 py-2 border border-status-error/30 rounded-md shadow-sm text-sm font-medium text-status-error-foreground bg-card hover:bg-status-error-muted"
-                >
+                <Button variant="outline" onClick={fetchService}>
                   Try Again
-                </button>
-                <button
-                  onClick={() => router.push("/services")}
-                  className="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
-                >
+                </Button>
+                <Button variant="default" onClick={() => router.push("/services")}>
                   Go to Services
-                </button>
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -164,10 +137,8 @@ export default function ServiceDetailPage() {
     <div className="container mx-auto py-8">
       {/* Breadcrumb */}
       <div className="mb-6">
-        <Link href="/services" className="text-primary hover:text-primary/80 flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+        <Link href="/services" className="text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors text-sm">
+          <ChevronLeft className="w-4 h-4" />
           Back to Services
         </Link>
       </div>
@@ -181,12 +152,15 @@ export default function ServiceDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getEnvironmentBadgeClass(service.environment)}`}>
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+            service.environment === "production" ? "bg-status-success/15 text-status-success" :
+            service.environment === "staging" ? "bg-status-warning/15 text-status-warning" :
+            "bg-status-info/15 text-status-info"
+          }`}>
             {service.environment}
           </span>
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(service.status)}`}>
-            {service.status}
-          </span>
+          <HealthBadge serviceId={service.id} serviceName={service.name} />
+          <SentryErrorBadge serviceId={service.id} serviceName={service.name} />
         </div>
       </div>
 
@@ -223,7 +197,7 @@ export default function ServiceDetailPage() {
                     <dd>
                       <Link
                         href={`/projects/${service.project_slug || service.project_name?.toLowerCase().replace(/\s+/g, '-')}`}
-                        className="text-primary hover:text-primary/80"
+                        className="text-enclii-blue hover:text-enclii-blue-dark transition-colors"
                       >
                         {service.project_name}
                       </Link>
@@ -240,13 +214,13 @@ export default function ServiceDetailPage() {
                   {service.created_at && (
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Created</dt>
-                      <dd>{new Date(service.created_at).toLocaleDateString()}</dd>
+                      <dd>{formatRelativeTime(service.created_at)}</dd>
                     </div>
                   )}
                   {service.updated_at && (
                     <div className="flex justify-between">
                       <dt className="text-muted-foreground">Last Updated</dt>
-                      <dd>{new Date(service.updated_at).toLocaleDateString()}</dd>
+                      <dd>{formatRelativeTime(service.updated_at)}</dd>
                     </div>
                   )}
                 </dl>
@@ -340,37 +314,34 @@ export default function ServiceDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <button
-                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
                     onClick={() => router.push(`/deployments?service=${serviceId}`)}
                   >
-                    <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
+                    <Activity className="w-4 h-4 mr-2" />
                     View Deployments
-                  </button>
-                  <button
-                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
                     onClick={() => {
                       // Switch to logs tab
                       const logsTab = document.querySelector('[data-state="inactive"][value="logs"]') as HTMLElement;
                       if (logsTab) logsTab.click();
                     }}
                   >
-                    <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                    <FileText className="w-4 h-4 mr-2" />
                     View Logs
-                  </button>
-                  <button
-                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-primary/30 rounded-md shadow-sm text-sm font-medium text-primary bg-primary/5 hover:bg-primary/10"
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
                     onClick={fetchService}
                   >
-                    <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
+                    <RefreshCw className="w-4 h-4 mr-2" />
                     Refresh
-                  </button>
+                  </Button>
                 </div>
               </CardContent>
             </Card>

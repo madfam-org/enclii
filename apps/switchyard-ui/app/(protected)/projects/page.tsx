@@ -19,13 +19,14 @@ import {
 } from "@enclii/ui-components/dialog";
 import {
   ProjectCardCompact,
+  ProjectRowCompact,
   ProjectCardCompactSkeleton,
   type CompactProject,
+  type CompactRepoMeta,
 } from '@/components/dashboard/project-card-compact';
-import {
-  ProjectSearchFilter,
-  type SortOption,
-} from '@/components/dashboard/project-search-filter';
+import { type SortOption } from '@/components/dashboard/project-search-filter';
+import { SubNavActionBar } from '@/components/dashboard/sub-nav-action-bar';
+import { useViewMode } from '@/components/dashboard/view-toggle';
 
 interface ApiProject {
   id: string;
@@ -48,13 +49,16 @@ interface ApiService {
   framework?: string;
   last_commit_message?: string;
   last_commit_branch?: string;
+  desired_replicas?: number;
+  ready_replicas?: number;
+  auto_deploy_env?: string;
+  current_image_uri?: string;
 }
 
 export default function ProjectsPage() {
   const searchParams = useSearchParams();
 
   const [projects, setProjects] = useState<CompactProject[]>([]);
-  const [rawProjects, setRawProjects] = useState<ApiProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -65,6 +69,10 @@ export default function ProjectsPage() {
   });
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('updated');
+  const [viewMode, setViewMode] = useViewMode({
+    storageKey: "enclii-projects-view",
+    defaultMode: "grid",
+  });
 
   // Tier-based RBAC
   const {
@@ -85,7 +93,7 @@ export default function ProjectsPage() {
   }, [searchParams]);
 
   const handleCreateProjectClick = () => {
-    if (!requireTier('project', { currentProjectCount: rawProjects.length })) {
+    if (!requireTier('project', { currentProjectCount: projects.length })) {
       return;
     }
     setShowCreateForm(true);
@@ -96,7 +104,6 @@ export default function ProjectsPage() {
       setError(null);
       const data = await apiGet<{ projects: ApiProject[] }>('/v1/projects');
       const apiProjects = data.projects || [];
-      setRawProjects(apiProjects);
 
       // Fetch services per project in parallel
       const serviceResults = await Promise.allSettled(
@@ -117,6 +124,31 @@ export default function ProjectsPage() {
 
           const domain = services.find((s) => s.domain)?.domain || undefined;
           const framework = services.find((s) => s.framework)?.framework;
+          const gitRepo = services.find((s) => s.git_repo)?.git_repo;
+
+          // Map services
+          const compactServices = services.map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: (["running", "pending", "failed", "deploying"].includes(s.status) ? s.status : "unknown") as any,
+            health: (["healthy", "unhealthy"].includes(s.health) ? s.health : "unknown") as any,
+            replicas: s.ready_replicas !== undefined && s.desired_replicas !== undefined ? `${s.ready_replicas}/${s.desired_replicas}` : undefined,
+            environment: s.auto_deploy_env || undefined,
+            currentImageUri: s.current_image_uri || undefined,
+          }));
+
+          const hasAny = compactServices.length > 0;
+          const hasFailed = compactServices.some((s) => s.status === "failed");
+          const allHealthy = compactServices.every(
+            (s) => s.status === "running" && s.health === "healthy",
+          );
+          const aggregateStatus = !hasAny
+            ? "unknown"
+            : hasFailed
+              ? "failing"
+              : allHealthy
+                ? "healthy"
+                : "degraded";
 
           const latestService = services
             .filter((s) => s.last_deployment)
@@ -152,15 +184,90 @@ export default function ProjectsPage() {
             description: project.description,
             framework,
             domain,
+            gitRepo,
             lastDeployment,
             serviceCount: services.length,
             healthyCount,
+            services: compactServices,
+            aggregateStatus,
+            updatedAt: project.updated_at,
           };
         }
       );
 
       setProjects(compactProjects);
       setLoading(false);
+
+      // Fetch Repo Meta
+      const repoSlugs = Array.from(
+        new Set(
+          compactProjects
+            .map((p) => p.gitRepo)
+            .filter((r): r is string => !!r)
+            .map((r) =>
+              r
+                .replace(/^https?:\/\/github\.com\//, "")
+                .replace(/\.git$/, ""),
+            ),
+        ),
+      );
+      if (repoSlugs.length > 0) {
+        try {
+          const meta = await apiPost<{
+            repos: Record<string, {
+              visibility?: string;
+              language?: string;
+              license?: string;
+              stars?: number;
+              forks?: number;
+              archived?: boolean;
+              fork?: boolean;
+              is_template?: boolean;
+              default_branch?: string;
+              pushed_at?: string;
+              description?: string;
+            }>;
+            errors?: Record<string, string>;
+          }>("/v1/integrations/github/repos/metadata", {
+            repos: repoSlugs,
+          });
+          setProjects((prev) =>
+            prev.map((p) => {
+              if (!p.gitRepo) return p;
+              const key = p.gitRepo
+                .replace(/^https?:\/\/github\.com\//, "")
+                .replace(/\.git$/, "");
+              const m = meta.repos?.[key];
+              const errored = meta.errors?.[key];
+              if (!m && !errored) return p;
+              const repoMeta: CompactRepoMeta = m
+                ? {
+                    visibility:
+                      m.visibility === "public" ||
+                      m.visibility === "private" ||
+                      m.visibility === "internal"
+                        ? m.visibility as "public"|"private"|"internal"
+                        : "unknown",
+                    language: m.language || undefined,
+                    license: m.license || undefined,
+                    stars: m.stars,
+                    forks: m.forks,
+                    archived: m.archived,
+                    fork: m.fork,
+                    isTemplate: m.is_template,
+                    defaultBranch: m.default_branch,
+                    pushedAt: m.pushed_at,
+                    description: m.description || undefined,
+                  }
+                : { visibility: "unknown" };
+              return { ...p, repoMeta };
+            }),
+          );
+        } catch (e) {
+          console.warn("Failed to load repo metadata batch:", e);
+        }
+      }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
@@ -215,10 +322,10 @@ export default function ProjectsPage() {
         result = [...result].sort((a, b) => {
           const aTime = a.lastDeployment?.timestamp
             ? new Date(a.lastDeployment.timestamp).getTime()
-            : 0;
+            : a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
           const bTime = b.lastDeployment?.timestamp
             ? new Date(b.lastDeployment.timestamp).getTime()
-            : 0;
+            : b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
           return bTime - aTime;
         });
         break;
@@ -265,14 +372,6 @@ export default function ProjectsPage() {
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-foreground text-2xl font-bold">Projects</h1>
-          <Button
-            size="sm"
-            onClick={handleCreateProjectClick}
-            data-tour="create-project"
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            Create Project
-          </Button>
         </div>
 
         {/* Create Project Modal */}
@@ -292,7 +391,7 @@ export default function ProjectsPage() {
                 <input
                   type="text"
                   required
-                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 bg-background"
                   value={newProject.name}
                   onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                 />
@@ -304,7 +403,7 @@ export default function ProjectsPage() {
                 <input
                   type="text"
                   required
-                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 bg-background"
                   value={newProject.slug}
                   onChange={(e) => setNewProject({ ...newProject, slug: e.target.value })}
                 />
@@ -314,7 +413,7 @@ export default function ProjectsPage() {
                   Description
                 </label>
                 <textarea
-                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 bg-background"
                   rows={3}
                   value={newProject.description}
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
@@ -339,18 +438,21 @@ export default function ProjectsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Search & Filter */}
-        <ProjectSearchFilter
+        {/* Search & Filter & Views */}
+        <SubNavActionBar
           search={search}
           onSearchChange={setSearch}
           sort={sort}
           onSortChange={setSort}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onCreateProject={handleCreateProjectClick}
         />
 
         {/* Project Grid */}
         {filteredProjects.length === 0 ? (
           projects.length === 0 ? (
-            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+            <div className="border-border mt-4 rounded-lg border border-dashed py-16 text-center">
               <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
               <h3 className="text-foreground text-lg font-medium">No projects found</h3>
               <p className="text-muted-foreground mb-4 mt-1">
@@ -362,7 +464,7 @@ export default function ProjectsPage() {
               </Button>
             </div>
           ) : (
-            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+            <div className="border-border mt-4 rounded-lg border border-dashed py-16 text-center">
               <p className="text-muted-foreground">
                 No projects match &quot;{search}&quot;
               </p>
@@ -377,10 +479,26 @@ export default function ProjectsPage() {
             </div>
           )
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredProjects.map((project) => (
-              <ProjectCardCompact key={project.id} project={project} />
-            ))}
+          <div className="mt-4">
+            {viewMode === "list" ? (
+              <div
+                className="divide-y divide-border/40 rounded-lg border border-border/60 bg-card overflow-hidden transition-opacity duration-150"
+                role="list"
+              >
+                {filteredProjects.map((project) => (
+                  <ProjectRowCompact
+                    key={project.id}
+                    project={project}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredProjects.map((project) => (
+                  <ProjectCardCompact key={project.id} project={project} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

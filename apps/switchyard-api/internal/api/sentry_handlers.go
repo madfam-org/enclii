@@ -91,17 +91,16 @@ func (h *Handler) sentryClientOrDefault() *sentry.Client {
 // service. Admin-only (parity with the other observability endpoints).
 //
 // @Summary Get Sentry error stats for a service
-// @Description Proxies Sentry's project stats API. Returns 503 with
-// @Description reason=sentry_unconfigured when SENTRY_AUTH_TOKEN/ORG_SLUG
+// @Description Proxies Sentry's project stats API. Returns 200 OK with
+// @Description configured=false when SENTRY_AUTH_TOKEN/ORG_SLUG
 // @Description are unset; UI uses this to hide the badge gracefully.
 // @Tags observability
 // @Produce json
 // @Param service query string true "Service UUID"
 // @Param hours query int false "Lookback window in hours (default 24)"
-// @Success 200 {object} SentryStatsResponse
+// @Success 200 {object} SentryStatsResponse "Returns stats or unconfigured status"
 // @Failure 400 {object} map[string]string "missing or invalid service param"
 // @Failure 502 {object} map[string]string "upstream Sentry error"
-// @Failure 503 {object} SentryStatsResponse "sentry not configured"
 // @Router /v1/observability/sentry [get]
 func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -136,7 +135,7 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 	// so an unconfigured deployment doesn't pay an extra query per poll.
 	client := h.sentryClientOrDefault()
 	if !client.IsConfigured() {
-		c.JSON(http.StatusServiceUnavailable, SentryStatsResponse{
+		c.JSON(http.StatusOK, SentryStatsResponse{
 			Configured:  false,
 			Reason:      "sentry_unconfigured",
 			ServiceID:   serviceUUID.String(),
@@ -238,7 +237,7 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 
 	case errors.Is(err, sentry.ErrUnconfigured):
 		// Shouldn't happen — we checked IsConfigured() above. Defence in depth.
-		c.JSON(http.StatusServiceUnavailable, SentryStatsResponse{
+		c.JSON(http.StatusOK, SentryStatsResponse{
 			Configured: false,
 			Reason:     "sentry_unconfigured",
 			ServiceID:  serviceUUID.String(),

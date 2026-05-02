@@ -13,6 +13,13 @@ import {
   DialogTitle,
 } from "@enclii/ui-components/dialog";
 import { Switch } from '@/components/ui/switch';
+import { Button } from "@enclii/ui-components/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { toast } from 'sonner';
+import { ChevronRight, Rocket, Webhook, ArrowRightLeft, Play, Github, Loader2, Plus } from 'lucide-react';
+import { HealthBadge } from '@/components/dashboard/health-badge';
+import { SentryErrorBadge } from '@/components/dashboard/sentry-error-badge';
+import { formatRelativeTime } from '@/lib/formatting';
 
 interface Project {
   id: string;
@@ -73,6 +80,8 @@ export default function ProjectDetailPage() {
     build_config: {}
   });
   const [ciRunnerToggling, setCiRunnerToggling] = useState(false);
+  const [isBuilding, setIsBuilding] = useState<Record<string, boolean>>({});
+  const [isDeploying, setIsDeploying] = useState<Record<string, boolean>>({});
 
   const toggleCIRunnerMode = async () => {
     if (!project || ciRunnerToggling) return;
@@ -81,8 +90,9 @@ export default function ProjectDetailPage() {
       const newMode = project.ci_runner_mode === 'self-hosted' ? 'github' : 'self-hosted';
       await apiPut(`/v1/projects/${slug}/ci-runner-config`, { mode: newMode });
       setProject({ ...project, ci_runner_mode: newMode });
+      toast.success(`CI runner mode updated to ${newMode}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update CI runner mode');
+      toast.error(err instanceof Error ? err.message : 'Failed to update CI runner mode');
     } finally {
       setCiRunnerToggling(false);
     }
@@ -133,33 +143,40 @@ export default function ProjectDetailPage() {
 
       setNewService({ name: '', git_repo: '', build_config: {} });
       setShowCreateServiceForm(false);
+      toast.success("Service created successfully");
       fetchProjectData(); // Refresh the data
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create service');
+      toast.error(err instanceof Error ? err.message : 'Failed to create service');
     }
   };
 
   const triggerBuild = async (serviceId: string, gitSha: string) => {
     try {
+      setIsBuilding(prev => ({ ...prev, [serviceId]: true }));
       await apiPost(`/v1/services/${serviceId}/build`, { git_sha: gitSha });
-
+      toast.success("Build triggered successfully");
       fetchProjectData(); // Refresh to show new build
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to trigger build');
+      toast.error(err instanceof Error ? err.message : 'Failed to trigger build');
+    } finally {
+      setIsBuilding(prev => ({ ...prev, [serviceId]: false }));
     }
   };
 
   const deployRelease = async (serviceId: string, releaseId: string) => {
     try {
+      setIsDeploying(prev => ({ ...prev, [releaseId]: true }));
       await apiPost(`/v1/services/${serviceId}/deploy`, {
         release_id: releaseId,
         environment: {},
         replicas: 1
       });
-
+      toast.success("Deployment triggered successfully");
       fetchProjectData(); // Refresh to show deployment
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to deploy release');
+      toast.error(err instanceof Error ? err.message : 'Failed to deploy release');
+    } finally {
+      setIsDeploying(prev => ({ ...prev, [releaseId]: false }));
     }
   };
 
@@ -205,19 +222,15 @@ export default function ProjectDetailPage() {
       <div className="px-4 py-6 sm:px-0">
         {/* Breadcrumb */}
         <nav className="flex mb-4" aria-label="Breadcrumb">
-          <ol className="flex items-center space-x-4">
+          <ol className="flex items-center space-x-2 text-sm text-muted-foreground">
             <li>
-              <Link href="/projects" className="text-muted-foreground hover:text-foreground">
+              <Link href="/projects" className="hover:text-foreground transition-colors">
                 Projects
               </Link>
             </li>
+            <ChevronRight className="h-4 w-4" />
             <li>
-              <div className="flex items-center">
-                <svg aria-hidden="true" className="flex-shrink-0 h-5 w-5 text-muted-foreground/50" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                </svg>
-                <span className="ml-4 text-sm font-medium text-muted-foreground">{project.name}</span>
-              </div>
+              <span className="font-medium text-foreground">{project.name}</span>
             </li>
           </ol>
         </nav>
@@ -245,34 +258,26 @@ export default function ProjectDetailPage() {
                   VPS
                 </span>
               )}
+              {ciRunnerToggling && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <Link
-              href={`/projects/${slug}/webhooks`}
-              className="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-card hover:bg-accent"
-            >
-              <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              Webhooks
-            </Link>
-            <Link
-              href={`/projects/${slug}/lifecycle-webhooks`}
-              className="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-card hover:bg-accent"
-              title="Signed HTTPS webhooks for deploy/rollback/scale events"
-            >
-              <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Lifecycle
-            </Link>
-            <button
-              onClick={() => setShowCreateServiceForm(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-enclii-blue hover:bg-enclii-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue"
-            >
+            <Button variant="outline" asChild>
+              <Link href={`/projects/${slug}/webhooks`}>
+                <Webhook className="w-4 h-4 mr-2" />
+                Webhooks
+              </Link>
+            </Button>
+            <Button variant="outline" asChild title="Signed HTTPS webhooks for deploy/rollback/scale events">
+              <Link href={`/projects/${slug}/lifecycle-webhooks`}>
+                <ArrowRightLeft className="w-4 h-4 mr-2" />
+                Lifecycle
+              </Link>
+            </Button>
+            <Button onClick={() => setShowCreateServiceForm(true)}>
+              <Plus className="w-4 h-4 mr-2" />
               Add Service
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -293,7 +298,7 @@ export default function ProjectDetailPage() {
                 <input
                   type="text"
                   required
-                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue bg-background"
                   value={newService.name}
                   onChange={(e) => setNewService({ ...newService, name: e.target.value })}
                 />
@@ -305,7 +310,7 @@ export default function ProjectDetailPage() {
                 <input
                   type="url"
                   required
-                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue"
+                  className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-enclii-blue bg-background"
                   value={newService.git_repo}
                   onChange={(e) => setNewService({ ...newService, git_repo: e.target.value })}
                   placeholder="https://github.com/user/repo"
@@ -333,110 +338,122 @@ export default function ProjectDetailPage() {
         {/* Services */}
         <div className="space-y-6">
           {services.length === 0 ? (
-            <div className="text-center py-12 bg-card rounded-lg shadow">
-              <div className="text-muted-foreground mb-4">
-                <svg aria-hidden="true" className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
               <h3 className="text-lg font-medium text-foreground">No services found</h3>
-              <p className="text-muted-foreground mt-1">Add your first service to get started.</p>
+              <p className="text-muted-foreground mt-1 mb-4">Add your first service to get started.</p>
+              <Button onClick={() => setShowCreateServiceForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Service
+              </Button>
             </div>
           ) : (
             services.map((service) => (
-              <div key={service.id} className="bg-card shadow overflow-hidden sm:rounded-lg">
-                <div className="px-4 py-5 sm:p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-medium text-foreground">{service.name}</h3>
-                      <a 
-                        href={service.git_repo} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-sm text-enclii-blue hover:text-enclii-blue-dark"
-                      >
-                        {service.git_repo}
-                      </a>
+              <Card key={service.id} className="overflow-hidden">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <CardTitle className="text-xl">{service.name}</CardTitle>
+                      <div className="flex items-center gap-1.5">
+                        <HealthBadge serviceId={service.id} serviceName={service.name} />
+                        <SentryErrorBadge serviceId={service.id} serviceName={service.name} />
+                      </div>
                     </div>
                     <div className="flex space-x-2">
-                      <button
+                      <Button 
+                        variant="outline" 
+                        size="sm"
                         onClick={() => triggerBuild(service.id, 'main')}
-                        className="inline-flex items-center px-3 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-card hover:bg-accent"
+                        disabled={isBuilding[service.id]}
                       >
+                        {isBuilding[service.id] ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
                         Build
-                      </button>
-                      <Link
-                        href={`/services/${service.id}`}
-                        className="inline-flex items-center px-3 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-card hover:bg-accent"
-                      >
-                        View Details
-                      </Link>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/services/${service.id}`}>
+                          View Details
+                        </Link>
+                      </Button>
                     </div>
                   </div>
-
-                  {/* Recent Releases */}
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium text-foreground mb-2">Recent Releases</h4>
-                    {releases[service.id] && releases[service.id].length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-border">
-                          <thead className="bg-muted/50">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                Version
-                              </th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                Status
-                              </th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                Created
-                              </th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                Actions
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-card divide-y divide-border">
-                            {releases[service.id].slice(0, 3).map((release) => (
-                              <tr key={release.id}>
-                                <td className="px-3 py-2 whitespace-nowrap text-sm text-foreground">
-                                  {release.version}
-                                </td>
-                                <td className="px-3 py-2 whitespace-nowrap">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                    release.status === 'ready'
-                                      ? 'bg-status-success-muted text-status-success-foreground'
-                                      : release.status === 'building'
-                                      ? 'bg-status-warning-muted text-status-warning-foreground'
-                                      : 'bg-status-error-muted text-status-error-foreground'
-                                  }`}>
-                                    {release.status}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2 whitespace-nowrap text-sm text-muted-foreground">
-                                  {new Date(release.created_at).toLocaleDateString()}
-                                </td>
-                                <td className="px-3 py-2 whitespace-nowrap text-sm text-muted-foreground">
-                                  {release.status === 'ready' && (
-                                    <button
-                                      onClick={() => deployRelease(service.id, release.id)}
-                                      className="text-enclii-blue hover:text-enclii-blue-dark font-medium"
-                                    >
-                                      Deploy
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No releases yet. Build the service to create your first release.</p>
-                    )}
+                  <div className="mt-1 flex items-center text-sm text-muted-foreground">
+                    <Github className="h-3.5 w-3.5 mr-1.5" />
+                    <a 
+                      href={service.git_repo.startsWith('http') ? service.git_repo : `https://github.com/${service.git_repo}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="hover:text-foreground transition-colors truncate max-w-sm"
+                    >
+                      {service.git_repo.replace(/^https?:\/\/github\.com\//, '')}
+                    </a>
                   </div>
-                </div>
-              </div>
+                </CardHeader>
+
+                {/* Recent Releases */}
+                <CardContent>
+                  <h4 className="text-sm font-medium text-foreground mb-3">Recent Releases</h4>
+                  {releases[service.id] && releases[service.id].length > 0 ? (
+                    <div className="overflow-x-auto rounded-md border border-border">
+                      <table className="min-w-full divide-y divide-border text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                              Version
+                            </th>
+                            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                              Status
+                            </th>
+                            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                              Created
+                            </th>
+                            <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-card divide-y divide-border">
+                          {releases[service.id].slice(0, 3).map((release) => (
+                            <tr key={release.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="px-4 py-3 whitespace-nowrap text-foreground font-mono text-xs">
+                                {release.version}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                  release.status === 'ready'
+                                    ? 'bg-status-success/15 text-status-success'
+                                    : release.status === 'building'
+                                    ? 'bg-status-warning/15 text-status-warning'
+                                    : 'bg-status-error/15 text-status-error'
+                                }`}>
+                                  {release.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                                {formatRelativeTime(release.created_at)}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {release.status === 'ready' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deployRelease(service.id, release.id)}
+                                    disabled={isDeploying[release.id]}
+                                  >
+                                    {isDeploying[release.id] ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                                    Deploy
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No releases yet. Build the service to create your first release.</p>
+                  )}
+                </CardContent>
+              </Card>
             ))
           )}
         </div>

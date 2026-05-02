@@ -9,6 +9,7 @@ import { RefreshCw, Activity } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@enclii/ui-components/badge";
+import { Button } from "@enclii/ui-components/button";
 import { DeploymentProgress, DeploymentProgressSkeleton, type DeploymentStage } from "@/components/dashboard/deployment-progress";
 import { AuthorAvatar, CommitLink } from "@/components/git";
 import { GitBranch } from "lucide-react";
@@ -225,12 +226,9 @@ export default function DeploymentsPage() {
           <CardContent className="py-8">
             <div className="text-center">
               <p className="text-status-error font-medium mb-4">{error}</p>
-              <button
-                onClick={() => fetchDeployments()}
-                className="inline-flex items-center px-4 py-2 border border-status-error/30 rounded-md shadow-sm text-sm font-medium text-status-error-foreground bg-background hover:bg-status-error-muted"
-              >
+              <Button variant="outline" onClick={() => fetchDeployments()}>
                 Try Again
-              </button>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -240,19 +238,19 @@ export default function DeploymentsPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Deployments</h1>
+          <h1 className="text-3xl font-bold text-foreground">Deployments</h1>
           <p className="text-muted-foreground mt-2">Track and manage your deployment history</p>
         </div>
-        <button
+        <Button
+          variant="outline"
           onClick={() => fetchDeployments(true)}
           disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
+        </Button>
       </div>
 
       {/* Active Deployments — always visible */}
@@ -367,9 +365,7 @@ export default function DeploymentsPage() {
           {deployments.length === 0 ? (
             <div className="text-center py-12">
               <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <svg aria-hidden="true" className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                </svg>
+                <Activity className="w-6 h-6 text-muted-foreground" />
               </div>
               <p className="text-lg font-medium text-foreground">No deployments found</p>
               <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
@@ -384,7 +380,7 @@ export default function DeploymentsPage() {
                 </ul>
                 <p className="text-sm text-muted-foreground mt-3">
                   Check the{" "}
-                  <Link href="/services" className="text-primary hover:underline">Services page</Link>{" "}
+                  <Link href="/services" className="text-enclii-blue hover:underline">Services page</Link>{" "}
                   to verify your services are registered.
                 </p>
               </div>

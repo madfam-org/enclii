@@ -5,9 +5,11 @@ import { usePolling } from "@/hooks/use-polling";
 import { POLLING_SLOW } from "@/lib/constants";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@enclii/ui-components/button";
 import { ProjectSearch, FilterState, SortState, ServiceStatus } from "@/components/search/project-search";
 import { apiGet } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
+import { Github, Plus, RefreshCw, Server } from "lucide-react";
 
 interface ServiceOverview {
   id: string;
@@ -148,12 +150,10 @@ export default function ServicesPage() {
           <CardContent className="py-8">
             <div className="text-center">
               <p className="text-status-error font-medium mb-4">{error}</p>
-              <button
-                onClick={fetchServices}
-                className="inline-flex items-center px-4 py-2 border border-status-error/30 rounded-md shadow-sm text-sm font-medium text-status-error-foreground bg-card hover:bg-status-error-muted"
-              >
+              <Button variant="outline" onClick={fetchServices}>
+                <RefreshCw className="w-4 h-4 mr-2" />
                 Try Again
-              </button>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -163,41 +163,30 @@ export default function ServicesPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Services</h1>
+          <h1 className="text-3xl font-bold text-foreground">Services</h1>
           <p className="text-muted-foreground mt-2">
             Manage and monitor your deployed services
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/services/import"
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90"
-          >
-            <svg aria-hidden="true" className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-            </svg>
-            Import from GitHub
-          </Link>
-          <Link
-            href="/services/new"
-            className="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
-          >
-            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Service
-          </Link>
-          <button
-            onClick={fetchServices}
-            className="inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
-          >
-            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button asChild>
+            <Link href="/services/import">
+              <Github className="w-4 h-4 mr-2" />
+              Import from GitHub
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/services/new">
+              <Plus className="w-4 h-4 mr-2" />
+              New Service
+            </Link>
+          </Button>
+          <Button variant="outline" onClick={fetchServices}>
+            <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -223,27 +212,34 @@ export default function ServicesPage() {
         </CardHeader>
         <CardContent>
           {services.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="text-lg">No services deployed yet</p>
-              <p className="text-sm mt-2">
+            <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-lg">
+              <Server className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+              <p className="text-lg font-medium text-foreground">No services deployed yet</p>
+              <p className="text-sm mt-1 mb-4">
                 Create a project and deploy services to see them here
               </p>
+              <Button asChild>
+                <Link href="/services/new">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Service
+                </Link>
+              </Button>
             </div>
           ) : filteredServices.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="text-lg">No services match your filters</p>
-              <p className="text-sm mt-2">
+            <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-lg">
+              <p className="text-lg text-foreground font-medium">No services match your filters</p>
+              <p className="text-sm mt-2 mb-4">
                 Try adjusting your search or filter criteria
               </p>
-              <button
+              <Button
+                variant="outline"
                 onClick={() => setFilters({ search: '', statuses: [], environments: [] })}
-                className="mt-4 inline-flex items-center px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-card hover:bg-accent"
               >
                 Clear Filters
-              </button>
+              </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-md border border-border">
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-muted/50">
                   <tr>
@@ -269,11 +265,11 @@ export default function ServicesPage() {
                 </thead>
                 <tbody className="bg-card divide-y divide-border">
                   {filteredServices.map((service) => (
-                    <tr key={service.id} className="hover:bg-muted/50">
+                    <tr key={service.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Link
                           href={`/services/${service.id}`}
-                          className="text-sm font-medium text-foreground hover:text-primary"
+                          className="text-sm font-medium text-foreground hover:text-enclii-blue"
                         >
                           {service.name}
                         </Link>
@@ -281,7 +277,7 @@ export default function ServicesPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Link
                           href={`/projects/${service.project_slug || service.project_name.toLowerCase().replace(/\s+/g, '-')}`}
-                          className="text-sm text-muted-foreground hover:text-primary"
+                          className="text-sm text-muted-foreground hover:text-enclii-blue"
                         >
                           {service.project_name}
                         </Link>
@@ -290,10 +286,10 @@ export default function ServicesPage() {
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             service.environment === "production"
-                              ? "bg-status-success-muted text-status-success-foreground"
+                              ? "bg-status-success/15 text-status-success"
                               : service.environment === "staging"
-                                ? "bg-status-warning-muted text-status-warning-foreground"
-                                : "bg-status-info-muted text-status-info-foreground"
+                                ? "bg-status-warning/15 text-status-warning"
+                                : "bg-status-info/15 text-status-info"
                           }`}
                         >
                           {service.environment}
@@ -303,16 +299,16 @@ export default function ServicesPage() {
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             service.status === "healthy"
-                              ? "bg-status-success-muted text-status-success-foreground"
+                              ? "bg-status-success/15 text-status-success"
                               : service.status === "unhealthy"
-                                ? "bg-status-error-muted text-status-error-foreground"
+                                ? "bg-status-error/15 text-status-error"
                                 : "bg-muted text-muted-foreground"
                           }`}
                         >
                           {service.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                      <td className="px-6 py-4 whitespace-nowrap text-foreground font-mono text-xs">
                         {service.version || "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">

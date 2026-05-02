@@ -11,6 +11,7 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 import { CreateDatabaseModal } from "@/components/databases/CreateDatabaseModal";
 import { DatabaseCard } from "@/components/databases/DatabaseCard";
+import { Database, Plus, RefreshCw } from "lucide-react";
 
 // Database addon types matching the API
 export type DatabaseAddonType = 'postgres' | 'redis' | 'mysql';
@@ -155,7 +156,7 @@ export default function DatabasesPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Databases</h1>
+          <h1 className="text-3xl font-bold text-foreground">Databases</h1>
           <p className="text-muted-foreground mt-2">
             Managed database add-ons for your projects
           </p>
@@ -176,7 +177,7 @@ export default function DatabasesPage() {
     return (
       <div className="container mx-auto py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Databases</h1>
+          <h1 className="text-3xl font-bold text-foreground">Databases</h1>
           <p className="text-muted-foreground mt-2">
             Managed database add-ons for your projects
           </p>
@@ -197,24 +198,20 @@ export default function DatabasesPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Databases</h1>
+          <h1 className="text-3xl font-bold text-foreground">Databases</h1>
           <p className="text-muted-foreground mt-2">
             Managed database add-ons for your projects
           </p>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={() => setIsCreateModalOpen(true)}>
-            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="w-4 h-4 mr-2" />
             New Database
           </Button>
           <Button variant="outline" onClick={fetchDatabases}>
-            <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
         </div>
@@ -224,20 +221,16 @@ export default function DatabasesPage() {
         <Card>
           <CardContent className="py-16">
             <div className="text-center">
-              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                <svg aria-hidden="true" className="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                </svg>
+              <div className="mx-auto w-16 h-16 mb-4 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                <Database className="w-8 h-8 text-primary" />
               </div>
-              <h3 className="text-lg font-medium mb-2">No databases yet</h3>
+              <h3 className="text-lg font-medium mb-2 text-foreground">No databases yet</h3>
               <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                 Create a managed PostgreSQL or Redis database and bind it to your services
                 for automatic environment variable injection.
               </p>
               <Button onClick={() => setIsCreateModalOpen(true)}>
-                <svg aria-hidden="true" className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                <Plus className="w-4 h-4 mr-2" />
                 Create Your First Database
               </Button>
             </div>

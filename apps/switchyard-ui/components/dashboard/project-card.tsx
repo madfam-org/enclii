@@ -265,15 +265,29 @@ export function ProjectCard({ project, className, onDelete }: ProjectCardProps) 
           {/* Services Summary */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <Circle className="h-3 w-3 fill-current text-status-success" />
-              <span>
+              {project.lastDeployment?.status === "failed" ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertCircle className="h-4 w-4 text-status-error cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span className="text-xs">Warning: Latest deployment failed. Services may be running old versions.</span>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Circle className="h-3 w-3 fill-current text-status-success" />
+              )}
+              <span className={cn(project.lastDeployment?.status === "failed" && "text-status-error font-medium")}>
                 {activeServices}/{project.services.length} service{project.services.length !== 1 ? 's' : ''}
               </span>
             </div>
             {project.usage && (
               <div className="flex items-center gap-3 text-xs">
-                <span className="text-muted-foreground">
-                  CPU: {project.usage.computePercent}%
+                <span className={cn(
+                  "text-muted-foreground",
+                  project.usage.computePercent >= 90 && "text-status-error font-medium"
+                )}>
+                  CPU Usage: {project.usage.computePercent}% of quota
                 </span>
               </div>
             )}
@@ -309,7 +323,7 @@ export function ProjectCard({ project, className, onDelete }: ProjectCardProps) 
                     </Badge>
                   </div>
                   {project.lastDeployment.commitMessage && (
-                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                    <span className="text-xs text-muted-foreground line-clamp-1 break-all max-w-[200px]">
                       {project.lastDeployment.commitMessage}
                     </span>
                   )}

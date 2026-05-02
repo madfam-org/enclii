@@ -8,10 +8,9 @@ import { usePolling } from './use-polling';
 /**
  * Shape of the GET /v1/observability/sentry response.
  *
- * The backend uses 503 for the unconfigured case (env vars missing); we
- * intercept that fetch error here and turn it into a structured "hidden"
- * state so the badge can short-circuit on render rather than spamming
- * the console with 503s.
+ * The backend uses 200 OK for the unconfigured case (env vars missing),
+ * so we can natively handle the `configured: false` payload without
+ * throwing and catching errors, preventing 503 console spam.
  *
  * `error_count` is null in two cases:
  *   1. configured=true + reason=no_sentry_project (slug not in the org)
@@ -39,10 +38,10 @@ export interface UseSentryStatsResult {
 /**
  * Polls /v1/observability/sentry every 60s for a single service.
  *
- * The hook treats a 503 response with reason=sentry_unconfigured as the
- * "operator hasn't dropped the token in yet" state. Returning hidden=true
- * lets the consumer render nothing (the parity-audit ask) instead of an
- * error chip.
+ * The hook handles the "operator hasn't dropped the token in yet" state
+ * seamlessly since the backend returns a 200 OK with configured=false.
+ * Returning hidden=true lets the consumer render nothing (the parity-audit ask)
+ * instead of an error chip.
  *
  * Other failure modes (502 from upstream Sentry, network error) just leave
  * the previous data in place — the badge will show stale data rather than
@@ -67,16 +66,7 @@ export function useSentryStats(serviceId: string | undefined): UseSentryStatsRes
       }
       setData(stats);
     } catch (err: unknown) {
-      // apiGet throws on non-2xx. We treat anything resembling a 503 as
-      // "Sentry unconfigured" and hide the badge. We can't read the body
-      // from the thrown error reliably across api wrappers, so we rely on
-      // the status code surfaced by the wrapper if available, and default
-      // to "hidden" when the message clearly indicates 503.
-      if (err instanceof Error && /\b503\b|sentry_unconfigured/i.test(err.message)) {
-        setHidden(true);
-        setData({ configured: false, error_count: null, reason: 'sentry_unconfigured' });
-      }
-      // Non-503 errors (502 upstream, network) — leave previous data in
+      // Non-200 errors (502 upstream, network) — leave previous data in
       // place and don't toggle hidden. Caller can use loading=false +
       // data=null to detect first-load failures if needed.
     } finally {
