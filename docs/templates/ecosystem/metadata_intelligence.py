@@ -145,41 +145,14 @@ REPOS = {
         ],
         'service_name_for_ops': 'factlas-api',
     },
-    'social-sentiment-monitor': {
-        'tagline': 'Enterprise social sentiment — Instagram, TikTok, YouTube with Perception Index + anomaly detection.',
-        'description': 'Real-time social media sentiment analysis with influence-weighted Perception Index, automated insight generation, statistical anomaly detection with seasonal decomposition, and comprehensive analytics. **Repo was hardened in 2026-04-23 H13 audit** — committed credentials scrubbed + full rotation checklist in `SECURITY.md` (Pusher, Cloudflare, R2, Meta, Google, TikTok, JWT/NEXTAUTH) pending.',
-        'pillar': 'Intelligence / Social',
-        'type': 'service',
-        'status': 'production (credential rotation pending post-H13)',
-        'production': {
-            'services': [
-                ('social-sentiment-web', '(internal/tenant)', 3000),
-                ('social-sentiment-worker', '(ingestion worker)', None),
-            ],
-            'namespace': 'social-sentiment',
-        },
-        'upstream_deps': [
-            'madfam-crawler (social scrapes)',
-            'selva (sentiment classification via LLM)',
-            'postgres (mentions, Perception Index history)',
-            'pusher (realtime push)',
-            'janua (auth)',
-            'external: Meta, Google, TikTok APIs',
-        ],
-        'downstream_consumers': [
-            'fortuna (problem-intelligence signal input)',
-            'phyne-crm (brand-health signals)',
-            'MADFAM marketing ops',
-        ],
-        'key_env': [
-            'DATABASE_URL — Postgres',
-            'JANUA_JWKS_URI — auth',
-            'PUSHER_APP_ID / KEY / SECRET — realtime (rotated post-H13)',
-            'META_ACCESS_TOKEN / YOUTUBE_API_KEY / TIKTOK_API_TOKEN — upstream APIs (rotated post-H13)',
-            'R2_* — asset cache (rotated post-H13)',
-        ],
-        'service_name_for_ops': 'social-sentiment-web',
-    },
+    # social-sentiment-monitor: ARCHIVED 2026-05-03 per RFC 0016.
+    # Capability absorbed into:
+    #   - fortuna (Perception Index + anomaly detector + dashboard + SSE realtime)
+    #   - madfam-crawler (IG/YT/TT extractors)
+    # The repo is read-only on GitHub. Removed from this metadata file so
+    # ecosystem-doc generators stop emitting stale "production" entries
+    # for it. Any historical reference goes through the archived repo's
+    # README (which has a deprecation banner pointing here).
     'tulana': {
         'tagline': 'Private pricing intelligence — evidence-based MXN recommendations for the MADFAM catalogue.',
         'description': 'Tulana is MADFAM\'s internal pricing engine. Answers "what should we charge for X?" with defensible MXN recommendations built from competitor scrapes + willingness-to-pay surveys + cost-plus floors + MX tax math. Covers every MADFAM SaaS (Karafiel, Selva, Tezca, Dhanam, Avala, Cotiza, Fortuna, others). **Private repo — not for public exposure.** RFC at `internal-devops/rfcs/0004-tulana-pricing-intelligence-platform.md`.',
