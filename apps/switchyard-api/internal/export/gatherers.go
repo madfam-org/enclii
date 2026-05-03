@@ -288,11 +288,11 @@ func AddAuditTimeline(b *Builder, events []AuditEvent, deployments []AuditEvent)
 type DBDump struct {
 	AddonName  string
 	AddonMeta  *types.DatabaseAddon
-	DumpGz     []byte // custom-format pg_dump, already gzipped
+	DumpGz     []byte                        // custom-format pg_dump, already gzipped
 	DumpReader func() (io.ReadCloser, error) // for streaming large dumps
-	DumpSize   int64  // must be provided if DumpReader is used
-	DumpSHA256 string // must be provided if DumpReader is used
-	SchemaSQL  []byte // plain SQL schema (for grep-ability)
+	DumpSize   int64                         // must be provided if DumpReader is used
+	DumpSHA256 string                        // must be provided if DumpReader is used
+	SchemaSQL  []byte                        // plain SQL schema (for grep-ability)
 }
 
 func AddDatabaseDumps(b *Builder, dumps []DBDump) error {

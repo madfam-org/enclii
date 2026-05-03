@@ -101,7 +101,7 @@ SHA=$(sha256sum dump.sql.gz | awk '{print $1}')
 curl -f -s -S -X PUT -T dump.sql.gz "%s"
 
 echo "DUMP_METADATA: SIZE=$SIZE SHA256=$SHA"
-`, 
+`,
 		a.Host, portOr(a.Port, 5432), a.Username, a.DatabaseName, schemaURL,
 		a.Host, portOr(a.Port, 5432), a.Username, a.DatabaseName, dumpURL)
 
