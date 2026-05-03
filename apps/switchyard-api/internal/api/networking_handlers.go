@@ -46,10 +46,10 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 
 	// Build domain info list with environment names
 	domainInfos := make([]types.DomainInfo, 0, len(domains))
-	
+
 	requestedEnv := c.Query("env")
 	var filteredDomains []types.CustomDomain
-	
+
 	for _, domain := range domains {
 		// Get environment name
 		env, err := h.repos.Environments.GetByID(ctx, domain.EnvironmentID)
@@ -61,7 +61,7 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 		if requestedEnv != "" && envName != requestedEnv {
 			continue
 		}
-		
+
 		filteredDomains = append(filteredDomains, domain)
 
 		// Determine TLS status based on verification

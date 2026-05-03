@@ -511,8 +511,14 @@ func (r *ServiceReconciler) generateCronJobs(req *ReconcileRequest, namespace, s
 				Labels:    labels,
 			},
 			Spec: batchv1.CronJobSpec{
-				Schedule:                job.Schedule,
-				TimeZone:                func() *string { if job.Timezone != "" { return &job.Timezone } else { return nil } }(),
+				Schedule: job.Schedule,
+				TimeZone: func() *string {
+					if job.Timezone != "" {
+						return &job.Timezone
+					} else {
+						return nil
+					}
+				}(),
 				StartingDeadlineSeconds: startingDeadlineSeconds,
 				ConcurrencyPolicy:       batchv1.ForbidConcurrent,
 				JobTemplate: batchv1.JobTemplateSpec{
@@ -535,7 +541,7 @@ func (r *ServiceReconciler) generateCronJobs(req *ReconcileRequest, namespace, s
 										SecurityContext: &corev1.SecurityContext{
 											Privileged:               func() *bool { b := false; return &b }(),
 											AllowPrivilegeEscalation: func() *bool { b := false; return &b }(),
-											Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+											Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 										},
 									},
 								},
@@ -642,4 +648,3 @@ func (r *ServiceReconciler) generateInterceptorService(req *ReconcileRequest, na
 		},
 	}
 }
-

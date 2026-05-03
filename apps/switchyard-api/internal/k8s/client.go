@@ -272,7 +272,7 @@ func (c *Client) DryRunApply(ctx context.Context, namespace string, obj map[stri
 // ApplyUnstructured creates or updates an unstructured resource (CRD).
 func (c *Client) ApplyUnstructured(ctx context.Context, namespace string, unstructuredObj *unstructured.Unstructured) error {
 	gvk := unstructuredObj.GroupVersionKind()
-	
+
 	// Build GVR from GroupVersionKind
 	gvr, err := resolveGVR(c, gvk.GroupVersion().String(), gvk.Kind)
 	if err != nil {

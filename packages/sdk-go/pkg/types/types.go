@@ -51,8 +51,8 @@ type Service struct {
 	ID          uuid.UUID   `json:"id" db:"id"`
 	ProjectID   uuid.UUID   `json:"project_id" db:"project_id"`
 	Name        string      `json:"name" db:"name"`
-	Type        ServiceType `json:"type" db:"type"`             // Workload type (web, worker, function)
-	Region      string      `json:"region" db:"region"`         // Deployment region (e.g., us-east)
+	Type        ServiceType `json:"type" db:"type"`     // Workload type (web, worker, function)
+	Region      string      `json:"region" db:"region"` // Deployment region (e.g., us-east)
 	GitRepo     string      `json:"git_repo" db:"git_repo"`
 	AppPath     string      `json:"app_path" db:"app_path"`       // Monorepo subdirectory path (e.g., "apps/api", "packages/web")
 	WatchPaths  []string    `json:"watch_paths" db:"watch_paths"` // Paths that trigger rebuild (e.g., ["apps/api/", "packages/shared/"])

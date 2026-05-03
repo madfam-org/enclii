@@ -123,7 +123,7 @@ type CompleteBuildResult struct {
 	Logs          []string
 	Duration      time.Duration
 	ClonePath     string
-	SBOM          *provenance.SBOM          // Software Bill of Materials
+	SBOM          *provenance.SBOM    // Software Bill of Materials
 	SBOMFormat    string              // e.g., "cyclonedx-json"
 	SBOMGenerated bool                // Whether SBOM was successfully generated
 	Signature     *signing.SignResult // Image signature information

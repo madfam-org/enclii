@@ -23,11 +23,11 @@ const DefaultMaxPartBytes int64 = 5 * 1024 * 1024 * 1024 // 5 GiB compressed
 // a pg_dump (which we size-cap ourselves in the pgGatherer).
 type Entry struct {
 	Path          string
-	Content       []byte // raw bytes for small files
+	Content       []byte                        // raw bytes for small files
 	ContentReader func() (io.ReadCloser, error) // for streaming large files
-	ContentSize   int64  // must be provided if ContentReader is used
-	ContentSHA256 string // must be provided if ContentReader is used
-	Mode          int64  // unix mode; 0644 default
+	ContentSize   int64                         // must be provided if ContentReader is used
+	ContentSHA256 string                        // must be provided if ContentReader is used
+	Mode          int64                         // unix mode; 0644 default
 	ModTime       time.Time
 }
 
