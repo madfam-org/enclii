@@ -61,7 +61,11 @@ data:
     repo1-retention-diff=3
 
     # ----- compression + encryption -----
-    compress-type=zstd
+    # Use 'zst' (3-letter form) not 'zstd'. The Debian-bundled
+    # pgbackrest binary in the postgres container (2.58 in Bookworm
+    # backports) and the sidecar's 2.55 both accept 'zst' as the
+    # canonical name; only the sidecar's older form accepts 'zstd'.
+    compress-type=zst
     compress-level=6
     repo1-cipher-type=aes-256-cbc
     # cipher-pass is loaded from the pgbackrest-r2-credentials secret via
