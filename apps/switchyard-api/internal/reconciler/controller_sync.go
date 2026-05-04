@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -168,6 +169,10 @@ func (c *Controller) syncDeploymentToDatabase(ctx context.Context, namespace str
 
 // propagateServiceHealth updates the service's health fields based on K8s deployment state.
 // Called for ALL deployments matching a registered service, regardless of labels.
+//
+// As of the rollout-state-truth migration, this honors EvaluateRolloutState
+// (internal/k8s/rollout_state.go) so a stuck-but-old-RS-still-serving deployment
+// gets surfaced as unhealthy, not lied about as healthy.
 func (c *Controller) propagateServiceHealth(ctx context.Context, service *types.Service, k8sDep *appsv1.Deployment, logger *logrus.Entry) {
 	replicas := int32(1)
 	if k8sDep.Spec.Replicas != nil {
@@ -175,19 +180,7 @@ func (c *Controller) propagateServiceHealth(ctx context.Context, service *types.
 	}
 	availableReplicas := k8sDep.Status.AvailableReplicas
 
-	var health types.HealthStatus
-	if availableReplicas == replicas && replicas > 0 {
-		health = types.HealthStatusHealthy
-	} else if availableReplicas > 0 {
-		health = types.HealthStatusUnhealthy
-	} else {
-		health = types.HealthStatusUnknown
-	}
-
-	status := "unknown"
-	if availableReplicas > 0 {
-		status = string(types.DeploymentStatusRunning)
-	}
+	health, status := deriveServiceHealthStatus(ctx, c.k8sClient, k8sDep, replicas, availableReplicas, logger)
 
 	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, health, status, replicas, availableReplicas); err != nil {
 		logger.WithError(err).Warn("Failed to propagate health to service")
@@ -195,6 +188,11 @@ func (c *Controller) propagateServiceHealth(ctx context.Context, service *types.
 }
 
 // updateDeploymentHealth updates the health status of an existing deployment based on K8s state
+//
+// Like propagateServiceHealth, this now consults EvaluateRolloutState so a
+// "blocked" rollout (newest RS unready past grace, older RS still serving)
+// flips the deployment record to unhealthy instead of riding on the misleading
+// Deployment.AvailableReplicas signal.
 func (c *Controller) updateDeploymentHealth(ctx context.Context, service *types.Service, deployment *types.Deployment, k8sDep *appsv1.Deployment, logger *logrus.Entry) {
 	replicas := int32(1)
 	if k8sDep.Spec.Replicas != nil {
@@ -202,15 +200,7 @@ func (c *Controller) updateDeploymentHealth(ctx context.Context, service *types.
 	}
 	availableReplicas := k8sDep.Status.AvailableReplicas
 
-	// Determine expected health status
-	var expectedHealth types.HealthStatus
-	if availableReplicas == replicas && replicas > 0 {
-		expectedHealth = types.HealthStatusHealthy
-	} else if availableReplicas > 0 {
-		expectedHealth = types.HealthStatusUnhealthy
-	} else {
-		expectedHealth = types.HealthStatusUnknown
-	}
+	expectedHealth, _ := deriveServiceHealthStatus(ctx, c.k8sClient, k8sDep, replicas, availableReplicas, logger)
 
 	// Determine expected deployment status based on K8s state
 	// If K8s shows healthy pods but deployment is stuck at pending or failed, transition to running
@@ -330,6 +320,14 @@ func (c *Controller) createMissingRecords(ctx context.Context, service *types.Se
 
 // syncStatefulSetHealth propagates health from a K8s StatefulSet to a matching DB service.
 // Health-only — no deployment/release record creation (StatefulSets are infrastructure, not app deploys).
+//
+// TODO(rollout-state): EvaluateRolloutState only handles Deployments + ReplicaSets
+// (the rolling-update model). StatefulSets use a different revision model
+// (ControllerRevisions, partitioned updates) and would need a separate evaluator.
+// In-cluster StatefulSets today are limited to data plane infra
+// (data/postgres-pravara, monitoring/prometheus, data/redpanda, data/redis-ha)
+// where the simple ready-replicas signal is acceptable. Skipping for this PR.
+// Tracking issue: https://github.com/madfam-org/enclii/issues/new?labels=rollout-state&title=EvaluateRolloutState%3A+StatefulSet+support
 func (c *Controller) syncStatefulSetHealth(ctx context.Context, ss appsv1.StatefulSet, logger *logrus.Entry) {
 	// Respect opt-out annotation
 	if val, ok := ss.Annotations["enclii.dev/reconcile"]; ok && val == "disabled" {
@@ -365,6 +363,117 @@ func (c *Controller) syncStatefulSetHealth(ctx context.Context, ss appsv1.Statef
 	if err := c.repositories.Services.UpdateHealthStatus(ctx, service.ID, health, status, replicas, ready); err != nil {
 		logger.WithError(err).WithField("statefulset", ss.Name).Warn("Failed to propagate StatefulSet health")
 	}
+}
+
+// deriveServiceHealthStatus is the rollout-state-aware health/status derivation
+// used by both propagateServiceHealth and updateDeploymentHealth.
+//
+// Behavior:
+//   - Naïve baseline (matches pre-rollout-state code): healthy iff
+//     availableReplicas == replicas, unhealthy if availableReplicas > 0,
+//     else unknown. Status = running iff availableReplicas > 0.
+//   - Rollout-state overlay: ask EvaluateRolloutState whether the newest RS
+//     has actually landed. If state == blocked, downgrade health → unhealthy
+//     (the newest revision is broken even though the old RS is still serving)
+//     and log the blocked reason. If state == progressing or ok, leave the
+//     baseline alone — progressing is normal, ok matches the truthful path.
+//   - On K8s error or missing client: silently fall back to baseline. The
+//     reconciler runs every 60s; transient errors must not flip every service
+//     to unknown.
+//
+// NOTE: services.rollout_blocked_reason DB column does not yet exist. The
+// reason is logged at warn level so operators can grep for it. Adding a
+// column is left to a follow-up migration (see PR description).
+func deriveServiceHealthStatus(
+	ctx context.Context,
+	k8sClient *k8s.Client,
+	k8sDep *appsv1.Deployment,
+	replicas, availableReplicas int32,
+	logger *logrus.Entry,
+) (types.HealthStatus, string) {
+	// Rollout-state overlay. Skip if no client (test paths) or the deployment
+	// has no namespace yet — fall back to baseline-only derivation.
+	if k8sClient == nil || !k8sClient.IsValid() || k8sDep == nil || k8sDep.Namespace == "" {
+		return applyServiceRolloutState(replicas, availableReplicas, nil, nil, logger, "")
+	}
+
+	eval, err := k8s.EvaluateRolloutState(
+		ctx,
+		k8sClient.Clientset,
+		k8sDep.Namespace,
+		k8sDep.Name,
+		time.Now(),
+		k8s.DefaultRolloutGrace,
+	)
+	if err != nil {
+		// Non-fatal: keep the baseline so we don't downgrade everything to
+		// unknown on a transient API hiccup.
+		logger.WithError(err).WithFields(logrus.Fields{
+			"deployment": k8sDep.Name,
+			"namespace":  k8sDep.Namespace,
+		}).Debug("EvaluateRolloutState failed; keeping baseline health")
+		return applyServiceRolloutState(replicas, availableReplicas, nil, nil, logger, "")
+	}
+
+	return applyServiceRolloutState(replicas, availableReplicas, &eval, k8sDep, logger, k8sDep.Namespace)
+}
+
+// applyServiceRolloutState is the pure decision function: given baseline replica
+// counts and an optional RolloutEvaluation, decide the (health, status) tuple.
+// Extracted so unit tests can exercise the truth table without a K8s client.
+//
+// Pass eval=nil to take the baseline-only path (i.e., simulate "no rollout
+// information available" — this MUST match the legacy
+// any-replica-Ready-means-healthy behavior so existing callers don't regress).
+func applyServiceRolloutState(
+	replicas, availableReplicas int32,
+	eval *k8s.RolloutEvaluation,
+	k8sDep *appsv1.Deployment,
+	logger *logrus.Entry,
+	namespaceForLog string,
+) (types.HealthStatus, string) {
+	// Baseline derivation (preserves backward compatibility when rollout-state
+	// evaluation is unavailable).
+	var health types.HealthStatus
+	switch {
+	case availableReplicas == replicas && replicas > 0:
+		health = types.HealthStatusHealthy
+	case availableReplicas > 0:
+		health = types.HealthStatusUnhealthy
+	default:
+		health = types.HealthStatusUnknown
+	}
+
+	status := "unknown"
+	if availableReplicas > 0 {
+		status = string(types.DeploymentStatusRunning)
+	}
+
+	if eval == nil {
+		return health, status
+	}
+
+	if eval.State == k8s.RolloutStateBlocked {
+		// The naïve "any-Ready means healthy" lie. Override.
+		// TODO: persist eval.BlockedReason when the services schema gains a
+		// rollout_blocked_reason column (follow-up migration).
+		fields := logrus.Fields{
+			"rollout_state":          string(eval.State),
+			"rollout_blocked_reason": string(eval.BlockedReason),
+		}
+		if k8sDep != nil {
+			fields["deployment"] = k8sDep.Name
+		}
+		if namespaceForLog != "" {
+			fields["namespace"] = namespaceForLog
+		}
+		if logger != nil {
+			logger.WithFields(fields).Warn("Rollout blocked: newest ReplicaSet unready past grace; marking service unhealthy")
+		}
+		return types.HealthStatusUnhealthy, string(types.DeploymentStatusRunning)
+	}
+
+	return health, status
 }
 
 // extractVersionFromImage extracts version string from an image URI

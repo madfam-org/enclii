@@ -69,15 +69,7 @@ func (b *GraphBuilder) BuildTopology(ctx context.Context, environment string) (*
 			if err == nil && k8sStatus != nil {
 				replicas = int(k8sStatus.Replicas)
 				availableReplicas = int(k8sStatus.AvailableReplicas)
-
-				// Determine health status
-				if availableReplicas == replicas && replicas > 0 {
-					healthStatus = HealthStatusHealthy
-				} else if availableReplicas > 0 {
-					healthStatus = HealthStatusDegraded
-				} else {
-					healthStatus = HealthStatusUnhealthy
-				}
+				healthStatus = deriveTopologyHealth(ctx, b.k8sClient, namespace, service.Name, replicas, availableReplicas, b.logger)
 			} else {
 				healthStatus = HealthStatusUnknown
 			}
@@ -457,4 +449,87 @@ func (b *GraphBuilder) FindPath(ctx context.Context, sourceID, targetID string) 
 	}
 
 	return nil, fmt.Errorf("no path found between %s and %s", sourceID, targetID)
+}
+
+// deriveTopologyHealth maps Deployment replica counts + EvaluateRolloutState
+// onto the topology graph's HealthStatus enum.
+//
+// Truth table:
+//   - rollout blocked  → HealthStatusUnhealthy   (newest RS dead, dashboard had been hiding this)
+//   - all replicas Ready → HealthStatusHealthy
+//   - some replicas Ready → HealthStatusDegraded
+//   - zero Ready         → HealthStatusUnhealthy
+//
+// On EvaluateRolloutState error or missing client we silently fall back to the
+// replica-count baseline — same conservative behavior as the reconciler path.
+func deriveTopologyHealth(
+	ctx context.Context,
+	k8sClient *k8s.Client,
+	namespace, deploymentName string,
+	replicas, availableReplicas int,
+	logger *logrus.Logger,
+) HealthStatus {
+	// Rollout-state overlay. If unavailable, keep baseline.
+	if k8sClient == nil || !k8sClient.IsValid() || namespace == "" || deploymentName == "" {
+		return applyTopologyRolloutState(replicas, availableReplicas, nil, namespace, deploymentName, logger)
+	}
+
+	eval, err := k8s.EvaluateRolloutState(
+		ctx,
+		k8sClient.Clientset,
+		namespace,
+		deploymentName,
+		time.Now(),
+		k8s.DefaultRolloutGrace,
+	)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).WithFields(logrus.Fields{
+				"deployment": deploymentName,
+				"namespace":  namespace,
+			}).Debug("topology: EvaluateRolloutState failed; keeping baseline")
+		}
+		return applyTopologyRolloutState(replicas, availableReplicas, nil, namespace, deploymentName, logger)
+	}
+
+	return applyTopologyRolloutState(replicas, availableReplicas, &eval, namespace, deploymentName, logger)
+}
+
+// applyTopologyRolloutState is the pure decision function for topology health.
+// Pass eval=nil to take the baseline-only path. Extracted so unit tests can
+// exercise the truth table without standing up a K8s client.
+func applyTopologyRolloutState(
+	replicas, availableReplicas int,
+	eval *k8s.RolloutEvaluation,
+	namespace, deploymentName string,
+	logger *logrus.Logger,
+) HealthStatus {
+	// Replica-count baseline (preserved for backward compatibility / fallback).
+	var baseline HealthStatus
+	switch {
+	case availableReplicas == replicas && replicas > 0:
+		baseline = HealthStatusHealthy
+	case availableReplicas > 0:
+		baseline = HealthStatusDegraded
+	default:
+		baseline = HealthStatusUnhealthy
+	}
+
+	if eval == nil {
+		return baseline
+	}
+
+	if eval.State == k8s.RolloutStateBlocked {
+		if logger != nil {
+			logger.WithFields(logrus.Fields{
+				"deployment":             deploymentName,
+				"namespace":              namespace,
+				"rollout_state":          string(eval.State),
+				"rollout_blocked_reason": string(eval.BlockedReason),
+			}).Warn("topology: rollout blocked; downgrading service health to unhealthy")
+		}
+		return HealthStatusUnhealthy
+	}
+
+	return baseline
 }
