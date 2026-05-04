@@ -157,18 +157,27 @@ spec:
               for lib in $(ldd /usr/bin/pgbackrest | awk '/=> \//{print $3}' | sort -u); do
                 cp -L "$lib" /opt/pgbackrest/lib/
               done
+              # Bundle the CA certificates too — postgres:15-bookworm
+              # has them, but the running postgres container doesn't
+              # (minimal base). Without this, pgbackrest fails with
+              # "unable to verify certificate presented by R2".
+              cp /etc/ssl/certs/ca-certificates.crt /opt/pgbackrest/ca-certificates.crt
               # Wrap the binary in a shell script that sets
               # LD_LIBRARY_PATH so postgres' archive_command (which
               # lives in postgresql.conf and can't easily set env)
-              # picks up the bundled libs transparently.
+              # picks up the bundled libs transparently. Also point
+              # OpenSSL/curl at the bundled CA store.
               cp /usr/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
               cat > /opt/pgbackrest/bin/pgbackrest <<'WRAPPER'
               #!/bin/sh
-              exec env LD_LIBRARY_PATH=/opt/pgbackrest/lib /opt/pgbackrest/lib/pgbackrest.real "$@"
+              export LD_LIBRARY_PATH=/opt/pgbackrest/lib
+              export SSL_CERT_FILE=/opt/pgbackrest/ca-certificates.crt
+              exec /opt/pgbackrest/lib/pgbackrest.real "$@"
               WRAPPER
               chmod 755 /opt/pgbackrest/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
-              echo "pgbackrest installed (glibc + bundled libs): $(/opt/pgbackrest/bin/pgbackrest version)"
+              echo "pgbackrest installed (glibc + bundled libs + CA): $(/opt/pgbackrest/bin/pgbackrest version)"
               echo "Library bundle: $(ls /opt/pgbackrest/lib/)"
+              echo "CA bundle: $(wc -l < /opt/pgbackrest/ca-certificates.crt) lines"
           volumeMounts:
             # Mount the shared volume at /opt/pgbackrest (parent of
             # bin/ and lib/) so we can install both the binary and

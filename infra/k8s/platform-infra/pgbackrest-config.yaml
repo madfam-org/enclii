@@ -54,6 +54,10 @@ data:
     repo1-s3-region=auto
     repo1-s3-uri-style=path
     repo1-storage-verify-tls=y
+    # The postgres container is minimal and has no /etc/ssl/certs.
+    # The init container bundles the Debian CA store under
+    # /opt/pgbackrest/ca-certificates.crt; point pgbackrest at it.
+    repo1-storage-ca-file=/opt/pgbackrest/ca-certificates.crt
 
     # ----- retention -----
     repo1-retention-full=7
