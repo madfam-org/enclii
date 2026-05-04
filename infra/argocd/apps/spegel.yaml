@@ -32,10 +32,11 @@ spec:
   project: default
 
   source:
-    # Spegel publishes to OCI as of v0.0.30.
+    # Spegel publishes the chart to ghcr.io/spegel-org/helm-charts/spegel
+    # as an OCI artifact. Chart version tracks the app release tag.
     repoURL: ghcr.io/spegel-org/helm-charts
     chart: spegel
-    targetRevision: 0.0.30
+    targetRevision: v0.7.0
     helm:
       values: |
         # k3s uses /etc/rancher/k3s/registries.yaml to wire the
