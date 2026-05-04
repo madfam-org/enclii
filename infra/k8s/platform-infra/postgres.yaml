@@ -145,8 +145,11 @@ spec:
             - |
               set -euo pipefail
               # Install pgbackrest from the Debian backports/main repo.
+              # Also install ca-certificates explicitly — postgres:15-
+              # bookworm doesn't ship it by default, and pgbackrest's
+              # TLS verification of R2 needs the Mozilla CA bundle.
               apt-get update >/dev/null
-              apt-get install -y --no-install-recommends pgbackrest >/dev/null
+              apt-get install -y --no-install-recommends pgbackrest ca-certificates >/dev/null
               # Copy the binary AND every shared library it links to.
               # The postgres container is the same Debian/glibc base,
               # but doesn't have libssh2/libxml2/libcrypto installed
