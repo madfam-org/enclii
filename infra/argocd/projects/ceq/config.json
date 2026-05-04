@@ -1,6 +1,6 @@
 {
   "branch": "main",
-  "manifestPath": "infra/k8s/production",
+  "manifestPath": "infrastructure/k8s",
   "name": "ceq",
   "namespace": "ceq",
   "partOf": "ceq",
