@@ -54,10 +54,15 @@ data:
     repo1-s3-region=auto
     repo1-s3-uri-style=path
     repo1-storage-verify-tls=y
-    # The postgres container is minimal and has no /etc/ssl/certs.
-    # The init container bundles the Debian CA store under
-    # /opt/pgbackrest/ca-certificates.crt; point pgbackrest at it.
-    repo1-storage-ca-file=/opt/pgbackrest/ca-certificates.crt
+    # CA bundle resolution differs by container:
+    #   - Postgres container: minimal Debian image with no /etc/ssl/certs;
+    #     the wrapper script at /opt/pgbackrest/bin/pgbackrest sets
+    #     SSL_CERT_FILE=/opt/pgbackrest/ca-certificates.crt (bundled by
+    #     the init container).
+    #   - pgbackrest sidecar: alpine-based image with its own
+    #     /etc/ssl/certs/ca-certificates.crt — OpenSSL finds it by default.
+    # Don't set repo1-storage-ca-file here because that path only exists
+    # in the postgres container (the volume isn't mounted in the sidecar).
 
     # ----- retention -----
     repo1-retention-full=7
