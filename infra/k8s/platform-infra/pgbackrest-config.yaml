@@ -82,14 +82,22 @@ data:
     log-level-file=detail
     log-path=/var/log/pgbackrest
 
-    # ----- lock + stanza paths -----
+    # ----- lock path (allowed in [global]) -----
     lock-path=/tmp/pgbackrest
-    # pg1-path must match Postgres' $PGDATA exactly.
-    pg1-path=/var/lib/postgresql/data/postgres
-    pg1-port=5432
-    pg1-user=postgres
-    pg1-socket-path=/var/run/postgresql
 
     [main]
     # Stanza name — referenced by archive_command in postgresql.conf.
     # Do not rename after first backup. Ever.
+    #
+    # pgBackRest 2.49+ requires stanza-only options (pg1-*) to live under
+    # the stanza section, NOT [global]. Putting them in [global] passes
+    # parser but every command fails with:
+    #   "configuration file contains stanza-only option 'pg1-path' in
+    #    global section 'global'"
+    # Followed by "ERROR [037]: check command requires option: pg1-path".
+    # That broke the entire backup pipeline on 2026-04-19 when this image
+    # was upgraded. Moving them here fixes it. (See enclii issue.)
+    pg1-path=/var/lib/postgresql/data/postgres
+    pg1-port=5432
+    pg1-user=postgres
+    pg1-socket-path=/var/run/postgresql
