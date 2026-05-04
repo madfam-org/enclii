@@ -100,4 +100,10 @@ data:
     pg1-path=/var/lib/postgresql/data/postgres
     pg1-port=5432
     pg1-user=postgres
-    pg1-socket-path=/var/run/postgresql
+    # Talk to postgres over TCP loopback. The sidecar shares the pod's
+    # network namespace so 127.0.0.1 reaches the postgres container's
+    # listening port. Previously this used pg1-socket-path=/var/run/postgresql,
+    # but the unix socket lives in the postgres container's filesystem,
+    # not shared with the sidecar — every check failed with "[027] no
+    # database found".
+    pg1-host=127.0.0.1
