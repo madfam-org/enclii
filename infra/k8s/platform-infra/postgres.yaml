@@ -107,17 +107,33 @@ spec:
           # postgres-egress (or a sibling NP for app=postgres init
           # containers) allows port 80 + 443 to apt mirrors.
           securityContext:
+            # apt's package downloader runs as the `_apt` user (uid
+            # 42). When the container starts as a non-root uid (e.g.
+            # the inherited uid 999 from runAsNonRoot enforcement),
+            # apt cannot setgroups/seteuid to drop to _apt and
+            # downloads fail with "Failed to setgroups (1)". Run the
+            # init container as root and disable the runAsNonRoot
+            # constraint here. This is acceptable because the init
+            # container exits cleanly before postgres ever starts —
+            # the running pod's attack surface is the postgres
+            # container which keeps its strict security context.
+            runAsUser: 0
+            runAsNonRoot: false
             allowPrivilegeEscalation: false
-            # readOnlyRootFilesystem is FALSE here — apt needs to
-            # write under /var/lib/apt and /var/cache/apt during
-            # install. This deviates from the main container's
-            # security profile but the init container exits before
-            # postgres starts, so the relaxed permissions are not
-            # in effect during normal pod lifetime.
+            # readOnlyRootFilesystem must be FALSE for apt to write
+            # under /var/lib/apt and /var/cache/apt.
             readOnlyRootFilesystem: false
             capabilities:
+              # Keep dropped to ALL except the SETUID/SETGID/CHOWN
+              # that apt needs to drop to its _apt user during HTTP
+              # methods.
               drop:
                 - ALL
+              add:
+                - SETUID
+                - SETGID
+                - CHOWN
+                - DAC_OVERRIDE
           command:
             - /bin/bash
             - -c
