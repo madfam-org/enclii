@@ -97,7 +97,12 @@ data:
     # Followed by "ERROR [037]: check command requires option: pg1-path".
     # That broke the entire backup pipeline on 2026-04-19 when this image
     # was upgraded. Moving them here fixes it. (See enclii issue.)
-    pg1-path=/var/lib/postgresql/data/postgres
+    # pg1-path is the actual postgres PGDATA. The postgres container
+    # mounts the PVC's `postgres/` subdir at /var/lib/postgresql/data
+    # (subPath=postgres), so PGDATA inside the container resolves to
+    # /var/lib/postgresql/data — NOT /var/lib/postgresql/data/postgres.
+    # The sidecar's mount uses the same subPath, so pg1-path must match.
+    pg1-path=/var/lib/postgresql/data
     pg1-port=5432
     pg1-user=postgres
     # Postgres' unix socket is shared between containers via a named
