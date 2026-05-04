@@ -54,6 +54,13 @@ interface ApiService {
   ready_replicas?: number;
   auto_deploy_env?: string;
   current_image_uri?: string;
+  // Rollout truthfulness signals — separate from `health`. Reports whether
+  // the *newest* ReplicaSet has actually landed. The legacy `health` field
+  // reports "healthy" while a new RS may have been failing readiness for
+  // days; rollout_state surfaces that lie.
+  // See switchyard-api/internal/k8s/rollout_state.go.
+  rollout_state?: string;
+  rollout_blocked_reason?: string;
 }
 
 export default function ProjectsPage() {
