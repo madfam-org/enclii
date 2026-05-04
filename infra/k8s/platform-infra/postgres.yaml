@@ -124,16 +124,21 @@ spec:
             # under /var/lib/apt and /var/cache/apt.
             readOnlyRootFilesystem: false
             capabilities:
-              # Keep dropped to ALL except the SETUID/SETGID/CHOWN
-              # that apt needs to drop to its _apt user during HTTP
-              # methods.
+              # Restore the Docker default capability set so apt's
+              # internals (chmod, chown, setgroups) work. The init
+              # container exits before postgres starts, so this
+              # broader cap set is not present in the running pod.
               drop:
                 - ALL
               add:
                 - SETUID
                 - SETGID
                 - CHOWN
+                - FOWNER
+                - FSETID
                 - DAC_OVERRIDE
+                - DAC_READ_SEARCH
+                - NET_BIND_SERVICE
           command:
             - /bin/bash
             - -c
