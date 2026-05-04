@@ -44,17 +44,19 @@ export function formatTimeRemaining(expiresAt: string | null | undefined, now: D
 export function AdminActingBanner({ alwaysVisible = true, className }: AdminActingBannerProps) {
   const { isActing, actingTenant, actingExpiresAt, exitActingSession } = useScope();
   // Update once a minute so the countdown stays roughly current without
-  // hammering renders.
-  const [tick, setTick] = React.useState(0);
+  // hammering renders. We hold `now` in state so the render stays pure
+  // (no `Date.now()` call during render — react-compiler flags that).
+  const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => {
     if (!isActing) return;
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, [isActing]);
 
   if (!isActing || !actingTenant) return null;
 
-  const timeRemaining = formatTimeRemaining(actingExpiresAt, new Date(Date.now() + tick * 0));
+  const timeRemaining = formatTimeRemaining(actingExpiresAt, now ?? undefined);
 
   return (
     <div
