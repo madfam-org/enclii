@@ -92,36 +92,55 @@ spec:
       # bumps a simple image tag change here.
       initContainers:
         - name: pgbackrest-binary
-          # Community-maintained pgBackRest image. The official
-          # pgbackrest/pgbackrest repo on Docker Hub was removed; woblerr
-          # is the standard Alpine-based community image. Binary lives
-          # at /usr/bin/pgbackrest (same path as the old image), so the
-          # copy step below needs no change.
-          image: docker.io/woblerr/pgbackrest:2.55.1-alpine
+          # MUST be glibc-compatible — the binary copied here runs from
+          # the postgres container, which is Debian/glibc. The previous
+          # woblerr/pgbackrest:alpine image ships a musl-linked binary,
+          # which postgres' archive_command fails with "exit code 127:
+          # cannot execute: required file not found". Use the same
+          # postgres:15-bookworm base so libc + ld-linux versions match
+          # exactly, and apt-install pgbackrest from Debian's package
+          # repo at init time.
+          image: docker.io/postgres:15-bookworm
+          # Network access is required for apt-get; this initContainer
+          # is gated behind NetworkPolicy data namespace egress (DNS
+          # only by default). To install successfully, ensure
+          # postgres-egress (or a sibling NP for app=postgres init
+          # containers) allows port 80 + 443 to apt mirrors.
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            # readOnlyRootFilesystem is FALSE here — apt needs to
+            # write under /var/lib/apt and /var/cache/apt during
+            # install. This deviates from the main container's
+            # security profile but the init container exits before
+            # postgres starts, so the relaxed permissions are not
+            # in effect during normal pod lifetime.
+            readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL
           command:
-            - /bin/sh
+            - /bin/bash
             - -c
             - |
-              set -e
+              set -euo pipefail
+              # Install pgbackrest from the Debian backports/main repo.
+              # The Bookworm package is 2.45 (older but compatible
+              # with stanza format used by the 2.55 sidecar).
+              apt-get update >/dev/null
+              apt-get install -y --no-install-recommends pgbackrest >/dev/null
               cp /usr/bin/pgbackrest /opt/pgbackrest/bin/pgbackrest
               chmod 755 /opt/pgbackrest/bin/pgbackrest
-              echo "pgbackrest copied: $(/opt/pgbackrest/bin/pgbackrest version)"
+              echo "pgbackrest copied (glibc): $(/opt/pgbackrest/bin/pgbackrest version)"
           volumeMounts:
             - name: pgbackrest-binary
               mountPath: /opt/pgbackrest/bin
           resources:
             requests:
-              memory: "32Mi"
-              cpu: "10m"
-            limits:
               memory: "64Mi"
-              cpu: "100m"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
       containers:
         - name: postgres
           # pgvector/pgvector:pg15 is stock postgres:15 with the pgvector
