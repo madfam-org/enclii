@@ -159,34 +159,41 @@ spec:
                 # haven't been provisioned yet. pgBackRest backups will
                 # fail loudly in that state, but the main DB stays up.
                 optional: true
-          # P1.1 note: `include_dir` cannot be set via `-c` — Postgres
-          # treats `include`/`include_dir` as file-directives processed
-          # during config parsing, not as runtime GUCs. Passing
-          # `-c include_dir=...` yields "unrecognized configuration
-          # parameter". The previous form crashed every pod.
+          # WAL archiving config passed via individual -c flags (the
+          # alternative path the prior comment recommended). The
+          # /etc/postgresql/conf.d/wal-archive.conf file is still
+          # mounted but unused — keeping the configmap around as
+          # documentation of what these flags express.
           #
-          # Until WAL archiving is re-enabled (needs the R2 secret that
-          # was never provisioned — tracked as follow-up to #102/#103),
-          # we don't need the conf.d include at all. When we re-enable
-          # archiving, do it one of:
-          #   - append `include_dir = '/etc/postgresql/conf.d'` to the
-          #     on-disk postgresql.conf (e.g. via an init-script), OR
-          #   - pass individual `-c archive_mode=on` etc. flags directly
-          #     (no include indirection).
-          # Second correctness bug in the #87 args block: the config_file
-          # path points at /var/lib/postgresql/data/postgres/postgresql.conf
-          # — a phantom nested path. The subPath mount already presents the
-          # PVC's `postgres/` subdirectory AT /var/lib/postgresql/data, so
-          # the real postgresql.conf lives directly there. And since PGDATA
-          # env isn't set, Postgres already uses $PGDATA default
-          # (/var/lib/postgresql/data) — there's no reason to override
-          # config_file at all. Dropping the arg lets the image use its
-          # default config resolution, which is the known-good path.
+          # archive_command runs from inside the postgres container,
+          # invoking the pgbackrest binary that the initContainer
+          # copied into the shared /opt/pgbackrest/bin/ volume. The
+          # binary reads /etc/pgbackrest/pgbackrest.conf (mounted
+          # in the postgres container at that exact path) and pushes
+          # WAL segments to R2.
           #
-          # If WAL archiving is re-enabled later, still prefer an
-          # init-script appending includes to the on-disk postgresql.conf
-          # over -c flags.
-          args: []
+          # archive_mode=on requires a server RESTART to flip on.
+          # Setting it in args ensures every fresh pod has it from
+          # boot — not a runtime GUC change.
+          args:
+            - "-c"
+            - "wal_level=replica"
+            - "-c"
+            - "archive_mode=on"
+            - "-c"
+            - "archive_command=/opt/pgbackrest/bin/pgbackrest --stanza=main archive-push %p"
+            - "-c"
+            - "archive_timeout=60"
+            - "-c"
+            - "max_wal_senders=10"
+            - "-c"
+            - "wal_keep_size=1024"
+            - "-c"
+            - "hot_standby=on"
+            - "-c"
+            - "wal_compression=on"
+            - "-c"
+            - "wal_sender_timeout=60s"
           ports:
             - containerPort: 5432
           volumeMounts:
