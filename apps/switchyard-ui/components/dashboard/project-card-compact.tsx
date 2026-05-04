@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import {
   Archive,
@@ -23,6 +24,7 @@ import {
 } from "./framework-icon";
 import { HealthBadge } from "./health-badge";
 import { SentryErrorBadge } from "./sentry-error-badge";
+import { ServiceLink, normalizeEnv } from "./service-link";
 
 export interface CompactService {
   id: string;
@@ -37,6 +39,13 @@ export interface CompactService {
   // digest chip so operators can confirm what's running before triggering a
   // rollback. Source: Service.current_image_uri (parity audit gap #5).
   currentImageUri?: string;
+  // Per-service public URL (bare host, no protocol) -- drives the new
+  // ServiceLink deep-link sub-row. Source: ApiService.domain. Previously
+  // the home/projects pages collapsed this into a single project-level
+  // `domain` by picking the FIRST service that had one, which was lossy
+  // for projects with both `api.example.com` and `example.com`. Operators
+  // now click straight through to the service of their choice.
+  domain?: string;
 }
 
 // Extracts the trailing digest fragment from a full image URI for display.
@@ -203,6 +212,13 @@ export function ProjectCardCompact({
     : services;
   const overflowCount = services.length - MAX_VISIBLE_TABLE_ROWS;
 
+  // Truthy when at least one visible service exposes its own deep-link.
+  // Drives whether we de-emphasize the project-level domain link below
+  // (the brief asked us to keep it as a fallback entry-point but lower
+  // its visual weight when per-service links carry the same destination
+  // information with strictly more env context).
+  const hasAnyServiceDomain = visibleServices.some((s) => !!s.domain);
+
   return (
     <Link href={`/projects/${project.slug}`} className="block">
       <Card
@@ -254,59 +270,87 @@ export function ProjectCardCompact({
               </thead>
               <tbody className="divide-y divide-border/20">
                 {visibleServices.map((service) => (
-                  <tr
-                    key={service.id}
-                    className="hover:bg-muted/20 transition-colors"
-                  >
-                    <td className="py-1 pl-2 pr-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <div
-                          className={cn(
-                            "h-1.5 w-1.5 shrink-0 rounded-full",
-                            serviceStatusColor[service.status] ||
-                              "bg-muted-foreground",
-                          )}
-                        />
-                        <span className="truncate font-medium max-w-[100px]">
-                          {service.name}
-                        </span>
-                        {service.currentImageUri && (
-                          <span
-                            className="hidden shrink-0 rounded border border-border/40 bg-muted/30 px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground md:inline-block"
-                            title={service.currentImageUri}
-                            aria-label={`Running image: ${service.currentImageUri}`}
-                          >
-                            {shortImageRef(service.currentImageUri)}
+                  // Fragment per service so we can emit two rows: the main
+                  // status row + an optional sub-row with the deep-link
+                  // (only when the service has a public domain). React
+                  // requires the Fragment itself carry the key, since it
+                  // is the immediate child of `.map()`.
+                  <Fragment key={service.id}>
+                    <tr className="hover:bg-muted/20 transition-colors">
+                      <td className="py-1 pl-2 pr-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div
+                            className={cn(
+                              "h-1.5 w-1.5 shrink-0 rounded-full",
+                              serviceStatusColor[service.status] ||
+                                "bg-muted-foreground",
+                            )}
+                          />
+                          <span className="truncate font-medium max-w-[100px]">
+                            {service.name}
                           </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-1 py-1">
-                      <span
-                        className={cn(
-                          "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none",
-                          service.status === "running" &&
-                            "bg-status-success/15 text-status-success",
-                          service.status === "failed" &&
-                            "bg-status-error/15 text-status-error",
-                          service.status === "pending" &&
-                            "bg-status-warning/15 text-status-warning",
-                          service.status === "deploying" &&
-                            "bg-status-info/15 text-status-info animate-pulse",
-                          service.status === "unknown" &&
-                            "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {serviceStatusLabel[service.status] || "Unknown"}
-                      </span>
-                    </td>
-                    <td className="px-1 py-1 text-right text-muted-foreground tabular-nums">
-                      {service.replicas || "\u2014"}
-                    </td>
-                    <td className="py-1 pl-1 pr-2 text-right text-muted-foreground truncate max-w-[60px]">
-                      {service.environment || "\u2014"}
-                    </td>
-                  </tr>
+                          {service.currentImageUri && (
+                            <span
+                              className="hidden shrink-0 rounded border border-border/40 bg-muted/30 px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground md:inline-block"
+                              title={service.currentImageUri}
+                              aria-label={`Running image: ${service.currentImageUri}`}
+                            >
+                              {shortImageRef(service.currentImageUri)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-1 py-1">
+                        <span
+                          className={cn(
+                            "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none",
+                            service.status === "running" &&
+                              "bg-status-success/15 text-status-success",
+                            service.status === "failed" &&
+                              "bg-status-error/15 text-status-error",
+                            service.status === "pending" &&
+                              "bg-status-warning/15 text-status-warning",
+                            service.status === "deploying" &&
+                              "bg-status-info/15 text-status-info animate-pulse",
+                            service.status === "unknown" &&
+                              "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {serviceStatusLabel[service.status] || "Unknown"}
+                        </span>
+                      </td>
+                      <td className="px-1 py-1 text-right text-muted-foreground tabular-nums">
+                        {service.replicas || "\u2014"}
+                      </td>
+                      <td className="py-1 pl-1 pr-2 text-right text-muted-foreground truncate max-w-[60px]">
+                        {service.environment || "\u2014"}
+                      </td>
+                    </tr>
+                    {/* Per-service deep-link sub-row.
+                        Renders beneath each service that has a public
+                        domain so operators can click straight through to
+                        a live URL without going through the project
+                        detail page. The ServiceLink also surfaces the
+                        env (prod/staging/preview/dev) explicitly via a
+                        colored badge, eliminating the previous
+                        first-service-wins ambiguity at the project
+                        level. Services without a domain render no
+                        sub-row -- the main row already conveys "service
+                        exists" and an extra placeholder per service
+                        would overwhelm the card. */}
+                    {service.domain && (
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td colSpan={4} className="py-1 pl-4 pr-2">
+                          <ServiceLink
+                            domain={service.domain}
+                            env={normalizeEnv(service.environment)}
+                            isHealthy={service.health !== "unhealthy"}
+                            ariaLabelService={service.name}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
                 {hasOverflow && (
                   <tr>
@@ -343,13 +387,25 @@ export function ProjectCardCompact({
             ))}
         </p>
 
-        {/* Row 4: Domain URL */}
+        {/* Row 4: Project-level domain.
+            Kept as a fallback entry-point but de-emphasized when at
+            least one service already exposes its own deep-link in the
+            table -- the brief flagged that per-service links carry
+            strictly more information (env context + correct host per
+            service), so the project-level link becomes a fallback rather
+            than the headline. When no service has a domain, this stays
+            at full weight as before. */}
         {project.domain ? (
           <a
             href={`https://${project.domain}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground mt-2 flex items-center gap-1.5 truncate text-xs transition-colors"
+            className={cn(
+              "mt-2 flex items-center gap-1.5 truncate text-xs transition-colors",
+              hasAnyServiceDomain
+                ? "text-muted-foreground/70 hover:text-muted-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="h-3 w-3 shrink-0" />

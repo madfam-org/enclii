@@ -127,7 +127,9 @@ export default function ProjectsPage() {
           const framework = services.find((s) => s.framework)?.framework;
           const gitRepo = services.find((s) => s.git_repo)?.git_repo;
 
-          // Map services
+          // Map services. Per-service `domain` plumbed through so the
+          // card can render its new ServiceLink sub-row for each
+          // service that has a public URL (PR: per-service deep-link).
           const compactServices = services.map((s) => ({
             id: s.id,
             name: s.name,
@@ -136,6 +138,7 @@ export default function ProjectsPage() {
             replicas: s.ready_replicas !== undefined && s.desired_replicas !== undefined ? `${s.ready_replicas}/${s.desired_replicas}` : undefined,
             environment: s.auto_deploy_env || undefined,
             currentImageUri: s.current_image_uri || undefined,
+            domain: s.domain || undefined,
           }));
 
           const hasAny = compactServices.length > 0;
