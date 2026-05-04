@@ -129,7 +129,13 @@ export default function Dashboard() {
               gitRepo,
             );
 
-          // Map to CompactService[]
+          // Map to CompactService[]. Each service now carries its own
+          // `domain` so the card can render a per-service deep-link
+          // sub-row instead of the lossy first-service-wins
+          // project-level link. The project-level `domain` field is
+          // still derived (a few lines up) for the fallback link the
+          // card keeps for projects whose API didn't return any
+          // per-service URL yet.
           const compactServices: CompactService[] = apiServices.map((s) => ({
             id: s.id,
             name: s.name,
@@ -145,6 +151,7 @@ export default function Dashboard() {
                 : undefined,
             environment: s.auto_deploy_env || undefined,
             currentImageUri: s.current_image_uri || undefined,
+            domain: s.domain || undefined,
           }));
 
           // Compute aggregate status
