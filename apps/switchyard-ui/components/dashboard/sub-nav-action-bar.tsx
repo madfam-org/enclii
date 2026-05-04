@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Plus, Boxes, Database, Layers } from "lucide-react";
 import { Button } from "@enclii/ui-components/button";
 import {
@@ -79,16 +80,16 @@ export function SubNavActionBar({
               <span>New project</span>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/services/new">
+              <Link href="/services/new">
                 <Layers className="mr-2 h-4 w-4" />
                 <span>New service</span>
-              </a>
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/databases?create=true">
+              <Link href="/databases?create=true">
                 <Database className="mr-2 h-4 w-4" />
                 <span>New database</span>
-              </a>
+              </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
