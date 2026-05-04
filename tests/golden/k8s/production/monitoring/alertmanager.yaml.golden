@@ -102,7 +102,15 @@ metadata:
     app.kubernetes.io/component: monitoring
     app.kubernetes.io/part-of: enclii
 spec:
-  replicas: 2
+  # Single replica because the backing PVC alertmanager-data is RWO (Longhorn doesn't
+  # support RWX without an NFS shim). With replicas=2 the second pod sat in
+  # ContainerCreating for 25 days hitting Multi-Attach errors. True HA alertmanager
+  # would need a StatefulSet with volumeClaimTemplates so each peer has its own
+  # volume — out of scope here. Recreate strategy ensures the old pod releases
+  # the volume before the new one tries to attach.
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: alertmanager

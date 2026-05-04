@@ -292,8 +292,18 @@ spec:
                 sleep 30
               done
           env:
+            # Mount path is /etc/pgbackrest.conf (file in /etc/, not in
+            # /etc/pgbackrest/ subdir). The woblerr/pgbackrest:alpine
+            # image bakes /etc/pgbackrest/ as mode 750 owned by an image-
+            # local pgbackrest user (NOT uid 999). When this sidecar runs
+            # as runAsUser:999, it can't traverse the directory at all
+            # ("Permission denied" on every pgbackrest invocation since
+            # 2026-04-19). Mounting the config at /etc/ directly bypasses
+            # the locked subdir. pgbackrest checks /etc/pgbackrest.conf
+            # before /etc/pgbackrest/pgbackrest.conf, so this path is
+            # discovered via the default search.
             - name: PGBACKREST_CONFIG
-              value: /etc/pgbackrest/pgbackrest.conf
+              value: /etc/pgbackrest.conf
           envFrom:
             - secretRef:
                 name: pgbackrest-r2-credentials
@@ -307,7 +317,7 @@ spec:
               mountPath: /var/lib/postgresql/data
               subPath: postgres
             - name: pgbackrest-config
-              mountPath: /etc/pgbackrest/pgbackrest.conf
+              mountPath: /etc/pgbackrest.conf
               subPath: pgbackrest.conf
               readOnly: true
             - name: pgbackrest-spool
