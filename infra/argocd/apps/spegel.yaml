@@ -1,0 +1,88 @@
+# Spegel — peer-to-peer image registry mirror for k3s
+#
+# Spegel runs as a DaemonSet on every node and shares already-pulled
+# image layers between peers via mDNS discovery. When containerd
+# requests a layer, Spegel checks if any peer in the cluster already
+# has it cached on its disk; if so, the layer is served peer-to-peer
+# instead of being re-pulled from upstream (ghcr.io, docker.io, etc.).
+#
+# Why we want it:
+# - Eliminates upstream-registry dependency for already-pulled images
+#   (cluster keeps working when GHCR has incidents).
+# - Cuts egress bandwidth for re-pulls during node-add or pod cycle.
+# - Faster cold starts on builder-01 since cp/worker-01 already cache
+#   most of our images.
+#
+# Activation requires editing /etc/rancher/k3s/registries.yaml on each
+# node + k3s restart — see runbooks/2026-05-04-spegel-install.md for
+# the per-node procedure.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spegel
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: spegel
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: registry-mirror
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://spegel-org.github.io/spegel
+    chart: spegel
+    targetRevision: 0.0.30
+    helm:
+      values: |
+        # k3s uses /etc/rancher/k3s/registries.yaml to wire the
+        # containerd mirror. Spegel will write its own config under
+        # /etc/cri/conf.d/01-spegel.conf. This works alongside k3s'
+        # registries.yaml as long as they don't conflict.
+        spegel:
+          containerdRegistryConfigPath: /var/lib/rancher/k3s/agent/etc/containerd/certs.d
+          # Listen on a stable port so registries.yaml entries are
+          # straightforward.
+          registryAddr: ":30020"
+          # Allow Spegel to participate in the existing pod network.
+          # mDNS-based peer discovery requires multicast; flannel VXLAN
+          # supports this.
+          mirroredRegistries:
+            - "https://ghcr.io"
+            - "https://docker.io"
+            - "https://quay.io"
+            - "https://registry.k8s.io"
+            - "https://gcr.io"
+            - "https://public.ecr.aws"
+        # Spegel's DaemonSet needs hostNetwork to access containerd's
+        # local socket and to register its mirror endpoint reachable
+        # at 127.0.0.1.
+        service:
+          registry:
+            hostPort: 30020
+        # Tolerate any node taints (Spegel must run on every node,
+        # including future ARM nodes).
+        tolerations:
+          - operator: Exists
+        # Resources sized for ~1-2k image layers cached:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: spegel
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
