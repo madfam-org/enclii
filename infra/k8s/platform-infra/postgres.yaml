@@ -153,7 +153,7 @@ spec:
               # (postgres image is minimal). Without LD_LIBRARY_PATH
               # pointing at the bundled libs, the binary fails with
               # "libssh2.so.1: cannot open shared object file".
-              mkdir -p /opt/pgbackrest/lib
+              mkdir -p /opt/pgbackrest/bin /opt/pgbackrest/lib
               for lib in $(ldd /usr/bin/pgbackrest | awk '/=> \//{print $3}' | sort -u); do
                 cp -L "$lib" /opt/pgbackrest/lib/
               done
