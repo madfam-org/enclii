@@ -21,6 +21,10 @@ resources:
   - pgbackrest-cronjobs.yaml
   # pgbackrest-r2-credentials.yaml.template is intentionally excluded —
   # secret is applied out-of-band by the operator (see runbook).
+  # Monthly DR drill — restores the latest base backup to a side-channel
+  # PVC to verify the recovery path works. Emits Prometheus textfile
+  # metrics; alertmanager fires on consecutive failures.
+  - postgres-pgbackrest-restore-drill.yaml
 
   # Monitoring exporters (data namespace)
   - postgres-exporter.yaml
