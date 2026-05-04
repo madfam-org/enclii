@@ -71,17 +71,25 @@ type Service struct {
 	AutoDeployBranch string `json:"auto_deploy_branch" db:"auto_deploy_branch"` // Branch to auto-deploy (e.g., "main", "master")
 	AutoDeployEnv    string `json:"auto_deploy_env" db:"auto_deploy_env"`       // Target environment (e.g., "development", "staging")
 	// Health tracking fields (populated by Cartographer from K8s)
-	K8sNamespace     *string      `json:"k8s_namespace,omitempty" db:"k8s_namespace"` // Actual K8s namespace (may differ from project slug)
-	Health           HealthStatus `json:"health" db:"health"`                         // Service health: unknown, healthy, unhealthy
-	Status           string       `json:"status" db:"status"`                         // Service status: unknown, pending, running, failed
-	DesiredReplicas  int          `json:"desired_replicas" db:"desired_replicas"`     // Desired replica count from K8s
-	ReadyReplicas    int          `json:"ready_replicas" db:"ready_replicas"`         // Ready replica count from K8s
-	MinReplicas      *int         `json:"min_replicas,omitempty" db:"min_replicas"`
-	MaxReplicas      *int         `json:"max_replicas,omitempty" db:"max_replicas"`
-	LastHealthCheck  *time.Time   `json:"last_health_check,omitempty" db:"last_health_check"`
-	LastDeployment   *time.Time   `json:"last_deployment,omitempty" db:"-"`
-	LastCommitMsg    string       `json:"last_commit_message,omitempty" db:"-"`
-	LastCommitBranch string       `json:"last_commit_branch,omitempty" db:"-"`
+	K8sNamespace    *string      `json:"k8s_namespace,omitempty" db:"k8s_namespace"` // Actual K8s namespace (may differ from project slug)
+	Health          HealthStatus `json:"health" db:"health"`                         // Service health: unknown, healthy, unhealthy
+	Status          string       `json:"status" db:"status"`                         // Service status: unknown, pending, running, failed
+	DesiredReplicas int          `json:"desired_replicas" db:"desired_replicas"`     // Desired replica count from K8s
+	ReadyReplicas   int          `json:"ready_replicas" db:"ready_replicas"`         // Ready replica count from K8s
+	// RolloutState describes whether the *newest* ReplicaSet has actually
+	// landed. The legacy `Health` field reports `healthy` whenever ANY pod
+	// is Ready — including the case where a new RS has been failing
+	// readiness for days while the previous RS keeps the lights on.
+	// RolloutState surfaces that lie. Values: "ok", "progressing", "blocked",
+	// "" (unknown). Computed at request time from K8s; not persisted.
+	RolloutState         string     `json:"rollout_state,omitempty" db:"-"`
+	RolloutBlockedReason string     `json:"rollout_blocked_reason,omitempty" db:"-"`
+	MinReplicas          *int       `json:"min_replicas,omitempty" db:"min_replicas"`
+	MaxReplicas          *int       `json:"max_replicas,omitempty" db:"max_replicas"`
+	LastHealthCheck      *time.Time `json:"last_health_check,omitempty" db:"last_health_check"`
+	LastDeployment       *time.Time `json:"last_deployment,omitempty" db:"-"`
+	LastCommitMsg        string     `json:"last_commit_message,omitempty" db:"-"`
+	LastCommitBranch     string     `json:"last_commit_branch,omitempty" db:"-"`
 	// Current release tracking (populated by ListByProject from the latest deployment).
 	// Lets the dashboard show the running image digest + recent release history without
 	// a per-service round trip. CurrentImageURI is the digest-pinned image actually running.
