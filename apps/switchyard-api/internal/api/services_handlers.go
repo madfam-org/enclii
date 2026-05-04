@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -148,7 +152,65 @@ func (h *Handler) ListServices(c *gin.Context) {
 		return
 	}
 
+	// Enrich with rollout state by inspecting the per-service Deployment's
+	// ReplicaSets. The legacy `health` field lies when a new RS has been
+	// failing readiness for days while the old RS keeps serving — this
+	// computes a separate `rollout_state` ∈ {ok, progressing, blocked} so
+	// the dashboard can stop hiding stuck deploys. We don't touch `health`
+	// for backward compatibility. See internal/k8s/rollout_state.go.
+	h.enrichServicesWithRolloutState(ctx, svcList)
+
 	c.JSON(http.StatusOK, gin.H{"services": svcList})
+}
+
+// enrichServicesWithRolloutState fans out one K8s lookup per service in
+// parallel (capped at 8 in flight) to compute rollout_state. Skipped when
+// k8sClient is nil (test handlers, environments without K8s wiring). Errors
+// are swallowed: if K8s is briefly unavailable, we'd rather return the DB
+// fields than fail the whole project listing.
+func (h *Handler) enrichServicesWithRolloutState(ctx context.Context, svcList []*types.Service) {
+	if h == nil || h.k8sClient == nil || !h.k8sClient.IsValid() {
+		return
+	}
+
+	// Hard cap on time spent decorating: 3s across all services. If K8s is
+	// laggy, the user should still get the project page back, just without
+	// the new field populated. The existing health field still works.
+	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	const maxParallel = 8
+	sem := make(chan struct{}, maxParallel)
+	var wg sync.WaitGroup
+	now := time.Now()
+
+	for _, svc := range svcList {
+		if svc == nil || svc.K8sNamespace == nil || *svc.K8sNamespace == "" {
+			continue
+		}
+		wg.Add(1)
+		go func(svc *types.Service) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			eval, err := k8s.EvaluateRolloutState(
+				enrichCtx,
+				h.k8sClient.Clientset,
+				*svc.K8sNamespace,
+				svc.Name,
+				now,
+				k8s.DefaultRolloutGrace,
+			)
+			if err != nil {
+				// Best-effort: leave fields empty on failure.
+				return
+			}
+			svc.RolloutState = string(eval.State)
+			svc.RolloutBlockedReason = string(eval.BlockedReason)
+		}(svc)
+	}
+	wg.Wait()
 }
 
 // GetService returns a service by its unique ID.
