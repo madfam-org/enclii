@@ -174,10 +174,16 @@ spec:
     # up, eventually hits archive-push-queue-max=2GiB and blocks
     # postgres). pgbackrest stanza-create / check / backup also hang
     # waiting for the R2 endpoint TCP handshake.
+    #
+    # Port 80 is required by the pgbackrest-binary initContainer's
+    # `apt-get install pgbackrest` step against Debian mirrors that
+    # still serve plain HTTP (deb.debian.org redirects).
     - to: []
       ports:
         - protocol: TCP
           port: 443
+        - protocol: TCP
+          port: 80
 
 # Allow redis egress (DNS only)
 ---
