@@ -145,16 +145,36 @@ spec:
             - |
               set -euo pipefail
               # Install pgbackrest from the Debian backports/main repo.
-              # The Bookworm package is 2.45 (older but compatible
-              # with stanza format used by the 2.55 sidecar).
               apt-get update >/dev/null
               apt-get install -y --no-install-recommends pgbackrest >/dev/null
-              cp /usr/bin/pgbackrest /opt/pgbackrest/bin/pgbackrest
-              chmod 755 /opt/pgbackrest/bin/pgbackrest
-              echo "pgbackrest copied (glibc): $(/opt/pgbackrest/bin/pgbackrest version)"
+              # Copy the binary AND every shared library it links to.
+              # The postgres container is the same Debian/glibc base,
+              # but doesn't have libssh2/libxml2/libcrypto installed
+              # (postgres image is minimal). Without LD_LIBRARY_PATH
+              # pointing at the bundled libs, the binary fails with
+              # "libssh2.so.1: cannot open shared object file".
+              mkdir -p /opt/pgbackrest/lib
+              for lib in $(ldd /usr/bin/pgbackrest | awk '/=> \//{print $3}' | sort -u); do
+                cp -L "$lib" /opt/pgbackrest/lib/
+              done
+              # Wrap the binary in a shell script that sets
+              # LD_LIBRARY_PATH so postgres' archive_command (which
+              # lives in postgresql.conf and can't easily set env)
+              # picks up the bundled libs transparently.
+              cp /usr/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
+              cat > /opt/pgbackrest/bin/pgbackrest <<'WRAPPER'
+              #!/bin/sh
+              exec env LD_LIBRARY_PATH=/opt/pgbackrest/lib /opt/pgbackrest/lib/pgbackrest.real "$@"
+              WRAPPER
+              chmod 755 /opt/pgbackrest/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
+              echo "pgbackrest installed (glibc + bundled libs): $(/opt/pgbackrest/bin/pgbackrest version)"
+              echo "Library bundle: $(ls /opt/pgbackrest/lib/)"
           volumeMounts:
+            # Mount the shared volume at /opt/pgbackrest (parent of
+            # bin/ and lib/) so we can install both the binary and
+            # its bundled shared libraries.
             - name: pgbackrest-binary
-              mountPath: /opt/pgbackrest/bin
+              mountPath: /opt/pgbackrest
           resources:
             requests:
               memory: "64Mi"
@@ -242,10 +262,12 @@ spec:
               subPath: postgres
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d
-            # P1.1: mount pgbackrest binary + config + spool so
+            # P1.1: mount pgbackrest binary + bundled libs so
             # archive_command can run inside the Postgres container.
+            # Volume contains: bin/pgbackrest (wrapper script),
+            # lib/pgbackrest.real (real ELF), lib/*.so.* (deps).
             - name: pgbackrest-binary
-              mountPath: /opt/pgbackrest/bin
+              mountPath: /opt/pgbackrest
               readOnly: true
             - name: pgbackrest-config
               mountPath: /etc/pgbackrest/pgbackrest.conf
