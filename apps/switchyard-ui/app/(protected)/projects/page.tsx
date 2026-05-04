@@ -28,6 +28,11 @@ import { resolveLatestDeployment } from '@/lib/project-deploy';
 import { type SortOption } from '@/components/dashboard/project-search-filter';
 import { SubNavActionBar } from '@/components/dashboard/sub-nav-action-bar';
 import { useViewMode } from '@/components/dashboard/view-toggle';
+import { UsageOverview } from '@/components/dashboard/usage-overview';
+import { SystemHealthSummary } from '@/components/dashboard/system-health-summary';
+import { SidebarAlerts } from '@/components/dashboard/sidebar-alerts';
+import { SidebarRecentPreviews } from '@/components/dashboard/sidebar-recent-previews';
+import { LastSyncBadge } from '@/components/dashboard/last-sync-badge';
 
 interface ApiProject {
   id: string;
@@ -68,6 +73,8 @@ export default function ProjectsPage() {
 
   const [projects, setProjects] = useState<CompactProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newProject, setNewProject] = useState({
@@ -110,6 +117,7 @@ export default function ProjectsPage() {
   const fetchProjects = useCallback(async () => {
     try {
       setError(null);
+      setRefreshing(true);
       const data = await apiGet<{ projects: ApiProject[] }>('/v1/projects');
       const apiProjects = data.projects || [];
 
@@ -187,6 +195,7 @@ export default function ProjectsPage() {
       );
 
       setProjects(compactProjects);
+      setLastSyncedAt(new Date().toISOString());
       setLoading(false);
 
       // Fetch Repo Meta
@@ -262,6 +271,8 @@ export default function ProjectsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
@@ -326,18 +337,35 @@ export default function ProjectsPage() {
   }, [projects, search, sort]);
 
   if (loading) {
+    // Loading skeleton mirrors the post-load layout: title row, action bar
+    // placeholder, sync badge slot, then the same 12-col grid (sidebar +
+    // main). Card skeletons use the narrower xl:grid-cols-3 step that the
+    // 9-col main column actually fits — matches home's approach.
     return (
-      <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-muted mb-6 h-8 w-1/4 animate-pulse rounded" />
-          <div className="mb-6 flex items-center gap-3">
-            <div className="bg-muted h-10 w-64 animate-pulse rounded" />
-            <div className="bg-muted h-10 w-40 animate-pulse rounded" />
+      <div className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="bg-muted h-8 w-40 animate-pulse rounded" />
+        </div>
+        <div className="mb-3 flex items-center gap-3">
+          <div className="bg-muted h-10 w-64 animate-pulse rounded" />
+          <div className="bg-muted h-10 w-40 animate-pulse rounded" />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <div className="bg-muted h-6 w-32 animate-pulse rounded" />
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+          <div className="order-2 space-y-4 lg:order-1 lg:col-span-3">
+            <div className="bg-muted h-40 animate-pulse rounded-lg" />
+            <div className="bg-muted h-28 animate-pulse rounded-lg" />
+            <div className="bg-muted h-32 animate-pulse rounded-lg" />
+            <div className="bg-muted h-36 animate-pulse rounded-lg" />
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <ProjectCardCompactSkeleton key={i} />
-            ))}
+          <div className="order-1 lg:order-2 lg:col-span-9">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <ProjectCardCompactSkeleton key={i} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -346,7 +374,7 @@ export default function ProjectsPage() {
 
   if (error && projects.length === 0) {
     return (
-      <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="bg-status-error-muted border-status-error/30 rounded-md border p-4">
           <div className="text-status-error-foreground">
             <h3 className="text-sm font-medium">Error loading projects</h3>
@@ -358,140 +386,172 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
-      <div className="px-4 py-6 sm:px-0">
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+    // Match home's container width (max-w-screen-2xl) + padding scale so the
+    // /projects page reads as a sibling of /, not a different surface. The
+    // surrounding 12-col grid (below) gives the page the same rich sidebar
+    // context as home — usage / system health / alerts / recent previews.
+    <div className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+      {/* Header — title + LastSyncBadge mirror home's pattern. */}
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <h1 className="text-foreground text-2xl font-bold">Projects</h1>
+          <LastSyncBadge
+            lastSyncedAt={lastSyncedAt}
+            onRefresh={fetchProjects}
+            refreshing={refreshing}
+          />
         </div>
+      </div>
 
-        {/* Create Project Modal */}
-        <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Project</DialogTitle>
-              <DialogDescription>
-                Add a new project to organize your services.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={createProject}>
-              <div className="mb-4">
-                <label className="text-foreground mb-2 block text-sm font-medium">
-                  Project Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 bg-background"
-                  value={newProject.name}
-                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                />
-              </div>
-              <div className="mb-4">
-                <label className="text-foreground mb-2 block text-sm font-medium">
-                  Slug
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 bg-background"
-                  value={newProject.slug}
-                  onChange={(e) => setNewProject({ ...newProject, slug: e.target.value })}
-                />
-              </div>
-              <div className="mb-4">
-                <label className="text-foreground mb-2 block text-sm font-medium">
-                  Description
-                </label>
-                <textarea
-                  className="border-input focus:ring-enclii-blue w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 bg-background"
-                  rows={3}
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                />
-              </div>
-              <DialogFooter>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-4 py-2 text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-enclii-blue hover:bg-enclii-blue-dark rounded-md px-4 py-2 text-sm font-medium text-white"
-                >
-                  Create
-                </button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Search & Filter & Views */}
-        <SubNavActionBar
-          search={search}
-          onSearchChange={setSearch}
-          sort={sort}
-          onSortChange={setSort}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          onCreateProject={handleCreateProjectClick}
-        />
-
-        {/* Project Grid */}
-        {filteredProjects.length === 0 ? (
-          projects.length === 0 ? (
-            <div className="border-border mt-4 rounded-lg border border-dashed py-16 text-center">
-              <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
-              <h3 className="text-foreground text-lg font-medium">No projects found</h3>
-              <p className="text-muted-foreground mb-4 mt-1">
-                Get started by creating your first project.
-              </p>
-              <Button onClick={handleCreateProjectClick}>
-                <Plus className="mr-1.5 h-4 w-4" />
-                Create Project
-              </Button>
+      {/* Create Project Modal */}
+      <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New Project</DialogTitle>
+            <DialogDescription>
+              Add a new project to organize your services.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={createProject}>
+            <div className="mb-4">
+              <label className="text-foreground mb-2 block text-sm font-medium">
+                Project Name
+              </label>
+              <input
+                type="text"
+                required
+                className="border-input focus:ring-enclii-blue bg-background w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                value={newProject.name}
+                onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+              />
             </div>
-          ) : (
-            <div className="border-border mt-4 rounded-lg border border-dashed py-16 text-center">
-              <p className="text-muted-foreground">
-                No projects match &quot;{search}&quot;
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-2"
-                onClick={() => setSearch('')}
-              >
-                Clear search
-              </Button>
+            <div className="mb-4">
+              <label className="text-foreground mb-2 block text-sm font-medium">
+                Slug
+              </label>
+              <input
+                type="text"
+                required
+                className="border-input focus:ring-enclii-blue bg-background w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                value={newProject.slug}
+                onChange={(e) => setNewProject({ ...newProject, slug: e.target.value })}
+              />
             </div>
-          )
-        ) : (
-          <div className="mt-4">
-            {viewMode === "list" ? (
-              <div
-                className="divide-y divide-border/40 rounded-lg border border-border/60 bg-card overflow-hidden transition-opacity duration-150"
-                role="list"
+            <div className="mb-4">
+              <label className="text-foreground mb-2 block text-sm font-medium">
+                Description
+              </label>
+              <textarea
+                className="border-input focus:ring-enclii-blue bg-background w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                rows={3}
+                value={newProject.description}
+                onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+              />
+            </div>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => setShowCreateForm(false)}
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-4 py-2 text-sm font-medium"
               >
-                {filteredProjects.map((project) => (
-                  <ProjectRowCompact
-                    key={project.id}
-                    project={project}
-                  />
-                ))}
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="bg-enclii-blue hover:bg-enclii-blue-dark rounded-md px-4 py-2 text-sm font-medium text-white"
+              >
+                Create
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Search & Filter & Views */}
+      <SubNavActionBar
+        search={search}
+        onSearchChange={setSearch}
+        sort={sort}
+        onSortChange={setSort}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onCreateProject={handleCreateProjectClick}
+      />
+
+      {/* 12-column grid mirrors home: left sidebar (sticky on lg+) +
+          main project content. Below lg the sidebar order moves AFTER
+          projects (lg:order-1 / order-2) so mobile users see their
+          projects first, ecosystem context second — same priority
+          ladder as home. */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+        {/* Left sidebar (sticky on lg+) */}
+        <aside
+          className="order-2 space-y-4 lg:sticky lg:top-20 lg:order-1 lg:col-span-3 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto lg:pr-1"
+          aria-label="Ecosystem snapshot"
+        >
+          <UsageOverview variant="compact" />
+          <SystemHealthSummary />
+          <SidebarAlerts />
+          <SidebarRecentPreviews projects={projects} />
+        </aside>
+
+        {/* Main content (projects list / grid + create flow). On lg+
+            this takes col-span-9 next to the sidebar; below lg it
+            flows above the sidebar. xl:grid-cols-3 fits the 9-col
+            width — lg:grid-cols-3 would be cramped. */}
+        <div className="order-1 lg:order-2 lg:col-span-9">
+          {filteredProjects.length === 0 ? (
+            projects.length === 0 ? (
+              <div className="border-border rounded-lg border border-dashed py-16 text-center">
+                <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
+                <h3 className="text-foreground text-lg font-medium">No projects found</h3>
+                <p className="text-muted-foreground mb-4 mt-1">
+                  Get started by creating your first project.
+                </p>
+                <Button onClick={handleCreateProjectClick}>
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Create Project
+                </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredProjects.map((project) => (
-                  <ProjectCardCompact key={project.id} project={project} />
-                ))}
+              <div className="border-border rounded-lg border border-dashed py-16 text-center">
+                <p className="text-muted-foreground">
+                  No projects match &quot;{search}&quot;
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setSearch('')}
+                >
+                  Clear search
+                </Button>
               </div>
-            )}
-          </div>
-        )}
+            )
+          ) : (
+            <>
+              {viewMode === "list" ? (
+                <div
+                  className="divide-border/40 border-border/60 bg-card divide-y overflow-hidden rounded-lg border transition-opacity duration-150"
+                  role="list"
+                >
+                  {filteredProjects.map((project) => (
+                    <ProjectRowCompact
+                      key={project.id}
+                      project={project}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 transition-opacity duration-150 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredProjects.map((project) => (
+                    <ProjectCardCompact key={project.id} project={project} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Pricing/Upgrade Modal */}
