@@ -32,7 +32,8 @@ spec:
   project: default
 
   source:
-    repoURL: https://spegel-org.github.io/spegel
+    # Spegel publishes to OCI as of v0.0.30.
+    repoURL: ghcr.io/spegel-org/helm-charts
     chart: spegel
     targetRevision: 0.0.30
     helm:
