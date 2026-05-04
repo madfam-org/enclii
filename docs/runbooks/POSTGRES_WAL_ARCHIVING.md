@@ -366,6 +366,66 @@ Steady-state R2 object count for a 10GiB DB with 1min WAL cadence:
 
 ---
 
+## 9. Lessons from the 2026-04-19 → 2026-05-04 silent-outage
+
+The pgBackRest pipeline was **broken for ~14 days without alerting**
+because every failure mode below silently chained — fix one, hit the
+next. Document here so future operators recognise the chain quickly.
+Each fix landed as a separate enclii PR (193, 195, 196, 197, 198, 199,
+200, 201, 202, 203, 204, 205, 206, 207, 208, 214 — see PR list).
+
+### 9.1 The chain
+
+| # | Symptom | Root cause | Fix |
+|---|---------|------------|-----|
+| 1 | "[041] unable to open file '/etc/pgbackrest/pgbackrest.conf'" | woblerr/pgbackrest:alpine bakes `/etc/pgbackrest/` mode 750 owned by image-local pgbackrest user; sidecar runs as uid 999 (a different user inside the container) and can't traverse the dir | Mount config at `/etc/pgbackrest.conf` (file in `/etc/`, not subdir). pgbackrest checks both paths by default. |
+| 2 | "[037] check command requires option: pg1-path" | pgbackrest 2.49+ rejects stanza-only options (`pg1-*`) under `[global]` | Move `pg1-path` / `pg1-port` / `pg1-user` / `pg1-socket-path` under `[main]` in the configmap |
+| 3 | "[027] no database found" (sidecar) | Postgres unix socket lives in postgres container's filesystem; sidecar can't see it | Add a shared `postgres-socket` emptyDir mounted at `/var/run/postgresql` in BOTH containers |
+| 4 | "FileMissingError: pg_control" | `pg1-path=/var/lib/postgresql/data/postgres` — phantom nested path; the subPath mount already presents postgres/ AT /var/lib/postgresql/data | Fix `pg1-path=/var/lib/postgresql/data` |
+| 5 | "[087] archive_mode must be enabled" | Postgres `args:[]` was emptied earlier to avoid an `include_dir` crash; this disabled archive_mode | Re-enable via individual `-c` flags: `wal_level=replica`, `archive_mode=on`, `archive_command=...`, etc. |
+| 6 | "no valid backups", stanza-create hangs forever | pgbackrest-r2-credentials secret never provisioned (manifest had `optional: true`) | Create secret with `R2_ACCOUNT_ID`, `PGBACKREST_REPO1_S3_KEY`, `PGBACKREST_REPO1_S3_KEY_SECRET`, `PGBACKREST_REPO1_S3_ENDPOINT`, `PGBACKREST_REPO1_CIPHER_PASS` |
+| 7 | TCP timeout on stanza-create + check (after secret applied) | postgres-egress NetworkPolicy was DNS-only (port 53/UDP); blocked HTTPS to R2 | Add port 443/TCP to postgres-egress (and 80/TCP for the apt path in the init container) |
+| 8 | "exit 127: cannot execute: required file not found" (archive_command) | woblerr image's pgbackrest binary is musl-linked; postgres container is glibc → can't run the binary | Init container uses `postgres:15-bookworm` + apt + ldd-bundles libs into a shared volume. Wrapper script sets `LD_LIBRARY_PATH` |
+| 9 | "libssh2.so.1: cannot open shared object file" | binary works but its dynamic deps aren't in the postgres container's `/usr/lib` | Same init container also copies every `ldd /usr/bin/pgbackrest` dep into `/opt/pgbackrest/lib/` |
+| 10 | "unable to verify certificate presented by R2" | Postgres minimal image has no `/etc/ssl/certs`; pgbackrest can't verify R2 TLS | Init container also copies `ca-certificates.crt`; wrapper sets `SSL_CERT_FILE` |
+| 11 | "'zstd' is not allowed for 'compress-type'" | pgbackrest 2.58 (postgres-side, glibc) only accepts `zst`; 2.55 (sidecar, musl) accepts both | Use `zst` (3-letter form) — both versions accept it |
+
+### 9.2 Why this didn't alert
+
+- `pgbackrest-check` CronJob fired every 15 min, exited non-zero, but
+  the `pgbackrest_check_healthy` Prometheus metric was never wired to
+  alertmanager via a `record:` rule that fires on `==0` for >1h. **TODO**:
+  add an alert on the textfile metric so future regressions surface
+  inside an hour.
+- WAL accumulation in spool was below the alerting threshold (2 GiB
+  queue max); lots of headroom masked the failure-by-volume.
+- The `postgres-restore-drill` CronJob targets the legacy `pg_dump`
+  path, not pgBackRest — even when it ran, it didn't exercise the
+  broken pipeline.
+
+### 9.3 What's protective going forward
+
+- **Monthly DR drill** (`postgres-pgbackrest-restore-drill` CronJob in
+  `infra/k8s/platform-infra/`) — runs a side-channel pgbackrest restore
+  to a 4 GiB Longhorn PVC, validates `pg_control`, emits
+  `pgbackrest_restore_drill_success` metric. Triggered by `kubectl
+  create job --from=cronjob/pgbackrest-restore-drill <suffix>`
+  on demand, otherwise 1st of each month at 06:00 UTC.
+- **Postgres init container** is now `postgres:15-bookworm` with apt-
+  installed pgbackrest + bundled libs + CA — keeps the binary glibc-
+  matched against the running postgres image even after upstream tag
+  bumps.
+- **Single-source config** — every option pgbackrest needs is either in
+  the configmap (under `[global]` or `[main]` per stanza-only rules),
+  or in `pgbackrest-r2-credentials` Secret as `PGBACKREST_<OPTION>` env
+  var. Don't try to `${VAR}`-substitute in the configmap (pgbackrest
+  doesn't do shell expansion).
+
+---
+
 _Amendments_
 
 - 2026-04-17 / ai (P1.1 build) / initial runbook.
+- 2026-05-04 / ai (post-mortem) / added §9 documenting the 11-step
+  failure chain caught in the silent-outage window plus the protective
+  changes (DR drill, init container glibc bundle, alerting gap noted).
