@@ -163,10 +163,21 @@ spec:
   policyTypes:
     - Egress
   egress:
+    # DNS — required for any outbound name lookup
     - to: []
       ports:
         - protocol: UDP
           port: 53
+    # HTTPS to Cloudflare R2 — pgBackRest sidecar streams WAL + base
+    # backups to *.r2.cloudflarestorage.com. Without this, the
+    # archive_command silently fails every WAL flush (pg_wal builds
+    # up, eventually hits archive-push-queue-max=2GiB and blocks
+    # postgres). pgbackrest stanza-create / check / backup also hang
+    # waiting for the R2 endpoint TCP handshake.
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
 
 # Allow redis egress (DNS only)
 ---
