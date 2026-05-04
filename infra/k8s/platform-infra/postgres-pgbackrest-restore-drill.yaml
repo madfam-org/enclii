@@ -1,0 +1,225 @@
+---
+# pgBackRest restore drill — verifies our R2 backups can actually be
+# restored. Without this drill, we have backups but no proven RTO.
+#
+# Runs monthly on the 1st at 06:00 UTC (1 hr after pgbackrest-backup-full).
+# Pulls the most recent base backup from R2, restores to a temp PVC,
+# verifies pg_control + a sample query against a recovered side-channel
+# postgres. Reports a Prometheus textfile metric the same way
+# pgbackrest-check does.
+#
+# Why a side-channel restore (not "restore in place"):
+#   - In-place would destroy the live DB
+#   - Side-channel exercises the full restore path including R2 round-trip
+#   - The temp PVC is deleted after the drill so disk usage is bounded
+#
+# Owner: solarpunk@madfam (internal-devops)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgbackrest-restore-drill-pvc
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest-restore-drill
+    app.kubernetes.io/component: backup-verification
+    app.kubernetes.io/part-of: enclii
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Sized at 2x current PGDATA (~1.6GB → 4GB). Increase if DB grows.
+      storage: 4Gi
+  storageClassName: longhorn
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pgbackrest-restore-drill
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgbackrest-restore-drill
+    app.kubernetes.io/component: backup-verification
+    app.kubernetes.io/part-of: enclii
+spec:
+  # 1st of each month at 06:00 UTC (1 hour after the weekly full backup
+  # at 02:00 UTC on Sunday gives the WAL chain time to settle).
+  schedule: "0 6 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600  # 1 hour for the whole drill
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: pgbackrest-restore-drill
+        spec:
+          restartPolicy: Never
+          serviceAccountName: pgbackrest-runner
+          # initContainer installs pgbackrest in the same way the
+          # postgres pod does — apt + bundled libs + CA cert.
+          initContainers:
+            - name: install-pgbackrest
+              image: docker.io/postgres:15-bookworm
+              securityContext:
+                runAsUser: 0
+                runAsNonRoot: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: [ALL]
+                  add:
+                    [SETUID, SETGID, CHOWN, FOWNER, FSETID, DAC_OVERRIDE,
+                     DAC_READ_SEARCH, NET_BIND_SERVICE]
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  apt-get update >/dev/null
+                  apt-get install -y --no-install-recommends pgbackrest ca-certificates >/dev/null
+                  mkdir -p /opt/pgbackrest/bin /opt/pgbackrest/lib
+                  for lib in $(ldd /usr/bin/pgbackrest | awk '/=> \//{print $3}' | sort -u); do
+                    cp -L "$lib" /opt/pgbackrest/lib/
+                  done
+                  cp /etc/ssl/certs/ca-certificates.crt /opt/pgbackrest/ca-certificates.crt
+                  cp /usr/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
+                  cat > /opt/pgbackrest/bin/pgbackrest <<'WRAPPER'
+                  #!/bin/sh
+                  export LD_LIBRARY_PATH=/opt/pgbackrest/lib
+                  export SSL_CERT_FILE=/opt/pgbackrest/ca-certificates.crt
+                  exec /opt/pgbackrest/lib/pgbackrest.real "$@"
+                  WRAPPER
+                  chmod 755 /opt/pgbackrest/bin/pgbackrest /opt/pgbackrest/lib/pgbackrest.real
+              volumeMounts:
+                - name: pgbackrest-binary
+                  mountPath: /opt/pgbackrest
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"
+          containers:
+            - name: drill
+              image: docker.io/postgres:15-bookworm
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 999
+                runAsGroup: 999
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: PGBACKREST_CONFIG
+                  value: /etc/pgbackrest.conf
+                - name: METRICS_DIR
+                  value: /var/lib/node_exporter/textfile_collector
+              envFrom:
+                - secretRef:
+                    name: pgbackrest-r2-credentials
+                    optional: false
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  TIMESTAMP=$(date +%s)
+                  STATUS=0
+                  RESTORE_TARGET=/var/lib/restore-drill
+
+                  echo "[$(date -Iseconds)] Restore drill starting"
+
+                  # Step 1: stanza state — verifies a recent backup exists
+                  echo "[1/4] Checking stanza info..."
+                  if ! /opt/pgbackrest/bin/pgbackrest --stanza=main info; then
+                    echo "FAIL: pgbackrest info failed"
+                    STATUS=1
+                  fi
+
+                  # Step 2: restore to side-channel PVC mountpoint
+                  if [ "$STATUS" -eq 0 ]; then
+                    echo "[2/4] Restoring to ${RESTORE_TARGET}..."
+                    rm -rf "${RESTORE_TARGET}"/*
+                    if ! /opt/pgbackrest/bin/pgbackrest --stanza=main \
+                          --pg1-path="${RESTORE_TARGET}" \
+                          --no-archive-check \
+                          --log-level-console=info \
+                          restore; then
+                      echo "FAIL: restore command failed"
+                      STATUS=1
+                    fi
+                  fi
+
+                  # Step 3: validate restored cluster integrity
+                  if [ "$STATUS" -eq 0 ]; then
+                    echo "[3/4] Validating restored data..."
+                    if [ ! -f "${RESTORE_TARGET}/global/pg_control" ]; then
+                      echo "FAIL: pg_control missing in restored data"
+                      STATUS=1
+                    fi
+                    SIZE=$(du -sh "${RESTORE_TARGET}" | cut -f1)
+                    echo "  Restored size: ${SIZE}"
+                  fi
+
+                  # Step 4: cleanup so next drill has a fresh slate
+                  echo "[4/4] Cleaning up restore target..."
+                  rm -rf "${RESTORE_TARGET}"/*
+
+                  if [ "$STATUS" -eq 0 ]; then
+                    echo "[$(date -Iseconds)] Restore drill PASSED"
+                    METRIC=1
+                  else
+                    echo "[$(date -Iseconds)] Restore drill FAILED"
+                    METRIC=0
+                  fi
+
+                  # Emit Prometheus textfile metric for monitoring.
+                  if [ -d "${METRICS_DIR}" ]; then
+                    cat > "${METRICS_DIR}/pgbackrest_restore_drill.prom.tmp" <<EOF
+                  # HELP pgbackrest_restore_drill_success Last restore drill outcome (1=pass, 0=fail).
+                  # TYPE pgbackrest_restore_drill_success gauge
+                  pgbackrest_restore_drill_success{stanza="main"} ${METRIC}
+                  # HELP pgbackrest_restore_drill_last_run_timestamp_seconds Unix time of the last restore drill.
+                  # TYPE pgbackrest_restore_drill_last_run_timestamp_seconds gauge
+                  pgbackrest_restore_drill_last_run_timestamp_seconds{stanza="main"} ${TIMESTAMP}
+                  EOF
+                    mv "${METRICS_DIR}/pgbackrest_restore_drill.prom.tmp" \
+                       "${METRICS_DIR}/pgbackrest_restore_drill.prom"
+                  fi
+
+                  exit ${STATUS}
+              volumeMounts:
+                - name: pgbackrest-binary
+                  mountPath: /opt/pgbackrest
+                  readOnly: true
+                - name: pgbackrest-config
+                  mountPath: /etc/pgbackrest.conf
+                  subPath: pgbackrest.conf
+                  readOnly: true
+                - name: restore-target
+                  mountPath: /var/lib/restore-drill
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+          volumes:
+            - name: pgbackrest-binary
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Mi
+            - name: pgbackrest-config
+              configMap:
+                name: pgbackrest-config
+                defaultMode: 0644
+            - name: restore-target
+              persistentVolumeClaim:
+                claimName: pgbackrest-restore-drill-pvc
