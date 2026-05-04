@@ -100,10 +100,14 @@ data:
     pg1-path=/var/lib/postgresql/data/postgres
     pg1-port=5432
     pg1-user=postgres
-    # Talk to postgres over TCP loopback. The sidecar shares the pod's
-    # network namespace so 127.0.0.1 reaches the postgres container's
-    # listening port. Previously this used pg1-socket-path=/var/run/postgresql,
-    # but the unix socket lives in the postgres container's filesystem,
-    # not shared with the sidecar — every check failed with "[027] no
-    # database found".
-    pg1-host=127.0.0.1
+    # Postgres' unix socket is shared between containers via a named
+    # emptyDir volume mounted at /var/run/postgresql in BOTH the
+    # postgres and pgbackrest containers (postgres-socket volume
+    # in postgres.yaml). Without that shared mount, the sidecar saw
+    # "/var/run/postgresql/.s.PGSQL.5432" missing and failed every
+    # check with "[027] no database found".
+    #
+    # Don't use pg1-host=127.0.0.1 — that flips pgbackrest into SSH
+    # remote-host mode, which expects pgbackrest to be runnable as a
+    # remote process via SSH (which is NOT how a sidecar works).
+    pg1-socket-path=/var/run/postgresql

@@ -212,6 +212,13 @@ spec:
               mountPath: /etc/postgresql/conf.d/wal-archive.conf
               subPath: wal-archive.conf
               readOnly: true
+            # Shared with the pgbackrest sidecar so it can reach the
+            # /var/run/postgresql/.s.PGSQL.5432 unix socket. Postgres
+            # creates the socket here when it starts; without the
+            # shared mount the sidecar's pgbackrest check exits
+            # "[027] no database found".
+            - name: postgres-socket
+              mountPath: /var/run/postgresql
           resources:
             requests:
               memory: "256Mi"
@@ -326,6 +333,10 @@ spec:
               mountPath: /var/log/pgbackrest
             - name: pgbackrest-tmp
               mountPath: /tmp
+            # Shared with postgres container — sidecar reads the
+            # libpq unix socket created by postgres at /.s.PGSQL.5432.
+            - name: postgres-socket
+              mountPath: /var/run/postgresql
           resources:
             requests:
               memory: "128Mi"
@@ -394,6 +405,13 @@ spec:
         - name: pgbackrest-tmp
           emptyDir:
             sizeLimit: 64Mi
+        # Shared between postgres + pgbackrest sidecar so the latter
+        # can reach the libpq unix socket. Memory medium keeps the
+        # socket inode in tmpfs (no PVC round-trip).
+        - name: postgres-socket
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
 ---
 apiVersion: v1
 kind: Service
