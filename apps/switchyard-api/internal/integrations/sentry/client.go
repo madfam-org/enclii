@@ -16,8 +16,13 @@
 //	                     https://innovaciones-madfam-sas-de-cv.sentry.io).
 //
 // IsConfigured() returns true only when both AUTH_TOKEN and ORG_SLUG are set.
-// The handler uses this to short-circuit with a structured 503
-// "sentry-unconfigured" response so the UI can hide the badge gracefully.
+// The handler uses this to short-circuit with a structured 200 OK
+// {configured:false, reason:"sentry_unconfigured"} response so the UI can hide
+// the badge gracefully without a console error per service per page load.
+//
+// 503 is reserved for "Sentry IS configured but its API is currently down"
+// — a real outage signal the operator should react to. The unconfigured /
+// no_sentry_project / forbidden cases are NOT errors and must NEVER 5xx.
 package sentry
 
 import (
@@ -51,7 +56,10 @@ const (
 var (
 	// ErrUnconfigured indicates the env vars required to talk to Sentry
 	// (SENTRY_AUTH_TOKEN + SENTRY_ORG_SLUG) are missing. The handler
-	// surfaces this as 503 with reason="sentry_unconfigured".
+	// surfaces this as 200 OK with reason="sentry_unconfigured" so a
+	// dashboard polling N services doesn't generate N console errors per
+	// page load — the unconfigured state is the default for ~94% of
+	// services (audit 2026-04-29: 4 of 70 deployments have Sentry).
 	ErrUnconfigured = errors.New("sentry: not configured (SENTRY_AUTH_TOKEN or SENTRY_ORG_SLUG missing)")
 
 	// ErrUnauthorized indicates Sentry rejected the auth token (401).
@@ -127,8 +135,9 @@ func NewClientWithConfig(baseURL, orgSlug, authToken string, httpClient *http.Cl
 }
 
 // IsConfigured reports whether the client has both an auth token and an org
-// slug. The handler uses this to return a structured 503 before issuing any
-// upstream call, so the UI can hide the badge gracefully.
+// slug. The handler uses this to return a structured 200 OK with
+// configured=false before issuing any upstream call, so the UI can hide the
+// badge gracefully without polluting the console.
 func (c *Client) IsConfigured() bool {
 	return c != nil && c.authToken != "" && c.orgSlug != ""
 }

@@ -31,6 +31,13 @@ import (
 //   - "no_sentry_project"     — project slug not found in org (soft 404)
 //   - "forbidden"             — caller authenticated but not admin
 //   - "upstream_unavailable"  — Sentry rate-limited, unauthorised, network err
+//   - "service_lookup_failed" — DB error resolving the service row
+//
+// Truthfulness contract (audit 2026-05-04): every code path here returns
+// HTTP 200 (or 400 on malformed query) — NEVER 5xx. 5xx on per-service
+// polling generates N console errors per page load and drowns out real
+// signal. 503 is explicitly reserved for "Sentry's API is down" — a real
+// outage we'd surface via /v1/observability/health, not this endpoint.
 //
 // Mirror fields (Enabled/Errors/Stats) are an alias surface for newer
 // clients that prefer "enabled" semantics over the legacy "configured"
@@ -215,19 +222,32 @@ func (h *Handler) GetSentryServiceStats(c *gin.Context) {
 	// Resolve Sentry project slug. We pull (name, sentry_project_slug)
 	// directly so we don't need to extend ServiceRepository's existing
 	// scan plumbing for one optional column.
+	//
+	// Truthfulness: we used to return 404 / 500 here on missing-row /
+	// DB errors. The dashboard polls per service per 60s — a single
+	// stale UUID or a transient DB hiccup would pollute the console
+	// with N error log lines per page. Same graceful-degradation policy
+	// as the rest of this handler: 200 OK with an explanatory reason so
+	// the UI hides the badge silently while operators see the real cause
+	// in server logs.
 	projectSlug, serviceName, err := h.resolveSentryProjectSlug(ctx, serviceUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "service not found",
-			})
+			// Stale serviceId from the dashboard (deleted service, or a
+			// new UUID not yet cached). Return the same disabled payload
+			// shape as unconfigured — UI renders nothing for this card.
+			c.JSON(http.StatusOK, disabledSentryResponse(
+				serviceUUID.String(), statsPeriod, "service_lookup_failed",
+			))
 			return
 		}
+		// DB unavailable / scan error / etc. Log loudly — operators need
+		// to see this — but don't bubble 5xx to the dashboard polling loop.
 		h.logger.Error(ctx, "sentry: resolve project slug failed",
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "failed to resolve service",
-		})
+		c.JSON(http.StatusOK, disabledSentryResponse(
+			serviceUUID.String(), statsPeriod, "service_lookup_failed",
+		))
 		return
 	}
 
