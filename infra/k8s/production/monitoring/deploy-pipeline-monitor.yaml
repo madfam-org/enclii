@@ -1,0 +1,289 @@
+---
+# Deploy-pipeline freshness monitor
+# ----------------------------------------------------------------------------
+# Closes the silent-failure gap exemplified by 2026-05-04: selva-office CI
+# failed on main at 02:29 → no image rebuilt → ArgoCD had nothing new → pods
+# stayed 8h-old. Undetected for 3h.
+#
+# This CronJob runs every 5 min, queries the GitHub API for each repo in the
+# `deploy-pipeline-monitor-repos` ConfigMap, computes freshness + failure
+# metrics, and pushes them to the existing `pushgateway.monitoring` service.
+# Prometheus scrapes pushgateway, the rules below fire alerts.
+#
+# Sibling probes:
+#   - infra/cloudflared-probe/  → in-cluster reachability (network layer)
+#   - infra/synthetic-flow-probe/ → user-flow E2E (in flight)
+#   - this                       → CI/build pipeline freshness (deploy layer)
+# Together: full-stack observability of the deploy + serve path.
+#
+# Image is built and pinned by .github/workflows/deploy-pipeline-monitor.yml.
+# CI surfaces the digest in the run summary; an operator commits the
+# `image: ghcr.io/.../deploy-pipeline-monitor@sha256:<digest>` line below.
+# ----------------------------------------------------------------------------
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deploy-pipeline-monitor-repos
+  namespace: monitoring
+  labels:
+    app: deploy-pipeline-monitor
+    app.kubernetes.io/name: deploy-pipeline-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+data:
+  # 14 critical-path repos. Adding a repo: append below; per-repo `branch`
+  # defaults to `main` (override only if the repo's deploy branch differs).
+  repos.json: |
+    {
+      "repos": [
+        {"repo": "madfam-org/karafiel"},
+        {"repo": "madfam-org/tezca"},
+        {"repo": "madfam-org/dhanam"},
+        {"repo": "madfam-org/forgesight"},
+        {"repo": "madfam-org/janua"},
+        {"repo": "madfam-org/selva-office"},
+        {"repo": "madfam-org/enclii"},
+        {"repo": "madfam-org/phyne-crm"},
+        {"repo": "madfam-org/fortuna"},
+        {"repo": "madfam-org/rondelio"},
+        {"repo": "madfam-org/madfam-site"},
+        {"repo": "madfam-org/cotiza"},
+        {"repo": "madfam-org/pravara-mes"},
+        {"repo": "madfam-org/sim4d"}
+      ]
+    }
+
+---
+# GitHub PAT lives in Vault under `secret/monitoring/deploy-pipeline-monitor`.
+# Operator creates it with a fine-scoped PAT (or PAT-app installation token)
+# carrying ONLY `repo: read` on the org. Rotation: standard 90d via the
+# secret-rotation runbook.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: deploy-pipeline-monitor-creds
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: deploy-pipeline-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/managed-by: enclii
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: vault-store
+    kind: ClusterSecretStore
+  target:
+    name: deploy-pipeline-monitor-creds
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: GITHUB_TOKEN
+      remoteRef:
+        key: secret/monitoring/deploy-pipeline-monitor
+        property: github_token
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: deploy-pipeline-monitor
+  namespace: monitoring
+  labels:
+    app: deploy-pipeline-monitor
+    app.kubernetes.io/name: deploy-pipeline-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  # Every 5 minutes — matches the alert "for: 0m, expr > 1800" cadence.
+  # 14 repos × 2 GitHub API calls = 28 req/run = 336 req/hour. Authenticated
+  # GitHub limit is 5000 req/hour, so we sit at ~7% utilization with plenty
+  # of headroom for retries.
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 240
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app: deploy-pipeline-monitor
+            app.kubernetes.io/name: deploy-pipeline-monitor
+            app.kubernetes.io/component: monitoring
+            app.kubernetes.io/part-of: enclii
+        spec:
+          restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: ghcr-credentials
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: monitor
+              # CI rewrites this to a digest-pinned image — see
+              # .github/workflows/deploy-pipeline-monitor.yml run summary.
+              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor:placeholder
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: REPOS_PATH
+                  value: /etc/deploy-pipeline-monitor/repos.json
+                - name: PUSHGATEWAY_URL
+                  value: http://pushgateway.monitoring.svc.cluster.local:9091
+                - name: PUSH_JOB
+                  value: deploy_pipeline_monitor
+                - name: REQUEST_TIMEOUT_SECONDS
+                  value: "10"
+                - name: LOG_LEVEL
+                  value: INFO
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: deploy-pipeline-monitor-creds
+                      key: GITHUB_TOKEN
+              resources:
+                requests:
+                  cpu: "20m"
+                  memory: "48Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "128Mi"
+              volumeMounts:
+                - name: repos
+                  mountPath: /etc/deploy-pipeline-monitor
+                  readOnly: true
+          volumes:
+            - name: repos
+              configMap:
+                name: deploy-pipeline-monitor-repos
+
+---
+# Alerting rules
+# ----------------------------------------------------------------------------
+# Routed to alertmanager via the existing severity routes. Category
+# `deploy-pipeline` is new — it groups all CI/build/deploy freshness alerts
+# so the on-call rotation can mute them independently of platform-layer
+# incidents during planned maintenance.
+#
+# 30-min thresholds reflect the original gap: had this monitor been live on
+# 2026-05-04 02:29 UTC, the first alert would have fired at 02:59 — instead
+# of 05:30 when a human noticed.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: deploy-pipeline-monitor-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: deploy-pipeline-monitor-rules
+    app.kubernetes.io/part-of: enclii
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: deploy-pipeline-monitor
+      interval: 1m
+      rules:
+        - alert: MainCIFailingForTooLong
+          # The headline alert. Fires when the latest CI run on a tracked
+          # branch is failed AND the failing commit was pushed >30 min ago.
+          # Implies: no new image, no rebuild, ArgoCD has nothing new.
+          expr: repo_main_blocked_seconds > 1800
+          for: 0m
+          labels:
+            severity: critical
+            category: deploy-pipeline
+          annotations:
+            summary: "{{ $labels.repo }} main CI has been failing for >30 min"
+            description: |
+              Latest CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
+              is failed. The failing commit was pushed {{ $value | humanizeDuration }}
+              ago — no image has been rebuilt → no deploys are reaching ArgoCD
+              → live pods are drifting from `main`.
+              Open the Actions tab on the repo, identify the failing run,
+              fix or rerun it.
+              Runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+        - alert: MainCommitsAccumulatingNotDeployed
+          # Catch the case where main HEAD is older than X minutes without
+          # an even newer CI completion — i.e. commits are landing but the
+          # build pipeline isn't keeping up. The argocd_app_info_revision_*
+          # series isn't reliably scraped today, so the simpler heuristic is:
+          # ci_age - commit_age > 30 min  (CI is lagging behind main).
+          expr: |
+            (repo_main_latest_commit_age_seconds
+             - repo_main_latest_ci_age_seconds) > 1800
+          for: 5m
+          labels:
+            severity: warning
+            category: deploy-pipeline
+          annotations:
+            summary: "{{ $labels.repo }} main has unbuilt commits (>30 min)"
+            description: |
+              `{{ $labels.repo }}` main HEAD is {{ $value | humanizeDuration }}
+              newer than the most recent completed CI run. Either CI is
+              stalled, the workflow filter isn't matching, or the runner
+              fleet is starved. ArgoCD will reconcile the *previous* image
+              until this clears.
+
+        - alert: MainCIConsecutiveFailures
+          # Three failures in a row on main is almost always a real bug, not
+          # a flake — flag for the originating team even before the 30 min
+          # blocked-seconds threshold trips.
+          expr: repo_main_ci_failure_streak_count >= 3
+          for: 15m
+          labels:
+            severity: warning
+            category: deploy-pipeline
+          annotations:
+            summary: "{{ $labels.repo }} main CI: 3+ consecutive failures"
+            description: |
+              `{{ $labels.repo }}` has {{ $value }} consecutive non-success
+              CI runs on `{{ $labels.branch }}`. Likely a real defect rather
+              than a flake.
+
+        - alert: DeployPipelineMonitorNotRunning
+          # If the CronJob hasn't pushed in 15 min, we have no signal. Fail loud.
+          expr: |
+            time() - deploy_pipeline_monitor_last_run_timestamp_seconds > 900
+            or absent(deploy_pipeline_monitor_last_run_timestamp_seconds)
+          for: 5m
+          labels:
+            severity: warning
+            category: deploy-pipeline
+          annotations:
+            summary: "deploy-pipeline-monitor has not pushed metrics in >15 min"
+            description: |
+              The CronJob is supposed to push every 5 min. Either it is not
+              scheduling (check `kubectl -n monitoring get cronjob`), the
+              GitHub token expired, or pushgateway is unreachable.
+
+        - alert: DeployPipelineMonitorRepoProbeFailing
+          # Per-repo probe failures (auth scope wrong, repo renamed, etc.)
+          # don't break the others, but we still want to know.
+          expr: repo_main_probe_ok == 0
+          for: 30m
+          labels:
+            severity: warning
+            category: deploy-pipeline
+          annotations:
+            summary: "deploy-pipeline-monitor cannot probe {{ $labels.repo }}"
+            description: |
+              The monitor has been unable to fetch state from
+              `{{ $labels.repo }}` for 30+ minutes. Likely causes: PAT scope
+              missing the repo, repo renamed, or branch deleted. The monitor
+              keeps running for the other repos.

@@ -1,0 +1,12 @@
+{
+  "targets": [
+    {
+      "name": "example",
+      "url": "http://example.com",
+      "expected_status": 200,
+      "namespace": "demo",
+      "service": "example",
+      "port": 80
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+name: Build — cloudflared-probe
+
+# Standalone build pipeline for the synthetic intra-cluster cloudflared probe.
+#
+# Why standalone (not via the matrix in ci.yml or build-publish.yml):
+#   - The probe is deployed via the `ingress` ArgoCD Application, which loads
+#     `cloudflared*.yaml` raw from infra/k8s/production/ — there is no
+#     kustomization.yaml entry to digest-pin via `kustomize edit set image`.
+#   - Image bumps follow the same operator-driven flow as the upstream
+#     cloudflared image: build, sign, publish, then a human commits the
+#     `image: ghcr.io/.../cloudflared-probe@sha256:<digest>` line in
+#     infra/k8s/production/cloudflared-probe.yaml.
+#   - Keeps the probe out of the broader CI matrix, so a probe rebuild never
+#     blocks a switchyard / janua / dispatch deploy and vice versa.
+#
+# Triggers:
+#   - PR/push touching infra/cloudflared-probe/** → build + smoke (no push)
+#   - main push touching infra/cloudflared-probe/** → build, sign, push :SHA
+#   - workflow_dispatch → build, sign, push :SHA
+#
+# Outputs the resolved digest in the run summary so the operator can copy
+# it into the manifest.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/cloudflared-probe/**'
+      - '.github/workflows/cloudflared-probe.yml'
+  pull_request:
+    paths:
+      - 'infra/cloudflared-probe/**'
+      - '.github/workflows/cloudflared-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # cosign keyless
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: infra/cloudflared-probe
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Run pytest
+        working-directory: infra/cloudflared-probe
+        run: pytest tests/ -v
+
+  build:
+    name: Build & publish image
+    needs: test
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Only push on main / manual dispatch. PR builds run for verification but
+    # don't publish.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+        with:
+          cosign-release: v2.4.3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: infra/cloudflared-probe
+          file: infra/cloudflared-probe/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          # No :latest — Kyverno disallow-latest-tag rejects.
+          tags: |
+            ghcr.io/madfam-org/enclii/cloudflared-probe:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=cloudflared-probe
+          cache-to: type=gha,mode=max,scope=cloudflared-probe
+
+      - name: Sign image (keyless, Fulcio/Rekor)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes "ghcr.io/madfam-org/enclii/cloudflared-probe@${{ steps.build.outputs.digest }}"
+
+      - name: Surface digest in run summary
+        run: |
+          {
+            echo "## cloudflared-probe build"
+            echo ""
+            echo "**Image:** \`ghcr.io/madfam-org/enclii/cloudflared-probe@${{ steps.build.outputs.digest }}\`"
+            echo ""
+            echo "**Pin into** \`infra/k8s/production/cloudflared-probe.yaml\`:"
+            echo ""
+            echo '```yaml'
+            echo "image: ghcr.io/madfam-org/enclii/cloudflared-probe@${{ steps.build.outputs.digest }}"
+            echo '```'
+            echo ""
+            echo "Then push the manifest update — ArgoCD (\`ingress\` Application) reconciles within 3m."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-pr:
+    # PR-only build — verifies the image builds cleanly without publishing.
+    # Avoids leaving orphaned :SHA tags in GHCR for every PR commit.
+    name: Build (PR verify)
+    needs: test
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: infra/cloudflared-probe
+          file: infra/cloudflared-probe/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: false
+          cache-from: type=gha,scope=cloudflared-probe
+          cache-to: type=gha,mode=max,scope=cloudflared-probe

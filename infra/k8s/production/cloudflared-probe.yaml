@@ -1,0 +1,276 @@
+---
+# Cloudflared synthetic intra-cluster probe
+# ----------------------------------------------------------------------------
+# Lives in the `cloudflare-tunnel` namespace alongside cloudflared. Mirrors
+# cloudflared's `app.kubernetes.io/component: ingress` label so any
+# NetworkPolicy or CNI rule that gates cloudflared egress also gates this
+# probe — a blocked probe is therefore positive evidence that cloudflared
+# itself cannot reach the targeted backend.
+#
+# Why this complements (does NOT replace) status.enclii.dev:
+#   - status.enclii.dev probes the public Cloudflare edge → tells us whether
+#     the *external* path works.
+#   - This probe runs inside the cluster, in cloudflared's own namespace →
+#     tells us whether the *internal* path from cloudflared to the backend
+#     Service is open. When the public probe sees 502 but this probe sees 1,
+#     fault is upstream (origin app, tunnel routes). When this probe sees 0,
+#     fault is in-cluster (NetworkPolicy, CNI, missing Service, etc.).
+#
+# Image is built and pinned by the standard CI flow (.github/workflows/
+# build-publish-probe.yml). The `newTag` placeholder below is rewritten by
+# `kustomize edit set image` after the digest is published.
+# ----------------------------------------------------------------------------
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-probe-targets
+  namespace: cloudflare-tunnel
+  labels:
+    app: cloudflared-probe
+    app.kubernetes.io/name: cloudflared-probe
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: enclii
+data:
+  # NOTE: URLs use `.svc.cluster.local` cluster-internal DNS, not public
+  # hostnames. We are deliberately exercising the cloudflared-equivalent
+  # path: cloudflared resolves the same in-cluster Service DNS when it
+  # forwards public-edge traffic to origin pods.
+  #
+  # To add a target: append an object below, set port + URL to a real
+  # liveness/health endpoint. The probe only counts a target as reachable
+  # when status_code == expected_status (default 200).
+  targets.json: |
+    {
+      "targets": [
+        {
+          "name": "switchyard-api",
+          "url": "http://switchyard-api.enclii.svc.cluster.local:4200/health",
+          "expected_status": 200,
+          "namespace": "enclii",
+          "service": "switchyard-api",
+          "port": 4200
+        },
+        {
+          "name": "janua-auth",
+          "url": "http://janua-api.janua.svc.cluster.local:8080/health",
+          "expected_status": 200,
+          "namespace": "janua",
+          "service": "janua-api",
+          "port": 8080
+        },
+        {
+          "name": "karafiel-api",
+          "url": "http://karafiel-api.karafiel.svc.cluster.local:8000/api/v1/monitoring/health/live",
+          "expected_status": 200,
+          "namespace": "karafiel",
+          "service": "karafiel-api",
+          "port": 8000
+        },
+        {
+          "name": "tezca-api",
+          "url": "http://tezca-api.tezca.svc.cluster.local:8000/health",
+          "expected_status": 200,
+          "namespace": "tezca",
+          "service": "tezca-api",
+          "port": 8000
+        },
+        {
+          "name": "dhanam-api",
+          "url": "http://dhanam-api.dhanam.svc.cluster.local:3000/health",
+          "expected_status": 200,
+          "namespace": "dhanam",
+          "service": "dhanam-api",
+          "port": 3000
+        }
+      ]
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared-probe
+  namespace: cloudflare-tunnel
+  labels:
+    app: cloudflared-probe
+    app.kubernetes.io/name: cloudflared-probe
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: enclii
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: cloudflared-probe
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        # `app: cloudflared-probe` keeps the probe distinguishable from
+        # cloudflared in metrics, logs, kubectl, and the cloudflared
+        # PodDisruptionBudget. We deliberately re-use cloudflared's
+        # `app.kubernetes.io/component: ingress` label so NetworkPolicy
+        # rules written against the ingress component continue to apply.
+        app: cloudflared-probe
+        app.kubernetes.io/name: cloudflared-probe
+        app.kubernetes.io/component: ingress
+        app.kubernetes.io/part-of: enclii
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        # Restart probe on ConfigMap changes so target list reloads without
+        # a manual rollout.
+        reloader.stakater.com/match: "true"
+    spec:
+      containers:
+        - name: probe
+          # CI rewrites this to a digest-pinned image. The `newTag` is also
+          # acceptable but Kyverno disallows :latest, so the placeholder is
+          # the commit SHA rather than the tag string.
+          image: ghcr.io/madfam-org/enclii/cloudflared-probe:placeholder
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PROBE_INTERVAL_SECONDS
+              value: "60"
+            - name: PROBE_TIMEOUT_SECONDS
+              value: "5"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: TARGETS_PATH
+              value: /etc/cloudflared-probe/targets.json
+            - name: LOG_LEVEL
+              value: INFO
+          ports:
+            - containerPort: 9090
+              name: metrics
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            failureThreshold: 10
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: targets
+              mountPath: /etc/cloudflared-probe
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: targets
+          configMap:
+            name: cloudflared-probe-targets
+
+---
+# Service so Prometheus can scrape /metrics by Service-discovery as well as
+# pod annotation. Most rules query `cloudflared_probe_*` directly via the
+# pod scrape; the Service is here for parity with cloudflared-metrics.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudflared-probe-metrics
+  namespace: cloudflare-tunnel
+  labels:
+    app: cloudflared-probe
+    app.kubernetes.io/name: cloudflared-probe
+    app.kubernetes.io/component: ingress
+spec:
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: metrics
+  selector:
+    app: cloudflared-probe
+
+---
+# Alerting rules
+# ----------------------------------------------------------------------------
+# Routed to alertmanager via the existing `severity: critical` route in
+# infra/k8s/production/monitoring/alertmanager.yaml. The
+# `category: platform` label keeps these alongside the other platform
+# infrastructure alerts.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudflared-probe-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: cloudflared-probe-rules
+    app.kubernetes.io/part-of: enclii
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: cloudflared-probe
+      interval: 30s
+      rules:
+        - alert: CloudflaredProbeBackendUnreachable
+          expr: |
+            cloudflared_probe_reachable_total == 0
+          for: 2m
+          labels:
+            severity: critical
+            category: platform
+          annotations:
+            summary: "cloudflared cannot reach {{ $labels.namespace }}/{{ $labels.service }}:{{ $labels.port }}"
+            description: |
+              In-cluster synthetic probe in the cloudflare-tunnel namespace
+              failed to reach {{ $labels.namespace }}/{{ $labels.service }}:{{ $labels.port }}
+              for >2m. Because the probe pod mirrors cloudflared's labels,
+              cloudflared itself cannot reach this Service either. Likely
+              cause: NetworkPolicy denies cloudflare-tunnel egress to that
+              namespace, the Service has no endpoints, or the underlying
+              pod is failing health checks.
+              Runbook: docs/runbooks/cloudflared-probe.md
+
+        - alert: CloudflaredProbeNotRunning
+          # If no probe iterations completed in 5 minutes, the probe pod is
+          # crashlooping or scrapes are broken — either way we have no signal.
+          expr: |
+            absent(cloudflared_probe_runs_total) or rate(cloudflared_probe_runs_total[5m]) == 0
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+          annotations:
+            summary: "cloudflared-probe is not emitting metrics"
+            description: |
+              No probe iterations recorded in the last 5 minutes. The probe
+              itself may be crashlooping or unscheduled. Without it we lose
+              visibility into in-cluster cloudflared reachability.
