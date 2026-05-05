@@ -1,0 +1,18 @@
+{
+  "repos": [
+    {"repo": "madfam-org/karafiel"},
+    {"repo": "madfam-org/tezca"},
+    {"repo": "madfam-org/dhanam"},
+    {"repo": "madfam-org/forgesight"},
+    {"repo": "madfam-org/janua"},
+    {"repo": "madfam-org/selva-office"},
+    {"repo": "madfam-org/enclii"},
+    {"repo": "madfam-org/phyne-crm"},
+    {"repo": "madfam-org/fortuna"},
+    {"repo": "madfam-org/rondelio"},
+    {"repo": "madfam-org/madfam-site"},
+    {"repo": "madfam-org/cotiza"},
+    {"repo": "madfam-org/pravara-mes"},
+    {"repo": "madfam-org/sim4d"}
+  ]
+}

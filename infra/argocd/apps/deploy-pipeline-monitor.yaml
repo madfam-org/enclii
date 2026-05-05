@@ -1,0 +1,68 @@
+# Deploy-pipeline freshness monitor — ArgoCD wrapper.
+#
+# Why a dedicated Application (not folded into the `monitoring` app):
+#   The `monitoring/` kustomization deliberately excludes PrometheusRule
+#   resources because the Prometheus Operator CRDs are served by a different
+#   path (rule files are loaded directly into Prometheus via volume-mounted
+#   ConfigMaps, OR via raw-applied PrometheusRule resources that the cluster
+#   accepts in `directory:` mode). To stay consistent with the existing
+#   `postgres-backup-monitoring` wrapper at infra/argocd/apps/postgres-backup.yaml,
+#   we ship deploy-pipeline-monitor's CronJob + ConfigMap + ExternalSecret +
+#   PrometheusRule together as one manifest, synced via this directory-mode
+#   Application. This also lets us pause / roll back the monitor without
+#   touching the rest of the monitoring stack.
+#
+# Operator actions before this Application becomes Healthy:
+#   1. Create the GitHub PAT in Vault under `secret/monitoring/deploy-pipeline-monitor`
+#      with key `github_token`. Token scope: `repo: read` only, on madfam-org.
+#      Rotation: 90d via the standard secret-rotation runbook.
+#   2. Verify the pushgateway is reachable:
+#        kubectl -n monitoring get svc pushgateway
+#   3. After CI publishes the first image, pin the digest in
+#      infra/k8s/production/monitoring/deploy-pipeline-monitor.yaml.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: deploy-pipeline-monitor
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: deploy-pipeline-monitor
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: monitoring
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/monitoring
+    directory:
+      recurse: false
+      # Only sync the deploy-pipeline-monitor manifest from this path —
+      # everything else is owned by the `monitoring` Application's kustomize
+      # render and would conflict if double-synced.
+      include: 'deploy-pipeline-monitor.yaml'
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  info:
+    - name: "Runbook"
+      value: "docs/runbooks/deploy-pipeline-monitor.md"
+    - name: "Schedule"
+      value: "Every 5 min — */5 * * * *"
+    - name: "Closes gap"
+      value: "2026-05-04 selva-office: CI failed 02:29 → undetected for 3h"
