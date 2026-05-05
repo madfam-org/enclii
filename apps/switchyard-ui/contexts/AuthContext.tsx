@@ -119,18 +119,22 @@ function parseJwt(token: string): Record<string, unknown> | null {
 }
 
 /**
- * Normalize admin role information across the variations Janua issuers
- * can produce. Without this, an admin user shows as "Personal Account"
- * because the JWT carries `is_admin: true` (or `role: "admin"` singular)
- * instead of `roles: ["admin"]` array — and the rest of the app keys off
- * `roles?.includes("admin")`.
+ * Normalize admin-role information across the JWT claim-shape variations
+ * Janua issuers can produce. Without this, an admin user can show as
+ * "Personal Account" because their JWT carries `is_admin: true` (or
+ * `role: "admin"` singular) instead of the canonical `roles: ["admin"]`
+ * array — and the rest of the UI keys off `roles?.includes("admin")`.
+ *
+ * Identity is NEVER hardcoded here. The bootstrap admin email is owned
+ * by the platform's ramp-up script (Janua's `ADMIN_BOOTSTRAP_PASSWORD`
+ * provisioning, see janua/CLAUDE.md → Admin Bootstrap), and the JWT
+ * issuer is responsible for translating that user's stored role/admin
+ * flag into one of the claim shapes accepted below.
  *
  * Sources we accept (any one signal admits the user as admin):
- *   - `roles: string[]`          — preferred shape; admin / superadmin
- *   - `role: string`             — singular legacy claim
- *   - `is_admin: true`           — Janua admin-bootstrap boolean
- *   - `email === "admin@madfam.io"` — bootstrap operator identity (last resort,
- *     since this email is reserved for the master-admin per Janua admin-bootstrap)
+ *   - `roles: string[]` — preferred shape; values "admin" or "superadmin"
+ *   - `role: string` — singular legacy claim
+ *   - `is_admin: true` / `is_superadmin: true` — boolean flags
  */
 function extractRoles(claims: Record<string, unknown> | null): string[] {
   if (!claims) return [];
@@ -140,10 +144,6 @@ function extractRoles(claims: Record<string, unknown> | null): string[] {
   }
   if (typeof claims.role === "string") roles.add(claims.role);
   if (claims.is_admin === true || claims.is_superadmin === true) roles.add("admin");
-  if (typeof claims.email === "string" && claims.email === "admin@madfam.io") {
-    // Reserved bootstrap identity per Janua admin-bootstrap convention.
-    roles.add("admin");
-  }
   // Map superadmin → admin so existing `.includes("admin")` checks engage.
   if (roles.has("superadmin") && !roles.has("admin")) roles.add("admin");
   return Array.from(roles);
