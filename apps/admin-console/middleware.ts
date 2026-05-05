@@ -165,7 +165,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: https:",
       `connect-src 'self' ${process.env.NODE_ENV !== 'production' ? 'http://localhost:4200 ' : ''}https://api.enclii.dev https://api.cloudflare.com ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://api.janua.dev'}`,
-      "frame-ancestors 'none'",
+      "frame-ancestors 'self' https://selva.town https://*.selva.town https://*.madfam.io",
     ].join('; '),
     'Permissions-Policy': [
       'geolocation=()',
