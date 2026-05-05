@@ -881,6 +881,67 @@ data:
               summary: "Longhorn volume {{ $labels.volume }} is {{ $value | humanizePercentage }} full"
               description: "Volume is above 90% capacity for 1h. Expand or clean up data to prevent write failures."
 
+  chronic-restart-rules.yml: |
+    # Chronic crash-loop detection across the entire MADFAM platform.
+    # Existing PodWriteFailureCrashLoop catches 30m bursts; this group
+    # catches long-tail accumulators that the audit (2026-05-04) flagged:
+    # forj-api at 1999 restarts in 7 days, nuit-one-web at 1611 over
+    # 5d16h, redis-ha sentinel at 403 over 16d. Those slipped because
+    # no rule operated on a 24h+ window.
+    groups:
+      - name: chronic-restart
+        interval: 1m
+        rules:
+          # 24-hour window — early signal that a service is degrading
+          # before it shows up in the multi-day chronic counter.
+          - alert: PodChronicRestart24h
+            expr: |
+              sum by (namespace, pod) (
+                increase(kube_pod_container_status_restarts_total[24h])
+              ) > 50
+            for: 15m
+            labels:
+              severity: warning
+              category: chronic-restart
+              window: 24h
+            annotations:
+              summary: "{{ $labels.namespace }}/{{ $labels.pod }} restarted >50 times in 24h"
+              description: "{{ $value }} restarts in 24h. Investigate via `kubectl logs -n {{ $labels.namespace }} {{ $labels.pod }} --previous` and triage before it becomes a multi-day chronic."
+              runbook: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/chronic-restart-triage.md"
+
+          # 7-day window — explicit catch for the long-tail crash-loops
+          # the audit found rotting in the cluster.
+          - alert: PodChronicRestart7d
+            expr: |
+              sum by (namespace, pod) (
+                increase(kube_pod_container_status_restarts_total[7d])
+              ) > 200
+            for: 30m
+            labels:
+              severity: critical
+              category: chronic-restart
+              window: 7d
+            annotations:
+              summary: "{{ $labels.namespace }}/{{ $labels.pod }} restarted >200 times in 7d"
+              description: "{{ $value }} restarts over 7 days. Service is in chronic crash-loop. Either fix the root cause, scale to 0, or remove the deployment. Persistent crash-loops consume scheduler attention + alert noise + PVC slots."
+              runbook: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/chronic-restart-triage.md"
+
+          # Pod has been Pending or ContainerCreating for too long.
+          # Caught the sim4d-studio :latest 16d / 102K-failed-pull issue.
+          - alert: PodStuckNotRunning
+            expr: |
+              kube_pod_status_phase{phase=~"Pending|Unknown"} == 1
+              unless
+              on(namespace, pod) kube_pod_status_ready{condition="true"} == 1
+            for: 6h
+            labels:
+              severity: warning
+              category: chronic-restart
+            annotations:
+              summary: "{{ $labels.namespace }}/{{ $labels.pod }} not Running for 6h+"
+              description: "Pod has been in Pending/Unknown phase for over 6 hours. Common causes: image pull failure (check `kubectl describe pod` events), PVC unbindable, taint mismatch. The sim4d-studio :latest tag missing-from-registry incident (102,575 failed pulls over 16 days) would have fired here."
+              runbook: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/chronic-restart-triage.md"
+
   client-slo-rules.yml: |
     groups:
       - name: client-slo
