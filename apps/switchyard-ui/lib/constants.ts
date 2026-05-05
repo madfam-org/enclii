@@ -19,8 +19,16 @@ export const POLLING_FAST = 5_000;
 /** Normal polling for dashboards and lists (15s) */
 export const POLLING_NORMAL = 15_000;
 
-/** Slow polling for health checks and background tasks (30s) */
-export const POLLING_SLOW = 30_000;
+/**
+ * Slow polling for health checks and background tasks (60s).
+ *
+ * Bumped from 30s → 60s as part of the /v1/observability/health timeout
+ * fix (RCA 2026-05-04): two concurrent dashboard tabs polling at 30s
+ * doubled the steady-state K8s QPS pressure. 60s halves it without
+ * meaningfully changing the operator's perception of "live" data — a
+ * pod-level state change still surfaces inside one polling tick.
+ */
+export const POLLING_SLOW = 60_000;
 
 /** Idle polling for rarely changing data (60s) */
 export const POLLING_IDLE = 60_000;
