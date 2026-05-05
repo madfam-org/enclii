@@ -1,0 +1,199 @@
+# =============================================================================
+# AlertManager HA StatefulSet — HA Track 3 from
+# internal-devops/runbooks/2026-05-04-ha-gap-audit-and-plan.md
+# =============================================================================
+#
+# This file ships the StatefulSet that REPLACES the single-replica
+# Deployment in `alertmanager.yaml`. Both files coexist in the kustomization
+# during the migration window to allow:
+#
+#   1. apply this file → 3 new pods (alertmanager-{0,1,2}) come up alongside
+#      the existing single Deployment pod, each with its own PVC. Cluster
+#      gossip (port 9094) lets all 4 peers exchange silence state.
+#   2. observe for 30+ minutes that the new StatefulSet pods are healthy and
+#      gossiping, and any in-flight silences have replicated.
+#   3. delete the old Deployment + the legacy `alertmanager-data` PVC. The
+#      `alertmanager` Service (which selects on `app: alertmanager`) keeps
+#      pointing at the new pods.
+#   4. delete the old Deployment block in `alertmanager.yaml` in a follow-up
+#      cleanup commit; promote `alertmanager-statefulset.yaml` to the
+#      canonical name.
+#
+# The cutover is intentionally MANUAL because:
+#   - Silence state is local to each alertmanager pod's PVC; killing the old
+#     pod before the new StatefulSet exists means losing silences that
+#     operators set during ongoing incidents.
+#   - The existing Deployment uses `strategy: Recreate` for the same reason,
+#     and respects PVC RWO semantics — switching to StatefulSet with
+#     volumeClaimTemplates is the only way to get HA without RWX.
+#
+# Prerequisites:
+#   - `alertmanager-cluster` headless Service (defined in alertmanager.yaml,
+#     selectors stay compatible — both old Deployment and new StatefulSet
+#     pods carry `app: alertmanager`).
+#   - `alertmanager-config`, `alertmanager-smtp-secret`, `alertmanager-slack-
+#     secret` ConfigMap+Secrets (already exist).
+#
+# After cutover, edit `prometheus.yaml` to point Prometheus' alerting target
+# at the headless Service (`alertmanager-cluster.monitoring.svc:9093`) so
+# alerts hit any healthy peer round-robin.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  replicas: 3
+  serviceName: alertmanager-cluster
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: alertmanager
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        app.kubernetes.io/name: alertmanager
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/part-of: enclii
+    spec:
+      securityContext:
+        fsGroup: 65534
+        runAsUser: 65534
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # Spread peers across nodes — preferred (not required) because today's
+      # cluster has only 2 worker nodes; required would leave 1 pod Pending.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: alertmanager
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: alertmanager
+          image: docker.io/prom/alertmanager:v0.26.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+            - "--cluster.listen-address=0.0.0.0:9094"
+            # Each peer's own DNS name + the explicit list of all 3 peers
+            # via the headless Service. Stable DNS (StatefulSet ordinal +
+            # serviceName) means cluster gossip works deterministically.
+            - "--cluster.peer=alertmanager-0.alertmanager-cluster.monitoring.svc.cluster.local:9094"
+            - "--cluster.peer=alertmanager-1.alertmanager-cluster.monitoring.svc.cluster.local:9094"
+            - "--cluster.peer=alertmanager-2.alertmanager-cluster.monitoring.svc.cluster.local:9094"
+            - "--web.external-url=https://alertmanager.enclii.dev"
+          ports:
+            - containerPort: 9093
+              name: http
+            - containerPort: 9094
+              name: cluster
+              protocol: TCP
+            - containerPort: 9094
+              name: cluster-udp
+              protocol: UDP
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager/alertmanager.yml
+              subPath: alertmanager.yml
+            - name: smtp-secret
+              mountPath: /etc/alertmanager/smtp-password
+              subPath: smtp-password
+              readOnly: true
+            - name: slack-secret
+              mountPath: /etc/alertmanager/slack-webhook-url
+              subPath: slack-webhook-url
+              readOnly: true
+            - name: data
+              mountPath: /alertmanager
+          startupProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            failureThreshold: 15
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: smtp-secret
+          secret:
+            secretName: alertmanager-smtp-secret
+        - name: slack-secret
+          secret:
+            secretName: alertmanager-slack-secret
+  # Each pod gets its own 1Gi PVC. RWO is fine because each pod owns its own
+  # volume — no Multi-Attach errors. Longhorn handles per-pod replication
+  # for durability.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: alertmanager
+          app.kubernetes.io/component: monitoring
+          app.kubernetes.io/part-of: enclii
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 1Gi
+---
+# Updated PDB — keeps minAvailable: 1 (lose up to 2 of 3 peers without
+# being completely silenced) but raises the floor for `kubectl drain`.
+# Operators planning a node drain should still pause silences first.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alertmanager-statefulset-pdb
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: alertmanager

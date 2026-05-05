@@ -8,6 +8,11 @@ resources:
   - prometheus.yaml
   - grafana.yaml
   - alertmanager.yaml
+  # HA Track 3: 3-replica StatefulSet with per-pod PVC. Coexists with
+  # the single-replica Deployment in alertmanager.yaml during the
+  # cutover window. See alertmanager-statefulset.yaml header comment
+  # for the migration sequence.
+  - alertmanager-statefulset.yaml
   - network-policies.yaml
   - monitoring-policy-exception.yaml
   # prometheus-client-slo-rules.yaml removed: requires PrometheusRule CRD (Prometheus Operator not installed)
