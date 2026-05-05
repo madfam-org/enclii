@@ -14,6 +14,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 )
 
 // healthCacheTTL is how long the GetServiceHealth response stays cached
@@ -46,7 +47,21 @@ type healthCacheEntry struct {
 var (
 	healthCacheMu sync.Mutex
 	healthCache   *healthCacheEntry
+	// healthSF collapses concurrent cache-miss recomputes into a single
+	// underlying computation. Two dashboard tabs polling /v1/observability/health
+	// at the same 30s tick used to each fan out 88-service K8s probes against
+	// a shared client-go limiter (5 QPS / burst 10), starving the throttle
+	// queue and pushing both requests past the 25s server budget into a 30s
+	// client timeout. With singleflight, the second caller observes the first
+	// caller's freshly-computed result instead of duplicating the fan-out.
+	healthSF singleflight.Group
 )
+
+// healthSFKey is the single-flight key for /v1/observability/health. We use a
+// constant string because the response is process-global (not per-tenant /
+// per-user) — the entire endpoint serves the same payload to all callers within
+// a 20s TTL window.
+const healthSFKey = "service-health"
 
 // ServiceHealth represents the health status of a service
 type ServiceHealth struct {
@@ -187,11 +202,70 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), healthHandlerBudget)
 	defer cancel()
 
+	// singleflight collapses concurrent cache-miss recomputes. Without it,
+	// two dashboard tabs hitting the same 30s polling tick both miss the
+	// cache and both fan out 88-service K8s probes — twice the apiserver
+	// pressure for identical results. The second-arriving caller blocks
+	// on the first's computation and shares its response, then both
+	// callers populate the cache once.
+	//
+	// Note: singleflight.Do blocks on the in-flight key. If the leader's
+	// computation honours its own context budget we're bounded; we still
+	// guard the wait against the caller's context separately so a
+	// disconnected client (request context cancelled) doesn't hang here.
+	type sfResult struct {
+		resp    ServiceHealthResponse
+		partial bool
+	}
+	resultCh := healthSF.DoChan(healthSFKey, func() (interface{}, error) {
+		resp, partial, err := h.computeServiceHealth(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return sfResult{resp: resp, partial: partial}, nil
+	})
+
+	var (
+		response ServiceHealthResponse
+		partial  bool
+	)
+	select {
+	case res := <-resultCh:
+		if res.Err != nil {
+			h.logger.Error(ctx, "Failed to compute service health", logging.Error("error", res.Err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve services"})
+			return
+		}
+		out := res.Val.(sfResult)
+		response = out.resp
+		partial = out.partial
+	case <-c.Request.Context().Done():
+		// Caller went away (browser tab closed, intermediary timed out).
+		// Don't emit a body — the singleflight leader will still finish
+		// and populate the cache for subsequent callers.
+		return
+	}
+
+	if partial {
+		// We hit our own budget. Send 200 with the partial response so
+		// the dashboard renders something — but flag in headers so SRE
+		// can spot it. Operators get truthful counts; nobody hangs.
+		c.Header("X-Enclii-Partial-Response", "true")
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+// computeServiceHealth performs the actual fan-out: ListAll services + per-
+// service K8s probe + per-service latest-deployment lookup, with a bounded
+// concurrency cap. Extracted from GetServiceHealth so the singleflight
+// wrapper has a clean callee and the recompute is unit-testable in
+// isolation. The boolean return is true when the handler-budget context
+// expired before all goroutines finished — caller flips that into the
+// X-Enclii-Partial-Response header.
+func (h *Handler) computeServiceHealth(ctx context.Context) (ServiceHealthResponse, bool, error) {
 	services, err := h.repos.Services.ListAll(ctx)
 	if err != nil {
-		h.logger.Error(ctx, "Failed to list services", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve services"})
-		return
+		return ServiceHealthResponse{}, false, err
 	}
 
 	// One DB call to get all projects, then map by ID — replaces the
@@ -307,13 +381,8 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 	}
 	healthCacheMu.Unlock()
 
-	if ctx.Err() == context.DeadlineExceeded {
-		// We hit our own budget. Send 200 with the partial response so
-		// the dashboard renders something — but flag in headers so SRE
-		// can spot it. Operators get truthful counts; nobody hangs.
-		c.Header("X-Enclii-Partial-Response", "true")
-	}
-	c.JSON(http.StatusOK, response)
+	partial := ctx.Err() == context.DeadlineExceeded
+	return response, partial, nil
 }
 
 // GetRecentErrors returns recent errors

@@ -150,11 +150,15 @@ async function fetchCSRFToken(): Promise<void> {
 
 // Default request timeout in ms. Cloudflare's edge timeout is ~100s; the
 // browser and UI must give up earlier so a slow endpoint surfaces as a
-// real error state instead of an indefinite spinner. 30s is generous
-// enough for a cold-start on the heaviest dashboard endpoints (usage
-// summary fan-out) and tight enough that a hung backend doesn't strand
-// the UI in "Loading..." for two minutes before failing.
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+// real error state instead of an indefinite spinner.
+//
+// 35s = 25s server budget (healthHandlerBudget in observability_handlers.go)
+// + 10s headroom for p99 network jitter, TLS handshake, and gateway hops.
+// Previously 30s, which sat exactly on the server budget — any jitter
+// converted a bounded server-side partial response into a client-side
+// fetch abort, and the dashboard rendered "Loading..." instead of the
+// X-Enclii-Partial-Response payload the server actually sent.
+const DEFAULT_REQUEST_TIMEOUT_MS = 35_000;
 
 /**
  * Make an authenticated API request with CSRF protection
