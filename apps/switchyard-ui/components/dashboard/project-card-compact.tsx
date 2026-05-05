@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Archive,
+  Check,
   Copy,
   ExternalLink,
   GitBranch,
@@ -25,6 +26,42 @@ import {
 import { HealthBadge } from "./health-badge";
 import { SentryErrorBadge } from "./sentry-error-badge";
 import { ServiceLink, normalizeEnv } from "./service-link";
+import { ProjectCardMenu } from "./project-card-menu";
+
+// Strip protocol + .git suffix from a git repo URL/path so the result is
+// always a "{owner}/{repo}" slug suitable for both display and constructing
+// downstream GitHub URLs (branch/tree/commit views).
+function repoSlugFromGitRepo(gitRepo: string | undefined | null): string {
+  if (!gitRepo) return "";
+  return gitRepo
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\.git$/, "");
+}
+
+// Inline-button copy helper used by the digest chip + kebab menu items.
+// Falls back silently when the page isn't served over HTTPS / clipboard
+// API isn't available — the visible state machine just stays on "idle".
+function useCopyToClipboard() {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copy = useCallback((key: string, value: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    navigator.clipboard.writeText(value).then(
+      () => {
+        setCopiedKey(key);
+        // Reset back to idle after 1.5s so the user gets visual confirmation
+        // without the chip permanently showing the "copied" state.
+        setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
+      },
+      () => {
+        // Clipboard rejected (permission / insecure context). Silent fail —
+        // the "Copy" affordance still exists, the operator just won't see
+        // the green check. Avoid throwing so it doesn't surface a console
+        // error on every dashboard load when /projects is loaded over IP.
+      },
+    );
+  }, []);
+  return { copiedKey, copy };
+}
 
 export interface CompactService {
   id: string;
@@ -219,46 +256,108 @@ export function ProjectCardCompact({
   // information with strictly more env context).
   const hasAnyServiceDomain = visibleServices.some((s) => !!s.domain);
 
-  return (
-    <Link href={`/projects/${project.slug}`} className="block">
-      <Card
-        className={cn(
-          "hover:border-primary/50 group relative flex min-h-[240px] flex-col justify-between p-4 transition-all duration-200 hover:shadow-lg",
-          className,
-        )}
-      >
-        {/* Row 1: Framework icon + name + framework chip + status dot */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <FrameworkIcon
-              framework={project.framework || "unknown"}
-              size="md"
-            />
-            <span className="truncate text-sm font-semibold">
-              {project.name}
-            </span>
-            {project.framework && project.framework !== "unknown" && (
-              <span
-                className="hidden shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:inline-block"
-                aria-label={`Framework: ${getFrameworkLabel(project.framework)}`}
-              >
-                {getFrameworkLabel(project.framework)}
-              </span>
-            )}
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {project.serviceCount !== undefined && (
-              <span className="text-muted-foreground text-xs">
-                {project.healthyCount ?? 0}/{project.serviceCount}
-              </span>
-            )}
-            <div className={cn("h-2.5 w-2.5 rounded-full", dotColor)} />
-          </div>
-        </div>
+  const repoSlug = repoSlugFromGitRepo(project.gitRepo);
+  const githubRepoUrl = repoSlug ? `https://github.com/${repoSlug}` : "";
+  const branchUrl =
+    repoSlug && project.lastDeployment?.branch
+      ? `https://github.com/${repoSlug}/tree/${encodeURIComponent(
+          project.lastDeployment.branch,
+        )}`
+      : "";
 
-        {/* Row 2: Service table */}
+  // First service drives the "Logs" quick-action target inside the menu;
+  // the menu itself computes the href.
+  const firstServiceId = services[0]?.id;
+
+  const { copiedKey, copy } = useCopyToClipboard();
+
+  return (
+    // The card itself is a div, not a <Link>. The "click anywhere on the
+    // card to open the project" affordance is delivered by the project
+    // name's surface-overlay link (see Row 1 below): its ::before
+    // pseudo-element with `inset-0` covers the entire card. All inner
+    // interactive elements use `relative z-10` so they sit ABOVE the
+    // overlay and capture their own clicks first — that's how this card
+    // gets ~12 distinct destinations without a single nested-anchor.
+    // `group/card` lets inner elements respond to hover on the card surface
+    // (e.g. dim the project-level domain when hovering elsewhere).
+    <Card
+      className={cn(
+        "hover:border-primary/50 group/card focus-within:ring-primary/40 relative flex min-h-[240px] flex-col justify-between p-4 transition-all duration-200 focus-within:ring-2 hover:shadow-lg",
+        className,
+      )}
+      data-testid="project-card"
+    >
+      {/* Row 1: Framework icon + name + framework chip + status + kebab.
+          The project name carries the surface-overlay link (`before:absolute
+          before:inset-0`) so clicking any non-interactive area of the card
+          navigates to the project. Other inner clickables override with
+          `relative z-10`. */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <FrameworkIcon
+            framework={project.framework || "unknown"}
+            size="md"
+          />
+          <Link
+            href={`/projects/${project.slug}`}
+            className="hover:text-primary min-w-0 truncate text-sm font-semibold transition-colors before:absolute before:inset-0 before:z-0 before:content-[''] focus-visible:outline-none"
+            aria-label={`Open project ${project.name}`}
+          >
+            {project.name}
+          </Link>
+          {project.framework && project.framework !== "unknown" && (
+            <span
+              className="border-border/60 bg-muted/40 text-muted-foreground hidden shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide sm:inline-block"
+              aria-label={`Framework: ${getFrameworkLabel(project.framework)}`}
+            >
+              {getFrameworkLabel(project.framework)}
+            </span>
+          )}
+        </div>
+        <div className="relative z-10 flex shrink-0 items-center gap-1.5">
+          {project.serviceCount !== undefined && (
+            <Link
+              href={`/projects/${project.slug}#health`}
+              className={cn(
+                "hover:bg-muted rounded px-1 py-0.5 text-xs tabular-nums transition-colors",
+                aggregateStatus === "failing" && "text-status-error",
+                aggregateStatus === "degraded" && "text-status-warning",
+                aggregateStatus === "healthy" && "text-muted-foreground",
+                aggregateStatus === "unknown" && "text-muted-foreground",
+              )}
+              aria-label={`${project.healthyCount ?? 0} of ${project.serviceCount} services healthy — view health`}
+              title={`${project.healthyCount ?? 0}/${project.serviceCount} healthy — click for details`}
+            >
+              {project.healthyCount ?? 0}/{project.serviceCount}
+            </Link>
+          )}
+          <div
+            className={cn("h-2.5 w-2.5 rounded-full", dotColor)}
+            aria-label={`Aggregate status: ${aggregateStatus}`}
+            title={`Status: ${aggregateStatus}`}
+          />
+          <ProjectCardMenu
+            projectId={project.id}
+            projectName={project.name}
+            projectSlug={project.slug}
+            firstServiceId={firstServiceId}
+            githubRepoUrl={githubRepoUrl || undefined}
+            copiedKey={copiedKey}
+            onCopy={copy}
+          />
+        </div>
+      </div>
+
+        {/* Row 2: Service table.
+            Each row is now a granular interaction surface:
+            - Service name \u2192 service detail page (/services/:id)
+            - Status badge \u2192 service logs (/services/:id/logs)
+            - Image digest chip \u2192 copy to clipboard (button, not link)
+            - Replicas / env \u2192 service detail page
+            All inner clickables sit at z-10 to escape the surface overlay. */}
         {services.length > 0 && (
-          <div className="mt-2 overflow-hidden rounded border border-border/40">
+          <div className="border-border/40 relative z-10 mt-2 overflow-hidden rounded border">
             <table className="w-full text-[11px]">
               <thead>
                 <tr className="bg-muted/30 text-muted-foreground">
@@ -268,64 +367,108 @@ export function ProjectCardCompact({
                   <th className="py-1 pl-1 pr-2 text-right font-medium">Env</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/20">
-                {visibleServices.map((service) => (
-                  // Fragment per service so we can emit two rows: the main
-                  // status row + an optional sub-row with the deep-link
-                  // (only when the service has a public domain). React
-                  // requires the Fragment itself carry the key, since it
-                  // is the immediate child of `.map()`.
-                  <Fragment key={service.id}>
-                    <tr className="hover:bg-muted/20 transition-colors">
-                      <td className="py-1 pl-2 pr-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <div
-                            className={cn(
-                              "h-1.5 w-1.5 shrink-0 rounded-full",
-                              serviceStatusColor[service.status] ||
-                                "bg-muted-foreground",
-                            )}
-                          />
-                          <span className="truncate font-medium max-w-[100px]">
-                            {service.name}
-                          </span>
-                          {service.currentImageUri && (
-                            <span
-                              className="hidden shrink-0 rounded border border-border/40 bg-muted/30 px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground md:inline-block"
-                              title={service.currentImageUri}
-                              aria-label={`Running image: ${service.currentImageUri}`}
+              <tbody className="divide-border/20 divide-y">
+                {visibleServices.map((service) => {
+                  const serviceHref = `/projects/${project.slug}/services/${service.id}`;
+                  const logsHrefForRow = `${serviceHref}/logs`;
+                  const digestKey = `digest-${service.id}`;
+                  const digestCopied = copiedKey === digestKey;
+                  return (
+                    // Fragment per service so we can emit two rows: the main
+                    // status row + an optional sub-row with the deep-link
+                    // (only when the service has a public domain). React
+                    // requires the Fragment itself carry the key, since it
+                    // is the immediate child of `.map()`.
+                    <Fragment key={service.id}>
+                      <tr className="hover:bg-muted/30 transition-colors">
+                        <td className="py-1 pl-2 pr-1">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <div
+                              className={cn(
+                                "h-1.5 w-1.5 shrink-0 rounded-full",
+                                serviceStatusColor[service.status] ||
+                                  "bg-muted-foreground",
+                              )}
+                            />
+                            <Link
+                              href={serviceHref}
+                              className="hover:text-primary max-w-[100px] truncate font-medium hover:underline"
+                              aria-label={`Open service ${service.name}`}
                             >
-                              {shortImageRef(service.currentImageUri)}
-                            </span>
+                              {service.name}
+                            </Link>
+                            {service.currentImageUri && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copy(digestKey, service.currentImageUri!)
+                                }
+                                className={cn(
+                                  "bg-muted/30 hidden shrink-0 rounded border px-1 py-0.5 font-mono text-[9px] leading-none transition-colors md:inline-flex md:items-center md:gap-1",
+                                  digestCopied
+                                    ? "border-status-success/40 text-status-success"
+                                    : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground",
+                                )}
+                                title={
+                                  digestCopied
+                                    ? "Copied!"
+                                    : `Click to copy: ${service.currentImageUri}`
+                                }
+                                aria-label={
+                                  digestCopied
+                                    ? "Image reference copied"
+                                    : `Copy running image reference: ${service.currentImageUri}`
+                                }
+                              >
+                                {shortImageRef(service.currentImageUri)}
+                                {digestCopied ? (
+                                  <Check className="h-2 w-2" />
+                                ) : (
+                                  <Copy className="h-2 w-2 opacity-0 transition-opacity group-hover/card:opacity-60" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-1 py-1">
+                          <Link
+                            href={logsHrefForRow}
+                            className={cn(
+                              "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none transition-colors hover:underline",
+                              service.status === "running" &&
+                                "bg-status-success/15 text-status-success hover:bg-status-success/25",
+                              service.status === "failed" &&
+                                "bg-status-error/15 text-status-error hover:bg-status-error/25",
+                              service.status === "pending" &&
+                                "bg-status-warning/15 text-status-warning hover:bg-status-warning/25",
+                              service.status === "deploying" &&
+                                "bg-status-info/15 text-status-info hover:bg-status-info/25 animate-pulse",
+                              service.status === "unknown" &&
+                                "bg-muted text-muted-foreground hover:bg-muted/80",
+                            )}
+                            aria-label={`View ${service.name} logs (status: ${serviceStatusLabel[service.status] || "unknown"})`}
+                            title={`View logs \u2014 current status: ${serviceStatusLabel[service.status] || "unknown"}`}
+                          >
+                            {serviceStatusLabel[service.status] || "Unknown"}
+                          </Link>
+                        </td>
+                        <td className="text-muted-foreground px-1 py-1 text-right tabular-nums">
+                          {service.replicas ? (
+                            <Link
+                              href={serviceHref}
+                              className="hover:text-foreground hover:underline"
+                              aria-label={`${service.name} replicas: ${service.replicas} \u2014 open service`}
+                            >
+                              {service.replicas}
+                            </Link>
+                          ) : (
+                            "\u2014"
                           )}
-                        </div>
-                      </td>
-                      <td className="px-1 py-1">
-                        <span
-                          className={cn(
-                            "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none",
-                            service.status === "running" &&
-                              "bg-status-success/15 text-status-success",
-                            service.status === "failed" &&
-                              "bg-status-error/15 text-status-error",
-                            service.status === "pending" &&
-                              "bg-status-warning/15 text-status-warning",
-                            service.status === "deploying" &&
-                              "bg-status-info/15 text-status-info animate-pulse",
-                            service.status === "unknown" &&
-                              "bg-muted text-muted-foreground",
-                          )}
-                        >
-                          {serviceStatusLabel[service.status] || "Unknown"}
-                        </span>
-                      </td>
-                      <td className="px-1 py-1 text-right text-muted-foreground tabular-nums">
-                        {service.replicas || "\u2014"}
-                      </td>
-                      <td className="py-1 pl-1 pr-2 text-right text-muted-foreground truncate max-w-[60px]">
-                        {service.environment || "\u2014"}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="text-muted-foreground max-w-[60px] truncate py-1 pl-1 pr-2 text-right">
+                          {service.environment || "\u2014"}
+                        </td>
+                      </tr>
                     {/* Per-service deep-link sub-row.
                         Renders beneath each service that has a public
                         domain so operators can click straight through to
@@ -338,27 +481,31 @@ export function ProjectCardCompact({
                         sub-row -- the main row already conveys "service
                         exists" and an extra placeholder per service
                         would overwhelm the card. */}
-                    {service.domain && (
-                      <tr className="hover:bg-muted/20 transition-colors">
-                        <td colSpan={4} className="py-1 pl-4 pr-2">
-                          <ServiceLink
-                            domain={service.domain}
-                            env={normalizeEnv(service.environment)}
-                            isHealthy={service.health !== "unhealthy"}
-                            ariaLabelService={service.name}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
+                      {service.domain && (
+                        <tr className="hover:bg-muted/20 transition-colors">
+                          <td colSpan={4} className="py-1 pl-4 pr-2">
+                            <ServiceLink
+                              domain={service.domain}
+                              env={normalizeEnv(service.environment)}
+                              isHealthy={service.health !== "unhealthy"}
+                              ariaLabelService={service.name}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
                 {hasOverflow && (
                   <tr>
-                    <td
-                      colSpan={4}
-                      className="py-1 text-center text-[10px] text-muted-foreground"
-                    >
-                      +{overflowCount} more service{overflowCount > 1 ? "s" : ""}
+                    <td colSpan={4} className="py-0">
+                      <Link
+                        href={`/projects/${project.slug}#services`}
+                        className="text-muted-foreground hover:bg-muted/30 hover:text-foreground block py-1 text-center text-[10px] transition-colors"
+                        aria-label={`View all ${services.length} services for ${project.name}`}
+                      >
+                        +{overflowCount} more service{overflowCount > 1 ? "s" : ""}
+                      </Link>
                     </td>
                   </tr>
                 )}
@@ -372,8 +519,12 @@ export function ProjectCardCompact({
             - "no-deploys": services loaded, none ever deployed -> explicit copy
             - "unknown":    services fetch rejected -> em-dash, don't fabricate
             - undefined:    legacy callers that didn't thread the field through
-            See lib/project-deploy.ts (audit finding PR-1). */}
-        <p className="text-muted-foreground mt-2 truncate text-xs">
+            See lib/project-deploy.ts (audit finding PR-1).
+            Decorative — passes clicks through to the surface link. */}
+        <p
+          className="text-muted-foreground mt-2 truncate text-xs"
+          title={project.lastDeployment?.commitMessage || project.description}
+        >
           {project.lastDeployment?.commitMessage ||
             project.description ||
             (services.length > 0 ? (
@@ -401,12 +552,12 @@ export function ProjectCardCompact({
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "mt-2 flex items-center gap-1.5 truncate text-xs transition-colors",
+              "relative z-10 mt-2 flex w-fit items-center gap-1.5 truncate text-xs transition-colors",
               hasAnyServiceDomain
                 ? "text-muted-foreground/70 hover:text-muted-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
-            onClick={(e) => e.stopPropagation()}
+            aria-label={`Open ${project.domain} in a new tab`}
           >
             <ExternalLink className="h-3 w-3 shrink-0" />
             <span className="truncate">{project.domain}</span>
@@ -428,44 +579,44 @@ export function ProjectCardCompact({
             href={project.gitRepo.startsWith('http') ? project.gitRepo : `https://github.com/${project.gitRepo}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground mt-1.5 flex items-center gap-1.5 truncate text-xs transition-colors"
-            onClick={(e) => e.stopPropagation()}
+            className="text-muted-foreground hover:text-foreground relative z-10 mt-1.5 flex w-fit items-center gap-1.5 truncate text-xs transition-colors"
+            aria-label={`Open ${repoSlug || project.gitRepo} on GitHub in a new tab`}
           >
             <Github className="h-3 w-3 shrink-0" />
             <span className="truncate">{project.gitRepo.replace(/^https?:\/\/github\.com\//, '')}</span>
             {project.repoMeta?.visibility === "private" && (
               <Lock
-                className="h-3 w-3 shrink-0 text-status-warning"
+                className="text-status-warning h-3 w-3 shrink-0"
                 aria-label="Private repository"
               />
             )}
             {project.repoMeta?.visibility === "public" && (
               <Globe
-                className="h-3 w-3 shrink-0 text-status-success"
+                className="text-status-success h-3 w-3 shrink-0"
                 aria-label="Public repository"
               />
             )}
             {project.repoMeta?.visibility === "internal" && (
               <Lock
-                className="h-3 w-3 shrink-0 text-status-info"
+                className="text-status-info h-3 w-3 shrink-0"
                 aria-label="Internal repository"
               />
             )}
             {project.repoMeta?.archived && (
               <Archive
-                className="h-3 w-3 shrink-0 text-muted-foreground"
+                className="text-muted-foreground h-3 w-3 shrink-0"
                 aria-label="Archived repository"
               />
             )}
             {project.repoMeta?.fork && (
               <GitFork
-                className="h-3 w-3 shrink-0 text-muted-foreground"
+                className="text-muted-foreground h-3 w-3 shrink-0"
                 aria-label="Forked repository"
               />
             )}
             {project.repoMeta?.isTemplate && (
               <Copy
-                className="h-3 w-3 shrink-0 text-muted-foreground"
+                className="text-muted-foreground h-3 w-3 shrink-0"
                 aria-label="Template repository"
               />
             )}
@@ -481,14 +632,14 @@ export function ProjectCardCompact({
           (project.repoMeta.language ||
             (project.repoMeta.stars && project.repoMeta.stars > 0) ||
             project.repoMeta.license) && (
-            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+            <div className="text-muted-foreground mt-1 flex items-center gap-2 text-[10px]">
               {project.repoMeta.language && (
                 <span
                   className="flex items-center gap-1"
                   title={`Primary language: ${project.repoMeta.language}`}
                 >
                   <span
-                    className="h-2 w-2 rounded-full shrink-0"
+                    className="h-2 w-2 shrink-0 rounded-full"
                     style={{
                       backgroundColor:
                         languageColor[project.repoMeta.language] || "#888",
@@ -510,7 +661,7 @@ export function ProjectCardCompact({
                 )}
               {project.repoMeta.license && (
                 <span
-                  className="rounded border border-border/40 bg-muted/30 px-1 py-px font-mono leading-none"
+                  className="border-border/40 bg-muted/30 rounded border px-1 py-px font-mono leading-none"
                   title={`License: ${project.repoMeta.license}`}
                 >
                   {project.repoMeta.license}
@@ -522,9 +673,11 @@ export function ProjectCardCompact({
         {/* Row 4c: Health + Sentry badges for the lead service.
             SentryErrorBadge renders nothing when the operator hasn't
             provisioned SENTRY_AUTH_TOKEN (parity audit gap #9), so this
-            row degrades gracefully on unconfigured deployments. */}
+            row degrades gracefully on unconfigured deployments.
+            `relative z-10` so the badges' own hover/click targets sit
+            above the card-surface overlay. */}
         {services[0]?.id && (
-          <div className="mt-1.5 flex items-center gap-1.5">
+          <div className="relative z-10 mt-1.5 flex w-fit items-center gap-1.5">
             <HealthBadge
               serviceId={services[0].id}
               serviceName={services[0].name}
@@ -536,165 +689,66 @@ export function ProjectCardCompact({
           </div>
         )}
 
-        {/* Row 5: Git branch + relative time + view deployments */}
-        <div className="text-muted-foreground border-border/50 mt-auto flex items-center justify-between gap-2 border-t pt-2 text-xs">
+        {/* Row 5: Git branch + view deployments + relative timestamp.
+            Each cell is now its own destination:
+            - Branch → GitHub branch view (when we have repoSlug)
+            - Deployments → /projects/:slug/deployments
+            - Timestamp → /projects/:slug/deployments (alias — operators
+              naturally click the time when they want "what just shipped") */}
+        <div className="text-muted-foreground border-border/50 relative z-10 mt-auto flex items-center justify-between gap-2 border-t pt-2 text-xs">
           {project.lastDeployment?.branch ? (
-            <div className="flex min-w-0 items-center gap-1">
-              <GitBranch className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                {project.lastDeployment.branch}
-              </span>
-            </div>
+            branchUrl ? (
+              <a
+                href={branchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground flex min-w-0 items-center gap-1 hover:underline"
+                aria-label={`Open ${project.lastDeployment.branch} branch on GitHub`}
+              >
+                <GitBranch className="h-3 w-3 shrink-0" />
+                <span className="truncate">{project.lastDeployment.branch}</span>
+              </a>
+            ) : (
+              <div
+                className="flex min-w-0 items-center gap-1"
+                title={`Branch: ${project.lastDeployment.branch}`}
+              >
+                <GitBranch className="h-3 w-3 shrink-0" />
+                <span className="truncate">{project.lastDeployment.branch}</span>
+              </div>
+            )
           ) : (
             <span className="text-muted-foreground/50">-</span>
           )}
           <div className="flex shrink-0 items-center gap-2">
-            {/*
-              Plain anchor (not <Link>) — the parent card is already a
-              <Link>, so we follow the same nesting pattern used by the
-              GitHub/domain links on this card. stopPropagation prevents
-              the parent Link from intercepting the click.
-            */}
-            <a
+            <Link
               href={`/projects/${project.slug}/deployments`}
-              className="inline-flex items-center gap-1 hover:text-foreground"
-              onClick={(e) => e.stopPropagation()}
+              className="hover:text-foreground inline-flex items-center gap-1"
               aria-label={`View deployments for ${project.name}`}
             >
               <GitMerge className="h-3 w-3 shrink-0" />
               <span>Deployments</span>
-            </a>
+            </Link>
             {project.lastDeployment?.timestamp && (
-              <span>
+              <Link
+                href={`/projects/${project.slug}/deployments`}
+                className="hover:text-foreground hover:underline"
+                aria-label={`Last deployment ${formatRelativeTime(project.lastDeployment.timestamp)} — view deployments`}
+                title={new Date(project.lastDeployment.timestamp).toLocaleString()}
+              >
                 {formatRelativeTime(project.lastDeployment.timestamp)}
-              </span>
+              </Link>
             )}
           </div>
         </div>
       </Card>
-    </Link>
   );
 }
 
-// List-row variant of ProjectCardCompact for the dashboard's "list" view mode.
-// Renders the same project as a single horizontal row optimized for scanning
-// many projects at once: framework icon + name + status dot + replicas count
-// + visibility chip + branch + relative timestamp. Skips the per-service
-// table — operators who need that detail click into /projects/{slug}. The
-// whole row is a Link so keyboard nav and middle-click "open in new tab"
-// work exactly as on the card variant.
-export function ProjectRowCompact({
-  project,
-  className,
-}: ProjectCardCompactProps) {
-  const aggregateStatus = project.aggregateStatus || "unknown";
-  const dotColor = aggregateStatusColor[aggregateStatus] || "bg-muted-foreground";
-  const branch = project.lastDeployment?.branch;
-  const commitMessage = project.lastDeployment?.commitMessage;
-  const timestamp = project.lastDeployment?.timestamp;
-
-  return (
-    <Link
-      href={`/projects/${project.slug}`}
-      className={cn(
-        "group relative flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset sm:gap-4 sm:px-4",
-        className,
-      )}
-      role="listitem"
-    >
-      {/* Framework icon */}
-      <FrameworkIcon
-        framework={project.framework || "unknown"}
-        size="sm"
-      />
-
-      {/* Project name + framework chip */}
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="truncate text-sm font-semibold">{project.name}</span>
-        {project.framework && project.framework !== "unknown" && (
-          <span
-            className="hidden shrink-0 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground md:inline-block"
-            aria-label={`Framework: ${getFrameworkLabel(project.framework)}`}
-          >
-            {getFrameworkLabel(project.framework)}
-          </span>
-        )}
-      </div>
-
-      {/* Replicas summary — hidden on narrow viewports to preserve space */}
-      {project.serviceCount !== undefined && (
-        <span
-          className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline-block"
-          aria-label={`${project.healthyCount ?? 0} of ${project.serviceCount} services healthy`}
-        >
-          {project.healthyCount ?? 0}/{project.serviceCount}
-        </span>
-      )}
-
-      {/* Visibility chip — lock/globe so operators can scan public-vs-private */}
-      {project.repoMeta?.visibility === "private" && (
-        <Lock
-          className="hidden h-3.5 w-3.5 shrink-0 text-status-warning sm:inline-block"
-          aria-label="Private repository"
-        />
-      )}
-      {project.repoMeta?.visibility === "public" && (
-        <Globe
-          className="hidden h-3.5 w-3.5 shrink-0 text-status-success sm:inline-block"
-          aria-label="Public repository"
-        />
-      )}
-      {project.repoMeta?.visibility === "internal" && (
-        <Lock
-          className="hidden h-3.5 w-3.5 shrink-0 text-status-info sm:inline-block"
-          aria-label="Internal repository"
-        />
-      )}
-
-      {/* Domain — only on wide viewports */}
-      {project.domain && (
-        <span className="hidden min-w-0 max-w-[180px] shrink-0 truncate text-xs text-muted-foreground lg:inline-block">
-          {project.domain}
-        </span>
-      )}
-
-      {/* Branch + commit message — flex column, only on wide viewports */}
-      {(branch || commitMessage) && (
-        <div className="hidden min-w-0 max-w-[280px] shrink-0 items-center gap-1.5 text-xs text-muted-foreground xl:flex">
-          {branch && (
-            <>
-              <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
-              <span className="truncate">{branch}</span>
-            </>
-          )}
-          {commitMessage && (
-            <span
-              className="truncate text-muted-foreground/70"
-              title={commitMessage}
-            >
-              · {commitMessage}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Relative timestamp */}
-      {timestamp && (
-        <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline-block">
-          {formatRelativeTime(timestamp)}
-        </span>
-      )}
-
-      {/* Status dot — always visible, rightmost anchor */}
-      <div className="flex shrink-0 items-center gap-1.5">
-        <div
-          className={cn("h-2.5 w-2.5 rounded-full", dotColor)}
-          aria-label={`Status: ${aggregateStatus}`}
-        />
-      </div>
-    </Link>
-  );
-}
+// ProjectRowCompact (list-view variant) lives in ./project-row-compact.tsx.
+// Re-exported here so existing call sites that import from this module
+// continue to work unchanged.
+export { ProjectRowCompact } from "./project-row-compact";
 
 export function ProjectCardCompactSkeleton() {
   return (
@@ -707,7 +761,7 @@ export function ProjectCardCompactSkeleton() {
         <div className="bg-muted h-2.5 w-2.5 rounded-full" />
       </div>
       {/* Service table skeleton */}
-      <div className="mt-2 space-y-1 rounded border border-border/40 p-2">
+      <div className="border-border/40 mt-2 space-y-1 rounded border p-2">
         <div className="bg-muted h-3 w-full rounded" />
         <div className="bg-muted h-3 w-5/6 rounded" />
         <div className="bg-muted h-3 w-4/6 rounded" />
