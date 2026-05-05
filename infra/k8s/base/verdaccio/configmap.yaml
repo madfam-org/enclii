@@ -40,9 +40,19 @@ data:
     # Security settings
     # API tokens extended to 365d to prevent recurring CI/CD breakage.
     # Automated rotation via Selva NPM tools (selva_npm_rotate_token).
+    #
+    # 2026-05-04 (NP-3): legacy:true was causing publish auth to fall through
+    # to anonymous while whoami succeeded, because the rotation cronjob obtains
+    # tokens via /-/verdaccio/sec/login (which signs JWTs from the web path)
+    # but legacy:true told Verdaccio to validate API endpoints with the AES
+    # legacy decoder. Whoami used the web path; publish hit the API token
+    # middleware → JWT was rejected as invalid AES → fell through to no auth
+    # → 401. Removing legacy:true makes API token validation use JWT (matching
+    # what the rotation script already issues), so publish and whoami converge
+    # on one verifier. No re-login required for tokens issued post-2026-05-02
+    # because they were already JWTs.
     security:
       api:
-        legacy: true
         jwt:
           sign:
             expiresIn: 365d
