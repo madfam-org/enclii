@@ -39,10 +39,29 @@ jobs:
         with:
           version: 9
 
-      - name: Install dependencies
+      # Install at the workspace ROOT so pnpm sets up symlinks for the
+      # full graph (apps/switchyard-ui → @enclii/ui-components →
+      # @enclii/shared-lib). Per-package installs miss transitive
+      # workspace deps. The default working-directory on this job is
+      # apps/switchyard-ui (set via `defaults.run.working-directory`),
+      # so we explicitly override here.
+      - name: Install workspace dependencies (root)
+        working-directory: ${{ github.workspace }}
         run: pnpm install --frozen-lockfile
         env:
           NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+
+      # Bottom-up build of workspace packages: shared-lib (leaf) →
+      # ui-components (depends on shared-lib). Both ship `main: ./dist/...`,
+      # so without dist/ Turbopack fails to resolve their subpath imports
+      # in the consumer Next build.
+      - name: Build shared-lib (publishes dist/ for consumers)
+        working-directory: ${{ github.workspace }}/packages/shared-lib
+        run: pnpm run build
+
+      - name: Build ui-components (publishes dist/ for consumers)
+        working-directory: ${{ github.workspace }}/packages/ui-components
+        run: pnpm run build
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

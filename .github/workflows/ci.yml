@@ -380,51 +380,51 @@ jobs:
         with:
           version: 9
 
-      - name: Install dependencies
-        working-directory: apps/switchyard-ui
+      # Install at the workspace ROOT so pnpm sets up symlinks for the
+      # full workspace graph, including transitive deps
+      # (apps/switchyard-ui → @enclii/ui-components → @enclii/shared-lib).
+      # Per-package installs miss transitive workspace deps and Jest
+      # crashes with "Cannot find module '@enclii/shared-lib/utils'".
+      - name: Install workspace dependencies (root)
         run: pnpm install --frozen-lockfile
 
-      - name: Run linting
-        working-directory: apps/switchyard-ui
-        run: pnpm run lint
-
-      - name: Run tests
-        working-directory: apps/switchyard-ui
-        run: pnpm test -- --coverage
-
-      - name: Install dispatch dependencies
-        working-directory: apps/admin-console
-        run: pnpm install --frozen-lockfile
-
-      - name: Run dispatch tests
-        working-directory: apps/admin-console
-        run: pnpm test
-
-      - name: Install status dependencies
-        working-directory: apps/status
-        run: pnpm install --frozen-lockfile
-
-      - name: Run status tests
-        working-directory: apps/status
-        run: pnpm test
-
-      - name: Install shared-lib dependencies
+      # Bottom-up build: shared-lib (leaf) → ui-components. Both ship
+      # `main: ./dist/...` with subpath exports under ./dist/...; without
+      # dist/ every consumer import resolves to a missing file and the
+      # Jest test suite crashes before any test runs.
+      - name: Build shared-lib (publishes dist/ for consumers)
         working-directory: packages/shared-lib
-        run: pnpm install --frozen-lockfile
+        run: pnpm run build
 
       - name: Run shared-lib tests
         working-directory: packages/shared-lib
         run: pnpm test -- --passWithNoTests
 
-      - name: Install ui-components dependencies
+      - name: Build ui-components (publishes dist/ for consumers)
         working-directory: packages/ui-components
-        run: pnpm install --frozen-lockfile
+        run: pnpm run build
 
       - name: Run ui-components tests
         working-directory: packages/ui-components
         run: pnpm test -- --passWithNoTests
 
-      - name: Build UI
+      - name: Run switchyard-ui linting
+        working-directory: apps/switchyard-ui
+        run: pnpm run lint
+
+      - name: Run switchyard-ui tests
+        working-directory: apps/switchyard-ui
+        run: pnpm test -- --coverage
+
+      - name: Run admin-console (dispatch) tests
+        working-directory: apps/admin-console
+        run: pnpm test
+
+      - name: Run status tests
+        working-directory: apps/status
+        run: pnpm test
+
+      - name: Build switchyard-ui
         working-directory: apps/switchyard-ui
         run: pnpm run build
 
