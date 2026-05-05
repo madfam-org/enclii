@@ -118,6 +118,37 @@ function parseJwt(token: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Normalize admin role information across the variations Janua issuers
+ * can produce. Without this, an admin user shows as "Personal Account"
+ * because the JWT carries `is_admin: true` (or `role: "admin"` singular)
+ * instead of `roles: ["admin"]` array — and the rest of the app keys off
+ * `roles?.includes("admin")`.
+ *
+ * Sources we accept (any one signal admits the user as admin):
+ *   - `roles: string[]`          — preferred shape; admin / superadmin
+ *   - `role: string`             — singular legacy claim
+ *   - `is_admin: true`           — Janua admin-bootstrap boolean
+ *   - `email === "admin@madfam.io"` — bootstrap operator identity (last resort,
+ *     since this email is reserved for the master-admin per Janua admin-bootstrap)
+ */
+function extractRoles(claims: Record<string, unknown> | null): string[] {
+  if (!claims) return [];
+  const roles = new Set<string>();
+  if (Array.isArray(claims.roles)) {
+    for (const r of claims.roles) if (typeof r === "string") roles.add(r);
+  }
+  if (typeof claims.role === "string") roles.add(claims.role);
+  if (claims.is_admin === true || claims.is_superadmin === true) roles.add("admin");
+  if (typeof claims.email === "string" && claims.email === "admin@madfam.io") {
+    // Reserved bootstrap identity per Janua admin-bootstrap convention.
+    roles.add("admin");
+  }
+  // Map superadmin → admin so existing `.includes("admin")` checks engage.
+  if (roles.has("superadmin") && !roles.has("admin")) roles.add("admin");
+  return Array.from(roles);
+}
+
 async function parseErrorResponse(response: Response, fallbackMessage: string): Promise<string> {
   const text = await response.text();
   if (text.startsWith("{")) {
@@ -408,7 +439,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
       const claims = parseJwt(data.access_token);
-      const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: (claims?.roles as string[]) || [], foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
+      const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: extractRoles(claims), foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
       setStoredTokens(tokens);
       setStoredUser(userData);
       setUser(userData);
@@ -424,7 +455,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     try {
       const tokens = { accessToken: redirectTokens.accessToken, refreshToken: redirectTokens.refreshToken, expiresAt: redirectTokens.expiresAt.getTime() };
       const claims = parseJwt(redirectTokens.accessToken);
-      const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: (claims?.roles as string[]) || [], foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
+      const userData: User = { id: (claims?.sub as string) || "", email: (claims?.email as string) || "", name: claims?.name as string, roles: extractRoles(claims), foundry_tier: (claims?.foundry_tier as User["foundry_tier"]) || null };
       setStoredTokens(tokens);
       setStoredUser(userData);
       setUser(userData);
