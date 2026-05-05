@@ -39,37 +39,29 @@ jobs:
         with:
           version: 9
 
-      # Shared workspace packages must be built before any consumer
-      # build/test — both shared-lib and ui-components ship
-      # `main: ./dist/...` plus subpath exports under ./dist/..., so
-      # without dist/ the Next build fails with "Module not found:
-      # Can't resolve '@enclii/{shared-lib,ui-components}/...'".
-      # Build order is bottom-up: shared-lib first (leaf), then
-      # ui-components (depends on shared-lib).
-      - name: Install shared-lib dependencies
-        working-directory: packages/shared-lib
+      # Install from the workspace ROOT so pnpm sets up all workspace
+      # symlinks, including transitive ones (apps/switchyard-ui →
+      # @enclii/ui-components → @enclii/shared-lib). Per-package installs
+      # don't reliably hoist transitive workspace deps, which is why the
+      # Next build was reporting "Module not found: Can't resolve
+      # '@enclii/shared-lib/utils'" even after building each package.
+      - name: Install workspace dependencies (root)
+        working-directory: ${{ github.workspace }}
         run: pnpm install --frozen-lockfile
         env:
           NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
 
+      # Bottom-up build: shared-lib (leaf) → ui-components (depends on
+      # shared-lib) → app build. Both packages ship `main: ./dist/...`
+      # plus subpath exports under ./dist/..., so without dist/ every
+      # consumer import resolves to a missing file.
       - name: Build shared-lib (publishes dist/ for consumers)
-        working-directory: packages/shared-lib
+        working-directory: ${{ github.workspace }}/packages/shared-lib
         run: pnpm run build
-
-      - name: Install ui-components dependencies
-        working-directory: packages/ui-components
-        run: pnpm install --frozen-lockfile
-        env:
-          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
 
       - name: Build ui-components (publishes dist/ for consumers)
-        working-directory: packages/ui-components
+        working-directory: ${{ github.workspace }}/packages/ui-components
         run: pnpm run build
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        env:
-          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
