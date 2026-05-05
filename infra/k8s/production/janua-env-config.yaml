@@ -51,10 +51,13 @@ data:
   # All allowed origins for cross-origin requests
   # Format: comma-separated list of full URLs
   # Non-core app origins auto-derived from OAuth client redirect_uris via DynamicCORSMiddleware
-  CORS_ORIGINS: "https://admin.janua.dev,https://app.janua.dev,https://api.enclii.dev,https://app.enclii.dev,https://admin.enclii.dev,https://auth.madfam.io,https://sniper.madfam.io"
+  # 2026-05-04: Added forgesight.quest family — login was 100% blocked from app.forgesight.quest
+  # because auth.madfam.io rejected the CORS preflight (no Access-Control-Allow-Origin returned).
+  # Verified by Playwright: 170+ /auth/me retries in 6s, 0 successful.
+  CORS_ORIGINS: "https://admin.janua.dev,https://app.janua.dev,https://api.enclii.dev,https://app.enclii.dev,https://admin.enclii.dev,https://auth.madfam.io,https://sniper.madfam.io,https://app.forgesight.quest,https://admin.forgesight.quest,https://www.forgesight.quest,https://forgesight.quest,https://api.forgesight.quest"
 
   # CSRF trusted origins (for form submissions)
-  CSRF_TRUSTED_ORIGINS: "https://app.enclii.dev,https://admin.enclii.dev,https://app.janua.dev,https://admin.janua.dev,https://auth.madfam.io,https://sniper.madfam.io"
+  CSRF_TRUSTED_ORIGINS: "https://app.enclii.dev,https://admin.enclii.dev,https://app.janua.dev,https://admin.janua.dev,https://auth.madfam.io,https://sniper.madfam.io,https://app.forgesight.quest,https://admin.forgesight.quest,https://www.forgesight.quest,https://forgesight.quest"
 
   # ===========================================================================
   # Redis Configuration
