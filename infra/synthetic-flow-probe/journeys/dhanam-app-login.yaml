@@ -1,0 +1,48 @@
+# Dhanam admin login journey.
+#
+# Dhanam is the billing/financial platform. An operator login broken here
+# means Stripe webhook investigations, billing reconciliation, and the
+# customer-facing financial dashboard are all blind.
+#
+# Same shape as selva and karafiel — by design. The three journeys share
+# the Janua SSO step, so a Janua-side break (CSP, CORS, JWT, etc.) trips
+# all three at once. That triple-fail pattern is itself a useful diagnostic
+# signal: "all three platforms broken simultaneously" → look at Janua first,
+# not at the individual platforms.
+
+platform: dhanam
+journey: admin-login
+description: "admin@madfam.io can complete Janua SSO and reach Dhanam app"
+schedule_seconds: 300
+safety_class: read-only
+
+steps:
+  - name: open-login-page
+    method: GET
+    url: https://app.dhan.am/login
+    expect_status: 200
+    expect_no_csp_violation: true
+
+  - name: initiate-janua-sso
+    method: GET
+    url: https://app.dhan.am/api/auth/sso?return_to=/dashboard
+    follow_redirects: true
+    expect_status: 200
+    expect_url_contains: auth.madfam.io
+
+  - name: post-credentials
+    method: POST
+    url: https://auth.madfam.io/api/v1/auth/login
+    body_form:
+      email: ${ADMIN_EMAIL}
+      password: ${ADMIN_PASSWORD}
+    follow_redirects: true
+    expect_status: 200
+    expect_url_contains: app.dhan.am
+
+  - name: hit-protected-route
+    method: GET
+    url: https://app.dhan.am/api/v1/me
+    expect_status: 200
+    expect_json_contains:
+      email: admin@madfam.io
