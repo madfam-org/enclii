@@ -9,11 +9,20 @@ metadata:
     app.kubernetes.io/part-of: enclii-platform
 spec:
   replicas: 1
+  # Strategy: Recreate, NOT RollingUpdate.
+  # 2026-05-04 incident (caught here): Verdaccio is single-replica + RWO Longhorn
+  # PVC. RollingUpdate with maxSurge=1 spawns the new pod BEFORE the old one
+  # terminates, but the RWO PVC can only attach to one node at a time. New pod
+  # gets `Multi-Attach error` and stays ContainerCreating until the volume is
+  # manually detached (took ~18 min in the May 4 incident, with npm.madfam.io
+  # 502'ing the entire window).
+  # Recreate kills the old pod first → PVC detaches cleanly → new pod attaches
+  # on its target node → ~30s clean cutover instead of indefinite hang.
+  # Reloader annotation below ensures ConfigMap-only changes also trigger this
+  # restart, removing the need for manual `kubectl rollout restart` on every
+  # ConfigMap edit.
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: verdaccio
@@ -26,6 +35,10 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "4873"
         prometheus.io/path: "/-/metrics"
+        # Auto-restart pod when ConfigMap or Secret it consumes changes.
+        # Pairs with strategy:Recreate above so config rolls cleanly without
+        # operator intervention. Reloader watches volumes (configMap/secret).
+        reloader.stakater.com/auto: "true"
     spec:
       securityContext:
         runAsNonRoot: true

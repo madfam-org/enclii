@@ -91,7 +91,7 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
       // Janua SSO configured via NEXT_PUBLIC_JANUA_URL (default: api.janua.dev)
       `connect-src 'self' http://localhost:4200 https://api.enclii.dev ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://api.janua.dev'} https://static.cloudflareinsights.com`,
       `frame-src 'self' ${process.env.NEXT_PUBLIC_JANUA_URL || 'https://auth.madfam.io'}`,
-      "frame-ancestors 'none'",
+      "frame-ancestors 'self' https://selva.town https://*.selva.town https://*.madfam.io",
     ].join("; "),
 
     // Permissions Policy - restrict browser features
