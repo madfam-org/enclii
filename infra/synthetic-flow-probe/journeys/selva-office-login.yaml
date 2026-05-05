@@ -1,0 +1,61 @@
+# Selva Office admin login journey.
+#
+# Exercises the same path a MADFAM operator takes to reach the office UI:
+#   1. Open the public login page (catches CDN / cloudflared / cert breakage).
+#   2. Initiate the Janua SSO redirect chain (catches Janua-side route breakage).
+#   3. POST credentials to Janua's login endpoint (catches CORS / CSP / cred-validation
+#      breakage — this is the step that would have caught the Janua CSP form-action
+#      and CORS incidents from the 2026-05-04 session).
+#   4. Hit a protected /office route with the resulting session cookie (catches
+#      session-issue / RBAC breakage).
+#
+# Credential placeholders resolve from the Secret `synthetic-flow-probe-creds`:
+#   ADMIN_EMAIL    — admin@madfam.io
+#   ADMIN_PASSWORD — <stored in Vault>
+# Missing creds → journey is recorded SKIPPED (not failed) and the operator gets
+# a `synthetic_journey_skipped_total{reason="missing_credential"}` signal.
+
+platform: selva
+journey: admin-login
+description: "admin@madfam.io can complete Janua SSO and reach /office"
+schedule_seconds: 300
+safety_class: read-only
+
+steps:
+  - name: open-login-page
+    method: GET
+    url: https://app.selva.town/login
+    expect_status: 200
+    # 'expect_no_csp_violation' verifies the CSP form-action directive on this
+    # page allows posting back to auth.madfam.io. This is the assertion that
+    # would have failed during the 2026-05-04 Janua-CSP incident.
+    expect_no_csp_violation: true
+
+  - name: initiate-janua-sso
+    method: GET
+    url: https://app.selva.town/api/auth/sso?return_to=/office
+    follow_redirects: true
+    expect_status: 200
+    # After redirects we should land on Janua's hosted login form.
+    expect_url_contains: auth.madfam.io
+
+  - name: post-credentials
+    method: POST
+    url: https://auth.madfam.io/api/v1/auth/login
+    body_form:
+      email: ${ADMIN_EMAIL}
+      password: ${ADMIN_PASSWORD}
+    follow_redirects: true
+    expect_status: 200
+    # Expect the post-login redirect chain to terminate back at the requesting
+    # platform — anything else means the SSO callback is broken.
+    expect_url_contains: app.selva.town
+
+  - name: hit-protected-route
+    method: GET
+    url: https://app.selva.town/api/v1/me
+    expect_status: 200
+    # `expect_json_contains` proves we have a real session, not just a 200 from
+    # an error page that happens to be HTML-ish.
+    expect_json_contains:
+      email: admin@madfam.io
