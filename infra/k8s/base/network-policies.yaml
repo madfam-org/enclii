@@ -149,8 +149,12 @@ spec:
         matchLabels:
           kubernetes.io/metadata.name: cloudflare-tunnel
     ports:
+    # Match docs-site containerPort: 80 (nginx serves on :80; rebuild to
+    # nginx-unprivileged + 8080 is tracked separately in the Deployment).
+    # Previously declared 8080 — every cloudflared→docs-site packet was
+    # silently CNI-dropped. NP port lint flagged this 2026-05-05.
     - protocol: TCP
-      port: 8080
+      port: 80
 ---
 # Allow ingress to landing-page only from Cloudflare tunnel
 apiVersion: networking.k8s.io/v1
@@ -173,8 +177,10 @@ spec:
         matchLabels:
           kubernetes.io/metadata.name: cloudflare-tunnel
     ports:
+    # Match landing-page containerPort: 4204. Previously declared 80 —
+    # silent CNI drop. NP port lint flagged this 2026-05-05.
     - protocol: TCP
-      port: 80
+      port: 4204
 ---
 # Allow ingress to roundhouse only from switchyard-api
 apiVersion: networking.k8s.io/v1
@@ -245,8 +251,10 @@ spec:
         matchLabels:
           app: switchyard-api
     ports:
+    # Match waybill containerPort: 8080. Previously declared 4290 —
+    # silent CNI drop. NP port lint flagged this 2026-05-05.
     - protocol: TCP
-      port: 4290
+      port: 8080
   - from:
     - namespaceSelector:
         matchLabels:
@@ -255,8 +263,11 @@ spec:
         matchLabels:
           app: prometheus
     ports:
+    # Match waybill containerPort: 8080 (named "metrics"). The historical
+    # value 4290 referred to a separate metrics port that no longer exists
+    # on the pod — Prometheus scrapes were silently CNI-dropped.
     - protocol: TCP
-      port: 4290
+      port: 8080
 ---
 # Waybill egress — DNS and Postgres
 apiVersion: networking.k8s.io/v1
