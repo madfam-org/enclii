@@ -8,39 +8,57 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./button": {
       "types": "./dist/components/ui/button.d.ts",
-      "import": "./dist/components/ui/button.js"
+      "import": "./dist/components/ui/button.js",
+      "require": "./dist/components/ui/button.js",
+      "default": "./dist/components/ui/button.js"
     },
     "./badge": {
       "types": "./dist/components/ui/badge.d.ts",
-      "import": "./dist/components/ui/badge.js"
+      "import": "./dist/components/ui/badge.js",
+      "require": "./dist/components/ui/badge.js",
+      "default": "./dist/components/ui/badge.js"
     },
     "./dialog": {
       "types": "./dist/components/ui/dialog.d.ts",
-      "import": "./dist/components/ui/dialog.js"
+      "import": "./dist/components/ui/dialog.js",
+      "require": "./dist/components/ui/dialog.js",
+      "default": "./dist/components/ui/dialog.js"
     },
     "./dropdown-menu": {
       "types": "./dist/components/ui/dropdown-menu.d.ts",
-      "import": "./dist/components/ui/dropdown-menu.js"
+      "import": "./dist/components/ui/dropdown-menu.js",
+      "require": "./dist/components/ui/dropdown-menu.js",
+      "default": "./dist/components/ui/dropdown-menu.js"
     },
     "./input": {
       "types": "./dist/components/ui/input.d.ts",
-      "import": "./dist/components/ui/input.js"
+      "import": "./dist/components/ui/input.js",
+      "require": "./dist/components/ui/input.js",
+      "default": "./dist/components/ui/input.js"
     },
     "./label": {
       "types": "./dist/components/ui/label.d.ts",
-      "import": "./dist/components/ui/label.js"
+      "import": "./dist/components/ui/label.js",
+      "require": "./dist/components/ui/label.js",
+      "default": "./dist/components/ui/label.js"
     },
     "./select": {
       "types": "./dist/components/ui/select.d.ts",
-      "import": "./dist/components/ui/select.js"
+      "import": "./dist/components/ui/select.js",
+      "require": "./dist/components/ui/select.js",
+      "default": "./dist/components/ui/select.js"
     },
     "./table": {
       "types": "./dist/components/ui/table.d.ts",
-      "import": "./dist/components/ui/table.js"
+      "import": "./dist/components/ui/table.js",
+      "require": "./dist/components/ui/table.js",
+      "default": "./dist/components/ui/table.js"
     }
   },
   "publishConfig": {
@@ -77,14 +95,15 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/jest": "^29.5.5",
-    "@types/react": "^18.2.0 || ^19.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "lucide-react": "^0.400.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "tailwind-merge": "^2.0.0",
     "ts-jest": "^29.2.0",
     "typescript": "^5.7.2"
