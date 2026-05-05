@@ -70,9 +70,20 @@ spec:
           # digest: sha256:REPLACE_BEFORE_MERGE
           pullPolicy: IfNotPresent
 
-        # Two replicas for HA of the operator itself.
-        # Anti-affinity below spreads them across nodes.
-        replicaCount: 2
+        # Two replicas for HA — but currently scaled to 0 because there
+        # are zero managed Cluster CRs in the fleet (verify via
+        # `kubectl get clusters.postgresql.cnpg.io -A`). Both replicas
+        # were crashlooping ~220 restarts in 17h with empty stdout/stderr
+        # logs — likely a webhook-cert / cert-manager dependency that
+        # never got wired up after the initial install. With 0 Clusters
+        # to reconcile, the operator is consuming alerts + scheduler
+        # attention for nothing. Set to 0 to stop the crash storm; the
+        # prep work (CRDs, RBAC, install) stays in place for when the
+        # postgres HA migration (RFC 0012 / HA Track 1 in
+        # internal-devops/runbooks/2026-05-04-ha-gap-audit-and-plan.md)
+        # is actually scheduled. To re-enable: bump back to 2 + verify
+        # cert-manager is installed in the cluster.
+        replicaCount: 0
 
         # Resource budget — operator is lightweight (idle most of the time,
         # spikes during failover events).
