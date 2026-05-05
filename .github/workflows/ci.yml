@@ -380,6 +380,32 @@ jobs:
         with:
           version: 9
 
+      # ui-components must be installed AND BUILT before any consumer (apps/*
+      # or its tests) runs — its package.json declares
+      # `main: ./dist/index.js` and subpath exports under `./dist/...`.
+      # Without dist/, every `import "@enclii/ui-components/table"` resolves
+      # to a missing file and Jest test suites crash with
+      # "Cannot find module '@enclii/ui-components/table'".
+      - name: Install shared-lib dependencies
+        working-directory: packages/shared-lib
+        run: pnpm install --frozen-lockfile
+
+      - name: Run shared-lib tests
+        working-directory: packages/shared-lib
+        run: pnpm test -- --passWithNoTests
+
+      - name: Install ui-components dependencies
+        working-directory: packages/ui-components
+        run: pnpm install --frozen-lockfile
+
+      - name: Build ui-components (publishes dist/ for consumers)
+        working-directory: packages/ui-components
+        run: pnpm run build
+
+      - name: Run ui-components tests
+        working-directory: packages/ui-components
+        run: pnpm test -- --passWithNoTests
+
       - name: Install dependencies
         working-directory: apps/switchyard-ui
         run: pnpm install --frozen-lockfile
@@ -407,22 +433,6 @@ jobs:
       - name: Run status tests
         working-directory: apps/status
         run: pnpm test
-
-      - name: Install shared-lib dependencies
-        working-directory: packages/shared-lib
-        run: pnpm install --frozen-lockfile
-
-      - name: Run shared-lib tests
-        working-directory: packages/shared-lib
-        run: pnpm test -- --passWithNoTests
-
-      - name: Install ui-components dependencies
-        working-directory: packages/ui-components
-        run: pnpm install --frozen-lockfile
-
-      - name: Run ui-components tests
-        working-directory: packages/ui-components
-        run: pnpm test -- --passWithNoTests
 
       - name: Build UI
         working-directory: apps/switchyard-ui

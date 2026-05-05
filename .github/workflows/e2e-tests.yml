@@ -39,6 +39,20 @@ jobs:
         with:
           version: 9
 
+      # ui-components must be built before any consumer build/test —
+      # its package.json declares main: ./dist/index.js plus subpath
+      # exports under ./dist/..., so without dist/ the Next build fails
+      # with "Module not found: Can't resolve '@enclii/ui-components/...'".
+      - name: Install ui-components dependencies
+        working-directory: packages/ui-components
+        run: pnpm install --frozen-lockfile
+        env:
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+
+      - name: Build ui-components (publishes dist/ for consumers)
+        working-directory: packages/ui-components
+        run: pnpm run build
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         env:
