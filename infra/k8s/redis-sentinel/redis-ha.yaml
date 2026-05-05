@@ -272,12 +272,20 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "100m"
+          # Probes must include `-a "$REDIS_PASSWORD"` because sentinel.conf
+          # has `requirepass ${REDIS_PASSWORD}` injected by the init script
+          # (see line ~89). Without it, `redis-cli ping` against sentinel
+          # gets NOAUTH, never sees PONG, probe fails 3x in a row,
+          # kubelet sends SIGTERM. That was the root cause of redis-ha-0
+          # being 0/3 ready for 16 days (403 sentinel restarts) — diagnosed
+          # 2026-05-04. Same fix as the redis container's probes above
+          # (lines 215, 224, 234) which already had auth.
           readinessProbe:
             exec:
               command:
                 - /bin/sh
                 - -c
-                - redis-cli -p 26379 ping 2>/dev/null | grep -q PONG
+                - redis-cli -p 26379 -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
@@ -287,7 +295,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - redis-cli -p 26379 ping 2>/dev/null | grep -q PONG
+                - redis-cli -p 26379 -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
