@@ -22,6 +22,14 @@ const customJestConfig = {
   // Module path aliases (matching tsconfig paths)
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    // Jest doesn't honour the `exports` field on workspace packages,
+    // so map subpath imports back to their built files explicitly.
+    // - @enclii/ui-components/<foo>  → dist/components/ui/<foo>
+    // - @enclii/shared-lib/utils     → dist/utils
+    // These mirror the package.json `exports` map; if a new subpath is
+    // added to either package's exports, add a row here.
+    '^@enclii/ui-components/(.*)$': '<rootDir>/node_modules/@enclii/ui-components/dist/components/ui/$1',
+    '^@enclii/shared-lib/utils$': '<rootDir>/../../packages/shared-lib/dist/utils/index.js',
   },
 
   // Test file patterns - only match unit/component tests

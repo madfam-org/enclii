@@ -50,6 +50,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
     "@types/jest": "^29.5.5",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",

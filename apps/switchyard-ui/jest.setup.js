@@ -5,8 +5,7 @@
  */
 
 // Extend Jest matchers with jest-dom for better DOM assertions
-// Note: Uncomment if @testing-library/jest-dom is added as a dependency
-// import '@testing-library/jest-dom';
+require('@testing-library/jest-dom');
 
 // Mock window.matchMedia for components that use media queries
 Object.defineProperty(window, 'matchMedia', {
