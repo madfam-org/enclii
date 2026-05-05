@@ -47,18 +47,21 @@ describe('polling intervals', () => {
     expect(POLLING_NORMAL).toBe(15_000);
   });
 
-  it('POLLING_SLOW is 30 seconds', () => {
-    expect(POLLING_SLOW).toBe(30_000);
+  it('POLLING_SLOW is 60 seconds', () => {
+    // Bumped from 30s → 60s in #229 (observability/health timeout RCA)
+    expect(POLLING_SLOW).toBe(60_000);
   });
 
   it('POLLING_IDLE is 60 seconds', () => {
     expect(POLLING_IDLE).toBe(60_000);
   });
 
-  it('intervals are in ascending order', () => {
+  it('intervals are in non-decreasing order', () => {
     expect(POLLING_FAST).toBeLessThan(POLLING_NORMAL);
     expect(POLLING_NORMAL).toBeLessThan(POLLING_SLOW);
-    expect(POLLING_SLOW).toBeLessThan(POLLING_IDLE);
+    // After #229 bump, SLOW and IDLE are both 60s. The contract is
+    // non-decreasing, not strictly increasing.
+    expect(POLLING_SLOW).toBeLessThanOrEqual(POLLING_IDLE);
   });
 });
 
