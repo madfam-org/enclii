@@ -8,7 +8,16 @@ import { usePolling } from '@/hooks/use-polling';
 import { POLLING_SLOW } from '@/lib/constants';
 import { PricingModal } from '@/components/modals/PricingModal';
 import { Button } from "@enclii/ui-components/button";
-import { Plus, Rocket } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  Plus,
+  Rocket,
+  FolderKanban,
+  Boxes,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,11 +37,17 @@ import { resolveLatestDeployment } from '@/lib/project-deploy';
 import { type SortOption } from '@/components/dashboard/project-search-filter';
 import { SubNavActionBar } from '@/components/dashboard/sub-nav-action-bar';
 import { useViewMode } from '@/components/dashboard/view-toggle';
-import { UsageOverview } from '@/components/dashboard/usage-overview';
-import { SystemHealthSummary } from '@/components/dashboard/system-health-summary';
-import { SidebarAlerts } from '@/components/dashboard/sidebar-alerts';
-import { SidebarRecentPreviews } from '@/components/dashboard/sidebar-recent-previews';
 import { LastSyncBadge } from '@/components/dashboard/last-sync-badge';
+import { StatCard } from '@/components/dashboard/stat-card';
+
+// /projects is the dedicated projects-only surface — distinct from the home
+// dashboard at /. Home shows the ecosystem context (usage, system health,
+// alerts, recent previews) alongside a curated project grid; /projects
+// drops that context and gives the full width to project management:
+// stats banner + status filters + denser grid. If you find yourself
+// re-adding the home sidebar widgets here, you're undoing the split.
+
+type StatusFilter = 'all' | 'healthy' | 'degraded' | 'failing';
 
 interface ApiProject {
   id: string;
@@ -84,6 +99,7 @@ export default function ProjectsPage() {
   });
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('updated');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [viewMode, setViewMode] = useViewMode({
     storageKey: "enclii-projects-view",
     defaultMode: "grid",
@@ -299,9 +315,37 @@ export default function ProjectsPage() {
 
   usePolling(fetchProjects, POLLING_SLOW);
 
+  // Aggregate stats for the projects-page banner. Computed off the full
+  // unfiltered set so the totals don't shift when the user narrows by
+  // status — that matches the mental model "show me the whole picture,
+  // then let me drill in".
+  const stats = useMemo(() => {
+    let totalServices = 0;
+    let healthy = 0;
+    let degraded = 0;
+    let failing = 0;
+    for (const p of projects) {
+      totalServices += p.serviceCount ?? 0;
+      if (p.aggregateStatus === 'healthy') healthy += 1;
+      else if (p.aggregateStatus === 'degraded') degraded += 1;
+      else if (p.aggregateStatus === 'failing') failing += 1;
+    }
+    return {
+      totalProjects: projects.length,
+      totalServices,
+      healthy,
+      degraded,
+      failing,
+    };
+  }, [projects]);
+
   // Filter and sort
   const filteredProjects = useMemo(() => {
     let result = projects;
+
+    if (statusFilter !== 'all') {
+      result = result.filter((p) => p.aggregateStatus === statusFilter);
+    }
 
     if (search) {
       const q = search.toLowerCase();
@@ -337,39 +381,30 @@ export default function ProjectsPage() {
     }
 
     return result;
-  }, [projects, search, sort]);
+  }, [projects, search, sort, statusFilter]);
 
   if (loading) {
-    // Loading skeleton mirrors the post-load layout: title row, action bar
-    // placeholder, sync badge slot, then the same 12-col grid (sidebar +
-    // main). Card skeletons use the narrower xl:grid-cols-3 step that the
-    // 9-col main column actually fits — matches home's approach.
+    // Loading skeleton mirrors the projects-only layout: title, stats banner
+    // placeholder (5 cards), action bar, status pills, then the wide
+    // project grid. No sidebar — that's home's job.
     return (
       <div className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mb-6 flex items-center gap-3">
           <div className="bg-muted h-8 w-40 animate-pulse rounded" />
         </div>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="bg-muted h-20 animate-pulse rounded-lg" />
+          ))}
+        </div>
         <div className="mb-3 flex items-center gap-3">
           <div className="bg-muted h-10 w-64 animate-pulse rounded" />
           <div className="bg-muted h-10 w-40 animate-pulse rounded" />
         </div>
-        <div className="mt-2 flex justify-end">
-          <div className="bg-muted h-6 w-32 animate-pulse rounded" />
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
-          <div className="order-2 space-y-4 lg:order-1 lg:col-span-3">
-            <div className="bg-muted h-40 animate-pulse rounded-lg" />
-            <div className="bg-muted h-28 animate-pulse rounded-lg" />
-            <div className="bg-muted h-32 animate-pulse rounded-lg" />
-            <div className="bg-muted h-36 animate-pulse rounded-lg" />
-          </div>
-          <div className="order-1 lg:order-2 lg:col-span-9">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <ProjectCardCompactSkeleton key={i} />
-              ))}
-            </div>
-          </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <ProjectCardCompactSkeleton key={i} />
+          ))}
         </div>
       </div>
     );
@@ -388,22 +423,70 @@ export default function ProjectsPage() {
     );
   }
 
+  const statusPills: Array<{ key: StatusFilter; label: string; count: number }> = [
+    { key: 'all', label: 'All', count: stats.totalProjects },
+    { key: 'healthy', label: 'Healthy', count: stats.healthy },
+    { key: 'degraded', label: 'Degraded', count: stats.degraded },
+    { key: 'failing', label: 'Failing', count: stats.failing },
+  ];
+
   return (
-    // Match home's container width (max-w-screen-2xl) + padding scale so the
-    // /projects page reads as a sibling of /, not a different surface. The
-    // surrounding 12-col grid (below) gives the page the same rich sidebar
-    // context as home — usage / system health / alerts / recent previews.
+    // Projects-only surface — full width for the project list, no
+    // ecosystem-context sidebar. Home (/) is the place for usage /
+    // system-health / alerts / recent-previews context.
     <div className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* Header — title + LastSyncBadge mirror home's pattern. */}
-      <div className="mb-6 flex items-center justify-between gap-3">
+      {/* Header — title + count + sync badge */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-foreground text-2xl font-bold">Projects</h1>
-          <LastSyncBadge
-            lastSyncedAt={lastSyncedAt}
-            onRefresh={fetchProjects}
-            refreshing={refreshing}
-          />
+          <span className="text-muted-foreground text-sm">
+            {stats.totalProjects} total
+          </span>
         </div>
+        <LastSyncBadge
+          lastSyncedAt={lastSyncedAt}
+          onRefresh={fetchProjects}
+          refreshing={refreshing}
+        />
+      </div>
+
+      {/* Stats banner — projects-page identity. Counts are over the full
+          set, not the filtered subset, so the totals stay anchored as the
+          user narrows by status. */}
+      <div
+        className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        aria-label="Projects summary"
+      >
+        <StatCard
+          title="Projects"
+          value={stats.totalProjects}
+          icon={FolderKanban}
+          variant="info"
+        />
+        <StatCard
+          title="Services"
+          value={stats.totalServices}
+          icon={Boxes}
+          variant="info"
+        />
+        <StatCard
+          title="Healthy"
+          value={stats.healthy}
+          icon={CheckCircle2}
+          variant="success"
+        />
+        <StatCard
+          title="Degraded"
+          value={stats.degraded}
+          icon={AlertTriangle}
+          variant="warning"
+        />
+        <StatCard
+          title="Failing"
+          value={stats.failing}
+          icon={XCircle}
+          variant="warning"
+        />
       </div>
 
       {/* Create Project Modal */}
@@ -481,80 +564,101 @@ export default function ProjectsPage() {
         onCreateProject={handleCreateProjectClick}
       />
 
-      {/* 12-column grid mirrors home: left sidebar (sticky on lg+) +
-          main project content. Below lg the sidebar order moves AFTER
-          projects (lg:order-1 / order-2) so mobile users see their
-          projects first, ecosystem context second — same priority
-          ladder as home. */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
-        {/* Left sidebar (sticky on lg+) */}
-        <aside
-          className="order-2 space-y-4 lg:sticky lg:top-20 lg:order-1 lg:col-span-3 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto lg:pr-1"
-          aria-label="Ecosystem snapshot"
-        >
-          <UsageOverview variant="compact" />
-          <SystemHealthSummary />
-          <SidebarAlerts />
-          <SidebarRecentPreviews projects={projects} />
-        </aside>
+      {/* Status filter pills — projects-page-only narrowing primitive.
+          Home doesn't need this because it shows a curated subset. */}
+      <div
+        className="mt-3 flex flex-wrap gap-2"
+        role="group"
+        aria-label="Filter projects by status"
+      >
+        {statusPills.map((pill) => {
+          const active = statusFilter === pill.key;
+          return (
+            <button
+              key={pill.key}
+              type="button"
+              onClick={() => setStatusFilter(pill.key)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                active
+                  ? "border-enclii-blue bg-enclii-blue text-white"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <span>{pill.label}</span>
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+                  active ? "bg-white/20" : "bg-muted/60"
+                )}
+              >
+                {pill.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Main content (projects list / grid + create flow). On lg+
-            this takes col-span-9 next to the sidebar; below lg it
-            flows above the sidebar. xl:grid-cols-3 fits the 9-col
-            width — lg:grid-cols-3 would be cramped. */}
-        <div className="order-1 lg:order-2 lg:col-span-9">
-          {filteredProjects.length === 0 ? (
-            projects.length === 0 ? (
-              <div className="border-border rounded-lg border border-dashed py-16 text-center">
-                <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
-                <h3 className="text-foreground text-lg font-medium">No projects found</h3>
-                <p className="text-muted-foreground mb-4 mt-1">
-                  Get started by creating your first project.
-                </p>
-                <Button onClick={handleCreateProjectClick}>
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  Create Project
-                </Button>
+      {/* Full-width project grid — no sidebar. Wider grid (lg:3, 2xl:4)
+          since we have the entire viewport. */}
+      <div className="mt-4">
+        {filteredProjects.length === 0 ? (
+          projects.length === 0 ? (
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <Rocket className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
+              <h3 className="text-foreground text-lg font-medium">No projects found</h3>
+              <p className="text-muted-foreground mb-4 mt-1">
+                Get started by creating your first project.
+              </p>
+              <Button onClick={handleCreateProjectClick}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Create Project
+              </Button>
+            </div>
+          ) : (
+            <div className="border-border rounded-lg border border-dashed py-16 text-center">
+              <p className="text-muted-foreground">
+                {search
+                  ? `No projects match "${search}"`
+                  : `No ${statusFilter} projects`}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => {
+                  setSearch('');
+                  setStatusFilter('all');
+                }}
+              >
+                Clear filters
+              </Button>
+            </div>
+          )
+        ) : (
+          <>
+            {viewMode === "list" ? (
+              <div
+                className="divide-border/40 border-border/60 bg-card divide-y overflow-hidden rounded-lg border transition-opacity duration-150"
+                role="list"
+              >
+                {filteredProjects.map((project) => (
+                  <ProjectRowCompact
+                    key={project.id}
+                    project={project}
+                  />
+                ))}
               </div>
             ) : (
-              <div className="border-border rounded-lg border border-dashed py-16 text-center">
-                <p className="text-muted-foreground">
-                  No projects match &quot;{search}&quot;
-                </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setSearch('')}
-                >
-                  Clear search
-                </Button>
+              <div className="grid grid-cols-1 gap-3 transition-opacity duration-150 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                {filteredProjects.map((project) => (
+                  <ProjectCardCompact key={project.id} project={project} />
+                ))}
               </div>
-            )
-          ) : (
-            <>
-              {viewMode === "list" ? (
-                <div
-                  className="divide-border/40 border-border/60 bg-card divide-y overflow-hidden rounded-lg border transition-opacity duration-150"
-                  role="list"
-                >
-                  {filteredProjects.map((project) => (
-                    <ProjectRowCompact
-                      key={project.id}
-                      project={project}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 transition-opacity duration-150 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredProjects.map((project) => (
-                    <ProjectCardCompact key={project.id} project={project} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Pricing/Upgrade Modal */}
