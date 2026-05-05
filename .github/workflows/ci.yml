@@ -240,6 +240,14 @@ jobs:
       # Shape: AGE_RATCHET_EXEMPT_<IMAGE_LEAF>: "<reason + ETA>"
       # Example:
       #   AGE_RATCHET_EXEMPT_DOCS_SITE: "static site, low risk, ETA 2026-06"
+      #
+      # Initial seed (introductory-PR exemptions). The ratchet is a guardrail
+      # for *future* drift; carrying these three forward as documented lets
+      # the gate land without forcing an off-scope mass-rebuild from a CI PR.
+      # Rotate each out as the next routine deploy of that service rebuilds.
+      AGE_RATCHET_EXEMPT_LANDING_PAGE: "static marketing site, low blast radius; ETA 2026-06 with next content refresh"
+      AGE_RATCHET_EXEMPT_ROUNDHOUSE: "stable orchestrator binary, no upstream CVE pressure; ETA 2026-06 with next dispatcher feature"
+      AGE_RATCHET_EXEMPT_WAYBILL: "stable manifest serializer, no upstream CVE pressure; ETA 2026-06 alongside roundhouse"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v6
