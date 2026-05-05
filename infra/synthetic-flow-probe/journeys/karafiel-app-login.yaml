@@ -1,0 +1,47 @@
+# Karafiel admin login journey.
+#
+# Karafiel is the compliance platform. An operator login broken here means
+# the compliance dashboard, KYC queues, and sanctions reviews are all
+# inaccessible — high blast-radius incident class.
+#
+# Mirrors selva-office-login but against Karafiel's public hostname.
+# The shared Janua step means a Janua break trips both this and the selva
+# journey, giving alertmanager the signal to suppress duplicate noise via
+# the existing `alertname` group_by.
+
+platform: karafiel
+journey: admin-login
+description: "admin@madfam.io can complete Janua SSO and reach Karafiel app"
+schedule_seconds: 300
+safety_class: read-only
+
+steps:
+  - name: open-login-page
+    method: GET
+    url: https://app.karafiel.mx/login
+    expect_status: 200
+    expect_no_csp_violation: true
+
+  - name: initiate-janua-sso
+    method: GET
+    url: https://app.karafiel.mx/api/auth/sso?return_to=/dashboard
+    follow_redirects: true
+    expect_status: 200
+    expect_url_contains: auth.madfam.io
+
+  - name: post-credentials
+    method: POST
+    url: https://auth.madfam.io/api/v1/auth/login
+    body_form:
+      email: ${ADMIN_EMAIL}
+      password: ${ADMIN_PASSWORD}
+    follow_redirects: true
+    expect_status: 200
+    expect_url_contains: app.karafiel.mx
+
+  - name: hit-protected-route
+    method: GET
+    url: https://app.karafiel.mx/api/v1/me
+    expect_status: 200
+    expect_json_contains:
+      email: admin@madfam.io
