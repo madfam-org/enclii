@@ -169,6 +169,28 @@ jobs:
           fi
           echo "✅ Manifest audit passed (including port consistency)!"
 
+  networkpolicy-port-lint:
+    name: NetworkPolicy port consistency
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Cheap (~1.5s on the ~100-NP, ~70-workload infra/k8s tree). Runs in
+    # parallel with lint. Prevents the 2026-05-04 status.enclii.dev outage
+    # class: NetworkPolicy `ports:` clauses that don't intersect the
+    # selected pods' containerPorts (silent CNI drop).
+    # See scripts/check-networkpolicy-ports.py for the full rationale.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Run NetworkPolicy port lint
+        run: python3 scripts/check-networkpolicy-ports.py infra/k8s/
+
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
@@ -1143,7 +1165,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, ecosystem-e2e]
+    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, networkpolicy-port-lint, ecosystem-e2e]
     if: always()
 
     steps:
@@ -1171,6 +1193,10 @@ jobs:
           fi
           if [ "${{ needs.status-configmap-drift.result }}" != "success" ]; then
             echo "❌ Status configmap drift check failed (audit ST-3)"
+            exit 1
+          fi
+          if [ "${{ needs.networkpolicy-port-lint.result }}" != "success" ]; then
+            echo "❌ NetworkPolicy port consistency check failed (prevents 2026-05-04 outage class)"
             exit 1
           fi
           # Ecosystem E2E is only required on main branch pushes
