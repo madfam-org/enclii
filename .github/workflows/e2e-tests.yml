@@ -39,10 +39,23 @@ jobs:
         with:
           version: 9
 
-      # ui-components must be built before any consumer build/test —
-      # its package.json declares main: ./dist/index.js plus subpath
-      # exports under ./dist/..., so without dist/ the Next build fails
-      # with "Module not found: Can't resolve '@enclii/ui-components/...'".
+      # Shared workspace packages must be built before any consumer
+      # build/test — both shared-lib and ui-components ship
+      # `main: ./dist/...` plus subpath exports under ./dist/..., so
+      # without dist/ the Next build fails with "Module not found:
+      # Can't resolve '@enclii/{shared-lib,ui-components}/...'".
+      # Build order is bottom-up: shared-lib first (leaf), then
+      # ui-components (depends on shared-lib).
+      - name: Install shared-lib dependencies
+        working-directory: packages/shared-lib
+        run: pnpm install --frozen-lockfile
+        env:
+          NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+
+      - name: Build shared-lib (publishes dist/ for consumers)
+        working-directory: packages/shared-lib
+        run: pnpm run build
+
       - name: Install ui-components dependencies
         working-directory: packages/ui-components
         run: pnpm install --frozen-lockfile

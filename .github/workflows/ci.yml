@@ -380,15 +380,22 @@ jobs:
         with:
           version: 9
 
-      # ui-components must be installed AND BUILT before any consumer (apps/*
-      # or its tests) runs — its package.json declares
-      # `main: ./dist/index.js` and subpath exports under `./dist/...`.
-      # Without dist/, every `import "@enclii/ui-components/table"` resolves
-      # to a missing file and Jest test suites crash with
-      # "Cannot find module '@enclii/ui-components/table'".
+      # Shared workspace packages must be installed AND BUILT before any
+      # consumer (apps/* or its tests) runs. Both ship `main: ./dist/...`
+      # plus subpath exports under `./dist/...`; without dist/ every
+      # `import "@enclii/ui-components/table"` or
+      # `import "@enclii/shared-lib/utils"` resolves to a missing file
+      # and Jest test suites crash with "Cannot find module ...".
+      #
+      # Build order is bottom-up: shared-lib first (it's a leaf), then
+      # ui-components (which imports from shared-lib), then apps.
       - name: Install shared-lib dependencies
         working-directory: packages/shared-lib
         run: pnpm install --frozen-lockfile
+
+      - name: Build shared-lib (publishes dist/ for consumers)
+        working-directory: packages/shared-lib
+        run: pnpm run build
 
       - name: Run shared-lib tests
         working-directory: packages/shared-lib
