@@ -52,6 +52,21 @@ func NewClient(kubeconfig string, kubecontext string) (*Client, error) {
 		}
 	}
 
+	// Default client-go limiter is 5 QPS / burst 10, which throttles
+	// dashboard fan-outs (88 services × 2 concurrent pollers from
+	// /v1/observability/health) into multi-second queues. The throttle
+	// queue is shared across every handler that grabs this clientset
+	// (~40 of them), so a single fan-out starves namespace listings and
+	// deployment lookups elsewhere on the request path.
+	//
+	// 50/100 matches operator-grade defaults — the apiserver handles it
+	// trivially. If apiserver_request_total / inflight_requests start
+	// climbing in degraded-control-plane scenarios, dial these back via
+	// follow-up tuning rather than reverting; the previous defaults are
+	// always available as a regression baseline.
+	config.QPS = 50
+	config.Burst = 100
+
 	// Create clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
