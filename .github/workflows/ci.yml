@@ -223,6 +223,51 @@ jobs:
             exit 0  # Graceful skip if not initialized
           fi
 
+  image-age-ratchet:
+    name: Image Age Ratchet
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Cheap (<5s on a typical PR). Runs after manifest-audit + golden-config
+    # in parallel — fails the build when a kustomization-pinned digest is
+    # older than 30 days. Catches the 2026-05-04 selva-office class of
+    # outage: CI failed for 3+h, no image rebuild, ArgoCD silently kept
+    # serving 8h-old pods. See scripts/check-image-age.py for rationale.
+    permissions:
+      contents: read
+      packages: read  # required so GITHUB_TOKEN can pull GHCR manifests
+    env:
+      # Per-image exemptions go here — one env var per stale image, with a
+      # short reason + ETA. Rotate them out as deps catch up.
+      # Shape: AGE_RATCHET_EXEMPT_<IMAGE_LEAF>: "<reason + ETA>"
+      # Example:
+      #   AGE_RATCHET_EXEMPT_DOCS_SITE: "static site, low risk, ETA 2026-06"
+      #
+      # Initial seed (introductory-PR exemptions). The ratchet is a guardrail
+      # for *future* drift; carrying these three forward as documented lets
+      # the gate land without forcing an off-scope mass-rebuild from a CI PR.
+      # Rotate each out as the next routine deploy of that service rebuilds.
+      AGE_RATCHET_EXEMPT_LANDING_PAGE: "static marketing site, low blast radius; ETA 2026-06 with next content refresh"
+      AGE_RATCHET_EXEMPT_ROUNDHOUSE: "stable orchestrator binary, no upstream CVE pressure; ETA 2026-06 with next dispatcher feature"
+      AGE_RATCHET_EXEMPT_WAYBILL: "stable manifest serializer, no upstream CVE pressure; ETA 2026-06 alongside roundhouse"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml requests
+
+      - name: Run image age ratchet
+        env:
+          # GHCR_READ_TOKEN is preferred (org-wide read:packages PAT). Falls
+          # back to GITHUB_TOKEN, which works for org-public images.
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check-image-age.py
+
   unit-tests:
     name: Unit Tests
     # Always use GitHub-hosted runners for unit tests because service containers
@@ -1165,7 +1210,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, networkpolicy-port-lint, ecosystem-e2e]
+    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e]
     if: always()
 
     steps:
@@ -1197,6 +1242,10 @@ jobs:
           fi
           if [ "${{ needs.networkpolicy-port-lint.result }}" != "success" ]; then
             echo "❌ NetworkPolicy port consistency check failed (prevents 2026-05-04 outage class)"
+            exit 1
+          fi
+          if [ "${{ needs.image-age-ratchet.result }}" != "success" ]; then
+            echo "❌ Image Age Ratchet failed (digest >30d behind main — see scripts/check-image-age.py)"
             exit 1
           fi
           # Ecosystem E2E is only required on main branch pushes
