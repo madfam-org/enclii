@@ -118,8 +118,10 @@ type Handler struct {
 
 	// Sentry observability proxy (parity audit gap #9). Nil-safe — when the
 	// caller doesn't pre-wire one, GetSentryServiceStats lazily constructs
-	// from env. The endpoint returns a structured 503 when SENTRY_AUTH_TOKEN
-	// + SENTRY_ORG_SLUG are not both set so the UI hides the badge.
+	// from env. The endpoint returns 200 OK with configured=false when
+	// SENTRY_AUTH_TOKEN + SENTRY_ORG_SLUG are not both set so the UI hides
+	// the badge silently — without polluting the operator's console with
+	// one error per service per page load.
 	sentryClient *sentry.Client
 }
 

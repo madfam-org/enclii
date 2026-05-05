@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,65 @@ interface CountRow {
   value: number;
   toneClass: string;
   icon: React.ReactNode;
+}
+
+/**
+ * Hard upper-bound on how long the System Health card can sit in the
+ * "Loading…" state before we give up and show a "System unhealthy"
+ * surface. The /v1/observability/health endpoint has a 25s server budget
+ * and apiGet has a 35s fetch timeout — so under any normal failure mode
+ * the await resolves or rejects inside that window. This guard exists for
+ * the genuinely-pathological case where the fetch is somehow neither
+ * resolving nor rejecting (e.g., a service-worker swallowing the request,
+ * or a long-lived TCP RST never delivered to the JS runtime).
+ *
+ * 40s = max(35s apiGet timeout, 25s server budget) + 5s headroom.
+ *
+ * Truthfulness audit (2026-05-04): the dashboard widget was observed
+ * stuck on "Loading…" indefinitely. Whatever the real cause, an
+ * indefinite spinner is the worst possible state — operators read it as
+ * "the page is alive but the API is gone", which is unactionable. The
+ * guard converts unbounded waits into a definite "Health check timed out"
+ * error state.
+ */
+export const SYSTEM_HEALTH_LOAD_TIMEOUT_MS = 40_000;
+
+/**
+ * Pure helper: format the timeout-triggered error message.
+ *
+ * Extracted so the truthfulness contract ("Loading… must always resolve
+ * within bounded time, even on pathological no-resolve fetches") can be
+ * exercised by jest unit tests without pulling in a React renderer. The
+ * test is the source of truth for the error text the operator sees.
+ */
+export function systemHealthTimeoutMessage(timeoutMs: number): string {
+  const seconds = Math.round(timeoutMs / 1000);
+  return `Health check timed out after ${seconds}s — system may be unhealthy`;
+}
+
+/**
+ * Pure helper: choose the visible widget state given the current data
+ * shape. Encodes the truthfulness contract:
+ *
+ *   - error set        → 'error'   (always wins; operator-actionable)
+ *   - data null + load → 'loading' (initial fetch in flight)
+ *   - data set         → 'data'    (steady state — render counts)
+ *   - data null !load  → 'empty'   (first fetch finished but produced no data)
+ *
+ * Centralised here so the JSX branches in render() match the tests and
+ * a future refactor of the visual states stays consistent.
+ */
+export type SystemHealthRenderState = 'error' | 'loading' | 'data' | 'empty';
+
+export function systemHealthRenderState(args: {
+  error: string | null;
+  loading: boolean;
+  hasData: boolean;
+}): SystemHealthRenderState {
+  if (args.error) return 'error';
+  if (args.loading) return 'loading';
+  if (args.hasData) return 'data';
+  return 'empty';
 }
 
 /**
@@ -39,6 +98,11 @@ export function SystemHealthSummary({ className }: SystemHealthSummaryProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Track whether we've ever observed a successful resolution. Used by the
+  // failsafe timeout below — once we've had at least one resolved fetch we
+  // don't need the timeout to fire (loading=false already).
+  const hasResolvedRef = useRef(false);
+
   const fetchHealth = useCallback(async () => {
     try {
       setError(null);
@@ -46,8 +110,10 @@ export function SystemHealthSummary({ className }: SystemHealthSummaryProps) {
         '/v1/observability/health',
       );
       setData(res);
+      hasResolvedRef.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load health');
+      hasResolvedRef.current = true;
     } finally {
       setLoading(false);
     }
@@ -56,6 +122,21 @@ export function SystemHealthSummary({ className }: SystemHealthSummaryProps) {
   useEffect(() => {
     fetchHealth();
   }, [fetchHealth]);
+
+  // Failsafe: if neither resolution nor rejection happens inside the
+  // bounded window, surface a definite error rather than the
+  // indistinguishable-from-broken "Loading…" state. We tear this down on
+  // unmount AND on first successful resolution so a healthy poll cycle
+  // doesn't trip the timer on a slow first load.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (!hasResolvedRef.current) {
+        setLoading(false);
+        setError(systemHealthTimeoutMessage(SYSTEM_HEALTH_LOAD_TIMEOUT_MS));
+      }
+    }, SYSTEM_HEALTH_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, []);
 
   usePolling(fetchHealth, POLLING_IDLE);
 

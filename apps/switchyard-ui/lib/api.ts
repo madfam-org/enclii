@@ -12,6 +12,19 @@ import { API_BASE_URL, AUTH_MODE } from '@/lib/constants';
 // CSRF token cache
 let csrfToken: string | null = null;
 
+// Sticky flag: if /v1/csrf returns 404 once we stop calling it for the rest
+// of the session. CSRF is needed for write operations, but a missing endpoint
+// means the deployed control plane doesn't support it — retrying every write
+// just spams the console with 404s without producing a token. The user can
+// reload the tab to retry after a deploy.
+//
+// Truthfulness audit (2026-05-04): the endpoint /v1/csrf IS implemented in
+// switchyard-api/internal/api/csrf_handler.go — this guard exists for the
+// case where a stale UI is served against a backend whose CSRF route hasn't
+// rolled out yet, or vice versa. It avoids polluting the dashboard console
+// with 404s that obscure real signal.
+let csrfEndpointAvailable: boolean | null = null;
+
 // Token refresh state management
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
@@ -130,21 +143,58 @@ export function getAuthHeaders(includeCSRF: boolean = false): HeadersInit {
 
 /**
  * Fetch and cache CSRF token
+ *
+ * Behaviour on the unhappy paths:
+ *   - 404: backend doesn't expose /v1/csrf. We mark the endpoint as
+ *     unavailable for the rest of the session so a write loop doesn't
+ *     re-fire and re-log on every attempt. The write itself proceeds
+ *     without a CSRF header — the backend's CSRF middleware will reject
+ *     it cleanly with its own 403 if validation is enforced, which is a
+ *     real, surface-able error for the operator.
+ *   - Network error: log once via console.warn (not error — operators
+ *     misread console.error as "the page is broken").
+ *   - 5xx: same as network error — no retry, log once.
  */
 async function fetchCSRFToken(): Promise<void> {
+  if (csrfEndpointAvailable === false) {
+    return; // already learned the endpoint isn't there
+  }
   try {
     const response = await fetch(`${API_BASE_URL}/v1/csrf`, {
       credentials: "include", // Include cookies
     });
 
     if (response.ok) {
+      csrfEndpointAvailable = true;
       const token = response.headers.get("X-CSRF-Token");
       if (token) {
         csrfToken = token;
       }
+      return;
     }
+
+    if (response.status === 404) {
+      // We're guaranteed to be the first 404 in this session — the
+      // early-return at the top of this function bails before we
+      // reach `fetch()` once `csrfEndpointAvailable === false`. So
+      // exactly one warn fires per page load, never more.
+      console.warn(
+        "CSRF endpoint /v1/csrf returned 404; continuing without CSRF token. Verify switchyard-api is up to date.",
+      );
+      csrfEndpointAvailable = false;
+      return;
+    }
+
+    // Other non-200 — keep the endpoint flag null so a later page load
+    // can retry, but don't log the body (avoids leaking error details).
+    console.warn(
+      `CSRF endpoint /v1/csrf returned ${response.status}; proceeding without token.`,
+    );
   } catch (error) {
-    console.error("Failed to fetch CSRF token:", error);
+    // Network-level failure — the dashboard's other API calls would also
+    // be failing, so this is unlikely to be the visible signal. Warn (not
+    // error) so it doesn't masquerade as a UI bug.
+    console.warn("CSRF token fetch failed:", error);
   }
 }
 
@@ -179,8 +229,16 @@ export async function apiRequest<T = unknown>(
     method.toUpperCase(),
   );
 
-  // Fetch CSRF token for write operations if not cached
-  if (isWriteOperation && !csrfToken) {
+  // Fetch CSRF token for write operations if not cached and the endpoint
+  // hasn't already been marked unavailable for this session. The
+  // endpoint-availability sticky flag means a 404 on the first write
+  // attempt does not spawn N+1 404s if the user fires multiple writes
+  // before page reload.
+  if (
+    isWriteOperation &&
+    !csrfToken &&
+    csrfEndpointAvailable !== false
+  ) {
     await fetchCSRFToken();
   }
 
@@ -369,6 +427,26 @@ export async function apiPatch<T = unknown>(endpoint: string, data: unknown): Pr
     body: JSON.stringify(data),
   });
 }
+
+/**
+ * Test-only: reset internal CSRF state.
+ *
+ * Tests for fetchCSRFToken / apiRequest write paths share module-level
+ * state (csrfToken, csrfEndpointAvailable). This helper lets a test
+ * decline that contagion.
+ *
+ * Not part of the runtime API surface — `__` prefix indicates internal.
+ */
+export function __resetCSRFForTesting(): void {
+  csrfToken = null;
+  csrfEndpointAvailable = null;
+}
+
+/**
+ * Test-only: fetchCSRFToken invocation. Exposed so unit tests can verify
+ * the 404 graceful-handling path without going through a write operation.
+ */
+export const __fetchCSRFTokenForTesting = fetchCSRFToken;
 
 /**
  * Pagination parameters
