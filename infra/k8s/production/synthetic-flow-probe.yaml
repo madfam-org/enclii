@@ -1,0 +1,417 @@
+---
+# Synthetic flow probe — layer-7 user-journey replay
+# ----------------------------------------------------------------------------
+# Sibling of cloudflared-probe (layer-3 in-cluster reachability). Lives in
+# the same `cloudflare-tunnel` namespace deliberately: the probe egresses
+# back through cloudflared to the public hostnames so it sees the same
+# network path users see (CDN, CF edge, tunnel ingress, k8s ingress, app).
+#
+# Why this complements (does NOT replace) cloudflared-probe:
+#   - cloudflared-probe answers "can cloudflared reach the backend Service?"
+#     → catches CNI / NetworkPolicy / route-config breakage.
+#   - synthetic-flow-probe answers "can a real user log in and reach a
+#     protected page?" → catches CSP / CORS / SSO-callback / session /
+#     redirect breakage that is invisible to layer-3 probes.
+#
+# The image is built and pinned by .github/workflows/synthetic-flow-probe.yml.
+# The placeholder image tag below is rewritten by the operator after the
+# digest is published (see README.md "How to bump the image" section in the
+# cloudflared-probe README — same flow applies here).
+# ----------------------------------------------------------------------------
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synthetic-flow-probe-journeys
+  namespace: cloudflare-tunnel
+  labels:
+    app: synthetic-flow-probe
+    app.kubernetes.io/name: synthetic-flow-probe
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: enclii
+data:
+  # Phase 1 ships three journeys: selva, karafiel, dhanam — all sharing the
+  # Janua SSO step. The journey YAML is kept identical to the source files
+  # in infra/synthetic-flow-probe/journeys/ so a syntax-checked PR run is
+  # equivalent to what the pod actually loads.
+  selva-office-login.yaml: |
+    platform: selva
+    journey: admin-login
+    description: "admin@madfam.io can complete Janua SSO and reach /office"
+    schedule_seconds: 300
+    safety_class: read-only
+    steps:
+      - name: open-login-page
+        method: GET
+        url: https://app.selva.town/login
+        expect_status: 200
+        expect_no_csp_violation: true
+      - name: initiate-janua-sso
+        method: GET
+        url: https://app.selva.town/api/auth/sso?return_to=/office
+        follow_redirects: true
+        expect_status: 200
+        expect_url_contains: auth.madfam.io
+      - name: post-credentials
+        method: POST
+        url: https://auth.madfam.io/api/v1/auth/login
+        body_form:
+          email: ${ADMIN_EMAIL}
+          password: ${ADMIN_PASSWORD}
+        follow_redirects: true
+        expect_status: 200
+        expect_url_contains: app.selva.town
+      - name: hit-protected-route
+        method: GET
+        url: https://app.selva.town/api/v1/me
+        expect_status: 200
+        expect_json_contains:
+          email: admin@madfam.io
+  karafiel-app-login.yaml: |
+    platform: karafiel
+    journey: admin-login
+    description: "admin@madfam.io can complete Janua SSO and reach Karafiel app"
+    schedule_seconds: 300
+    safety_class: read-only
+    steps:
+      - name: open-login-page
+        method: GET
+        url: https://app.karafiel.mx/login
+        expect_status: 200
+        expect_no_csp_violation: true
+      - name: initiate-janua-sso
+        method: GET
+        url: https://app.karafiel.mx/api/auth/sso?return_to=/dashboard
+        follow_redirects: true
+        expect_status: 200
+        expect_url_contains: auth.madfam.io
+      - name: post-credentials
+        method: POST
+        url: https://auth.madfam.io/api/v1/auth/login
+        body_form:
+          email: ${ADMIN_EMAIL}
+          password: ${ADMIN_PASSWORD}
+        follow_redirects: true
+        expect_status: 200
+        expect_url_contains: app.karafiel.mx
+      - name: hit-protected-route
+        method: GET
+        url: https://app.karafiel.mx/api/v1/me
+        expect_status: 200
+        expect_json_contains:
+          email: admin@madfam.io
+  dhanam-app-login.yaml: |
+    platform: dhanam
+    journey: admin-login
+    description: "admin@madfam.io can complete Janua SSO and reach Dhanam app"
+    schedule_seconds: 300
+    safety_class: read-only
+    steps:
+      - name: open-login-page
+        method: GET
+        url: https://app.dhan.am/login
+        expect_status: 200
+        expect_no_csp_violation: true
+      - name: initiate-janua-sso
+        method: GET
+        url: https://app.dhan.am/api/auth/sso?return_to=/dashboard
+        follow_redirects: true
+        expect_status: 200
+        expect_url_contains: auth.madfam.io
+      - name: post-credentials
+        method: POST
+        url: https://auth.madfam.io/api/v1/auth/login
+        body_form:
+          email: ${ADMIN_EMAIL}
+          password: ${ADMIN_PASSWORD}
+        follow_redirects: true
+        expect_status: 200
+        expect_url_contains: app.dhan.am
+      - name: hit-protected-route
+        method: GET
+        url: https://app.dhan.am/api/v1/me
+        expect_status: 200
+        expect_json_contains:
+          email: admin@madfam.io
+
+---
+# Credentials. ExternalSecret pulls from Vault path `secret/synthetic-flow-probe`.
+# The operator must populate at least ADMIN_EMAIL and ADMIN_PASSWORD; missing
+# values cause the probe to record `synthetic_journey_skipped_total` for the
+# affected journeys (intentional: a missing-cred state is operationally
+# different from an actual breakage and must not be a false-positive page).
+#
+# Read-only credentials only. The probe is sandboxed against mutating
+# journeys in production — see probe.py::should_run_journey. Even so, do
+# not place a write-capable credential in this Secret. Phase 2 will require
+# a separate, more tightly-scoped Secret for mutating-against-preprod runs.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: synthetic-flow-probe-creds
+  namespace: cloudflare-tunnel
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/name: synthetic-flow-probe
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: vault-store
+    kind: ClusterSecretStore
+  target:
+    name: synthetic-flow-probe-creds
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: ADMIN_EMAIL
+      remoteRef:
+        key: secret/synthetic-flow-probe
+        property: admin_email
+    - secretKey: ADMIN_PASSWORD
+      remoteRef:
+        key: secret/synthetic-flow-probe
+        property: admin_password
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-flow-probe
+  namespace: cloudflare-tunnel
+  labels:
+    app: synthetic-flow-probe
+    app.kubernetes.io/name: synthetic-flow-probe
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: enclii
+spec:
+  # Single replica is correct: the probe is stateless, runs internal threads
+  # for parallelism across journeys, and we don't want N pods double-billing
+  # the metric counters.
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: synthetic-flow-probe
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: synthetic-flow-probe
+        app.kubernetes.io/name: synthetic-flow-probe
+        # Distinct from cloudflared-probe's `component: ingress` — this one
+        # is `component: observability` because its egress path is via the
+        # public edge (back through the tunnel), not direct to a Service.
+        # Operators reading NetworkPolicy diffs should NOT confuse the two.
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/part-of: enclii
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        # Restart probe on ConfigMap or Secret changes so journey + cred
+        # updates land without a manual rollout.
+        reloader.stakater.com/match: "true"
+    spec:
+      containers:
+        - name: probe
+          # CI rewrites this to a digest-pinned image. :placeholder is rejected
+          # by the disallow-latest-tag Kyverno policy at the image-tag check,
+          # but it isn't `:latest` so admission lets it through with a clear
+          # mismatch error if the operator forgets to pin.
+          image: ghcr.io/madfam-org/enclii/synthetic-flow-probe:placeholder
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: JOURNEYS_DIR
+              value: /etc/synthetic-flow-probe/journeys
+            - name: METRICS_PORT
+              value: "9090"
+            - name: HTTP_TIMEOUT_S
+              value: "15"
+            - name: ENVIRONMENT
+              value: production
+            - name: LOG_LEVEL
+              value: INFO
+          envFrom:
+            - secretRef:
+                name: synthetic-flow-probe-creds
+                # Optional: probe still boots even if the Secret is missing,
+                # journeys just record `skipped_total{reason="missing_credential"}`.
+                # Operators see the gap on the dashboard without a pageable alert.
+                optional: true
+          ports:
+            - containerPort: 9090
+              name: metrics
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            failureThreshold: 10
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: journeys
+              mountPath: /etc/synthetic-flow-probe/journeys
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: journeys
+          configMap:
+            name: synthetic-flow-probe-journeys
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: synthetic-flow-probe-metrics
+  namespace: cloudflare-tunnel
+  labels:
+    app: synthetic-flow-probe
+    app.kubernetes.io/name: synthetic-flow-probe
+    app.kubernetes.io/component: observability
+spec:
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: metrics
+  selector:
+    app: synthetic-flow-probe
+
+---
+# Alerting rules
+# ----------------------------------------------------------------------------
+# Routes through the existing alertmanager severity-based dispatch:
+#   severity: critical → #alerts-critical
+#   severity: warning  → #alerts-warning
+# (See infra/k8s/production/monitoring/alertmanager.yaml.) The user spec
+# called for #observability, but the cluster's alertmanager doesn't have
+# that route configured today — using the existing channels avoids a
+# silent-route bug. Adding #observability is a one-line alertmanager change
+# that can ship in a separate PR if desired.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: synthetic-flow-probe-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-flow-probe-rules
+    app.kubernetes.io/part-of: enclii
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: synthetic-flow-probe
+      interval: 30s
+      rules:
+        - alert: SyntheticJourneyConsecutivelyFailing
+          # 3 consecutive failures at the default 5-min schedule = ~15 min
+          # of broken user flow before pageable. Tunable per-journey by
+          # adjusting schedule_seconds; the threshold here stays at 3 so
+          # the alarm reflects "broken for 3 cycles" regardless of cadence.
+          expr: |
+            synthetic_journey_consecutive_failures >= 3
+          for: 1m
+          labels:
+            severity: critical
+            category: synthetic-flow
+          annotations:
+            summary: "Synthetic journey {{ $labels.platform }}/{{ $labels.journey }} is broken"
+            description: |
+              The synthetic-flow-probe has reported {{ $value }} consecutive failures
+              for the journey {{ $labels.platform }}/{{ $labels.journey }}.
+              At the default 5-min schedule that's ~15+ minutes of broken user flow.
+
+              Inspect the failing step:
+                kubectl -n cloudflare-tunnel logs deploy/synthetic-flow-probe --tail=100 | \
+                  jq -c 'select(.event=="journey_failed" and .platform=="{{ $labels.platform }}")'
+
+              Cross-correlate with cloudflared-probe: if `cloudflared_probe_reachable_total` for
+              the same backend is 1 (Service reachable) but this journey is failing, the issue is
+              application-layer (CSP, CORS, SSO callback, session, redirect). If the cloudflared
+              probe is also 0 the issue is in-cluster network reachability — fix that first.
+
+              Runbook: docs/runbooks/synthetic-flow-probe.md
+
+        - alert: SyntheticJourneyStepLatencyRegression
+          # p95 step latency > 2x prior 1h baseline. The 1m / 1h pair gives
+          # us "is the current minute meaningfully slower than the last hour?"
+          # without flapping on the steady-state baseline. The min_over_time
+          # of the avg-over-time means a 5-min blip recovers cleanly.
+          expr: |
+            histogram_quantile(0.95,
+              sum by (platform, journey, step, le) (
+                rate(synthetic_journey_step_latency_seconds_bucket[5m])
+              )
+            )
+            >
+            2 * histogram_quantile(0.95,
+              sum by (platform, journey, step, le) (
+                rate(synthetic_journey_step_latency_seconds_bucket[1h] offset 5m)
+              )
+            )
+          for: 10m
+          labels:
+            severity: warning
+            category: synthetic-flow
+          annotations:
+            summary: "Synthetic journey step {{ $labels.platform }}/{{ $labels.journey }}/{{ $labels.step }} is >2x slower than baseline"
+            description: |
+              p95 latency for step `{{ $labels.step }}` in journey
+              {{ $labels.platform }}/{{ $labels.journey }} has been more than 2x its prior 1h
+              baseline for 10+ minutes. Likely cause: backend slowness, network congestion,
+              or a recently-deployed change that added latency.
+
+        - alert: SyntheticFlowProbeNotRunning
+          # Journey runs (pass + fail + skipped) absent for 10m → probe is
+          # crashlooping or scrapes are broken. Pages as warning because
+          # cloudflared-probe still covers the L3 layer if this is dark.
+          expr: |
+            absent(synthetic_journey_last_run_timestamp)
+            or
+            (time() - max by (platform, journey) (synthetic_journey_last_run_timestamp)) > 600
+          for: 5m
+          labels:
+            severity: warning
+            category: synthetic-flow
+          annotations:
+            summary: "synthetic-flow-probe is not emitting metrics"
+            description: |
+              No journey runs recorded in the last 10 minutes for at least one journey.
+              The probe pod may be crashlooping, the ConfigMap may be malformed, or scrapes
+              may be broken. Check:
+                kubectl -n cloudflare-tunnel get pod -l app=synthetic-flow-probe
+                kubectl -n cloudflare-tunnel logs deploy/synthetic-flow-probe --tail=50
