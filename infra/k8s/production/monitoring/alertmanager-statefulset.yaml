@@ -65,6 +65,7 @@ spec:
       partition: 0
   template:
     metadata:
+      creationTimestamp: null
       labels:
         app: alertmanager
         app.kubernetes.io/name: alertmanager
@@ -73,6 +74,10 @@ spec:
       annotations:
         enclii.dev/component: monitoring
     spec:
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      terminationGracePeriodSeconds: 30
       securityContext:
         fsGroup: 65534
         runAsUser: 65534
@@ -93,6 +98,9 @@ spec:
       containers:
         - name: alertmanager
           image: docker.io/prom/alertmanager:v0.26.0
+          imagePullPolicy: IfNotPresent
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
           securityContext:
             allowPrivilegeEscalation: false
             privileged: false
@@ -113,6 +121,7 @@ spec:
           ports:
             - containerPort: 9093
               name: http
+              protocol: TCP
             - containerPort: 9094
               name: cluster
               protocol: TCP
@@ -144,35 +153,52 @@ spec:
             httpGet:
               path: /-/ready
               port: 9093
+              scheme: HTTP
             failureThreshold: 15
             periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
           readinessProbe:
             httpGet:
               path: /-/ready
               port: 9093
+              scheme: HTTP
+            failureThreshold: 3
             initialDelaySeconds: 10
             periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
           livenessProbe:
             httpGet:
               path: /-/healthy
               port: 9093
+              scheme: HTTP
+            failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
       volumes:
         - name: config
           configMap:
+            defaultMode: 420
             name: alertmanager-config
         - name: smtp-secret
           secret:
+            defaultMode: 420
             secretName: alertmanager-smtp-secret
         - name: slack-secret
           secret:
+            defaultMode: 420
             secretName: alertmanager-slack-secret
   # Each pod gets its own 1Gi PVC. RWO is fine because each pod owns its own
   # volume — no Multi-Attach errors. Longhorn handles per-pod replication
   # for durability.
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        creationTimestamp: null
         name: data
         labels:
           app.kubernetes.io/name: alertmanager
@@ -182,6 +208,7 @@ spec:
         accessModes:
           - ReadWriteOnce
         storageClassName: longhorn
+        volumeMode: Filesystem
         resources:
           requests:
             storage: 1Gi
