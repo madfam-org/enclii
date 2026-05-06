@@ -19,7 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 NAMESPACE="arc-runners"
-CHART_VERSION="0.10.1"
+CHART_VERSION="0.14.0"
 SCALE_SET_PREFIX="${SCALE_SET_PREFIX:-madfam-runners}"  # Override via env: SCALE_SET_PREFIX=custom-runners
 DRAIN_TIMEOUT=300        # 5 minutes max wait for jobs to complete
 REGISTRATION_WAIT=30     # Seconds to wait for runners to register

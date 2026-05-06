@@ -8,16 +8,17 @@
 
 runnerScaleSetName: "madfam-runners-blue"
 
-# Scale configuration — builder node now spreads across foundry-builder-01
-# AND foundry-cp / foundry-worker-01 (see runtime nodeSelector relaxation in
-# values-runner-set.yaml). Lift max to 12 so ecosystem-wide CI bursts
-# (karafiel + forj + enclii merging on the same minute) drain in one wave
-# instead of queueing for 6+ minutes behind each other.
-# Live cluster currently runs at maxRunners=6 (out-of-band helm patch).
-# Apply this change with: helm upgrade madfam-runners-blue --reuse-values
-# --set maxRunners=12 in arc-runners namespace.
+# Scale configuration — runners are intentionally pinned to the dedicated
+# builder node. On 2026-05-06 the builder had 8 vCPU allocatable, 7.6 vCPU
+# already requested during CI bursts, and ARC pods started sticking Pending
+# once desired runners exceeded 9. Pending EphemeralRunner CRs count against
+# scale-set capacity, so setting max above the schedulable ceiling creates
+# artificial starvation instead of more throughput.
+#
+# Raise this only after adding a second builder node or deliberately allowing
+# a separate spillover scale set onto non-production nodes.
 minRunners: 1
-maxRunners: 12
+maxRunners: 9
 
 # Blue-specific labels for identification
 template:

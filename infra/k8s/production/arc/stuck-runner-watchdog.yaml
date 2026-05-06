@@ -1,18 +1,19 @@
 # Stuck-runner watchdog
 #
 # ARC's EphemeralRunner CRs sometimes stay in `Running` status long after
-# the GitHub job they reference has completed. When all 6 max-capacity
+# the GitHub job they reference has completed. When all max-capacity
 # slots get pinned to these zombies, the listener sees no room for new
 # runners and queued jobs stall indefinitely (observed ~2x in a 90-min
 # window on 2026-04-19). Manual fix: `kubectl delete ephemeralrunner <name>`.
 #
-# This CronJob automates that fix. Every 5 min, list EphemeralRunners
-# older than 20 min whose referenced WORKFLOWRUNID has a conclusion
-# (completed, cancelled, failed), and delete them. The ARC controller
-# then creates fresh CRs that can pick up queued work.
+# This CronJob automates the safe subset of that fix. Every 5 min, list
+# EphemeralRunners and delete:
+#   - CRs older than 20 min whose matching runner pod no longer exists or is
+#     no longer Running.
+#   - CRs older than 4h even if their matching pod still says Running.
 #
-# The 20-min threshold is well past the 5-min GitHub session cache +
-# 2-min buildx warmup, so we never kill a live runner.
+# It intentionally does NOT delete a live Running pod at the 20-min mark:
+# Playwright/e2e and multi-image deploy jobs can legitimately exceed that.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -89,13 +90,14 @@ spec:
                 - -ec
                 - |
                   set -euo pipefail
-                  THRESHOLD_SEC=1200  # 20 minutes
+                  ORPHAN_THRESHOLD_SEC=1200  # 20 minutes
+                  RUNNING_THRESHOLD_SEC=14400 # 4 hours
 
                   # List all EphemeralRunners with creation timestamp +
                   # the workflow run they reference (if any).
                   kubectl -n arc-runners get ephemeralrunners \
-                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.jobWorkflowRunId}{"\n"}{end}' \
-                    | while IFS='|' read -r name created run_id; do
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.phase}{"|"}{.status.jobWorkflowRunId}{"\n"}{end}' \
+                    | while IFS='|' read -r name created phase run_id; do
                       [ -z "$name" ] && continue
 
                       # Use GNU date semantics via `date --date=` ; bitnami/kubectl
@@ -104,16 +106,23 @@ spec:
                       now=$(date +%s)
                       age=$(( now - created_sec ))
 
-                      if [ "$age" -lt "$THRESHOLD_SEC" ]; then
-                        continue
-                      fi
-
-                      echo "candidate: $name (age ${age}s, workflow_run=$run_id)"
+                      pod_phase="$(kubectl -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                      echo "candidate: $name (age ${age}s, er_phase=${phase:-unknown}, pod_phase=${pod_phase:-missing}, workflow_run=${run_id:-none})"
 
                       # If no jobWorkflowRunId, it's a fresh CR waiting — leave alone.
                       # (Stuck CRs have a run_id from a long-completed workflow.)
                       if [ -z "$run_id" ]; then
                         echo "  skip: no workflow run id"
+                        continue
+                      fi
+
+                      if [ "${pod_phase:-missing}" = "Running" ] && [ "$age" -lt "$RUNNING_THRESHOLD_SEC" ]; then
+                        echo "  skip: matching pod is still Running and below ${RUNNING_THRESHOLD_SEC}s hard ceiling"
+                        continue
+                      fi
+
+                      if [ "${pod_phase:-missing}" != "Running" ] && [ "$age" -lt "$ORPHAN_THRESHOLD_SEC" ]; then
+                        echo "  skip: non-running/missing pod is below ${ORPHAN_THRESHOLD_SEC}s orphan threshold"
                         continue
                       fi
 

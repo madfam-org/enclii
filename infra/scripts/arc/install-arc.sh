@@ -19,7 +19,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-CHART_VERSION="0.10.1"
+CHART_VERSION="0.14.0"
 CONTROLLER_NAMESPACE="arc-system"
 RUNNER_NAMESPACE="arc-runners"
 

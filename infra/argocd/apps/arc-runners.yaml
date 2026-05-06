@@ -12,7 +12,7 @@
 #
 # To upgrade ARC charts, use Helm CLI directly:
 #   helm upgrade arc-controller oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
-#     --namespace arc-system --version 0.10.1 -f infra/helm/arc/values-controller.yaml
+#     --namespace arc-system --version 0.14.0 -f infra/helm/arc/values-controller.yaml
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -31,7 +31,7 @@ spec:
   sources:
     - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
       chart: gha-runner-scale-set-controller
-      targetRevision: 0.10.1
+      targetRevision: 0.14.0
       helm:
         releaseName: arc-controller
         valueFiles:
@@ -65,7 +65,7 @@ spec:
   sources:
     - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
       chart: gha-runner-scale-set
-      targetRevision: 0.10.1
+      targetRevision: 0.14.0
       helm:
         releaseName: arc-runner-blue
         valueFiles:

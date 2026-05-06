@@ -6,7 +6,7 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/actions/gha-runner-scale-set-controller
-  tag: "0.10.1"  # Pin version for stability
+  tag: "0.14.0"  # Pin version for stability
   pullPolicy: IfNotPresent
 
 resources:
