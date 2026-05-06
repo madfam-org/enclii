@@ -137,7 +137,9 @@ permissions:
 jobs:
   detect-changes:
     name: Detect changed services
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Keep lightweight orchestration off scarce ARC builders. Only Docker
+    # builds need the self-hosted runner pool.
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.filter.outputs.matrix }}
       any: ${{ steps.filter.outputs.any }}
@@ -361,7 +363,8 @@ jobs:
     name: Commit digest pins
     needs: build
     if: needs.build.result == 'success'
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Digest pinning is git/kustomize/curl work; do not burn an ARC build slot.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
