@@ -12,7 +12,9 @@ spec:
     kind: Deployment
     name: verdaccio
   minReplicas: 1
-  maxReplicas: 5
+  # Verdaccio uses a Longhorn RWO PVC, so it must remain singleton unless
+  # storage is migrated to RWX or the registry becomes stateless.
+  maxReplicas: 1
   metrics:
     - type: Resource
       resource:
