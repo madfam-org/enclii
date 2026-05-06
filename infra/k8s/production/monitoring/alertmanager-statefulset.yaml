@@ -66,6 +66,8 @@ spec:
         app.kubernetes.io/name: alertmanager
         app.kubernetes.io/component: monitoring
         app.kubernetes.io/part-of: enclii
+      annotations:
+        enclii.dev/component: monitoring
     spec:
       securityContext:
         fsGroup: 65534
