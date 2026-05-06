@@ -22,6 +22,11 @@ resources:
 # Note: commonLabels are NOT used here because kustomize adds them to service
 # selectors, causing selector mismatches with pods. Labels are set directly
 # in each resource's metadata instead.
+labels:
+  - pairs:
+      app.kubernetes.io/instance: monitoring
+    includeSelectors: false
+    includeTemplates: false
 
 # Common annotations
 commonAnnotations:
