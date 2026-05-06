@@ -138,7 +138,11 @@ spec:
         - protocol: TCP
           port: 8200
 
-# Allow vault egress (DNS only — vault is a sink)
+# Allow vault egress.
+#
+# Vault mostly behaves as a sink, but the Kubernetes auth method must call the
+# API server TokenReview endpoint when validating ESO/Selva service-account
+# JWTs. Keep this narrow: DNS plus the k3s API service/endpoint only.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -161,3 +165,13 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+        - ipBlock:
+            cidr: 37.27.235.104/32
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
