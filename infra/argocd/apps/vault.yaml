@@ -67,8 +67,6 @@ spec:
                 path = "/vault/data"
               }
 
-              disable_mlock = true
-
           hostNetwork: false
 
           service:

@@ -52,8 +52,6 @@ server:
         path = "/vault/data"
       }
 
-      disable_mlock = true
-
   # Avoid hostNetwork (Kyverno hostPort violation)
   hostNetwork: false
 
