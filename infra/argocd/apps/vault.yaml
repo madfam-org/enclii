@@ -1,11 +1,11 @@
 # HashiCorp Vault Application
-# Deploys: Vault secrets management (via Helm) in HA (Raft) mode
+# Deploys: Vault secrets management (via Helm) on the initialized file backend
 # Bootstrap runbook: internal-devops/runbooks/vault-bootstrap.md  (P0.2)
 #
 # Post-sync operator procedure (see runbook):
 #   1. vault operator init  (Shamir 5-of-3)
 #   2. vault operator unseal <key> x 3
-#   3. vault audit enable file file_path=stderr  (CRITICAL — Fluent Bit picks up)
+#   3. vault audit enable file file_path=/dev/stderr  (CRITICAL — Fluent Bit picks up)
 #   4. vault auth enable kubernetes + configure
 #   5. vault secrets enable -version=2 -path=secret kv
 #   6. Apply internal-devops/templates/vault/selva-secret-writer-rbac.yaml
@@ -43,36 +43,31 @@ spec:
             repository: docker.io/hashicorp/vault
             tag: "1.18.3"
 
-          # HA mode with Raft integrated storage (replaces standalone/file).
-          # replicas=1 at launch — scale to 3 after P1.2 adds a 3rd
-          # non-tainted worker. Raft format supports in-place scale-up.
+          # Keep desired state aligned with the initialized live backend.
+          # Raft migration requires a separate backup/restore procedure.
           ha:
-            enabled: true
-            replicas: 1
-            raft:
-              enabled: true
-              setNodeId: true
-              config: |
-                ui = true
-
-                listener "tcp" {
-                  tls_disable = 1
-                  address     = "[::]:8200"
-                  cluster_address = "[::]:8201"
-
-                  telemetry {
-                    unauthenticated_metrics_access = true
-                  }
-                }
-
-                storage "raft" {
-                  path = "/vault/data"
-                }
-
-                service_registration "kubernetes" {}
+            enabled: false
 
           standalone:
-            enabled: false
+            enabled: true
+            config: |
+              ui = true
+
+              listener "tcp" {
+                tls_disable = 1
+                address     = "[::]:8200"
+                cluster_address = "[::]:8201"
+
+                telemetry {
+                  unauthenticated_metrics_access = true
+                }
+              }
+
+              storage "file" {
+                path = "/vault/data"
+              }
+
+              disable_mlock = true
 
           hostNetwork: false
 
