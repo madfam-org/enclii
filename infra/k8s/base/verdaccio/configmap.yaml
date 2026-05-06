@@ -24,14 +24,11 @@ data:
       sort_packages: asc
       darkMode: true
 
-    # Authentication - dual auth: Janua API keys (primary) + htpasswd (fallback)
-    # Janua plugin validates Bearer tokens via POST /api/v1/api-keys/verify.
-    # htpasswd remains as fallback for local dev and migration period.
-    # To revert to htpasswd-only: remove the janua-keys block below.
+    # Authentication - htpasswd service users.
+    # Janua API-key auth remains staged in verdaccio-janua-plugin, but it is
+    # not enabled here until the plugin is packaged into Verdaccio's plugin
+    # resolution path and validated in staging.
     auth:
-      janua-keys:
-        janua_url: https://api.janua.dev
-        cache_ttl_ms: 300000          # 5 min cache to avoid hammering Janua
       htpasswd:
         file: /verdaccio/conf/htpasswd
         max_users: 100
