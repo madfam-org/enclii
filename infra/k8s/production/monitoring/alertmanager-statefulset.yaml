@@ -50,8 +50,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 spec:
   replicas: 3
+  revisionHistoryLimit: 10
   serviceName: alertmanager-cluster
   podManagementPolicy: Parallel
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
   selector:
     matchLabels:
       app: alertmanager
