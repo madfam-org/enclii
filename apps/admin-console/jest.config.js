@@ -10,6 +10,9 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^@enclii/shared-lib/utils$': '<rootDir>/../../packages/shared-lib/src/utils/index.ts',
+    '^@enclii/ui-components$': '<rootDir>/../../packages/ui-components/src/index.ts',
+    '^@enclii/ui-components/(.*)$': '<rootDir>/../../packages/ui-components/src/components/ui/$1.tsx',
   },
   testMatch: [
     '<rootDir>/**/*.test.{js,jsx,ts,tsx}',
