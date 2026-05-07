@@ -24,6 +24,7 @@ NAMESPACES=(
     dhanam
     enclii-builds
     argocd
+    cloudflare-tunnel
 )
 
 RED='\033[0;31m'

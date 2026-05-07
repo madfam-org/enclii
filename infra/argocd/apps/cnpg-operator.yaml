@@ -40,14 +40,14 @@ spec:
   project: default
 
   source:
-    # CNPG official Helm chart. Pinned to a stable v0.23.x release.
+    # CNPG official Helm chart. Pinned to a stable v0.28.x release.
     # Bump cadence: every other minor release after a 2-week-soak in a
     # non-production cluster (we do not have one today; first-time bumps
     # happen in a maintenance window with manifests staged in a feature
     # branch).
     repoURL: https://cloudnative-pg.github.io/charts
     chart: cloudnative-pg
-    targetRevision: 0.23.0
+    targetRevision: 0.28.0
     helm:
       values: |
         # CloudNativePG operator configuration for Enclii
@@ -57,14 +57,14 @@ spec:
         # leader-election backend (no separate etcd/consul cluster needed).
 
         # Operator image — digest-pinned for Kyverno compliance.
-        # Source: ghcr.io/cloudnative-pg/cloudnative-pg:1.23.0
+        # Source: ghcr.io/cloudnative-pg/cloudnative-pg:1.29.0
         # NOTE: digest below is a placeholder that the operator MUST refresh
         # before merging — resolve via:
-        #   docker manifest inspect ghcr.io/cloudnative-pg/cloudnative-pg:1.23.0 \
+        #   docker manifest inspect ghcr.io/cloudnative-pg/cloudnative-pg:1.29.0 \
         #     | jq -r '.manifests[] | select(.platform.architecture=="amd64") | .digest'
         image:
           repository: ghcr.io/cloudnative-pg/cloudnative-pg
-          tag: "1.23.0"
+          tag: "1.29.0"
           # TODO(operator): replace with the resolved digest before merge.
           # Tracked as a merge gate in the PR description.
           # digest: sha256:REPLACE_BEFORE_MERGE
