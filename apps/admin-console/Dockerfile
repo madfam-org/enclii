@@ -7,22 +7,19 @@ RUN apk add --no-cache libc6-compat
 RUN corepack enable pnpm
 WORKDIR /app
 
-# Install dependencies
-FROM base AS deps
-WORKDIR /app/dispatch
-COPY apps/admin-console/package.json ./
-# Use pnpm fetch for better caching
-RUN pnpm install --frozen-lockfile=false
-
 # Build the application
 FROM base AS builder
 WORKDIR /app
 
-# Copy dispatch app
-COPY apps/admin-console ./dispatch
-
-# Install dependencies from deps stage
-COPY --from=deps /app/dispatch/node_modules ./dispatch/node_modules
+# Copy the workspace root files and packages needed by Dispatch. The app
+# depends on @enclii/ui-components via workspace:*, so an isolated
+# apps/admin-console install cannot resolve its local package graph.
+COPY pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages ./packages
+COPY apps/admin-console ./apps/admin-console
+RUN pnpm --dir apps/admin-console install --frozen-lockfile=false
+RUN pnpm --dir packages/shared-lib run build
+RUN pnpm --dir packages/ui-components run build
 
 # Build arguments for public env vars (production defaults)
 ARG NEXT_PUBLIC_APP_URL=https://admin.enclii.dev
@@ -40,7 +37,7 @@ ENV NEXT_PUBLIC_OAUTH_CLIENT_ID=$NEXT_PUBLIC_OAUTH_CLIENT_ID
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the static site
-WORKDIR /app/dispatch
+WORKDIR /app/apps/admin-console
 RUN pnpm run build
 
 # Production image
@@ -54,9 +51,9 @@ RUN adduser --system --uid 1001 nextjs
 WORKDIR /app
 
 # Copy standalone build
-COPY --from=builder /app/dispatch/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/dispatch/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/dispatch/.next/static ./.next/static
+COPY --from=builder /app/apps/admin-console/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin-console/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin-console/.next/static ./.next/static
 
 RUN apk add --no-cache wget
 
