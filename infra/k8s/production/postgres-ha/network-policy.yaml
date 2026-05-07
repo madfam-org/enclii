@@ -85,14 +85,17 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # HTTPS egress for Barman → R2.
+    # HTTPS egress for CNPG control-plane calls and Barman -> R2.
     # We allow cluster-wide HTTPS rather than narrowing to R2's IP set
     # (which rotates) — matches existing pgbackrest egress practice.
-    - to:
-        - namespaceSelector: {}
-      ports:
+    # CNPG instance pods also call kubernetes.default.svc:443 during
+    # bootstrap; depending on CNI/service translation this may appear as
+    # either 443 to the Service IP or 6443 to the API server endpoint.
+    - ports:
         - protocol: TCP
           port: 443
+        - protocol: TCP
+          port: 6443
 ---
 # Namespace label patch — the monitoring namespace must carry
 # `kubernetes.io/metadata.name: monitoring` for the ingress rule above
