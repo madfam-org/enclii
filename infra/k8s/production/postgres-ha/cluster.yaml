@@ -42,15 +42,10 @@ metadata:
     app.kubernetes.io/component: database-ha
     app.kubernetes.io/part-of: enclii
 spec:
-  # Storage guardrail: Longhorn currently cannot schedule the second
-  # 20Gi x 2-replica postgres-ha volume. Keep the pre-cutover CNPG
-  # cluster healthy as a single primary until Longhorn capacity is
-  # expanded or retained stale volumes are explicitly reclaimed.
-  #
   # Target state remains 3 instances. Bumping to 4 happens via PR after
   # Decision #12 lands a 4th worker node (see
   # internal-devops/runbooks/postgres-failover-drill.md §3).
-  instances: 1
+  instances: 3
 
   # Pinned PostgreSQL version. We use the pgvector-enabled image because
   # the existing single-instance Postgres is `pgvector/pgvector:pg15`
@@ -95,8 +90,8 @@ spec:
   # CNPG synchronous mode "any 1" means: at least 1 of the standbys
   # must confirm before commit. With 2 standbys, this gives us 1 sync +
   # 1 async automatically, and survives losing either standby.
-  minSyncReplicas: 0
-  maxSyncReplicas: 0
+  minSyncReplicas: 1
+  maxSyncReplicas: 1
 
   # Resource budget per instance — same envelope as today's single
   # instance × 3 (RFC 0012 §9 risk: memory headroom verified during
