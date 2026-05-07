@@ -53,7 +53,7 @@ spec:
   #
   # TODO(operator): replace `tag` below with the resolved digest before
   # merge. Tracked as a merge gate in the PR description.
-  imageName: ghcr.io/cloudnative-pg/postgresql:15.6-1
+  imageName: ghcr.io/cloudnative-pg/postgresql:15.6
   # imageName: ghcr.io/cloudnative-pg/postgresql@sha256:REPLACE_BEFORE_MERGE
 
   # Primary update strategy: unsupervised — operator handles primary
