@@ -8,7 +8,7 @@
 FROM public.ecr.aws/docker/library/python:3.12-alpine
 
 LABEL org.opencontainers.image.title="deploy-pipeline-monitor" \
-      org.opencontainers.image.description="GitHub-API CI freshness probe; pushes to Prometheus Pushgateway" \
+      org.opencontainers.image.description="GitHub/Argo deploy health probes; pushes to Prometheus Pushgateway" \
       org.opencontainers.image.source="https://github.com/madfam-org/enclii"
 
 # Unprivileged user up front so file ownership is correct.
@@ -20,11 +20,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY check_main_ci.py .
+COPY check_argo_main_parity.py .
 
 USER 65532
 
 ENV PYTHONUNBUFFERED=1 \
     REPOS_PATH=/etc/deploy-pipeline-monitor/repos.json \
-    PUSHGATEWAY_URL=http://pushgateway.monitoring.svc.cluster.local:9091
+    PUSHGATEWAY_URL=http://pushgateway-headless.monitoring.svc.cluster.local:9091
 
 ENTRYPOINT ["python", "/app/check_main_ci.py"]

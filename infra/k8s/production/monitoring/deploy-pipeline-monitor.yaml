@@ -48,7 +48,7 @@ data:
         {"repo": "madfam-org/fortuna"},
         {"repo": "madfam-org/rondelio"},
         {"repo": "madfam-org/madfam-site"},
-        {"repo": "madfam-org/cotiza"},
+        {"repo": "madfam-org/digifab-quoting"},
         {"repo": "madfam-org/pravara-mes"},
         {"repo": "madfam-org/sim4d"}
       ]
@@ -86,6 +86,54 @@ spec:
         property: token
 
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deploy-pipeline-monitor
+  namespace: monitoring
+  labels:
+    app: deploy-pipeline-monitor
+    app.kubernetes.io/name: deploy-pipeline-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-main-parity-reader
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argo-main-parity-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - applications
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-main-parity-reader
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argo-main-parity-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+subjects:
+  - kind: ServiceAccount
+    name: deploy-pipeline-monitor
+    namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-main-parity-reader
+
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -119,6 +167,7 @@ spec:
             app.kubernetes.io/component: monitoring
             app.kubernetes.io/part-of: enclii
         spec:
+          serviceAccountName: deploy-pipeline-monitor
           restartPolicy: OnFailure
           imagePullSecrets:
             - name: ghcr-credentials
@@ -172,6 +221,84 @@ spec:
             - name: repos
               configMap:
                 name: deploy-pipeline-monitor-repos
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argo-main-parity-monitor
+  namespace: monitoring
+  labels:
+    app: deploy-pipeline-monitor
+    app.kubernetes.io/name: argo-main-parity-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 240
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app: deploy-pipeline-monitor
+            app.kubernetes.io/name: argo-main-parity-monitor
+            app.kubernetes.io/component: monitoring
+            app.kubernetes.io/part-of: enclii
+        spec:
+          serviceAccountName: deploy-pipeline-monitor
+          restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: ghcr-credentials
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: monitor
+              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:55fadbea0b6e6857a7136ebf086b6dfa8981bcf3f09cbc92cc15d082655f57be
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - /app/check_argo_main_parity.py
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: ARGOCD_NAMESPACE
+                  value: argocd
+                - name: PUSHGATEWAY_URL
+                  value: http://pushgateway-headless.monitoring.svc.cluster.local:9091
+                - name: PUSH_JOB
+                  value: argo_main_parity_monitor
+                - name: REQUEST_TIMEOUT_SECONDS
+                  value: "10"
+                - name: LOG_LEVEL
+                  value: INFO
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: deploy-pipeline-monitor-creds
+                      key: GITHUB_TOKEN
+              resources:
+                requests:
+                  cpu: "20m"
+                  memory: "48Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "128Mi"
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -377,6 +504,46 @@ metadata:
     role: alert-rules
 spec:
   groups:
+    - name: argo-main-parity-monitor
+      interval: 1m
+      rules:
+        - alert: ArgoMainParityDrift
+          expr: argo_main_parity_drift_sources > 0
+          for: 5m
+          labels:
+            severity: critical
+            category: deploy-parity
+          annotations:
+            summary: "ArgoCD deployed revision differs from GitHub main"
+            description: >
+              At least one Git-backed prod ArgoCD source tracks `main` but is
+              not deployed at the current GitHub main SHA. Inspect
+              `argo_main_parity_source_ok` labels for the app/repo/path.
+            runbook: docs/runbooks/deploy-pipeline-monitor.md
+        - alert: ArgoMainParityMonitorFailed
+          expr: argo_main_parity_probe_ok == 0
+          for: 5m
+          labels:
+            severity: warning
+            category: deploy-parity
+          annotations:
+            summary: "Argo main parity monitor failed"
+            description: >
+              The parity monitor could not list Argo apps, query GitHub, or
+              push metrics. Check the `argo-main-parity-monitor` CronJob logs.
+            runbook: docs/runbooks/deploy-pipeline-monitor.md
+        - alert: ArgoMainParityMonitorStale
+          expr: time() - argo_main_parity_last_run_timestamp_seconds > 900 or absent(argo_main_parity_last_run_timestamp_seconds)
+          for: 0m
+          labels:
+            severity: warning
+            category: deploy-parity
+          annotations:
+            summary: "Argo main parity monitor has not pushed metrics in >15 min"
+            description: >
+              The parity monitor is stale or missing. Check CronJob scheduling,
+              GHCR pull credentials, network egress, and Pushgateway health.
+            runbook: docs/runbooks/deploy-pipeline-monitor.md
     - name: deploy-pipeline-monitor
       interval: 1m
       rules:

@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write  # cosign keyless
 
@@ -99,6 +99,20 @@ jobs:
         run: |
           cosign sign --yes "ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@${{ steps.build.outputs.digest }}"
 
+      - name: Commit digest pin
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          sed -E -i "s#ghcr.io/madfam-org/enclii/deploy-pipeline-monitor(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)#ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@${DIGEST}#g" infra/k8s/production/monitoring/deploy-pipeline-monitor.yaml
+          git add infra/k8s/production/monitoring/deploy-pipeline-monitor.yaml
+          git diff --cached --quiet && echo "Digest already pinned" && exit 0
+          git commit -m "build: pin deploy-pipeline-monitor image"
+          git push origin HEAD:main
+
       - name: Surface digest in run summary
         run: |
           {
@@ -106,7 +120,7 @@ jobs:
             echo ""
             echo "**Image:** \`ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@${{ steps.build.outputs.digest }}\`"
             echo ""
-            echo "**Pin into** \`infra/k8s/production/monitoring/deploy-pipeline-monitor.yaml\`:"
+            echo "**Pinned into** \`infra/k8s/production/monitoring/deploy-pipeline-monitor.yaml\` on main pushes:"
             echo ""
             echo '```yaml'
             echo "image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@${{ steps.build.outputs.digest }}"
