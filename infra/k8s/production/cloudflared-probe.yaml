@@ -133,7 +133,7 @@ spec:
           # CI rewrites this to a digest-pinned image. The `newTag` is also
           # acceptable but Kyverno disallows :latest, so the placeholder is
           # the commit SHA rather than the tag string.
-          image: ghcr.io/madfam-org/enclii/cloudflared-probe:placeholder
+          image: ghcr.io/madfam-org/enclii/cloudflared-probe@sha256:5ef1adb365ba0f963869272361a7d8bedfc4fc0b63a39ba717e8c960dcf670d9
           imagePullPolicy: IfNotPresent
           env:
             - name: PROBE_INTERVAL_SECONDS

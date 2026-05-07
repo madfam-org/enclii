@@ -35,6 +35,10 @@ spec:
     targetRevision: 2.2.11
     helm:
       values: |
+        image:
+          repository: docker.io/stakater/reloader
+          tag: v1.4.16
+
         # Reloader configuration for Enclii
         # Watch only deployments that opt-in via the
         # `reloader.stakater.com/match: "true"` pod-template annotation.
@@ -87,11 +91,17 @@ spec:
             # Tight liveness/readiness for fast detection of leader-election
             # deadlocks
             livenessProbe:
+              httpGet:
+                path: /live
+                port: http
               timeoutSeconds: 5
               failureThreshold: 5
               periodSeconds: 10
               successThreshold: 1
             readinessProbe:
+              httpGet:
+                path: /metrics
+                port: http
               timeoutSeconds: 5
               failureThreshold: 5
               periodSeconds: 10

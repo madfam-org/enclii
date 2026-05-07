@@ -137,7 +137,7 @@ spec:
           labels:
             severity: critical
             component: postgres-ha
-            page: true
+            page: "true"
           annotations:
             summary: "Postgres HA has multiple writable primaries (SPLIT-BRAIN)"
             description: |
