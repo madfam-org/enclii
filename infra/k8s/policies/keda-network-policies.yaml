@@ -88,6 +88,36 @@ spec:
         - protocol: TCP
           port: 9090
 
+# KEDA HTTP add-on ingress — allow add-on components to talk to each other in
+# the keda namespace. The external scaler polls the interceptor admin endpoint.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-http-addon-ingress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: keda-add-ons-http
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 9090
+
 # KEDA operator egress — K8s API server, DNS, intra-namespace, and trigger backends
 # The operator watches ScaledObjects across all namespaces and manages HPAs,
 # so it needs access to the K8s API server on ports 443 and 6443.
