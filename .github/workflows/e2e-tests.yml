@@ -47,6 +47,11 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Build workspace packages
+        run: |
+          pnpm --dir ../.. --filter @enclii/shared-lib build
+          pnpm --dir ../.. --filter @enclii/ui-components build
+
       - name: Build application
         run: pnpm run build
         env:

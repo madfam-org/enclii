@@ -469,6 +469,11 @@ jobs:
         working-directory: packages/ui-components
         run: pnpm test -- --passWithNoTests
 
+      - name: Build shared UI packages
+        run: |
+          pnpm --filter @enclii/shared-lib build
+          pnpm --filter @enclii/ui-components build
+
       - name: Build UI
         working-directory: apps/switchyard-ui
         run: pnpm run build
