@@ -145,7 +145,7 @@ spec:
                 - name: REPOS_PATH
                   value: /etc/deploy-pipeline-monitor/repos.json
                 - name: PUSHGATEWAY_URL
-                  value: http://pushgateway.monitoring.svc.cluster.local:9091
+                  value: http://pushgateway-headless.monitoring.svc.cluster.local:9091
                 - name: PUSH_JOB
                   value: deploy_pipeline_monitor
                 - name: REQUEST_TIMEOUT_SECONDS
@@ -283,6 +283,26 @@ metadata:
     app.kubernetes.io/component: monitoring
     app.kubernetes.io/part-of: enclii
 spec:
+  selector:
+    app: pushgateway
+  ports:
+    - name: http
+      port: 9091
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushgateway-headless
+  namespace: monitoring
+  labels:
+    app: pushgateway
+    app.kubernetes.io/name: pushgateway
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  clusterIP: None
   selector:
     app: pushgateway
   ports:
