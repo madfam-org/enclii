@@ -45,10 +45,17 @@ spec:
       - CreateNamespace=true
 
   ignoreDifferences:
+    # Argo injects tracking labels onto rendered Helm resources. The rendered
+    # ARC manifests intentionally preserve Helm's original instance labels, so
+    # ignore only metadata-level tracking label drift and keep selectors intact.
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
+        - /metadata/labels/app.kubernetes.io~1managed-by
     - group: apps
       kind: Deployment
       jsonPointers:
-        - /metadata/labels/app.kubernetes.io~1instance
         - /spec/template/metadata/labels/app.kubernetes.io~1instance
 ---
 # ARC Runner Scale Set (Blue)
@@ -83,6 +90,12 @@ spec:
   # They carry Argo tracking labels, so Argo sees them as extraneous even though
   # they are controller-owned runtime state.
   ignoreDifferences:
+    # Argo injects its Application tracking label onto the rendered Helm output;
+    # ARC itself expects the runner-set Helm instance label to stay stable.
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
     - group: actions.github.com
       kind: AutoscalingListener
       jqPathExpressions:
