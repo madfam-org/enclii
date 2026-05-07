@@ -1,0 +1,354 @@
+---
+# Source: gha-runner-scale-set-controller/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arc-controller
+  namespace: arc-system
+  labels:
+    helm.sh/chart: gha-rs-controller-0.14.0
+    app.kubernetes.io/name: gha-rs-controller
+    app.kubernetes.io/namespace: arc-system
+    app.kubernetes.io/instance: arc-controller
+    app.kubernetes.io/version: "0.14.0"
+    app.kubernetes.io/part-of: gha-rs-controller
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: gha-runner-scale-set-controller/templates/manager_cluster_role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arc-controller-gha-rs-controller
+rules:
+- apiGroups:
+  - actions.github.com
+  resources:
+  - autoscalingrunnersets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - actions.github.com
+  resources:
+  - autoscalingrunnersets/finalizers
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - autoscalingrunnersets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - autoscalinglisteners
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - actions.github.com
+  resources:
+  - autoscalinglisteners/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - autoscalinglisteners/finalizers
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - ephemeralrunnersets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - actions.github.com
+  resources:
+  - ephemeralrunnersets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - ephemeralrunnersets/finalizers
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - ephemeralrunners
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - actions.github.com
+  resources:
+  - ephemeralrunners/finalizers
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - actions.github.com
+  resources:
+  - ephemeralrunners/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  verbs:
+  - list
+  - watch
+  - patch
+---
+# Source: gha-runner-scale-set-controller/templates/manager_cluster_role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: arc-controller-gha-rs-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: arc-controller-gha-rs-controller
+subjects:
+- kind: ServiceAccount
+  name: arc-controller
+  namespace: arc-system
+---
+# Source: gha-runner-scale-set-controller/templates/leader_election_role.yaml
+# permissions to do leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-controller-gha-rs-controller-leader-election
+  namespace: arc-system
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "watch", "list", "delete", "update", "create"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+# Source: gha-runner-scale-set-controller/templates/manager_listener_role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-controller-gha-rs-controller-listener
+  namespace: arc-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - pods/status
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+---
+# Source: gha-runner-scale-set-controller/templates/leader_election_role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-controller-gha-rs-controller-leader-election
+  namespace: arc-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: arc-controller-gha-rs-controller-leader-election
+subjects:
+- kind: ServiceAccount
+  name: arc-controller
+  namespace: arc-system
+---
+# Source: gha-runner-scale-set-controller/templates/manager_listener_role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-controller-gha-rs-controller-listener
+  namespace: arc-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: arc-controller-gha-rs-controller-listener
+subjects:
+- kind: ServiceAccount
+  name: arc-controller
+  namespace: arc-system
+---
+# Source: gha-runner-scale-set-controller/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arc-controller-gha-rs-controller
+  namespace: arc-system
+  labels:
+    helm.sh/chart: gha-rs-controller-0.14.0
+    app.kubernetes.io/name: gha-rs-controller
+    app.kubernetes.io/namespace: arc-system
+    app.kubernetes.io/instance: arc-controller
+    app.kubernetes.io/version: "0.14.0"
+    app.kubernetes.io/part-of: gha-rs-controller
+    app.kubernetes.io/managed-by: Helm
+    actions.github.com/controller-service-account-namespace: arc-system
+    actions.github.com/controller-service-account-name: arc-controller
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gha-rs-controller
+      app.kubernetes.io/namespace: arc-system
+      app.kubernetes.io/instance: arc-controller
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: "manager"
+      labels:
+        app.kubernetes.io/part-of: gha-rs-controller
+        app.kubernetes.io/component: controller-manager
+        app.kubernetes.io/version: 0.14.0
+        app.kubernetes.io/name: gha-rs-controller
+        app.kubernetes.io/namespace: arc-system
+        app.kubernetes.io/instance: arc-controller
+    spec:
+      serviceAccountName: arc-controller
+      containers:
+      - name: manager
+        image: "ghcr.io/actions/gha-runner-scale-set-controller:0.14.0"
+        imagePullPolicy: IfNotPresent
+        args:
+        - "--auto-scaling-runner-set-only"
+        - "--enable-leader-election"
+        - "--leader-election-id=arc-controller-gha-rs-controller"
+        - "--log-level=info"
+        - "--log-format=json"
+        - "--runner-max-concurrent-reconciles=2"
+        - "--update-strategy=immediate"
+        - "--listener-metrics-addr="
+        - "--listener-metrics-endpoint="
+        - "--metrics-addr=:8080"
+        command:
+        - "/manager"
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+          name: metrics
+        env:
+        - name: CONTROLLER_MANAGER_CONTAINER_IMAGE
+          value: "ghcr.io/actions/gha-runner-scale-set-controller:0.14.0"
+        - name: CONTROLLER_MANAGER_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+        securityContext:
+            fsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: gha-rs-controller
+              topologyKey: kubernetes.io/hostname
+            weight: 100

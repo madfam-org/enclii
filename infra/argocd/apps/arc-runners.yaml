@@ -1,18 +1,19 @@
-# GitHub Actions Runner Controller Application
-# Deploys: ARC controller + runner scale sets
+# GitHub Actions Runner Controller Applications
+# Deploys: ARC controller + blue runner scale set.
 #
-# Auto-sync DISABLED — ArgoCD v3.2.5 has a bug in multi-source OCI Helm
-# revision resolution: it sends HEAD requests to the base repo URL
-# (ghcr.io/.../actions-runner-controller-charts) instead of the full
-# chart path (ghcr.io/.../gha-runner-scale-set-controller), causing
-# ComparisonError (403 from GHCR). Pods are Healthy and functional.
-# See docs/infrastructure/ARGOCD_KNOWN_ISSUES.md for full analysis,
-# reproduction steps, and proposed upstream fix. Re-enable auto-sync
-# when ArgoCD fixes multi-source OCI Helm revision resolution.
+# ArgoCD v3.2.5 cannot reliably compare the public ARC OCI Helm charts
+# when values come from a second Git source, so the chart output is rendered
+# into infra/k8s/production/arc/* and managed as ordinary Git manifests.
 #
-# To upgrade ARC charts, use Helm CLI directly:
-#   helm upgrade arc-controller oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
-#     --namespace arc-system --version 0.14.0 -f infra/helm/arc/values-controller.yaml
+# To upgrade ARC charts:
+#   helm template arc-controller oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
+#     --namespace arc-system --version <version> -f infra/helm/arc/values-controller.yaml \
+#     > infra/k8s/production/arc/controller/rendered.yaml
+#   helm template arc-runner-blue oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+#     --namespace arc-runners --version <version> \
+#     -f infra/helm/arc/values-runner-set.yaml \
+#     -f infra/helm/arc/values-runner-set-blue.yaml \
+#     > infra/k8s/production/arc/runner-blue/rendered.yaml
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -27,26 +28,19 @@ metadata:
 spec:
   project: default
 
-  # ARC Controller
-  sources:
-    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
-      chart: gha-runner-scale-set-controller
-      targetRevision: 0.14.0
-      helm:
-        releaseName: arc-controller
-        valueFiles:
-          - $values/infra/helm/arc/values-controller.yaml
-    # Reference values from our repo
-    - repoURL: https://github.com/madfam-org/enclii.git
-      targetRevision: main
-      ref: values
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/arc/controller
 
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-system
 
   syncPolicy:
-    # Auto-sync DISABLED — see header comment (ArgoCD OCI multi-source bug)
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
 ---
@@ -62,24 +56,18 @@ metadata:
 spec:
   project: default
 
-  sources:
-    - repoURL: oci://ghcr.io/actions/actions-runner-controller-charts
-      chart: gha-runner-scale-set
-      targetRevision: 0.14.0
-      helm:
-        releaseName: arc-runner-blue
-        valueFiles:
-          - $values/infra/helm/arc/values-runner-set.yaml
-          - $values/infra/helm/arc/values-runner-set-blue.yaml
-    - repoURL: https://github.com/madfam-org/enclii.git
-      targetRevision: main
-      ref: values
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/arc/runner-blue
 
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-runners
 
   syncPolicy:
-    # Auto-sync DISABLED — see header comment (ArgoCD OCI multi-source bug)
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true

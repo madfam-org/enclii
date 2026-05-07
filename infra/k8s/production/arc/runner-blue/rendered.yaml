@@ -1,0 +1,261 @@
+---
+# Source: gha-runner-scale-set/templates/manager_role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: madfam-runners-blue-gha-rs-manager
+  namespace: arc-runners
+  labels:
+    helm.sh/chart: gha-rs-0.14.0
+    app.kubernetes.io/name: madfam-runners-blue
+    app.kubernetes.io/instance: madfam-runners-blue
+    app.kubernetes.io/version: "0.14.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: gha-rs
+    actions.github.com/scale-set-name: madfam-runners-blue
+    actions.github.com/scale-set-namespace: arc-runners
+    app.kubernetes.io/component: manager-role
+  annotations:
+  finalizers:
+    - actions.github.com/cleanup-protection
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - pods/status
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+---
+# Source: gha-runner-scale-set/templates/manager_role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: madfam-runners-blue-gha-rs-manager
+  namespace: arc-runners
+  labels:
+    helm.sh/chart: gha-rs-0.14.0
+    app.kubernetes.io/name: madfam-runners-blue
+    app.kubernetes.io/instance: madfam-runners-blue
+    app.kubernetes.io/version: "0.14.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: gha-rs
+    actions.github.com/scale-set-name: madfam-runners-blue
+    actions.github.com/scale-set-namespace: arc-runners
+    app.kubernetes.io/component: manager-role-binding
+  annotations:
+  finalizers:
+    - actions.github.com/cleanup-protection
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: madfam-runners-blue-gha-rs-manager
+subjects:
+- kind: ServiceAccount
+  name: 
+    arc-gha-rs-controller
+  namespace: 
+    arc-system
+---
+# Source: gha-runner-scale-set/templates/autoscalingrunnerset.yaml
+apiVersion: actions.github.com/v1alpha1
+kind: AutoscalingRunnerSet
+metadata:
+  name: madfam-runners-blue
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/component: "autoscaling-runner-set"
+    helm.sh/chart: gha-rs-0.14.0
+    app.kubernetes.io/name: madfam-runners-blue
+    app.kubernetes.io/instance: madfam-runners-blue
+    app.kubernetes.io/version: "0.14.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: gha-rs
+    actions.github.com/scale-set-name: madfam-runners-blue
+    actions.github.com/scale-set-namespace: arc-runners
+  annotations:
+    actions.github.com/values-hash: 10224c545ed7b6e0951207935b1c67ad983bdef64d898126fe5c24dc456b65e
+    actions.github.com/cleanup-manager-role-binding: madfam-runners-blue-gha-rs-manager
+    actions.github.com/cleanup-manager-role-name: madfam-runners-blue-gha-rs-manager
+
+spec:
+  githubConfigUrl: https://github.com/madfam-org
+  githubConfigSecret: github-app-secret
+  runnerScaleSetName: madfam-runners-blue
+  maxRunners: 9
+  minRunners: 1
+  listenerTemplate:
+    spec:
+      containers:
+      - livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        name: listener
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        startupProbe:
+          failureThreshold: 30
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+
+  template:
+    metadata:
+      labels:
+        arc.enclii.dev/active: "true"
+        arc.enclii.dev/color: blue
+      annotations:
+        arc.enclii.dev/deployed-at: ""
+    spec:
+      nodeSelector: 
+        role: builder
+      terminationGracePeriodSeconds: 
+        300
+      tolerations: 
+        - effect: NoSchedule
+          key: builder
+          operator: Equal
+          value: "true"
+      restartPolicy: Never
+      serviceAccountName: arc-runner
+      initContainers:
+      - name: init-dind-externals
+        
+        image: ghcr.io/madfam-org/enclii/arc-runner:stable
+        command: ["cp"]
+        args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/tmpDir
+      - name: dind
+        image: docker:dind
+        args:
+          - dockerd
+          - --host=unix:///var/run/docker.sock
+          - --group=$(DOCKER_GROUP_GID)
+        env:
+          - name: DOCKER_GROUP_GID
+            value: "123"
+        securityContext:
+          privileged: true
+        restartPolicy: Always
+        startupProbe:
+          exec:
+            command:
+              - docker
+              - info
+          initialDelaySeconds: 0
+          failureThreshold: 24
+          periodSeconds: 5
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+          - name: dind-externals
+            mountPath: /home/runner/externals
+      containers:
+      - name: runner
+        
+        command: 
+          - /home/runner/run.sh
+        image: 
+          ghcr.io/madfam-org/enclii/arc-runner:stable
+        imagePullPolicy: 
+          IfNotPresent
+        resources: 
+          limits:
+            cpu: 1500m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        env:
+          - name: DOCKER_HOST
+            value: unix:///var/run/docker.sock
+          - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+            value: "120"
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+      
+      volumes:
+      - name: dind-sock
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
+      
+      - name: work
+        emptyDir: {}
