@@ -25,6 +25,7 @@ NAMESPACES=(
     enclii-builds
     argocd
     cloudflare-tunnel
+    foundry-scout
 )
 
 RED='\033[0;31m'

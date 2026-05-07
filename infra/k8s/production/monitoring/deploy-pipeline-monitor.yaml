@@ -55,11 +55,11 @@ data:
     }
 
 ---
-# GitHub API token is sourced from the existing Vault-backed Enclii token path
-# (`secret/enclii.github_token`) so this monitor is not blocked by a missing
-# bespoke secret. Secret-writer follow-up: create a least-privilege token under
-# `secret/monitoring/deploy-pipeline-monitor.github_token` and switch the
-# remoteRef below back to that dedicated path.
+# GitHub API token is sourced from the existing `enclii/enclii-github-token`
+# Secret via the legacy Kubernetes-backed ClusterSecretStore. Secret-writer
+# follow-up: create a least-privilege token under Vault path
+# `secret/monitoring/deploy-pipeline-monitor.github_token`, then switch this
+# ExternalSecret back to `vault-store`.
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -73,7 +73,7 @@ metadata:
 spec:
   refreshInterval: 15m
   secretStoreRef:
-    name: vault-store
+    name: kubernetes-store
     kind: ClusterSecretStore
   target:
     name: deploy-pipeline-monitor-creds
@@ -82,8 +82,8 @@ spec:
   data:
     - secretKey: GITHUB_TOKEN
       remoteRef:
-        key: secret/enclii
-        property: github_token
+        key: enclii-github-token
+        property: token
 
 ---
 apiVersion: batch/v1
