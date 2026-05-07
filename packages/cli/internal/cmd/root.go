@@ -109,6 +109,12 @@ Learn more at https://enclii.dev`,
 	// Observability (mirror /observability page)
 	rootCmd.AddCommand(NewObserveCommand(cfg))
 
+	// MADFAM operator workflows (audited kubectl/Argo/Longhorn/Kyverno/ARC replacement layer)
+	rootCmd.AddCommand(NewOpsCommand(cfg))
+
+	// External provider workflows (audited gh/Cloudflare/Porkbun/Hetzner replacement layer)
+	rootCmd.AddCommand(NewProvidersCommand(cfg))
+
 	// Third-party integrations (GitHub today; more to come)
 	rootCmd.AddCommand(NewIntegrationsCommand(cfg))
 

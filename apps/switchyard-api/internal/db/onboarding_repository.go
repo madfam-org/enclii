@@ -103,6 +103,26 @@ func (r *OnboardingRepository) UpdateStatus(ctx context.Context, id uuid.UUID, s
 	return err
 }
 
+// UpdateStatusAndMergeSnapshot updates status/error and overlays config_snapshot
+// keys without dropping existing snapshot keys.
+func (r *OnboardingRepository) UpdateStatusAndMergeSnapshot(ctx context.Context, id uuid.UUID, status string, errorMsg *string, snapshot map[string]interface{}) error {
+	configJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+
+	query := `
+		UPDATE onboarding_registrations
+		SET onboard_status = $1,
+			error_message = $2,
+			config_snapshot = COALESCE(config_snapshot, '{}'::jsonb) || $3::jsonb,
+			updated_at = NOW()
+		WHERE id = $4
+	`
+	_, err = r.db.ExecContext(ctx, query, status, errorMsg, configJSON, id)
+	return err
+}
+
 // List retrieves all onboarding registrations
 func (r *OnboardingRepository) List(ctx context.Context) ([]types.OnboardingRegistration, error) {
 	query := `

@@ -2,6 +2,8 @@
 
 Onboard a new repository with full provisioning — ArgoCD registration, namespace setup, database creation, K8s secrets, and R2 storage in a single command.
 
+For apps that require authentication, run Janua OAuth bootstrap from the product repo as part of the same onboarding change. Enclii owns runtime provisioning; Janua owns identity provisioning; the product repo owns both desired-state manifests.
+
 ## Usage
 
 ```bash
@@ -44,6 +46,8 @@ The command executes a multi-step provisioning pipeline via `POST /v1/admin/onbo
 10. Create Postgres database + role, grant privileges, update PgBouncer (if `--db-name`)
 11. Create K8s Secret with entries from `.env` file (if `--secrets-file`)
 12. Create R2 bucket + append R2 credentials to K8s Secret (if `--r2-bucket`)
+
+Authentication provisioning is intentionally not hardcoded in Enclii. The product repo should provide `infra/oauth-redirect-uris.json` and `scripts/bootstrap-ecosystem.sh`, then call Janua's zero-touch `POST /api/v1/oauth/clients/register` endpoint. This keeps Janua client state product-owned and avoids Enclii repo edits.
 
 **Status reporting**: The response includes a `step_results` array and an overall status:
 - `completed` — all steps succeeded
@@ -90,6 +94,24 @@ enclii onboard --repo madfam-org/forgesight \
   --preflight \
   --db-name forgesight \
   --secrets-file ./forgesight.env
+```
+
+### Auth-enabled app onboarding
+
+```bash
+# Product-owned Janua desired state
+cat infra/oauth-redirect-uris.json
+
+# Register or converge the Janua client
+scripts/bootstrap-ecosystem.sh
+
+# Provision runtime through Enclii
+enclii onboard --repo madfam-org/forgesight \
+  --project forgesight \
+  --preflight \
+  --db-name forgesight \
+  --secrets-file ./forgesight.env \
+  --r2-bucket forgesight
 ```
 
 ### Dry run

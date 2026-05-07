@@ -170,6 +170,77 @@ Get project details.
 }
 ```
 
+#### GET /project-processes/summary
+
+Return a compact, project-card optimized process summary for one or more
+projects. This is the dashboard batch endpoint; clients should use it instead
+of calling per-service build-status endpoints from project cards.
+
+**Query Parameters:**
+- `project_ids` (string): Comma-separated project UUIDs (required)
+- `limit_per_project` (int): Processes returned per project (default: 5, max: 20)
+- `active_only` (bool): Include only active, failed, or blocked processes
+
+**Response:**
+```json
+{
+  "count": 1,
+  "summaries": [
+    {
+      "project_id": "proj_abc123",
+      "project_slug": "my-project",
+      "active_count": 2,
+      "failed_count": 0,
+      "blocked_count": 1,
+      "latest": {
+        "id": "evt_123",
+        "correlation_id": "svc_123:abc123:production",
+        "kind": "rollout",
+        "status": "blocked",
+        "phase": "deploy_degraded",
+        "service_id": "svc_123",
+        "service_name": "api",
+        "updated_at": "2026-05-06T12:00:00Z"
+      },
+      "processes": [],
+      "services": []
+    }
+  ]
+}
+```
+
+#### GET /project-processes/stream
+
+Server-sent event stream for one or more project-card process summaries.
+
+**Query Parameters:**
+- `project_ids` (string): Comma-separated project UUIDs (required)
+- `limit_per_project` (int): Processes returned per project (default: 5, max: 20)
+- `active_only` (bool): Defaults to active/failed/blocked only; pass `false` for all
+
+Clients should prefer authenticated `fetch()` streaming with an
+`Authorization` header. Avoid query-string bearer tokens for project-card
+streams because URLs can leak through logs, browser history, and observability
+tooling.
+
+**Events:**
+- `summary`: JSON payload with the same shape as `/project-processes/summary`
+- `error`: Recoverable stream refresh error
+- heartbeat comments every ~25 seconds
+
+#### GET /projects/`:slug`/processes
+
+Return the process timeline for a single project.
+
+**Query Parameters:**
+- `limit` (int): Processes returned (default: 50, max: 100)
+- `active_only` (bool): Include only active, failed, or blocked processes
+
+#### GET /projects/`:slug`/processes/stream
+
+Server-sent event stream for a single project's process summary. Emits the
+same `summary` and `error` events as `/project-processes/stream`.
+
 #### PUT /projects/`:slug`
 
 Update project.

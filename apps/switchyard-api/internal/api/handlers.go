@@ -439,7 +439,11 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Projects
 			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), middleware.RequireTierForProject(h.repos), h.CreateProject)
 			protected.GET("/projects", h.ListProjects)
+			protected.GET("/project-processes/summary", h.GetProjectProcessSummaries)
+			protected.GET("/project-processes/stream", h.StreamProjectProcessSummaries)
 			protected.GET("/projects/:slug", h.GetProject)
+			protected.GET("/projects/:slug/processes", h.GetProjectProcesses)
+			protected.GET("/projects/:slug/processes/stream", h.StreamProjectProcesses)
 			protected.DELETE("/projects/:slug", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProject)
 
 			// CI Runner Configuration
@@ -628,6 +632,14 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 
 			// Cloudflare Tunnel Status
 			protected.GET("/tunnel/status", h.GetTunnelStatus)
+
+			// MADFAM operator/provider replacement layer. These endpoints are
+			// contract-first and plan-safe: dry-runs return structured plans;
+			// apply requests require concrete adapters and audit reasons.
+			protected.GET("/ops/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetOpsCapabilities)
+			protected.POST("/ops/:domain/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleOpsOperation)
+			protected.GET("/providers/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetProviderCapabilities)
+			protected.POST("/providers/:provider/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleProviderOperation)
 
 			// Deployment Lifecycle Timeline
 			protected.GET("/lifecycle/timeline/:owner/:repo", h.GetLifecycleTimeline)

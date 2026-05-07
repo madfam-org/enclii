@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { GitBranch, Globe, Lock } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  GitBranch,
+  Globe,
+  Loader2,
+  Lock,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/formatting";
 import {
@@ -9,12 +16,21 @@ import {
   getFrameworkLabel,
 } from "./framework-icon";
 import type { CompactProject } from "./project-card-compact";
+import { processStatusLabel } from "@/lib/project-process-feed";
 
 const aggregateStatusColor: Record<string, string> = {
   healthy: "bg-status-success",
   degraded: "bg-status-warning",
   failing: "bg-status-error",
   unknown: "bg-muted-foreground",
+};
+
+const liveStateColor: Record<string, string> = {
+  blocked: "border-status-error/40 bg-status-error/15 text-status-error",
+  failed: "border-status-error/40 bg-status-error/15 text-status-error",
+  running: "border-status-info/40 bg-status-info/15 text-status-info",
+  idle: "border-border/50 bg-muted/40 text-muted-foreground",
+  unknown: "border-border/50 bg-muted/40 text-muted-foreground",
 };
 
 interface ProjectRowCompactProps {
@@ -40,6 +56,12 @@ export function ProjectRowCompact({
   const branch = project.lastDeployment?.branch;
   const commitMessage = project.lastDeployment?.commitMessage;
   const timestamp = project.lastDeployment?.timestamp;
+  const latestProcess = project.processSummary?.latest;
+  const liveState = project.liveState || "idle";
+  const activeProcessCount =
+    (project.processSummary?.active_count || 0) +
+    (project.processSummary?.failed_count || 0) +
+    (project.processSummary?.blocked_count || 0);
 
   return (
     <Link
@@ -95,6 +117,28 @@ export function ProjectRowCompact({
       {project.domain && (
         <span className="text-muted-foreground hidden min-w-0 max-w-[180px] shrink-0 truncate text-xs lg:inline-block">
           {project.domain}
+        </span>
+      )}
+
+      {latestProcess && (
+        <span
+          className={cn(
+            "hidden shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium lg:inline-flex",
+            liveStateColor[liveState] || liveStateColor.unknown,
+          )}
+          title={`${latestProcess.service_name ? `${latestProcess.service_name}: ` : ""}${processStatusLabel(latestProcess.status)} ${latestProcess.kind.replace(/_/g, " ")}`}
+          aria-label={`Project process state: ${processStatusLabel(latestProcess.status)}`}
+        >
+          {liveState === "running" ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          ) : liveState === "failed" || liveState === "blocked" ? (
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <Activity className="h-3 w-3" aria-hidden="true" />
+          )}
+          <span className="tabular-nums">
+            {activeProcessCount > 0 ? activeProcessCount : "recent"}
+          </span>
         </span>
       )}
 

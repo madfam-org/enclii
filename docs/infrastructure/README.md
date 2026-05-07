@@ -25,7 +25,35 @@ This section documents Enclii's production infrastructure components deployed in
 
 ## Quick Reference
 
+### Control Plane Rule
+
+Use Enclii first for infrastructure manipulation. `enclii ops` is the
+operator entry point for Kubernetes, ArgoCD, Longhorn, Kyverno,
+ExternalSecrets, Vault, and ARC workflows. `enclii providers` is the entry
+point for GitHub, Cloudflare, Porkbun, and Hetzner workflows. Direct
+`kubectl` or provider CLI/API commands are break-glass only until a missing
+adapter is wired.
+
 ### Check Infrastructure Health
+
+```bash
+# ArgoCD application status
+enclii ops apps status --namespace argocd
+
+# Longhorn volumes
+enclii ops storage longhorn --namespace longhorn-system
+
+# Cloudflare tunnel
+enclii providers cloudflare tunnels
+
+# External secrets sync
+enclii ops secrets external --namespace enclii
+```
+
+### Break-Glass Equivalents
+
+Use these only when the Enclii adapter is missing or blocked, and record the
+gap for Enclii coverage.
 
 ```bash
 # ArgoCD sync status
@@ -39,12 +67,8 @@ kubectl get pods -n cloudflare-tunnel
 
 # External secrets sync
 kubectl get externalsecrets -n enclii
-```
 
-### Access UIs
-
-```bash
-# ArgoCD (https://localhost:8080)
+# ArgoCD UI (https://localhost:8080)
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 
 # Longhorn (http://localhost:8081)

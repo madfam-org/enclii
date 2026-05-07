@@ -705,7 +705,7 @@ func main() {
 		Addr:           ":" + cfg.Port,
 		Handler:        router,
 		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
+		WriteTimeout:   0,       // Streaming endpoints (SSE/logs/audit export) own their own heartbeat/budget.
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 

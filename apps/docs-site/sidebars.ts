@@ -167,6 +167,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'architecture/ARCHITECTURE',
         'architecture/API',
+        'architecture/PROJECT_CARD_LIVE_PROCESS_FEED',
         'architecture/BLUE_OCEAN_ROADMAP',
         'architecture/SOFTWARE_SPEC',
         'architecture/ENCLII_CAPABILITY_MATRIX',

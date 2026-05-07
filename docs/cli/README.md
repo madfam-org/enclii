@@ -9,6 +9,11 @@ tags: [cli, reference, commands, deployment]
 
 The `enclii` command-line interface provides developers with tools to deploy, manage, and monitor services on the Enclii platform.
 
+For MADFAM operations, Enclii is the default manipulation layer. Use `enclii ops`
+instead of direct `kubectl`/ArgoCD/Longhorn/Kyverno/ARC workflows and use
+`enclii providers` instead of direct `gh`, Cloudflare, Porkbun, or Hetzner
+tooling. Raw tools are break-glass only until the missing adapter is wired.
+
 ## Installation
 
 ### macOS (Homebrew)
@@ -131,6 +136,8 @@ enclii deploy --env production
 | Command | Description |
 |---------|-------------|
 | [`admin`](./commands/admin.md) | Platform operator commands (mirrors admin-console portal) |
+| [`ops`](./commands/ops.md) | Audited Kubernetes, Argo, Longhorn, Kyverno, ARC replacement workflows |
+| [`providers`](./commands/providers.md) | Audited GitHub, Cloudflare, Porkbun, and Hetzner replacement workflows |
 | [`vault`](./commands/vault.md) | Inspect cluster Vault deployment |
 | [`db`](./commands/db.md) | Inspect the platform database (read-only WAL status) |
 
@@ -152,7 +159,7 @@ These flags are available for all commands:
 | `--log-level` | Log level: `debug`, `info`, `warn`, `error` |
 | `--help`, `-h` | Show help for any command |
 
-Most read subcommands across the CLI accept a `--json` flag for stable, machine-readable output. Most mutating subcommands accept `--force` to skip confirmation prompts.
+Most read subcommands across the CLI accept a `--json` flag for stable, machine-readable output. Most mutating subcommands accept `--force` to skip confirmation prompts. The `ops` and `providers` replacement-layer commands are plan-first: mutations require `--apply --reason "..."`; without `--apply`, they request a dry-run plan.
 
 ## Environment Variables
 

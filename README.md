@@ -33,6 +33,14 @@ Enclii is an **open source DevOps platform** for deploying, scaling, and operati
 
 All services deploy via zero-touch onboarding — K8s manifests and CI workflows live in each repo, not here. [See onboarding guide →](./docs/guides/ONBOARDING_GUIDE.md)
 
+### MADFAM Operations Doctrine
+
+Enclii is the required control plane for MADFAM DevOps and provisioning:
+
+- `enclii ops` replaces routine `kubectl`, ArgoCD, Longhorn, Kyverno, ExternalSecrets, Vault, and ARC manipulation.
+- `enclii providers` replaces routine `gh`, Cloudflare, Porkbun, and Hetzner manipulation.
+- Switchyard API is the agent-facing contract Selva and other agents should call; raw shell tools are break-glass only until the relevant adapter is implemented.
+
 ---
 
 ## Key Features

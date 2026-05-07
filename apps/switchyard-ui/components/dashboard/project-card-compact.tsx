@@ -27,6 +27,17 @@ import { HealthBadge } from "./health-badge";
 import { SentryErrorBadge } from "./sentry-error-badge";
 import { ServiceLink, normalizeEnv } from "./service-link";
 import { ProjectCardMenu } from "./project-card-menu";
+import {
+  ProjectProcessDrawer,
+  ProjectProcessRail,
+  ServiceProcessIndicator,
+} from "./project-process-feed";
+import {
+  type ProjectLiveState,
+  type ProjectProcess,
+  type ProjectProcessSummary,
+  type ServiceProcessSummary,
+} from "@/lib/project-process-feed";
 
 // Strip protocol + .git suffix from a git repo URL/path so the result is
 // always a "{owner}/{repo}" slug suitable for both display and constructing
@@ -83,6 +94,9 @@ export interface CompactService {
   // for projects with both `api.example.com` and `example.com`. Operators
   // now click straight through to the service of their choice.
   domain?: string;
+  processSummary?: ServiceProcessSummary;
+  activeProcessCount?: number;
+  lastProcess?: ProjectProcess;
 }
 
 // Extracts the trailing digest fragment from a full image URI for display.
@@ -148,6 +162,8 @@ export interface CompactProject {
   healthyCount?: number;
   services?: CompactService[];
   aggregateStatus?: "healthy" | "degraded" | "failing" | "unknown";
+  processSummary?: ProjectProcessSummary;
+  liveState?: ProjectLiveState;
   updatedAt?: string;
   // Tri-state outcome of resolving the latest deployment from the
   // services fetch. Drives the empty-state copy on Row 3 so we don't
@@ -270,6 +286,7 @@ export function ProjectCardCompact({
   const firstServiceId = services[0]?.id;
 
   const { copiedKey, copy } = useCopyToClipboard();
+  const [feedOpen, setFeedOpen] = useState(false);
 
   return (
     // The card itself is a div, not a <Link>. The "click anywhere on the
@@ -348,6 +365,16 @@ export function ProjectCardCompact({
           />
         </div>
       </div>
+
+      <ProjectProcessRail
+        project={project}
+        onOpenDetails={() => setFeedOpen(true)}
+      />
+      <ProjectProcessDrawer
+        project={project}
+        open={feedOpen}
+        onOpenChange={setFeedOpen}
+      />
 
         {/* Row 2: Service table.
             Each row is now a granular interaction surface:
@@ -431,26 +458,32 @@ export function ProjectCardCompact({
                           </div>
                         </td>
                         <td className="px-1 py-1">
-                          <Link
-                            href={logsHrefForRow}
-                            className={cn(
-                              "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none transition-colors hover:underline",
-                              service.status === "running" &&
-                                "bg-status-success/15 text-status-success hover:bg-status-success/25",
-                              service.status === "failed" &&
-                                "bg-status-error/15 text-status-error hover:bg-status-error/25",
-                              service.status === "pending" &&
-                                "bg-status-warning/15 text-status-warning hover:bg-status-warning/25",
-                              service.status === "deploying" &&
-                                "bg-status-info/15 text-status-info hover:bg-status-info/25 animate-pulse",
-                              service.status === "unknown" &&
-                                "bg-muted text-muted-foreground hover:bg-muted/80",
-                            )}
-                            aria-label={`View ${service.name} logs (status: ${serviceStatusLabel[service.status] || "unknown"})`}
-                            title={`View logs \u2014 current status: ${serviceStatusLabel[service.status] || "unknown"}`}
-                          >
-                            {serviceStatusLabel[service.status] || "Unknown"}
-                          </Link>
+                          <div className="flex min-w-0 items-center gap-1">
+                            <Link
+                              href={logsHrefForRow}
+                              className={cn(
+                                "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none transition-colors hover:underline",
+                                service.status === "running" &&
+                                  "bg-status-success/15 text-status-success hover:bg-status-success/25",
+                                service.status === "failed" &&
+                                  "bg-status-error/15 text-status-error hover:bg-status-error/25",
+                                service.status === "pending" &&
+                                  "bg-status-warning/15 text-status-warning hover:bg-status-warning/25",
+                                service.status === "deploying" &&
+                                  "bg-status-info/15 text-status-info hover:bg-status-info/25 animate-pulse",
+                                service.status === "unknown" &&
+                                  "bg-muted text-muted-foreground hover:bg-muted/80",
+                              )}
+                              aria-label={`View ${service.name} logs (status: ${serviceStatusLabel[service.status] || "unknown"})`}
+                              title={`View logs \u2014 current status: ${serviceStatusLabel[service.status] || "unknown"}`}
+                            >
+                              {serviceStatusLabel[service.status] || "Unknown"}
+                            </Link>
+                            <ServiceProcessIndicator
+                              projectSlug={project.slug}
+                              service={service}
+                            />
+                          </div>
                         </td>
                         <td className="text-muted-foreground px-1 py-1 text-right tabular-nums">
                           {service.replicas ? (
@@ -749,29 +782,4 @@ export function ProjectCardCompact({
 // Re-exported here so existing call sites that import from this module
 // continue to work unchanged.
 export { ProjectRowCompact } from "./project-row-compact";
-
-export function ProjectCardCompactSkeleton() {
-  return (
-    <Card className="flex h-[240px] animate-pulse flex-col justify-between p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="bg-muted h-6 w-6 rounded" />
-          <div className="bg-muted h-4 w-28 rounded" />
-        </div>
-        <div className="bg-muted h-2.5 w-2.5 rounded-full" />
-      </div>
-      {/* Service table skeleton */}
-      <div className="border-border/40 mt-2 space-y-1 rounded border p-2">
-        <div className="bg-muted h-3 w-full rounded" />
-        <div className="bg-muted h-3 w-5/6 rounded" />
-        <div className="bg-muted h-3 w-4/6 rounded" />
-      </div>
-      <div className="bg-muted mt-2 h-3 w-3/4 rounded" />
-      <div className="bg-muted mt-2 h-3 w-1/2 rounded" />
-      <div className="border-border/50 mt-auto flex items-center justify-between border-t pt-2">
-        <div className="bg-muted h-3 w-16 rounded" />
-        <div className="bg-muted h-3 w-10 rounded" />
-      </div>
-    </Card>
-  );
-}
+export { ProjectCardCompactSkeleton } from "./project-card-compact-skeleton";

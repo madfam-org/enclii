@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { apiGet, apiPost } from '@/lib/api';
 import { useTier } from '@/hooks/use-tier';
 import { usePolling } from '@/hooks/use-polling';
+import { useProjectProcessFeed } from '@/hooks/use-project-process-feed';
 import { POLLING_SLOW } from '@/lib/constants';
 import { PricingModal } from '@/components/modals/PricingModal';
 import { Button } from "@enclii/ui-components/button";
@@ -39,6 +40,10 @@ import { SubNavActionBar } from '@/components/dashboard/sub-nav-action-bar';
 import { useViewMode } from '@/components/dashboard/view-toggle';
 import { LastSyncBadge } from '@/components/dashboard/last-sync-badge';
 import { StatCard } from '@/components/dashboard/stat-card';
+import {
+  processLiveState,
+  serviceSummariesById,
+} from '@/lib/project-process-feed';
 
 // /projects is the dedicated projects-only surface — distinct from the home
 // dashboard at /. Home shows the ecosystem context (usage, system health,
@@ -315,6 +320,31 @@ export default function ProjectsPage() {
 
   usePolling(fetchProjects, POLLING_SLOW);
 
+  const { summaries: processSummaries } = useProjectProcessFeed(projects);
+
+  const projectsWithProcesses = useMemo(() => {
+    return projects.map((project) => {
+      const processSummary = processSummaries[project.id];
+      const serviceProcessIndex = serviceSummariesById(processSummary);
+      return {
+        ...project,
+        processSummary,
+        liveState: processLiveState(processSummary),
+        services: project.services?.map((service) => {
+          const serviceSummary = serviceProcessIndex[service.id];
+          return serviceSummary
+            ? {
+                ...service,
+                processSummary: serviceSummary,
+                activeProcessCount: serviceSummary.active_count,
+                lastProcess: serviceSummary.latest,
+              }
+            : service;
+        }),
+      };
+    });
+  }, [processSummaries, projects]);
+
   // Aggregate stats for the projects-page banner. Computed off the full
   // unfiltered set so the totals don't shift when the user narrows by
   // status — that matches the mental model "show me the whole picture,
@@ -324,24 +354,24 @@ export default function ProjectsPage() {
     let healthy = 0;
     let degraded = 0;
     let failing = 0;
-    for (const p of projects) {
+    for (const p of projectsWithProcesses) {
       totalServices += p.serviceCount ?? 0;
       if (p.aggregateStatus === 'healthy') healthy += 1;
       else if (p.aggregateStatus === 'degraded') degraded += 1;
       else if (p.aggregateStatus === 'failing') failing += 1;
     }
     return {
-      totalProjects: projects.length,
+      totalProjects: projectsWithProcesses.length,
       totalServices,
       healthy,
       degraded,
       failing,
     };
-  }, [projects]);
+  }, [projectsWithProcesses]);
 
   // Filter and sort
   const filteredProjects = useMemo(() => {
-    let result = projects;
+    let result = projectsWithProcesses;
 
     if (statusFilter !== 'all') {
       result = result.filter((p) => p.aggregateStatus === statusFilter);
@@ -381,7 +411,7 @@ export default function ProjectsPage() {
     }
 
     return result;
-  }, [projects, search, sort, statusFilter]);
+  }, [projectsWithProcesses, search, sort, statusFilter]);
 
   if (loading) {
     // Loading skeleton mirrors the projects-only layout: title, stats banner

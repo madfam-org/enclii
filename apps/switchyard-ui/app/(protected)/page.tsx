@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { usePolling } from "@/hooks/use-polling";
+import { useProjectProcessFeed } from "@/hooks/use-project-process-feed";
 import { POLLING_SLOW } from "@/lib/constants";
 import { apiGet, apiPost } from "@/lib/api";
 import { useScope } from "@/contexts/ScopeContext";
@@ -27,6 +28,10 @@ import { SidebarAlerts } from "@/components/dashboard/sidebar-alerts";
 import { SidebarRecentPreviews } from "@/components/dashboard/sidebar-recent-previews";
 import { LastSyncBadge } from "@/components/dashboard/last-sync-badge";
 import { SystemHealthSummary } from "@/components/dashboard/system-health-summary";
+import {
+  processLiveState,
+  serviceSummariesById,
+} from "@/lib/project-process-feed";
 
 interface ApiProject {
   id: string;
@@ -290,9 +295,34 @@ export default function Dashboard() {
 
   usePolling(fetchProjects, POLLING_SLOW);
 
+  const { summaries: processSummaries } = useProjectProcessFeed(projects);
+
+  const projectsWithProcesses = useMemo(() => {
+    return projects.map((project) => {
+      const processSummary = processSummaries[project.id];
+      const serviceProcessIndex = serviceSummariesById(processSummary);
+      return {
+        ...project,
+        processSummary,
+        liveState: processLiveState(processSummary),
+        services: project.services?.map((service) => {
+          const serviceSummary = serviceProcessIndex[service.id];
+          return serviceSummary
+            ? {
+                ...service,
+                processSummary: serviceSummary,
+                activeProcessCount: serviceSummary.active_count,
+                lastProcess: serviceSummary.latest,
+              }
+            : service;
+        }),
+      };
+    });
+  }, [processSummaries, projects]);
+
   // Filter and sort
   const filteredProjects = useMemo(() => {
-    let result = projects;
+    let result = projectsWithProcesses;
 
     if (search) {
       const q = search.toLowerCase();
@@ -328,7 +358,7 @@ export default function Dashboard() {
     }
 
     return result;
-  }, [projects, search, sort]);
+  }, [projectsWithProcesses, search, sort]);
 
   const visibleProjects = filteredProjects.slice(0, visibleCount);
   const hasMore = filteredProjects.length > visibleCount;

@@ -9,6 +9,9 @@ The `enclii` CLI enables developers to:
 - Stream logs and debug issues
 - Configure domains and environments
 - Manage teams and access
+- Operate MADFAM infrastructure and providers through audited `ops` and
+  `providers` replacement layers instead of raw `kubectl`, `gh`, Cloudflare,
+  Porkbun, or Hetzner tooling
 
 ## Installation
 
@@ -83,6 +86,7 @@ packages/cli/
     │   ├── login.go            # OAuth/PKCE flow against Janua
     │   ├── teams.go projects.go tokens.go
     │   ├── audit.go activity.go observe.go integrations.go deployments.go
+    │   ├── ops.go providers.go # audited operator/provider replacement layer
     │   ├── admin.go admin_*.go # platform operator subtree (mirrors admin-console)
     │   └── …                   # one file per top-level group
     ├── config/                 # ~/.enclii config + credentials, auto-refresh
@@ -104,12 +108,17 @@ See the [CLI Reference](../../docs/cli/README.md) for the canonical, grouped ind
 | `secrets` / `domains` / `functions` / `jobs` / `junctions` | Service configuration |
 | `teams` / `integrations` | Team management + GitHub integration |
 | `observe` / `activity` / `audit` | Metrics, lifecycle feed, audit log (CSV export) |
+| `ops` | Audited Kubernetes/Argo/Longhorn/Kyverno/ARC operator workflows |
+| `providers` | Audited GitHub/Cloudflare/Porkbun/Hetzner provider workflows |
 | `admin` | Platform operator subtree: `fleet`, `topology`, `clusters`, `drift`, `propagation`, `governance`, `costs`, `vclusters` |
 | `vault` | Cluster Vault status (read-only) |
 | `local` | Local development environment |
 | `version` | Build version + commit (`--json` available) |
 
 Most read subcommands accept `--json`; mutations require `--force` to skip confirmation prompts.
+The `ops` and `providers` replacement-layer commands are plan-first: mutating
+operations are dry-run by default and require `--apply --reason "..."` once the
+server-side adapter is wired.
 
 ## Development
 

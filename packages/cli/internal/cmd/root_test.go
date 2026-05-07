@@ -50,6 +50,8 @@ func TestNewRootCommand(t *testing.T) {
 		"logout",
 		"whoami",
 		"onboard",
+		"ops",
+		"providers",
 	}
 
 	for _, name := range expectedCommands {
