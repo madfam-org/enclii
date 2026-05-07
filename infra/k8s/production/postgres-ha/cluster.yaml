@@ -147,50 +147,17 @@ spec:
         - "CREATE EXTENSION IF NOT EXISTS vector;"
         - "GRANT pg_monitor TO enclii;"
 
-  # Superuser secret — CNPG auto-creates the secret if not specified,
-  # but we want a stable secret name for ESO + PgBouncer to reference.
-  # The secret will be created by ESO from Vault (post-Wave 2) at:
-  #   `data/postgres-ha-superuser`  (key: username/password)
-  #
-  # For initial bootstrap (before ESO is wired), apply manually:
-  #   kubectl -n data create secret generic postgres-ha-superuser \
-  #     --from-literal=username=postgres \
-  #     --from-literal=password='...'
+  # CNPG auto-creates the bootstrap superuser Secret when no explicit
+  # superuserSecret is provided. After Janua/ESO secret-writer creates the
+  # stable `data/postgres-ha-superuser` Vault-backed Secret, reintroduce
+  # superuserSecret in a controlled cutover.
   enableSuperuserAccess: true
-  superuserSecret:
-    name: postgres-ha-superuser
 
-  # Backup configuration — RFC 0012 §3.3.
-  # Uses Barman against the same R2 bucket as P1.1 pgbackrest, with a
-  # distinct prefix to avoid stomping on the existing single-instance
-  # backups during the parallel-run period.
-  backup:
-    barmanObjectStore:
-      destinationPath: "s3://enclii-backups/cnpg/postgres-ha"
-      endpointURL: "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-      s3Credentials:
-        # ESO-managed secret (sister to pgbackrest-r2-credentials, see
-        # infra/k8s/platform-infra/pgbackrest-r2-credentials.yaml.template).
-        # The RFC's owner-action gate item 1 (R2 credential) covers this.
-        accessKeyId:
-          name: cnpg-r2-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: cnpg-r2-credentials
-          key: SECRET_ACCESS_KEY
-      wal:
-        # CNPG 1.29 supports bzip2/gzip/snappy for Barman object-store
-        # compression. Use gzip for widest compatibility with R2 restore
-        # tooling.
-        compression: gzip
-        maxParallel: 4
-      data:
-        compression: gzip
-        # Encryption omitted: R2 server-side encryption remains active at
-        # rest. Add `encryption: AES256` only when client-side encryption
-        # is explicitly introduced and restore-tested.
-    # Retention: 30 days (matches the existing pgbackrest retention).
-    retentionPolicy: "30d"
+  # Backup configuration is intentionally withheld until the
+  # `cnpg-r2-credentials` Secret exists. CNPG 1.29 also deprecates native
+  # Barman object-store backup in favor of the Barman Cloud Plugin, so the
+  # next production-ready backup commit should introduce the plugin path
+  # and its ESO-managed R2 credentials together.
 
   # Monitoring (PodMonitor in podmonitor.yaml). Built-in CNPG metrics
   # endpoint on every instance pod at :9187/metrics.
