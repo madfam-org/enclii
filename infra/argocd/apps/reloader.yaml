@@ -1,5 +1,5 @@
 # Stakater Reloader Application
-# Deploys: Reloader controller (via Helm)
+# Deploys: Reloader controller from Git-owned rendered manifests
 # Purpose: Auto-restart deployments when their referenced ConfigMaps/Secrets change
 #
 # Motivation: 2026-04-24 status-madfam ran with stale env for 4 days because
@@ -27,101 +27,9 @@ spec:
   project: default
 
   source:
-    repoURL: https://stakater.github.io/stakater-charts
-    chart: reloader
-    # Chart 2.2.11 → appVersion v1.4.16 (released 2026-04-15)
-    # Chart series 1.0.x referenced in the task plan was never published;
-    # the upstream chart skipped from 1.0.x to 2.x.x. 2.2.11 is current stable.
-    targetRevision: 2.2.11
-    helm:
-      values: |
-        image:
-          repository: docker.io/stakater/reloader
-          tag: v1.4.16
-
-        # Reloader configuration for Enclii
-        # Watch only deployments that opt-in via the
-        # `reloader.stakater.com/match: "true"` pod-template annotation.
-        # This is the safe rollout posture for Tier 1.
-        reloader:
-          matchLabels: {}
-          watchGlobally: true
-          # Multiple replicas require leader election
-          enableHA: true
-          logFormat: json
-          logLevel: info
-          readOnlyRootFileSystem: true
-
-          deployment:
-            replicas: 2
-            revisionHistoryLimit: 3
-
-            resources:
-              requests:
-                cpu: 50m
-                memory: 64Mi
-              limits:
-                cpu: 100m
-                memory: 128Mi
-
-            containerSecurityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities:
-                drop:
-                  - ALL
-
-            # Spread across nodes for HA (2 replicas, 3-node cluster)
-            affinity:
-              podAntiAffinity:
-                preferredDuringSchedulingIgnoredDuringExecution:
-                  - weight: 100
-                    podAffinityTerm:
-                      labelSelector:
-                        matchLabels:
-                          app: reloader-reloader
-                      topologyKey: kubernetes.io/hostname
-
-            # Tolerate GPU nodes (don't schedule on them)
-            tolerations:
-              - key: "nvidia.com/gpu"
-                operator: "Exists"
-                effect: "NoSchedule"
-
-            # Tight liveness/readiness for fast detection of leader-election
-            # deadlocks
-            livenessProbe:
-              httpGet:
-                path: /live
-                port: http
-              timeoutSeconds: 5
-              failureThreshold: 5
-              periodSeconds: 10
-              successThreshold: 1
-            readinessProbe:
-              httpGet:
-                path: /metrics
-                port: http
-              timeoutSeconds: 5
-              failureThreshold: 5
-              periodSeconds: 10
-              successThreshold: 1
-
-          podDisruptionBudget:
-            enabled: true
-            minAvailable: 1
-
-          # ServiceMonitor disabled — we use raw Prometheus scrape configs,
-          # not the Prometheus Operator / ServiceMonitor CRD
-          serviceMonitor:
-            enabled: false
-          podMonitor:
-            enabled: false
-
-          rbac:
-            enabled: true
-          serviceAccount:
-            create: true
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/reloader
 
   destination:
     server: https://kubernetes.default.svc

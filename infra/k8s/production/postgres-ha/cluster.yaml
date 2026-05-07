@@ -185,16 +185,16 @@ spec:
           name: cnpg-r2-credentials
           key: SECRET_ACCESS_KEY
       wal:
-        # Compression — zstd matches what pgbackrest uses.
-        compression: zstd
+        # CNPG 1.29 supports bzip2/gzip/snappy for Barman object-store
+        # compression. Use gzip for widest compatibility with R2 restore
+        # tooling.
+        compression: gzip
         maxParallel: 4
       data:
-        compression: zstd
-        # Encryption: client-side AES-256 if we set the secret;
-        # otherwise server-side R2 default (still encrypted at rest).
-        # We default to server-side here for symmetry with how P1.1
-        # currently runs (no client-side AES).
-        encryption: ""
+        compression: gzip
+        # Encryption omitted: R2 server-side encryption remains active at
+        # rest. Add `encryption: AES256` only when client-side encryption
+        # is explicitly introduced and restore-tested.
     # Retention: 30 days (matches the existing pgbackrest retention).
     retentionPolicy: "30d"
 
