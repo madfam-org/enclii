@@ -348,6 +348,14 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Kubernetes API service access for Argo/Application CR reads.
+    # Some CNIs do not treat Service IPs as ordinary external ipBlock
+    # traffic, so allow the apiserver ports without a destination selector.
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
 
 ---
 apiVersion: apps/v1
