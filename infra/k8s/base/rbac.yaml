@@ -49,6 +49,10 @@ rules:
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
   verbs: ["create", "get", "list", "watch", "update", "delete"]
+# PersistentVolumes: read-only storage diagnostics for Enclii ops
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch"]
 # Ingresses: custom domain and routing management
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
@@ -61,6 +65,29 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+# Argo Applications: read-only GitOps status and drift diagnostics for Enclii ops
+- apiGroups: ["argoproj.io"]
+  resources: ["applications"]
+  verbs: ["get", "list", "watch"]
+# ExternalSecrets: read-only secret reconciliation diagnostics for Enclii ops
+- apiGroups: ["external-secrets.io"]
+  resources: ["externalsecrets"]
+  verbs: ["get", "list", "watch"]
+# Longhorn volumes: read-only storage health diagnostics for Enclii ops
+- apiGroups: ["longhorn.io"]
+  resources: ["volumes"]
+  verbs: ["get", "list", "watch"]
+# Policy reports and exceptions: read-only governance diagnostics for Enclii ops
+- apiGroups: ["wgpolicyk8s.io"]
+  resources: ["policyreports"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["kyverno.io"]
+  resources: ["policyexceptions"]
+  verbs: ["get", "list", "watch"]
+# ARC runner sets: read-only CI runner diagnostics for Enclii ops
+- apiGroups: ["actions.github.com"]
+  resources: ["autoscalingrunnersets"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
