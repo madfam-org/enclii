@@ -325,12 +325,9 @@ spec:
     - Ingress
   ingress:
     - from:
-        - podSelector:
+        - namespaceSelector:
             matchLabels:
-              app: deploy-pipeline-monitor
-        - podSelector:
-            matchLabels:
-              app: prometheus
+              kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
           port: 9091
