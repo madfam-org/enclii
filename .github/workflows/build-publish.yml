@@ -25,8 +25,8 @@ name: Reusable — Build, sign, publish, pin
 #
 # Secrets it expects (via `secrets: inherit`):
 #   DOCKER_USERNAME / DOCKER_TOKEN (optional — soft-fail)
-#   MADFAM_BOT_PAT (optional — GHCR package-write fallback when a package
-#                   was created without repository-linked GITHUB_TOKEN access)
+#   MADFAM_BOT_PAT (legacy only — do not place it on the hot path; stale PATs
+#                   must not override the repo-scoped GITHUB_TOKEN)
 #   ENCLII_API_URL / ENCLII_DEPLOY_TOKEN (optional — for callback)
 #   ENCLII_COMMIT_TOKEN (optional — PAT to push past branch protection;
 #                        falls through to GITHUB_TOKEN otherwise)
@@ -292,7 +292,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.MADFAM_BOT_PAT || github.token }}
+          password: ${{ github.token }}
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.7.0
@@ -371,8 +371,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # PAT if the caller provides ENCLII_COMMIT_TOKEN (to bypass
-          # branch protection); fall through to GITHUB_TOKEN otherwise.
-          token: ${{ secrets.ENCLII_COMMIT_TOKEN || secrets.MADFAM_BOT_PAT || github.token }}
+          # branch protection); fall through to the repo-scoped GITHUB_TOKEN.
+          # Do not fall back to MADFAM_BOT_PAT: an expired org bot token can
+          # otherwise break every caller even when GITHUB_TOKEN has package
+          # and contents permissions.
+          token: ${{ secrets.ENCLII_COMMIT_TOKEN || github.token }}
 
       - name: Install kustomize
         run: |
