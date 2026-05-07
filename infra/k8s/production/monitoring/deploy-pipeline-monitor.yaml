@@ -133,7 +133,7 @@ spec:
             - name: monitor
               # CI rewrites this to a digest-pinned image — see
               # .github/workflows/deploy-pipeline-monitor.yml run summary.
-          image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:55fadbea0b6e6857a7136ebf086b6dfa8981bcf3f09cbc92cc15d082655f57be
+              image: ghcr.io/madfam-org/enclii/deploy-pipeline-monitor@sha256:55fadbea0b6e6857a7136ebf086b6dfa8981bcf3f09cbc92cc15d082655f57be
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
