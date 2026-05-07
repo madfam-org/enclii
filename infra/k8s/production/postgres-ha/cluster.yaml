@@ -77,9 +77,6 @@ spec:
       effective_io_concurrency: "200"
       max_wal_size: "2GB"
       min_wal_size: "256MB"
-      # Logging — match Loki ingest format used by Fluent Bit.
-      log_destination: "stderr"
-      logging_collector: "off"
       log_min_duration_statement: "500"  # ms
       log_line_prefix: "%t [%p] %q%u@%d "
 
@@ -87,9 +84,6 @@ spec:
       # Quorum mode means: degrades to async if both standbys gone
       # (writes continue + alert fires; do NOT use strict mode here).
       synchronous_commit: "on"
-
-      # pgvector extension (matches existing pgvector/pgvector:pg15).
-      shared_preload_libraries: "pg_stat_statements,pgvector"
 
   # Replication topology — RFC 0012 §3.1.
   # CNPG synchronous mode "any 1" means: at least 1 of the standbys
