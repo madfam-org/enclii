@@ -29,8 +29,15 @@ resources:
   - podmonitor.yaml
   - network-policy.yaml
 
-commonLabels:
-  app.kubernetes.io/name: postgres-ha
-  app.kubernetes.io/component: database-ha
-  app.kubernetes.io/part-of: enclii
-  enclii.dev/managed-by: cnpg
+labels:
+  # Do not inject these labels into selectors. CNPG owns the instance pod
+  # labels and sets app.kubernetes.io/name=postgresql, so selector inflation
+  # breaks the postgres-ha NetworkPolicy and leaves instance pods under the
+  # namespace default-deny egress policy.
+  - includeSelectors: false
+    includeTemplates: true
+    pairs:
+      app.kubernetes.io/name: postgres-ha
+      app.kubernetes.io/component: database-ha
+      app.kubernetes.io/part-of: enclii
+      enclii.dev/managed-by: cnpg
