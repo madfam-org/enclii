@@ -55,10 +55,11 @@ data:
     }
 
 ---
-# GitHub PAT lives in Vault under `secret/monitoring/deploy-pipeline-monitor`.
-# Operator creates it with a fine-scoped PAT (or PAT-app installation token)
-# carrying ONLY `repo: read` on the org. Rotation: standard 90d via the
-# secret-rotation runbook.
+# GitHub API token is sourced from the existing Vault-backed Enclii token path
+# (`secret/enclii.github_token`) so this monitor is not blocked by a missing
+# bespoke secret. Secret-writer follow-up: create a least-privilege token under
+# `secret/monitoring/deploy-pipeline-monitor.github_token` and switch the
+# remoteRef below back to that dedicated path.
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -81,7 +82,7 @@ spec:
   data:
     - secretKey: GITHUB_TOKEN
       remoteRef:
-        key: secret/monitoring/deploy-pipeline-monitor
+        key: secret/enclii
         property: github_token
 
 ---

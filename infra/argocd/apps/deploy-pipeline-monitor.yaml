@@ -12,9 +12,10 @@
 #   Application. This also lets us pause / roll back the monitor without
 #   touching the rest of the monitoring stack.
 #
-# Operator actions before this Application becomes Healthy:
-#   1. Create the GitHub PAT in Vault under `secret/monitoring/deploy-pipeline-monitor`
-#      with key `github_token`. Token scope: `repo: read` only, on madfam-org.
+# Operator actions after this Application becomes Healthy:
+#   1. Replace the temporary shared Enclii GitHub token source with a dedicated
+#      Vault entry under `secret/monitoring/deploy-pipeline-monitor` key
+#      `github_token`. Token scope: `repo: read` only, on madfam-org.
 #      Rotation: 90d via the standard secret-rotation runbook.
 #   2. Verify the pushgateway is reachable:
 #        kubectl -n monitoring get svc pushgateway
