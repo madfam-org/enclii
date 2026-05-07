@@ -116,6 +116,17 @@ spec:
   # nodes when possible.
   affinity:
     enablePodAntiAffinity: true
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              # The builder node currently lacks full in-cluster API service
+              # reachability for CNPG instance pods. Keep stateful database
+              # instances on the control-plane/worker pool.
+              - key: role
+                operator: NotIn
+                values:
+                  - builder
     podAntiAffinityType: preferred
     topologyKey: kubernetes.io/hostname
     # Tolerate GPU nodes (don't schedule there). Mirrors existing pattern
