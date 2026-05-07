@@ -68,6 +68,14 @@ spec:
       ports:
         - protocol: TCP
           port: 9187
+    # 8000 (CNPG instance status API) from the CNPG operator.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
   egress:
     # DNS — kube-dns.
     - to:
