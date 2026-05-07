@@ -36,6 +36,10 @@ spec:
           fsGroup: 1000
           supplementalGroups:
             - 1000
+        images:
+          kubeRbacProxy:
+            name: registry.k8s.io/kubebuilder/kube-rbac-proxy
+            tag: v0.13.0
 
   destination:
     server: https://kubernetes.default.svc

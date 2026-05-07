@@ -41,6 +41,53 @@ spec:
   policyTypes:
     - Egress
 
+# KEDA HTTP add-on egress — K8s API server, DNS, and intra-namespace services.
+# The add-on operator and external scaler query Kubernetes endpoints and route
+# through the interceptor admin/scaler Services. Some CNIs do not treat the
+# Kubernetes Service IP as ordinary external ipBlock traffic, so the apiserver
+# ports are allowed without a destination selector.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keda-http-addon-egress
+  namespace: keda
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: keda-add-ons-http
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Kubernetes API service
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # Intra-namespace add-on services: scaler gRPC, interceptor admin/proxy,
+    # and operator metrics.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 9090
+
 # KEDA operator egress — K8s API server, DNS, intra-namespace, and trigger backends
 # The operator watches ScaledObjects across all namespaces and manages HPAs,
 # so it needs access to the K8s API server on ports 443 and 6443.
