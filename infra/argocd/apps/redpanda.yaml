@@ -126,12 +126,9 @@ spec:
             capabilities:
               drop:
                 - ALL
-          # docker.redpanda.com is on the approved registry list along-
-          # side ghcr.io / docker.io / quay.io / registry.k8s.io / gcr.io
-          # / public.ecr.aws / docker.elastic.co (see Kyverno
-          # restrict-image-registries policy).
           image:
-            repository: docker.redpanda.com/redpandadata/console
+            registry: docker.io
+            repository: redpandadata/console
             tag: v2.7.2
 
         config:
