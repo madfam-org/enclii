@@ -155,6 +155,11 @@ spec:
   # Redpanda's Helm chart installs CRDs the chart itself owns; ignore
   # cluster-IP drift (new Services get IPs assigned at create time).
   ignoreDifferences:
+    # Argo tracking labels are injected at runtime across Helm resources.
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
     - group: ""
       kind: Service
       jsonPointers:
@@ -163,7 +168,6 @@ spec:
     - group: apps
       kind: StatefulSet
       jsonPointers:
-        - /metadata/labels/app.kubernetes.io~1instance
         - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
         - /spec/persistentVolumeClaimRetentionPolicy
         - /spec/revisionHistoryLimit

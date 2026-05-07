@@ -32,10 +32,15 @@ spec:
       - ServerSideApply=true
 
   ignoreDifferences:
+    # Argo tracking labels are injected at runtime across several resource
+    # kinds; ignoring metadata-only drift avoids selector mutation.
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
     - group: apps
       kind: StatefulSet
       jsonPointers:
-        - /metadata/labels/app.kubernetes.io~1instance
         - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
         - /spec/persistentVolumeClaimRetentionPolicy
         - /spec/revisionHistoryLimit

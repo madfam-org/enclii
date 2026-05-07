@@ -73,6 +73,12 @@ spec:
         maxDuration: 5m
 
   ignoreDifferences:
+    # Argo tracking labels are injected at runtime; keep this metadata-only so
+    # CNPG selectors and pod labels remain explicitly controlled by manifests.
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
     # CNPG manages many fields on the Cluster status; ignore them all.
     - group: postgresql.cnpg.io
       kind: Cluster
