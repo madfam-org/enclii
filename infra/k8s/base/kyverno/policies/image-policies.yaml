@@ -34,13 +34,13 @@ spec:
       validate:
         message: >-
           Images must come from approved registries:
-          ghcr.io/madfam-org, gcr.io, docker.io, quay.io, registry.k8s.io, docker.elastic.co
+          ghcr.io/madfam-org, ghcr.io/cloudnative-pg, gcr.io, docker.io, quay.io, registry.k8s.io, docker.elastic.co
         pattern:
           spec:
             containers:
-              - image: "ghcr.io/madfam-org/* | gcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | docker.elastic.co/*"
+              - image: "ghcr.io/madfam-org/* | ghcr.io/cloudnative-pg/* | gcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | docker.elastic.co/*"
             =(initContainers):
-              - image: "ghcr.io/madfam-org/* | gcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | docker.elastic.co/*"
+              - image: "ghcr.io/madfam-org/* | ghcr.io/cloudnative-pg/* | gcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | docker.elastic.co/*"
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
