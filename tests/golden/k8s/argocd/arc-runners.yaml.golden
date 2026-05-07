@@ -43,6 +43,13 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
+        - /spec/template/metadata/labels/app.kubernetes.io~1instance
 ---
 # ARC Runner Scale Set (Blue)
 apiVersion: argoproj.io/v1alpha1
@@ -71,3 +78,12 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+
+  # ARC creates AutoscalingListener resources dynamically from the runner set.
+  # They carry Argo tracking labels, so Argo sees them as extraneous even though
+  # they are controller-owned runtime state.
+  ignoreDifferences:
+    - group: actions.github.com
+      kind: AutoscalingListener
+      jqPathExpressions:
+        - .

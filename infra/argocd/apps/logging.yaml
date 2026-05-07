@@ -30,3 +30,12 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
+        - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
+        - /spec/persistentVolumeClaimRetentionPolicy
+        - /spec/revisionHistoryLimit

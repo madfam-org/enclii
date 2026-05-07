@@ -84,6 +84,9 @@ spec:
       remoteRef:
         key: enclii-github-token
         property: token
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
 
 ---
 apiVersion: v1
