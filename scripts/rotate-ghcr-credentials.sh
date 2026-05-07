@@ -26,6 +26,7 @@ NAMESPACES=(
     argocd
     cloudflare-tunnel
     foundry-scout
+    monitoring
 )
 
 RED='\033[0;31m'

@@ -174,6 +174,50 @@ spec:
                 name: deploy-pipeline-monitor-repos
 
 ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deploy-pipeline-monitor-egress
+  namespace: monitoring
+  labels:
+    app: deploy-pipeline-monitor
+    app.kubernetes.io/name: deploy-pipeline-monitor
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: deploy-pipeline-monitor
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9091
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
 # Alerting rules
 # ----------------------------------------------------------------------------
 # Routed to alertmanager via the existing severity routes. Category
