@@ -50,10 +50,13 @@ RUN adduser --system --uid 1001 nextjs
 
 WORKDIR /app
 
-# Copy standalone build
-COPY --from=builder /app/apps/admin-console/public ./public
+# Copy standalone build. In a pnpm monorepo, Next writes the standalone server
+# under apps/admin-console/server.js, not /app/server.js.
 COPY --from=builder --chown=nextjs:nodejs /app/apps/admin-console/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/admin-console/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin-console/public ./apps/admin-console/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin-console/.next/static ./apps/admin-console/.next/static
+
+WORKDIR /app/apps/admin-console
 
 RUN apk add --no-cache wget
 
