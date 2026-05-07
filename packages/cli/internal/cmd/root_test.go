@@ -74,6 +74,7 @@ func TestNewRootCommand_Flags(t *testing.T) {
 
 	apiTokenFlag := root.PersistentFlags().Lookup("api-token")
 	require.NotNil(t, apiTokenFlag)
+	assert.Empty(t, apiTokenFlag.DefValue)
 
 	logLevelFlag := root.PersistentFlags().Lookup("log-level")
 	require.NotNil(t, logLevelFlag)
@@ -176,6 +177,19 @@ func TestRootCommand_PersistentPreRun_PartialOverride(t *testing.T) {
 
 	assert.Equal(t, "https://staging.api.dev", cfg.APIEndpoint)
 	// Token should remain unchanged when the flag is not provided
-	// (empty string means the flag was not set, so PersistentPreRun won't overwrite)
-	// Note: since the flag default is cfg.APIToken ("original-token"), the value stays
+	// (empty string means the flag was not set, so PersistentPreRun won't overwrite).
+	assert.Equal(t, "original-token", cfg.APIToken)
+}
+
+func TestRootCommand_APITokenHelpDefaultDoesNotExposeToken(t *testing.T) {
+	cfg := &config.Config{
+		APIEndpoint: "https://api.enclii.dev",
+		APIToken:    "sensitive-token",
+	}
+
+	root := NewRootCommand(cfg)
+
+	apiTokenFlag := root.PersistentFlags().Lookup("api-token")
+	require.NotNil(t, apiTokenFlag)
+	assert.Empty(t, apiTokenFlag.DefValue)
 }

@@ -28,7 +28,7 @@ Learn more at https://enclii.dev`,
 
 	// Add global flags
 	rootCmd.PersistentFlags().String("api-endpoint", cfg.APIEndpoint, "API endpoint URL")
-	rootCmd.PersistentFlags().String("api-token", cfg.APIToken, "API authentication token (or set ENCLII_API_TOKEN)")
+	rootCmd.PersistentFlags().String("api-token", "", "API authentication token (or set ENCLII_API_TOKEN)")
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 
 	// Bind flags to viper for environment variable support
