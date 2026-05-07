@@ -63,14 +63,13 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # Webhook from cloudflared (for scale-from-zero)
+    # Webhook from cloudflared (for scale-from-zero). Do not restrict this
+    # to a stale numeric port: ARC controller pods expose 8080 plus a named
+    # metrics port, and cloudflared remains the trust boundary for this path.
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: cloudflare
-      ports:
-        - protocol: TCP
-          port: 8443
 ---
 # Runner egress policy
 # Runners need broad egress for builds (npm, Docker Hub, GitHub, etc.)
