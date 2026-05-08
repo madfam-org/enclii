@@ -65,10 +65,10 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
-# Argo Applications: read-only GitOps status and drift diagnostics for Enclii ops
+# Argo Applications: GitOps status/drift diagnostics plus audited sync requests
 - apiGroups: ["argoproj.io"]
   resources: ["applications"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "patch"]
 # ExternalSecrets: read-only secret reconciliation diagnostics for Enclii ops
 - apiGroups: ["external-secrets.io"]
   resources: ["externalsecrets"]
