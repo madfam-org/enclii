@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	k8sclient "github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic/fake"
@@ -86,6 +88,63 @@ func TestHandleOpsApplyBlocksUntilAdapterIsWired(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.Equal(t, "adapter_required", resp.Status)
 	assert.False(t, resp.DryRun)
+}
+
+func TestHandleOpsAppsSyncApplyUsesDynamicAdapter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	app := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "argoproj.io/v1alpha1",
+			"kind":       "Application",
+			"metadata": map[string]any{
+				"name":      "monitoring",
+				"namespace": "argocd",
+			},
+			"status": map[string]any{
+				"sync":   map[string]any{"status": "OutOfSync", "revision": "abc123"},
+				"health": map[string]any{"status": "Healthy"},
+			},
+		},
+	}
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), app)
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation:      "ops.apps.sync",
+		DryRun:         false,
+		Reason:         "recover reviewed GitOps drift",
+		IdempotencyKey: "sync-monitoring-1",
+		Scope:          map[string]string{"namespace": "argocd"},
+		Args:           map[string]string{"target": "monitoring"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/apps/sync", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+	assert.False(t, resp.DryRun)
+
+	updated, err := dynClient.Resource(argoApplicationGVR).Namespace("argocd").Get(context.Background(), "monitoring", metav1.GetOptions{})
+	require.NoError(t, err)
+	operation, found, err := unstructured.NestedMap(updated.Object, "operation")
+	require.NoError(t, err)
+	require.True(t, found)
+	syncSpec, ok := operation["sync"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, syncSpec["prune"])
+
+	annotations := updated.GetAnnotations()
+	assert.Equal(t, "ops.apps.sync", annotations["enclii.dev/last-ops-operation"])
+	assert.Equal(t, "sync-monitoring-1", annotations["enclii.dev/last-ops-idempotency-key"])
+	assert.Equal(t, "recover reviewed GitOps drift", annotations["enclii.dev/last-ops-reason"])
 }
 
 func TestHandleOpsAppsStatusUsesDynamicAdapter(t *testing.T) {
