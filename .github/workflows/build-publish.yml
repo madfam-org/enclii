@@ -79,6 +79,12 @@ on:
                           for compile-time-baked values (Flutter
                           --dart-define, Next.js NEXT_PUBLIC_*).
                           Without this, Dockerfile ARGs only see defaults.
+            - implicit_dockerfile_dir:
+                          (optional, default true) add the Dockerfile's
+                          containing directory to the change filter. Set false
+                          for root-level aggregate Dockerfiles such as
+                          services/Dockerfile.ingestion so they do not watch
+                          an entire monorepo service tree.
                           NOTE: the `dockerfile` path AND its containing
                           directory are ALWAYS implicitly part of the
                           filter for services that declare any `paths`.
@@ -207,6 +213,7 @@ jobs:
             [ -z "$paths" ] && continue
 
             dockerfile=$(echo "$row" | jq -r '.dockerfile // empty')
+            implicit_df_dir=$(echo "$row" | jq -r 'if has("implicit_dockerfile_dir") then .implicit_dockerfile_dir else true end')
             df_dir=""
             if [ -n "$dockerfile" ]; then
               df_dir=$(dirname "$dockerfile")
@@ -215,8 +222,10 @@ jobs:
             fi
 
             effective_paths="$paths"
-            [ -n "$df_dir" ] && effective_paths="$effective_paths $df_dir"
-            echo "Service '$(echo "$row" | jq -r '.name')' effective filter: $effective_paths (dockerfile=$dockerfile)"
+            if [ "$implicit_df_dir" != "false" ] && [ -n "$df_dir" ]; then
+              effective_paths="$effective_paths $df_dir"
+            fi
+            echo "Service '$(echo "$row" | jq -r '.name')' effective filter: $effective_paths (dockerfile=$dockerfile implicit_dockerfile_dir=$implicit_df_dir)"
 
             matched=0
             # Prefix match: any change under one of the declared/implicit dirs.
