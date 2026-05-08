@@ -306,7 +306,7 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 	if strings.EqualFold(strings.TrimSpace(req.Args["prune"]), "false") {
 		prune = false
 	}
-	syncOptions := []string{"PruneLast=true", "ApplyOutOfSyncOnly=true"}
+	syncOptions := []string{"PruneLast=true"}
 	if options := strings.TrimSpace(req.Args["sync_options"]); options != "" {
 		syncOptions = splitCSV(options)
 	}

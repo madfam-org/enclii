@@ -140,6 +140,7 @@ func TestHandleOpsAppsSyncApplyUsesDynamicAdapter(t *testing.T) {
 	syncSpec, ok := operation["sync"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, true, syncSpec["prune"])
+	assert.Equal(t, []any{"PruneLast=true"}, syncSpec["syncOptions"])
 
 	annotations := updated.GetAnnotations()
 	assert.Equal(t, "ops.apps.sync", annotations["enclii.dev/last-ops-operation"])
