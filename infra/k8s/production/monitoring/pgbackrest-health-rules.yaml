@@ -1,0 +1,138 @@
+---
+# pgBackRest operational health alerting.
+#
+# Covers the failure modes that caused the 14-day silent backup outage:
+#
+#   PgBackRestCheckUnhealthy  - the pgbackrest-check CronJob is reporting
+#                               an unhealthy check result OR the check has
+#                               not run recently. Either means the repo is
+#                               in a state where a restore would fail.
+#
+#   PgBackRestRestoreDrillOverdue - no successful restore drill in >35 days.
+#                               K8s cannot confirm the backup is restorable
+#                               without a drill.
+#
+#   PgBackRestCronJobFailed   - the pgbackrest-check or pgbackrest-backup
+#                               CronJob itself failed (distinct from the
+#                               check *result* — this catches scheduling
+#                               failures, OOMs, and other K8s-level errors).
+#
+# Metric sources:
+#   pgbackrest_check_healthy            → node-exporter textfile collector
+#                                         written by the pgbackrest-check CronJob
+#   pgbackrest_check_last_run_timestamp_seconds → same textfile collector
+#   pgbackrest_restore_drill_last_success_timestamp_seconds → drill CronJob
+#   kube_job_status_failed              → kube-state-metrics
+#
+# NOTE: pgbackrest_check_healthy and related metrics are written by the
+# pgbackrest-check CronJob to a textfile directory on the postgres pod and
+# scraped by node-exporter's textfile collector. If the CronJob does not
+# exist yet, deploy it from infra/k8s/production/backup/pgbackrest-check-cronjob.yaml
+# before these alerts will resolve. Until then they will fire as "stale",
+# which is correct — we want to know the check system itself is not running.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pgbackrest-health
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: pgbackrest-health
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: backup-monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: pgbackrest-operational-health
+      interval: 60s
+      rules:
+        # ------------------------------------------------------------------
+        # Primary health gate: the pgbackrest check CronJob reports unhealthy,
+        # OR the check itself hasn't run in 45 minutes (metric went stale).
+        # Both cases mean we cannot currently confirm backup health.
+        # ------------------------------------------------------------------
+        - alert: PgBackRestCheckUnhealthy
+          expr: |
+            (pgbackrest_check_healthy{stanza="main"} == 0)
+            or
+            (
+              absent(pgbackrest_check_last_run_timestamp_seconds{stanza="main"})
+              or
+              (time() - pgbackrest_check_last_run_timestamp_seconds{stanza="main"} > 2700)
+            )
+          for: 5m
+          labels:
+            severity: critical
+            category: platform
+            component: pgbackrest
+          annotations:
+            summary: "pgBackRest backup health check is unhealthy or stale"
+            description: |
+              pgbackrest_check_healthy{stanza="main"} is 0 OR the check CronJob
+              has not run in >45 minutes. This means the backup repo may be
+              unreachable, the stanza may be corrupt, or credentials rotated
+              without updating the backup pod.
+
+              Immediate steps:
+                1. kubectl -n data get jobs -l app=pgbackrest-check --sort-by=.metadata.creationTimestamp | tail -5
+                2. kubectl -n data logs job/<latest-check-job>
+                3. kubectl -n data exec deploy/postgres -c pgbackrest -- pgbackrest check --stanza=main
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
+
+        # ------------------------------------------------------------------
+        # Restore drill freshness. A backup we've never tested restoring is
+        # not a backup — it's hope. Page warning if no drill in 35 days.
+        # ------------------------------------------------------------------
+        - alert: PgBackRestRestoreDrillOverdue
+          expr: |
+            (
+              absent(pgbackrest_restore_drill_last_success_timestamp_seconds)
+              or
+              (time() - pgbackrest_restore_drill_last_success_timestamp_seconds > 3024000)
+            )
+          for: 15m
+          labels:
+            severity: warning
+            category: platform
+            component: pgbackrest
+          annotations:
+            summary: "pgBackRest restore drill is overdue (>35 days)"
+            description: |
+              No successful restore drill recorded in the past 35 days.
+              Without a successful restore drill, the backup cannot be
+              considered verified for DR purposes.
+
+              Trigger a drill manually:
+                kubectl -n data create job --from=cronjob/pgbackrest-restore-drill \
+                  drill-$(date +%Y%m%d)
+              Then monitor: kubectl -n data logs job/drill-$(date +%Y%m%d) -f
+              Runbook: docs/runbooks/disaster-recovery.md#restore-drill
+
+        # ------------------------------------------------------------------
+        # CronJob execution failure (K8s-level, not check-result-level).
+        # Fires when the pgbackrest-check or pgbackrest-backup Job itself
+        # exits non-zero — catches scheduling errors, OOM, bad image pulls.
+        # ------------------------------------------------------------------
+        - alert: PgBackRestCronJobFailed
+          expr: |
+            kube_job_status_failed{
+              namespace="data",
+              job_name=~"pgbackrest-(check|backup-full|backup-diff).*"
+            } > 0
+          for: 0m
+          labels:
+            severity: critical
+            category: platform
+            component: pgbackrest
+          annotations:
+            summary: "pgBackRest CronJob {{ $labels.job_name }} has failed"
+            description: |
+              The CronJob {{ $labels.job_name }} in namespace {{ $labels.namespace }}
+              has failed (kube_job_status_failed > 0). This is a K8s-level
+              failure (OOM, bad image, scheduling error) distinct from a
+              successful run that found unhealthy state.
+
+              Investigate:
+                kubectl -n data describe job {{ $labels.job_name }}
+                kubectl -n data logs job/{{ $labels.job_name }}
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
