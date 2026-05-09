@@ -45,6 +45,11 @@ export function useTier() {
     action: BlockedAction,
     context?: { currentProjectCount?: number; currentServiceCount?: number }
   ): boolean => {
+    // Admins bypass all limits
+    if (user?.roles?.includes('admin') || user?.roles?.includes('superadmin')) {
+      return true;
+    }
+
     let allowed = false;
 
     switch (action) {
