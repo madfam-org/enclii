@@ -181,6 +181,24 @@
     "service": "http://deal-sniper-web.foundry-scout.svc.cluster.local:80"
   },
   {
+    "_comment": "=== PHYNDCRM ===",
+    "hostname": "crm.madfam.io",
+    "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
+  },
+  {
+    "_comment": "phynd.app entries — activate once domain is registered at registrar",
+    "hostname": "phynd.app",
+    "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
+  },
+  {
+    "hostname": "www.phynd.app",
+    "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
+  },
+  {
+    "hostname": "api.phynd.app",
+    "service": "http://phynd-crm-api.phynd-crm.svc.cluster.local:80"
+  },
+  {
     "_comment": "=== CATCH-ALL ===",
     "service": "http_status:404"
   }

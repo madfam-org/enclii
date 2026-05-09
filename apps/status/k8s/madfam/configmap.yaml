@@ -346,9 +346,34 @@ data:
       {
         "name": "PhyndCRM",
         "url": "https://crm.madfam.io",
+        "href": "https://phynd.app",
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
-        "description": "Customer relationship management"
+        "description": "Phygital CRM (currently live at crm.madfam.io → migrating to phynd.app)"
+      },
+      {
+        "name": "PhyndCRM App",
+        "url": "https://app.phynd.app",
+        "href": "https://app.phynd.app",
+        "group": "PhyndCRM",
+        "family": "MADFAM Platform",
+        "description": "Authenticated CRM workspace (planned — not yet live)"
+      },
+      {
+        "name": "PhyndCRM Admin",
+        "url": "https://admin.phynd.app",
+        "href": "https://admin.phynd.app",
+        "group": "PhyndCRM",
+        "family": "MADFAM Platform",
+        "description": "Operator admin console (planned — not yet live)"
+      },
+      {
+        "name": "PhyndCRM API",
+        "url": "https://api.phynd.app/api/health",
+        "href": "https://api.phynd.app",
+        "group": "PhyndCRM",
+        "family": "MADFAM Platform",
+        "description": "Synthetic single pane of glass API (planned — not yet live)"
       },
       {
         "name": "NPM Registry",
