@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { apiGet, apiPost } from '@/lib/api';
 import { useTier } from '@/hooks/use-tier';
 import { usePolling } from '@/hooks/use-polling';
@@ -122,11 +122,14 @@ export default function ProjectsPage() {
   } = useTier();
 
   // Open create modal if redirected with ?create=true
+  const router = useRouter();
   useEffect(() => {
     if (searchParams.get('create') === 'true') {
       setShowCreateForm(true);
+      // Clear the param so a refresh doesn't re-open the modal
+      router.replace('/projects', { scroll: false });
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const handleCreateProjectClick = () => {
     if (!requireTier('project', { currentProjectCount: projects.length })) {
@@ -528,24 +531,29 @@ export default function ProjectsPage() {
               Add a new project to organize your services.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={createProject}>
+          <form onSubmit={createProject} data-testid="create-project-form">
             <div className="mb-4">
-              <label className="text-foreground mb-2 block text-sm font-medium">
+              <label className="text-foreground mb-2 block text-sm font-medium" htmlFor="project-name">
                 Project Name
               </label>
               <input
+                id="project-name"
+                data-testid="project-name-input"
                 type="text"
                 required
+                autoFocus
                 className="border-input focus:ring-enclii-blue bg-background w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
                 value={newProject.name}
                 onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
               />
             </div>
             <div className="mb-4">
-              <label className="text-foreground mb-2 block text-sm font-medium">
+              <label className="text-foreground mb-2 block text-sm font-medium" htmlFor="project-slug">
                 Slug
               </label>
               <input
+                id="project-slug"
+                data-testid="project-slug-input"
                 type="text"
                 required
                 className="border-input focus:ring-enclii-blue bg-background w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
@@ -554,10 +562,12 @@ export default function ProjectsPage() {
               />
             </div>
             <div className="mb-4">
-              <label className="text-foreground mb-2 block text-sm font-medium">
+              <label className="text-foreground mb-2 block text-sm font-medium" htmlFor="project-description">
                 Description
               </label>
               <textarea
+                id="project-description"
+                data-testid="project-description-input"
                 className="border-input focus:ring-enclii-blue bg-background w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
                 rows={3}
                 value={newProject.description}
@@ -567,6 +577,7 @@ export default function ProjectsPage() {
             <DialogFooter>
               <button
                 type="button"
+                data-testid="cancel-project-btn"
                 onClick={() => setShowCreateForm(false)}
                 className="bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-4 py-2 text-sm font-medium"
               >
@@ -574,6 +585,7 @@ export default function ProjectsPage() {
               </button>
               <button
                 type="submit"
+                data-testid="submit-project-btn"
                 className="bg-enclii-blue hover:bg-enclii-blue-dark rounded-md px-4 py-2 text-sm font-medium text-white"
               >
                 Create
