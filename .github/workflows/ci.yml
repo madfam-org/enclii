@@ -17,7 +17,7 @@ on:
 
 env:
   GO_VERSION: '1.25.0'
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
   # Runner selection: Use self-hosted if ARC bootstrap is complete, otherwise GitHub-hosted
   # Set ARC_BOOTSTRAP_COMPLETE=true in repository variables after ARC is installed
   # Note: ARC runner scale set is named 'madfam-runners-blue' (blue/green deployment pattern)
