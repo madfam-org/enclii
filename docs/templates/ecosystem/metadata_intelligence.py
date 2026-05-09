@@ -31,7 +31,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'every ecosystem service doing LLM inference — routes through `/v1`',
-            'phyne-crm (digital-project execution updates)',
+            'phynd-crm (digital-project execution updates)',
             'symbiosis-hcm (human-AI dyad orchestration)',
             'proton-bridge-pipeline (email classification via M2M)',
         ],
@@ -67,7 +67,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'MADFAM ops (product discovery insights)',
-            'phyne-crm (customer-problem federation)',
+            'phynd-crm (customer-problem federation)',
             'external subscribers (API)',
         ],
         'key_env': [
@@ -102,7 +102,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'symbiosis-hcm (wellbeing + burnout prevention inputs)',
-            'phyne-crm (client-conversation intelligence)',
+            'phynd-crm (client-conversation intelligence)',
         ],
         'key_env': [
             'DATABASE_URL — Postgres',

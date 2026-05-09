@@ -28,7 +28,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'every ecosystem repo with paid tiers (webhooks route to downstream services)',
-            'tezca, avala, forgesight, cotiza, karafiel, phyne-crm — all receive billing webhooks for tier up/downgrades',
+            'tezca, avala, forgesight, cotiza, karafiel, phynd-crm — all receive billing webhooks for tier up/downgrades',
         ],
         'key_env': [
             'DATABASE_URL — Postgres',
@@ -39,19 +39,19 @@ REPOS = {
         ],
         'service_name_for_ops': 'dhanam-api',
     },
-    'phyne-crm': {
+    'phynd-crm': {
         'tagline': 'Federated "single pane of glass" CRM — virtualizes data from 6 MADFAM platforms without ETL.',
-        'description': 'Phyne is the client-facing deliverables portal: per-client (possibly branded) dashboards showing a complete history with MADFAM — quotes, signed proposals, active projects, deliverables, invoices. Owns CRM-native entities (contacts, leads, opportunities, pipelines) and *virtualizes* everything else (identity from Janua, billing from Dhanam, custom orders from Cotiza, fab status from Pravara, 3D assets) through a federation layer with caching, circuit breaking, and partial-failure tolerance. **Project execution tracking lives here**, not in the upstream platforms.',
+        'description': 'Phynd is the client-facing deliverables portal: per-client (possibly branded) dashboards showing a complete history with MADFAM — quotes, signed proposals, active projects, deliverables, invoices. Owns CRM-native entities (contacts, leads, opportunities, pipelines) and *virtualizes* everything else (identity from Janua, billing from Dhanam, custom orders from Cotiza, fab status from Pravara, 3D assets) through a federation layer with caching, circuit breaking, and partial-failure tolerance. **Project execution tracking lives here**, not in the upstream platforms.',
         'pillar': 'Financial / CRM (client portal)',
         'type': 'service',
         'status': 'production',
         'production': {
             'services': [
-                ('phyne-crm-web', '(per-client branded domains)', 3000),
-                ('phyne-crm-api', '(internal federation API)', 8000),
-                ('phyne-crm-worker', '(background jobs)', None),
+                ('phynd-crm-web', '(per-client branded domains)', 3000),
+                ('phynd-crm-api', '(internal federation API)', 8000),
+                ('phynd-crm-worker', '(background jobs)', None),
             ],
-            'namespace': 'phyne-crm',
+            'namespace': 'phynd-crm',
         },
         'upstream_deps': [
             'janua (identity federation)',
@@ -73,7 +73,7 @@ REPOS = {
             'DHANAM_WEBHOOK_SECRET — inbound billing events',
             'CRM_WEBHOOK_SECRET — inbound interest-capture events from e.g. tezca',
         ],
-        'service_name_for_ops': 'phyne-crm-api',
+        'service_name_for_ops': 'phynd-crm-api',
     },
     'symbiosis-hcm': {
         'tagline': 'Hybrid human-AI Human Capital Management platform — Mexican payroll + multi-agent systems.',
@@ -155,7 +155,7 @@ REPOS = {
             'on-chain / VC issuer (verifiable credentials)',
         ],
         'downstream_consumers': [
-            'phyne-crm (employee training federation)',
+            'phynd-crm (employee training federation)',
             'symbiosis-hcm (competency → compensation input)',
             'external tenants (training orgs, employers)',
         ],
@@ -182,10 +182,10 @@ REPOS = {
         'upstream_deps': [
             'postgres (waitlist, event signups)',
             'janua (admin auth)',
-            'phyne-crm (lead webhook)',
+            'phynd-crm (lead webhook)',
         ],
         'downstream_consumers': [
-            'phyne-crm (waitlist leads)',
+            'phynd-crm (waitlist leads)',
             'MADFAM events team (scheduling + delivery)',
         ],
         'key_env': [

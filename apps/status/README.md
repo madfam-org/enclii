@@ -128,7 +128,7 @@ its own assertions in its `enclii.yaml` `status.entries[]`.
 
 | Family | Groups |
 |---|---|
-| MADFAM Platform | Enclii, Janua, Dhanam, Tezca, Karafiel, Fortuna, PhyneCRM, Avala |
+| MADFAM Platform | Enclii, Janua, Dhanam, Tezca, Karafiel, Fortuna, PhyndCRM, Avala |
 | Selva Swarm | Selva Office |
 | Rondelio | Rondelio |
 | Digital Fabrication | DigiFab, Yantra4D, Pravara MES, Primavera3D, Forj, Forgesight |

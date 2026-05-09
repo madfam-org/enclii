@@ -102,7 +102,7 @@ The page shows an error banner ("Request failed with status code 503") AND the e
 
 Lists **27 OAuth clients** across the ecosystem, all `Active`, properly grouped by Confidential/Public, with masked secrets, scopes (`authorization_code`, `refresh_token`, `openid`, `profile`, `email`, `offline_access`), and creation timestamps spanning 3/7/2026 — 4/28/2026. This page works correctly and shows real data.
 
-Notable list (page 1 of 2): Pravara MES, Symbiosis HCM, Avala API, Selva Office (AutoSwarm), Rondelio, Coforma Studio, Janua Dashboard, Tezca Web, Forgesight App, Yantra4D Studio, Fortuna Web, Digifab Quoting, Forgesight Admin, Phyne CRM API, Pravara Dashboard, PhyneCRM, Deal Sniper, PravaraMES Admin, AutoSwarm Admin, Karafiel Admin (+6 more on page 2).
+Notable list (page 1 of 2): Pravara MES, Symbiosis HCM, Avala API, Selva Office (AutoSwarm), Rondelio, Coforma Studio, Janua Dashboard, Tezca Web, Forgesight App, Yantra4D Studio, Fortuna Web, Digifab Quoting, Forgesight Admin, Phynd CRM API, Pravara Dashboard, PhyndCRM, Deal Sniper, PravaraMES Admin, AutoSwarm Admin, Karafiel Admin (+6 more on page 2).
 
 ### `/settings/sso`
 

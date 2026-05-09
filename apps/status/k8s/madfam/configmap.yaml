@@ -24,7 +24,7 @@ data:
   #   - description  : short description
   #
   # Product families (RFC 0002 S1):
-  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phynecrm, routecraft, tulana, enclii, janua
+  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phyndcrm, routecraft, tulana, enclii, janua
   #   Selva Swarm          — selva-office services
   #   Rondelio             — rondel.io family
   #   Digital Fabrication  — digifab, yantra4d, pravara-mes, primavera3d, forj, forgesight
@@ -344,9 +344,9 @@ data:
         "description": "Problem intelligence dashboard"
       },
       {
-        "name": "PhyneCRM",
+        "name": "PhyndCRM",
         "url": "https://crm.madfam.io",
-        "group": "PhyneCRM",
+        "group": "PhyndCRM",
         "family": "MADFAM Platform",
         "description": "Customer relationship management"
       },

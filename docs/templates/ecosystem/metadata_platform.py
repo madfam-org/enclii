@@ -202,7 +202,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'enclii (switchyard-api, dispatch) — OIDC SSO',
-            'dhanam, karafiel, forgesight, tezca, fortuna, digifab-quoting, autoswarm-office, pravara-mes, yantra4d, avala, phyne-crm, routecraft, symbiosis-hcm — all verify tokens via JWKS',
+            'dhanam, karafiel, forgesight, tezca, fortuna, digifab-quoting, autoswarm-office, pravara-mes, yantra4d, avala, phynd-crm, routecraft, symbiosis-hcm — all verify tokens via JWKS',
         ],
         'key_env': [
             'JANUA_DATABASE_URL — Postgres connection',
@@ -214,7 +214,7 @@ REPOS = {
     },
     'karafiel': {
         'tagline': 'Active tax defense + operational compliance — CFDI, NOM-151, SAT-adjacent, contract generation.',
-        'description': "Karafiel is the operational compliance platform between MADFAM (and its tenants) and the Mexican government. It's the only component that interfaces with external government systems (SAT, blacklists, PSCs). Owns legal-ops / contract-template generation (absorbed the legacy `legal-ops` repo), CFDI emission, NOM-151 timestamping, and e.firma flows. Consumes law-feed updates from Tezca and operationalizes them into template changes. **Does NOT** own fabrication nodes, project management, or client-facing signature UX (that belongs to PhyneCRM/Cotiza).",
+        'description': "Karafiel is the operational compliance platform between MADFAM (and its tenants) and the Mexican government. It's the only component that interfaces with external government systems (SAT, blacklists, PSCs). Owns legal-ops / contract-template generation (absorbed the legacy `legal-ops` repo), CFDI emission, NOM-151 timestamping, and e.firma flows. Consumes law-feed updates from Tezca and operationalizes them into template changes. **Does NOT** own fabrication nodes, project management, or client-facing signature UX (that belongs to PhyndCRM/Cotiza).",
         'pillar': 'Compliance / Legal-ops',
         'type': 'service',
         'status': 'production',
@@ -234,7 +234,7 @@ REPOS = {
             'postgres (customers, documents, audit trail)',
         ],
         'downstream_consumers': [
-            'phyne-crm (contract documents flow to client portal for signature)',
+            'phynd-crm (contract documents flow to client portal for signature)',
             'digifab-quoting / cotiza (CFDI emission for completed quotes)',
             'symbiosis-hcm (CFDI for payroll)',
             'external customers (marketplace at karafiel.mx)',

@@ -21,11 +21,11 @@ REPOS = {
         'upstream_deps': [
             'cloudflare (CDN)',
             'cms database (postgres)',
-            'phyne-crm (contact form → lead webhook)',
+            'phynd-crm (contact form → lead webhook)',
         ],
         'downstream_consumers': [
             'public visitors',
-            'phyne-crm (inbound leads)',
+            'phynd-crm (inbound leads)',
         ],
         'key_env': [
             'DATABASE_URL — CMS',
@@ -153,7 +153,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'tenant brand ops',
-            'phyne-crm (feedback signals federated into client portal)',
+            'phynd-crm (feedback signals federated into client portal)',
         ],
         'key_env': [
             'DATABASE_URL — Postgres',

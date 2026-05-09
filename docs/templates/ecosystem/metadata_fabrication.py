@@ -27,7 +27,7 @@ REPOS = {
             'dhanam (billing for accepted quotes)',
         ],
         'downstream_consumers': [
-            'phyne-crm (quote history federation)',
+            'phynd-crm (quote history federation)',
             'pravara-mes (fab jobs created from accepted quotes)',
             'karafiel (CFDI emission for accepted quotes)',
         ],
@@ -42,7 +42,7 @@ REPOS = {
     },
     'forgesight': {
         'tagline': 'Digital Fabrication Industry Intelligence — pricing + vendor feed consumed by Cotiza.',
-        'description': "Forgesight is **exclusively** a digital-fabrication industry intelligence platform. It tracks industry offerings + supporting details (capabilities, price curves, vendor performance, material availability) and feeds that intelligence to Cotiza Studio's pricing engine and to MADFAM's procurement decisions. Does **not** handle project management, engagement tracking, or client-facing flows — those belong to PhyneCRM / Cotiza. Domain: `forgesight.quest`.",
+        'description': "Forgesight is **exclusively** a digital-fabrication industry intelligence platform. It tracks industry offerings + supporting details (capabilities, price curves, vendor performance, material availability) and feeds that intelligence to Cotiza Studio's pricing engine and to MADFAM's procurement decisions. Does **not** handle project management, engagement tracking, or client-facing flows — those belong to PhyndCRM / Cotiza. Domain: `forgesight.quest`.",
         'pillar': 'Fabrication / Industry Intelligence',
         'type': 'service',
         'status': 'production',
@@ -99,7 +99,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'pravara-mes (fab jobs from accepted orders)',
-            'phyne-crm (order federation into customer portal)',
+            'phynd-crm (order federation into customer portal)',
         ],
         'key_env': [
             'DATABASE_URL — Postgres',
@@ -113,7 +113,7 @@ REPOS = {
     },
     'pravara-mes': {
         'tagline': 'Cloud-native MES — owns fabrication-node routing and dispatch for physical jobs.',
-        'description': 'PravaraMES is the Manufacturing Execution System that owns fabrication-node routing and dispatch for all physical jobs in the MADFAM ecosystem. Universal machine connectivity (95%+ of digital fab machines), event-driven workflows, digital-twin simulation with real-time physics, and support for FDM, laser, CNC, and pen-plotting operations. Consumes accepted fab quotes from Cotiza and reports job status back into PhyneCRM for the client portal.',
+        'description': 'PravaraMES is the Manufacturing Execution System that owns fabrication-node routing and dispatch for all physical jobs in the MADFAM ecosystem. Universal machine connectivity (95%+ of digital fab machines), event-driven workflows, digital-twin simulation with real-time physics, and support for FDM, laser, CNC, and pen-plotting operations. Consumes accepted fab quotes from Cotiza and reports job status back into PhyndCRM for the client portal.',
         'pillar': 'Fabrication / MES (physical dispatch)',
         'type': 'service',
         'status': 'production',
@@ -134,7 +134,7 @@ REPOS = {
             'janua (operator auth)',
         ],
         'downstream_consumers': [
-            'phyne-crm (job status federation to client portal)',
+            'phynd-crm (job status federation to client portal)',
             'forj (accepted orders route into fab jobs here)',
             'karafiel (completed-job CFDI emission)',
         ],
@@ -298,10 +298,10 @@ REPOS = {
         },
         'upstream_deps': [
             'cloudflare R2 (3D asset hosting)',
-            'phyne-crm (lead capture webhook)',
+            'phynd-crm (lead capture webhook)',
         ],
         'downstream_consumers': [
-            'phyne-crm (inbound leads)',
+            'phynd-crm (inbound leads)',
             'digifab-quoting (inbound quote requests)',
         ],
         'key_env': [
@@ -312,7 +312,7 @@ REPOS = {
     },
     'tablaco': {
         'tagline': 'Tactile didactic instrument for logic + philosophy (3D-printable, customizable cubes).',
-        'description': "Tablaco is a physical product (3D-printable truth-table cubes with cantilever click mechanism) plus the associated parametric-design repo. Served as the 2026-04-19 pilot for MADFAM's first end-to-end dual engagement — fabrication + digital — and drove the services-mode primitives in Cotiza and the unified-engagement aggregate in PhyneCRM. See `project_tablaco_engagement` memory for the full flow.",
+        'description': "Tablaco is a physical product (3D-printable truth-table cubes with cantilever click mechanism) plus the associated parametric-design repo. Served as the 2026-04-19 pilot for MADFAM's first end-to-end dual engagement — fabrication + digital — and drove the services-mode primitives in Cotiza and the unified-engagement aggregate in PhyndCRM. See `project_tablaco_engagement` memory for the full flow.",
         'pillar': 'Fabrication / Didactic product',
         'type': 'product (physical + parametric)',
         'status': 'in production (client engagement)',
@@ -324,11 +324,11 @@ REPOS = {
             'sim4d / yantra4d (parametric generation)',
             'pravara-mes (fab routing for print orders)',
             'digifab-quoting (cost+quote)',
-            'phyne-crm (engagement aggregate)',
+            'phynd-crm (engagement aggregate)',
         ],
         'downstream_consumers': [
             'end customers (educators, makers)',
-            'phyne-crm engagement flow',
+            'phynd-crm engagement flow',
         ],
         'key_env': [
             '(product repo — no service runtime)',
