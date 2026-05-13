@@ -65,6 +65,6 @@ images:
     digest: sha256:e2b728c4f665d81202828f0a70358f3aa37f5770a759267b32b1d148c855bf09
   - name: switchyard-api
     newName: ghcr.io/madfam-org/enclii/switchyard-api
-    digest: sha256:7e7a8e6cff41f0150b6ec8e3d5be3af7288fc061ac7ab902111a4a0e82cdf858
+    digest: sha256:97b492796d5146416d382e1491eb725e7102c1578fa14eb50d83c90965dda201
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
