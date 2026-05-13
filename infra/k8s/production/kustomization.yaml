@@ -44,7 +44,7 @@ images:
 - digest: sha256:72dc43d32d2da100f2bb55ad2f054aa3a9ba3e024784be4d0564ef15ebb5c474
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:09681ed979989b79b85aa1d0fad1352d47f5e5385d58e72c8e1e4959e4cc7636
+- digest: sha256:32b0c71597b9af91087c846770e5b8c144f5fea871af1dd24ef57097ce7fa7d1
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
 - digest: sha256:4a64266f340e611ee67141c533b66d81f76a0f7cbcbf772ae958f0807e593ccc
@@ -60,11 +60,5 @@ images:
 # Labels are already defined in base manifests.
 
 # Production-specific annotations
-  - name: roundhouse
-    newName: ghcr.io/madfam-org/roundhouse
-    digest: sha256:68cfa58c47f81c22010ca9a8a5fc9e9713112c3a66cf5c372607c0845b1b1339
-  - name: switchyard-api
-    newName: ghcr.io/madfam-org/enclii/switchyard-api
-    digest: sha256:4e95b4039d40eea4700410dcc4e96fa3dc127aedc78754cdd3367827f2520da4
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
