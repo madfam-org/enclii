@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/production",
+  "name": "converge-dash",
+  "namespace": "converge-dash",
+  "partOf": "converge-dash",
+  "repoURL": "https://github.com/madfam-org/converge-dash.git"
+}
