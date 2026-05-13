@@ -45,4 +45,7 @@ spec:
         - /spec/persistentVolumeClaimRetentionPolicy
         - /spec/revisionHistoryLimit
       jqPathExpressions:
+        - .spec.volumeClaimTemplates[]?.apiVersion
+        - .spec.volumeClaimTemplates[]?.kind
+        - .spec.volumeClaimTemplates[]?.metadata.creationTimestamp
         - .spec.volumeClaimTemplates[]?.status
