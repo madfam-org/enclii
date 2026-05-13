@@ -8,6 +8,7 @@
  */
 
 import {
+  describeExternalEvidence,
   deriveTunnelMode,
   filterDomains,
   sortDomains,
@@ -58,6 +59,35 @@ describe('deriveTunnelMode', () => {
         makeDomain({ cloudflare_tunnel_id: null, is_platform_domain: false }),
       ),
     ).toBe('direct');
+  });
+});
+
+describe('describeExternalEvidence', () => {
+  it('treats valid TLS plus any HTTP response as external proof', () => {
+    const summary = describeExternalEvidence(
+      makeDomain({
+        verified: false,
+        tls_enabled: false,
+        evidence: {
+          source: 'public-probe',
+          checked_at: '2026-05-13T07:31:00Z',
+          public_dns_status: 'resolved',
+          public_tls_status: 'valid',
+          public_http_status: 404,
+          public_http_reachable: true,
+        },
+      }),
+    );
+
+    expect(summary.label).toBe('HTTPS valid');
+    expect(summary.detail).toBe('HTTP 404');
+  });
+
+  it('returns a muted summary when no public probe evidence exists', () => {
+    const summary = describeExternalEvidence(makeDomain({ evidence: null }));
+
+    expect(summary.label).toBe('No probe');
+    expect(summary.detail).toBe('No public evidence');
   });
 });
 

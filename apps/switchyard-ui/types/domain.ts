@@ -29,6 +29,19 @@ export type DomainHealthStatus =
 /** UI-visible Cloudflare tunnel route bucket. */
 export type DomainTunnelMode = 'tunneled' | 'direct' | 'unknown';
 
+export type PublicDNSStatus = 'resolved' | 'missing' | 'error' | 'unknown' | string;
+export type PublicTLSStatus = 'valid' | 'invalid' | 'skipped' | 'unknown' | string;
+
+export interface DomainPublicEvidence {
+  source: string;
+  checked_at: string;
+  public_dns_status: PublicDNSStatus;
+  public_tls_status: PublicTLSStatus;
+  public_http_status?: number;
+  public_http_reachable: boolean;
+  error?: string;
+}
+
 export interface Domain {
   id: string;
   service_id: string;
@@ -58,6 +71,13 @@ export interface Domain {
   tls_expires_at?: string | null;
   last_verified_at?: string | null;
   service_id_label?: string; // human-friendly fallback when service join fails
+  /**
+   * Optional public DNS/TLS/HTTP evidence from the API. This is independent of
+   * persisted DB verifier fields and exists specifically to expose drift, e.g.
+   * a domain that is publicly reachable over valid HTTPS while custom_domains
+   * still says verified=false / tls_enabled=false.
+   */
+  evidence?: DomainPublicEvidence | null;
 }
 
 /**
@@ -93,6 +113,42 @@ export interface DomainsListResponse {
    * UI suppresses the coverage banner in that case.
    */
   coverage?: DomainCoverage;
+}
+
+export interface DomainReconcileSummary {
+  db_domains: number;
+  routed_domains: number;
+  matched: number;
+  db_only: number;
+  route_only: number;
+  drift_detected: boolean;
+  inventory_closed: boolean;
+}
+
+export interface DomainReconcileItem {
+  domain: string;
+  db_present: boolean;
+  route_present: boolean;
+  sources?: string[];
+  route_targets?: string[];
+  service_id?: string;
+  environment_id?: string;
+  service_name?: string;
+  environment_name?: string;
+  project_slug?: string;
+  verified?: boolean;
+  tls_enabled?: boolean;
+}
+
+export interface DomainReconcileResponse {
+  generated_at: string;
+  dry_run: boolean;
+  sources: string[];
+  warnings?: string[];
+  summary: DomainReconcileSummary;
+  matched: DomainReconcileItem[];
+  db_only: DomainReconcileItem[];
+  route_only: DomainReconcileItem[];
 }
 
 export interface DomainStats {

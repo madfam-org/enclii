@@ -23,6 +23,18 @@ export function deriveDomainHealth(domain: Domain): DomainHealthStatus {
     return 'orphaned';
   }
 
+  // External proof corrects DB-verifier false negatives. If public DNS
+  // resolves, verified TLS completes, and any HTTP response is received, the
+  // domain is externally active even when the persisted verifier has not caught
+  // up yet. The table's evidence column shows that distinction explicitly.
+  if (
+    domain.evidence?.public_dns_status === 'resolved' &&
+    domain.evidence?.public_tls_status === 'valid' &&
+    domain.evidence.public_http_reachable
+  ) {
+    return 'active';
+  }
+
   switch (domain.status) {
     case 'active':
       return domain.verified ? 'active' : 'provisioning';

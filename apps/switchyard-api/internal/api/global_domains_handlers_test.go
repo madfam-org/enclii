@@ -117,3 +117,26 @@ func TestBuildDomainCoverage_VerifiedAtFallback(t *testing.T) {
 	assert.Equal(t, int64(2*3600), cov.OldestUnverifiedAgeSeconds,
 		"unverified-but-previously-verified ⇒ age from VerifiedAt, not CreatedAt")
 }
+
+func TestExtractReconcileHostnames(t *testing.T) {
+	input := `
+ingress:
+  - hostname: app.enclii.dev
+    service: http://switchyard-ui.enclii.svc.cluster.local:80
+  - hostname: API.ENCLII.DEV.
+    service: http://switchyard-api.enclii.svc.cluster.local:80
+  - service: http_status:404
+annotations:
+  kubernetes.io/ingress.class: nginx
+`
+
+	assert.Equal(t, []string{"api.enclii.dev", "app.enclii.dev"}, extractReconcileHostnames(input))
+}
+
+func TestIsExternalReconcileHostname(t *testing.T) {
+	assert.True(t, isExternalReconcileHostname("app.enclii.dev"))
+	assert.True(t, isExternalReconcileHostname("madlab.quest"))
+	assert.False(t, isExternalReconcileHostname("switchyard-ui.enclii.svc.cluster.local"))
+	assert.False(t, isExternalReconcileHostname("kubernetes.io"))
+	assert.False(t, isExternalReconcileHostname(""))
+}

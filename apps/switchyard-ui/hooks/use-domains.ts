@@ -7,6 +7,7 @@ import { usePolling } from '@/hooks/use-polling';
 import type {
   Domain,
   DomainCoverage,
+  DomainReconcileResponse,
   DomainsListResponse,
   DomainStats,
 } from '@/types/domain';
@@ -14,6 +15,7 @@ import type {
 interface UseDomainsResult {
   domains: Domain[];
   stats: DomainStats | null;
+  reconcile: DomainReconcileResponse | null;
   /**
    * Coverage metadata returned by /v1/domains, or null when the backend
    * predates the field (older API builds). The page uses this to render
@@ -52,6 +54,7 @@ interface UseDomainsResult {
 export function useDomains(limit = 200): UseDomainsResult {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [stats, setStats] = useState<DomainStats | null>(null);
+  const [reconcile, setReconcile] = useState<DomainReconcileResponse | null>(null);
   const [coverage, setCoverage] = useState<DomainCoverage | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,17 +73,24 @@ export function useDomains(limit = 200): UseDomainsResult {
         offset: '0',
       });
 
-      const [list, statsResp] = await Promise.all([
+      const [list, statsResp, reconcileResp] = await Promise.all([
         apiGet<DomainsListResponse>(`/v1/domains?${params.toString()}`),
         apiGet<DomainStats>('/v1/domains/stats').catch((e) => {
           // Stats endpoint is auxiliary; don't fail the whole hook over it.
           console.warn('Failed to fetch domain stats:', e);
           return null;
         }),
+        apiGet<DomainReconcileResponse>('/v1/domains/reconcile').catch((e) => {
+          // Admin-only auxiliary endpoint; non-admin users should still get
+          // the domain table, just without route-drift metadata.
+          console.warn('Failed to fetch domain reconciliation:', e);
+          return null;
+        }),
       ]);
 
       setDomains(list?.domains ?? []);
       setStats(statsResp);
+      setReconcile(reconcileResp);
       // Coverage is optional — older API builds won't ship it. Keep the
       // null sentinel so the UI suppresses banners rather than showing
       // misleading defaults like "0 of 0 projects covered".
@@ -123,6 +133,7 @@ export function useDomains(limit = 200): UseDomainsResult {
   return {
     domains,
     stats,
+    reconcile,
     coverage,
     loading,
     refreshing,

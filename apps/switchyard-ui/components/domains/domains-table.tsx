@@ -60,6 +60,67 @@ export function deriveTunnelMode(domain: Domain): DomainTunnelMode {
   return 'direct';
 }
 
+export interface ExternalEvidenceSummary {
+  label: string;
+  detail: string;
+  toneClass: string;
+}
+
+export function describeExternalEvidence(domain: Domain): ExternalEvidenceSummary {
+  const evidence = domain.evidence;
+  if (!evidence) {
+    return {
+      label: 'No probe',
+      detail: 'No public evidence',
+      toneClass: 'text-muted-foreground border-border',
+    };
+  }
+
+  if (
+    evidence.public_dns_status === 'resolved' &&
+    evidence.public_tls_status === 'valid' &&
+    evidence.public_http_reachable
+  ) {
+    return {
+      label: 'HTTPS valid',
+      detail: evidence.public_http_status
+        ? `HTTP ${evidence.public_http_status}`
+        : 'response received',
+      toneClass: 'text-status-success border-status-success',
+    };
+  }
+
+  if (evidence.public_dns_status === 'missing') {
+    return {
+      label: 'DNS missing',
+      detail: evidence.error ?? 'no public records',
+      toneClass: 'text-status-error border-status-error',
+    };
+  }
+
+  if (evidence.public_tls_status === 'invalid') {
+    return {
+      label: 'TLS invalid',
+      detail: evidence.error ?? 'certificate rejected',
+      toneClass: 'text-status-error border-status-error',
+    };
+  }
+
+  if (evidence.public_dns_status === 'resolved') {
+    return {
+      label: 'DNS resolved',
+      detail: evidence.error ?? 'HTTPS not confirmed',
+      toneClass: 'text-status-warning border-status-warning',
+    };
+  }
+
+  return {
+    label: 'Unknown',
+    detail: evidence.error ?? 'probe inconclusive',
+    toneClass: 'text-muted-foreground border-border',
+  };
+}
+
 const TUNNEL_LABELS: Record<DomainTunnelMode, string> = {
   tunneled: 'Tunneled',
   direct: 'Direct',
@@ -239,6 +300,7 @@ export function DomainsTable({
                 onSort={setSort}
               />
               <TableHead>Tunnel</TableHead>
+              <TableHead>External proof</TableHead>
               <TableHead>Last verified</TableHead>
             </TableRow>
           </TableHeader>
@@ -337,6 +399,25 @@ export function DomainsTable({
                       {TUNNEL_LABELS[tunnel]}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const external = describeExternalEvidence(d);
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <Badge
+                            variant="outline"
+                            className={cn('w-fit text-xs', external.toneClass)}
+                            aria-label={`External evidence: ${external.label}`}
+                          >
+                            {external.label}
+                          </Badge>
+                          <span className="text-muted-foreground max-w-[14rem] truncate text-xs">
+                            {external.detail}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {lastVerified ? formatRelativeTime(lastVerified) : 'never'}
                   </TableCell>
@@ -353,6 +434,7 @@ export function DomainsTable({
           const tunnel = deriveTunnelMode(d);
           const lastVerified = d.verified_at ?? d.last_verified_at ?? null;
           const certDesc = describeCertExpiry(d.tls_expires_at);
+          const external = describeExternalEvidence(d);
           return (
             <li
               key={d.id}
@@ -392,6 +474,14 @@ export function DomainsTable({
                 <dd className={certDesc.toneClass}>{certDesc.label}</dd>
                 <dt className="text-muted-foreground">Tunnel</dt>
                 <dd>{TUNNEL_LABELS[tunnel]}</dd>
+                <dt className="text-muted-foreground">External proof</dt>
+                <dd>
+                  {external.label}
+                  <span className="text-muted-foreground">
+                    {' '}
+                    ({external.detail})
+                  </span>
+                </dd>
                 <dt className="text-muted-foreground">Last verified</dt>
                 <dd>
                   {lastVerified ? formatRelativeTime(lastVerified) : 'never'}

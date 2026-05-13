@@ -54,6 +54,7 @@ export default function DomainsPage() {
   const {
     domains,
     stats,
+    reconcile,
     coverage,
     loading,
     refreshing,
@@ -69,6 +70,7 @@ export default function DomainsPage() {
   const verifierStale =
     coverage !== null &&
     coverage.oldest_unverified_age_seconds > STALE_VERIFIER_THRESHOLD_SECONDS;
+  const reconcileSummary = reconcile?.summary ?? null;
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DomainHealthStatus>(
@@ -221,6 +223,32 @@ export default function DomainsPage() {
             <CoverageBannerCard key={b.kind} banner={b} />
           ))}
         </div>
+      )}
+
+      {reconcileSummary?.drift_detected && (
+        <Card className="border-status-warning/40 bg-status-warning-muted/20">
+          <CardContent className="flex items-start gap-3 py-3 text-sm">
+            <ShieldAlert
+              className="text-status-warning mt-0.5 h-5 w-5 flex-shrink-0"
+              aria-hidden="true"
+            />
+            <div className="flex-1">
+              <p className="text-status-warning font-medium">
+                Domain route inventory drift detected
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                Reconciliation found {reconcileSummary.matched} matched domain
+                {reconcileSummary.matched === 1 ? '' : 's'}, {' '}
+                {reconcileSummary.db_only} DB-only row
+                {reconcileSummary.db_only === 1 ? '' : 's'}, and {' '}
+                {reconcileSummary.route_only} routed hostname
+                {reconcileSummary.route_only === 1 ? '' : 's'} missing from
+                Enclii DB. The table is operational, but inventory is not yet
+                closed.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {syncError && (

@@ -3,23 +3,29 @@ package api
 import (
 	"context"
 	"net/http"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
+	domainservices "github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // DomainWithContext extends CustomDomain with service and environment context
 type DomainWithContext struct {
 	types.CustomDomain
-	ServiceName     string `json:"service_name"`
-	EnvironmentName string `json:"environment_name"`
-	ProjectSlug     string `json:"project_slug,omitempty"`
+	ServiceName     string                               `json:"service_name"`
+	EnvironmentName string                               `json:"environment_name"`
+	ProjectSlug     string                               `json:"project_slug,omitempty"`
+	Evidence        *domainservices.DomainPublicEvidence `json:"evidence,omitempty"`
 }
 
 // DomainCoverage describes how complete the domain inventory is and how
@@ -72,6 +78,42 @@ type DomainsListResponse struct {
 	Limit    int                 `json:"limit"`
 	Offset   int                 `json:"offset"`
 	Coverage DomainCoverage      `json:"coverage"`
+}
+
+type DomainReconcileSummary struct {
+	DBDomains       int  `json:"db_domains"`
+	RoutedDomains   int  `json:"routed_domains"`
+	Matched         int  `json:"matched"`
+	DBOnly          int  `json:"db_only"`
+	RouteOnly       int  `json:"route_only"`
+	DriftDetected   bool `json:"drift_detected"`
+	InventoryClosed bool `json:"inventory_closed"`
+}
+
+type DomainReconcileItem struct {
+	Domain          string   `json:"domain"`
+	DBPresent       bool     `json:"db_present"`
+	RoutePresent    bool     `json:"route_present"`
+	Sources         []string `json:"sources,omitempty"`
+	RouteTargets    []string `json:"route_targets,omitempty"`
+	ServiceID       string   `json:"service_id,omitempty"`
+	EnvironmentID   string   `json:"environment_id,omitempty"`
+	ServiceName     string   `json:"service_name,omitempty"`
+	EnvironmentName string   `json:"environment_name,omitempty"`
+	ProjectSlug     string   `json:"project_slug,omitempty"`
+	Verified        *bool    `json:"verified,omitempty"`
+	TLSEnabled      *bool    `json:"tls_enabled,omitempty"`
+}
+
+type DomainReconcileResponse struct {
+	GeneratedAt time.Time              `json:"generated_at"`
+	DryRun      bool                   `json:"dry_run"`
+	Sources     []string               `json:"sources"`
+	Warnings    []string               `json:"warnings,omitempty"`
+	Summary     DomainReconcileSummary `json:"summary"`
+	Matched     []DomainReconcileItem  `json:"matched"`
+	DBOnly      []DomainReconcileItem  `json:"db_only"`
+	RouteOnly   []DomainReconcileItem  `json:"route_only"`
 }
 
 // GetAllDomains returns all custom domains across all services
@@ -155,6 +197,7 @@ func (h *Handler) GetAllDomains(c *gin.Context) {
 
 		enrichedDomains = append(enrichedDomains, enriched)
 	}
+	attachPublicDomainEvidence(ctx, enrichedDomains)
 
 	c.JSON(http.StatusOK, DomainsListResponse{
 		Domains:  enrichedDomains,
@@ -163,6 +206,267 @@ func (h *Handler) GetAllDomains(c *gin.Context) {
 		Offset:   offset,
 		Coverage: h.computeDomainCoverage(ctx, enrichedDomains, total),
 	})
+}
+
+func attachPublicDomainEvidence(ctx context.Context, domains []DomainWithContext) {
+	if len(domains) == 0 {
+		return
+	}
+
+	names := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		if domain.Domain != "" {
+			names = append(names, domain.Domain)
+		}
+	}
+	evidenceByDomain := domainservices.DefaultPublicDomainProbe.ProbeMany(ctx, names)
+	for i := range domains {
+		if evidence, ok := evidenceByDomain[domains[i].Domain]; ok {
+			ev := evidence
+			domains[i].Evidence = &ev
+		}
+	}
+}
+
+// ReconcileDomains reports inventory drift without mutating Enclii state.
+// GET /v1/domains/reconcile
+func (h *Handler) ReconcileDomains(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	domains, _, err := h.repos.CustomDomains.ListAll(ctx, nil, 1000, 0)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to list domains for reconciliation", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
+		return
+	}
+
+	dbItems := h.buildReconcileDBItems(ctx, domains)
+	routeItems, sources, warnings := h.collectRouteInventory(ctx)
+
+	matched := make([]DomainReconcileItem, 0)
+	dbOnly := make([]DomainReconcileItem, 0)
+	routeOnly := make([]DomainReconcileItem, 0)
+
+	for domain, item := range dbItems {
+		if route, ok := routeItems[domain]; ok {
+			item.RoutePresent = true
+			item.Sources = route.Sources
+			item.RouteTargets = route.RouteTargets
+			matched = append(matched, item)
+			continue
+		}
+		dbOnly = append(dbOnly, item)
+	}
+
+	for domain, route := range routeItems {
+		if _, ok := dbItems[domain]; ok {
+			continue
+		}
+		routeOnly = append(routeOnly, route)
+	}
+
+	sortReconcileItems(matched)
+	sortReconcileItems(dbOnly)
+	sortReconcileItems(routeOnly)
+	sort.Strings(sources)
+	sort.Strings(warnings)
+
+	summary := DomainReconcileSummary{
+		DBDomains:       len(dbItems),
+		RoutedDomains:   len(routeItems),
+		Matched:         len(matched),
+		DBOnly:          len(dbOnly),
+		RouteOnly:       len(routeOnly),
+		DriftDetected:   len(dbOnly) > 0 || len(routeOnly) > 0,
+		InventoryClosed: len(dbOnly) == 0 && len(routeOnly) == 0,
+	}
+
+	c.JSON(http.StatusOK, DomainReconcileResponse{
+		GeneratedAt: time.Now().UTC(),
+		DryRun:      true,
+		Sources:     sources,
+		Warnings:    warnings,
+		Summary:     summary,
+		Matched:     matched,
+		DBOnly:      dbOnly,
+		RouteOnly:   routeOnly,
+	})
+}
+
+func (h *Handler) buildReconcileDBItems(ctx context.Context, domains []types.CustomDomain) map[string]DomainReconcileItem {
+	items := make(map[string]DomainReconcileItem, len(domains))
+	for _, domain := range domains {
+		key := normalizeReconcileHostname(domain.Domain)
+		if key == "" {
+			continue
+		}
+
+		verified := domain.Verified
+		tlsEnabled := domain.TLSEnabled
+		item := DomainReconcileItem{
+			Domain:        key,
+			DBPresent:     true,
+			RoutePresent:  false,
+			ServiceID:     domain.ServiceID.String(),
+			EnvironmentID: domain.EnvironmentID.String(),
+			Verified:      &verified,
+			TLSEnabled:    &tlsEnabled,
+		}
+
+		if service, err := h.repos.Services.GetByID(domain.ServiceID); err == nil && service != nil {
+			item.ServiceName = service.Name
+			if project, err := h.repos.Projects.GetByID(ctx, service.ProjectID); err == nil && project != nil {
+				item.ProjectSlug = project.Slug
+			}
+		}
+		if env, err := h.repos.Environments.GetByID(ctx, domain.EnvironmentID); err == nil && env != nil {
+			item.EnvironmentName = env.Name
+		}
+
+		items[key] = item
+	}
+	return items
+}
+
+func (h *Handler) collectRouteInventory(ctx context.Context) (map[string]DomainReconcileItem, []string, []string) {
+	items := make(map[string]DomainReconcileItem)
+	sourceSet := make(map[string]struct{})
+	warnings := make([]string, 0)
+
+	if h.tunnelRoutesService != nil {
+		routes, err := h.tunnelRoutesService.ListRoutes(ctx)
+		if err != nil {
+			warnings = append(warnings, "cloudflare tunnel route inventory unavailable: "+err.Error())
+		} else {
+			sourceSet["cloudflare_tunnel"] = struct{}{}
+			for _, route := range routes {
+				addRouteInventoryItem(items, route.Hostname, "cloudflare_tunnel", route.Service)
+			}
+		}
+	} else {
+		warnings = append(warnings, "cloudflare tunnel route service is not configured")
+	}
+
+	if h.k8sClient == nil || h.k8sClient.Clientset == nil {
+		warnings = append(warnings, "kubernetes typed client is not configured")
+	} else {
+		if ingresses, err := h.k8sClient.Clientset.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{}); err != nil {
+			warnings = append(warnings, "kubernetes ingress inventory unavailable: "+err.Error())
+		} else {
+			sourceSet["kubernetes_ingress"] = struct{}{}
+			for _, ingress := range ingresses.Items {
+				for _, rule := range ingress.Spec.Rules {
+					target := ingress.Namespace + "/" + ingress.Name
+					addRouteInventoryItem(items, rule.Host, "kubernetes_ingress", target)
+				}
+			}
+		}
+
+		if configMaps, err := h.k8sClient.Clientset.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{}); err != nil {
+			warnings = append(warnings, "kubernetes configmap hostname inventory unavailable: "+err.Error())
+		} else {
+			sourceSet["kubernetes_configmap"] = struct{}{}
+			for _, configMap := range configMaps.Items {
+				target := configMap.Namespace + "/" + configMap.Name
+				for _, value := range configMap.Data {
+					for _, hostname := range extractReconcileHostnames(value) {
+						addRouteInventoryItem(items, hostname, "kubernetes_configmap", target)
+					}
+				}
+			}
+		}
+	}
+
+	sources := make([]string, 0, len(sourceSet))
+	for source := range sourceSet {
+		sources = append(sources, source)
+	}
+
+	return items, sources, warnings
+}
+
+func addRouteInventoryItem(items map[string]DomainReconcileItem, hostname, source, target string) {
+	key := normalizeReconcileHostname(hostname)
+	if !isExternalReconcileHostname(key) {
+		return
+	}
+
+	item := items[key]
+	if item.Domain == "" {
+		item.Domain = key
+	}
+	item.RoutePresent = true
+	item.Sources = appendUniqueString(item.Sources, source)
+	if target != "" {
+		item.RouteTargets = appendUniqueString(item.RouteTargets, target)
+	}
+	items[key] = item
+}
+
+var reconcileHostnamePattern = regexp.MustCompile(`(?i)\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\b`)
+
+func extractReconcileHostnames(value string) []string {
+	matches := reconcileHostnamePattern.FindAllString(value, -1)
+	out := make([]string, 0, len(matches))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		hostname := normalizeReconcileHostname(match)
+		if !isExternalReconcileHostname(hostname) {
+			continue
+		}
+		if _, ok := seen[hostname]; ok {
+			continue
+		}
+		seen[hostname] = struct{}{}
+		out = append(out, hostname)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizeReconcileHostname(hostname string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hostname)), ".")
+}
+
+func isExternalReconcileHostname(hostname string) bool {
+	if hostname == "" || !strings.Contains(hostname, ".") {
+		return false
+	}
+	if strings.Contains(hostname, "*") ||
+		hostname == "ingress.class" ||
+		strings.HasSuffix(hostname, ".svc") ||
+		strings.HasSuffix(hostname, ".svc.cluster.local") ||
+		strings.HasSuffix(hostname, ".cluster.local") ||
+		strings.HasSuffix(hostname, ".local") ||
+		strings.HasSuffix(hostname, ".internal") ||
+		strings.HasSuffix(hostname, ".arpa") ||
+		hostname == "kubernetes.io" ||
+		strings.HasSuffix(hostname, ".kubernetes.io") {
+		return false
+	}
+
+	parts := strings.Split(hostname, ".")
+	tld := parts[len(parts)-1]
+	return len(tld) >= 2
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func sortReconcileItems(items []DomainReconcileItem) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Domain < items[j].Domain
+	})
+	for i := range items {
+		sort.Strings(items[i].Sources)
+		sort.Strings(items[i].RouteTargets)
+	}
 }
 
 // computeDomainCoverage builds the DomainCoverage block returned alongside

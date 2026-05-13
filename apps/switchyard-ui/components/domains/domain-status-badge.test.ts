@@ -35,6 +35,25 @@ describe('deriveDomainHealth — active', () => {
       deriveDomainHealth({ ...baseDomain, verified: false }),
     ).toBe('provisioning');
   });
+
+  it('returns "active" when public evidence proves HTTPS reachability even if DB verifier is stale', () => {
+    expect(
+      deriveDomainHealth({
+        ...baseDomain,
+        verified: false,
+        tls_enabled: false,
+        status: 'pending',
+        evidence: {
+          source: 'public-probe',
+          checked_at: '2026-05-13T07:31:00Z',
+          public_dns_status: 'resolved',
+          public_tls_status: 'valid',
+          public_http_status: 404,
+          public_http_reachable: true,
+        },
+      }),
+    ).toBe('active');
+  });
 });
 
 describe('deriveDomainHealth — provisioning', () => {
