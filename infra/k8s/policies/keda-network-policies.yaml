@@ -150,7 +150,8 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Intra-namespace: operator -> metrics server communication
+    # Intra-namespace: operator -> metrics server communication and HTTP
+    # add-on external scaler gRPC metric polling.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -158,6 +159,8 @@ spec:
       ports:
         - protocol: TCP
           port: 8443
+        - protocol: TCP
+          port: 9090
         - protocol: TCP
           port: 9666
     # Trigger backends: Redis in data namespace (ScaledObject metric polling)
