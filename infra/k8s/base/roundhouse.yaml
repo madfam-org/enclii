@@ -138,7 +138,7 @@ spec:
                   key: redis-password
             # Container registry
             - name: REGISTRY
-              value: "ghcr.io/madfam-org"
+              value: "ghcr.io/madfam-org/enclii"
             - name: REGISTRY_USER
               valueFrom:
                 secretKeyRef:
@@ -153,7 +153,7 @@ spec:
                   optional: true
             # Kaniko-specific settings
             - name: KANIKO_CACHE_REPO
-              value: "ghcr.io/madfam-org/cache"
+              value: "ghcr.io/madfam-org/enclii/cache"
             - name: KANIKO_GIT_CREDENTIALS
               value: "git-credentials"
             # Callback to Switchyard API
