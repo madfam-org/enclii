@@ -158,7 +158,7 @@ spec:
               value: "git-credentials"
             # Callback to Switchyard API
             - name: SWITCHYARD_INTERNAL_URL
-              value: "http://switchyard-api:4200"
+              value: "http://switchyard-api"
             - name: SWITCHYARD_API_KEY
               valueFrom:
                 secretKeyRef:

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -282,6 +283,22 @@ func TestCreateBuildJob(t *testing.T) {
 	container := podSpec.Containers[0]
 	if container.Image != KanikoImage {
 		t.Errorf("expected image '%s', got '%s'", KanikoImage, container.Image)
+	}
+	if container.SecurityContext == nil {
+		t.Fatal("expected container security context to be set")
+	}
+	if container.SecurityContext.Capabilities == nil {
+		t.Fatal("expected container capabilities to be set")
+	}
+	dropsAllCapabilities := false
+	for _, capability := range container.SecurityContext.Capabilities.Drop {
+		if capability == corev1.Capability("ALL") {
+			dropsAllCapabilities = true
+			break
+		}
+	}
+	if !dropsAllCapabilities {
+		t.Error("expected Kaniko container to drop ALL capabilities")
 	}
 
 	// Verify git credentials volume is added

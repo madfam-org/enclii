@@ -99,7 +99,7 @@ spec:
         - name: ENCLII_ROUNDHOUSE_URL
           value: "http://roundhouse:80"
         - name: ENCLII_SELF_URL
-          value: "http://switchyard-api:4200"
+          value: "http://switchyard-api"
         # Janua API URL for GitHub token retrieval
         - name: ENCLII_JANUA_API_URL
           value: "https://auth.madfam.io"

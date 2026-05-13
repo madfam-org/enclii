@@ -259,6 +259,61 @@ spec:
     - protocol: TCP
       port: 8080
 ---
+# Additive egress policy for Roundhouse worker -> Switchyard API callbacks.
+# Kept separate from generated/service-managed policies so the build-complete
+# callback path remains stable even when service reconciliation rewrites the
+# broader roundhouse-worker-egress policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: roundhouse-switchyard-callback-egress
+  labels:
+    app.kubernetes.io/name: roundhouse
+    app.kubernetes.io/component: build-system
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: roundhouse
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: switchyard-api
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 4200
+---
+# Additive ingress policy for Switchyard API build-complete callbacks from
+# Roundhouse workers. The Switchyard service exposes port 80, which forwards to
+# the API pod's container port 4200.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: switchyard-api-roundhouse-callback-ingress
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: switchyard-api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: roundhouse
+    ports:
+    - protocol: TCP
+      port: 4200
+---
 # Allow ingress to switchyard-ui only from Cloudflare tunnel
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

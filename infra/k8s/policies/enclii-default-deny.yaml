@@ -85,6 +85,8 @@ spec:
               app: switchyard-api
       ports:
         - protocol: TCP
+          port: 80
+        - protocol: TCP
           port: 4200
 
 # Allow dispatch egress (DNS + HTTPS for SSO + switchyard-api)

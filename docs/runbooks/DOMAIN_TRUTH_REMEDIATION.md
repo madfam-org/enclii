@@ -92,3 +92,13 @@ Priority order:
 - Project coverage is 25 of 25, or every missing project has a documented no-domain/excluded reason.
 - Stale evidence older than 24 hours is zero outside planned incidents.
 - The UI never presents API fetch freshness as verifier freshness.
+
+## Deployment pipeline prerequisites for domain-truth releases
+
+The domains page depends on the Switchyard API/UI release pipeline. Before retrying a production release, verify these build-system invariants:
+
+- `switchyard-api` must enqueue builds through Roundhouse, not fall back to in-process Docker builds. The durable NetworkPolicy is `switchyard-api-roundhouse-egress`.
+- Roundhouse build Jobs must set `securityContext.capabilities.drop: ["ALL"]`; otherwise Kyverno `restrict-capabilities` rejects `build-*` Jobs in `enclii-builds`.
+- Roundhouse callbacks must use the Switchyard Kubernetes Service URL `http://switchyard-api`, not `http://switchyard-api:4200`; the Service exposes port `80` and forwards to container port `4200`.
+- Keep the callback path durable with `roundhouse-switchyard-callback-egress` and `switchyard-api-roundhouse-callback-ingress` so service reconciliation cannot remove it.
+- If bootstrapping from an older Roundhouse worker image, use only a short-lived PolicyException scoped to `enclii-builds` `build-*` Jobs, deploy the corrected Roundhouse image, then remove the exception.

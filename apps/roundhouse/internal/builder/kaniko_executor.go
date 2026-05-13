@@ -278,10 +278,9 @@ func (e *KanikoExecutor) createBuildJob(ctx context.Context, job *queue.BuildJob
 							SecurityContext: &corev1.SecurityContext{
 								AllowPrivilegeEscalation: boolPtr(false),
 								ReadOnlyRootFilesystem:   boolPtr(false), // Kaniko needs writable /kaniko
-								// Note: Kaniko requires CHOWN, DAC_OVERRIDE, SETUID, SETGID, FOWNER, and SETFCAP
-								// capabilities to properly unpack container image filesystems. These are required
-								// to recreate file ownership and permissions from base images like node:20-alpine.
-								// We don't drop any capabilities since Kaniko needs most of them for rootfs operations.
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
