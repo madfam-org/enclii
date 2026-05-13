@@ -1,0 +1,33 @@
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: status-cronjob-probe-exceptions-enclii
+  namespace: enclii
+  labels:
+    app.kubernetes.io/component: status-recorder
+    app.kubernetes.io/instance: status-enclii
+  annotations:
+    policies.kyverno.io/description: >-
+      Status recorder and stale-outage digest are bounded one-shot CronJobs.
+      Readiness probes are not meaningful for curl jobs that exit immediately
+      after posting to the status API.
+    policies.kyverno.io/severity: low
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - CronJob
+            - Job
+          names:
+            - "status-recorder-enclii*"
+            - "stale-outage-digest-enclii*"
+          namespaces:
+            - enclii
+  exceptions:
+    - policyName: require-probes
+      ruleNames:
+        - require-readiness-probe
+        - autogen-require-readiness-probe
+        - autogen-cronjob-require-readiness-probe

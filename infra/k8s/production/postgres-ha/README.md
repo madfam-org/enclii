@@ -10,12 +10,17 @@ deploys these resources in parallel with the existing single-instance
 Postgres. PgBouncer continues routing to the old instance until an
 operator-driven maintenance window flips the connection target.
 
+**Current bootstrap state:** `instances: 2`, not the final 3-instance target.
+The third instance is deferred until Longhorn has enough schedulable capacity
+for another 20Gi two-replica volume. The previous 3-instance attempt left the
+third PVC faulted with `ReplicaSchedulingFailure: insufficient storage`.
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `cluster.yaml` | CNPG `Cluster` CR (3 instances, sync replication, R2 backup, pgvector) + custom-queries ConfigMap |
-| `scheduled-backup.yaml` | Daily base backup at 02:30 UTC; WAL archives continuously |
+| `scheduled-backup.yaml` | Daily base backup definition, currently `suspend: true` until Cluster backup config and R2 credentials are live |
 | `podmonitor.yaml` | Prometheus PodMonitor + 5 alert rules (degraded, sync-replica-lost, failover-in-progress, backup-archive-behind, multiple-writable-primaries) |
 | `network-policy.yaml` | Ingress from PgBouncer + ecosystem consumers; egress to R2 + DNS + replication peers |
 | `r2-credentials.yaml.template` | Template for the R2 secret + ConfigMap (apply manually before merge; ESO-managed post-Wave-2) |
@@ -27,6 +32,7 @@ The companion PR **must not be merged** until all of the following are confirmed
 
 - [ ] CNPG operator image digest resolved and substituted in `infra/argocd/apps/cnpg-operator.yaml` (replace `1.23.0` tag with `@sha256:...` digest).
 - [ ] CNPG Postgres image digest resolved and substituted in `cluster.yaml` (replace `15.6-1` tag with `@sha256:...` digest).
+- [ ] Longhorn has enough free schedulable capacity for the third 20Gi/2-replica instance volume, or `instances` intentionally remains `2`.
 - [ ] R2 bucket prefix `cnpg/postgres-ha/` created and write-access granted.
 - [ ] `cnpg-r2-credentials` Secret + `cnpg-r2-config` ConfigMap applied to `data` namespace from `r2-credentials.yaml.template`.
 - [ ] `postgres-ha-superuser` Secret applied to `data` namespace (auto-managed post-Wave-2 via ESO from Vault; manual until then).
@@ -51,7 +57,10 @@ kubectl -n data get cluster postgres-ha -w
 kubectl -n data exec postgres-ha-1 -c postgres -- psql -U postgres \
   -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"
 
-# 6. Take a manual base backup to validate the R2 pipeline
+# 6. After adding spec.backup and R2 credentials, unsuspend the ScheduledBackup
+kubectl -n data patch scheduledbackup postgres-ha-daily --type merge -p '{"spec":{"suspend":false}}'
+
+# 7. Take a manual base backup to validate the R2 pipeline
 kubectl -n data create -f - <<EOF
 apiVersion: postgresql.cnpg.io/v1
 kind: Backup

@@ -105,3 +105,37 @@ subjects:
   - kind: ServiceAccount
     name: replicaset-cleanup
     namespace: enclii
+---
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: replicaset-cleanup-probe-exception
+  namespace: enclii
+  labels:
+    app: replicaset-cleanup
+    app.kubernetes.io/name: replicaset-cleanup
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    policies.kyverno.io/description: >-
+      Weekly ReplicaSet cleanup is a bounded one-shot CronJob. Readiness probes
+      are not meaningful because the kubectl container exits after cleanup.
+    policies.kyverno.io/severity: low
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+            - CronJob
+            - Job
+          names:
+            - "replicaset-cleanup*"
+          namespaces:
+            - enclii
+  exceptions:
+    - policyName: require-probes
+      ruleNames:
+        - require-readiness-probe
+        - autogen-require-readiness-probe
+        - autogen-cronjob-require-readiness-probe

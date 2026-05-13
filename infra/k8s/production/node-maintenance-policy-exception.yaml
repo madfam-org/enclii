@@ -53,3 +53,8 @@ spec:
         - require-drop-all
         - autogen-require-drop-all
         - autogen-cronjob-drop-all-capabilities
+    - policyName: require-probes
+      ruleNames:
+        - require-readiness-probe
+        - autogen-require-readiness-probe
+        - autogen-cronjob-require-readiness-probe

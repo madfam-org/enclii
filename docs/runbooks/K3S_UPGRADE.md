@@ -19,9 +19,14 @@ tags: [operations, runbook, k3s, upgrade, cluster]
 |------|------|-------|
 | foundry-cp | Server (control plane) | EX44, i5-13500, 128GB. K3s API: <CONTROL_PLANE_IP>:6443 |
 | foundry-worker-01 | Agent (worker) | AX41, Ryzen 5 3600, 64GB. Runs platform workloads + Longhorn storage |
-| foundry-builder-01 | Agent (builder) | VPS, 2 vCPU, 4GB. Taint `builder=true:NoSchedule` -- runs only ARC GitHub Actions runners |
+| foundry-builder-01 | Agent (builder) | Builder-only agent. Taint `builder=true:NoSchedule` -- runs only ARC GitHub Actions runners and build executors. Hardware/IP inventory lives in `internal-devops`. |
 
 **SSH Access:** `ssh ssh.madfam.io` (the ONLY authorized method -- never use direct IP)
+
+**Builder isolation invariant:** `foundry-builder-01` must keep label `role=builder`
+and taint `builder=true:NoSchedule`. Core Enclii services also carry
+node-affinity guardrails that reject `role=builder`, so if the taint drifts,
+new control-plane pods still avoid the builder node.
 
 **SCP Access:** `scp -o ProxyCommand="cloudflared access ssh --hostname ssh.madfam.io" ...`
 
@@ -48,6 +53,11 @@ k3s --version
 # On the worker node (from foundry-cp)
 ssh foundry-builder-01 k3s --version
 # Expected: same version as server
+
+# Confirm builder isolation is intact before draining anything
+kubectl get node foundry-builder-01 \
+  -o jsonpath='{.metadata.labels.role}{" "}{.spec.taints[*].key}{"="}{.spec.taints[*].value}{":"}{.spec.taints[*].effect}{"\n"}'
+# Expected: builder builder=true:NoSchedule
 ```
 
 ### 2. Verify Component Compatibility

@@ -21,6 +21,15 @@ spec:
       labels:
         app: status
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: role
+                    operator: NotIn
+                    values:
+                      - builder
       securityContext:
         runAsNonRoot: true
         fsGroup: 1001

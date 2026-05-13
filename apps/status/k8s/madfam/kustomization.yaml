@@ -11,6 +11,7 @@ resources:
   - configmap.yaml
   - cronjob.yaml
   - stale-outage-digest.yaml
+  - cronjob-policy-exception.yaml
 
 # Instance-specific labels
 commonLabels:

@@ -28,6 +28,7 @@ patchesStrategicMerge:
 - environment-patch.yaml
 - security-patch.yaml
 - anti-affinity-patch.yaml
+- builder-isolation-patch.yaml
 configMapGenerator:
 - literals:
   - ENCLII_ENV=production

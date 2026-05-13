@@ -37,7 +37,7 @@ spec:
               effect: NoSchedule
           containers:
             - name: maintenance
-              image: docker.io/rancher/k3s:v1.33.7-k3s3
+              image: docker.io/rancher/k3s@sha256:4ec887d176fb81c4ca64fdd6da8bd11023a3d7ea89025737df7a6da91cfdd139
               command:
                 - nsenter
                 - -t
