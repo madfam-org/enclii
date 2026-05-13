@@ -1,5 +1,13 @@
 # DR Drill — Operator Runbook
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 `scripts/dr-drill.sh` is the P0.1 remediation-plan deliverable. It produces the
 evidence that backs every RPO/RTO claim in
 [`internal-devops/runbooks/disaster-recovery.md`][dr-runbook].

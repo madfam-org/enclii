@@ -1,6 +1,14 @@
 # Enclii AI Context & Guidelines
 
 > [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
+> [!IMPORTANT]
 > **Ongoing Refactoring**: We are currently in the middle of a structural monorepo reorganization. Refer to [REFACTORING_STATUS.md](./REFACTORING_STATUS.md) for urgent cleanup items and current progress before starting any new tasks.
 
 This file provides authoritative guidance to all AI agents and LLMs working in this repository.

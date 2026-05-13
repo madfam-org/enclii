@@ -1,5 +1,13 @@
 # Deployment Lifecycle Tracking
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 Enclii tracks every step in the deployment pipeline — from git push to healthy production pods — as a chain of **lifecycle events**. This gives you a single timeline view of what happened, when, and why.
 
 ## How It Works

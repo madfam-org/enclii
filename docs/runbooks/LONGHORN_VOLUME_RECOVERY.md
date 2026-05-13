@@ -5,6 +5,14 @@ sidebar_position: 5
 tags: [runbook, longhorn, storage, recovery, incident-response]
 ---
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 # Longhorn Volume Recovery
 
 **Purpose:** Step-by-step recovery for Longhorn EXT4 filesystem corruption incidents.

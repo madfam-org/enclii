@@ -1,5 +1,13 @@
 # GitOps with ArgoCD
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 **Last Updated:** January 26, 2026
 **Status:** Operational (13 applications, 8 Synced/Healthy)
 

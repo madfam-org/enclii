@@ -1,5 +1,13 @@
 # Cloudflare Credential Setup Guide
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 This guide explains how to configure Cloudflare API credentials for Enclii domain provisioning scripts.
 
 ## Why This Matters

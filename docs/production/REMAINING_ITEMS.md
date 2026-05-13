@@ -1,5 +1,13 @@
 # Remaining Items — Post Session 106
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 > **Last updated:** 2026-03-19 (Session 106)
 > **Platform status:** Production Release Candidate v0.1.0 (95% ready)
 > **Cluster:** 3-node k3s (foundry-cp [CP] + foundry-worker-01 [worker] + foundry-builder-01 [builder]), ~150 pods

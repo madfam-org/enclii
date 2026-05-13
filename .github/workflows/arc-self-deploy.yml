@@ -1,4 +1,7 @@
 # Recursive Auto-Deployment Workflow for ARC Runners
+
+# MADFAM-ENCLII-FIRST-WORKFLOW-EXCEPTION v1: platform bootstrap/self-repair path.
+# Routine ARC operations must go through Enclii ops runners once adapters cover the action.
 # This workflow enables the CI/CD pipeline to update its own runner infrastructure.
 #
 # When changes are pushed to ARC configuration files, this workflow:

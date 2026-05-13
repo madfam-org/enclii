@@ -1,4 +1,12 @@
 # ENCLII PLATFORM - COMPREHENSIVE CAPABILITY MATRIX
+
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
 **Status:** 95% Production Ready | **Date:** January 2026 (Updated)
 
 > ⚠️ **Note:** This matrix was originally created Nov 2025. Current infrastructure: single Hetzner dedicated server, self-hosted PostgreSQL/Redis. Core services live at enclii.dev. See internal-devops for cost breakdown.

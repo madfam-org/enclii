@@ -5,14 +5,31 @@ sidebar_position: 1
 tags: [cli, reference, commands, deployment]
 ---
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 # Enclii CLI Reference
 
 The `enclii` command-line interface provides developers with tools to deploy, manage, and monitor services on the Enclii platform.
 
-For MADFAM operations, Enclii is the default manipulation layer. Use `enclii ops`
-instead of direct `kubectl`/ArgoCD/Longhorn/Kyverno/ARC workflows and use
-`enclii providers` instead of direct `gh`, Cloudflare, Porkbun, or Hetzner
-tooling. Raw tools are break-glass only until the missing adapter is wired.
+For MADFAM operations, Enclii is the required manipulation layer. Use the web
+UI, API, or CLI for routine production provisioning, deployment, observability,
+domains, secrets, provider operations, scaling, rollback, and remediation.
+
+- Use `enclii ops` instead of routine `kubectl`, ArgoCD, Longhorn, Kyverno,
+  ExternalSecrets, Vault, or ARC workflows.
+- Use `enclii providers` instead of routine `gh`, Cloudflare, Porkbun, or
+  Hetzner tooling.
+- Use raw `kubectl`, `helm`, SSH, provider CLIs/APIs, `docker exec`, or direct
+  container access only for platform bootstrap or documented break-glass
+  emergencies when Enclii is unavailable or lacks an implemented adapter.
+- Record missing adapter gaps so the next remediation lands in Enclii instead
+  of becoming permanent operator folklore.
 
 ## Installation
 

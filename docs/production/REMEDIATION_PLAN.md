@@ -1,5 +1,13 @@
 # Full Remediation Plan — Session 106 Ecosystem Audit
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 > **Created:** 2026-03-19 (Session 106)
 > **Status:** In Progress
 > **Scope:** Enclii platform + 8 ecosystem repos

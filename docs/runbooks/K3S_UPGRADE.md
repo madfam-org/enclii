@@ -5,6 +5,14 @@ sidebar_position: 8
 tags: [operations, runbook, k3s, upgrade, cluster]
 ---
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 # k3s Cluster Upgrade
 
 **Purpose:** Step-by-step procedure for upgrading k3s on the enclii production cluster (3-node: foundry-cp server + foundry-worker-01 agent + foundry-builder-01 agent). The server node is upgraded first, then agent nodes one at a time, ensuring all nodes end at the same k3s version.

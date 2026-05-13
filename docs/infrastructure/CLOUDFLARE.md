@@ -1,5 +1,13 @@
 # Cloudflare Integration
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 **Last Updated:** February 7, 2026
 **Status:** Operational (single unified tunnel, 28+ domains, 2 replicas, HTTPS enforced on all zones)
 

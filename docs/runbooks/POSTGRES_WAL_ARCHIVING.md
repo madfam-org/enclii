@@ -1,5 +1,13 @@
 # Postgres WAL Archiving Runbook (pgBackRest → R2)
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 > **Last Updated:** 2026-04-17
 > **Owner:** Platform oncall
 > **Scope:** In-cluster Postgres (`data/postgres`), single-node today

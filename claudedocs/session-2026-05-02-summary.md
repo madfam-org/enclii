@@ -1,5 +1,13 @@
 # Session summary — 2026-05-02
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 A single sustained session covering CLI parity, four browser-verified fidelity audits (app.enclii.dev, app.janua.dev, admin.janua.dev, public surfaces), seven rounds of XC-2 master-admin tenant switching, multiple Janua remediation rounds, and end-to-end public-surface hardening.
 
 Two repos touched: `enclii` (this repo, `main`) and `janua` (`/Users/aldoruizluna/labspace/janua`, `main`). All work is merged, pushed, and tested green.

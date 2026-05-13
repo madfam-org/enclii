@@ -1,5 +1,13 @@
 # Incident Response Runbook
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 This document defines how the Enclii team detects, responds to, and recovers from production incidents. All on-call personnel must be familiar with these procedures.
 
 **Infrastructure context:** 3-node k3s cluster (foundry-cp [EX44] + foundry-worker-01 [AX41] + foundry-builder-01 [VPS]), Cloudflare tunnel ingress, self-hosted PostgreSQL and Redis, ArgoCD GitOps, Janua SSO.

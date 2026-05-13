@@ -1,365 +1,48 @@
-# Enclii
+# Enclii Full LLM Context
 
-> Open source DevOps platform for deploying, scaling, and operating containerized
-> services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
-> Go backend + Next.js frontend + ArgoCD GitOps + Cloudflare Tunnel zero-trust ingress.
+Generated: 2026-05-13
 
-Enclii is MADFAM's production DevOps platform running on a 3-node k3s cluster on Hetzner +
-Cloudflare. The control plane runs on Enclii itself. Authentication is handled by
-Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with 12 apps in
-`infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
+## Purpose
 
----
+This file gives LLM agents a stable, tool-agnostic map for working in this
+repository without depending on vendor-specific instruction files.
 
-## Agent Directives (AI_CONTEXT.md)
+## Canonical instruction order
 
-### Architecture
-- **Stack**: Go (Gin) backend + Next.js 16 frontend + K3s + ArgoCD
-- **Pattern**: GitOps, App-of-Apps, zero-trust ingress via Cloudflare Tunnel
-- **Self-Deployment**: Enclii deploys itself (zero-touch onboarding)
-- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp + foundry-worker-01 + foundry-builder-01)
+1. `AGENTS.md`
+2. `README.md` if present
+3. `ECOSYSTEM.md` if present
+4. Relevant files under `docs/`, `infra/`, `.github/workflows/`, and source
+   directories for the specific task
 
-### God Files (Critical Paths)
+## Agent compatibility
 
-| Purpose | Path |
-|---------|------|
-| API Entry | `apps/switchyard-api/cmd/api/main.go` |
-| CLI Entry | `packages/cli/cmd/enclii/main.go` |
-| Login Flow | `packages/cli/internal/cmd/login.go` |
-| Terraform | `infra/terraform/` |
-| K8s Manifests | `infra/k8s/production/` |
-| ArgoCD Root | `infra/argocd/root-application.yaml` |
-| ArgoCD Apps | `infra/argocd/apps/*.yaml` (12 apps incl. network-policies, vault, logging, backup) |
-| Tunnel Config | `infra/k8s/production/cloudflared-unified.yaml` (~54 ingress rules, managed via Cloudflare API; see `expected-tunnel-config.json` for authoritative route list) |
-| Kyverno Policies | `infra/k8s/base/kyverno/policies/` |
-| Golden Tests | `tests/golden/` (pre-commit validation) |
-| Enclii Config | `.enclii.yml` |
-| Dispatch API | `apps/admin-console/` |
-| Infra Anatomy | `docs/infrastructure/INFRA_ANATOMY.md` |
-| llms.txt | `llms.txt` (this file's compact version) |
-| llms-full.txt | `llms-full.txt` (this file) |
+`AGENTS.md` is the source of truth. `CLAUDE.md` exists only to redirect Claude
+and other legacy agent integrations to `AGENTS.md`.
 
-### Port Allocation
-- 4200: Switchyard API (api.enclii.dev)
-- 4201: Switchyard UI (app.enclii.dev)
-- 4202: Agent
-- 4203: Dispatch (admin.enclii.dev)
-- 4204: Status Page (status.enclii.dev, status.madfam.io)
-- 4290: Metrics
+## Enclii-first operations contract
 
-### The Tripod
-- **Depends On**: Janua for authentication (auth.madfam.io)
-- **Orchestrates**: All MADFAM services via K8s/ArgoCD
-- **Does NOT use**: @madfam/ui (independent Radix UI components)
-- **Self-Deploys**: Control plane runs on Enclii itself
+Use Enclii web, API, or CLI for routine production provisioning, deployment,
+observability, domain management, secrets, provider operations, scaling,
+rollback, and remediation.
 
-### Agent Rules
-1. ALWAYS run `golangci-lint run` before Go commits
-2. ALWAYS run `pnpm typecheck` before TypeScript commits
-3. CHECK `git status && git branch` at session start
-4. USE feature branches for all changes
-5. READ AI_CONTEXT.md at session start
-6. **Proof of Life Standard:** No task is "Complete" until you `curl` the public endpoint and get 200 OK (or 401 for protected routes). "Kubernetes Applied" is NOT "Done."
+Raw `kubectl`, `helm`, SSH, provider CLIs/APIs, `docker exec`, and direct
+container access are allowed only for platform bootstrap or documented
+break-glass emergencies when Enclii is unavailable or lacks an implemented
+adapter. Any break-glass use must record the actor, reason, target
+service/environment, commands executed, result, and follow-up Enclii adapter
+gap or incident link.
 
-### Secret Management (Safe-Patch Mode)
-- **Backup First**: `cp .env .env.bak` before any modification
-- **Patch, Don't Purge**: Never overwrite with `> .env`. Use `sed` or `echo >>`.
-- **Placeholder Ban**: Never write `your_key_here`, `placeholder`, `example`, `xxx`, or `TODO` into `.env` files.
+## Repo entrypoints detected
 
-### Self-Deployment Flow
-```
-Git push → GitHub webhook → Roundhouse build → ArgoCD sync → K8s deployment
-                          ↳ Parse enclii.yaml → Auto-provision domains (tunnel routes + DNS CNAMEs)
-```
+- `README.md`
+- `ECOSYSTEM.md`
+- `docs/`
+- `infra/`
+- `.github/workflows/`
 
-### External Repo Auto-Deploy Flow
-```
-Git push → CI build → GHCR push → digest commit to kustomization.yaml → ArgoCD sync
-         ↳ POST /v1/callbacks/lifecycle-event (tracks push_received → image_pushed → deploy_healthy)
-```
+## Maintenance
 
-### Deployment Lifecycle Tracking
-- Events: push_received, build_started, build_succeeded, image_pushed, deploy_synced, deploy_healthy
-- Query: GET /v1/lifecycle/timeline/:owner/:repo, /branch/:owner/:repo/:branch, /commit/:sha
-- Callback: POST /v1/callbacks/lifecycle-event (bearer token auth)
-- Branch→env mapping: main→production, staging/*→staging, feature/*→preview
-
-### Self-Service Onboarding
-- POST /v1/admin/onboard — validates enclii.yaml, creates project/services, generates ArgoCD app YAML, auto-generates NetworkPolicies from `network` section, registers status page entries from `status` section
-- GET /v1/admin/onboard — list onboarded repos
-- GET /v1/admin/status/services — list all status page service entries (core + onboarded)
-- POST /v1/admin/status/regenerate — rebuild and commit complete status configmap
-- Guides: [Deployment Tracking](./docs/guides/DEPLOYMENT_TRACKING.md), [Onboarding](./docs/guides/ONBOARDING_GUIDE.md), [External Repos](./docs/guides/EXTERNAL_REPO_DEPLOY.md)
-
----
-
-## System Architecture (SYSTEM_CONTEXT.md)
-
-### Component Map
-
-| Component | Port | Domain | Description |
-|-----------|------|--------|-------------|
-| Switchyard API | 4200 (container) / 80 (K8s) | api.enclii.dev | Control plane API |
-| Switchyard UI | 4201 (container) / 80 (K8s) | app.enclii.dev | User dashboard |
-| Dispatch | 4203 (container) / 80 (K8s) | admin.enclii.dev | Infrastructure control tower |
-| Landing Page | 80 (container) / 80 (K8s) | enclii.dev | Marketing site |
-| Docs | 80 (container) / 80 (K8s) | docs.enclii.dev | Documentation |
-
-### Dispatch (Admin UI)
-Superuser interface for managing infrastructure — domains, tunnels, ecosystem resources.
-
-**Authorization Model:**
-- Email domain must be in `ALLOWED_ADMIN_DOMAINS` (default: `@madfam.io`)
-- User role must be in `ALLOWED_ADMIN_ROLES` (default: `superadmin,admin,operator`)
-
-**Key Files:**
-| Purpose | Location |
-|---------|----------|
-| Middleware (server-side auth) | `apps/admin-console/middleware.ts` |
-| Auth Context (client-side) | `apps/admin-console/contexts/AuthContext.tsx` |
-| K8s Deployment | `apps/admin-console/k8s/deployment.yaml` |
-| Dockerfile | `apps/admin-console/Dockerfile` |
-
-### Cloudflare Tunnel (Zero-Trust Ingress)
-```
-Internet → Cloudflare Edge → cloudflared pods → K8s Service:80 → Container:4xxx
-           (TLS, DDoS)        (2 replicas)       (ClusterIP)      (targetPort)
-```
-
-Key routes in `cloudflared-unified.yaml`:
-- `admin.enclii.dev` → `dispatch.enclii.svc.cluster.local:80`
-- `app.enclii.dev` → `switchyard-ui.enclii.svc.cluster.local:80`
-- `api.enclii.dev` → `switchyard-api.enclii.svc.cluster.local:80`
-- `vault.madfam.io` → `vault.vault.svc.cluster.local:8200` (502 — backend pending deploy)
-- `analytics.madfam.io` → Cloudflare Worker proxy → PostHog Cloud (us.i.posthog.com)
-
-### Kubernetes Resources
-
-| Resource | Namespace | Purpose |
-|----------|-----------|---------|
-| `switchyard-api` | enclii | Control plane API |
-| `switchyard-ui` | enclii | User dashboard |
-| `dispatch` | enclii | Admin interface |
-| `status-enclii` | enclii | Status page (status.enclii.dev) |
-| `status-madfam` | enclii | Status page (status.madfam.io) |
-| `status-recorder-*` | enclii | CronJob — records status history every 60s + auto-incident detection |
-| `node-maintenance` | enclii | CronJob — daily garbage collection (images, containers, logs) + Prometheus metrics export via textfile collector |
-| `cloudflared` | cloudflare-tunnel | Ingress tunnel |
-
-### Authentication
-- Provider: **Janua** (auth.madfam.io)
-- Protocol: OIDC with RS256 JWT
-- `NEXT_PUBLIC_JANUA_URL`: `https://auth.madfam.io`
-
-### Critical Environment Variables
-
-```yaml
-# Dispatch
-ALLOWED_ADMIN_DOMAINS: "@madfam.io"
-ALLOWED_ADMIN_ROLES: "superadmin,admin,operator"
-NEXT_PUBLIC_JANUA_URL: "https://auth.madfam.io"
-```
-
-### Operation Ratchet — Rules of Engagement
-
-**Rule 1:** Always run `./scripts/validate.sh --golden` before confirming any task complete.
-
-**Rule 2:** Never remove protected config keys:
-| Key | File | Impact |
-|-----|------|--------|
-| `ENCLII_OIDC_ISSUER` | environment-patch.yaml | Breaks SSO |
-| `ENCLII_OIDC_CLIENT_ID` | environment-patch.yaml | Breaks SSO |
-| `ALLOWED_ADMIN_DOMAINS` | dispatch/deployment.yaml | Breaks admin access |
-| `imagePullSecrets:` | roundhouse.yaml, dispatch/deployment.yaml | Breaks image pulls |
-| `hostname: api.enclii.dev` | cloudflared-unified.yaml | Breaks API routing |
-| `hostname: auth.madfam.io` | cloudflared-unified.yaml | Breaks Janua SSO |
-
-**Rule 3:** Verify `NEXT_PUBLIC_*` env vars in Dockerfiles for Next.js apps.
-
-**Rule 4:** If golden config fails, review the diff — update with `./scripts/update-golden.sh` only if intentional.
-
----
-
-## Development Guide (CLAUDE.md Summary)
-
-### Common Commands
-
-```bash
-# Setup
-make bootstrap          # Install hooks, dependencies
-make kind-up            # Create local kind cluster
-
-# Run services locally
-make run-switchyard     # API on :8080
-make run-ui             # UI on :3000
-
-# Build & test
-make build-all          # Build all components
-make test               # Unit tests
-make e2e                # End-to-end tests
-make lint               # Linters (golangci-lint, eslint, prettier)
-make precommit          # All checks before committing
-```
-
-### Key File Locations
-
-**API (Go):**
-| Purpose | Location |
-|---------|----------|
-| Entry point | `apps/switchyard-api/cmd/api/main.go` |
-| HTTP handlers | `apps/switchyard-api/internal/api/*.go` |
-| Route registration | `apps/switchyard-api/internal/api/*_handlers.go` (distributed, no centralized router) |
-| Middleware | `apps/switchyard-api/internal/middleware/` |
-| Services | `apps/switchyard-api/internal/services/` |
-| Admin handlers | `apps/switchyard-api/internal/api/*_handlers.go` |
-| Admin services | `apps/switchyard-api/internal/services/` |
-| enclii.yaml parser | `apps/switchyard-api/internal/api/enclii_yaml.go` |
-| Domain provisioner | `apps/switchyard-api/internal/api/domain_provisioner.go` |
-
-**CLI (Go):**
-| Purpose | Location |
-|---------|----------|
-| Entry point | `packages/cli/cmd/enclii/main.go` |
-| Commands | `packages/cli/internal/cmd/` |
-| API client | `packages/cli/internal/api/` |
-| Auth flow | `packages/cli/internal/auth/` |
-
-**UI (Next.js):**
-| Purpose | Location |
-|---------|----------|
-| App router | `apps/switchyard-ui/app/` |
-| Dashboard page | `apps/switchyard-ui/app/(protected)/page.tsx` |
-| Components | `apps/switchyard-ui/components/` |
-| Dashboard cards | `apps/switchyard-ui/components/dashboard/project-card-compact.tsx` |
-| Framework detection | `apps/switchyard-ui/components/dashboard/framework-icon.tsx` (known-repo map + heuristic inference) |
-| API calls | `apps/switchyard-ui/lib/api/` |
-| Hooks | `apps/switchyard-ui/hooks/` |
-
-**Infrastructure:**
-| Purpose | Location |
-|---------|----------|
-| Terraform | `infra/terraform/` |
-| K8s manifests | `infra/k8s/production/` |
-| Cloudflare tunnel | `infra/k8s/production/cloudflared-unified.yaml` |
-| ArgoCD config | `infra/argocd/` |
-| ArgoCD apps | `infra/argocd/apps/*.yaml` |
-| Longhorn values | `infra/helm/longhorn/` |
-
-### Deployment Flow
-1. Build via Nixpacks/Buildpacks or Dockerfile
-2. Create immutable Release with provenance (git SHA, SBOM, signature)
-3. Deploy with canary/blue-green strategies
-4. Automatic rollback on failure based on SLO metrics
-
-### Error Handling
-- Exit codes: 0 (success), 10 (validation), 20 (build failed), 30 (deploy failed), 40 (timeout), 50 (auth)
-- Automatic rollback triggers when error rate > 2% for 2 minutes
-
-### Platform SLOs
-- Control plane API availability: 99.95% monthly
-- Build subsystem availability: 99.9% monthly
-- Preview environment provisioning: P95 < 3 minutes
-- Deploy to stage: P95 ≤ 8 minutes for typical Node/Go services
-
-### Security Conventions
-- Never commit secrets — use Lockbox/Vault
-- All images signed with cosign
-- SBOM required for all releases
-- Admission policies enforced via Kyverno/OPA
-- Trunk-based development on `main` with conventional commits
-
-### Debugging Quick Reference
-
-| Symptom | Check | Fix |
-|---------|-------|-----|
-| API 500 errors | `enclii logs switchyard-api` | Check DB connection, env vars |
-| Build stuck | `enclii builds logs --latest` | Restart Roundhouse worker |
-| Auth fails | `curl .../jwks.json` | Check Janua status, OIDC config |
-| Deploy timeout | `enclii ps --wide` | Check resource limits, probes |
-| SSL errors | Cert-manager logs | Check issuer, DNS |
-
----
-
-## Production Infrastructure
-
-### Compute (3-node k3s cluster)
-- **foundry-cp** (Hetzner EX44): Control plane node (i5-13500, 128GB)
-- **foundry-worker-01** (Hetzner AX41-NVMe): Worker node (Ryzen 5 3600, 64GB)
-- **foundry-builder-01** (Hetzner Cloud VPS): CI builder — tainted `builder=true:NoSchedule`
-- **k3s v1.33.7+k3s3**: Lightweight Kubernetes
-
-### Ingress
-- **Cloudflare Tunnel**: Zero-trust, zero exposed ports, 2 replica `cloudflared` pods
-- **Port Mapping**: Container:4xxx → K8s Service:80 → Cloudflare Route
-
-### Data
-- **PostgreSQL**: In-cluster with PVC, daily R2 backups
-- **Redis**: In-cluster single instance (Sentinel ready)
-- **Cloudflare R2**: Object storage (SBOMs, artifacts, backups)
-- **Backup System**: 6 CronJobs (PostgreSQL, K3s datastore, GitHub repos, Cloudflare config, ArgoCD secrets, backup-verify) managed via ArgoCD `backup` app
-- **Longhorn CSI**: Block storage (single-replica, multi-node ready)
-
-### GitOps
-- **ArgoCD**: App-of-Apps with self-heal and drift correction
-- **Config**: `infra/argocd/` (root-application.yaml + apps/*.yaml)
-
-### Authentication
-- **Janua SSO**: OIDC/OAuth 2.0 with RS256 JWT (auth.madfam.io)
-- **GitHub OAuth**: Repository imports
-- **RBAC**: Admin/Developer/Viewer roles
-- **Session Management**: Redis-backed
-- **API Keys**: CI/CD service accounts
-
----
-
-## ArgoCD App-of-Apps Overview
-
-The root application at `infra/argocd/root-application.yaml` manages 12 child applications defined in `infra/argocd/apps/`:
-
-Core Enclii services, Janua SSO services, Dhanam services, Cloudflare tunnel, Longhorn storage, and supporting infrastructure. Each app syncs from its respective Git repository with automated self-heal.
-
----
-
-## Components
-
-- [apps/switchyard-api/](./apps/switchyard-api/): Control plane API (Go/Gin, port 4200)
-- [apps/switchyard-ui/](./apps/switchyard-ui/): Web dashboard (Next.js, port 4201)
-- [apps/admin-console/](./apps/admin-console/): Admin platform (Next.js, port 4203) — 109 unit tests (auth, RBAC, Cloudflare API, components)
-- [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra) — 47 command-level tests (login, deploy, onboard, root)
-- [packages/sdk-go/](./packages/sdk-go/): Go SDK — API client (`pkg/client/`) and type definitions (`pkg/types/`) — 30 unit tests
-- [packages/shared-lib/](./packages/shared-lib/): Shared utilities (cn, formatDate, formatBytes) — 19 unit tests
-- [packages/ui-components/](./packages/ui-components/): Shared UI components (Button, Badge, Dialog, Table, etc.) — 18 unit tests
-- [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko) — 21 unit tests (handlers, switchyard client)
-- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + auto-incident detection (creates/resolves incidents from consecutive health check failures, `AUTO_INCIDENTS_ENABLED` env var) + clickable service links (separate `href` for user-facing URL vs health-check `url`) + 129 unit tests + 31 E2E tests
-- [apps/waybill/](./apps/waybill/): Infrastructure cost metering (customer billing via Dhanam) — 14 unit tests (handlers, collector)
-- [apps/docs-site/](./apps/docs-site/): Documentation (Docusaurus)
-- [apps/landing/](./apps/landing/): Landing page (Next.js)
-
-## Integrations
-
-- [Janua SSO](https://github.com/madfam-org/janua): auth.madfam.io — OIDC/RS256 JWT authentication
-- [Dhanam](https://github.com/madfam-org/dhanam): dhan.am — managed by ArgoCD
-- [Integration Docs](./docs/integrations/)
-
-## Deployment & Onboarding
-
-- [Deployment Tracking](./docs/guides/DEPLOYMENT_TRACKING.md): Lifecycle event timeline API
-- [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md): Self-service repo registration
-- [External Repo Deploy](./docs/guides/EXTERNAL_REPO_DEPLOY.md): Auto-deploy for dhanam/janua/client repos
-
-## Governance
-
-- [LICENSE](./LICENSE): AGPL-3.0 (full text)
-- [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md): Dual-licensing inquiry notice
-- [Self-Hosting Guide](./docs/guides/SELF_HOSTING.md): Full self-hosting docs (no capability restrictions under AGPL)
-
-## Optional
-
-- [CLI Reference](./docs/cli/): Command documentation
-- [Gap Analysis](./docs/production/GAP_ANALYSIS.md): Production readiness gaps
-- [Railway Migration Guide](./docs/guides/RAILWAY_MIGRATION_GUIDE.md)
-- [Vercel Migration Guide](./docs/guides/VERCEL_MIGRATION_GUIDE.md)
-- [Heroku Migration Guide](./docs/guides/HEROKU_MIGRATION_GUIDE.md)
-- [Longhorn Helm Values](./infra/helm/longhorn/)
-- [Golden Config Snapshots](./tests/golden/): Pre-commit validation baselines
-- [Scripts](./scripts/): Deployment and validation scripts
+These files are maintained by `internal-devops/scripts/sync-agent-docs.py`.
+If repo-specific long-form agent guidance is needed, put it in `AGENTS.md`,
+not `CLAUDE.md`.

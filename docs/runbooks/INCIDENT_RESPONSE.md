@@ -5,6 +5,14 @@ sidebar_position: 7
 tags: [operations, runbook, incident-response, on-call]
 ---
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 # Incident Response Runbook
 
 **Purpose:** Defines severity classifications, escalation paths, communication protocols, failure mode playbooks, and postmortem processes for production incidents on the Enclii platform.

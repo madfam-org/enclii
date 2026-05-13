@@ -5,6 +5,14 @@ sidebar_position: 6
 tags: [operations, runbook, cluster, remediation]
 ---
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 # Cluster Remediation Operations
 
 **Purpose:** Consolidates all pending cluster-side operations into a single executable runbook. These are operations that cannot be applied through GitOps alone and require direct cluster access.

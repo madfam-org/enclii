@@ -1,78 +1,16 @@
 # Enclii
 
-> Open source DevOps platform for deploying, scaling, and operating containerized
-> services with enterprise-grade security, GitOps automation, and zero vendor lock-in.
-> Go backend + Next.js frontend + ArgoCD GitOps + Cloudflare Tunnel zero-trust ingress.
+Compact LLM context index for this repository.
 
-Enclii is MADFAM's production DevOps platform running on a 3-node k3s cluster on Hetzner +
-Cloudflare. The control plane runs on Enclii itself. Authentication is handled by
-Janua SSO (OIDC/RS256 JWT). GitOps via ArgoCD App-of-Apps with 12 apps in
-`infra/argocd/apps/` (incl. 1 ApplicationSet for projects).
+## Read first
 
-## Core Documentation
+- `AGENTS.md` — canonical agent operating instructions.
+- `README.md` — human/product overview when present.
+- `ECOSYSTEM.md` — MADFAM ecosystem and Enclii deployment context when present.
+- `llms-full.txt` — full context map and durable operating contract.
 
-- [CLAUDE.md](./CLAUDE.md): Complete development guide — commands, architecture, debugging, key file locations
-- [AI_CONTEXT.md](./AI_CONTEXT.md): Agent directives, god files, secret management protocols
-- [SYSTEM_CONTEXT.md](./SYSTEM_CONTEXT.md): System architecture, K8s resources, tunnel routing, Operation Ratchet rules
+## Production operations
 
-## Architecture
-
-- [Architecture Overview](./docs/architecture/ARCHITECTURE.md)
-- [OpenAPI Spec](./docs/api/openapi.yaml): 107+ REST endpoints
-- [Infrastructure Anatomy](./docs/infrastructure/INFRA_ANATOMY.md): Full cluster audit
-- [GitOps](./docs/infrastructure/GITOPS.md): ArgoCD App-of-Apps configuration
-- [Storage](./docs/infrastructure/STORAGE.md): Longhorn CSI block storage
-- [Cloudflare Integration](./docs/infrastructure/CLOUDFLARE.md): Tunnel and DNS
-
-## Getting Started
-
-- [Quickstart](./docs/quickstart/)
-- [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md): Self-service repo registration
-- [Production Checklist](./docs/production/PRODUCTION_CHECKLIST.md): 95% complete
-- [Production Deployment Roadmap](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
-- [Service Spec Reference](./docs/reference/service-spec.md): enclii.yaml schema (domains auto-provisioned on push)
-- [Deployment Tracking](./docs/guides/DEPLOYMENT_TRACKING.md): Lifecycle event timeline API
-- [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md): Self-service repo registration with auto-provisioned NetworkPolicies and status page entries
-- [External Repo Deploy](./docs/guides/EXTERNAL_REPO_DEPLOY.md): Auto-deploy for dhanam/janua/client repos
-
-## Infrastructure
-
-- [ArgoCD Config](./infra/argocd/): Root application + 12 app definitions (incl. network-policies, vault, logging, backup)
-- [K8s Production Manifests](./infra/k8s/production/): Deployments, services, patches
-- [Cloudflare Tunnel Config](./infra/k8s/production/cloudflared-unified.yaml): ~54 ingress rules (managed via Cloudflare API; see expected-tunnel-config.json for authoritative route list)
-- [Terraform](./infra/terraform/): Infrastructure as code for Hetzner + Cloudflare
-
-## Integrations
-
-- [Janua SSO](https://github.com/madfam-org/janua): auth.madfam.io — OIDC/RS256 JWT authentication
-- [Dhanam](https://github.com/madfam-org/dhanam): dhan.am — managed by ArgoCD
-- [Integration Docs](./docs/integrations/)
-
-## Components
-
-- [apps/switchyard-api/](./apps/switchyard-api/): Control plane API (Go/Gin, port 4200)
-- [apps/switchyard-ui/](./apps/switchyard-ui/): Web dashboard (Next.js, port 4201)
-- [apps/admin-console/](./apps/admin-console/): Admin platform (Next.js, port 4203) — 109 unit tests (auth, RBAC, Cloudflare API, components)
-- [packages/cli/](./packages/cli/): CLI (`enclii` command, Go/Cobra)
-- [packages/sdk-go/](./packages/sdk-go/): Go SDK — API client (`pkg/client/`) and type definitions (`pkg/types/`) — 30 unit tests
-- [packages/shared-lib/](./packages/shared-lib/): Shared utilities (cn, formatDate, formatBytes) — 19 unit tests
-- [packages/ui-components/](./packages/ui-components/): Shared UI components (Button, Badge, Dialog, Table, etc.) — 18 unit tests
-- [apps/roundhouse/](./apps/roundhouse/): Build pipeline workers (Kaniko) — 21 unit tests (handlers, switchyard client)
-- [apps/status/](./apps/status/): Status page (port 4204) — real-time health checks with retry logic + 24h historical timeline (PostgreSQL-backed, adaptive 5-60 min windows based on viewport) + dark/light theme toggle + uptime API + incident management + auto-incident detection (creates/resolves incidents from consecutive health check failures, `AUTO_INCIDENTS_ENABLED` env var) + clickable service links (separate `href` for user-facing URL vs health-check `url`) + auto-scaled response time bars with configurable thresholds (`RESPONSE_TIME_THRESHOLDS` env var) + HTTP status code badges + 129 unit tests + 31 E2E tests
-
-## Governance
-
-- [LICENSE](./LICENSE): AGPL-3.0 (full text)
-- [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md): Dual-licensing inquiry notice
-- [Self-Hosting Guide](./docs/guides/SELF_HOSTING.md): Full self-hosting docs (no capability restrictions under AGPL)
-
-## Optional
-
-- [CLI Reference](./docs/cli/): Command documentation
-- [Gap Analysis](./docs/production/GAP_ANALYSIS.md): Production readiness gaps
-- [Railway Migration Guide](./docs/guides/RAILWAY_MIGRATION_GUIDE.md)
-- [Vercel Migration Guide](./docs/guides/VERCEL_MIGRATION_GUIDE.md)
-- [Heroku Migration Guide](./docs/guides/HEROKU_MIGRATION_GUIDE.md)
-- [Longhorn Helm Values](./infra/helm/longhorn/)
-- [Golden Config Snapshots](./tests/golden/): Pre-commit validation baselines
-- [Scripts](./scripts/): Deployment and validation scripts
+Routine production operations are Enclii-first. Use Enclii web, API, or CLI
+before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
+`docker exec`, or direct container access is bootstrap/break-glass only.

@@ -1,5 +1,13 @@
 # Disaster Recovery Runbook
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 **Cluster:** 3-node k3s (foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder])
 **RPO:** 24 hours (daily PostgreSQL backup to R2)
 **RTO:** 2 hours (manual rebuild)

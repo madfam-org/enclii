@@ -1,5 +1,13 @@
 # Bootstrap Authentication Strategy: Solving the Enclii ↔ Janua Chicken-and-Egg Problem
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 **Date:** November 21, 2025
 **Status:** PHASE C COMPLETE - Ready for Testing
 **Priority:** CRITICAL for Weeks 3-4 (Janua Integration)

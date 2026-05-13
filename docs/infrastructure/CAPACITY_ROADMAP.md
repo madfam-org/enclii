@@ -1,5 +1,13 @@
 # Capacity Roadmap — Production Cluster
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 > **Created**: 2026-03-13 | **Audit Baseline**: ~150 pods, 22 namespaces, 46 endpoints (37 operational)
 > **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp [EX44, control-plane] + foundry-worker-01 [AX41, worker] + foundry-builder-01 [builder])
 > **Last Updated**: 2026-04-08 — Control-plane migrated to foundry-cp (EX44, i5-13500, 128GB), foundry-core renamed to foundry-worker-01

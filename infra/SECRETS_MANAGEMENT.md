@@ -1,5 +1,13 @@
 # Secrets Management Guide
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 ## ⚠️ CRITICAL SECURITY NOTICE
 
 The secrets in `infra/k8s/base/secrets.dev.yaml` are **DEVELOPMENT ONLY** and must **NEVER** be used in production. Production uses `secrets.production.yaml` which contains `jwt-secrets` and `postgres-credentials` (pointing to the real database in the `data` namespace).

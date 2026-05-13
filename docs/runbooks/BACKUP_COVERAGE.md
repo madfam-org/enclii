@@ -1,5 +1,13 @@
 # Backup Coverage Report
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 **Last updated:** 2026-05-12
 **Coverage:** 10/10 for the active production database path plus staged
 CNPG HA backups. Legacy `postgres-backup` remains active until PgBouncer

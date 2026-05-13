@@ -1,5 +1,13 @@
 # Enclii
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 > **Deploy, scale, and operate — on infrastructure you own.**
 > *Open source DevOps platform with production-grade Kubernetes on Hetzner + Cloudflare.*
 
@@ -37,9 +45,12 @@ All services deploy via zero-touch onboarding — K8s manifests and CI workflows
 
 Enclii is the required control plane for MADFAM DevOps and provisioning:
 
+- Enclii web, API, and CLI are mandatory for routine production provisioning, deployment, observability, domains, secrets, provider operations, scaling, rollback, and remediation.
 - `enclii ops` replaces routine `kubectl`, ArgoCD, Longhorn, Kyverno, ExternalSecrets, Vault, and ARC manipulation.
 - `enclii providers` replaces routine `gh`, Cloudflare, Porkbun, and Hetzner manipulation.
-- Switchyard API is the agent-facing contract Selva and other agents should call; raw shell tools are break-glass only until the relevant adapter is implemented.
+- Switchyard API is the agent-facing contract Selva and other agents should call.
+- Raw `kubectl`, `helm`, SSH, provider CLIs/APIs, `docker exec`, and direct container access are allowed only for platform bootstrap or documented break-glass emergencies when Enclii is unavailable or lacks an implemented adapter.
+- Missing adapter gaps must be recorded and remediated in Enclii rather than normalized as routine operator procedure.
 
 ---
 
@@ -325,7 +336,7 @@ hcloud server create --name enclii-node-{1,2,3} --type cpx31
 # Configure Cloudflare Tunnel
 cloudflared tunnel create enclii-production
 
-# Deploy infrastructure
+# Bootstrap-only: first cluster/platform install before Enclii can manage itself.
 kubectl apply -k infra/k8s/production
 ```
 

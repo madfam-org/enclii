@@ -1,5 +1,13 @@
 # Cross-App Public Surfaces Audit — 2026-05-02
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 Read-only source + curl audit of four public surfaces:
 
 | Surface | Status | Findings | Headline |

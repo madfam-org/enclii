@@ -1,5 +1,13 @@
 # Change Management Policy
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 Formalizes the GitOps-based change management workflow for the Enclii platform.
 
 **Last reviewed:** 2026-02-01
@@ -11,9 +19,32 @@ Formalizes the GitOps-based change management workflow for the Enclii platform.
 ## Principles
 
 1. **Git is the source of truth.** All changes to infrastructure and application code flow through version-controlled repositories.
-2. **No manual changes in production.** ArgoCD reconciles desired state from Git; manual kubectl edits trigger drift alerts.
+2. **No manual changes in production.** ArgoCD reconciles desired state from Git; routine production operations must go through Enclii web, API, or CLI. Manual `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, or direct container changes trigger drift alerts and are allowed only for platform bootstrap or documented break-glass emergencies.
 3. **Every change is reviewed.** Pull requests with CI gates are required for all changes to protected branches.
 4. **Changes are reversible.** Canary deployments and automated rollback ensure rapid recovery.
+
+---
+
+## Enclii-First Operations
+
+All routine production provisioning, deployment, observability, domain, secret,
+provider, rollback, scaling, and remediation workflows must use Enclii.
+
+- Use `enclii deploy`, `enclii rollback`, `enclii logs`, `enclii observe`, and
+  `enclii ps` for service lifecycle and health.
+- Use `enclii domains`, `enclii junctions`, and `enclii providers` for DNS,
+  ingress, Cloudflare, Porkbun, GitHub, and Hetzner operations.
+- Use `enclii secrets`, Selva-approved secret tooling, and `enclii ops secrets`
+  for secret readiness, rotation, and reconciliation.
+- Use `enclii ops apps`, `enclii ops pods`, `enclii ops storage`,
+  `enclii ops policy`, and `enclii ops runners` for ArgoCD, Kubernetes,
+  Longhorn, Kyverno, and ARC workflows.
+
+Direct production access is permitted only when Enclii is unavailable, the
+operation is required to restore service, or the platform is being bootstrapped
+before Enclii can manage itself. Every break-glass use must record the actor,
+reason, target service/environment, commands executed, result, and follow-up
+adapter gap or incident link.
 
 ---
 
