@@ -60,5 +60,8 @@ images:
 # Labels are already defined in base manifests.
 
 # Production-specific annotations
+  - name: switchyard-ui
+    newName: ghcr.io/madfam-org/enclii/switchyard-ui
+    digest: sha256:e9a061abff516d6854b00f0081fbb67db73d14ab92059a48c89d33b86c7ce4cb
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
