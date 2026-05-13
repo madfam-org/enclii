@@ -127,7 +127,7 @@ ssh foundry-cp 'sudo cat /var/lib/rancher/k3s/server/node-token'
 
 # Install k3s agent (MUST match version v1.33.7+k3s3):
 curl -sfL https://get.k3s.io | \
-  K3S_URL=https://37.27.235.104:6443 \
+  K3S_URL=https://<CONTROL_PLANE_IP>:6443 \
   K3S_TOKEN=<token> \
   INSTALL_K3S_VERSION="v1.33.7+k3s3" sh -
 

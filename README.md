@@ -3,12 +3,12 @@
 > **Deploy, scale, and operate — on infrastructure you own.**
 > *Open source DevOps platform with production-grade Kubernetes on Hetzner + Cloudflare.*
 
-[![Production Readiness](https://img.shields.io/badge/production%20ready-95%25-brightgreen)](./docs/production/PRODUCTION_CHECKLIST.md)
+[![Production Readiness](https://img.shields.io/badge/status-production--running%20beta-yellowgreen)](./docs/production/PRODUCTION_CHECKLIST.md)
 [![Infrastructure](https://img.shields.io/badge/infrastructure-Hetzner%20%2B%20Cloudflare-blue)](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 [![Auth](https://img.shields.io/badge/auth-OIDC%20%2F%20Janua%20SSO-success)](./docs/production/PRODUCTION_READINESS_AUDIT.md)
 [![Cost](https://img.shields.io/badge/monthly%20cost-%2455-success)](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 
-**Status:** Beta (95% production-ready) | [Production Checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
+**Status:** Production-running beta | [Production Checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
 **Authentication:** OIDC via Janua SSO (RS256 JWT) - **Integrated**
 **Infrastructure:** Hetzner Dedicated + Cloudflare - **Running**
 
@@ -45,14 +45,14 @@ Enclii is the required control plane for MADFAM DevOps and provisioning:
 
 ## Key Features
 
-### 🏗️ Production-Ready Infrastructure
+### 🏗️ Production-Running Beta Infrastructure
 
-**2-Node Hetzner Cluster:**
+**Current Hetzner Topology:**
 
-| Node | Role | Hardware |
-|------|------|----------|
-| **The Sanctuary** | Production Workloads | Hetzner dedicated server |
-| **The Forge** | CI/CD Builder | Hetzner Cloud VPS |
+| Surface | Role | Hardware |
+|---------|------|----------|
+| **The Sanctuary** | Production workloads | Hetzner dedicated server |
+| **The Forge** | CI/CD builder capacity | Hetzner Cloud VPS |
 
 **Cost-Optimized Stack:**
 - **Cloudflare Tunnel** - Zero-trust ingress (replaces load balancers)
@@ -65,7 +65,7 @@ Enclii is the required control plane for MADFAM DevOps and provisioning:
 
 > **Infrastructure Audit (Jan 2026)**: Evaluated Ubicloud managed PostgreSQL and Redis Sentinel. **Decision: NOT NEEDED** for 99.5% SLA / 24-hour RPO. Sentinel manifests staged for future multi-node deployment.
 
-Self-hosted infrastructure is significantly cheaper than equivalent SaaS platforms.
+Self-hosted infrastructure is significantly cheaper than equivalent SaaS platforms, but the platform is still a production-running beta until the remaining blockers below are closed.
 
 [View infrastructure details →](./docs/production/PRODUCTION_DEPLOYMENT_ROADMAP.md)
 
@@ -184,7 +184,7 @@ enclii/
 
 ## Production Readiness
 
-### Current Status: 95% Ready (Beta)
+### Current Status: Production-Running Beta
 
 From [PRODUCTION_CHECKLIST.md](./docs/production/PRODUCTION_CHECKLIST.md):
 
@@ -207,9 +207,11 @@ From [PRODUCTION_CHECKLIST.md](./docs/production/PRODUCTION_CHECKLIST.md):
 - ✅ Container registry push (ghcr.io)
 - ✅ Real deployments (not simulated)
 
-**Remaining (5%):**
-- ⚠️ Load testing validation
-- ⚠️ Final security audit
+**Remaining blockers before full production-ready status:**
+- ⚠️ Load testing validation against expected production traffic and failure modes
+- ⚠️ Final security audit with documented remediation status
+- ⚠️ Documented backup restore drill for PostgreSQL, Redis, and critical platform state
+- ⚠️ HA/multi-node expansion plan and failover runbook for components that still depend on single-instance capacity
 
 [View production checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
 

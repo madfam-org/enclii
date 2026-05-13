@@ -152,8 +152,8 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-cp** | 37.27.235.104 | control-plane, master | Hetzner EX44 (i5-13500, 128GB, 2x512GB NVMe Gen4) | v1.33.7+k3s3 | — | — | ✅ Ready | new |
-| **foundry-worker-01** | 95.217.198.239 | worker | Hetzner AX41-NVMe (Ryzen 5 3600, 64GB) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
+| **foundry-cp** | <CONTROL_PLANE_IP> | control-plane, master | Hetzner EX44 (i5-13500, 128GB, 2x512GB NVMe Gen4) | v1.33.7+k3s3 | — | — | ✅ Ready | new |
+| **foundry-worker-01** | <WORKER_NODE_IP> | worker | Hetzner AX41-NVMe (Ryzen 5 3600, 64GB) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
 | **foundry-builder-01** | <WORKER_NODE_IP> | worker (role=builder) | VPS ("The Forge") | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)

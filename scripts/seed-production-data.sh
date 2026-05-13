@@ -66,7 +66,7 @@ else
     "name": "foundry-cp",
     "slug": "foundry-cp",
     "type": "k3s",
-    "endpoint": "https://37.27.235.104:6443",
+    "endpoint": "https://<CONTROL_PLANE_IP>:6443",
     "region": "eu-central",
     "status": "ready",
     "metadata": {"k3s_version":"v1.33.7+k3s3","role":"control-plane","node_count":3}

@@ -5,8 +5,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: development
+      dockerfile: apps/switchyard-api/Dockerfile
     ports:
       - "4200:4200"
       - "9091:9091" # gRPC
@@ -35,9 +34,8 @@ services:
   # Enclii UI (Next.js) - port 4201 per PORT_ALLOCATION.md (Enclii Web +01)
   ui:
     build:
-      context: ./ui
-      dockerfile: Dockerfile
-      target: development
+      context: .
+      dockerfile: apps/switchyard-ui/Dockerfile
     ports:
       - "4201:4201"
     environment:
@@ -47,7 +45,7 @@ services:
       - NEXT_PUBLIC_JANUA_URL=http://localhost:4100
       - NEXT_PUBLIC_JANUA_CLIENT_ID=enclii-ui
     volumes:
-      - ./ui:/app
+      - ./apps/switchyard-ui:/repo/apps/switchyard-ui
       - /app/node_modules
     depends_on:
       - api
@@ -58,7 +56,8 @@ services:
   build-worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: apps/roundhouse/Dockerfile
+      target: worker
     environment:
       - WORKER_TYPE=build
       - DATABASE_URL=postgresql://enclii:enclii_dev@postgres:5432/enclii_dev

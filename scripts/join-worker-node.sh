@@ -17,7 +17,7 @@
 #     K3S_TOKEN=<token> bash
 #
 #   # Or with explicit variables:
-#   K3S_TOKEN=<token> K3S_URL=https://37.27.235.104:6443 HOSTNAME=foundry-node-02 bash join-worker-node.sh
+#   K3S_TOKEN=<token> K3S_URL=https://<CONTROL_PLANE_IP>:6443 HOSTNAME=foundry-node-02 bash join-worker-node.sh
 #
 
 set -euo pipefail
@@ -27,7 +27,7 @@ set -euo pipefail
 # ═══════════════════════════════════════════════════
 
 K3S_VERSION="${K3S_VERSION:-v1.33.7+k3s3}"
-K3S_URL="${K3S_URL:-https://37.27.235.104:6443}"
+K3S_URL="${K3S_URL:-https://<CONTROL_PLANE_IP>:6443}"
 HOSTNAME="${HOSTNAME:-foundry-node-02}"
 NODE_LABEL="${NODE_LABEL:-node-role=worker}"
 
@@ -50,7 +50,7 @@ if [[ -z "${K3S_TOKEN:-}" ]]; then
     err "K3S_TOKEN is required."
     echo ""
     echo "Retrieve it from the control plane:"
-    echo "  ssh solarpunk@37.27.235.104 'sudo cat /var/lib/rancher/k3s/server/node-token'"
+    echo "  ssh solarpunk@<CONTROL_PLANE_IP> 'sudo cat /var/lib/rancher/k3s/server/node-token'"
     echo ""
     echo "Then run:"
     echo "  K3S_TOKEN=<token> bash $(basename "$0")"

@@ -1,0 +1,15 @@
+name: Public hygiene
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  public-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public repository hygiene
+        run: bash ./scripts/public-hygiene-check.sh

@@ -17,7 +17,7 @@ tags: [operations, runbook, k3s, upgrade, cluster]
 
 | Node | Role | Notes |
 |------|------|-------|
-| foundry-cp | Server (control plane) | EX44, i5-13500, 128GB. K3s API: 37.27.235.104:6443 |
+| foundry-cp | Server (control plane) | EX44, i5-13500, 128GB. K3s API: <CONTROL_PLANE_IP>:6443 |
 | foundry-worker-01 | Agent (worker) | AX41, Ryzen 5 3600, 64GB. Runs platform workloads + Longhorn storage |
 | foundry-builder-01 | Agent (builder) | VPS, 2 vCPU, 4GB. Taint `builder=true:NoSchedule` -- runs only ARC GitHub Actions runners |
 

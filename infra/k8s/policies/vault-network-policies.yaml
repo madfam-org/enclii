@@ -169,7 +169,7 @@ spec:
         - ipBlock:
             cidr: 10.43.0.1/32
         - ipBlock:
-            cidr: 37.27.235.104/32
+            cidr: <CONTROL_PLANE_IP>/32
       ports:
         - protocol: TCP
           port: 443

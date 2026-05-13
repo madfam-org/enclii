@@ -1,6 +1,6 @@
-.PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-reconcilers install-cli
+.PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-roundhouse install-cli
 .PHONY: test test-integration test-coverage test-benchmark test-all check-drift lint
-.PHONY: run-switchyard run-ui run-reconcilers run-all
+.PHONY: run-switchyard run-ui run-roundhouse-worker run-all
 .PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check clean
 .PHONY: precommit e2e
 
@@ -46,7 +46,7 @@ install-hooks:
 	@echo "✅ All hooks installed"
 
 # Build all components
-build-all: build-api build-cli build-ui build-reconcilers
+build-all: build-api build-cli build-ui build-roundhouse
 
 build-api:
 	@echo "🏗️ Building Switchyard API..."
@@ -69,9 +69,10 @@ build-ui:
 	@echo "🏗️ Building UI..."
 	cd apps/switchyard-ui && pnpm run build
 
-build-reconcilers:
-	@echo "🏗️ Building Reconcilers..."
-	cd apps/reconcilers && go build -o ../../bin/reconcilers ./cmd/reconcilers
+build-roundhouse:
+	@echo "🏗️ Building Roundhouse..."
+	cd apps/roundhouse && go build -o ../../bin/roundhouse-api ./cmd/api
+	cd apps/roundhouse && go build -o ../../bin/roundhouse-worker ./cmd/worker
 
 # Testing
 test:
@@ -125,9 +126,9 @@ run-ui: build-ui
 	@echo "🌐 Starting UI on :3000..."
 	cd apps/switchyard-ui && pnpm run dev
 
-run-reconcilers: build-reconcilers
-	@echo "🔄 Starting Reconcilers..."
-	./bin/reconcilers
+run-roundhouse-worker: build-roundhouse
+	@echo "🔄 Starting Roundhouse worker..."
+	./bin/roundhouse-worker
 
 # Kind cluster management
 kind-up:
