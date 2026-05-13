@@ -36,6 +36,7 @@ export function useTier() {
   const tier: FoundryTier = user?.foundry_tier || null;
   const config: TierConfig = useMemo(() => getTierConfig(tier), [tier]);
   const isPaid = isPaidTier(tier);
+  const isAdmin = Boolean(user?.roles?.includes('admin') || user?.roles?.includes('superadmin'));
 
   /**
    * Check if an action is allowed and show upgrade modal if not
@@ -46,7 +47,7 @@ export function useTier() {
     context?: { currentProjectCount?: number; currentServiceCount?: number }
   ): boolean => {
     // Admins bypass all limits
-    if (user?.roles?.includes('admin') || user?.roles?.includes('superadmin')) {
+    if (isAdmin) {
       return true;
     }
 
@@ -92,7 +93,7 @@ export function useTier() {
     }
 
     return true;
-  }, [config, tier]);
+  }, [config, isAdmin, tier]);
 
   /**
    * Get the upgrade message for the current blocked action
