@@ -50,6 +50,16 @@ spec:
     ports:
     - protocol: TCP
       port: 6379
+  # Allow Switchyard API to enqueue builds to Roundhouse API. Without this,
+  # BuildMode=roundhouse silently falls back to in-process Docker builds in
+  # the API pod, which fail in production because Docker is not available.
+  - to:
+    - podSelector:
+        matchLabels:
+          app: roundhouse-api
+    ports:
+    - protocol: TCP
+      port: 8080
   # Allow access to Kubernetes API (for reconcilers)
   - to: []
     ports:
@@ -57,6 +67,32 @@ spec:
       port: 443
     - protocol: TCP
       port: 6443
+---
+# Additive egress policy for Switchyard API -> Roundhouse API.
+# Kept separate from switchyard-api-egress because that policy is also managed
+# by service reconciliation and live patches can be overwritten.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: switchyard-api-roundhouse-egress
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: switchyard-api
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: roundhouse-api
+    ports:
+    - protocol: TCP
+      port: 8080
 ---
 # Allow ingress traffic to Switchyard API
 apiVersion: networking.k8s.io/v1
