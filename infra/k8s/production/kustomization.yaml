@@ -62,6 +62,6 @@ images:
 # Production-specific annotations
   - name: roundhouse
     newName: ghcr.io/madfam-org/roundhouse
-    digest: sha256:a6d6b5230d01ad9fa5c3436d2fef4a0120a723e87d23c486e03c421d75038631
+    digest: sha256:974d8130421125ab386f0a95593e6208b9d82d33015417fbc48074e56583347a
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
