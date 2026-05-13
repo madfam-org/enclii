@@ -60,5 +60,8 @@ images:
 # Labels are already defined in base manifests.
 
 # Production-specific annotations
+  - name: roundhouse
+    newName: ghcr.io/madfam-org/roundhouse
+    digest: sha256:cce4e685d9eab48ad732f46c5c4b747f3d0a14143d867e616aa64e1f22045876
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
