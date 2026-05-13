@@ -62,7 +62,7 @@ images:
 # Production-specific annotations
   - name: roundhouse
     newName: ghcr.io/madfam-org/roundhouse
-    digest: sha256:f4f74fa0c5c4cc18ec863774b436d03b06062238f957cd5ace001e1a89a83ae0
+    digest: sha256:cb339ad3271d15a1ce929f2c2c2f3bba8c6a161cc33fd4d7d9f92df94453cd4c
   - name: switchyard-api
     newName: ghcr.io/madfam-org/enclii/switchyard-api
     digest: sha256:955509e7167cfed1515917fff46e1fe71d5aa1ec78abc5439d3d5e7bea1df89c
