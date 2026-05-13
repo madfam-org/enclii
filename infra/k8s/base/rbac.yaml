@@ -9,7 +9,8 @@ metadata:
     app.kubernetes.io/part-of: enclii
 ---
 # RBAC permissions tightened based on actual code usage analysis:
-# - Removed: configmaps, secrets (not used in switchyard-api)
+# - ConfigMaps: read-only cluster inventory for domain truth reconciliation
+# - Secrets: lifecycle access for deployment env var injection
 # - Removed: replicasets write access (only list/watch needed for rollback)
 # - Added: persistentvolumeclaims (used by volume management)
 # - Added: namespace delete (used by webhook_handlers.go)
@@ -38,6 +39,10 @@ rules:
 - apiGroups: [""]
   resources: ["services"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+# ConfigMaps: read-only hostname inventory for domain truth reconciliation
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
 # Pods: read-only + logs for monitoring and debugging
 - apiGroups: [""]
   resources: ["pods"]

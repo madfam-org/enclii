@@ -9,11 +9,13 @@ Last updated: 2026-05-13
 Observed production evidence on 2026-05-13:
 
 - `GET /v1/domains` returned 8 domain rows.
-- `GET /v1/domains/stats` returned 0 verified domains and 0 TLS-enabled domains.
+- `GET /v1/domains/stats` returned 8 verified domains and 0 TLS-enabled domains.
 - Coverage metadata reported 3 of 25 projects represented.
-- The oldest unverified row was about 17.5 days old.
-- Kubernetes/Cloudflare tunnel config exposed about 34 route-like hostnames.
-- Public HTTPS checks for the 8 API rows completed valid TLS handshakes, even though persisted DB verifier fields still said `verified=false` and `tls_enabled=false`.
+- The oldest unverified row was absent (`oldest_unverified_age_seconds=-1`).
+- After restoring ConfigMap inventory RBAC, Kubernetes/Cloudflare tunnel config exposed 354 routed hostnames.
+- `GET /v1/domains/reconcile` matched all 8 DB domains, found 0 DB-only domains, and found 346 route-only hostnames.
+- Inventory warnings were eliminated; inventory remains open because the 346 route-only hostnames are not yet registered or explicitly excluded.
+- Public HTTPS checks for the 8 API rows completed valid TLS handshakes, even though the persisted TLS-enabled stat still reported `0`.
 
 ## What changed in the first remediation wave
 
@@ -48,6 +50,13 @@ The `/domains` UI fetches this endpoint opportunistically. When drift exists,
 operators see a warning banner with matched, DB-only, and route-only counts.
 If the caller is not allowed to access the admin-only endpoint, the table still
 loads and simply omits reconciliation metadata.
+
+The second remediation wave closes infrastructure blockers that prevented the
+truth surface from converging:
+
+- Switchyard API RBAC includes read-only cluster ConfigMap access for hostname inventory used by reconciliation.
+- The durable `kaniko-builds-runasroot` PolicyException matches both Kaniko Jobs and Pods so Kyverno autogen rules do not block Roundhouse build Job creation.
+- The emergency deploy workflow carries image digests from the successful build matrix through artifacts and uses GHCR manifest lookup only as a retrying fallback.
 
 ## Truth model
 
@@ -101,7 +110,7 @@ The domains page depends on the Switchyard API/UI release pipeline. Before retry
 - Roundhouse build Jobs must not set `securityContext.capabilities.drop: ["ALL"]`; Kaniko needs default in-container capabilities such as `CAP_CHOWN` to unpack OCI layers. Enforce this with the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot` and `restrict-capabilities`, while keeping the container host-unprivileged.
 - Roundhouse callbacks must use the Switchyard Kubernetes Service URL `http://switchyard-api`, not `http://switchyard-api:4200`; the Service exposes port `80` and forwards to container port `4200`.
 - Keep the callback path durable with `roundhouse-switchyard-callback-egress` and `switchyard-api-roundhouse-callback-ingress` so service reconciliation cannot remove it.
-- Kaniko build Pods intentionally require the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot` and `restrict-capabilities`; they must still set `privileged: false`, `allowPrivilegeEscalation: false`, and `seccompProfile: RuntimeDefault`.
+- Kaniko build Jobs and Pods intentionally require the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot` and `restrict-capabilities`; they must still set `privileged: false`, `allowPrivilegeEscalation: false`, and `seccompProfile: RuntimeDefault`.
 - If bootstrapping from an older Roundhouse worker image, use only a short-lived PolicyException scoped to `enclii-builds` `build-*` Jobs/Pods for the missing fields, deploy the corrected Roundhouse image, then remove the temporary exception.
 - `enclii-builds` must contain `ghcr-credentials` for Kaniko registry auth and `git-credentials` when private Git fetches are required. Do not hand-copy long term; reconcile these from the platform secret source of truth before treating the build pipeline as fully stable.
 - Monorepo Dockerfiles built by Roundhouse must copy local `replace ../../packages/...` modules into the paths expected by `go.mod`; otherwise Kaniko can clone the repo and still fail at `go mod download`.

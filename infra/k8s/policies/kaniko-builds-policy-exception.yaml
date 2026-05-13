@@ -1,5 +1,5 @@
 ---
-# Kyverno PolicyException for Roundhouse Kaniko build Pods.
+# Kyverno PolicyException for Roundhouse Kaniko build Jobs and Pods.
 #
 # Kaniko needs in-container UID 0 to unpack OCI layer ownership and permission
 # metadata. The generated Pods remain unprivileged: privileged=false,
@@ -13,8 +13,8 @@ metadata:
   namespace: enclii-builds
   annotations:
     policies.kyverno.io/description: >-
-      Roundhouse Kaniko build Pods must run as UID 0 inside the container to
-      unpack OCI image layers while remaining host-unprivileged.
+      Roundhouse Kaniko build Jobs and Pods must run as UID 0 inside the
+      container to unpack OCI image layers while remaining host-unprivileged.
     policies.kyverno.io/severity: medium
 spec:
   exceptions:
@@ -29,6 +29,7 @@ spec:
     any:
       - resources:
           kinds:
+            - Job
             - Pod
           namespaces:
             - enclii-builds

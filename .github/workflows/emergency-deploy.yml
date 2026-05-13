@@ -127,6 +127,25 @@ jobs:
         run: |
           cosign sign --yes ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.docker-build.outputs.digest }}
 
+      - name: Emit digest artifact
+        run: |
+          set -euo pipefail
+          mkdir -p digests
+          printf '%s|%s|%s|%s|%s\n' \
+            "${{ matrix.name }}" \
+            "${{ matrix.image }}" \
+            "${{ matrix.kustomization }}" \
+            "${{ matrix.kustomize_image }}" \
+            "${{ steps.docker-build.outputs.digest }}" \
+            > "digests/digest-${{ matrix.name }}.txt"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: digests/digest-${{ matrix.name }}.txt
+          retention-days: 1
+
     outputs:
       image: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
 
@@ -162,29 +181,60 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Download digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: /tmp/digests
+          merge-multiple: true
+
       - name: Update image digests from services.json
         run: |
           set -euo pipefail
           UPDATED=0
           MODIFIED_FILES=""
           MATRIX='${{ needs.resolve-matrix.outputs.matrix }}'
+          declare -A ARTIFACT_DIGESTS=()
 
-          # NOTE: digest resolution uses `docker buildx imagetools inspect`
-          # rather than `docker manifest inspect | jq -r '.digest'`. The
-          # manifest-inspect JSON has no top-level `.digest` field (it's
-          # either a manifest list with `.manifests[].digest` or a single
-          # manifest with no self-digest), so the previous code returned
-          # "null" → empty DIGEST → no-op `kustomize edit` → silent skip.
-          # buildx imagetools authenticates via the docker login above and
-          # prints `Digest: sha256:…` for both single-arch and index images.
+          shopt -s nullglob
+          for artifact in /tmp/digests/digest-*.txt; do
+            IFS='|' read -r ARTIFACT_NAME ARTIFACT_IMAGE ARTIFACT_KUSTOMIZATION ARTIFACT_KUSTOMIZE_IMAGE ARTIFACT_DIGEST < "$artifact"
+            if [ -n "$ARTIFACT_NAME" ] && [ -n "$ARTIFACT_DIGEST" ]; then
+              ARTIFACT_DIGESTS["$ARTIFACT_NAME"]="$ARTIFACT_IMAGE|$ARTIFACT_KUSTOMIZATION|$ARTIFACT_KUSTOMIZE_IMAGE|$ARTIFACT_DIGEST"
+            fi
+          done
+
+          # Prefer the digest emitted by docker/build-push-action in the
+          # parallel build job. GHCR lookup remains as a guarded fallback for
+          # artifact transport failures or older runs.
           while IFS= read -r line; do
             NAME=$(echo "$line" | jq -r '.name')
             IMAGE=$(echo "$line" | jq -r '.image')
             KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
             KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
 
+            DIGEST=""
+            if [ -n "${ARTIFACT_DIGESTS[$NAME]:-}" ]; then
+              IFS='|' read -r IMAGE KUSTOMIZATION KUSTOMIZE_IMAGE DIGEST <<< "${ARTIFACT_DIGESTS[$NAME]}"
+              echo "Resolved ${NAME} digest from build artifact"
+            fi
+
             IMAGE_TAG="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
-            DIGEST=$(docker buildx imagetools inspect "$IMAGE_TAG" | awk '/^Digest:/{print $2; exit}')
+            if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+              echo "Digest artifact missing for ${NAME}; falling back to GHCR manifest lookup"
+              for attempt in 1 2 3 4 5; do
+                DIGEST=$(docker buildx imagetools inspect "$IMAGE_TAG" | awk '/^Digest:/{print $2; exit}' || true)
+                if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
+                  break
+                fi
+                echo "Digest lookup attempt ${attempt} failed for ${IMAGE_TAG}; retrying"
+                sleep 15
+              done
+            fi
+
             if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
               echo "::error::Failed to resolve digest for $IMAGE_TAG"
               exit 1
