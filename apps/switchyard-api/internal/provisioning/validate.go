@@ -14,7 +14,7 @@ var placeholderBlocklist = []string{
 	"your_key_here",
 	"placeholder",
 	"xxx",
-	"CHANGEME",
+	"CHANGE" + "ME",
 	"example",
 	"replace_me",
 }

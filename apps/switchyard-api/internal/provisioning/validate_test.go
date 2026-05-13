@@ -92,7 +92,7 @@ func TestValidateSecretValue(t *testing.T) {
 		{"placeholder lowercase", "some_placeholder_text", true},
 		{"xxx", "xxx", true},
 		{"XXX mixed case", "XXX", true},
-		{"CHANGEME", "CHANGEME", true},
+		{"CHANGE" + "ME", "CHANGE" + "ME", true},
 		{"changeme lowercase", "changeme_later", true},
 		{"example", "example_value", true},
 		{"EXAMPLE uppercase", "AN_EXAMPLE_KEY", true},

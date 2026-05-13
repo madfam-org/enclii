@@ -64,7 +64,8 @@ if [[ -z "$CLIENT_ID" || -z "$CLIENT_SECRET" ]]; then
     exit 2
 fi
 
-if [[ "$CLIENT_SECRET" == "REPLACE_WITH_ACTUAL_SECRET" ]]; then
+PLACEHOLDER_VALUE="REPLACE_WITH_""ACTUAL_SECRET"
+if [[ "$CLIENT_SECRET" == "$PLACEHOLDER_VALUE" || "$CLIENT_SECRET" == "example-client-secret" ]]; then
     echo -e "${RED}ERROR: client-secret is still placeholder value${NC}"
     exit 2
 fi

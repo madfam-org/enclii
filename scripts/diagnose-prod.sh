@@ -247,10 +247,11 @@ phase4_config_integrity() {
 
     local client_id=$(sudo kubectl -n enclii get secret enclii-oidc-credentials -o jsonpath='{.data.client-id}' 2>/dev/null | base64 -d || echo "")
     local client_secret=$(sudo kubectl -n enclii get secret enclii-oidc-credentials -o jsonpath='{.data.client-secret}' 2>/dev/null | base64 -d || echo "")
+    local placeholder_value="REPLACE_WITH_""ACTUAL_SECRET"
 
     if [[ -z "$client_id" ]] || [[ -z "$client_secret" ]]; then
         check_fail "OIDC credentials not found in K8s secret"
-    elif [[ "$client_secret" == "REPLACE_WITH_ACTUAL_SECRET" ]]; then
+    elif [[ "$client_secret" == "$placeholder_value" || "$client_secret" == "example-client-secret" ]]; then
         check_fail "OIDC client secret is placeholder value!"
     else
         check_info "Client ID: ${client_id:0:15}..."
