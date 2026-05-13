@@ -121,6 +121,8 @@ export interface DomainReconcileSummary {
   matched: number;
   db_only: number;
   route_only: number;
+  actionable_route_only?: number;
+  excluded_route_only?: number;
   drift_detected: boolean;
   inventory_closed: boolean;
 }
@@ -138,6 +140,10 @@ export interface DomainReconcileItem {
   project_slug?: string;
   verified?: boolean;
   tls_enabled?: boolean;
+  classification?: string;
+  excluded?: boolean;
+  exclusion_reason?: string;
+  actionable?: boolean;
 }
 
 export interface DomainReconcileResponse {
@@ -149,6 +155,26 @@ export interface DomainReconcileResponse {
   matched: DomainReconcileItem[];
   db_only: DomainReconcileItem[];
   route_only: DomainReconcileItem[];
+  actionable_route_only?: DomainReconcileItem[];
+  excluded_route_only?: DomainReconcileItem[];
+}
+
+export interface DomainInventoryExclusion {
+  id?: string;
+  hostname_pattern: string;
+  source: string;
+  route_target: string;
+  classification: string;
+  reason: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DomainInventoryExclusionsResponse {
+  generated_at: string;
+  warnings?: string[];
+  exclusions: DomainInventoryExclusion[];
 }
 
 export interface DomainStats {

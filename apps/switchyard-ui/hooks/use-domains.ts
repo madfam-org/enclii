@@ -7,6 +7,8 @@ import { usePolling } from '@/hooks/use-polling';
 import type {
   Domain,
   DomainCoverage,
+  DomainInventoryExclusionsResponse,
+  DomainInventoryExclusion,
   DomainReconcileResponse,
   DomainsListResponse,
   DomainStats,
@@ -16,6 +18,7 @@ interface UseDomainsResult {
   domains: Domain[];
   stats: DomainStats | null;
   reconcile: DomainReconcileResponse | null;
+  exclusions: DomainInventoryExclusion[] | null;
   /**
    * Coverage metadata returned by /v1/domains, or null when the backend
    * predates the field (older API builds). The page uses this to render
@@ -55,6 +58,7 @@ export function useDomains(limit = 200): UseDomainsResult {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [stats, setStats] = useState<DomainStats | null>(null);
   const [reconcile, setReconcile] = useState<DomainReconcileResponse | null>(null);
+  const [exclusions, setExclusions] = useState<DomainInventoryExclusion[] | null>(null);
   const [coverage, setCoverage] = useState<DomainCoverage | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,14 +70,15 @@ export function useDomains(limit = 200): UseDomainsResult {
     setRefreshing(true);
     try {
       // Pull a generous page so the client-side filter/sort works without
-      // round-tripping. 200 covers the current ecosystem (~50 domains)
-      // ~4x over and still fits well inside a typical JSON budget.
+      // round-tripping. The backend accepts up to 500; 200 covers the
+      // current ecosystem several times over without hiding rows behind the
+      // previous API cap fallback.
       const params = new URLSearchParams({
         limit: limit.toString(),
         offset: '0',
       });
 
-      const [list, statsResp, reconcileResp] = await Promise.all([
+      const [list, statsResp, reconcileResp, exclusionsResp] = await Promise.all([
         apiGet<DomainsListResponse>(`/v1/domains?${params.toString()}`),
         apiGet<DomainStats>('/v1/domains/stats').catch((e) => {
           // Stats endpoint is auxiliary; don't fail the whole hook over it.
@@ -86,11 +91,19 @@ export function useDomains(limit = 200): UseDomainsResult {
           console.warn('Failed to fetch domain reconciliation:', e);
           return null;
         }),
+        apiGet<DomainInventoryExclusionsResponse>('/v1/domains/exclusions').catch((e) => {
+          // Admin-only auxiliary endpoint; non-admin users should still get
+          // the domain table and route drift warning without exclusion registry
+          // details.
+          console.warn('Failed to fetch domain inventory exclusions:', e);
+          return null;
+        }),
       ]);
 
       setDomains(list?.domains ?? []);
       setStats(statsResp);
       setReconcile(reconcileResp);
+      setExclusions(exclusionsResp?.exclusions ?? null);
       // Coverage is optional — older API builds won't ship it. Keep the
       // null sentinel so the UI suppresses banners rather than showing
       // misleading defaults like "0 of 0 projects covered".
@@ -134,6 +147,7 @@ export function useDomains(limit = 200): UseDomainsResult {
     domains,
     stats,
     reconcile,
+    exclusions,
     coverage,
     loading,
     refreshing,

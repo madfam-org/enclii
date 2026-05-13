@@ -627,6 +627,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Global Domains (cross-service domain management)
 			protected.GET("/domains", h.GetAllDomains)
 			protected.GET("/domains/stats", h.GetDomainStats)
+			protected.GET("/domains/exclusions", h.auth.RequireRole(string(types.RoleAdmin)), h.ListDomainInventoryExclusions)
 			protected.GET("/domains/reconcile", h.auth.RequireRole(string(types.RoleAdmin)), h.ReconcileDomains)
 			protected.POST("/domains/sync", h.auth.RequireRole(string(types.RoleAdmin)), h.SyncDomainsFromCloudflare)
 			protected.POST("/domains/:domain_id/sync", h.auth.RequireRole(string(types.RoleDeveloper)), h.SyncDomainFromCloudflare)

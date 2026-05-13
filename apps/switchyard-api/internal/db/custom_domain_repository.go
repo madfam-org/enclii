@@ -23,13 +23,97 @@ func NewCustomDomainRepositoryWithTx(tx DBTX) *CustomDomainRepository {
 	return &CustomDomainRepository{db: tx}
 }
 
+const customDomainSelectColumns = `
+	id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer,
+	created_at, updated_at, verified_at, cloudflare_tunnel_id, is_platform_domain,
+	zero_trust_enabled, access_policy_id, tls_provider, status, dns_cname
+`
+
+const customDomainAliasedColumns = `
+	cd.id, cd.service_id, cd.environment_id, cd.domain, cd.verified, cd.tls_enabled, cd.tls_issuer,
+	cd.created_at, cd.updated_at, cd.verified_at, cd.cloudflare_tunnel_id, cd.is_platform_domain,
+	cd.zero_trust_enabled, cd.access_policy_id, cd.tls_provider, cd.status, cd.dns_cname
+`
+
+type customDomainScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func normalizeCustomDomainDefaults(domain *types.CustomDomain) {
+	if domain.TLSProvider == "" {
+		domain.TLSProvider = "cert-manager"
+	}
+	if domain.Status == "" {
+		domain.Status = "pending"
+	}
+}
+
+func scanCustomDomain(row customDomainScanner, extraDest ...interface{}) (*types.CustomDomain, error) {
+	var domain types.CustomDomain
+	var tlsIssuer sql.NullString
+	var cloudflareTunnelID sql.NullString
+	var accessPolicyID sql.NullString
+	var tlsProvider sql.NullString
+	var dnsCNAME sql.NullString
+
+	dest := []interface{}{
+		&domain.ID,
+		&domain.ServiceID,
+		&domain.EnvironmentID,
+		&domain.Domain,
+		&domain.Verified,
+		&domain.TLSEnabled,
+		&tlsIssuer,
+		&domain.CreatedAt,
+		&domain.UpdatedAt,
+		&domain.VerifiedAt,
+		&cloudflareTunnelID,
+		&domain.IsPlatformDomain,
+		&domain.ZeroTrustEnabled,
+		&accessPolicyID,
+		&tlsProvider,
+		&domain.Status,
+		&dnsCNAME,
+	}
+	dest = append(dest, extraDest...)
+
+	if err := row.Scan(dest...); err != nil {
+		return nil, err
+	}
+
+	if tlsIssuer.Valid {
+		domain.TLSIssuer = tlsIssuer.String
+	}
+	if cloudflareTunnelID.Valid && cloudflareTunnelID.String != "" {
+		parsed, err := uuid.Parse(cloudflareTunnelID.String)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cloudflare_tunnel_id %q: %w", cloudflareTunnelID.String, err)
+		}
+		domain.CloudflareTunnelID = &parsed
+	}
+	if accessPolicyID.Valid {
+		domain.AccessPolicyID = accessPolicyID.String
+	}
+	if tlsProvider.Valid {
+		domain.TLSProvider = tlsProvider.String
+	}
+	if dnsCNAME.Valid {
+		domain.DNSCNAME = dnsCNAME.String
+	}
+
+	return &domain, nil
+}
+
 // Create adds a new custom domain
 func (r *CustomDomainRepository) Create(ctx context.Context, domain *types.CustomDomain) error {
+	normalizeCustomDomainDefaults(domain)
+
 	query := `
 		INSERT INTO custom_domains (
 			id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer,
-			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+			verified_at, cloudflare_tunnel_id, is_platform_domain, zero_trust_enabled,
+			access_policy_id, tls_provider, status, dns_cname, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
 		RETURNING id, created_at, updated_at
 	`
 
@@ -45,6 +129,14 @@ func (r *CustomDomainRepository) Create(ctx context.Context, domain *types.Custo
 		domain.Verified,
 		domain.TLSEnabled,
 		domain.TLSIssuer,
+		domain.VerifiedAt,
+		domain.CloudflareTunnelID,
+		domain.IsPlatformDomain,
+		domain.ZeroTrustEnabled,
+		domain.AccessPolicyID,
+		domain.TLSProvider,
+		domain.Status,
+		domain.DNSCNAME,
 	).Scan(&domain.ID, &domain.CreatedAt, &domain.UpdatedAt)
 
 	if err != nil {
@@ -56,27 +148,9 @@ func (r *CustomDomainRepository) Create(ctx context.Context, domain *types.Custo
 
 // GetByID retrieves a custom domain by ID
 func (r *CustomDomainRepository) GetByID(ctx context.Context, id string) (*types.CustomDomain, error) {
-	query := `
-		SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer,
-		       created_at, updated_at, verified_at
-		FROM custom_domains
-		WHERE id = $1
-	`
+	query := "SELECT " + customDomainSelectColumns + " FROM custom_domains WHERE id = $1"
 
-	domain := &types.CustomDomain{}
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&domain.ID,
-		&domain.ServiceID,
-		&domain.EnvironmentID,
-		&domain.Domain,
-		&domain.Verified,
-		&domain.TLSEnabled,
-		&domain.TLSIssuer,
-		&domain.CreatedAt,
-		&domain.UpdatedAt,
-		&domain.VerifiedAt,
-	)
-
+	domain, err := scanCustomDomain(r.db.QueryRowContext(ctx, query, id))
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("custom domain not found: %s", id)
 	}
@@ -89,13 +163,7 @@ func (r *CustomDomainRepository) GetByID(ctx context.Context, id string) (*types
 
 // GetByServiceID retrieves all custom domains for a service
 func (r *CustomDomainRepository) GetByServiceID(ctx context.Context, serviceID string) ([]types.CustomDomain, error) {
-	query := `
-		SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer,
-		       created_at, updated_at, verified_at
-		FROM custom_domains
-		WHERE service_id = $1
-		ORDER BY created_at DESC
-	`
+	query := "SELECT " + customDomainSelectColumns + " FROM custom_domains WHERE service_id = $1 ORDER BY created_at DESC"
 
 	rows, err := r.db.QueryContext(ctx, query, serviceID)
 	if err != nil {
@@ -105,23 +173,11 @@ func (r *CustomDomainRepository) GetByServiceID(ctx context.Context, serviceID s
 
 	var domains []types.CustomDomain
 	for rows.Next() {
-		var domain types.CustomDomain
-		err := rows.Scan(
-			&domain.ID,
-			&domain.ServiceID,
-			&domain.EnvironmentID,
-			&domain.Domain,
-			&domain.Verified,
-			&domain.TLSEnabled,
-			&domain.TLSIssuer,
-			&domain.CreatedAt,
-			&domain.UpdatedAt,
-			&domain.VerifiedAt,
-		)
+		domain, err := scanCustomDomain(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan custom domain: %w", err)
 		}
-		domains = append(domains, domain)
+		domains = append(domains, *domain)
 	}
 
 	return domains, nil
@@ -129,13 +185,7 @@ func (r *CustomDomainRepository) GetByServiceID(ctx context.Context, serviceID s
 
 // GetByServiceAndEnvironment retrieves custom domains for a service in a specific environment
 func (r *CustomDomainRepository) GetByServiceAndEnvironment(ctx context.Context, serviceID, environmentID string) ([]types.CustomDomain, error) {
-	query := `
-		SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer,
-		       created_at, updated_at, verified_at
-		FROM custom_domains
-		WHERE service_id = $1 AND environment_id = $2
-		ORDER BY created_at DESC
-	`
+	query := "SELECT " + customDomainSelectColumns + " FROM custom_domains WHERE service_id = $1 AND environment_id = $2 ORDER BY created_at DESC"
 
 	rows, err := r.db.QueryContext(ctx, query, serviceID, environmentID)
 	if err != nil {
@@ -145,23 +195,11 @@ func (r *CustomDomainRepository) GetByServiceAndEnvironment(ctx context.Context,
 
 	var domains []types.CustomDomain
 	for rows.Next() {
-		var domain types.CustomDomain
-		err := rows.Scan(
-			&domain.ID,
-			&domain.ServiceID,
-			&domain.EnvironmentID,
-			&domain.Domain,
-			&domain.Verified,
-			&domain.TLSEnabled,
-			&domain.TLSIssuer,
-			&domain.CreatedAt,
-			&domain.UpdatedAt,
-			&domain.VerifiedAt,
-		)
+		domain, err := scanCustomDomain(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan custom domain: %w", err)
 		}
-		domains = append(domains, domain)
+		domains = append(domains, *domain)
 	}
 
 	return domains, nil
@@ -244,8 +282,7 @@ func (r *CustomDomainRepository) DeleteByServiceID(ctx context.Context, serviceI
 // IS NULL are NOT returned — same convention as ProjectRepository.ListByTeam.
 func (r *CustomDomainRepository) ListAllByTeam(ctx context.Context, teamID uuid.UUID, filters map[string]interface{}, limit, offset int) ([]types.CustomDomain, int, error) {
 	baseQuery := `
-		SELECT cd.id, cd.service_id, cd.environment_id, cd.domain, cd.verified,
-		       cd.tls_enabled, cd.tls_issuer, cd.created_at, cd.updated_at, cd.verified_at,
+		SELECT ` + customDomainAliasedColumns + `,
 		       s.name as service_name, e.name as environment_name
 		FROM custom_domains cd
 		JOIN services s ON cd.service_id = s.id
@@ -292,25 +329,12 @@ func (r *CustomDomainRepository) ListAllByTeam(ctx context.Context, teamID uuid.
 
 	var domains []types.CustomDomain
 	for rows.Next() {
-		var domain types.CustomDomain
 		var serviceName, environmentName sql.NullString
-		if err := rows.Scan(
-			&domain.ID,
-			&domain.ServiceID,
-			&domain.EnvironmentID,
-			&domain.Domain,
-			&domain.Verified,
-			&domain.TLSEnabled,
-			&domain.TLSIssuer,
-			&domain.CreatedAt,
-			&domain.UpdatedAt,
-			&domain.VerifiedAt,
-			&serviceName,
-			&environmentName,
-		); err != nil {
+		domain, err := scanCustomDomain(rows, &serviceName, &environmentName)
+		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan custom domain: %w", err)
 		}
-		domains = append(domains, domain)
+		domains = append(domains, *domain)
 	}
 	return domains, total, nil
 }
@@ -319,8 +343,7 @@ func (r *CustomDomainRepository) ListAllByTeam(ctx context.Context, teamID uuid.
 func (r *CustomDomainRepository) ListAll(ctx context.Context, filters map[string]interface{}, limit, offset int) ([]types.CustomDomain, int, error) {
 	// Build query with filters
 	baseQuery := `
-		SELECT cd.id, cd.service_id, cd.environment_id, cd.domain, cd.verified,
-		       cd.tls_enabled, cd.tls_issuer, cd.created_at, cd.updated_at, cd.verified_at,
+		SELECT ` + customDomainAliasedColumns + `,
 		       s.name as service_name, e.name as environment_name
 		FROM custom_domains cd
 		LEFT JOIN services s ON cd.service_id = s.id
@@ -365,27 +388,13 @@ func (r *CustomDomainRepository) ListAll(ctx context.Context, filters map[string
 
 	var domains []types.CustomDomain
 	for rows.Next() {
-		var domain types.CustomDomain
 		var serviceName, environmentName sql.NullString
-		err := rows.Scan(
-			&domain.ID,
-			&domain.ServiceID,
-			&domain.EnvironmentID,
-			&domain.Domain,
-			&domain.Verified,
-			&domain.TLSEnabled,
-			&domain.TLSIssuer,
-			&domain.CreatedAt,
-			&domain.UpdatedAt,
-			&domain.VerifiedAt,
-			&serviceName,
-			&environmentName,
-		)
+		domain, err := scanCustomDomain(rows, &serviceName, &environmentName)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan custom domain: %w", err)
 		}
 		// Store service/environment names in metadata if needed
-		domains = append(domains, domain)
+		domains = append(domains, *domain)
 	}
 
 	return domains, total, nil

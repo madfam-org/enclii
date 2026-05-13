@@ -55,6 +55,7 @@ export default function DomainsPage() {
     domains,
     stats,
     reconcile,
+    exclusions,
     coverage,
     loading,
     refreshing,
@@ -71,6 +72,9 @@ export default function DomainsPage() {
     coverage !== null &&
     coverage.oldest_unverified_age_seconds > STALE_VERIFIER_THRESHOLD_SECONDS;
   const reconcileSummary = reconcile?.summary ?? null;
+  const actionableRouteOnly =
+    reconcile?.actionable_route_only ?? reconcile?.route_only ?? [];
+  const excludedRouteOnly = reconcile?.excluded_route_only ?? [];
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DomainHealthStatus>(
@@ -241,12 +245,118 @@ export default function DomainsPage() {
                 {reconcileSummary.matched === 1 ? '' : 's'}, {' '}
                 {reconcileSummary.db_only} DB-only row
                 {reconcileSummary.db_only === 1 ? '' : 's'}, and {' '}
-                {reconcileSummary.route_only} routed hostname
-                {reconcileSummary.route_only === 1 ? '' : 's'} missing from
-                Enclii DB. The table is operational, but inventory is not yet
-                closed.
+                {reconcileSummary.actionable_route_only ??
+                  reconcileSummary.route_only} actionable routed hostname
+                {(reconcileSummary.actionable_route_only ??
+                  reconcileSummary.route_only) === 1
+                  ? ''
+                  : 's'} missing from Enclii DB. The table is operational,
+                but inventory is not yet closed.
               </p>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {reconcile && (actionableRouteOnly.length > 0 || excludedRouteOnly.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Route inventory reconciliation</CardTitle>
+            <CardDescription>
+              {actionableRouteOnly.length} actionable route-only hostname
+              {actionableRouteOnly.length === 1 ? '' : 's'} ·{' '}
+              {excludedRouteOnly.length} explicitly excluded catalog entr
+              {excludedRouteOnly.length === 1 ? 'y' : 'ies'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {actionableRouteOnly.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium">Action required</p>
+                <div className="divide-y rounded-md border">
+                  {actionableRouteOnly.slice(0, 10).map((item) => (
+                    <div key={item.domain} className="grid gap-1 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <span className="font-mono text-xs">{item.domain}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {(item.sources ?? []).join(', ') || 'unknown source'}
+                        {(item.route_targets ?? []).length > 0
+                          ? ` · ${(item.route_targets ?? []).join(', ')}`
+                          : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {actionableRouteOnly.length > 10 && (
+                  <p className="text-muted-foreground text-xs">
+                    Showing first 10 of {actionableRouteOnly.length}. Use the
+                    reconcile API for the full list.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                No actionable route-only hostnames remain in the current
+                reconciliation response.
+              </p>
+            )}
+
+            {excludedRouteOnly.length > 0 && (
+              <div className="space-y-2">
+                <p className="font-medium">Excluded from drift</p>
+                <div className="divide-y rounded-md border bg-muted/20">
+                  {excludedRouteOnly.slice(0, 5).map((item) => (
+                    <div key={item.domain} className="grid gap-1 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <span className="font-mono text-xs">{item.domain}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {item.classification ?? 'excluded'} ·{' '}
+                        {item.exclusion_reason ?? 'explicitly excluded'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {excludedRouteOnly.length > 5 && (
+                  <p className="text-muted-foreground text-xs">
+                    Showing first 5 of {excludedRouteOnly.length} excluded
+                    hostnames.
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {exclusions && exclusions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Domain inventory exclusion registry</CardTitle>
+            <CardDescription>
+              {exclusions.length} active exclusion rule
+              {exclusions.length === 1 ? '' : 's'} used by reconciliation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="divide-y rounded-md border">
+              {exclusions.slice(0, 5).map((rule, index) => (
+                <div
+                  key={`${rule.hostname_pattern}-${rule.source}-${rule.route_target}-${index}`}
+                  className="grid gap-1 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                >
+                  <span className="font-mono text-xs">
+                    {rule.hostname_pattern} · {rule.source || 'any source'} ·{' '}
+                    {rule.route_target || 'any target'}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    {rule.classification} · {rule.reason}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {exclusions.length > 5 && (
+              <p className="text-muted-foreground text-xs">
+                Showing first 5 of {exclusions.length} active exclusion rules.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

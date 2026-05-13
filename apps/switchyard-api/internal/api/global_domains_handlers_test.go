@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
+	dbrepo "github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -139,4 +140,89 @@ func TestIsExternalReconcileHostname(t *testing.T) {
 	assert.False(t, isExternalReconcileHostname("switchyard-ui.enclii.svc.cluster.local"))
 	assert.False(t, isExternalReconcileHostname("kubernetes.io"))
 	assert.False(t, isExternalReconcileHostname(""))
+}
+
+func TestClassifyRouteOnlyItem_StatusConfigCatalogIsExcluded(t *testing.T) {
+	item := classifyRouteOnlyItem(DomainReconcileItem{
+		Domain:       "tulana.madfam.io",
+		RoutePresent: true,
+		Sources:      []string{"kubernetes_configmap"},
+		RouteTargets: []string{"enclii/status-config-madfam"},
+	}, defaultDomainInventoryExclusions())
+
+	assert.True(t, item.Excluded)
+	assert.False(t, item.Actionable)
+	assert.Equal(t, "status_page_catalog", item.Classification)
+	assert.Contains(t, item.ExclusionReason, "observed service catalog")
+}
+
+func TestClassifyRouteOnlyItem_TunnelRouteRemainsActionable(t *testing.T) {
+	item := classifyRouteOnlyItem(DomainReconcileItem{
+		Domain:       "api.enclii.dev",
+		RoutePresent: true,
+		Sources:      []string{"cloudflare_tunnel"},
+		RouteTargets: []string{"http://switchyard-api.enclii.svc.cluster.local:80"},
+	}, defaultDomainInventoryExclusions())
+
+	assert.False(t, item.Excluded)
+	assert.True(t, item.Actionable)
+	assert.Empty(t, item.Classification)
+	assert.Empty(t, item.ExclusionReason)
+}
+
+func TestBuildReconcileSummary_ExcludedRouteOnlyDoesNotTriggerDrift(t *testing.T) {
+	summary := buildReconcileSummary(8, 354, 8, 0, 346, 0, 346)
+
+	assert.Equal(t, 346, summary.RouteOnly)
+	assert.Equal(t, 0, summary.ActionableRouteOnly)
+	assert.Equal(t, 346, summary.ExcludedRouteOnly)
+	assert.False(t, summary.DriftDetected)
+	assert.True(t, summary.InventoryClosed)
+}
+
+func TestBuildReconcileSummary_ActionableRouteOnlyTriggersDrift(t *testing.T) {
+	summary := buildReconcileSummary(8, 354, 8, 0, 346, 2, 344)
+
+	assert.True(t, summary.DriftDetected)
+	assert.False(t, summary.InventoryClosed)
+}
+
+func TestRouteOnlyMatchesExclusion_WildcardTargetRule(t *testing.T) {
+	item := DomainReconcileItem{
+		Domain:       "tulana.madfam.io",
+		Sources:      []string{"kubernetes_configmap"},
+		RouteTargets: []string{"enclii/status-config-madfam"},
+	}
+	exclusion := dbrepo.DomainInventoryExclusion{
+		HostnamePattern: "*",
+		Source:          "kubernetes_configmap",
+		RouteTarget:     "enclii/status-config-madfam",
+		Classification:  "status_page_catalog",
+		Reason:          "catalog only",
+		Active:          true,
+	}
+
+	assert.True(t, routeOnlyMatchesExclusion(item, exclusion))
+}
+
+func TestRouteOnlyMatchesExclusion_SourceAndTargetMustMatch(t *testing.T) {
+	exclusion := dbrepo.DomainInventoryExclusion{
+		HostnamePattern: "*",
+		Source:          "kubernetes_configmap",
+		RouteTarget:     "enclii/status-config-madfam",
+		Classification:  "status_page_catalog",
+		Reason:          "catalog only",
+		Active:          true,
+	}
+
+	assert.False(t, routeOnlyMatchesExclusion(DomainReconcileItem{
+		Domain:       "tulana.madfam.io",
+		Sources:      []string{"cloudflare_tunnel"},
+		RouteTargets: []string{"enclii/status-config-madfam"},
+	}, exclusion))
+	assert.False(t, routeOnlyMatchesExclusion(DomainReconcileItem{
+		Domain:       "tulana.madfam.io",
+		Sources:      []string{"kubernetes_configmap"},
+		RouteTargets: []string{"enclii/other-config"},
+	}, exclusion))
 }

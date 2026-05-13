@@ -14,7 +14,10 @@ Observed production evidence on 2026-05-13:
 - The oldest unverified row was absent (`oldest_unverified_age_seconds=-1`).
 - After restoring ConfigMap inventory RBAC, Kubernetes/Cloudflare tunnel config exposed 354 routed hostnames.
 - `GET /v1/domains/reconcile` matched all 8 DB domains, found 0 DB-only domains, and found 346 route-only hostnames.
-- Inventory warnings were eliminated; inventory remains open because the 346 route-only hostnames are not yet registered or explicitly excluded.
+- Inventory warnings were eliminated. Route-only hostnames are now classified as `status_page_catalog` when they come only from `enclii/status-config-madfam`, because that ConfigMap is an observed status-page catalog, not proof of a live route.
+- The exclusion is persisted in `domain_inventory_exclusions` by migration `026_domain_inventory_exclusions`; the handler falls back to the same built-in compatibility rule if a live database has not applied that migration yet.
+- Route-only drift is now split into raw, actionable, and excluded counts. `summary.drift_detected` is based on DB-only plus actionable route-only hostnames, not excluded catalog entries.
+- Tulana-specific evidence: `tulana.madfam.io` and `api.tulana.madfam.io` appeared only in `enclii/status-config-madfam`, had no registered Enclii DB rows, and public DNS returned no answer. Treat them as catalog intent until DNS, Enclii domain rows, tunnel routes, and K8s deployment exist.
 - Public HTTPS checks for the 8 API rows completed valid TLS handshakes, even though the persisted TLS-enabled stat still reported `0`.
 
 ## What changed in the first remediation wave
@@ -41,8 +44,10 @@ This endpoint compares registered `custom_domains` against route hostnames obser
 
 - `matched`: domains present in both Enclii DB and route inventory.
 - `db_only`: domains registered in Enclii but not observed in route inventory.
-- `route_only`: routed hostnames not registered in Enclii.
-- `summary.drift_detected`: true when either `db_only` or `route_only` is non-empty.
+- `route_only`: raw route/catalog hostnames not registered in Enclii.
+- `actionable_route_only`: route-only hostnames that still require DB backfill, route cleanup, or owner classification.
+- `excluded_route_only`: explicitly classified non-route catalog/system hostnames that are retained for auditability but do not count as drift.
+- `summary.drift_detected`: true when either `db_only` or `actionable_route_only` is non-empty.
 
 The endpoint is read-only and does not backfill or delete anything.
 
@@ -85,8 +90,8 @@ Priority order:
 
 1. Add a persisted reconciliation table for domain evidence instead of probing only at request time.
 2. Add Cloudflare DNS zone inventory and Gateway API HTTPRoute collectors to `/v1/domains/reconcile`.
-3. Add an explicit domain exclusion registry for platform/internal/system hostnames.
-4. Backfill all live routed hostnames into either `custom_domains` or the exclusion registry.
+3. Add UI/admin workflows for maintaining `domain_inventory_exclusions` instead of relying on migration-seeded records only.
+4. Backfill all live routed hostnames into either `custom_domains` or the persisted exclusion registry.
 5. Fix Cloudflare SSL lookup to resolve the correct zone per domain, including apex domains, wildcard certificates, and proxied A/AAAA records.
 6. Persist verifier timestamps independently: DNS checked, TLS checked, route checked, HTTP checked.
 7. Update `/v1/domains/stats` to report inventory coverage, route drift, DNS drift, TLS validity, HTTP reachability, stale evidence, and orphan count.

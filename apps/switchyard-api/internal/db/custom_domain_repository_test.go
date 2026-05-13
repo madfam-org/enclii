@@ -27,6 +27,8 @@ func newCustomDomainMockDB(t *testing.T) (*CustomDomainRepository, sqlmock.Sqlmo
 var customDomainColumns = []string{
 	"id", "service_id", "environment_id", "domain", "verified",
 	"tls_enabled", "tls_issuer", "created_at", "updated_at", "verified_at",
+	"cloudflare_tunnel_id", "is_platform_domain", "zero_trust_enabled",
+	"access_policy_id", "tls_provider", "status", "dns_cname",
 }
 
 // --- Create ---
@@ -39,17 +41,28 @@ func TestCustomDomainRepository_Create(t *testing.T) {
 		svcID := uuid.New()
 		envID := uuid.New()
 		domain := &types.CustomDomain{
-			ServiceID:     svcID,
-			EnvironmentID: envID,
-			Domain:        "api.example.com",
-			Verified:      false,
-			TLSEnabled:    true,
-			TLSIssuer:     "letsencrypt-prod",
+			ServiceID:        svcID,
+			EnvironmentID:    envID,
+			Domain:           "api.example.com",
+			Verified:         false,
+			TLSEnabled:       true,
+			TLSIssuer:        "letsencrypt-prod",
+			IsPlatformDomain: true,
+			ZeroTrustEnabled: true,
+			AccessPolicyID:   "policy_123",
+			TLSProvider:      "cloudflare-for-saas",
+			Status:           "active",
+			DNSCNAME:         "api.example.com.cdn.cloudflare.net",
 		}
 
 		now := time.Now()
 		mock.ExpectQuery(`INSERT INTO custom_domains`).
-			WithArgs(sqlmock.AnyArg(), svcID, envID, "api.example.com", false, true, "letsencrypt-prod").
+			WithArgs(
+				sqlmock.AnyArg(), svcID, envID, "api.example.com", false, true,
+				"letsencrypt-prod", (*time.Time)(nil), (*uuid.UUID)(nil), true,
+				true, "policy_123", "cloudflare-for-saas", "active",
+				"api.example.com.cdn.cloudflare.net",
+			).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).
 				AddRow(uuid.New(), now, now))
 
@@ -71,7 +84,11 @@ func TestCustomDomainRepository_Create(t *testing.T) {
 		}
 
 		mock.ExpectQuery(`INSERT INTO custom_domains`).
-			WithArgs(sqlmock.AnyArg(), domain.ServiceID, domain.EnvironmentID, "fail.example.com", false, false, "").
+			WithArgs(
+				sqlmock.AnyArg(), domain.ServiceID, domain.EnvironmentID,
+				"fail.example.com", false, false, "", (*time.Time)(nil),
+				(*uuid.UUID)(nil), false, false, "", "cert-manager", "pending", "",
+			).
 			WillReturnError(fmt.Errorf("connection refused"))
 
 		err := repo.Create(context.Background(), domain)
@@ -92,17 +109,31 @@ func TestCustomDomainRepository_GetByID(t *testing.T) {
 		svcID := uuid.New()
 		envID := uuid.New()
 		now := time.Now().Truncate(time.Microsecond)
+		tunnelID := uuid.New()
 
-		mock.ExpectQuery(`SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
+		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(id.String()).
 			WillReturnRows(sqlmock.NewRows(customDomainColumns).
-				AddRow(id, svcID, envID, "api.example.com", true, true, "letsencrypt-prod", now, now, &now))
+				AddRow(
+					id, svcID, envID, "api.example.com", true, true,
+					"letsencrypt-prod", now, now, &now, tunnelID.String(), true, true,
+					"policy_123", "cloudflare-for-saas", "active",
+					"api.example.com.cdn.cloudflare.net",
+				))
 
 		result, err := repo.GetByID(context.Background(), id.String())
 		assert.NoError(t, err)
 		assert.Equal(t, id, result.ID)
 		assert.Equal(t, "api.example.com", result.Domain)
 		assert.Equal(t, true, result.Verified)
+		require.NotNil(t, result.CloudflareTunnelID)
+		assert.Equal(t, tunnelID, *result.CloudflareTunnelID)
+		assert.True(t, result.IsPlatformDomain)
+		assert.True(t, result.ZeroTrustEnabled)
+		assert.Equal(t, "policy_123", result.AccessPolicyID)
+		assert.Equal(t, "cloudflare-for-saas", result.TLSProvider)
+		assert.Equal(t, "active", result.Status)
+		assert.Equal(t, "api.example.com.cdn.cloudflare.net", result.DNSCNAME)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -111,7 +142,7 @@ func TestCustomDomainRepository_GetByID(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectQuery(`SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
+		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(id.String()).
 			WillReturnError(sql.ErrNoRows)
 
@@ -127,7 +158,7 @@ func TestCustomDomainRepository_GetByID(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectQuery(`SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
+		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(id.String()).
 			WillReturnError(fmt.Errorf("connection reset"))
 
@@ -150,10 +181,10 @@ func TestCustomDomainRepository_GetByServiceID(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 
 		rows := sqlmock.NewRows(customDomainColumns).
-			AddRow(uuid.New(), svcID, uuid.New(), "api.example.com", true, true, "letsencrypt-prod", now, now, &now).
-			AddRow(uuid.New(), svcID, uuid.New(), "www.example.com", false, false, "", now, now, nil)
+			AddRow(uuid.New(), svcID, uuid.New(), "api.example.com", true, true, "letsencrypt-prod", now, now, &now, nil, false, false, nil, "cert-manager", "active", nil).
+			AddRow(uuid.New(), svcID, uuid.New(), "www.example.com", false, false, "", now, now, nil, nil, false, false, nil, "cert-manager", "pending", nil)
 
-		mock.ExpectQuery(`SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
+		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(svcID.String()).
 			WillReturnRows(rows)
 
@@ -170,7 +201,7 @@ func TestCustomDomainRepository_GetByServiceID(t *testing.T) {
 		defer cleanup()
 
 		svcID := uuid.New()
-		mock.ExpectQuery(`SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
+		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(svcID.String()).
 			WillReturnRows(sqlmock.NewRows(customDomainColumns))
 
@@ -185,7 +216,7 @@ func TestCustomDomainRepository_GetByServiceID(t *testing.T) {
 		defer cleanup()
 
 		svcID := uuid.New()
-		mock.ExpectQuery(`SELECT id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
+		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(svcID.String()).
 			WillReturnError(fmt.Errorf("db unavailable"))
 
@@ -392,7 +423,8 @@ func TestCustomDomainRepository_ListAllByTeam(t *testing.T) {
 			WithArgs(teamID, 50, 0).
 			WillReturnRows(sqlmock.NewRows(listAllByTeamColumns).AddRow(
 				domID, svcID, envID, "api.tenant.com", true, true, "letsencrypt-prod",
-				now, now, nil, "api", "production",
+				now, now, nil, nil, false, true, "access_123", "cert-manager",
+				"active", "api.tenant.com.cdn.cloudflare.net", "api", "production",
 			))
 
 		out, total, err := repo.ListAllByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)
@@ -400,6 +432,10 @@ func TestCustomDomainRepository_ListAllByTeam(t *testing.T) {
 		require.Equal(t, 1, total)
 		require.Len(t, out, 1)
 		assert.Equal(t, "api.tenant.com", out[0].Domain)
+		assert.True(t, out[0].ZeroTrustEnabled)
+		assert.Equal(t, "access_123", out[0].AccessPolicyID)
+		assert.Equal(t, "active", out[0].Status)
+		assert.Equal(t, "api.tenant.com.cdn.cloudflare.net", out[0].DNSCNAME)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

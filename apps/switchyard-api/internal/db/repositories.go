@@ -8,38 +8,39 @@ import (
 
 // Repositories provides access to all repository types
 type Repositories struct {
-	db                   *sql.DB // Keep reference for transaction support
-	Projects             *ProjectRepository
-	Environments         *EnvironmentRepository
-	Services             *ServiceRepository
-	Releases             *ReleaseRepository
-	Deployments          *DeploymentRepository
-	CanaryRollouts       *CanaryRolloutRepository
-	Users                *UserRepository
-	ProjectAccess        *ProjectAccessRepository
-	AuditLogs            *AuditLogRepository
-	ApprovalRecords      *ApprovalRecordRepository
-	RotationAuditLogs    *RotationAuditLogRepository
-	CustomDomains        *CustomDomainRepository
-	Routes               *RouteRepository
-	DeploymentGroups     *DeploymentGroupRepository
-	ServiceDependencies  *ServiceDependencyRepository
-	EnvVars              *EnvVarRepository
-	PreviewEnvironments  *PreviewEnvironmentRepository
-	PreviewComments      *PreviewCommentRepository
-	PreviewAccessLogs    *PreviewAccessLogRepository
-	Teams                *TeamRepository
-	TeamMembers          *TeamMemberRepository
-	TeamInvitations      *TeamInvitationRepository
-	APITokens            *APITokenRepository
-	DatabaseAddons       *DatabaseAddonRepository
-	ManagedDBPlans       *ManagedDBPlanRepository
-	ManagedDBAddonEvents *ManagedDBAddonEventRepository
-	Templates            *TemplateRepository
-	Webhooks             *WebhookRepository
-	OutboundWebhooks     *OutboundWebhookRepository
-	CIRuns               *CIRunRepository
-	Functions            *FunctionRepository
+	db                        *sql.DB // Keep reference for transaction support
+	Projects                  *ProjectRepository
+	Environments              *EnvironmentRepository
+	Services                  *ServiceRepository
+	Releases                  *ReleaseRepository
+	Deployments               *DeploymentRepository
+	CanaryRollouts            *CanaryRolloutRepository
+	Users                     *UserRepository
+	ProjectAccess             *ProjectAccessRepository
+	AuditLogs                 *AuditLogRepository
+	ApprovalRecords           *ApprovalRecordRepository
+	RotationAuditLogs         *RotationAuditLogRepository
+	CustomDomains             *CustomDomainRepository
+	DomainInventoryExclusions *DomainInventoryExclusionRepository
+	Routes                    *RouteRepository
+	DeploymentGroups          *DeploymentGroupRepository
+	ServiceDependencies       *ServiceDependencyRepository
+	EnvVars                   *EnvVarRepository
+	PreviewEnvironments       *PreviewEnvironmentRepository
+	PreviewComments           *PreviewCommentRepository
+	PreviewAccessLogs         *PreviewAccessLogRepository
+	Teams                     *TeamRepository
+	TeamMembers               *TeamMemberRepository
+	TeamInvitations           *TeamInvitationRepository
+	APITokens                 *APITokenRepository
+	DatabaseAddons            *DatabaseAddonRepository
+	ManagedDBPlans            *ManagedDBPlanRepository
+	ManagedDBAddonEvents      *ManagedDBAddonEventRepository
+	Templates                 *TemplateRepository
+	Webhooks                  *WebhookRepository
+	OutboundWebhooks          *OutboundWebhookRepository
+	CIRuns                    *CIRunRepository
+	Functions                 *FunctionRepository
 
 	// Deployment Lifecycle & Onboarding
 	LifecycleEvents *LifecycleEventRepository
@@ -109,38 +110,39 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 
 	// Create transaction-scoped repositories
 	txRepos := &Repositories{
-		db:                   r.db, // Keep original db for nested transaction prevention
-		Projects:             &ProjectRepository{db: tx},
-		Environments:         &EnvironmentRepository{db: tx},
-		Services:             &ServiceRepository{db: tx},
-		Releases:             &ReleaseRepository{db: tx},
-		Deployments:          &DeploymentRepository{db: tx},
-		CanaryRollouts:       NewCanaryRolloutRepositoryWithTx(tx),
-		Users:                &UserRepository{db: tx},
-		ProjectAccess:        &ProjectAccessRepository{db: tx},
-		AuditLogs:            &AuditLogRepository{db: tx},
-		ApprovalRecords:      &ApprovalRecordRepository{db: tx},
-		RotationAuditLogs:    &RotationAuditLogRepository{db: tx},
-		CustomDomains:        NewCustomDomainRepositoryWithTx(tx),
-		Routes:               NewRouteRepositoryWithTx(tx),
-		DeploymentGroups:     NewDeploymentGroupRepositoryWithTx(tx),
-		ServiceDependencies:  NewServiceDependencyRepositoryWithTx(tx),
-		EnvVars:              NewEnvVarRepositoryWithTx(tx),
-		PreviewEnvironments:  NewPreviewEnvironmentRepositoryWithTx(tx),
-		PreviewComments:      NewPreviewCommentRepositoryWithTx(tx),
-		PreviewAccessLogs:    NewPreviewAccessLogRepositoryWithTx(tx),
-		Teams:                NewTeamRepositoryWithTx(tx),
-		TeamMembers:          NewTeamMemberRepositoryWithTx(tx),
-		TeamInvitations:      NewTeamInvitationRepositoryWithTx(tx),
-		APITokens:            NewAPITokenRepositoryWithTx(tx),
-		DatabaseAddons:       NewDatabaseAddonRepositoryWithTx(tx),
-		ManagedDBPlans:       NewManagedDBPlanRepositoryWithTx(tx),
-		ManagedDBAddonEvents: NewManagedDBAddonEventRepositoryWithTx(tx),
-		Templates:            NewTemplateRepositoryWithTx(tx),
-		Webhooks:             NewWebhookRepositoryWithTx(tx),
-		OutboundWebhooks:     NewOutboundWebhookRepositoryWithTx(tx),
-		CIRuns:               NewCIRunRepositoryWithTx(tx),
-		Functions:            NewFunctionRepositoryWithTx(tx),
+		db:                        r.db, // Keep original db for nested transaction prevention
+		Projects:                  &ProjectRepository{db: tx},
+		Environments:              &EnvironmentRepository{db: tx},
+		Services:                  &ServiceRepository{db: tx},
+		Releases:                  &ReleaseRepository{db: tx},
+		Deployments:               &DeploymentRepository{db: tx},
+		CanaryRollouts:            NewCanaryRolloutRepositoryWithTx(tx),
+		Users:                     &UserRepository{db: tx},
+		ProjectAccess:             &ProjectAccessRepository{db: tx},
+		AuditLogs:                 &AuditLogRepository{db: tx},
+		ApprovalRecords:           &ApprovalRecordRepository{db: tx},
+		RotationAuditLogs:         &RotationAuditLogRepository{db: tx},
+		CustomDomains:             NewCustomDomainRepositoryWithTx(tx),
+		DomainInventoryExclusions: NewDomainInventoryExclusionRepositoryWithTx(tx),
+		Routes:                    NewRouteRepositoryWithTx(tx),
+		DeploymentGroups:          NewDeploymentGroupRepositoryWithTx(tx),
+		ServiceDependencies:       NewServiceDependencyRepositoryWithTx(tx),
+		EnvVars:                   NewEnvVarRepositoryWithTx(tx),
+		PreviewEnvironments:       NewPreviewEnvironmentRepositoryWithTx(tx),
+		PreviewComments:           NewPreviewCommentRepositoryWithTx(tx),
+		PreviewAccessLogs:         NewPreviewAccessLogRepositoryWithTx(tx),
+		Teams:                     NewTeamRepositoryWithTx(tx),
+		TeamMembers:               NewTeamMemberRepositoryWithTx(tx),
+		TeamInvitations:           NewTeamInvitationRepositoryWithTx(tx),
+		APITokens:                 NewAPITokenRepositoryWithTx(tx),
+		DatabaseAddons:            NewDatabaseAddonRepositoryWithTx(tx),
+		ManagedDBPlans:            NewManagedDBPlanRepositoryWithTx(tx),
+		ManagedDBAddonEvents:      NewManagedDBAddonEventRepositoryWithTx(tx),
+		Templates:                 NewTemplateRepositoryWithTx(tx),
+		Webhooks:                  NewWebhookRepositoryWithTx(tx),
+		OutboundWebhooks:          NewOutboundWebhookRepositoryWithTx(tx),
+		CIRuns:                    NewCIRunRepositoryWithTx(tx),
+		Functions:                 NewFunctionRepositoryWithTx(tx),
 
 		// Timetable
 		CronJobs:    NewCronJobRepositoryWithTx(tx),
@@ -191,38 +193,39 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 // NewRepositories creates a new Repositories instance with all repositories initialized
 func NewRepositories(db *sql.DB) *Repositories {
 	return &Repositories{
-		db:                   db,
-		Projects:             NewProjectRepository(db),
-		Environments:         NewEnvironmentRepository(db),
-		Services:             NewServiceRepository(db),
-		Releases:             NewReleaseRepository(db),
-		Deployments:          NewDeploymentRepository(db),
-		CanaryRollouts:       NewCanaryRolloutRepository(db),
-		Users:                NewUserRepository(db),
-		ProjectAccess:        NewProjectAccessRepository(db),
-		AuditLogs:            NewAuditLogRepository(db),
-		ApprovalRecords:      NewApprovalRecordRepository(db),
-		RotationAuditLogs:    NewRotationAuditLogRepository(db),
-		CustomDomains:        NewCustomDomainRepository(db),
-		Routes:               NewRouteRepository(db),
-		DeploymentGroups:     NewDeploymentGroupRepository(db),
-		ServiceDependencies:  NewServiceDependencyRepository(db),
-		EnvVars:              NewEnvVarRepository(db),
-		PreviewEnvironments:  NewPreviewEnvironmentRepository(db),
-		PreviewComments:      NewPreviewCommentRepository(db),
-		PreviewAccessLogs:    NewPreviewAccessLogRepository(db),
-		Teams:                NewTeamRepository(db),
-		TeamMembers:          NewTeamMemberRepository(db),
-		TeamInvitations:      NewTeamInvitationRepository(db),
-		APITokens:            NewAPITokenRepository(db),
-		DatabaseAddons:       NewDatabaseAddonRepository(db),
-		ManagedDBPlans:       NewManagedDBPlanRepository(db),
-		ManagedDBAddonEvents: NewManagedDBAddonEventRepository(db),
-		Templates:            NewTemplateRepository(db),
-		Webhooks:             NewWebhookRepository(db),
-		OutboundWebhooks:     NewOutboundWebhookRepository(db),
-		CIRuns:               NewCIRunRepository(db),
-		Functions:            NewFunctionRepository(db),
+		db:                        db,
+		Projects:                  NewProjectRepository(db),
+		Environments:              NewEnvironmentRepository(db),
+		Services:                  NewServiceRepository(db),
+		Releases:                  NewReleaseRepository(db),
+		Deployments:               NewDeploymentRepository(db),
+		CanaryRollouts:            NewCanaryRolloutRepository(db),
+		Users:                     NewUserRepository(db),
+		ProjectAccess:             NewProjectAccessRepository(db),
+		AuditLogs:                 NewAuditLogRepository(db),
+		ApprovalRecords:           NewApprovalRecordRepository(db),
+		RotationAuditLogs:         NewRotationAuditLogRepository(db),
+		CustomDomains:             NewCustomDomainRepository(db),
+		DomainInventoryExclusions: NewDomainInventoryExclusionRepository(db),
+		Routes:                    NewRouteRepository(db),
+		DeploymentGroups:          NewDeploymentGroupRepository(db),
+		ServiceDependencies:       NewServiceDependencyRepository(db),
+		EnvVars:                   NewEnvVarRepository(db),
+		PreviewEnvironments:       NewPreviewEnvironmentRepository(db),
+		PreviewComments:           NewPreviewCommentRepository(db),
+		PreviewAccessLogs:         NewPreviewAccessLogRepository(db),
+		Teams:                     NewTeamRepository(db),
+		TeamMembers:               NewTeamMemberRepository(db),
+		TeamInvitations:           NewTeamInvitationRepository(db),
+		APITokens:                 NewAPITokenRepository(db),
+		DatabaseAddons:            NewDatabaseAddonRepository(db),
+		ManagedDBPlans:            NewManagedDBPlanRepository(db),
+		ManagedDBAddonEvents:      NewManagedDBAddonEventRepository(db),
+		Templates:                 NewTemplateRepository(db),
+		Webhooks:                  NewWebhookRepository(db),
+		OutboundWebhooks:          NewOutboundWebhookRepository(db),
+		CIRuns:                    NewCIRunRepository(db),
+		Functions:                 NewFunctionRepository(db),
 
 		// Timetable
 		CronJobs:    NewCronJobRepository(db),

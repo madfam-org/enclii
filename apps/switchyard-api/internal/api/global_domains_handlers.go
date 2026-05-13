@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	dbrepo "github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	domainservices "github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
@@ -81,13 +82,15 @@ type DomainsListResponse struct {
 }
 
 type DomainReconcileSummary struct {
-	DBDomains       int  `json:"db_domains"`
-	RoutedDomains   int  `json:"routed_domains"`
-	Matched         int  `json:"matched"`
-	DBOnly          int  `json:"db_only"`
-	RouteOnly       int  `json:"route_only"`
-	DriftDetected   bool `json:"drift_detected"`
-	InventoryClosed bool `json:"inventory_closed"`
+	DBDomains           int  `json:"db_domains"`
+	RoutedDomains       int  `json:"routed_domains"`
+	Matched             int  `json:"matched"`
+	DBOnly              int  `json:"db_only"`
+	RouteOnly           int  `json:"route_only"`
+	ActionableRouteOnly int  `json:"actionable_route_only"`
+	ExcludedRouteOnly   int  `json:"excluded_route_only"`
+	DriftDetected       bool `json:"drift_detected"`
+	InventoryClosed     bool `json:"inventory_closed"`
 }
 
 type DomainReconcileItem struct {
@@ -103,6 +106,10 @@ type DomainReconcileItem struct {
 	ProjectSlug     string   `json:"project_slug,omitempty"`
 	Verified        *bool    `json:"verified,omitempty"`
 	TLSEnabled      *bool    `json:"tls_enabled,omitempty"`
+	Classification  string   `json:"classification,omitempty"`
+	Excluded        bool     `json:"excluded,omitempty"`
+	ExclusionReason string   `json:"exclusion_reason,omitempty"`
+	Actionable      bool     `json:"actionable"`
 }
 
 type DomainReconcileResponse struct {
@@ -114,6 +121,14 @@ type DomainReconcileResponse struct {
 	Matched     []DomainReconcileItem  `json:"matched"`
 	DBOnly      []DomainReconcileItem  `json:"db_only"`
 	RouteOnly   []DomainReconcileItem  `json:"route_only"`
+	Actionable  []DomainReconcileItem  `json:"actionable_route_only"`
+	Excluded    []DomainReconcileItem  `json:"excluded_route_only"`
+}
+
+type DomainInventoryExclusionsResponse struct {
+	GeneratedAt time.Time                         `json:"generated_at"`
+	Warnings    []string                          `json:"warnings,omitempty"`
+	Exclusions  []dbrepo.DomainInventoryExclusion `json:"exclusions"`
 }
 
 // GetAllDomains returns all custom domains across all services
@@ -124,7 +139,7 @@ func (h *Handler) GetAllDomains(c *gin.Context) {
 	// Parse query parameters
 	limit := 50
 	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 500 {
 			limit = parsed
 		}
 	}
@@ -242,10 +257,14 @@ func (h *Handler) ReconcileDomains(c *gin.Context) {
 
 	dbItems := h.buildReconcileDBItems(ctx, domains)
 	routeItems, sources, warnings := h.collectRouteInventory(ctx)
+	exclusions, exclusionWarnings := h.loadDomainInventoryExclusions(ctx)
+	warnings = append(warnings, exclusionWarnings...)
 
 	matched := make([]DomainReconcileItem, 0)
 	dbOnly := make([]DomainReconcileItem, 0)
 	routeOnly := make([]DomainReconcileItem, 0)
+	actionableRouteOnly := make([]DomainReconcileItem, 0)
+	excludedRouteOnly := make([]DomainReconcileItem, 0)
 
 	for domain, item := range dbItems {
 		if route, ok := routeItems[domain]; ok {
@@ -262,24 +281,24 @@ func (h *Handler) ReconcileDomains(c *gin.Context) {
 		if _, ok := dbItems[domain]; ok {
 			continue
 		}
+		route = classifyRouteOnlyItem(route, exclusions)
 		routeOnly = append(routeOnly, route)
+		if route.Excluded {
+			excludedRouteOnly = append(excludedRouteOnly, route)
+		} else {
+			actionableRouteOnly = append(actionableRouteOnly, route)
+		}
 	}
 
 	sortReconcileItems(matched)
 	sortReconcileItems(dbOnly)
 	sortReconcileItems(routeOnly)
+	sortReconcileItems(actionableRouteOnly)
+	sortReconcileItems(excludedRouteOnly)
 	sort.Strings(sources)
 	sort.Strings(warnings)
 
-	summary := DomainReconcileSummary{
-		DBDomains:       len(dbItems),
-		RoutedDomains:   len(routeItems),
-		Matched:         len(matched),
-		DBOnly:          len(dbOnly),
-		RouteOnly:       len(routeOnly),
-		DriftDetected:   len(dbOnly) > 0 || len(routeOnly) > 0,
-		InventoryClosed: len(dbOnly) == 0 && len(routeOnly) == 0,
-	}
+	summary := buildReconcileSummary(len(dbItems), len(routeItems), len(matched), len(dbOnly), len(routeOnly), len(actionableRouteOnly), len(excludedRouteOnly))
 
 	c.JSON(http.StatusOK, DomainReconcileResponse{
 		GeneratedAt: time.Now().UTC(),
@@ -290,7 +309,51 @@ func (h *Handler) ReconcileDomains(c *gin.Context) {
 		Matched:     matched,
 		DBOnly:      dbOnly,
 		RouteOnly:   routeOnly,
+		Actionable:  actionableRouteOnly,
+		Excluded:    excludedRouteOnly,
 	})
+}
+
+func buildReconcileSummary(dbDomains, routedDomains, matched, dbOnly, routeOnly, actionableRouteOnly, excludedRouteOnly int) DomainReconcileSummary {
+	return DomainReconcileSummary{
+		DBDomains:           dbDomains,
+		RoutedDomains:       routedDomains,
+		Matched:             matched,
+		DBOnly:              dbOnly,
+		RouteOnly:           routeOnly,
+		ActionableRouteOnly: actionableRouteOnly,
+		ExcludedRouteOnly:   excludedRouteOnly,
+		DriftDetected:       dbOnly > 0 || actionableRouteOnly > 0,
+		InventoryClosed:     dbOnly == 0 && actionableRouteOnly == 0,
+	}
+}
+
+// ListDomainInventoryExclusions returns active route-inventory exclusion rules.
+// GET /v1/domains/exclusions
+func (h *Handler) ListDomainInventoryExclusions(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	exclusions, warnings := h.loadDomainInventoryExclusions(ctx)
+
+	c.JSON(http.StatusOK, DomainInventoryExclusionsResponse{
+		GeneratedAt: time.Now().UTC(),
+		Warnings:    warnings,
+		Exclusions:  exclusions,
+	})
+}
+
+func (h *Handler) loadDomainInventoryExclusions(ctx context.Context) ([]dbrepo.DomainInventoryExclusion, []string) {
+	if h == nil || h.repos == nil || h.repos.DomainInventoryExclusions == nil {
+		return defaultDomainInventoryExclusions(), nil
+	}
+
+	exclusions, err := h.repos.DomainInventoryExclusions.ListActive(ctx)
+	if err != nil {
+		return defaultDomainInventoryExclusions(), []string{
+			"domain inventory exclusion registry unavailable: " + err.Error() + "; using built-in compatibility exclusions",
+		}
+	}
+	return exclusions, nil
 }
 
 func (h *Handler) buildReconcileDBItems(ctx context.Context, domains []types.CustomDomain) map[string]DomainReconcileItem {
@@ -403,6 +466,73 @@ func addRouteInventoryItem(items map[string]DomainReconcileItem, hostname, sourc
 	items[key] = item
 }
 
+func classifyRouteOnlyItem(item DomainReconcileItem, exclusions []dbrepo.DomainInventoryExclusion) DomainReconcileItem {
+	item.Actionable = true
+
+	for _, exclusion := range exclusions {
+		if !routeOnlyMatchesExclusion(item, exclusion) {
+			continue
+		}
+		item.Excluded = true
+		item.Actionable = false
+		item.Classification = exclusion.Classification
+		item.ExclusionReason = exclusion.Reason
+		return item
+	}
+
+	return item
+}
+
+func defaultDomainInventoryExclusions() []dbrepo.DomainInventoryExclusion {
+	return []dbrepo.DomainInventoryExclusion{
+		{
+			HostnamePattern: "*",
+			Source:          "kubernetes_configmap",
+			RouteTarget:     "enclii/status-config-madfam",
+			Classification:  "status_page_catalog",
+			Reason:          "status-config-madfam is an observed service catalog, not proof of a live route",
+			Active:          true,
+		},
+	}
+}
+
+func routeOnlyMatchesExclusion(item DomainReconcileItem, exclusion dbrepo.DomainInventoryExclusion) bool {
+	if !exclusion.Active {
+		return false
+	}
+	if !hostnameMatchesExclusionPattern(item.Domain, exclusion.HostnamePattern) {
+		return false
+	}
+	if exclusion.Source != "" && !containsString(item.Sources, exclusion.Source) {
+		return false
+	}
+	if exclusion.RouteTarget != "" && !containsString(item.RouteTargets, exclusion.RouteTarget) {
+		return false
+	}
+	return true
+}
+
+func hostnameMatchesExclusionPattern(hostname, pattern string) bool {
+	host := normalizeReconcileHostname(hostname)
+	normalizedPattern := normalizeReconcileHostname(pattern)
+	if normalizedPattern == "" || normalizedPattern == "*" {
+		return host != ""
+	}
+	if strings.HasPrefix(normalizedPattern, "*.") {
+		return strings.HasSuffix(host, strings.TrimPrefix(normalizedPattern, "*"))
+	}
+	return host == normalizedPattern
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 var reconcileHostnamePattern = regexp.MustCompile(`(?i)\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\b`)
 
 func extractReconcileHostnames(value string) []string {
@@ -512,7 +642,7 @@ func buildDomainCoverage(domains []DomainWithContext, total int, syncConfigured 
 	cov.ProjectsWithDomains = len(seen)
 
 	// Oldest row that is still unverified. We walk the page rather than
-	// issuing a second SQL query — domains pages are small (limit ≤100)
+	// issuing a second SQL query — domains pages are small (limit ≤500)
 	// and the repository layer doesn't expose a min(verified_at) helper.
 	// If a future operator paginates past the first page this metric
 	// represents only the visible page; that's an acceptable trade-off
