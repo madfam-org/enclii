@@ -50,7 +50,7 @@ images:
 - digest: sha256:73551de21dde3a74afb820345487869ea42aee67c920386f80a61ac009d0c6c5
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:81898c0fd106e6d9525c867c63ee5517c7e065dce22981c90cf8b9b92acf6521
+- digest: sha256:acd3a9675b9f4e61cdbcb512024a70b5f6057df8e556abbebfea684ab40f2821
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
 - digest: sha256:ba0b77bf75a7c5259e34892ace59f09803224971ef76126655ec89eb03fa8137
@@ -58,9 +58,5 @@ images:
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
-
-  - name: switchyard-ui
-    newName: ghcr.io/madfam-org/enclii/switchyard-ui
-    digest: sha256:acd3a9675b9f4e61cdbcb512024a70b5f6057df8e556abbebfea684ab40f2821
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
