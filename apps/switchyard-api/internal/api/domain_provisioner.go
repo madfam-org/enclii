@@ -121,6 +121,11 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 	if h.tunnelRoutesService == nil {
 		return
 	}
+	if service == nil {
+		h.logger.Warn(ctx, "Skipping tunnel route for nil service",
+			logging.String("domain", domain))
+		return
+	}
 
 	// Check if route already exists
 	exists, err := h.tunnelRoutesService.RouteExists(ctx, domain)
@@ -168,9 +173,16 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 }
 
 // resolveServiceNamespace determines the Kubernetes namespace for a service.
-// It looks up the project's slug to use as the namespace. Falls back to the
-// project slug derived from the service name if the project lookup fails.
+// It prefers the explicit service namespace because imported/adopted workloads
+// can live outside their Enclii project namespace.
 func (h *Handler) resolveServiceNamespace(ctx context.Context, service *types.Service, envName string) string {
+	if service == nil {
+		return ""
+	}
+	if service.K8sNamespace != nil && *service.K8sNamespace != "" {
+		return *service.K8sNamespace
+	}
+
 	// Try to get the namespace from the environment record
 	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
 	if err == nil && env.KubeNamespace != "" {
@@ -212,8 +224,8 @@ func (h *Handler) ensureDNSRecord(ctx context.Context, domain string) {
 		// Continue — EnsureDNSRecord will fail with a clearer error if zone is truly missing
 	}
 
-	// The tunnel CNAME target — domains are CNAME'd to the tunnel endpoint
-	tunnelCNAME := services.DefaultTunnelCNAME
+	// The tunnel CNAME target — domains are CNAME'd to the tunnel endpoint.
+	tunnelCNAME := h.domainSyncService.TunnelCNAME()
 
 	record, created, err := cfClient.EnsureDNSRecord(ctx, domain, tunnelCNAME)
 	if err != nil {

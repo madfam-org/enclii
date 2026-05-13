@@ -232,3 +232,61 @@ func TestJunctionsDecodeOrError_DecodesSuccessResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "app.example.com", target["domain"])
 }
+
+func TestRunJunctionsList_DecodesWrappedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/v1/projects/madfam-site/junctions", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"junctions": []map[string]interface{}{
+				{
+					"id":       "00000000-0000-0000-0000-000000000001",
+					"domain":   "dash.madfam.io",
+					"path":     "/",
+					"protocol": "https",
+				},
+			},
+			"total": 1,
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	require.NoError(t, runJunctionsList(cfg, "madfam-site"))
+}
+
+func TestRunJunctionsAdd_DecodesWrappedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/v1/projects/madfam-site/junctions", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"junction": map[string]interface{}{
+				"id":         "00000000-0000-0000-0000-000000000001",
+				"domain":     "dash.madfam.io",
+				"path":       "/",
+				"protocol":   "https",
+				"service_id": "00000000-0000-0000-0000-000000000002",
+				"project_id": "00000000-0000-0000-0000-000000000003",
+			},
+			"message": "Junction created successfully",
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	require.NoError(t, runJunctionsAdd(cfg, "dash.madfam.io", "madfam-site", "00000000-0000-0000-0000-000000000002", "/", "https"))
+}

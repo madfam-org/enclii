@@ -15,7 +15,9 @@ import (
 )
 
 const (
-	// DefaultTunnelCNAME is the default tunnel CNAME target
+	// DefaultTunnelCNAME is the legacy fallback tunnel CNAME target.
+	// Production routes should use <tunnel-id>.cfargotunnel.com when the
+	// Cloudflare client has a configured tunnel ID.
 	DefaultTunnelCNAME = "tunnel.enclii.dev"
 
 	// StatusVerified indicates the domain is correctly configured
@@ -27,6 +29,14 @@ const (
 	// StatusError indicates an error occurred during verification
 	StatusError = "error"
 )
+
+// TunnelCNAMEForTunnelID returns the Cloudflare Tunnel DNS target.
+func TunnelCNAMEForTunnelID(tunnelID string) string {
+	if tunnelID == "" {
+		return DefaultTunnelCNAME
+	}
+	return fmt.Sprintf("%s.cfargotunnel.com", tunnelID)
+}
 
 // DomainSyncService handles syncing domain status with Cloudflare
 type DomainSyncService struct {
@@ -48,11 +58,16 @@ func NewDomainSyncService(
 	repos *db.Repositories,
 	logger *logrus.Logger,
 ) *DomainSyncService {
+	tunnelCNAME := DefaultTunnelCNAME
+	if cfClient != nil {
+		tunnelCNAME = TunnelCNAMEForTunnelID(cfClient.GetTunnelID())
+	}
+
 	return &DomainSyncService{
 		cf:          cfClient,
 		repos:       repos,
 		logger:      logger,
-		tunnelCNAME: DefaultTunnelCNAME,
+		tunnelCNAME: tunnelCNAME,
 		stopChan:    make(chan struct{}),
 	}
 }
@@ -60,6 +75,14 @@ func NewDomainSyncService(
 // SetTunnelCNAME sets a custom tunnel CNAME target
 func (s *DomainSyncService) SetTunnelCNAME(cname string) {
 	s.tunnelCNAME = cname
+}
+
+// TunnelCNAME returns the configured DNS target for Cloudflare Tunnel CNAMEs.
+func (s *DomainSyncService) TunnelCNAME() string {
+	if s == nil || s.tunnelCNAME == "" {
+		return DefaultTunnelCNAME
+	}
+	return s.tunnelCNAME
 }
 
 // GetCloudflareClient returns the underlying Cloudflare client for DNS operations

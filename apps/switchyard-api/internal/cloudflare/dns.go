@@ -223,6 +223,69 @@ func (c *Client) CreateDNSRecordInZone(ctx context.Context, zoneID, name, record
 	return &resp.Result, nil
 }
 
+// UpdateDNSRecordInZone updates an existing DNS record in a specific zone.
+func (c *Client) UpdateDNSRecordInZone(ctx context.Context, zoneID string, record DNSRecord, content string, proxied bool) (*DNSRecord, error) {
+	if record.ID == "" {
+		return nil, fmt.Errorf("record ID is required")
+	}
+	if record.Name == "" {
+		return nil, fmt.Errorf("record name is required")
+	}
+
+	recordType := record.Type
+	if recordType == "" {
+		recordType = "CNAME"
+	}
+	ttl := record.TTL
+	if ttl == 0 {
+		ttl = 1
+	}
+
+	payload := struct {
+		Type    string `json:"type"`
+		Name    string `json:"name"`
+		Content string `json:"content"`
+		Proxied bool   `json:"proxied"`
+		TTL     int    `json:"ttl"`
+		Comment string `json:"comment,omitempty"`
+	}{
+		Type:    recordType,
+		Name:    record.Name,
+		Content: content,
+		Proxied: proxied,
+		TTL:     ttl,
+		Comment: "Managed by Enclii platform",
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal DNS record update: %w", err)
+	}
+
+	var resp APIResponse[DNSRecord]
+	path := fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, record.ID)
+
+	if err := c.put(ctx, path, bytes.NewReader(payloadBytes), &resp); err != nil {
+		return nil, fmt.Errorf("failed to update DNS record for %s: %w", record.Name, err)
+	}
+
+	if !resp.Success {
+		if len(resp.Errors) > 0 {
+			return nil, fmt.Errorf("API error updating DNS record: %s", resp.Errors[0].Message)
+		}
+		return nil, fmt.Errorf("unknown API error updating DNS record")
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"name":    record.Name,
+		"type":    recordType,
+		"content": content,
+		"proxied": proxied,
+	}).Info("Updated DNS record in Cloudflare")
+
+	return &resp.Result, nil
+}
+
 // DeleteDNSRecord deletes a DNS record by its ID in the configured zone
 func (c *Client) DeleteDNSRecord(ctx context.Context, recordID string) error {
 	return c.DeleteDNSRecordInZone(ctx, c.zoneID, recordID)
@@ -401,8 +464,16 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, domain, cnameTarget string
 	}
 
 	if resp.Success && len(resp.Result) > 0 {
-		// Record already exists
-		return &resp.Result[0], false, nil
+		record := resp.Result[0]
+		if !strings.EqualFold(record.Content, cnameTarget) || !record.Proxied {
+			updated, err := c.UpdateDNSRecordInZone(ctx, zone.ID, record, cnameTarget, true)
+			if err != nil {
+				return nil, false, err
+			}
+			return updated, false, nil
+		}
+
+		return &record, false, nil
 	}
 
 	// Create the record

@@ -91,6 +91,16 @@ func junctionsDecodeOrError(resp *http.Response, target interface{}) error {
 	return nil
 }
 
+type junctionsListResponse struct {
+	Junctions []types.Junction `json:"junctions"`
+	Total     int              `json:"total"`
+}
+
+type junctionCreateResponse struct {
+	Junction types.Junction `json:"junction"`
+	Message  string         `json:"message"`
+}
+
 // --- junctions list ---
 
 func newJunctionsListCommand(cfg *config.Config) *cobra.Command {
@@ -121,10 +131,11 @@ func runJunctionsList(cfg *config.Config, projectSlug string) error {
 		return fmt.Errorf("failed to list junctions: %w", err)
 	}
 
-	var junctions []types.Junction
-	if err := junctionsDecodeOrError(resp, &junctions); err != nil {
+	var listResp junctionsListResponse
+	if err := junctionsDecodeOrError(resp, &listResp); err != nil {
 		return err
 	}
+	junctions := listResp.Junctions
 
 	if len(junctions) == 0 {
 		fmt.Println("No junctions found.")
@@ -211,10 +222,11 @@ func runJunctionsAdd(cfg *config.Config, domain, projectSlug, serviceID, path, p
 		return fmt.Errorf("failed to add junction: %w", err)
 	}
 
-	var junction types.Junction
-	if err := junctionsDecodeOrError(resp, &junction); err != nil {
+	var createResp junctionCreateResponse
+	if err := junctionsDecodeOrError(resp, &createResp); err != nil {
 		return err
 	}
+	junction := createResp.Junction
 
 	fmt.Printf("Junction created:\n")
 	fmt.Printf("  ID:       %s\n", junction.ID)

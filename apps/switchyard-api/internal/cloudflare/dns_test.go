@@ -631,6 +631,7 @@ func TestEnsureDNSRecord(t *testing.T) {
 								Name:    "api.example.com",
 								Type:    "CNAME",
 								Content: "tunnel.enclii.dev",
+								Proxied: true,
 							}},
 						}
 						json.NewEncoder(w).Encode(resp)
@@ -679,5 +680,83 @@ func TestEnsureDNSRecord(t *testing.T) {
 				t.Fatal("expected non-nil record")
 			}
 		})
+	}
+}
+
+func TestEnsureDNSRecord_UpdatesMismatchedCNAME(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path == "/zones" {
+			resp := APIResponse[[]Zone]{
+				Success:    true,
+				Result:     []Zone{{ID: "z1", Name: "example.com", Status: "active"}},
+				ResultInfo: &ResultInfo{Page: 1, TotalPages: 1, Count: 1, TotalCount: 1},
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/dns_records") {
+			resp := APIResponse[[]DNSRecord]{
+				Success: true,
+				Result: []DNSRecord{{
+					ID:      "existing-rec",
+					Name:    "api.example.com",
+					Type:    "CNAME",
+					Content: "tunnel.enclii.dev",
+					Proxied: true,
+					TTL:     1,
+				}},
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if r.Method == http.MethodPut && r.URL.Path == "/zones/z1/dns_records/existing-rec" {
+			body, _ := io.ReadAll(r.Body)
+			var payload struct {
+				Content string `json:"content"`
+				Proxied bool   `json:"proxied"`
+			}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("failed to parse request body: %v", err)
+			}
+			if payload.Content != "test-tunnel-id.cfargotunnel.com" {
+				t.Fatalf("content = %q, want test-tunnel-id.cfargotunnel.com", payload.Content)
+			}
+			if !payload.Proxied {
+				t.Fatal("proxied = false, want true")
+			}
+
+			resp := APIResponse[DNSRecord]{
+				Success: true,
+				Result: DNSRecord{
+					ID:      "existing-rec",
+					Name:    "api.example.com",
+					Type:    "CNAME",
+					Content: payload.Content,
+					Proxied: payload.Proxied,
+					TTL:     1,
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	rec, created, err := client.EnsureDNSRecord(context.Background(), "api.example.com", "test-tunnel-id.cfargotunnel.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created {
+		t.Fatal("created = true, want false for updated record")
+	}
+	if rec.Content != "test-tunnel-id.cfargotunnel.com" {
+		t.Fatalf("Content = %q, want test-tunnel-id.cfargotunnel.com", rec.Content)
 	}
 }

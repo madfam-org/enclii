@@ -139,3 +139,20 @@ func TestProvisionSingleDomain_InvalidDomain(t *testing.T) {
 		Environment: "production",
 	}, 80)
 }
+
+func TestResolveServiceNamespace_PrefersServiceK8sNamespace(t *testing.T) {
+	namespace := "converge-dash"
+	h := &Handler{
+		logger: newNopLogger(),
+	}
+
+	got := h.resolveServiceNamespace(context.Background(), &types.Service{
+		ID:           uuid.New(),
+		Name:         "converge-web",
+		K8sNamespace: &namespace,
+	}, "production")
+
+	if got != namespace {
+		t.Fatalf("resolveServiceNamespace() = %q, want %q", got, namespace)
+	}
+}
