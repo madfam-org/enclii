@@ -287,6 +287,9 @@ func TestCreateBuildJob(t *testing.T) {
 	if container.SecurityContext == nil {
 		t.Fatal("expected container security context to be set")
 	}
+	if container.SecurityContext.Privileged == nil || *container.SecurityContext.Privileged {
+		t.Error("expected Kaniko container to set privileged=false")
+	}
 	if container.SecurityContext.Capabilities == nil {
 		t.Fatal("expected container capabilities to be set")
 	}

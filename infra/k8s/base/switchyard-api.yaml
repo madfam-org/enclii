@@ -158,7 +158,11 @@ metadata:
     app: switchyard-api
 spec:
   ports:
-    - port: 80
+    - name: http
+      port: 80
+      targetPort: 4200
+    - name: http-4200
+      port: 4200
       targetPort: 4200
   selector:
     app: switchyard-api

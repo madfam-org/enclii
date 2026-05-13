@@ -276,6 +276,7 @@ func (e *KanikoExecutor) createBuildJob(ctx context.Context, job *queue.BuildJob
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
+								Privileged:               boolPtr(false),
 								AllowPrivilegeEscalation: boolPtr(false),
 								ReadOnlyRootFilesystem:   boolPtr(false), // Kaniko needs writable /kaniko
 								Capabilities: &corev1.Capabilities{
