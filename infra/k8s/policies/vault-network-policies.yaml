@@ -142,7 +142,9 @@ spec:
 #
 # Vault mostly behaves as a sink, but the Kubernetes auth method must call the
 # API server TokenReview endpoint when validating ESO/Selva service-account
-# JWTs. Keep this narrow: DNS plus the k3s API service/endpoint only.
+# JWTs. Keep this narrow: DNS plus the in-cluster Kubernetes API service only.
+# External production API-server CIDRs are sensitive infrastructure inventory
+# and must be supplied by internal-devops overlays, not this public repo.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -168,8 +170,6 @@ spec:
     - to:
         - ipBlock:
             cidr: 10.43.0.1/32
-        - ipBlock:
-            cidr: 37.27.235.104/32
       ports:
         - protocol: TCP
           port: 443
