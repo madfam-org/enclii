@@ -136,6 +136,14 @@ on:
         required: false
         type: string
         default: '^(\.github/workflows/.*\.yml|infra/k8s/(production|overlays)/)'
+      build_runner:
+        description: |
+          Optional runner label for Docker build jobs. Leave empty to use
+          the platform default, or set to ubuntu-latest for repos that need
+          to avoid unavailable ARC/self-hosted capacity.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -271,7 +279,7 @@ jobs:
     name: Build ${{ matrix.service.name }}
     needs: detect-changes
     if: needs.detect-changes.outputs.any == 'true'
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
     strategy:
       fail-fast: false
       matrix:
