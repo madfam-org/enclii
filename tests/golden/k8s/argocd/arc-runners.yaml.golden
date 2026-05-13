@@ -43,6 +43,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true
 
   ignoreDifferences:
     # Argo injects tracking labels onto rendered Helm resources. The rendered

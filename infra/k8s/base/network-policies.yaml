@@ -100,6 +100,23 @@ spec:
     ports:
     - protocol: TCP
       port: 4200
+  # Allow Converge Dash to read Enclii observability as an infra source of truth.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: converge-dash
+      podSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - converge-api
+          - converge-worker
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 4200
 ---
 # Restrict Redis access to Switchyard API + Roundhouse
 apiVersion: networking.k8s.io/v1

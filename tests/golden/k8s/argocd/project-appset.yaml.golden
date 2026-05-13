@@ -85,6 +85,11 @@ spec:
             - /metadata/annotations/kyverno.io~1verify-images
             - /spec/template/metadata/annotations/kyverno.io~1verify-images
             - /metadata/labels/app.kubernetes.io~1instance
+          jqPathExpressions:
+            - .spec.volumeClaimTemplates[]?.apiVersion
+            - .spec.volumeClaimTemplates[]?.kind
+            - .spec.volumeClaimTemplates[]?.metadata.creationTimestamp
+            - .spec.volumeClaimTemplates[]?.status
         - group: ""
           kind: Service
           jsonPointers:
