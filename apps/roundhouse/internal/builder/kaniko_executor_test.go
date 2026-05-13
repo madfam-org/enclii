@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
 	"go.uber.org/zap"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -291,18 +290,8 @@ func TestCreateBuildJob(t *testing.T) {
 	if container.SecurityContext.Privileged == nil || *container.SecurityContext.Privileged {
 		t.Error("expected Kaniko container to set privileged=false")
 	}
-	if container.SecurityContext.Capabilities == nil {
-		t.Fatal("expected container capabilities to be set")
-	}
-	dropsAllCapabilities := false
-	for _, capability := range container.SecurityContext.Capabilities.Drop {
-		if capability == corev1.Capability("ALL") {
-			dropsAllCapabilities = true
-			break
-		}
-	}
-	if !dropsAllCapabilities {
-		t.Error("expected Kaniko container to drop ALL capabilities")
+	if container.SecurityContext.Capabilities != nil && len(container.SecurityContext.Capabilities.Drop) > 0 {
+		t.Error("expected Kaniko container not to drop capabilities; dropping CAP_CHOWN breaks OCI layer extraction")
 	}
 
 	// Verify git credentials volume is added

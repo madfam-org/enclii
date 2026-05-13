@@ -98,10 +98,10 @@ Priority order:
 The domains page depends on the Switchyard API/UI release pipeline. Before retrying a production release, verify these build-system invariants:
 
 - `switchyard-api` must enqueue builds through Roundhouse, not fall back to in-process Docker builds. The durable NetworkPolicy is `switchyard-api-roundhouse-egress`.
-- Roundhouse build Jobs must set `securityContext.capabilities.drop: ["ALL"]`; otherwise Kyverno `restrict-capabilities` rejects `build-*` Jobs in `enclii-builds`.
+- Roundhouse build Jobs must not set `securityContext.capabilities.drop: ["ALL"]`; Kaniko needs default in-container capabilities such as `CAP_CHOWN` to unpack OCI layers. Enforce this with the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot` and `restrict-capabilities`, while keeping the container host-unprivileged.
 - Roundhouse callbacks must use the Switchyard Kubernetes Service URL `http://switchyard-api`, not `http://switchyard-api:4200`; the Service exposes port `80` and forwards to container port `4200`.
 - Keep the callback path durable with `roundhouse-switchyard-callback-egress` and `switchyard-api-roundhouse-callback-ingress` so service reconciliation cannot remove it.
-- Kaniko build Pods intentionally require the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot`; they must still set `privileged: false`, `allowPrivilegeEscalation: false`, `seccompProfile: RuntimeDefault`, and `capabilities.drop: ["ALL"]`.
+- Kaniko build Pods intentionally require the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot` and `restrict-capabilities`; they must still set `privileged: false`, `allowPrivilegeEscalation: false`, and `seccompProfile: RuntimeDefault`.
 - If bootstrapping from an older Roundhouse worker image, use only a short-lived PolicyException scoped to `enclii-builds` `build-*` Jobs/Pods for the missing fields, deploy the corrected Roundhouse image, then remove the temporary exception.
 - `enclii-builds` must contain `ghcr-credentials` for Kaniko registry auth and `git-credentials` when private Git fetches are required. Do not hand-copy long term; reconcile these from the platform secret source of truth before treating the build pipeline as fully stable.
 - Monorepo Dockerfiles built by Roundhouse must copy local `replace ../../packages/...` modules into the paths expected by `go.mod`; otherwise Kaniko can clone the repo and still fail at `go mod download`.

@@ -3,8 +3,9 @@
 #
 # Kaniko needs in-container UID 0 to unpack OCI layer ownership and permission
 # metadata. The generated Pods remain unprivileged: privileged=false,
-# allowPrivilegeEscalation=false, seccomp RuntimeDefault, and all Linux
-# capabilities are dropped.
+# allowPrivilegeEscalation=false, and seccomp RuntimeDefault. Kaniko also needs
+# default in-container capabilities such as CAP_CHOWN to unpack OCI layers, so
+# it cannot set capabilities.drop: ["ALL"] without failing builds.
 apiVersion: kyverno.io/v2beta1
 kind: PolicyException
 metadata:
@@ -20,6 +21,10 @@ spec:
     - policyName: require-run-as-nonroot
       ruleNames:
         - run-as-non-root
+    - policyName: restrict-capabilities
+      ruleNames:
+        - drop-all-capabilities
+        - autogen-drop-all-capabilities
   match:
     any:
       - resources:

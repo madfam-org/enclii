@@ -198,8 +198,11 @@ func (e *KanikoExecutor) createBuildJob(ctx context.Context, job *queue.BuildJob
 
 	// Security context - Kaniko MUST run as root (UID 0) to unpack container filesystem layers.
 	// When building images, Kaniko needs to create directories like /bin, /usr, etc. which
-	// are owned by root. This is safe because Kaniko runs in an unprivileged container
-	// (no elevated host capabilities), it just needs root within the container namespace.
+	// are owned by root. Kaniko also needs its default in-container capabilities, including
+	// CAP_CHOWN, while extracting OCI layers; dropping ALL capabilities breaks builds at
+	// layer unpack time. This remains host-unprivileged because the container sets
+	// privileged=false, allowPrivilegeEscalation=false, and seccomp RuntimeDefault. The
+	// enclii-builds namespace carries a scoped Kyverno exception for Kaniko build Pods.
 	runAsNonRoot := false
 	runAsUser := int64(0)
 	runAsGroup := int64(0)
@@ -279,9 +282,6 @@ func (e *KanikoExecutor) createBuildJob(ctx context.Context, job *queue.BuildJob
 								Privileged:               boolPtr(false),
 								AllowPrivilegeEscalation: boolPtr(false),
 								ReadOnlyRootFilesystem:   boolPtr(false), // Kaniko needs writable /kaniko
-								Capabilities: &corev1.Capabilities{
-									Drop: []corev1.Capability{"ALL"},
-								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
