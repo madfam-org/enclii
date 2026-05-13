@@ -171,3 +171,5 @@ spec:
         - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
         - /spec/persistentVolumeClaimRetentionPolicy
         - /spec/revisionHistoryLimit
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[]?.status
