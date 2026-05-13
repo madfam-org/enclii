@@ -63,5 +63,8 @@ images:
   - name: switchyard-ui
     newName: ghcr.io/madfam-org/enclii/switchyard-ui
     digest: sha256:e9a061abff516d6854b00f0081fbb67db73d14ab92059a48c89d33b86c7ce4cb
+  - name: roundhouse
+    newName: ghcr.io/madfam-org/enclii/roundhouse
+    digest: sha256:f19b61e9825a9d28c92e6cc6ffa5d7a291dcf310e5cab1476840875a4dff4e89
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
