@@ -13,7 +13,6 @@ import (
 	"github.com/madfam-org/enclii/packages/cli/internal/client"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
 	"github.com/madfam-org/enclii/packages/cli/internal/spec"
-	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // ANSI color codes for pod differentiation
@@ -102,53 +101,30 @@ func showLogs(cfg *config.Config, serviceName, environment string, follow bool, 
 
 	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
 
-	// Resolve service name
-	resolvedServiceName, projectSlug, err := resolveServiceName(serviceName, specFile, cfg)
+	// Resolve service name or ID. UUID service IDs can go straight to the
+	// service-scoped logs/deployments API; names use local service context from
+	// service.yaml or .enclii.yml before falling back to config.
+	service, err := resolveOperationalService(ctx, apiClient, cfg, serviceName, specFile)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("📋 Showing logs for %s in %s environment", resolvedServiceName, environment)
+	fmt.Printf("📋 Showing logs for %s in %s environment", service.Name, environment)
 	if follow {
 		fmt.Printf(" (following)")
 	}
 	fmt.Println()
 	fmt.Println("─────────────────────────────────────────────────")
 
-	// Find service
-	fmt.Println("🔍 Finding service...")
-	services, err := apiClient.ListServices(ctx, projectSlug)
-	if err != nil {
-		return printKubectlFallback(resolvedServiceName, environment, lines, follow, err)
-	}
-
-	var targetService *types.Service
-	for _, svc := range services {
-		if svc.Name == resolvedServiceName {
-			targetService = svc
-			break
-		}
-	}
-
-	if targetService == nil {
-		fmt.Printf("❌ Service '%s' not found in project '%s'\n", resolvedServiceName, projectSlug)
-		fmt.Println()
-		fmt.Println("💡 Available services:")
-		for _, svc := range services {
-			fmt.Printf("   - %s\n", svc.Name)
-		}
-		return fmt.Errorf("service not found")
-	}
-
-	fmt.Printf("✅ Found service: %s\n", targetService.Name)
+	fmt.Printf("✅ Service ID: %s\n", service.ID)
 
 	if follow {
 		// Use WebSocket streaming for real-time logs
-		return streamLogsRealtime(ctx, apiClient, targetService.ID.String(), environment, lines, since, timestamps)
+		return streamLogsRealtime(ctx, apiClient, service.ID, environment, lines, since, timestamps)
 	}
 
 	// One-time log fetch for non-follow mode
-	return fetchLogsOnce(ctx, apiClient, targetService.ID.String(), lines, since)
+	return fetchLogsOnce(ctx, apiClient, service.ID, lines, since)
 }
 
 // streamLogsRealtime establishes a WebSocket connection for real-time log streaming
@@ -327,17 +303,4 @@ func parseSinceDuration(since string) (*time.Time, error) {
 
 	t := time.Now().Add(-duration)
 	return &t, nil
-}
-
-// printKubectlFallback prints kubectl command as fallback
-func printKubectlFallback(serviceName, environment string, lines int, follow bool, originalErr error) error {
-	fmt.Printf("❌ Failed to list services: %v\n", originalErr)
-	fmt.Println()
-	fmt.Println("💡 Alternative: Query logs directly from Kubernetes:")
-	fmt.Printf("   kubectl logs -l enclii.dev/service=%s -n enclii-%s --tail=%d", serviceName, environment, lines)
-	if follow {
-		fmt.Print(" -f")
-	}
-	fmt.Println()
-	return originalErr
 }

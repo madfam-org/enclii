@@ -102,44 +102,18 @@ func runDeployList(cfg *config.Config, serviceName string, limit int) error {
 	ctx := context.Background()
 	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
 
-	projectSlug := cfg.Project
-	if projectSlug == "" {
-		projectSlug = "default"
-	}
-
-	// Resolve the service by name. If the caller didn't pass one, try to
-	// infer from service.yaml in cwd.
-	if serviceName == "" {
-		parser := spec.NewParser()
-		if serviceSpec, err := parser.ParseServiceSpec("service.yaml"); err == nil {
-			serviceName = serviceSpec.Metadata.Name
-		} else {
-			return fmt.Errorf("service name required (no service.yaml found in cwd)")
-		}
-	}
-
-	services, err := apiClient.ListServices(ctx, projectSlug)
+	service, err := resolveOperationalService(ctx, apiClient, cfg, serviceName, "")
 	if err != nil {
-		return fmt.Errorf("list services: %w", err)
-	}
-	var target *types.Service
-	for _, svc := range services {
-		if svc.Name == serviceName {
-			target = svc
-			break
-		}
-	}
-	if target == nil {
-		return fmt.Errorf("service %q not found in project %q", serviceName, projectSlug)
+		return err
 	}
 
-	deployments, err := apiClient.ListServiceDeployments(ctx, target.ID.String())
+	deployments, err := apiClient.ListServiceDeployments(ctx, service.ID)
 	if err != nil {
 		return fmt.Errorf("list deployments: %w", err)
 	}
 
 	if len(deployments) == 0 {
-		fmt.Printf("No deployments for %s yet.\n", serviceName)
+		fmt.Printf("No deployments for %s yet.\n", service.Name)
 		return nil
 	}
 
@@ -193,38 +167,15 @@ func runDeployShow(cfg *config.Config, target, serviceName string) error {
 
 	// v-label path: look up by (service, version).
 	if n, ok := types.ParseVersionLabel(target); ok {
-		if serviceName == "" {
-			parser := spec.NewParser()
-			if s, err := parser.ParseServiceSpec("service.yaml"); err == nil {
-				serviceName = s.Metadata.Name
-			} else {
-				return fmt.Errorf("showing a v-label requires [service] (no service.yaml in cwd)")
-			}
-		}
-
-		projectSlug := cfg.Project
-		if projectSlug == "" {
-			projectSlug = "default"
-		}
-		services, err := apiClient.ListServices(ctx, projectSlug)
-		if err != nil {
-			return fmt.Errorf("list services: %w", err)
-		}
-		var svc *types.Service
-		for _, s := range services {
-			if s.Name == serviceName {
-				svc = s
-				break
-			}
-		}
-		if svc == nil {
-			return fmt.Errorf("service %q not found", serviceName)
-		}
-		dep, err := apiClient.GetDeploymentByVersion(ctx, svc.ID.String(), n)
+		service, err := resolveOperationalService(ctx, apiClient, cfg, serviceName, "")
 		if err != nil {
 			return err
 		}
-		printDeploymentDetail(dep, serviceName)
+		dep, err := apiClient.GetDeploymentByVersion(ctx, service.ID, n)
+		if err != nil {
+			return err
+		}
+		printDeploymentDetail(dep, service.Name)
 		return nil
 	}
 
