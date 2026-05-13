@@ -5,6 +5,8 @@
 #   - ScaledObject (KEDA) — marks Healthy if conditions show Ready=True
 #   - ServiceMonitor (Prometheus) — always Healthy (declarative, no status)
 #   - PodDisruptionBudget — Healthy when currentHealthy >= desiredHealthy
+#   - CustomResourceDefinition — Healthy once Established=True; ignores
+#     non-serving ShortNamesConflict conditions for CRD CLI aliases
 #
 # Apply to the cluster:
 #   KUBECONFIG=~/.kube/config-hetzner kubectl patch configmap argocd-cm \
@@ -103,6 +105,51 @@ data:
     hs = {}
     hs.status = "Healthy"
     hs.message = "ServiceMonitor is a declarative resource"
+    return hs
+  resource.customizations.health.apiextensions.k8s.io_CustomResourceDefinition: |
+    hs = {}
+    local established = false
+    local shortNameConflict = nil
+    local rejectedName = nil
+
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      for _, condition in ipairs(obj.status.conditions) do
+        if condition.type == "Established" and condition.status == "True" then
+          established = true
+        end
+        if condition.type == "Established" and condition.status == "False" then
+          hs.status = "Degraded"
+          hs.message = condition.message or "CRD is not established"
+          return hs
+        end
+        if condition.type == "NamesAccepted" and condition.status == "False" then
+          if condition.reason == "ShortNamesConflict" then
+            shortNameConflict = condition.message or "shortName conflict"
+          else
+            rejectedName = condition.message or "CRD names were rejected"
+          end
+        end
+      end
+    end
+
+    if rejectedName ~= nil then
+      hs.status = "Degraded"
+      hs.message = rejectedName
+      return hs
+    end
+
+    if established then
+      hs.status = "Healthy"
+      if shortNameConflict ~= nil then
+        hs.message = "CRD established; ignoring non-serving shortName conflict: " .. shortNameConflict
+      else
+        hs.message = "CRD established"
+      end
+      return hs
+    end
+
+    hs.status = "Progressing"
+    hs.message = "CRD establishment pending"
     return hs
   resource.customizations.health.policy_PodDisruptionBudget: |
     hs = {}
