@@ -1,7 +1,9 @@
 # Backup Coverage Report
 
-**Last updated:** 2026-03-14
-**Coverage:** 9/10 (WAL archiving deferred)
+**Last updated:** 2026-05-12
+**Coverage:** 10/10 for the active production database path plus staged
+CNPG HA backups. Legacy `postgres-backup` remains active until PgBouncer
+cutover; `postgres-ha-daily` protects the parallel CNPG cluster.
 
 ## Schedule Map
 
@@ -12,6 +14,7 @@ Daily:
   1:30 AM  k3s-datastore-backup       state.db + TLS + token
   2:00 AM  Longhorn daily-snapshot     Block storage snapshots
   2:30 AM  node-maintenance            Image prune + log rotation
+  2:30 AM  postgres-ha-daily           CNPG base backup + continuous WAL
   3:00 AM  postgres-backup             pg_dumpall to R2
 
 Sunday:
@@ -28,6 +31,7 @@ Monthly (1st):
 | Backup | R2 Path | Retention | RPO | Secret Required |
 |--------|---------|-----------|-----|-----------------|
 | PostgreSQL | `postgres/` | 30 days | 24h | `r2-backup-credentials` |
+| PostgreSQL HA (CNPG) | `cnpg/postgres-ha/` | 30 days | <=5m WAL target | `cnpg-r2-credentials` |
 | K3s Datastore | `k3s-datastore/` | 7 days | 24h | `r2-backup-credentials` |
 | GitHub Repos | `github-mirrors/` | 7 days | 24h | `github-backup-credentials` + `r2-backup-credentials` |
 | Cloudflare Config | `cloudflare-config/` | 30 days | 24h | `cloudflare-api-credentials` + `r2-backup-credentials` |
@@ -53,6 +57,7 @@ All backup CronJobs are monitored by Prometheus (`cronjob-health` rule group):
 | Secret | Namespace | Keys | Purpose |
 |--------|-----------|------|---------|
 | `r2-backup-credentials` | data | `account-id`, `access-key-id`, `secret-access-key` | R2 upload (all jobs) |
+| `cnpg-r2-credentials` | data | `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY` | CNPG WAL/base backup upload |
 | `github-backup-credentials` | data | `github-pat` | GitHub API + clone |
 | `cloudflare-api-credentials` | data | `api-token`, `zone-id-enclii`, `zone-id-madfam`, `account-id` | CF API exports |
 

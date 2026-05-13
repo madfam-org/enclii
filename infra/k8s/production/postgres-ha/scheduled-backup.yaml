@@ -28,10 +28,9 @@ metadata:
 spec:
   # Daily at 02:30 UTC. Cron syntax with seconds field (CNPG default).
   schedule: "0 30 2 * * *"
-  suspend: true     # suspended until cluster.yaml carries spec.backup
-                    # barmanObjectStore / plugin configuration and the
-                    # cnpg-r2-credentials Secret exists. Without that,
-                    # CNPG creates failed Backup CRs every day.
+  suspend: false    # enabled now that cluster.yaml carries spec.backup
+                    # barmanObjectStore and cnpg-r2-credentials is derived
+                    # from data/r2-backup-credentials by ESO.
   immediate: false   # do NOT take a backup right when this CR applies;
                      # backup pipeline must be observed-healthy first
                      # via the cutover runbook before backups run.

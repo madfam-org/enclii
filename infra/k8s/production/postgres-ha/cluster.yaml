@@ -167,11 +167,30 @@ spec:
   # superuserSecret in a controlled cutover.
   enableSuperuserAccess: true
 
-  # Backup configuration is intentionally withheld until the
-  # `cnpg-r2-credentials` Secret exists. CNPG 1.29 also deprecates native
-  # Barman object-store backup in favor of the Barman Cloud Plugin, so the
-  # next production-ready backup commit should introduce the plugin path
-  # and its ESO-managed R2 credentials together.
+  # Backup configuration.
+  # CNPG 1.29 still supports native barmanObjectStore in the installed CRD.
+  # The endpoint is the account-scoped Cloudflare R2 S3 endpoint; credentials
+  # are provided by cnpg-r2-credentials, which ESO derives from
+  # data/r2-backup-credentials.
+  backup:
+    target: prefer-standby
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://enclii-backups/cnpg/postgres-ha/
+      endpointURL: https://12f1353f7819865c56161ce00297668e.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-r2-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-r2-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 2
+      data:
+        compression: gzip
+        jobs: 2
 
   # Monitoring (PodMonitor in podmonitor.yaml). Built-in CNPG metrics
   # endpoint on every instance pod at :9187/metrics.

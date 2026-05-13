@@ -15,15 +15,24 @@ The third instance is deferred until Longhorn has enough schedulable capacity
 for another 20Gi two-replica volume. The previous 3-instance attempt left the
 third PVC faulted with `ReplicaSchedulingFailure: insufficient storage`.
 
+**Backup state:** native CNPG `barmanObjectStore` backups are configured for
+`s3://enclii-backups/cnpg/postgres-ha/` using the ESO-derived
+`cnpg-r2-credentials` Secret from `data/r2-backup-credentials`.
+`postgres-ha-daily` is enabled with
+`immediate: false`, so it will not run on apply; it runs at the next 02:30 UTC
+schedule unless an operator creates a manual `Backup` first.
+
 ## Files
 
 | File | Purpose |
 |---|---|
-| `cluster.yaml` | CNPG `Cluster` CR (3 instances, sync replication, R2 backup, pgvector) + custom-queries ConfigMap |
-| `scheduled-backup.yaml` | Daily base backup definition, currently `suspend: true` until Cluster backup config and R2 credentials are live |
+| `data-kubernetes-secretstore.yaml` | ESO ClusterSecretStore that reads source backup credentials from the `data` namespace |
+| `cnpg-r2-credentials.externalsecret.yaml` | ESO-derived R2 credential Secret for CNPG backups |
+| `cluster.yaml` | CNPG `Cluster` CR (currently 2 instances, sync replication, R2 backup, pgvector) + custom-queries ConfigMap |
+| `scheduled-backup.yaml` | Daily base backup definition, enabled with `immediate: false` |
 | `podmonitor.yaml` | Prometheus PodMonitor + 5 alert rules (degraded, sync-replica-lost, failover-in-progress, backup-archive-behind, multiple-writable-primaries) |
 | `network-policy.yaml` | Ingress from PgBouncer + ecosystem consumers; egress to R2 + DNS + replication peers |
-| `r2-credentials.yaml.template` | Template for the R2 secret + ConfigMap (apply manually before merge; ESO-managed post-Wave-2) |
+| `r2-credentials.yaml.template` | Manual break-glass template only; normal production credentials are ESO-managed |
 | `kustomization.yaml` | Wires the resources together; consumed by the `postgres-ha` ArgoCD Application |
 
 ## Pre-merge checklist
@@ -33,8 +42,8 @@ The companion PR **must not be merged** until all of the following are confirmed
 - [ ] CNPG operator image digest resolved and substituted in `infra/argocd/apps/cnpg-operator.yaml` (replace `1.23.0` tag with `@sha256:...` digest).
 - [ ] CNPG Postgres image digest resolved and substituted in `cluster.yaml` (replace `15.6-1` tag with `@sha256:...` digest).
 - [ ] Longhorn has enough free schedulable capacity for the third 20Gi/2-replica instance volume, or `instances` intentionally remains `2`.
-- [ ] R2 bucket prefix `cnpg/postgres-ha/` created and write-access granted.
-- [ ] `cnpg-r2-credentials` Secret + `cnpg-r2-config` ConfigMap applied to `data` namespace from `r2-credentials.yaml.template`.
+- [x] R2 bucket prefix `cnpg/postgres-ha/` created and write-access granted via the shared R2 backup credentials.
+- [x] `cnpg-r2-credentials` Secret is derived by ESO from `data/r2-backup-credentials`.
 - [ ] `postgres-ha-superuser` Secret applied to `data` namespace (auto-managed post-Wave-2 via ESO from Vault; manual until then).
 - [ ] Owner has reviewed and approved the cutover plan in [`internal-devops/rfcs/0012-postgres-ha-via-cnpg.md`](https://github.com/madfam-org/internal-devops/blob/main/rfcs/0012-postgres-ha-via-cnpg.md) §5 + §8 owner-action gate.
 
@@ -44,21 +53,21 @@ The companion PR **must not be merged** until all of the following are confirmed
 # 1. CNPG operator first (CRDs must exist before Cluster reconciles)
 kubectl get application cnpg-operator -n argocd -o jsonpath='{.status.sync.status}'  # should be Synced
 
-# 2. R2 credentials (manual one-time apply; ESO-managed post-Wave-2)
-kubectl -n data apply -f r2-credentials.yaml   # the FILLED version, not the template
+# 2. R2 credentials are managed by ESO in this kustomization.
+kubectl -n data get externalsecret cnpg-r2-credentials
 
 # 3. Sync the postgres-ha Application (after operator is healthy)
 kubectl -n argocd patch application postgres-ha --type merge -p '{"operation":{"sync":{}}}'
 
-# 4. Watch the cluster come up (3 instances bootstrap sequentially)
+# 4. Watch the cluster come up (currently 2 instances; 3rd waits on Longhorn)
 kubectl -n data get cluster postgres-ha -w
 
 # 5. Verify (full pre-flight is in postgres-failover-drill.md §0)
 kubectl -n data exec postgres-ha-1 -c postgres -- psql -U postgres \
   -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"
 
-# 6. After adding spec.backup and R2 credentials, unsuspend the ScheduledBackup
-kubectl -n data patch scheduledbackup postgres-ha-daily --type merge -p '{"spec":{"suspend":false}}'
+# 6. Confirm the ScheduledBackup is enabled
+kubectl -n data get scheduledbackup postgres-ha-daily -o jsonpath='{.spec.suspend}{"\n"}'
 
 # 7. Take a manual base backup to validate the R2 pipeline
 kubectl -n data create -f - <<EOF

@@ -17,13 +17,15 @@
 # until PgBouncer is re-pointed.
 #
 # r2-credentials.yaml.template is a TEMPLATE only — it is NOT included
-# in this kustomization. The actual Secret is applied manually before
-# this Cluster reconciles (post-Wave-2: managed by ESO from Vault).
+# in this kustomization. The live Secret is derived by ESO from
+# data/r2-backup-credentials.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: data
 
 resources:
+  - data-kubernetes-secretstore.yaml
+  - cnpg-r2-credentials.externalsecret.yaml
   - cluster.yaml
   - scheduled-backup.yaml
   - podmonitor.yaml

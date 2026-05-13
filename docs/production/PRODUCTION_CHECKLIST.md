@@ -55,6 +55,7 @@ tags: [production, deployment, checklist, operations]
 - [x] Redis 7 in-cluster (data namespace)
 - [x] Redis authentication via K8s Secret
 - [x] PostgreSQL daily backup CronJob to R2
+- [x] PostgreSQL HA CNPG WAL/base backups configured to R2
 - [x] Longhorn backup target configured to R2
 
 ### Storage
