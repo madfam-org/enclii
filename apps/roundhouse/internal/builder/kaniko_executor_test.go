@@ -111,6 +111,7 @@ func TestBuildKanikoArgs(t *testing.T) {
 	assertContains(t, args, "--cache-repo=ghcr.io/test/cache")
 	assertContains(t, args, "--reproducible")
 	assertContains(t, args, "--build-arg=GO_VERSION=1.21")
+	assertContains(t, args, "--build-arg=NPM_MADFAM_TOKEN")
 	assertContains(t, args, "--target=production")
 
 	// Verify context includes git info and subdirectory
@@ -377,6 +378,7 @@ func TestBuildEnvVars(t *testing.T) {
 
 	// Should have GIT_TOKEN env var
 	hasGitToken := false
+	hasNPMToken := false
 	for _, env := range envVars {
 		if env.Name == "GIT_TOKEN" {
 			hasGitToken = true
@@ -386,11 +388,22 @@ func TestBuildEnvVars(t *testing.T) {
 			if env.ValueFrom.SecretKeyRef.Name != "my-git-creds" {
 				t.Errorf("expected secret name 'my-git-creds', got '%s'", env.ValueFrom.SecretKeyRef.Name)
 			}
-			break
+		}
+		if env.Name == "NPM_MADFAM_TOKEN" {
+			hasNPMToken = true
+			if env.ValueFrom == nil || env.ValueFrom.SecretKeyRef == nil {
+				t.Error("expected NPM_MADFAM_TOKEN to come from secret")
+			}
+			if env.ValueFrom.SecretKeyRef.Name != "npm-madfam-token" {
+				t.Errorf("expected secret name 'npm-madfam-token', got '%s'", env.ValueFrom.SecretKeyRef.Name)
+			}
 		}
 	}
 	if !hasGitToken {
 		t.Error("expected GIT_TOKEN env var to be present")
+	}
+	if !hasNPMToken {
+		t.Error("expected NPM_MADFAM_TOKEN env var to be present")
 	}
 }
 
@@ -415,11 +428,17 @@ func TestBuildEnvVars_NoGitCredentials(t *testing.T) {
 
 	envVars := executor.buildEnvVars(job)
 
-	// Should NOT have GIT_TOKEN env var
+	hasNPMToken := false
 	for _, env := range envVars {
 		if env.Name == "GIT_TOKEN" {
 			t.Error("expected GIT_TOKEN env var to NOT be present when GitCredentials is empty")
 		}
+		if env.Name == "NPM_MADFAM_TOKEN" {
+			hasNPMToken = true
+		}
+	}
+	if !hasNPMToken {
+		t.Error("expected NPM_MADFAM_TOKEN env var to be present")
 	}
 }
 

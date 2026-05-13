@@ -377,8 +377,15 @@ func (e *KanikoExecutor) buildKanikoArgs(job *queue.BuildJob, imageTag string) [
 	}
 
 	// Add build args
+	hasNPMTokenBuildArg := false
 	for key, value := range job.BuildConfig.BuildArgs {
+		if key == "NPM_MADFAM_TOKEN" {
+			hasNPMTokenBuildArg = true
+		}
 		args = append(args, fmt.Sprintf("--build-arg=%s=%s", key, value))
+	}
+	if !hasNPMTokenBuildArg {
+		args = append(args, "--build-arg=NPM_MADFAM_TOKEN")
 	}
 
 	// Add target if specified (multi-stage builds)
@@ -408,6 +415,18 @@ func (e *KanikoExecutor) buildEnvVars(job *queue.BuildJob) []corev1.EnvVar {
 			},
 		})
 	}
+	envVars = append(envVars, corev1.EnvVar{
+		Name: "NPM_MADFAM_TOKEN",
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: "npm-madfam-token",
+				},
+				Key:      "token",
+				Optional: boolPtr(true),
+			},
+		},
+	})
 
 	return envVars
 }
