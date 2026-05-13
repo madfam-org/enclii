@@ -30,9 +30,11 @@ spec:
       # CNPG metric labels include cluster + role (primary/standby).
       # Drop pod IP to keep cardinality bounded.
       relabelings:
-        - sourceLabels: [__meta_kubernetes_pod_label_cnpg_io_cluster]
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_label_cnpg_io_cluster]
           targetLabel: cluster
-        - sourceLabels: [__meta_kubernetes_pod_label_cnpg_io_instanceRole]
+        - action: replace
+          sourceLabels: [__meta_kubernetes_pod_label_cnpg_io_instanceRole]
           targetLabel: instance_role
         - action: labeldrop
           regex: pod

@@ -178,6 +178,11 @@ spec:
   monitoring:
     enablePodMonitor: false   # we ship our own PodMonitor explicitly
     customQueriesConfigMap:
+      # CNPG includes its default monitoring query ConfigMap in live
+      # Cluster specs. Keep it explicit so Argo's server-side comparison
+      # does not report perpetual drift after the operator defaults it.
+      - name: cnpg-default-monitoring
+        key: queries
       - name: cnpg-custom-queries
         key: queries.yaml
 
