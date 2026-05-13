@@ -44,13 +44,13 @@ images:
 - digest: sha256:72dc43d32d2da100f2bb55ad2f054aa3a9ba3e024784be4d0564ef15ebb5c474
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:9b95708aaabe814b308019a51d746245c667fa20ec5bf85d434cd27e11d63184
+- digest: sha256:80b063e279ca58853b1325a4687f5c906574aacc59f1a4aad371e378cce9d002
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:73551de21dde3a74afb820345487869ea42aee67c920386f80a61ac009d0c6c5
+- digest: sha256:1aa597e30e92066676b8e811720c2b6be70e0dd3942c1e9690f750c73e87fac3
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:acd3a9675b9f4e61cdbcb512024a70b5f6057df8e556abbebfea684ab40f2821
+- digest: sha256:3b7cb6b5c32d46351b1acaff89e9179f5437b47c3174e02b7e28de215a87564d
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
 - digest: sha256:ba0b77bf75a7c5259e34892ace59f09803224971ef76126655ec89eb03fa8137
@@ -58,14 +58,5 @@ images:
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
-  - name: roundhouse
-    newName: ghcr.io/madfam-org/enclii/roundhouse
-    digest: sha256:80b063e279ca58853b1325a4687f5c906574aacc59f1a4aad371e378cce9d002
-  - name: switchyard-api
-    newName: ghcr.io/madfam-org/enclii/switchyard-api
-    digest: sha256:1aa597e30e92066676b8e811720c2b6be70e0dd3942c1e9690f750c73e87fac3
-  - name: switchyard-ui
-    newName: ghcr.io/madfam-org/enclii/switchyard-ui
-    digest: sha256:3b7cb6b5c32d46351b1acaff89e9179f5437b47c3174e02b7e28de215a87564d
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
