@@ -30,6 +30,7 @@ import (
 
 type Client struct {
 	Clientset     *kubernetes.Clientset
+	KubeClient    kubernetes.Interface
 	DynamicClient dynamic.Interface
 	config        *rest.Config
 }
@@ -81,6 +82,7 @@ func NewClient(kubeconfig string, kubecontext string) (*Client, error) {
 
 	return &Client{
 		Clientset:     clientset,
+		KubeClient:    clientset,
 		DynamicClient: dynClient,
 		config:        config,
 	}, nil
@@ -88,7 +90,17 @@ func NewClient(kubeconfig string, kubecontext string) (*Client, error) {
 
 // IsValid checks if the client is properly initialized and safe to use.
 func (c *Client) IsValid() bool {
-	return c != nil && c.Clientset != nil && c.config != nil
+	return c != nil && c.kubeClient() != nil && c.config != nil
+}
+
+func (c *Client) kubeClient() kubernetes.Interface {
+	if c == nil {
+		return nil
+	}
+	if c.KubeClient != nil {
+		return c.KubeClient
+	}
+	return c.Clientset
 }
 
 // Config returns the Kubernetes REST config for creating additional clients

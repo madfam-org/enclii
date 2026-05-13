@@ -251,9 +251,18 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 
 	timestamps := c.Query("timestamps") == "true"
 
-	// Build namespace and label selector
-	namespace := fmt.Sprintf("enclii-%s-%s", project.Slug, envName)
-	labelSelector := fmt.Sprintf("app=%s", service.Name)
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get environment for log streaming", logging.Error("error", err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
+		return
+	}
+
+	namespace := env.KubeNamespace
+	if namespace == "" {
+		namespace = fmt.Sprintf("enclii-%s-%s", project.Slug, envName)
+	}
+	labelSelectors := serviceLogSelectors(service.Name)
 
 	// Send connected message
 	connMsg := LogStreamMessage{
@@ -287,11 +296,11 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 
 	// Start streaming logs
 	go h.k8sClient.StreamLogs(streamCtx, k8s.LogStreamOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-		TailLines:     tailLines,
-		Follow:        true,
-		Timestamps:    timestamps,
+		Namespace:      namespace,
+		LabelSelectors: labelSelectors,
+		TailLines:      tailLines,
+		Follow:         true,
+		Timestamps:     timestamps,
 	}, logChan, errChan)
 
 	// Process logs and send to WebSocket
@@ -377,12 +386,21 @@ func (h *Handler) GetLogsHistory(c *gin.Context) {
 		}
 	}
 
-	// Build namespace and label selector
-	namespace := fmt.Sprintf("enclii-%s-%s", project.Slug, envName)
-	labelSelector := fmt.Sprintf("app=%s", service.Name)
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get environment for log history", logging.Error("error", err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
+		return
+	}
+
+	namespace := env.KubeNamespace
+	if namespace == "" {
+		namespace = fmt.Sprintf("enclii-%s-%s", project.Slug, envName)
+	}
+	labelSelectors := serviceLogSelectors(service.Name)
 
 	// Get logs
-	logs, err := h.k8sClient.GetLogs(ctx, namespace, labelSelector, lines, false)
+	logs, err := h.k8sClient.GetLogsWithSelectors(ctx, namespace, labelSelectors, lines, false)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get logs", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get logs"})
@@ -660,12 +678,21 @@ func (h *Handler) SearchLogs(c *gin.Context) {
 		limit = req.Limit
 	}
 
-	// Build namespace and label selector
-	namespace := fmt.Sprintf("enclii-%s-%s", project.Slug, envName)
-	labelSelector := fmt.Sprintf("app=%s", service.Name)
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get environment for log search", logging.Error("error", err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
+		return
+	}
+
+	namespace := env.KubeNamespace
+	if namespace == "" {
+		namespace = fmt.Sprintf("enclii-%s-%s", project.Slug, envName)
+	}
+	labelSelectors := serviceLogSelectors(service.Name)
 
 	// Get logs
-	logs, err := h.k8sClient.GetLogs(ctx, namespace, labelSelector, limit, false)
+	logs, err := h.k8sClient.GetLogsWithSelectors(ctx, namespace, labelSelectors, limit, false)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get logs", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get logs"})
@@ -710,4 +737,19 @@ func containsIgnoreCase(s, substr string) bool {
 	s = strings.ToLower(s)
 	substr = strings.ToLower(substr)
 	return strings.Contains(s, substr)
+}
+
+func serviceLogSelectors(serviceName string) []string {
+	return []string{
+		fmt.Sprintf("enclii.dev/service=%s", serviceName),
+		fmt.Sprintf("app=%s", serviceName),
+	}
+}
+
+func deploymentLogSelectors(deploymentID uuid.UUID, serviceName string) []string {
+	selectors := []string{
+		fmt.Sprintf("enclii.dev/deployment=%s", deploymentID.String()),
+	}
+	selectors = append(selectors, serviceLogSelectors(serviceName)...)
+	return selectors
 }

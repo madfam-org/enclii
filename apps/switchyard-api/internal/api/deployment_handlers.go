@@ -359,10 +359,10 @@ func (h *Handler) GetLogs(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Environment has no kubernetes namespace configured"})
 		return
 	}
-	labelSelector := fmt.Sprintf("enclii.dev/service=%s", service.Name)
+	labelSelectors := deploymentLogSelectors(deployment.ID, service.Name)
 
 	// Get logs from Kubernetes
-	logs, err := h.k8sClient.GetLogs(ctx, namespace, labelSelector, linesInt, follow)
+	logs, err := h.k8sClient.GetLogsWithSelectors(ctx, namespace, labelSelectors, linesInt, follow)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get logs", logging.Error("k8s_error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})

@@ -13,7 +13,11 @@ import (
 )
 
 func (c *Client) GetPodLogs(ctx context.Context, podName, namespace string) (string, error) {
-	req := c.Clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
+	kubeClient := c.kubeClient()
+	if kubeClient == nil {
+		return "", fmt.Errorf("kubernetes client not initialized")
+	}
+	req := kubeClient.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
 		Follow:    false,
 		TailLines: int64Ptr(100),
 	})
@@ -34,18 +38,57 @@ func (c *Client) GetPodLogs(ctx context.Context, podName, namespace string) (str
 }
 
 func (c *Client) ListPods(ctx context.Context, namespace, labelSelector string) (*corev1.PodList, error) {
-	if c == nil || c.Clientset == nil {
+	kubeClient := c.kubeClient()
+	if kubeClient == nil {
 		return nil, fmt.Errorf("kubernetes client not initialized")
 	}
-	return c.Clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+	return kubeClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 }
 
+// ListPodsWithFallback lists pods using each selector in order until one
+// matches. This lets log discovery prefer Enclii metadata labels while still
+// supporting older workloads that only have legacy app labels.
+func (c *Client) ListPodsWithFallback(ctx context.Context, namespace string, labelSelectors []string) (*corev1.PodList, string, error) {
+	if len(labelSelectors) == 0 {
+		labelSelectors = []string{""}
+	}
+
+	var lastPods *corev1.PodList
+	var lastSelector string
+	var lastErr error
+
+	for _, selector := range labelSelectors {
+		selector = strings.TrimSpace(selector)
+		pods, err := c.ListPods(ctx, namespace, selector)
+		if err != nil {
+			lastErr = err
+			lastSelector = selector
+			continue
+		}
+		lastPods = pods
+		lastSelector = selector
+		if len(pods.Items) > 0 {
+			return pods, selector, nil
+		}
+	}
+
+	if lastPods != nil {
+		return lastPods, lastSelector, nil
+	}
+	return nil, lastSelector, lastErr
+}
+
 // GetLogs retrieves logs from pods matching the label selector
 func (c *Client) GetLogs(ctx context.Context, namespace, labelSelector string, lines int, follow bool) (string, error) {
-	// Get pods matching the label selector
-	pods, err := c.ListPods(ctx, namespace, labelSelector)
+	return c.GetLogsWithSelectors(ctx, namespace, []string{labelSelector}, lines, follow)
+}
+
+// GetLogsWithSelectors retrieves logs from pods matching the first selector
+// that returns pods.
+func (c *Client) GetLogsWithSelectors(ctx context.Context, namespace string, labelSelectors []string, lines int, follow bool) (string, error) {
+	pods, _, err := c.ListPodsWithFallback(ctx, namespace, labelSelectors)
 	if err != nil {
 		return "", fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -62,7 +105,11 @@ func (c *Client) GetLogs(ctx context.Context, namespace, labelSelector string, l
 			allLogs.WriteString("\n--- Pod: " + pod.Name + " ---\n")
 		}
 
-		req := c.Clientset.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+		kubeClient := c.kubeClient()
+		if kubeClient == nil {
+			return "", fmt.Errorf("kubernetes client not initialized")
+		}
+		req := kubeClient.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
 			Follow:    follow,
 			TailLines: int64Ptr(int64(lines)),
 		})
@@ -95,11 +142,12 @@ func int64Ptr(i int64) *int64 {
 
 // LogStreamOptions configures log streaming behavior
 type LogStreamOptions struct {
-	Namespace     string
-	LabelSelector string
-	TailLines     int64
-	Follow        bool
-	Timestamps    bool
+	Namespace      string
+	LabelSelector  string
+	LabelSelectors []string
+	TailLines      int64
+	Follow         bool
+	Timestamps     bool
 }
 
 // LogLine represents a single log line with metadata
@@ -115,15 +163,20 @@ func (c *Client) StreamLogs(ctx context.Context, opts LogStreamOptions, logChan 
 	defer close(logChan)
 	defer close(errChan)
 
-	// Get pods matching the label selector
-	pods, err := c.ListPods(ctx, opts.Namespace, opts.LabelSelector)
+	labelSelectors := opts.LabelSelectors
+	if len(labelSelectors) == 0 && opts.LabelSelector != "" {
+		labelSelectors = []string{opts.LabelSelector}
+	}
+
+	// Get pods matching the first viable selector
+	pods, matchedSelector, err := c.ListPodsWithFallback(ctx, opts.Namespace, labelSelectors)
 	if err != nil {
 		errChan <- fmt.Errorf("failed to list pods: %w", err)
 		return
 	}
 
 	if len(pods.Items) == 0 {
-		errChan <- fmt.Errorf("no pods found matching selector: %s", opts.LabelSelector)
+		errChan <- fmt.Errorf("no pods found matching selector: %s", matchedSelector)
 		return
 	}
 
@@ -156,7 +209,12 @@ func (c *Client) streamPodLogs(ctx context.Context, opts LogStreamOptions, podNa
 		podLogOpts.TailLines = &opts.TailLines
 	}
 
-	req := c.Clientset.CoreV1().Pods(opts.Namespace).GetLogs(podName, podLogOpts)
+	kubeClient := c.kubeClient()
+	if kubeClient == nil {
+		errChan <- fmt.Errorf("kubernetes client not initialized")
+		return
+	}
+	req := kubeClient.CoreV1().Pods(opts.Namespace).GetLogs(podName, podLogOpts)
 	stream, err := req.Stream(ctx)
 	if err != nil {
 		errChan <- fmt.Errorf("failed to get log stream for pod %s: %w", podName, err)
