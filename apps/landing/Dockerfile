@@ -6,7 +6,7 @@ WORKDIR /app
 # Install pnpm and dependencies
 RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY apps/landing/package.json ./
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
 
 # Copy source files
 COPY apps/landing/ .

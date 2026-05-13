@@ -29,7 +29,7 @@ COPY packages/shared-lib/package.json packages/shared-lib/
 COPY packages/ui-components/package.json packages/ui-components/
 COPY packages/config/package.json packages/config/
 COPY packages/sdk-ts/package.json packages/sdk-ts/
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
 RUN rm -f .npmrc apps/switchyard-ui/.npmrc
 
 # ---------------------------------------------------------------------------

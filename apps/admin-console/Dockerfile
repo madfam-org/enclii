@@ -17,7 +17,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages ./packages
 COPY apps/admin-console ./apps/admin-console
-RUN pnpm --dir apps/admin-console install --frozen-lockfile=false
+RUN pnpm --dir apps/admin-console install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
 RUN pnpm --dir packages/shared-lib run build
 RUN pnpm --dir packages/ui-components run build
 

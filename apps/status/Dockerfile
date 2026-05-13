@@ -12,7 +12,7 @@ FROM base AS deps
 WORKDIR /app/status
 COPY apps/status/package.json ./
 # Use pnpm fetch for better caching
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
 
 # Build the application
 FROM base AS builder
