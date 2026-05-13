@@ -609,6 +609,46 @@ images:
 		}
 	})
 
+	t.Run("updates digest-first image entry", func(t *testing.T) {
+		content := `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- digest: sha256:old
+  name: api
+  newName: ghcr.io/org/project/api
+commonAnnotations:
+  config.kubernetes.io/local-config: "false"
+`
+		result := updateKustomizationImage(content, "ghcr.io/org/project/api", "api", "sha256:new")
+		if !strings.Contains(result, "- digest: sha256:new") {
+			t.Error("expected digest-first entry to be updated")
+		}
+		if strings.Contains(result, "sha256:old") {
+			t.Error("old digest should be replaced")
+		}
+		if strings.Contains(result, "# Production-specific annotations\n  - name: api") {
+			t.Error("image entry must not be appended under following top-level comments")
+		}
+	})
+
+	t.Run("adds missing image before top-level comment after images", func(t *testing.T) {
+		content := `apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- digest: sha256:other
+  name: other
+  newName: ghcr.io/org/project/other
+# Note: comments after images are top-level metadata.
+commonAnnotations:
+  config.kubernetes.io/local-config: "false"
+`
+		result := updateKustomizationImage(content, "ghcr.io/org/project/api", "api", "sha256:new")
+		expected := "- name: api\n  newName: ghcr.io/org/project/api\n  digest: sha256:new\n# Note: comments after images are top-level metadata."
+		if !strings.Contains(result, expected) {
+			t.Errorf("expected missing image before top-level comment, got:\n%s", result)
+		}
+	})
+
 	t.Run("adds image to existing images section", func(t *testing.T) {
 		content := `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

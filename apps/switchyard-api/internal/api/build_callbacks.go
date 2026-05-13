@@ -422,6 +422,7 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 	lines := strings.Split(content, "\n")
 	var result []string
 	inImages := false
+	sawImages := false
 	foundImage := false
 	imageIndent := ""
 	i := 0
@@ -433,6 +434,7 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 		// Detect "images:" section
 		if trimmed == "images:" {
 			inImages = true
+			sawImages = true
 			result = append(result, line)
 			i++
 			continue
@@ -440,8 +442,10 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 
 		// Inside images section
 		if inImages {
-			// Check if we've left the images section (non-indented, non-empty line)
-			if trimmed != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(trimmed, "-") && !strings.HasPrefix(trimmed, "#") {
+			// Check if we've left the images section (non-indented, non-empty line).
+			// Top-level comments also terminate the section; otherwise missing images
+			// can be appended under comments that follow the images list.
+			if trimmed != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(trimmed, "-") {
 				inImages = false
 				// If we haven't found our image yet, add it before leaving
 				if !foundImage {
@@ -453,54 +457,32 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 				continue
 			}
 
-			// Check for our image entry: "- name: <imageName>" or "- name: <serviceName>"
-			if strings.HasPrefix(trimmed, "- name:") {
-				nameValue := strings.TrimSpace(strings.TrimPrefix(trimmed, "- name:"))
-				// Match by full image name or service name (short name used in kustomize)
-				if nameValue == imageName || nameValue == serviceName ||
-					strings.HasSuffix(imageName, "/"+nameValue) {
-					foundImage = true
-					imageIndent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-					result = append(result, line)
-					i++
-					// Process sub-fields (newName, newTag, digest) — update digest, drop newTag
-					for i < len(lines) {
-						subLine := lines[i]
-						subTrimmed := strings.TrimSpace(subLine)
-						// Still in this image entry (indented more than the "- name:" line, not a new entry)
-						if subTrimmed == "" || (strings.HasPrefix(subLine, imageIndent+" ") && !strings.HasPrefix(subTrimmed, "- ")) {
-							if strings.HasPrefix(subTrimmed, "digest:") {
-								// Replace existing digest
-								result = append(result, imageIndent+"  digest: "+digest)
-							} else if strings.HasPrefix(subTrimmed, "newTag:") {
-								// Drop newTag when using digest
-								// (kustomize uses either newTag or digest, not both)
-							} else {
-								result = append(result, subLine)
-							}
-							i++
-						} else {
-							// Add digest if not already present
-							hasDigest := false
-							for _, r := range result {
-								if strings.Contains(r, "digest:") && strings.HasPrefix(strings.TrimSpace(r), "digest:") {
-									hasDigest = true
-									break
-								}
-							}
-							if !hasDigest {
-								result = append(result, imageIndent+"  digest: "+digest)
-							}
-							break
-						}
-					}
-					continue
-				}
-			}
-
-			// Track indent for image entries
+			// Process a full image entry. Kustomize may serialize fields as
+			// "- digest" followed by "name", not only "- name".
 			if strings.HasPrefix(trimmed, "- ") {
 				imageIndent = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+				entryStart := i
+				i++
+				for i < len(lines) {
+					nextLine := lines[i]
+					nextTrimmed := strings.TrimSpace(nextLine)
+					if nextTrimmed != "" && !strings.HasPrefix(nextLine, " ") && !strings.HasPrefix(nextLine, "\t") {
+						break
+					}
+					if strings.HasPrefix(nextTrimmed, "- ") {
+						break
+					}
+					i++
+				}
+
+				entry := lines[entryStart:i]
+				if imageEntryMatches(entry, imageName, serviceName) {
+					foundImage = true
+					result = append(result, rewriteImageEntry(entry, imageIndent, digest)...)
+				} else {
+					result = append(result, entry...)
+				}
+				continue
 			}
 		}
 
@@ -515,7 +497,7 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 	}
 
 	// If no images section exists at all, add one
-	if !foundImage {
+	if !sawImages {
 		result = append(result, "images:")
 		result = append(result, addImageEntry("", imageName, serviceName, digest)...)
 	}
@@ -523,11 +505,51 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 	return strings.Join(result, "\n")
 }
 
+func imageEntryMatches(entry []string, imageName, serviceName string) bool {
+	for _, line := range entry {
+		trimmed := strings.TrimSpace(line)
+		var nameValue string
+		switch {
+		case strings.HasPrefix(trimmed, "- name:"):
+			nameValue = strings.TrimSpace(strings.TrimPrefix(trimmed, "- name:"))
+		case strings.HasPrefix(trimmed, "name:"):
+			nameValue = strings.TrimSpace(strings.TrimPrefix(trimmed, "name:"))
+		default:
+			continue
+		}
+		if nameValue == imageName || nameValue == serviceName || strings.HasSuffix(imageName, "/"+nameValue) {
+			return true
+		}
+	}
+	return false
+}
+
+func rewriteImageEntry(entry []string, imageIndent, digest string) []string {
+	result := make([]string, 0, len(entry)+1)
+	hasDigest := false
+	for _, line := range entry {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "digest:"):
+			result = append(result, imageIndent+"  digest: "+digest)
+			hasDigest = true
+		case strings.HasPrefix(trimmed, "- digest:"):
+			result = append(result, imageIndent+"- digest: "+digest)
+			hasDigest = true
+		case strings.HasPrefix(trimmed, "newTag:") || strings.HasPrefix(trimmed, "- newTag:"):
+			// Drop newTag when using digest.
+		default:
+			result = append(result, line)
+		}
+	}
+	if !hasDigest {
+		result = append(result, imageIndent+"  digest: "+digest)
+	}
+	return result
+}
+
 // addImageEntry generates YAML lines for a new kustomize image entry
 func addImageEntry(indent, imageName, serviceName, digest string) []string {
-	if indent == "" {
-		indent = "  "
-	}
 	return []string{
 		indent + "- name: " + serviceName,
 		indent + "  newName: " + imageName,
