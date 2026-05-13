@@ -58,5 +58,8 @@ images:
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
+  - name: roundhouse
+    newName: ghcr.io/madfam-org/enclii/roundhouse
+    digest: sha256:f04c5165350fcba6c83ebbff12d522298d9c1a3f5cbaf204924a48b1923b3da1
 commonAnnotations:
   config.kubernetes.io/local-config: "false"
