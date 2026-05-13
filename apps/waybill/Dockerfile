@@ -8,10 +8,12 @@ RUN apk add --no-cache git ca-certificates
 
 # Copy go mod files (support repo root context with apps/waybill/ path)
 COPY apps/waybill/go.mod apps/waybill/go.sum ./
+COPY packages/otel-go/go.mod packages/otel-go/go.sum /packages/otel-go/
 RUN go mod download
 
 # Copy source code
 COPY apps/waybill/ .
+COPY packages/otel-go/ /packages/otel-go/
 
 # Build API binary
 RUN CGO_ENABLED=0 GOOS=linux go build -o /waybill-api ./cmd/api

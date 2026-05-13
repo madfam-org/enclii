@@ -8,10 +8,14 @@ RUN apk add --no-cache git ca-certificates
 
 # Copy go mod files (support repo root context with apps/roundhouse/ path)
 COPY apps/roundhouse/go.mod apps/roundhouse/go.sum ./
+COPY packages/otel-go/go.mod packages/otel-go/go.sum /packages/otel-go/
+COPY packages/sdk-go/go.mod /packages/sdk-go/
 RUN go mod download
 
 # Copy source code
 COPY apps/roundhouse/ .
+COPY packages/otel-go/ /packages/otel-go/
+COPY packages/sdk-go/ /packages/sdk-go/
 
 # Build API binary
 RUN CGO_ENABLED=0 GOOS=linux go build -o /roundhouse-api ./cmd/api
