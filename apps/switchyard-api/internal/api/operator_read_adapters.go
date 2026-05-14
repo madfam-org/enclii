@@ -13,6 +13,7 @@ var operatorReadActions = map[string]map[string]map[string]bool{
 	"ops": {
 		"apps":    {"status": true, "diff": true},
 		"pods":    {"diagnose": true, "logs": true},
+		"jobs":    {"list": true},
 		"storage": {"volumes": true, "pvc": true, "longhorn": true},
 		"secrets": {"external": true, "vault": true},
 		"policy":  {"violations": true, "exceptions": true},
@@ -120,6 +121,15 @@ func (h *Handler) handleOpsReadOperation(ctx context.Context, domain, action, op
 			return operatorReadUnavailable(operation, domain, action, "kubernetes typed client is not configured on switchyard-api")
 		}
 		data, err := h.readPodLogs(ctx, req)
+		if err != nil {
+			return operatorReadFailed(operation, domain, action, err)
+		}
+		return operatorReadSuccess(operation, domain, action, data)
+	case "jobs.list":
+		if h.opsKubeClient() == nil {
+			return operatorReadUnavailable(operation, domain, action, "kubernetes typed client is not configured on switchyard-api")
+		}
+		data, err := h.readCronJobs(ctx, req)
 		if err != nil {
 			return operatorReadFailed(operation, domain, action, err)
 		}

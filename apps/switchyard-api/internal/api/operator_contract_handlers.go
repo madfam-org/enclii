@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 )
 
 type operatorOperationRequest struct {
@@ -70,6 +72,13 @@ var opsCapabilities = []operatorCapability{
 		Description: "Pod diagnosis and logs reads plus restart workflow contracts",
 		Actions:     []string{"diagnose", "logs", "restart"},
 		Scopes:      []string{"namespace", "service", "target"},
+	},
+	{
+		Name:        "jobs",
+		Status:      "partial",
+		Description: "Kubernetes CronJob reads plus audited one-off triggers that preserve the existing CronJob template",
+		Actions:     []string{"list", "trigger"},
+		Scopes:      []string{"namespace", "project", "service", "target"},
 	},
 	{
 		Name:        "storage",
@@ -231,6 +240,10 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, int, bool) {
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsAppsSyncApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "jobs" && action == "trigger" && h.opsKubeClient() != nil {
+		resp, statusCode := h.handleOpsJobsTriggerApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	return operatorOperationResponse{}, 0, false
@@ -395,6 +408,113 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 	}, http.StatusAccepted
 }
 
+func (h *Handler) handleOpsJobsTriggerApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
+	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
+	namespace := operationNamespace(req, "default")
+	target := operationTarget(req)
+	if target == "" {
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      "invalid_request",
+			DryRun:      false,
+			Summary:     "jobs.trigger requires a target CronJob name",
+			Warnings:    []string{"missing args.target or scope.target"},
+		}, http.StatusBadRequest
+	}
+
+	kubeClient := h.opsKubeClient()
+	cronJob, err := kubeClient.BatchV1().CronJobs(namespace).Get(ctx, target, metav1.GetOptions{})
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		status := "failed"
+		if k8serrors.IsNotFound(err) {
+			statusCode = http.StatusNotFound
+			status = "not_found"
+		}
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      status,
+			DryRun:      false,
+			Summary:     fmt.Sprintf("failed to load CronJob %s/%s", namespace, target),
+			Warnings:    []string{err.Error()},
+		}, statusCode
+	}
+
+	now := time.Now().UTC()
+	jobName := manualCronJobRunName(target, now)
+	labels := copyStringMap(cronJob.Spec.JobTemplate.Labels)
+	labels["app.kubernetes.io/managed-by"] = "enclii-ops"
+	labels["enclii.dev/source-cronjob"] = target
+	annotations := copyStringMap(cronJob.Spec.JobTemplate.Annotations)
+	annotations["enclii.dev/last-ops-operation"] = operation
+	annotations["enclii.dev/last-ops-reason"] = req.Reason
+	annotations["enclii.dev/last-ops-requested"] = now.Format(time.RFC3339)
+	if req.IdempotencyKey != "" {
+		annotations["enclii.dev/last-ops-idempotency-key"] = req.IdempotencyKey
+	}
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        jobName,
+			Namespace:   namespace,
+			Labels:      labels,
+			Annotations: annotations,
+		},
+		Spec: *cronJob.Spec.JobTemplate.Spec.DeepCopy(),
+	}
+
+	created, err := kubeClient.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		status := "failed"
+		if k8serrors.IsAlreadyExists(err) {
+			statusCode = http.StatusConflict
+			status = "already_exists"
+		}
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      status,
+			DryRun:      false,
+			Summary:     fmt.Sprintf("failed to create one-off Job from CronJob %s/%s", namespace, target),
+			Warnings:    []string{err.Error()},
+		}, statusCode
+	}
+
+	warnings := []string{}
+	suspended := cronJob.Spec.Suspend != nil && *cronJob.Spec.Suspend
+	if suspended {
+		warnings = append(warnings, "source CronJob is suspended; manual trigger was still submitted from its template")
+	}
+	return operatorOperationResponse{
+		OperationID: operationID,
+		Operation:   operation,
+		Status:      "submitted",
+		DryRun:      false,
+		Summary:     fmt.Sprintf("created Job %s/%s from CronJob %s/%s through Enclii", namespace, created.Name, namespace, target),
+		Data: map[string]any{
+			"namespace":       namespace,
+			"cronJob":         target,
+			"job":             created.Name,
+			"resourceVersion": created.ResourceVersion,
+			"suspended":       suspended,
+		},
+		Steps: []operatorOperationStep{
+			{Name: "authorize", Status: "completed", Detail: "reason supplied and caller passed endpoint authorization"},
+			{Name: "load-state", Status: "completed", Detail: "loaded CronJob from cluster"},
+			{Name: "diff", Status: "completed", Detail: "preserved existing CronJob jobTemplate without editing production workloads"},
+			{Name: "audit", Status: "completed", Detail: "created Job with Enclii operation annotations"},
+		},
+		Warnings: warnings,
+		Next: []string{
+			"poll ops.pods.diagnose or ops.jobs.list for execution status",
+			"inspect job pod logs through ops.pods.logs if the run fails",
+		},
+	}, http.StatusAccepted
+}
+
 func operationSupported(domain, action string, capabilities []operatorCapability) bool {
 	for _, capability := range capabilities {
 		if capability.Name != domain {
@@ -407,6 +527,41 @@ func operationSupported(domain, action string, capabilities []operatorCapability
 		}
 	}
 	return false
+}
+
+func manualCronJobRunName(cronJobName string, now time.Time) string {
+	const separator = "-manual-"
+	suffix := fmt.Sprintf("%d", now.UnixNano())
+	maxPrefix := 63 - len(separator) - len(suffix)
+	prefix := cronJobName
+	if len(prefix) > maxPrefix {
+		prefix = strings.TrimRight(prefix[:maxPrefix], "-")
+	}
+	if prefix == "" {
+		prefix = "cronjob"
+	}
+	return prefix + separator + suffix
+}
+
+func copyStringMap(src map[string]string) map[string]string {
+	out := make(map[string]string, len(src)+4)
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func (h *Handler) opsKubeClient() kubernetes.Interface {
+	if h == nil || h.k8sClient == nil {
+		return nil
+	}
+	if h.k8sClient.KubeClient != nil {
+		return h.k8sClient.KubeClient
+	}
+	if h.k8sClient.Clientset != nil {
+		return h.k8sClient.Clientset
+	}
+	return nil
 }
 
 var argoApplicationGVR = schema.GroupVersionResource{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
@@ -325,6 +326,60 @@ func (h *Handler) readPodLogs(ctx context.Context, req operatorOperationRequest)
 		return nil, err
 	}
 	return gin.H{"namespace": namespace, "pod": target, "logs": logs}, nil
+}
+
+func (h *Handler) readCronJobs(ctx context.Context, req operatorOperationRequest) (gin.H, error) {
+	namespace := operationNamespace(req, "default")
+	target := operationTarget(req)
+
+	var items []gin.H
+	if target != "" {
+		cronJob, err := h.opsKubeClient().BatchV1().CronJobs(namespace).Get(ctx, target, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		items = []gin.H{cronJobSummary(cronJob.Name, cronJob.Namespace, cronJob.Labels, cronJob.Spec.Schedule, cronJob.Spec.Suspend, cronJob.Status.Active, cronJob.Status.LastScheduleTime, cronJob.Status.LastSuccessfulTime)}
+	} else {
+		list, err := h.opsKubeClient().BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		items = make([]gin.H, 0, len(list.Items))
+		for _, cronJob := range list.Items {
+			items = append(items, cronJobSummary(cronJob.Name, cronJob.Namespace, cronJob.Labels, cronJob.Spec.Schedule, cronJob.Spec.Suspend, cronJob.Status.Active, cronJob.Status.LastScheduleTime, cronJob.Status.LastSuccessfulTime))
+		}
+	}
+	sort.Slice(items, func(left, right int) bool {
+		return fmt.Sprint(items[left]["name"]) < fmt.Sprint(items[right]["name"])
+	})
+	return gin.H{"namespace": namespace, "target": target, "cronJobs": items, "count": len(items)}, nil
+}
+
+func cronJobSummary(name, namespace string, labels map[string]string, schedule string, suspend *bool, activeRefs []corev1.ObjectReference, lastScheduleTime, lastSuccessfulTime *metav1.Time) gin.H {
+	active := make([]string, 0, len(activeRefs))
+	for _, ref := range activeRefs {
+		active = append(active, ref.Name)
+	}
+	suspended := false
+	if suspend != nil {
+		suspended = *suspend
+	}
+	out := gin.H{
+		"name":        name,
+		"namespace":   namespace,
+		"labels":      labels,
+		"schedule":    schedule,
+		"suspended":   suspended,
+		"active":      active,
+		"activeCount": len(active),
+	}
+	if lastScheduleTime != nil {
+		out["lastScheduleTime"] = lastScheduleTime.Time.Format(time.RFC3339)
+	}
+	if lastSuccessfulTime != nil {
+		out["lastSuccessfulTime"] = lastSuccessfulTime.Time.Format(time.RFC3339)
+	}
+	return out
 }
 
 func (h *Handler) readPVCs(ctx context.Context, req operatorOperationRequest) (gin.H, error) {

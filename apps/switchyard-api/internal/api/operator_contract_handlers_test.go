@@ -13,14 +13,18 @@ import (
 	k8sclient "github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic/fake"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 )
 
 func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "status", opsCapabilities))
+	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("github", "runs", providerCapabilities))
 	require.True(t, operationSupported("hetzner", "vswitch", providerCapabilities))
@@ -146,6 +150,82 @@ func TestHandleOpsAppsSyncApplyUsesDynamicAdapter(t *testing.T) {
 	assert.Equal(t, "ops.apps.sync", annotations["enclii.dev/last-ops-operation"])
 	assert.Equal(t, "sync-monitoring-1", annotations["enclii.dev/last-ops-idempotency-key"])
 	assert.Equal(t, "recover reviewed GitOps drift", annotations["enclii.dev/last-ops-reason"])
+}
+
+func TestHandleOpsJobsTriggerApplyUsesCronJobTemplate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	suspend := true
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "forgesight-mexico-wave-seed",
+			Namespace: "forgesight",
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule: "15 1 * * *",
+			Suspend:  &suspend,
+			JobTemplate: batchv1.JobTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "forgesight-mexico-wave-seed"},
+				},
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							RestartPolicy: corev1.RestartPolicyNever,
+							Containers: []corev1.Container{
+								{
+									Name:    "seed",
+									Image:   "ghcr.io/madfam-org/forgesight/pipeline:latest",
+									Command: []string{"python", "scripts/run_mexico_wave.py"},
+									Args:    []string{"--seed-only"},
+									Env: []corev1.EnvVar{
+										{Name: "ENVIRONMENT", Value: "production"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	clientset := k8sfake.NewSimpleClientset(cronJob)
+	handler := &Handler{k8sClient: &k8sclient.Client{KubeClient: clientset}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.jobs.trigger",
+		DryRun:    false,
+		Reason:    "populate verified ForgeSight market data",
+		Scope:     map[string]string{"namespace": "forgesight"},
+		Args:      map[string]string{"target": "forgesight-mexico-wave-seed"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/jobs/trigger", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+	assert.False(t, resp.DryRun)
+	assert.NotEmpty(t, resp.Warnings)
+
+	jobs, err := clientset.BatchV1().Jobs("forgesight").List(context.Background(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, jobs.Items, 1)
+	job := jobs.Items[0]
+	assert.Equal(t, "forgesight-mexico-wave-seed", job.Labels["enclii.dev/source-cronjob"])
+	assert.Equal(t, "populate verified ForgeSight market data", job.Annotations["enclii.dev/last-ops-reason"])
+	require.Len(t, job.Spec.Template.Spec.Containers, 1)
+	container := job.Spec.Template.Spec.Containers[0]
+	assert.Equal(t, "ghcr.io/madfam-org/forgesight/pipeline:latest", container.Image)
+	assert.Equal(t, []string{"python", "scripts/run_mexico_wave.py"}, container.Command)
+	assert.Equal(t, []string{"--seed-only"}, container.Args)
+	assert.Equal(t, "production", container.Env[0].Value)
 }
 
 func TestHandleOpsAppsStatusUsesDynamicAdapter(t *testing.T) {

@@ -128,10 +128,14 @@ func runJobsList(cfg *config.Config, projectSlug string) error {
 		return fmt.Errorf("failed to list cron jobs: %w", err)
 	}
 
-	var cronJobs []types.CronJob
-	if err := decodeOrError(resp, &cronJobs); err != nil {
+	var payload struct {
+		CronJobs []types.CronJob `json:"cron_jobs"`
+		Total    int             `json:"total"`
+	}
+	if err := decodeOrError(resp, &payload); err != nil {
 		return err
 	}
+	cronJobs := payload.CronJobs
 
 	if len(cronJobs) == 0 {
 		fmt.Println("No cron jobs found.")
@@ -243,10 +247,14 @@ func runJobsCreate(cfg *config.Config, projectSlug, name, schedule, command, ser
 		return fmt.Errorf("failed to create cron job: %w", err)
 	}
 
-	var job types.CronJob
-	if err := decodeOrError(resp, &job); err != nil {
+	var createResp struct {
+		CronJob types.CronJob `json:"cron_job"`
+		Message string        `json:"message"`
+	}
+	if err := decodeOrError(resp, &createResp); err != nil {
 		return err
 	}
+	job := createResp.CronJob
 
 	fmt.Printf("Cron job created:\n")
 	fmt.Printf("  ID:       %s\n", job.ID)
@@ -386,10 +394,14 @@ func runJobsRuns(cfg *config.Config, jobID string) error {
 		return fmt.Errorf("failed to list cron job runs: %w", err)
 	}
 
-	var runs []types.CronJobRun
-	if err := decodeOrError(resp, &runs); err != nil {
+	var payload struct {
+		Runs  []types.CronJobRun `json:"runs"`
+		Total int                `json:"total"`
+	}
+	if err := decodeOrError(resp, &payload); err != nil {
 		return err
 	}
+	runs := payload.Runs
 
 	if len(runs) == 0 {
 		fmt.Println("No runs found for this cron job.")
@@ -476,10 +488,14 @@ func runJobsRunOnce(cfg *config.Config, projectSlug, name, command, serviceID st
 		return fmt.Errorf("failed to create one-off job: %w", err)
 	}
 
-	var job types.OneOffJob
-	if err := decodeOrError(resp, &job); err != nil {
+	var createResp struct {
+		OneOffJob types.OneOffJob `json:"one_off_job"`
+		Message   string          `json:"message"`
+	}
+	if err := decodeOrError(resp, &createResp); err != nil {
 		return err
 	}
+	job := createResp.OneOffJob
 
 	fmt.Printf("One-off job created:\n")
 	fmt.Printf("  ID:      %s\n", job.ID)

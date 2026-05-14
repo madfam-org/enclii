@@ -25,6 +25,7 @@ once the server-side adapter supports the operation.`,
 	cmd.AddCommand(newOpsCapabilitiesCommand(cfg))
 	cmd.AddCommand(newOpsAppsCommand(cfg))
 	cmd.AddCommand(newOpsPodsCommand(cfg))
+	cmd.AddCommand(newOpsJobsCommand(cfg))
 	cmd.AddCommand(newOpsStorageCommand(cfg))
 	cmd.AddCommand(newOpsSecretsCommand(cfg))
 	cmd.AddCommand(newOpsPolicyCommand(cfg))
@@ -59,6 +60,13 @@ func newOpsPodsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsReadCommand(cfg, "pods", "diagnose", "Diagnose pod scheduling, probe, image, and event issues"))
 	cmd.AddCommand(newOpsReadCommand(cfg, "pods", "logs", "Fetch pod or workload logs"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "pods", "restart", "Restart pods or workloads via a safe rollout path"))
+	return cmd
+}
+
+func newOpsJobsCommand(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{Use: "jobs", Short: "CronJob inspection and audited triggers"}
+	cmd.AddCommand(newOpsReadCommand(cfg, "jobs", "list", "List Kubernetes CronJobs through Enclii"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "jobs", "trigger", "Trigger an existing CronJob once from its live template"))
 	return cmd
 }
 

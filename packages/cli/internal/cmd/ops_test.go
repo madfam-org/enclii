@@ -15,7 +15,7 @@ func TestNewOpsCommand_Subcommands(t *testing.T) {
 	require.NotNil(t, root)
 	assert.Equal(t, "ops", root.Use)
 
-	for _, want := range []string{"capabilities", "apps", "pods", "storage", "secrets", "policy", "runners"} {
+	for _, want := range []string{"capabilities", "apps", "pods", "jobs", "storage", "secrets", "policy", "runners"} {
 		assert.NotNil(t, findSubcommand(root, want), "expected ops %s", want)
 	}
 }
@@ -27,6 +27,16 @@ func TestOpsApps_Subcommands(t *testing.T) {
 
 	for _, want := range []string{"status", "sync", "diff", "rollback"} {
 		assert.NotNil(t, findSubcommand(apps, want), "expected ops apps %s", want)
+	}
+}
+
+func TestOpsJobs_Subcommands(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	jobs := findSubcommand(NewOpsCommand(cfg), "jobs")
+	require.NotNil(t, jobs)
+
+	for _, want := range []string{"list", "trigger"} {
+		assert.NotNil(t, findSubcommand(jobs, want), "expected ops jobs %s", want)
 	}
 }
 
