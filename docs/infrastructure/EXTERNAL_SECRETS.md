@@ -72,6 +72,8 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 ### ClusterSecretStore (Legacy kubernetes-store)

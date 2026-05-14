@@ -204,6 +204,7 @@ POLICY
   vault write auth/kubernetes/role/eso-reader \
     bound_service_account_names=external-secrets \
     bound_service_account_namespaces=external-secrets \
+    bound_audiences=vault \
     policies=eso-reader \
     ttl=1h
 "

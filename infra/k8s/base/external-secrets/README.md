@@ -36,8 +36,8 @@ while older bridges are retired.
 
 The `vault-store` Kubernetes auth binding is aligned with the bootstrap role
 created by `scripts/cluster-ops-deploy.sh`: `eso-reader` is bound to the
-`external-secrets` ServiceAccount in the `external-secrets` namespace, without
-requesting a custom JWT audience. If Vault reports HTTP 403 on
+`external-secrets` ServiceAccount in the `external-secrets` namespace with
+`bound_audiences=vault`. If Vault reports HTTP 403 on
 `auth/kubernetes/login`, verify that role binding before adding per-service
 ExternalSecrets.
 
