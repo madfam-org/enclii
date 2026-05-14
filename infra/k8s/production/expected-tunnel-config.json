@@ -182,6 +182,10 @@
   },
   {
     "_comment": "=== PHYNDCRM — phynd.app entries activate once domain is registered at registrar ===",
+    "hostname": "crm.madfam.io",
+    "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
+  },
+  {
     "hostname": "phynd.app",
     "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
   },

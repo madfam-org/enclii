@@ -70,14 +70,14 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
-# Argo Applications: GitOps status/drift diagnostics plus audited sync requests
+# Argo Applications: GitOps status/drift diagnostics plus audited sync and retire requests
 - apiGroups: ["argoproj.io"]
   resources: ["applications"]
-  verbs: ["get", "list", "watch", "patch"]
-# ExternalSecrets: read-only secret reconciliation diagnostics for Enclii ops
+  verbs: ["get", "list", "watch", "patch", "delete"]
+# ExternalSecrets: secret reconciliation diagnostics plus audited refresh requests
 - apiGroups: ["external-secrets.io"]
   resources: ["externalsecrets"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "patch"]
 # Longhorn volumes: read-only storage health diagnostics for Enclii ops
 - apiGroups: ["longhorn.io"]
   resources: ["volumes"]
