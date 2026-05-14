@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,9 +11,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -204,6 +201,10 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 			c.JSON(http.StatusOK, resp)
 			return
 		}
+		if resp, handled := h.handleApplyOperatorDryRun(prefix, domain, action, operation, req); handled {
+			c.JSON(http.StatusOK, resp)
+			return
+		}
 	}
 	if !req.DryRun {
 		if resp, statusCode, handled := h.handleApplyOperatorOperation(c.Request.Context(), prefix, domain, action, operation, req); handled {
@@ -244,6 +245,74 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 	c.JSON(http.StatusNotImplemented, resp)
 }
 
+func (h *Handler) handleApplyOperatorDryRun(prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, bool) {
+	if prefix != "ops" {
+		return operatorOperationResponse{}, false
+	}
+
+	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
+	namespace := operationNamespace(req, "default")
+	if domain == "apps" {
+		namespace = operationNamespace(req, "argocd")
+	}
+	target := operationTarget(req)
+	var mutation string
+	var adapterReady bool
+	switch domain + "." + action {
+	case "apps.sync":
+		mutation = "patch Argo Application operation.sync"
+		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
+	case "apps.retire":
+		mutation = "delete Argo Application with orphan propagation unless cascade=true"
+		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
+	case "jobs.trigger":
+		mutation = "create one-off Job from the live CronJob template"
+		adapterReady = h != nil && h.opsKubeClient() != nil
+	case "secrets.refresh":
+		mutation = "patch ExternalSecret force-sync and Enclii audit annotations"
+		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
+	default:
+		return operatorOperationResponse{}, false
+	}
+
+	warnings := []string{}
+	if target == "" {
+		warnings = append(warnings, "missing args.target or scope.target; apply would be rejected")
+	}
+	if !adapterReady {
+		warnings = append(warnings, "apply adapter client is not configured in this Switchyard API instance")
+	}
+
+	status := "planned"
+	if adapterReady && target != "" {
+		status = "ready_to_apply"
+	}
+	return operatorOperationResponse{
+		OperationID: operationID,
+		Operation:   operation,
+		Status:      status,
+		DryRun:      true,
+		Summary:     fmt.Sprintf("%s.%s dry-run completed through Enclii", domain, action),
+		Data: map[string]any{
+			"namespace": namespace,
+			"target":    target,
+			"mutation":  mutation,
+			"apply":     adapterReady && target != "",
+		},
+		Steps: []operatorOperationStep{
+			{Name: "authorize", Status: "planned", Detail: "check caller RBAC and reason on apply"},
+			{Name: "load-state", Status: "planned", Detail: "load current live resource state through the configured adapter"},
+			{Name: "diff", Status: "planned", Detail: mutation},
+			{Name: "audit", Status: "planned", Detail: "write Enclii operation annotations/audit metadata before mutation"},
+		},
+		Warnings: warnings,
+		Next: []string{
+			"rerun with --apply and a reason to execute this Enclii operation",
+			"poll the corresponding read operation until the target converges",
+		},
+	}, true
+}
+
 func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, int, bool) {
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsAppsSyncApply(ctx, operation, req)
@@ -255,6 +324,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "ops" && domain == "jobs" && action == "trigger" && h.opsKubeClient() != nil {
 		resp, statusCode := h.handleOpsJobsTriggerApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "secrets" && action == "refresh" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsSecretsRefreshApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	return operatorOperationResponse{}, 0, false

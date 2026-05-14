@@ -278,6 +278,95 @@ func TestHandleOpsJobsTriggerApplyUsesCronJobTemplate(t *testing.T) {
 	assert.Equal(t, "production", container.Env[0].Value)
 }
 
+func TestHandleOpsJobsTriggerDryRunReportsApplyReady(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &Handler{k8sClient: &k8sclient.Client{KubeClient: k8sfake.NewSimpleClientset()}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.jobs.trigger",
+		DryRun:    true,
+		Scope:     map[string]string{"namespace": "forgesight"},
+		Args:      map[string]string{"target": "forgesight-market-capture"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/jobs/trigger", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "ready_to_apply", resp.Status)
+	assert.Equal(t, "ops.jobs.trigger", resp.Operation)
+	assert.Empty(t, resp.Warnings)
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "create one-off Job from the live CronJob template", data["mutation"])
+	assert.Equal(t, true, data["apply"])
+}
+
+func TestHandleOpsSecretsRefreshApplyAnnotatesExternalSecret(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	externalSecret := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "external-secrets.io/v1beta1",
+			"kind":       "ExternalSecret",
+			"metadata": map[string]any{
+				"name":      "forgesight-secrets",
+				"namespace": "forgesight",
+			},
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
+						"type":    "Ready",
+						"status":  "False",
+						"reason":  "SecretSyncedError",
+						"message": "could not get secret data from provider",
+					},
+				},
+			},
+		},
+	}
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), externalSecret)
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation:      "ops.secrets.refresh",
+		DryRun:         false,
+		Reason:         "retry ExternalSecret reconciliation after provider data update",
+		IdempotencyKey: "refresh-forgesight-secrets-1",
+		Scope:          map[string]string{"namespace": "forgesight"},
+		Args:           map[string]string{"target": "forgesight-secrets"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/secrets/refresh", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+	assert.Equal(t, "ops.secrets.refresh", resp.Operation)
+	assert.Contains(t, resp.Next[0], "ops.secrets.external")
+
+	updated, err := dynClient.Resource(externalSecretGVR).Namespace("forgesight").Get(context.Background(), "forgesight-secrets", metav1.GetOptions{})
+	require.NoError(t, err)
+	annotations := updated.GetAnnotations()
+	assert.NotEmpty(t, annotations["force-sync"])
+	assert.Equal(t, "ops.secrets.refresh", annotations["enclii.dev/last-ops-operation"])
+	assert.Equal(t, "refresh-forgesight-secrets-1", annotations["enclii.dev/last-ops-idempotency-key"])
+	assert.Equal(t, "retry ExternalSecret reconciliation after provider data update", annotations["enclii.dev/last-ops-reason"])
+}
+
 func TestOperatorLogInt64ArgBoundsAndValidation(t *testing.T) {
 	value, err := operatorLogInt64Arg(map[string]string{"limitBytes": "999999999"}, "limitBytes", 262144, 1048576)
 	require.NoError(t, err)
