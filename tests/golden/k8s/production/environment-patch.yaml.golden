@@ -98,6 +98,12 @@ spec:
           value: "roundhouse"
         - name: ENCLII_ROUNDHOUSE_URL
           value: "http://roundhouse:80"
+        - name: ENCLII_ROUNDHOUSE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: enclii-secrets
+              key: internal-api-key
+              optional: true
         - name: ENCLII_SELF_URL
           value: "http://switchyard-api"
         # Janua API URL for GitHub token retrieval

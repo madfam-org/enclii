@@ -112,6 +112,7 @@ Priority order:
 The domains page depends on the Switchyard API/UI release pipeline. Before retrying a production release, verify these build-system invariants:
 
 - `switchyard-api` must enqueue builds through Roundhouse, not fall back to in-process Docker builds. The durable NetworkPolicy is `switchyard-api-roundhouse-egress`.
+- `switchyard-api` must set `ENCLII_ROUNDHOUSE_API_KEY` from the same `enclii-secrets/internal-api-key` used by Roundhouse `SWITCHYARD_API_KEY`; otherwise Roundhouse internal enqueue can return `401` and Switchyard degrades into in-process build fallback.
 - Roundhouse build Jobs must not set `securityContext.capabilities.drop: ["ALL"]`; Kaniko needs default in-container capabilities such as `CAP_CHOWN` to unpack OCI layers. Enforce this with the durable `kaniko-builds-runasroot` PolicyException for `require-run-as-nonroot` and `restrict-capabilities`, while keeping the container host-unprivileged.
 - Roundhouse callbacks must use the Switchyard Kubernetes Service URL `http://switchyard-api`, not `http://switchyard-api:4200`; the Service exposes port `80` and forwards to container port `4200`.
 - Keep the callback path durable with `roundhouse-switchyard-callback-egress` and `switchyard-api-roundhouse-callback-ingress` so service reconciliation cannot remove it.

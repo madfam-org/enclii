@@ -125,3 +125,34 @@ If no project is configured or provided, the CLI searches all Enclii projects an
 requires `--project` only when a service name is ambiguous. This avoids the
 previous failure mode where `enclii releases switchyard-api` defaulted to a
 nonexistent `default` project during live incident triage.
+
+## 2026-05-14 operator logs remediation
+
+Live health showed healthy `switchyard-api` and `roundhouse` pods, but
+non-follow `enclii logs` reads returned `No pods found` because the CLI used the
+latest deployment record and `/v1/deployments/:id/logs` as the read path. During
+delivery-state incidents, deployment/release rows can lag or be reconciled while
+the service pods remain healthy.
+
+The CLI now uses `/v1/services/:id/logs/history` for one-shot reads, matching
+the service-scoped WebSocket path already used by `enclii logs --follow`.
+Deployment lookup remains informational only. This keeps operator evidence
+Enclii-mediated while avoiding a false negative from stale deployment rows.
+
+## 2026-05-14 Roundhouse enqueue authentication remediation
+
+Production Switchyard was configured for `ENCLII_BUILD_MODE=roundhouse` and
+`ENCLII_ROUNDHOUSE_URL=http://roundhouse:80`, but the production env patch did
+not pass `ENCLII_ROUNDHOUSE_API_KEY` into `switchyard-api`. Roundhouse API is
+configured with `SWITCHYARD_API_KEY` from `enclii-secrets/internal-api-key`, so
+an authenticated internal enqueue can reject unauthenticated Switchyard calls.
+
+The production env patch now injects `ENCLII_ROUNDHOUSE_API_KEY` from the same
+`enclii-secrets/internal-api-key` source. This keeps the build path on
+Roundhouse/Kaniko and avoids falling back to in-process Docker builds, which do
+not provide a reliable production migration delivery path.
+
+Switchyard now also treats Roundhouse enqueue failure as a terminal release
+failure instead of silently starting an in-process fallback build. This makes
+delivery failures explicit in release history and prevents operators from
+mistaking fallback build attempts for a healthy Roundhouse pipeline.

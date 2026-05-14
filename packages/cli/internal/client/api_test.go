@@ -184,6 +184,31 @@ func TestAPIClient_BuildService(t *testing.T) {
 	assert.Equal(t, release.Status, result.Status)
 }
 
+func TestAPIClient_GetServiceLogsHistoryRaw(t *testing.T) {
+	serviceID := uuid.New().String()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/v1/services/"+serviceID+"/logs/history", r.URL.Path)
+		assert.Equal(t, "production", r.URL.Query().Get("env"))
+		assert.Equal(t, "75", r.URL.Query().Get("lines"))
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"logs": "switchyard-api booted\nready\n",
+		})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+
+	logs, err := client.GetServiceLogsHistoryRaw(context.Background(), serviceID, "production", LogOptions{Lines: 75})
+
+	require.NoError(t, err)
+	assert.Equal(t, "switchyard-api booted\nready\n", logs)
+}
+
 func TestAPIClient_DeployService(t *testing.T) {
 	deploymentID := uuid.New()
 	releaseID := uuid.New()

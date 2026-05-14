@@ -125,8 +125,12 @@ func (h *Handler) enqueueToRoundhouse(ctx context.Context, service *types.Servic
 		h.logger.Error(ctx, "Failed to get project for build enqueue",
 			logging.String("project_id", service.ProjectID.String()),
 			logging.Error("db_error", err))
-		// Fall back to in-process build
-		go h.triggerBuild(service, release, gitSHA)
+		errMsg := fmt.Sprintf("Roundhouse enqueue failed before project lookup: %v", err)
+		if statusErr := h.repos.Releases.UpdateStatusWithError(release.ID, types.ReleaseStatusFailed, &errMsg); statusErr != nil {
+			h.logger.Error(ctx, "Failed to mark release failed after Roundhouse project lookup error",
+				logging.String("release_id", release.ID.String()),
+				logging.Error("error", statusErr))
+		}
 		return
 	}
 
@@ -149,11 +153,15 @@ func (h *Handler) enqueueToRoundhouse(ctx context.Context, service *types.Servic
 
 	resp, err := h.roundhouseClient.Enqueue(ctx, req)
 	if err != nil {
-		h.logger.Error(ctx, "Failed to enqueue build to Roundhouse, falling back to in-process",
+		h.logger.Error(ctx, "Failed to enqueue build to Roundhouse",
 			logging.String("release_id", release.ID.String()),
 			logging.Error("roundhouse_error", err))
-		// Fall back to in-process build
-		go h.triggerBuild(service, release, gitSHA)
+		errMsg := fmt.Sprintf("Roundhouse enqueue failed: %v", err)
+		if statusErr := h.repos.Releases.UpdateStatusWithError(release.ID, types.ReleaseStatusFailed, &errMsg); statusErr != nil {
+			h.logger.Error(ctx, "Failed to mark release failed after Roundhouse enqueue error",
+				logging.String("release_id", release.ID.String()),
+				logging.Error("error", statusErr))
+		}
 		return
 	}
 

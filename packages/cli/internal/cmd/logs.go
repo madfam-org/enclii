@@ -124,7 +124,7 @@ func showLogs(cfg *config.Config, serviceName, environment string, follow bool, 
 	}
 
 	// One-time log fetch for non-follow mode
-	return fetchLogsOnce(ctx, apiClient, service.ID, lines, since)
+	return fetchLogsOnce(ctx, apiClient, service.ID, environment, lines, since)
 }
 
 // streamLogsRealtime establishes a WebSocket connection for real-time log streaming
@@ -224,22 +224,21 @@ func streamLogsRealtime(ctx context.Context, apiClient *client.APIClient, servic
 	}
 }
 
-// fetchLogsOnce gets logs without streaming (one-time fetch)
-func fetchLogsOnce(ctx context.Context, apiClient *client.APIClient, serviceID string, lines int, since *time.Time) error {
-	// Get latest deployment to fetch logs from
+// fetchLogsOnce gets logs without streaming (one-time fetch).
+//
+// The log read itself is service-scoped. Deployment lookup is informational
+// only, because deployment/release rows can briefly lag or be repaired after
+// delivery incidents while the service pods are already healthy.
+func fetchLogsOnce(ctx context.Context, apiClient *client.APIClient, serviceID, envName string, lines int, since *time.Time) error {
 	deploymentResp, err := apiClient.GetLatestDeployment(ctx, serviceID)
-	if err != nil {
-		fmt.Printf("❌ Failed to get latest deployment: %v\n", err)
-		return err
+	if err == nil && deploymentResp.Deployment != nil {
+		fmt.Printf("📦 Deployment: %s\n", deploymentResp.Deployment.ID)
+	} else if err != nil {
+		fmt.Printf("📦 Deployment lookup unavailable: %v\n", err)
+	} else {
+		fmt.Println("📦 Deployment lookup unavailable: no active deployment record")
 	}
-
-	if deploymentResp.Deployment == nil {
-		fmt.Println("❌ No active deployment found for this service")
-		return fmt.Errorf("no deployment found")
-	}
-
-	fmt.Printf("📦 Deployment: %s\n", deploymentResp.Deployment.ID)
-	if deploymentResp.Release != nil && deploymentResp.Release.GitSHA != "" {
+	if err == nil && deploymentResp.Release != nil && deploymentResp.Release.GitSHA != "" {
 		sha := deploymentResp.Release.GitSHA
 		if len(sha) > 7 {
 			sha = sha[:7]
@@ -254,7 +253,7 @@ func fetchLogsOnce(ctx context.Context, apiClient *client.APIClient, serviceID s
 		Since:  since,
 	}
 
-	logs, err := apiClient.GetLogsRaw(ctx, deploymentResp.Deployment.ID.String(), opts)
+	logs, err := apiClient.GetServiceLogsHistoryRaw(ctx, serviceID, envName, opts)
 	if err != nil {
 		fmt.Printf("❌ Failed to retrieve logs: %v\n", err)
 		return err

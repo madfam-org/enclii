@@ -378,6 +378,38 @@ func (c *APIClient) GetLogsRaw(ctx context.Context, deploymentID string, opts Lo
 	return response.Logs, nil
 }
 
+// GetServiceLogsHistoryRaw returns logs for a service/environment without
+// depending on the latest deployment row. This is the preferred path for
+// operator one-shot reads because live pods are service-scoped, while
+// deployment records can lag or be reconciled after delivery incidents.
+func (c *APIClient) GetServiceLogsHistoryRaw(ctx context.Context, serviceID, envName string, opts LogOptions) (string, error) {
+	params := url.Values{}
+	if envName != "" {
+		params.Set("env", envName)
+	}
+	if opts.Lines > 0 {
+		params.Set("lines", fmt.Sprintf("%d", opts.Lines))
+	}
+	if opts.Since != nil {
+		params.Set("since", opts.Since.Format(time.RFC3339))
+	}
+
+	var response struct {
+		Logs string `json:"logs"`
+	}
+
+	endpoint := fmt.Sprintf("/v1/services/%s/logs/history", serviceID)
+	if params.Encode() != "" {
+		endpoint += "?" + params.Encode()
+	}
+
+	if err := c.get(ctx, endpoint, &response); err != nil {
+		return "", fmt.Errorf("failed to get service logs: %w", err)
+	}
+
+	return response.Logs, nil
+}
+
 // Rollback
 func (c *APIClient) RollbackDeployment(ctx context.Context, deploymentID string, req RollbackRequest) error {
 	if err := c.post(ctx, fmt.Sprintf("/v1/deployments/%s/rollback", deploymentID), req, nil); err != nil {

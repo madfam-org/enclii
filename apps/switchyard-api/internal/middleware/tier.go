@@ -54,6 +54,39 @@ func limitsForTier(tier string) tierLimit {
 	return tierLimits[""]
 }
 
+// hasTierBypass mirrors the master-admin/self-hosted behavior exposed in the
+// dashboard: trusted platform operators are not subject to customer plan caps
+// when they are registering MADFAM-owned infrastructure.
+func hasTierBypass(c *gin.Context) bool {
+	rolesRaw, ok := c.Get("user_roles")
+	if !ok {
+		return false
+	}
+
+	switch roles := rolesRaw.(type) {
+	case []string:
+		for _, role := range roles {
+			if roleBypassesTier(role) {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, role := range roles {
+			if roleStr, ok := role.(string); ok && roleBypassesTier(roleStr) {
+				return true
+			}
+		}
+	case string:
+		return roleBypassesTier(roles)
+	}
+
+	return false
+}
+
+func roleBypassesTier(role string) bool {
+	return role == "admin" || role == "superadmin"
+}
+
 // resolveUserUUID attempts to parse user_id as a UUID.
 // If it fails (external OIDC subject), it falls back to looking up the user
 // by email so the tier check still applies to external identity providers.
@@ -92,6 +125,11 @@ func resolveUserUUID(c *gin.Context, repos *db.Repositories) (uuid.UUID, bool) {
 // before allowing project creation. Returns 402 if the tier limit is exceeded.
 func RequireTierForProject(repos *db.Repositories) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if hasTierBypass(c) {
+			c.Next()
+			return
+		}
+
 		limits := limitsForTier(c.GetString("foundry_tier"))
 
 		if limits.ProjectLimit == -1 {
@@ -142,6 +180,11 @@ func RequireTierForProject(repos *db.Repositories) gin.HandlerFunc {
 // before allowing service creation. Returns 402 if the tier limit is exceeded.
 func RequireTierForService(repos *db.Repositories) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if hasTierBypass(c) {
+			c.Next()
+			return
+		}
+
 		limits := limitsForTier(c.GetString("foundry_tier"))
 
 		if limits.ServiceLimit == -1 {
@@ -191,6 +234,11 @@ func RequireTierForService(repos *db.Repositories) gin.HandlerFunc {
 // enforces the same service-count limit as service creation.
 func RequireTierForDeploy(repos *db.Repositories) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if hasTierBypass(c) {
+			c.Next()
+			return
+		}
+
 		limits := limitsForTier(c.GetString("foundry_tier"))
 
 		if limits.ServiceLimit == -1 {
