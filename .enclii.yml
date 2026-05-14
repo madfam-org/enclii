@@ -4,9 +4,9 @@
 apiVersion: enclii.dev/v1
 kind: Service
 metadata:
-  name: enclii-api
-  project: madfam-platform
-  description: Enclii control plane API (self-hosted via Enclii)
+  name: switchyard-api
+  project: enclii
+  description: Enclii Switchyard control plane API (self-hosted via Enclii)
 
 spec:
   build:
@@ -134,9 +134,9 @@ spec:
 apiVersion: enclii.dev/v1
 kind: Service
 metadata:
-  name: enclii-ui
-  project: madfam-platform
-  description: Enclii web dashboard (self-hosted via Enclii)
+  name: switchyard-ui
+  project: enclii
+  description: Enclii Switchyard web dashboard (self-hosted via Enclii)
 
 spec:
   build:

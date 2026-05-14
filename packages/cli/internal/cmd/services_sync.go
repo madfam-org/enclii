@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,24 +286,35 @@ func readRawServiceSpecs(dir string) ([]*RawServiceSpec, error) {
 			return nil
 		}
 
-		var spec RawServiceSpec
-		if err := yaml.Unmarshal(data, &spec); err != nil {
-			fmt.Printf("   Warning: Skipping %s (not valid YAML)\n", filepath.Base(path))
-			return nil
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		for {
+			var spec RawServiceSpec
+			if err := decoder.Decode(&spec); err != nil {
+				if err == io.EOF {
+					break
+				}
+				fmt.Printf("   Warning: Skipping %s (not valid YAML)\n", filepath.Base(path))
+				return nil
+			}
+
+			if spec.APIVersion == "" && spec.Kind == "" && spec.Metadata.Name == "" {
+				continue
+			}
+
+			if !isEncliiServiceSpec(&spec) {
+				continue
+			}
+
+			// Validate minimum required fields
+			if spec.Metadata.Name == "" {
+				fmt.Printf("   Warning: Skipping %s (missing metadata.name)\n", filepath.Base(path))
+				continue
+			}
+
+			specCopy := spec
+			specs = append(specs, &specCopy)
 		}
 
-		// Only include Service kind
-		if spec.Kind != "Service" {
-			return nil
-		}
-
-		// Validate minimum required fields
-		if spec.Metadata.Name == "" {
-			fmt.Printf("   Warning: Skipping %s (missing metadata.name)\n", filepath.Base(path))
-			return nil
-		}
-
-		specs = append(specs, &spec)
 		return nil
 	})
 
@@ -310,6 +323,19 @@ func readRawServiceSpecs(dir string) ([]*RawServiceSpec, error) {
 	}
 
 	return specs, nil
+}
+
+func isEncliiServiceSpec(spec *RawServiceSpec) bool {
+	if spec.Kind != "Service" {
+		return false
+	}
+
+	switch spec.APIVersion {
+	case "enclii.dev/v1", "enclii.dev/v1alpha":
+		return true
+	default:
+		return false
+	}
 }
 
 func getGitRepoFromSpec(s *RawServiceSpec) string {
