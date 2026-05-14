@@ -11,13 +11,14 @@ import (
 
 var operatorReadActions = map[string]map[string]map[string]bool{
 	"ops": {
-		"apps":    {"status": true, "diff": true},
-		"pods":    {"diagnose": true, "logs": true},
-		"jobs":    {"list": true},
-		"storage": {"volumes": true, "pvc": true, "longhorn": true},
-		"secrets": {"external": true, "vault": true},
-		"policy":  {"violations": true, "exceptions": true},
-		"runners": {"arc": true},
+		"apps":       {"status": true, "diff": true},
+		"pods":       {"diagnose": true, "logs": true},
+		"jobs":       {"list": true},
+		"storage":    {"volumes": true, "pvc": true, "longhorn": true},
+		"secrets":    {"external": true, "vault": true},
+		"policy":     {"violations": true, "exceptions": true},
+		"runners":    {"arc": true},
+		"quote-flow": {"verify": true},
 	},
 	"providers": {
 		"github":     {"runs": true, "secrets": true, "packages": true, "protection": true},
@@ -87,6 +88,10 @@ func operatorReadFailed(operation, domain, action string, err error) operatorOpe
 }
 
 func (h *Handler) handleOpsReadOperation(ctx context.Context, domain, action, operation string, req operatorOperationRequest) operatorOperationResponse {
+	if domain == "quote-flow" && action == "verify" {
+		return h.handleQuoteFlowVerify(ctx, operation, req)
+	}
+
 	if h.k8sClient == nil {
 		return operatorReadUnavailable(operation, domain, action, "kubernetes client is not configured on switchyard-api")
 	}

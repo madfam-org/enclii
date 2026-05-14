@@ -109,6 +109,7 @@ See the [CLI Reference](../../docs/cli/README.md) for the canonical, grouped ind
 | `teams` / `integrations` | Team management + GitHub integration |
 | `observe` / `activity` / `audit` | Metrics, lifecycle feed, audit log (CSV export) |
 | `ops` | Audited Kubernetes/Argo/Longhorn/Kyverno/ARC operator workflows |
+| `quote-flow` | Enclii-first doctor for Selva -> Yantra4D -> Cotiza -> ForgeSight quote readiness |
 | `providers` | Audited GitHub/Cloudflare/Porkbun/Hetzner provider workflows |
 | `admin` | Platform operator subtree: `fleet`, `topology`, `clusters`, `drift`, `propagation`, `governance`, `costs`, `vclusters` |
 | `vault` | Cluster Vault status (read-only) |

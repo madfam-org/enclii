@@ -26,6 +26,7 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "status", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
+	require.True(t, operationSupported("quote-flow", "verify", opsCapabilities))
 	require.True(t, operationSupported("github", "runs", providerCapabilities))
 	require.True(t, operationSupported("hetzner", "vswitch", providerCapabilities))
 	require.False(t, operationSupported("porkbun", "charge-card", providerCapabilities))
@@ -424,6 +425,57 @@ func TestHandleProviderOperationApplyRequiresReason(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "reason is required")
 }
 
+func TestHandleOpsQuoteFlowVerifyReportsAuthAndMarketBlockers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"status": "ok"}))
+	}))
+	defer readyServer.Close()
+	pricingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"status": "ok"}))
+	}))
+	defer pricingServer.Close()
+
+	handler := &Handler{config: &config.Config{}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.quote-flow.verify",
+		DryRun:    true,
+		Scope:     map[string]string{"project": "tablaco"},
+		Args: map[string]string{
+			"agent":                   "selva",
+			"require_market_verified": "true",
+			"selva_worker_url":        readyServer.URL + "/health",
+			"yantra_project_url":      readyServer.URL + "/projects/tablaco",
+			"cotiza_import_url":       readyServer.URL + "/import/health",
+			"forgesight_pricing_url":  pricingServer.URL + "/health",
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/quote-flow/verify", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "blocked_by_auth", resp.Status)
+	assert.Equal(t, "ops.quote-flow.verify", resp.Operation)
+
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "tablaco", data["project"])
+	assert.Equal(t, "selva", data["agent"])
+	checks, ok := data["checks"].([]any)
+	require.True(t, ok)
+	assertQuoteFlowCheckStatus(t, checks, "selva_worker_auth", "blocked_auth")
+	assertQuoteFlowCheckStatus(t, checks, "forgesight_pricing_health", "market_data_unavailable")
+}
+
 func TestHandleProviderGitHubReadReportsUnconfiguredAdapter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := &Handler{}
@@ -558,4 +610,17 @@ func assertCapabilityStatus(t *testing.T, capabilities []operatorCapability, nam
 		}
 	}
 	t.Fatalf("capability %s not found", name)
+}
+
+func assertQuoteFlowCheckStatus(t *testing.T, checks []any, name, status string) {
+	t.Helper()
+	for _, raw := range checks {
+		check, ok := raw.(map[string]any)
+		require.True(t, ok)
+		if check["name"] == name {
+			assert.Equal(t, status, check["status"])
+			return
+		}
+	}
+	t.Fatalf("quote-flow check %s not found", name)
 }

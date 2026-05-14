@@ -108,6 +108,13 @@ var opsCapabilities = []operatorCapability{
 		Actions:     []string{"arc", "drain"},
 		Scopes:      []string{"namespace", "target"},
 	},
+	{
+		Name:        "quote-flow",
+		Status:      "partial",
+		Description: "Enclii-first doctor for the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path",
+		Actions:     []string{"verify"},
+		Scopes:      []string{"project", "target"},
+	},
 }
 
 var providerCapabilities = []operatorCapability{

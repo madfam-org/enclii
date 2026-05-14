@@ -308,9 +308,28 @@ spec:
 | 2026-01-15 | Sovereign Serverless study initiated |
 | 2026-02-25 | Q1 progress update: ArgoCD remediation (17 apps stable), npm-registry operational, Longhorn single-replica, monitoring exporters deployed. Identity rebranded from "Railway-style PaaS" to "open source DevOps platform". Waybill, Timetable, Junctions, Signal, Lockbox remain planned/unimplemented |
 | 2026-05-01 | Platform Hardening Sweep: 100% error/loading boundary coverage across Switchyard and Dispatch. Waybill (Costs) and Drift modules launched in Admin Console. Multilingual (i18n) roadmap established (Spanish-first). |
+| 2026-05-14 | Quote-flow verification roadmap added for Selva -> Yantra4D -> Cotiza -> ForgeSight, including Enclii-first operational checks and emergency-only direct production access. |
 
 
 ---
 
+## Cross-Ecosystem Quote Flow Verification (May-June 2026)
+
+Enclii is the default control plane for operating and verifying the Tablaco quote flow. Direct `kubectl`, Helm, or container access is reserved for confirmed incidents or break-glass recovery.
+
+### Scope
+
+- [x] Add a quote-flow doctor that checks Selva worker readiness, Yantra4D project availability, Cotiza quote import readiness, ForgeSight verified pricing readiness, and auth/token presence.
+- [ ] Add an authenticated smoke command for the Tablaco quote flow once safe test credentials are available.
+- [ ] Surface ExternalSecret health for ForgeSight and other quote-path dependencies.
+- [ ] Report whether the flow is client-ready, review-only, blocked by auth, blocked by missing market data, or blocked by unhealthy infrastructure.
+- [ ] Store the runbook in ecosystem docs with exact Enclii commands and emergency escalation rules.
+
+### Acceptance Gate
+
+`enclii quote-flow verify --project tablaco --agent selva --require-market-verified` or the equivalent Enclii operation must produce a reproducible pass/fail report without requiring direct production container access.
+
+---
+
 *Roadmap is subject to change based on community feedback and strategic priorities.*
-*Last updated: May 1, 2026*
+*Last updated: May 14, 2026*

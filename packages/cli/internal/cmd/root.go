@@ -112,6 +112,9 @@ Learn more at https://enclii.dev`,
 	// MADFAM operator workflows (audited kubectl/Argo/Longhorn/Kyverno/ARC replacement layer)
 	rootCmd.AddCommand(NewOpsCommand(cfg))
 
+	// Quote-flow readiness doctor (Selva -> Yantra4D -> Cotiza -> ForgeSight)
+	rootCmd.AddCommand(NewQuoteFlowCommand(cfg))
+
 	// External provider workflows (audited gh/Cloudflare/Porkbun/Hetzner replacement layer)
 	rootCmd.AddCommand(NewProvidersCommand(cfg))
 
