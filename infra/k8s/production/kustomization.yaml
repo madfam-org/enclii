@@ -38,7 +38,7 @@ configMapGenerator:
   - ENCLII_ENABLE_PROFILING=false
   name: env-config
 images:
-- digest: sha256:8beb744b27434de2a5cc401a78d36a6a03b9e6ce4efee95449dd39eaa020abcc
+- digest: sha256:e11e2e50015a5fbb91a809fa8312207e455ab8abdc8da1b6e70520b14d52684a
   name: dispatch
   newName: ghcr.io/madfam-org/enclii/dispatch
 - digest: sha256:df7ca3f526070478834138d67e0e5f4797c525a53788c26e9f2a2c79f653492f
