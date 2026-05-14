@@ -1,0 +1,6 @@
+-- No-op rollback.
+--
+-- The up migration removes stale contradictory error text from healthy running
+-- deployments. Reintroducing stale error messages would make Enclii's
+-- deployment truth surfaces less accurate, so rollback intentionally preserves
+-- the cleaned state.

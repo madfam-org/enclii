@@ -63,9 +63,11 @@ type ReleaseRepositoryInterface interface {
 	Create(release *types.Release) error
 	GetByID(id uuid.UUID) (*types.Release, error)
 	UpdateStatus(id uuid.UUID, status types.ReleaseStatus) error
+	UpdateStatusWithError(id uuid.UUID, status types.ReleaseStatus, errorMsg *string) error
 	UpdateImageURI(id uuid.UUID, imageURI string) error
 	UpdateSBOM(ctx context.Context, id uuid.UUID, sbom, sbomFormat string) error
 	UpdateSignature(ctx context.Context, id uuid.UUID, signature string) error
+	CleanupAllStaleBuilding(ctx context.Context, maxAge time.Duration) (int64, error)
 	ListByService(serviceID uuid.UUID) ([]*types.Release, error)
 }
 

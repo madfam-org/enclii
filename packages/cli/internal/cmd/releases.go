@@ -16,6 +16,7 @@ func NewReleasesCommand(cfg *config.Config) *cobra.Command {
 	var limit int
 	var showAll bool
 	var serviceID string
+	var projectSlug string
 
 	cmd := &cobra.Command{
 		Use:   "releases [service-name]",
@@ -38,7 +39,10 @@ Examples:
   enclii releases switchyard-api --all
 
   # Limit to specific number
-  enclii releases switchyard-api -n 5`,
+  enclii releases switchyard-api -n 5
+
+  # Scope name lookup to a specific project
+  enclii releases switchyard-api --project enclii`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
@@ -52,31 +56,17 @@ Examples:
 			} else if len(args) > 0 {
 				// Find service by name
 				serviceName := args[0]
-				projectSlug := cfg.Project
-				if projectSlug == "" {
-					projectSlug = "default"
+				lookupProject := projectSlug
+				if lookupProject == "" {
+					lookupProject = cfg.Project
 				}
 
-				services, err := apiClient.ListServices(ctx, projectSlug)
+				resolvedID, resolvedLabel, err := resolveReleaseServiceID(ctx, apiClient, lookupProject, serviceName)
 				if err != nil {
-					return fmt.Errorf("failed to list services: %w", err)
+					return err
 				}
-
-				for _, svc := range services {
-					if svc.Name == serviceName {
-						targetServiceID = svc.ID.String()
-						break
-					}
-				}
-
-				if targetServiceID == "" {
-					fmt.Printf("Service '%s' not found in project '%s'\n", serviceName, projectSlug)
-					fmt.Println("\nAvailable services:")
-					for _, svc := range services {
-						fmt.Printf("  - %s (id: %s)\n", svc.Name, svc.ID)
-					}
-					return fmt.Errorf("service not found")
-				}
+				targetServiceID = resolvedID
+				fmt.Printf("Resolved %s to %s\n", serviceName, resolvedLabel)
 			} else {
 				return fmt.Errorf("service name or --id required")
 			}
@@ -173,8 +163,61 @@ Examples:
 	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "Number of releases to show")
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all releases")
 	cmd.Flags().StringVar(&serviceID, "id", "", "Service ID (alternative to name)")
+	cmd.Flags().StringVarP(&projectSlug, "project", "p", "", "Project slug for service-name lookup (defaults to configured project; searches all projects if unset)")
 
 	return cmd
+}
+
+func resolveReleaseServiceID(ctx context.Context, apiClient *client.APIClient, projectSlug, serviceName string) (string, string, error) {
+	if projectSlug != "" {
+		services, err := apiClient.ListServices(ctx, projectSlug)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to list services for project %q: %w", projectSlug, err)
+		}
+
+		for _, svc := range services {
+			if svc.Name == serviceName {
+				return svc.ID.String(), fmt.Sprintf("%s/%s (%s)", projectSlug, svc.Name, svc.ID), nil
+			}
+		}
+
+		return "", "", fmt.Errorf("service %q not found in project %q", serviceName, projectSlug)
+	}
+
+	projects, err := apiClient.ListProjects(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to list projects for service lookup: %w", err)
+	}
+
+	type match struct {
+		project string
+		id      string
+	}
+	var matches []match
+	for _, project := range projects {
+		services, err := apiClient.ListServices(ctx, project.Slug)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to list services for project %q: %w", project.Slug, err)
+		}
+		for _, svc := range services {
+			if svc.Name == serviceName {
+				matches = append(matches, match{project: project.Slug, id: svc.ID.String()})
+			}
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", "", fmt.Errorf("service %q not found in any project", serviceName)
+	case 1:
+		return matches[0].id, fmt.Sprintf("%s/%s (%s)", matches[0].project, serviceName, matches[0].id), nil
+	default:
+		var labels []string
+		for _, m := range matches {
+			labels = append(labels, fmt.Sprintf("%s/%s (%s)", m.project, serviceName, m.id))
+		}
+		return "", "", fmt.Errorf("service name %q is ambiguous; use --project. Matches: %s", serviceName, strings.Join(labels, ", "))
+	}
 }
 
 func formatTimeAgo(t time.Time) string {

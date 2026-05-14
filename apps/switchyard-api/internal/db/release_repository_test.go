@@ -243,7 +243,7 @@ func TestReleaseRepository_UpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectExec(`UPDATE releases SET status = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+		mock.ExpectExec(`UPDATE releases SET status = \$1, error_message = NULL, updated_at = NOW\(\) WHERE id = \$2`).
 			WithArgs(types.ReleaseStatusReady, id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -257,7 +257,7 @@ func TestReleaseRepository_UpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectExec(`UPDATE releases SET status = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+		mock.ExpectExec(`UPDATE releases SET status = \$1, error_message = NULL, updated_at = NOW\(\) WHERE id = \$2`).
 			WithArgs(types.ReleaseStatusFailed, id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -271,7 +271,7 @@ func TestReleaseRepository_UpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectExec(`UPDATE releases SET status = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+		mock.ExpectExec(`UPDATE releases SET status = \$1, error_message = NULL, updated_at = NOW\(\) WHERE id = \$2`).
 			WithArgs(types.ReleaseStatusReady, id).
 			WillReturnError(fmt.Errorf("connection lost"))
 
@@ -310,6 +310,50 @@ func TestReleaseRepository_UpdateStatusWithError(t *testing.T) {
 
 		err := repo.UpdateStatusWithError(id, types.ReleaseStatusReady, nil)
 		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestReleaseRepository_CleanupAllStaleBuilding(t *testing.T) {
+	t.Run("returns affected count", func(t *testing.T) {
+		repo, mock, cleanup := newReleaseMockDB(t)
+		defer cleanup()
+
+		mock.ExpectExec(`UPDATE releases SET status = 'failed'`).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnResult(sqlmock.NewResult(0, 7))
+
+		count, err := repo.CleanupAllStaleBuilding(context.Background(), 30*time.Minute)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(7), count)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("zero affected", func(t *testing.T) {
+		repo, mock, cleanup := newReleaseMockDB(t)
+		defer cleanup()
+
+		mock.ExpectExec(`UPDATE releases SET status = 'failed'`).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		count, err := repo.CleanupAllStaleBuilding(context.Background(), 30*time.Minute)
+		assert.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("db error", func(t *testing.T) {
+		repo, mock, cleanup := newReleaseMockDB(t)
+		defer cleanup()
+
+		mock.ExpectExec(`UPDATE releases SET status = 'failed'`).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnError(fmt.Errorf("lock timeout"))
+
+		count, err := repo.CleanupAllStaleBuilding(context.Background(), 30*time.Minute)
+		assert.Equal(t, int64(0), count)
+		assert.Error(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

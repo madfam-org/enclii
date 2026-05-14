@@ -43,3 +43,19 @@ services and no accidental service creations.
 `enclii deploy` builds from the current Git commit SHA. Local uncommitted
 changes will not be included in a production deployment. Commit and push the
 Switchyard migration and CLI safety fixes before deploying through Enclii.
+
+## 2026-05-14 deploy-path finding
+
+The corrected `.enclii.yml` now resolves to the live `switchyard-api` service,
+but a production deploy attempt exposed a separate delivery-path risk: Enclii
+created/used the requested `prod` environment and started a build, while the
+live jobs API remained on the previous schema. Treat service sync safety and
+actual production delivery as separate acceptance gates.
+
+Required operator sequence:
+
+1. Run `enclii services-sync --dir . --project enclii --dry-run` and confirm it
+   only reports intended Enclii service specs.
+2. Deploy Switchyard through the approved Enclii/GitOps path.
+3. Verify the deployed release git SHA matches the pushed remediation commit.
+4. Verify live timetable jobs no longer return HTTP 500.

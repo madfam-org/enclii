@@ -133,7 +133,7 @@ func isUniqueViolation(err error) bool {
 var sqlErrNoRows = sql.ErrNoRows
 
 func (r *DeploymentRepository) UpdateStatus(id uuid.UUID, status types.DeploymentStatus, health types.HealthStatus) error {
-	query := `UPDATE deployments SET status = $1, health = $2, updated_at = NOW() WHERE id = $3`
+	query := `UPDATE deployments SET status = $1, health = $2, error_message = NULL, updated_at = NOW() WHERE id = $3`
 	_, err := r.db.Exec(query, status, health, id)
 	return err
 }

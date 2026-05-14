@@ -1,0 +1,5 @@
+-- No-op rollback.
+--
+-- This migration turns stale non-terminal release records into explicit failed
+-- records and removes contradictory error text from ready records. Reverting
+-- those changes would make Enclii's release history less truthful.

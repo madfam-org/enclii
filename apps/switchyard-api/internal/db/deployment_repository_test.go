@@ -100,7 +100,7 @@ func TestDeploymentRepository_UpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, updated_at = NOW\(\) WHERE id = \$3`).
+		mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, error_message = NULL, updated_at = NOW\(\) WHERE id = \$3`).
 			WithArgs(types.DeploymentStatusRunning, types.HealthStatusHealthy, id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -114,7 +114,7 @@ func TestDeploymentRepository_UpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, updated_at = NOW\(\) WHERE id = \$3`).
+		mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, error_message = NULL, updated_at = NOW\(\) WHERE id = \$3`).
 			WithArgs(types.DeploymentStatusDeploying, types.HealthStatusUnknown, id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -128,7 +128,7 @@ func TestDeploymentRepository_UpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		id := uuid.New()
-		mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, updated_at = NOW\(\) WHERE id = \$3`).
+		mock.ExpectExec(`UPDATE deployments SET status = \$1, health = \$2, error_message = NULL, updated_at = NOW\(\) WHERE id = \$3`).
 			WithArgs(types.DeploymentStatusFailed, types.HealthStatusUnhealthy, id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 

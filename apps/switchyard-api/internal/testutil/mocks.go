@@ -257,6 +257,18 @@ func (m *MockReleaseRepository) UpdateStatus(id uuid.UUID, status types.ReleaseS
 	defer m.mu.Unlock()
 	if r, ok := m.releases[id]; ok {
 		r.Status = status
+		r.ErrorMessage = nil
+		return nil
+	}
+	return errors.ErrNotFound
+}
+
+func (m *MockReleaseRepository) UpdateStatusWithError(id uuid.UUID, status types.ReleaseStatus, errorMsg *string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r, ok := m.releases[id]; ok {
+		r.Status = status
+		r.ErrorMessage = errorMsg
 		return nil
 	}
 	return errors.ErrNotFound
@@ -291,6 +303,23 @@ func (m *MockReleaseRepository) UpdateSignature(ctx context.Context, id uuid.UUI
 		return nil
 	}
 	return errors.ErrNotFound
+}
+
+func (m *MockReleaseRepository) CleanupAllStaleBuilding(ctx context.Context, maxAge time.Duration) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cutoff := time.Now().Add(-maxAge)
+	var cleaned int64
+	errMsg := "Build timed out (no callback received within 30 minutes)"
+	for _, r := range m.releases {
+		if r.Status == types.ReleaseStatusBuilding && r.CreatedAt.Before(cutoff) {
+			r.Status = types.ReleaseStatusFailed
+			r.ErrorMessage = &errMsg
+			cleaned++
+		}
+	}
+	return cleaned, nil
 }
 
 func (m *MockReleaseRepository) ListByService(serviceID uuid.UUID) ([]*types.Release, error) {

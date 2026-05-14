@@ -32,7 +32,7 @@ func (r *ReleaseRepository) Create(release *types.Release) error {
 }
 
 func (r *ReleaseRepository) UpdateStatus(id uuid.UUID, status types.ReleaseStatus) error {
-	query := `UPDATE releases SET status = $1, updated_at = NOW() WHERE id = $2`
+	query := `UPDATE releases SET status = $1, error_message = NULL, updated_at = NOW() WHERE id = $2`
 	_, err := r.db.Exec(query, status, id)
 	return err
 }
@@ -42,6 +42,23 @@ func (r *ReleaseRepository) UpdateStatusWithError(id uuid.UUID, status types.Rel
 	query := `UPDATE releases SET status = $1, error_message = $2, updated_at = NOW() WHERE id = $3`
 	_, err := r.db.Exec(query, status, errorMsg, id)
 	return err
+}
+
+// CleanupAllStaleBuilding marks releases that exceeded the build timeout as failed.
+// This prevents release history from accumulating indefinite "building" records
+// when a build callback never arrives.
+func (r *ReleaseRepository) CleanupAllStaleBuilding(ctx context.Context, maxAge time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-maxAge)
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE releases SET status = 'failed',
+		       error_message = 'Build timed out (no callback received within 30 minutes)',
+		       updated_at = NOW()
+		WHERE status = 'building'
+		AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (r *ReleaseRepository) UpdateImageURI(id uuid.UUID, imageURI string) error {

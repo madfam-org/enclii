@@ -108,6 +108,14 @@ func (c *Controller) runK8sSync(ctx context.Context, logger *logrus.Entry) {
 	} else if cleaned > 0 {
 		logger.WithField("count", cleaned).Info("Cleaned up stale deploying records (timed out)")
 	}
+
+	// Clean up stale "building" releases that never received a Roundhouse/build callback.
+	cleanedReleases, err := c.repositories.Releases.CleanupAllStaleBuilding(ctx, 30*time.Minute)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to cleanup stale building releases")
+	} else if cleanedReleases > 0 {
+		logger.WithField("count", cleanedReleases).Info("Cleaned up stale building releases (timed out)")
+	}
 }
 
 // syncDeploymentToDatabase checks if a K8s deployment has corresponding DB records.
