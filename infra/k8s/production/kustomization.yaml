@@ -38,22 +38,22 @@ configMapGenerator:
   - ENCLII_ENABLE_PROFILING=false
   name: env-config
 images:
-- digest: sha256:487cd8f3bbc78c429948782afaca6e59c6d4ee0e5cdfe010b6d36cd708fdcc8a
+- digest: sha256:15a6a4470a0b390a4917d356af1bacf77fad99cb851b8e6c8d0282b1a47d3429
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
-- digest: sha256:92294d00627baafae5238bed206edb740a4b5e59cc969b1f6ee4412187f07e77
+- digest: sha256:f055704d525c1c6f66028e50929b69114394cb8241d98d2f6926bedee2f404ff
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:a802e4fa72e0bc17c36b2f737693055728eac065638a8b74c49fa82ddf19a86c
+- digest: sha256:4d166df00c3dd101ea62239270f012d87ad46f8741c222a0a7653e203324ddfe
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:f317c84b04b0352411e9744994f598efc3935841fe4bb431a05b0a9e7e2be03f
+- digest: sha256:9c155091455f842ba992d0c6d570081b325a58094901202700c78398649c38d4
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:265f261cb32234b8c3cb712e8ca87e7c7c3ac11e05b0adbb2e8cf56bf91c4884
+- digest: sha256:be7f25e669b47afa1d8e473b11d3b7252654d85a32057cb16efb4dab7fd68fad
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:d543e50ede83c9c137cb9dcee144ecba6bb479461a07bdf144ef10277eb43571
+- digest: sha256:8d2be3684af051a17ad62af0df356c55d314567d61ffda18d6498cfeb688250e
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
