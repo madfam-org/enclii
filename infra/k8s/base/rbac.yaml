@@ -78,6 +78,10 @@ rules:
 - apiGroups: ["external-secrets.io"]
   resources: ["externalsecrets"]
   verbs: ["get", "list", "watch", "patch"]
+# CloudNativePG clusters: managed Postgres addon lifecycle
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["clusters"]
+  verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
 # Longhorn volumes: read-only storage health diagnostics for Enclii ops
 - apiGroups: ["longhorn.io"]
   resources: ["volumes"]
