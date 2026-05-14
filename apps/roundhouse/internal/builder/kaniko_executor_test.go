@@ -163,6 +163,41 @@ func TestBuildKanikoArgs_Defaults(t *testing.T) {
 	}
 }
 
+func TestBuildKanikoArgs_StripsContextPrefixFromDockerfile(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	client := fake.NewSimpleClientset()
+
+	executor := NewKanikoExecutor(&KanikoExecutorConfig{
+		K8sClient: client,
+		Registry:  "ghcr.io/test",
+		Timeout:   30 * time.Minute,
+	}, logger, nil)
+
+	job := &queue.BuildJob{
+		ID:        uuid.New(),
+		ReleaseID: uuid.New(),
+		ServiceID: uuid.New(),
+		ProjectID: uuid.New(),
+		GitRepo:   "github.com/test/repo",
+		GitSHA:    "abc12345",
+		GitBranch: "main",
+		BuildConfig: queue.BuildConfig{
+			Type:       "dockerfile",
+			Dockerfile: "apps/docs-site/Dockerfile",
+			Context:    "apps/docs-site",
+		},
+	}
+
+	args := executor.buildKanikoArgs(job, "ghcr.io/test/docs-site:abc12345")
+
+	assertContains(t, args, "--dockerfile=Dockerfile")
+	for _, arg := range args {
+		if arg == "--dockerfile=apps/docs-site/Dockerfile" {
+			t.Fatalf("expected Dockerfile path to be relative to Kaniko subdirectory context, got %q", arg)
+		}
+	}
+}
+
 func TestGenerateImageTag(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	client := fake.NewSimpleClientset()

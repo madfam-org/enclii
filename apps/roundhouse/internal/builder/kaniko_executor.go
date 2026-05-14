@@ -340,6 +340,7 @@ func (e *KanikoExecutor) buildKanikoArgs(job *queue.BuildJob, imageTag string) [
 	if contextPath == "" {
 		contextPath = "."
 	}
+	dockerfile = normalizeKanikoDockerfilePath(dockerfile, contextPath)
 
 	// Git context URL format: git://[repository]#[ref]#[commit-sha]
 	// Strip https:// or http:// prefix from repo URL if present
@@ -394,6 +395,25 @@ func (e *KanikoExecutor) buildKanikoArgs(job *queue.BuildJob, imageTag string) [
 	}
 
 	return args
+}
+
+func normalizeKanikoDockerfilePath(dockerfile, contextPath string) string {
+	if contextPath == "" || contextPath == "." {
+		return dockerfile
+	}
+
+	contextPrefix := strings.Trim(contextPath, "/")
+	if contextPrefix == "" || contextPrefix == "." {
+		return dockerfile
+	}
+
+	dockerfilePath := strings.TrimPrefix(dockerfile, "./")
+	prefix := contextPrefix + "/"
+	if strings.HasPrefix(dockerfilePath, prefix) {
+		return strings.TrimPrefix(dockerfilePath, prefix)
+	}
+
+	return dockerfile
 }
 
 // buildEnvVars constructs environment variables for the build

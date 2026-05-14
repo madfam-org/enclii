@@ -37,11 +37,13 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 - Enclii junctions were created for `phynd.app`, `www.phynd.app`, and `crm.madfam.io`.
 - Phynd production now declares a Vault-backed ExternalSecret for `phynd-crm-secrets` at `secret/phynd-crm`.
 - `phynd-crm-services` synced commit `e5c51bab9ace0ee0194677e26a84f51d4337faef`, including the ExternalSecret manifest, but remains Degraded/OutOfSync because of legacy shared ownership and missing provider data.
+- Roundhouse now normalizes Dockerfile paths for Kaniko Git subdirectory contexts, so service specs that use `context: apps/<service>` with `dockerfile: apps/<service>/Dockerfile` are passed to Kaniko as `--dockerfile=Dockerfile` inside the selected context instead of failing as an invalid path.
 
 ## Required rollout
 
 1. Stabilize Enclii release/build processing so the Switchyard API image containing `ops.apps.retire` reaches production.
-   - Clear or fix invalid service specs that enqueue builds with Dockerfile paths outside their build contexts.
+   - Release the Roundhouse Dockerfile-path normalization fix.
+   - Confirm invalid Dockerfile-path failures stop for services such as `docs-site` and `dispatch`.
    - Confirm `enclii ops capabilities --json` advertises app action `retire`.
 2. Retire the legacy `phyne-crm-production` ArgoCD application through Enclii:
    - `enclii ops apps retire phyne-crm-production --apply --reason "retire legacy Phyne CRM app after Phynd CRM successor onboarding"`
