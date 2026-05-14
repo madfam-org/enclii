@@ -133,7 +133,7 @@ const goDockerfile = `# Enclii Function - Go Runtime
 # Target cold start: <500ms
 
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -165,7 +165,7 @@ ENTRYPOINT ["/function"]
 const pythonDockerfile = `# Enclii Function - Python Runtime
 # Target cold start: <3s
 
-FROM python:3.12-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -174,7 +174,7 @@ COPY functions/requirements.txt ./
 RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
 
 # Runtime stage
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
@@ -202,7 +202,7 @@ CMD ["python", "-m", "uvicorn", "handler:app", "--host", "0.0.0.0", "--port", "8
 const nodeDockerfile = `# Enclii Function - Node.js Runtime
 # Target cold start: <2s
 
-FROM node:20-alpine AS builder
+FROM public.ecr.aws/docker/library/node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -219,7 +219,7 @@ COPY functions/ .
 RUN if [ -f "tsconfig.json" ]; then npm run build 2>/dev/null || true; fi
 
 # Runtime stage
-FROM node:20-alpine
+FROM public.ecr.aws/docker/library/node:20-alpine
 
 WORKDIR /app
 
@@ -241,7 +241,7 @@ const rustDockerfile = `# Enclii Function - Rust Runtime
 # Target cold start: <500ms
 
 # Build stage
-FROM rust:1.75-alpine AS builder
+FROM public.ecr.aws/docker/library/rust:1.75-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 

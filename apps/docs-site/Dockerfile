@@ -2,7 +2,7 @@
 # Build context should be the enclii root directory, not apps/docs-site
 # Usage: docker build -f apps/docs-site/Dockerfile -t enclii-docs .
 
-FROM node:22-alpine AS base
+FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -32,7 +32,7 @@ RUN npm run build
 
 # Production image - serve static files with nginx
 # Using standard nginx on port 80 (deployed image already uses this)
-FROM nginx:alpine AS runner
+FROM public.ecr.aws/docker/library/nginx:alpine AS runner
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).

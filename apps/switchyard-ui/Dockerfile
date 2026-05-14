@@ -2,7 +2,7 @@
 # Build context MUST be the enclii repo root, not apps/switchyard-ui.
 # Usage: docker build -f apps/switchyard-ui/Dockerfile -t enclii-ui .
 
-FROM node:22-alpine AS base
+FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo

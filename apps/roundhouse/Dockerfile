@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /roundhouse-api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /roundhouse-worker ./cmd/worker
 
 # API runtime stage (lightweight)
-FROM alpine:3.20 AS api
+FROM public.ecr.aws/docker/library/alpine:3.20 AS api
 
 RUN apk add --no-cache ca-certificates tzdata
 
@@ -39,7 +39,7 @@ EXPOSE 8081
 ENTRYPOINT ["/usr/local/bin/roundhouse-api"]
 
 # Worker runtime stage - use Docker 27 for API version 1.44+ compatibility
-FROM docker:27-dind AS worker
+FROM public.ecr.aws/docker/library/docker:27-dind AS worker
 
 # Install additional tools for building
 RUN apk add --no-cache \

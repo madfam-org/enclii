@@ -2,7 +2,7 @@
 # Build context should be the enclii root directory, not apps/status
 # Usage: docker build -f apps/status/Dockerfile -t enclii-status .
 
-FROM node:22-alpine AS base
+FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 RUN corepack enable pnpm
 WORKDIR /app

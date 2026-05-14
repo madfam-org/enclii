@@ -383,12 +383,12 @@ func TestParseDockerfilePort(t *testing.T) {
 		},
 		{
 			name:       "EXPOSE with port 443",
-			dockerfile: "FROM nginx:alpine\nEXPOSE 443\nCMD [\"nginx\"]",
+			dockerfile: "FROM public.ecr.aws/docker/library/nginx:alpine\nEXPOSE 443\nCMD [\"nginx\"]",
 			want:       443,
 		},
 		{
 			name:       "EXPOSE with port 80",
-			dockerfile: "FROM nginx:alpine\nEXPOSE 80\nCMD [\"nginx\"]",
+			dockerfile: "FROM public.ecr.aws/docker/library/nginx:alpine\nEXPOSE 80\nCMD [\"nginx\"]",
 			want:       80,
 		},
 		{
