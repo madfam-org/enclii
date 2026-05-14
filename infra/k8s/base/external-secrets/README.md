@@ -28,15 +28,18 @@ Kubernetes Secret (auto-synced) Kubernetes Secret (auto-synced)
 
 ## Current State
 
-ESO is deployed with a `kubernetes-store` ClusterSecretStore that copies secrets between namespaces. There is no external secrets provider yet. This is intentional — see [SECRETS_MANAGEMENT.md](../../../docs/infrastructure/SECRETS_MANAGEMENT.md) for upgrade trigger criteria.
+ESO is deployed with both the legacy `kubernetes-store` ClusterSecretStore and
+the active `vault-store` ClusterSecretStore for HashiCorp Vault KV v2. New
+production service secrets should use Vault-backed ExternalSecrets and Enclii
+operator workflows; the Kubernetes provider remains only for compatibility
+while older bridges are retired.
 
-**Chosen future provider:** Self-hosted HashiCorp Vault (Community Edition)
-
-**Trigger criteria for Vault deployment (ANY of):**
-1. First external client onboarded (multi-tenant secret isolation required)
-2. SOC2 audit preparation begins (auditable secrets management mandatory)
-3. Revenue threshold reached (justifies operational overhead)
-4. Team size exceeds 3 engineers with production access
+The `vault-store` Kubernetes auth binding is aligned with the bootstrap role
+created by `scripts/cluster-ops-deploy.sh`: `eso-reader` is bound to the
+`external-secrets` ServiceAccount in the `external-secrets` namespace, without
+requesting a custom JWT audience. If Vault reports HTTP 403 on
+`auth/kubernetes/login`, verify that role binding before adding per-service
+ExternalSecrets.
 
 ## Quick Start (Current: Kubernetes Provider)
 
