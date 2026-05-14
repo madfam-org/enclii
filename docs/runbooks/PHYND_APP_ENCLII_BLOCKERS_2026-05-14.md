@@ -20,13 +20,15 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 - Enclii Porkbun provider currently returns `adapter_unconfigured`.
 - Active Cloudflare tunnel config routes `crm.madfam.io` to the legacy `phyne-crm` service target instead of `phynd-crm`.
 - Active Cloudflare tunnel config now includes `phynd.app` and `www.phynd.app` pointing to `http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
-- `phynd-crm-services` is Degraded/OutOfSync because legacy ArgoCD app `phyne-crm-production` still owns shared resources in the same namespace.
+- `phyne-crm-production` has now been retired through Enclii with orphan propagation.
+- `phynd-crm-services` now syncs cleanly, but remains `Degraded` because its runtime secrets are not materialized.
 - `ExternalSecret/phynd-crm-secrets` now exists in namespace `phynd-crm`, but Enclii reports it as `Ready=False` with `SecretSyncedError` and message `could not get secret data from provider`.
 - Phynd web and worker pods are blocked pending container readiness while `phynd-crm-secrets` is not materialized.
 - Live `api.enclii.dev` now advertises `ops.apps.retire`, and the adapter is wired far enough to submit the Kubernetes delete request through Enclii.
 - The first production retire apply failed because `system:serviceaccount:enclii:switchyard-api` lacked `delete` on `applications.argoproj.io` in namespace `argocd`.
-- The required RBAC change is to add `delete` to the `switchyard-api` ClusterRole for `argoproj.io/applications`; this preserves the Enclii-first path and avoids raw production `kubectl`.
-- The same RBAC release should add `patch` on `external-secrets.io/externalsecrets` so `ops.secrets.refresh` can trigger reconciliation through Enclii after Vault values exist.
+- The Enclii RBAC release now grants `delete` on `argoproj.io/applications` and `patch` on `external-secrets.io/externalsecrets` to the `switchyard-api` service account.
+- `ops.secrets.refresh` successfully patches `ExternalSecret/phynd-crm-secrets`, but the provider still lacks `secret/phynd-crm` data.
+- `core-services` remains `OutOfSync` for unrelated unsigned Enclii Deployment images blocked by Kyverno image-signature policy; the RBAC resources themselves are synced.
 - The Cloudflare tunnel provider command is currently useful for inventory/planning but does not yet provide a complete conflict-resolution path for replacing the existing `crm.madfam.io` legacy route.
 
 ## Remediation shipped in code
@@ -47,24 +49,17 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 
 ## Required rollout
 
-1. Ship the `switchyard-api` RBAC update that grants `delete` on `argoproj.io/applications`.
-   - Include `patch` on `external-secrets.io/externalsecrets` for audited secret refresh.
-   - Confirm `enclii ops capabilities --json` advertises app action `retire`.
-   - Re-run the retire apply and confirm it no longer fails with an RBAC denial.
-2. Retire the legacy `phyne-crm-production` ArgoCD application through Enclii:
-   - `enclii ops apps retire phyne-crm-production --apply --reason "retire legacy Phyne CRM app after Phynd CRM successor onboarding"`
-   - Default propagation is orphan, so this removes the stale Argo Application without deleting the Phynd namespace/resources.
-3. Restore production secret material through Enclii/Vault or an approved Selva secret workflow.
+1. Restore production secret material through Enclii/Vault or an approved Selva secret workflow.
    - Vault key: `secret/phynd-crm`
    - ExternalSecret target: `phynd-crm-secrets`
-4. Configure DNS ownership for `phynd.app` using one Enclii-owned path:
+2. Configure DNS ownership for `phynd.app` using one Enclii-owned path:
    - Preferred: delegate `phynd.app` to the MADFAM Cloudflare account managed by Enclii.
    - Alternate: configure the Enclii Porkbun adapter and keep Porkbun authoritative.
-5. Reconcile `crm.madfam.io` by removing/replacing the legacy `phyne-crm` tunnel route through Enclii.
-6. Configure Janua OIDC client redirects:
+3. Reconcile `crm.madfam.io` by removing/replacing the legacy `phyne-crm` tunnel route through Enclii.
+4. Configure Janua OIDC client redirects:
    - `https://phynd.app/api/auth/callback/janua`
    - `https://crm.madfam.io/api/auth/callback/janua`
-7. Run production smoke checks from Enclii:
+5. Run production smoke checks from Enclii:
    - `https://phynd.app/api/health`
    - `https://phynd.app/login`
    - `admin@madfam.io` Janua login redirects to `/overview`.
