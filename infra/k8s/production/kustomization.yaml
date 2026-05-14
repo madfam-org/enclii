@@ -38,7 +38,10 @@ configMapGenerator:
   - ENCLII_ENABLE_PROFILING=false
   name: env-config
 images:
-- digest: sha256:5867ee4055bb5e439d634c1b662c26dc1d0b2b5f61304d077c907448cc05c909
+- digest: sha256:f72f2043deb3a3744b89cc3252edc4999ba9f5ff4046f526cec0435fa01e4a4c
+  name: dispatch
+  newName: ghcr.io/madfam-org/enclii/dispatch
+- digest: sha256:3ee1b4fec27c277b8b572158625ae4e59f447046ab97a0ce6f0f8a11fa83f174
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
 - digest: sha256:44f049104e75e5ad2616a155b33aeca0fe3aa9af48088047db85542048e474bc
@@ -56,9 +59,6 @@ images:
 - digest: sha256:8a8ab3de46184e50b8a6991ef3037fb073bf205623288a72d8f1db495547e029
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
-- name: dispatch
-  newName: ghcr.io/madfam-org/enclii/dispatch
-  digest: sha256:f72f2043deb3a3744b89cc3252edc4999ba9f5ff4046f526cec0435fa01e4a4c
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 commonAnnotations:
