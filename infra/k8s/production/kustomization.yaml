@@ -47,7 +47,7 @@ images:
 - digest: sha256:88a2305d25095fc8375eccefc2b02b6f288ca5994ee3468c326e4211c35e71f1
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:6c454b232641ba73b3a24a811c6bbe1bcdfbba3f58e6bf0b6beffefdb2f5f8b7
+- digest: sha256:a602df0e6128b2bc668f51d331645c7f49b907c595d8d491eefa64a3df13aa94
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
 - digest: sha256:8b1e12ef08ffad3f063d76ee15ea92afcb1f6b5415bec5962c3e4a7a6702e1aa
