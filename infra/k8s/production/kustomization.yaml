@@ -47,7 +47,7 @@ images:
 - digest: sha256:49287a31a5499ae19e7fd87c7414c084091b9c25c878be0709cc7602b4edca52
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:157a7dafc599d20324575f4a8543fe44151b32ac4ca88e4b6160eeb1e54c06a4
+- digest: sha256:278fb88709924bd2e06f956a4c00658c01caca92cd3d53d8c7d4aebbc3458075
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
 - digest: sha256:5a958209f1e597e9e48989029be29374aaff6a1b5d17f3ad411c1cf38cedd7bc
