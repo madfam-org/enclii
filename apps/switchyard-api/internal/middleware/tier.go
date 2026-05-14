@@ -58,6 +58,10 @@ func limitsForTier(tier string) tierLimit {
 // dashboard: trusted platform operators are not subject to customer plan caps
 // when they are registering MADFAM-owned infrastructure.
 func hasTierBypass(c *gin.Context) bool {
+	if roleBypassesTier(c.GetString("user_role")) {
+		return true
+	}
+
 	rolesRaw, ok := c.Get("user_roles")
 	if !ok {
 		return false

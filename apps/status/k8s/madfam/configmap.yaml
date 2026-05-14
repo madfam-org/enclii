@@ -31,10 +31,14 @@ data:
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
   #
+  # Updated: 2026-05-14 — corrected Tulana to the canonical hyphenated
+  # MADFAM domain pattern from the Tulana repo: tulana.madfam.io,
+  # tulana-app.madfam.io, and tulana-api.madfam.io.
+  #
   # Updated: 2026-04-26 — added Tulana group (Admin, API) per operator request.
   # Tulana is the pricing-intelligence + PMF-measurement platform consumed by
   # every product's billing module (RFC 0004 + RFC 0013). Tracking it here
-  # surfaces the deployment gap if api.tulana.madfam.io ever goes down or has
+  # surfaces the deployment gap if tulana-api.madfam.io ever goes down or has
   # not yet been deployed (initial probe will show it red until deploy lands).
   #
   # Updated: 2026-04-23 — 60 services across 25 groups. Added Routecraft
@@ -568,19 +572,28 @@ data:
         "description": "Operations console"
       },
       {
-        "name": "Tulana Admin",
+        "name": "Tulana",
         "url": "https://tulana.madfam.io",
+        "href": "https://tulana.madfam.io",
         "group": "Tulana",
         "family": "MADFAM Platform",
-        "description": "Pricing intelligence + PMF measurement operator dashboard (RFC 0004 + RFC 0013)"
+        "description": "Marketing landing page (public, no auth)"
+      },
+      {
+        "name": "Tulana App",
+        "url": "https://tulana-app.madfam.io",
+        "href": "https://tulana-app.madfam.io",
+        "group": "Tulana",
+        "family": "MADFAM Platform",
+        "description": "Pricing intelligence + PMF measurement operator dashboard — Janua-gated (RFC 0004 + RFC 0013)"
       },
       {
         "name": "Tulana API",
-        "url": "https://api.tulana.madfam.io/health",
-        "href": "https://api.tulana.madfam.io",
+        "url": "https://tulana-api.madfam.io/api/v1/health/",
+        "href": "https://tulana-api.madfam.io",
         "group": "Tulana",
         "family": "MADFAM Platform",
-        "description": "/v1/recommendations + /v1/pmf endpoints consumed by every product's billing module"
+        "description": "/api/v1/recommendations + /api/v1/pmf endpoints for internal pricing and PMF workflows"
       },
       {
         "name": "Symbiosis HCM",

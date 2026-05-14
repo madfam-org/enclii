@@ -1,6 +1,6 @@
 # Status Configmap Regeneration Runbook
 
-_Last updated: 2026-04-26 — initial publish, paired with `feat/status-regenerate-zero-touch`._
+_Last updated: 2026-05-14 — added Enclii CLI-first regeneration path._
 
 ## Why this exists
 
@@ -50,6 +50,17 @@ operator action.
 
 ## Run the regenerate
 
+Prefer the Enclii operator CLI:
+
+```bash
+enclii admin status regenerate --force
+```
+
+The command calls `POST /v1/admin/status/regenerate` with the active Enclii
+operator credentials and prints the API response as JSON.
+
+If the CLI is unavailable, use the API directly:
+
 ```bash
 JWT=$(enclii auth token)            # or pull from ~/.enclii/auth.json
 
@@ -90,6 +101,23 @@ Successful with a real diff:
 ```
 
 The commit lands directly on `main` (the kustomization's tracked branch).
+
+## Guardrails
+
+Before accepting a regeneration, compare the returned service counts with the
+current public status surface:
+
+```bash
+curl -sS https://status.madfam.io/api/status | jq '.services | length'
+curl -sS https://status.enclii.dev/api/status | jq '.services | length'
+```
+
+If the regenerated count is materially lower than live coverage, revert the
+generated commit and fix the aggregation source before rerunning. This happened
+on 2026-05-14 when the endpoint projected only onboarded `enclii.yaml` entries
+and would have reduced MADFAM coverage from the broader curated status surface.
+Status truthfulness prefers stale-but-broad coverage over silently dropping
+checks.
 
 ## Verify
 
@@ -148,6 +176,15 @@ is blocking direct pushes to `main`. Check the GitHub App / PAT scopes.
 Indicates `generateStatusConfigmap` round-trip changed format. Run
 `go test ./apps/switchyard-api/internal/api/ -run TestStatusHandler_GenerateIsIdempotent`
 to reproduce and pin the regression. If the test still passes locally but
+the live endpoint still commits repeatedly, inspect whether the runtime source
+inventory differs from local fixtures.
+
+**Provider DNS apply returns `adapter_required`.**
+Use `enclii providers cloudflare dns <hostname> --json` to prove the current
+Cloudflare state. If a production hostname is down and `dns-apply --apply`
+returns `501 adapter_required`, this is an Enclii adapter gap. Use direct
+provider access only as break-glass, keep the mutation narrow, and record the
+reason in the provider comment plus the relevant remediation issue/commit.
 prod commits on every call, diff the live configmap byte-for-byte against
 the regenerator output — a manual edit is most likely the culprit.
 

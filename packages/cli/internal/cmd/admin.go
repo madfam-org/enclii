@@ -42,6 +42,7 @@ Examples:
 	cmd.AddCommand(newAdminCostsCommand(cfg))
 	cmd.AddCommand(newAdminVClustersCommand(cfg))
 	cmd.AddCommand(newAdminTenantsCommand(cfg))
+	cmd.AddCommand(newAdminStatusCommand(cfg))
 	return cmd
 }
 

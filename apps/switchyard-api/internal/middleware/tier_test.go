@@ -21,12 +21,17 @@ func TestHasTierBypassAllowsTrustedPlatformOperators(t *testing.T) {
 		{name: "interface roles", roles: []interface{}{"developer", "admin"}, want: true},
 		{name: "developer only", roles: []string{"developer"}, want: false},
 		{name: "no roles", roles: nil, want: false},
+		{name: "jwt manager user_role", roles: map[string]string{"user_role": "admin"}, want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
-			if tt.roles != nil {
+			if roleMap, ok := tt.roles.(map[string]string); ok {
+				for k, v := range roleMap {
+					c.Set(k, v)
+				}
+			} else if tt.roles != nil {
 				c.Set("user_roles", tt.roles)
 			}
 

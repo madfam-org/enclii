@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -22,7 +25,7 @@ func TestNewAdminCommand_Subcommands(t *testing.T) {
 	cmd := newTestAdminCommand(t)
 	assert.Equal(t, "admin", cmd.Use)
 
-	expected := []string{"fleet", "topology", "clusters", "drift", "propagation", "governance", "costs", "vclusters", "tenants"}
+	expected := []string{"fleet", "topology", "clusters", "drift", "propagation", "governance", "costs", "vclusters", "tenants", "status"}
 	for _, name := range expected {
 		assert.NotNil(t, findSubcommand(cmd, name), "missing top-level admin subcommand: %s", name)
 	}
@@ -63,6 +66,49 @@ func TestAdminTopology_Exists(t *testing.T) {
 	topo := findSubcommand(cmd, "topology")
 	require.NotNil(t, topo)
 	assert.Equal(t, "topology", topo.Use)
+}
+
+func TestAdminStatus_Subcommands(t *testing.T) {
+	cmd := newTestAdminCommand(t)
+	status := findSubcommand(cmd, "status")
+	require.NotNil(t, status)
+	regenerate := findSubcommand(status, "regenerate")
+	require.NotNil(t, regenerate)
+	assert.NotNil(t, regenerate.Flags().Lookup("force"))
+}
+
+func TestAdminStatusRegenerate_RequiresForce(t *testing.T) {
+	cmd := newTestAdminCommand(t)
+	cmd.SetArgs([]string{"status", "regenerate"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--force")
+}
+
+func TestAdminStatusRegenerate_CallsEndpoint(t *testing.T) {
+	var gotMethod, gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"no_changes","total_count":67}`))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{APIEndpoint: srv.URL, APIToken: "test-token"}
+	cmd := NewAdminCommand(cfg)
+	cmd.SetArgs([]string{"status", "regenerate", "--force"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, "/v1/admin/status/regenerate", gotPath)
+	assert.Equal(t, "Bearer test-token", gotAuth)
 }
 
 func TestAdminClusters_Subcommands(t *testing.T) {
