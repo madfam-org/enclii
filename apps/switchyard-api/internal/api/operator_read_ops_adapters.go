@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -321,11 +322,35 @@ func (h *Handler) readPodLogs(ctx context.Context, req operatorOperationRequest)
 	if target == "" {
 		return nil, fmt.Errorf("target pod name is required for pods.logs")
 	}
-	logs, err := h.k8sClient.GetPodLogs(ctx, target, namespace)
+	tailLines, err := operatorLogInt64Arg(req.Args, "tailLines", 400, 5000)
 	if err != nil {
 		return nil, err
 	}
-	return gin.H{"namespace": namespace, "pod": target, "logs": logs}, nil
+	limitBytes, err := operatorLogInt64Arg(req.Args, "limitBytes", 262144, 2*1024*1024)
+	if err != nil {
+		return nil, err
+	}
+	container := strings.TrimSpace(req.Args["container"])
+	logs, err := h.k8sClient.GetPodLogsWithOptions(ctx, target, namespace, container, tailLines, limitBytes)
+	if err != nil {
+		return nil, err
+	}
+	return gin.H{"namespace": namespace, "pod": target, "container": container, "tailLines": tailLines, "limitBytes": limitBytes, "logs": logs}, nil
+}
+
+func operatorLogInt64Arg(args map[string]string, key string, defaultValue, maxValue int64) (int64, error) {
+	raw := strings.TrimSpace(args[key])
+	if raw == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative integer", key)
+	}
+	if maxValue > 0 && value > maxValue {
+		return maxValue, nil
+	}
+	return value, nil
 }
 
 func (h *Handler) readCronJobs(ctx context.Context, req operatorOperationRequest) (gin.H, error) {

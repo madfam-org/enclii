@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -13,14 +14,25 @@ import (
 )
 
 func (c *Client) GetPodLogs(ctx context.Context, podName, namespace string) (string, error) {
+	return c.GetPodLogsWithOptions(ctx, podName, namespace, "", 100, 1024)
+}
+
+func (c *Client) GetPodLogsWithOptions(ctx context.Context, podName, namespace, container string, tailLines, limitBytes int64) (string, error) {
 	kubeClient := c.kubeClient()
 	if kubeClient == nil {
 		return "", fmt.Errorf("kubernetes client not initialized")
 	}
-	req := kubeClient.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
-		Follow:    false,
-		TailLines: int64Ptr(100),
-	})
+	opts := &corev1.PodLogOptions{Follow: false}
+	if tailLines > 0 {
+		opts.TailLines = &tailLines
+	}
+	if limitBytes > 0 {
+		opts.LimitBytes = &limitBytes
+	}
+	if strings.TrimSpace(container) != "" {
+		opts.Container = strings.TrimSpace(container)
+	}
+	req := kubeClient.CoreV1().Pods(namespace).GetLogs(podName, opts)
 
 	logs, err := req.Stream(ctx)
 	if err != nil {
@@ -28,13 +40,12 @@ func (c *Client) GetPodLogs(ctx context.Context, podName, namespace string) (str
 	}
 	defer func() { _ = logs.Close() }()
 
-	buf := make([]byte, 1024)
-	n, err := logs.Read(buf)
+	data, err := io.ReadAll(logs)
 	if err != nil {
 		return "", fmt.Errorf("failed to read logs: %w", err)
 	}
 
-	return string(buf[:n]), nil
+	return string(data), nil
 }
 
 func (c *Client) ListPods(ctx context.Context, namespace, labelSelector string) (*corev1.PodList, error) {

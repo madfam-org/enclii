@@ -228,6 +228,19 @@ func TestHandleOpsJobsTriggerApplyUsesCronJobTemplate(t *testing.T) {
 	assert.Equal(t, "production", container.Env[0].Value)
 }
 
+func TestOperatorLogInt64ArgBoundsAndValidation(t *testing.T) {
+	value, err := operatorLogInt64Arg(map[string]string{"limitBytes": "999999999"}, "limitBytes", 262144, 1048576)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1048576), value)
+
+	value, err = operatorLogInt64Arg(map[string]string{}, "tailLines", 400, 5000)
+	require.NoError(t, err)
+	assert.Equal(t, int64(400), value)
+
+	_, err = operatorLogInt64Arg(map[string]string{"tailLines": "-1"}, "tailLines", 400, 5000)
+	require.Error(t, err)
+}
+
 func TestHandleOpsAppsStatusUsesDynamicAdapter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	app := &unstructured.Unstructured{

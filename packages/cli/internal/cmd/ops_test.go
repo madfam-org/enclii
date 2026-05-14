@@ -40,6 +40,16 @@ func TestOpsJobs_Subcommands(t *testing.T) {
 	}
 }
 
+func TestOpsPodsLogsFlags(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	logs := findSubcommand(findSubcommand(NewOpsCommand(cfg), "pods"), "logs")
+	require.NotNil(t, logs)
+
+	for _, want := range []string{"container", "tail", "limit-bytes", "namespace", "project", "service", "json"} {
+		assert.NotNil(t, logs.Flags().Lookup(want), "expected --%s", want)
+	}
+}
+
 func TestOpsMutationsRequireReasonWithApply(t *testing.T) {
 	err := validateOperationFlags(operationFlags{apply: true})
 	require.Error(t, err)

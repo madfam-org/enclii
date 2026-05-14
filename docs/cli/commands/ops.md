@@ -43,8 +43,21 @@ enclii ops jobs list -n forgesight --json
 enclii ops jobs trigger forgesight-mexico-wave-seed -n forgesight --apply --reason "populate verified market data"
 enclii ops storage pvc redis-pvc -n enclii
 enclii ops pods diagnose switchyard-api -n enclii --json
+enclii ops pods logs forgesight-pipeline-manual-abc123 -n forgesight --tail 500 --limit-bytes 524288 --json
 enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewed manifest patch"
 ```
+
+## Pod Log Controls
+
+`enclii ops pods logs` is the default production log-inspection path. It reads
+through Switchyard's audited Kubernetes adapter and supports bounded retrieval
+without direct `kubectl` access:
+
+| Flag | Description |
+|------|-------------|
+| `--tail` | Recent lines to request; default `400`; use `0` for all lines within `--limit-bytes` |
+| `--limit-bytes` | Maximum bytes to return; default `262144`; server-capped at 2 MiB |
+| `--container` | Optional container name for multi-container pods |
 
 ## Required Mutation Flags
 
@@ -66,6 +79,7 @@ enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewe
 - `apps diff` now reads Argo Application sync/resource/condition drift; full
   desired-vs-live patch hunks remain a follow-up.
 - Pod logs currently require a pod target; workload/deployment selector
-  resolution is a follow-up.
+  resolution is a follow-up, but tail depth and bounded byte retrieval are
+  wired.
 - Missing CRDs currently return failed read responses rather than soft-empty
   inventories.

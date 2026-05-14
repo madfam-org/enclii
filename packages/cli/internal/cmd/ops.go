@@ -58,8 +58,42 @@ func newOpsAppsCommand(cfg *config.Config) *cobra.Command {
 func newOpsPodsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "pods", Short: "Pod diagnosis, logs, and restarts"}
 	cmd.AddCommand(newOpsReadCommand(cfg, "pods", "diagnose", "Diagnose pod scheduling, probe, image, and event issues"))
-	cmd.AddCommand(newOpsReadCommand(cfg, "pods", "logs", "Fetch pod or workload logs"))
+	cmd.AddCommand(newOpsPodsLogsCommand(cfg))
 	cmd.AddCommand(newOpsActionCommand(cfg, "pods", "restart", "Restart pods or workloads via a safe rollout path"))
+	return cmd
+}
+
+func newOpsPodsLogsCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	var container string
+	var tailLines int64 = 400
+	var limitBytes int64 = 262144
+	cmd := &cobra.Command{
+		Use:   "logs [target]",
+		Short: "Fetch pod or workload logs",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extra := map[string]string{
+				"tailLines":  fmt.Sprint(tailLines),
+				"limitBytes": fmt.Sprint(limitBytes),
+			}
+			if len(args) == 1 {
+				extra["target"] = args[0]
+			}
+			if strings.TrimSpace(container) != "" {
+				extra["container"] = strings.TrimSpace(container)
+			}
+			flags.apply = false
+			return runOperation(cmd, cfg, opsPath("pods", "logs"), "ops.pods.logs", flags, extra)
+		},
+	}
+	addReadFlags(cmd, &flags)
+	cmd.Flags().StringVarP(&flags.namespace, "namespace", "n", "", "Kubernetes namespace scope")
+	cmd.Flags().StringVar(&flags.project, "project", "", "Enclii project slug scope")
+	cmd.Flags().StringVar(&flags.service, "service", "", "Enclii service name/id scope")
+	cmd.Flags().StringVar(&container, "container", "", "Container name when a pod has multiple containers")
+	cmd.Flags().Int64Var(&tailLines, "tail", tailLines, "Recent log lines to request; use 0 for all lines within --limit-bytes")
+	cmd.Flags().Int64Var(&limitBytes, "limit-bytes", limitBytes, "Maximum log bytes to return")
 	return cmd
 }
 
