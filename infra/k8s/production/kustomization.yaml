@@ -38,7 +38,7 @@ configMapGenerator:
   - ENCLII_ENABLE_PROFILING=false
   name: env-config
 images:
-- digest: sha256:632bf3b6981069003517da6b75455e1db14031aca5a464dbf1de087e52b0309c
+- digest: sha256:487cd8f3bbc78c429948782afaca6e59c6d4ee0e5cdfe010b6d36cd708fdcc8a
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
 - digest: sha256:92294d00627baafae5238bed206edb740a4b5e59cc969b1f6ee4412187f07e77
@@ -47,7 +47,7 @@ images:
 - digest: sha256:a802e4fa72e0bc17c36b2f737693055728eac065638a8b74c49fa82ddf19a86c
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:bd281b64e1be4bd2d592bbc7a72f950ba96b8b68606454894bd3da49e025a160
+- digest: sha256:f317c84b04b0352411e9744994f598efc3935841fe4bb431a05b0a9e7e2be03f
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
 - digest: sha256:995671e6f0a5ffa726f6c9daabbe35d28944b94582bd2c9667dc3f8a86a9ccd6
