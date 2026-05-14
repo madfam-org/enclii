@@ -38,12 +38,18 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 - Phynd production now declares a Vault-backed ExternalSecret for `phynd-crm-secrets` at `secret/phynd-crm`.
 - `phynd-crm-services` synced commit `e5c51bab9ace0ee0194677e26a84f51d4337faef`, including the ExternalSecret manifest, but remains Degraded/OutOfSync because of legacy shared ownership and missing provider data.
 - Roundhouse now normalizes Dockerfile paths for Kaniko Git subdirectory contexts, so service specs that use `context: apps/<service>` with `dockerfile: apps/<service>/Dockerfile` are passed to Kaniko as `--dockerfile=Dockerfile` inside the selected context instead of failing as an invalid path.
+- Enclii service records with empty build configs were corrected through the Enclii API:
+  - `dispatch` -> `apps/admin-console/Dockerfile`, context `.`
+  - `docs-site` -> `apps/docs-site/Dockerfile`, context `.`
+  - `landing-page` -> `apps/landing/Dockerfile`, context `.`
+  - `waybill` -> `apps/waybill/Dockerfile`, context `.`
+- Fresh Enclii builds were triggered for `dispatch`, `docs-site`, `landing-page`, `waybill`, `roundhouse`, and `switchyard-api` at commit `3afbe8604c6d8b862011df5305443e9030ffab1b` after those service records were corrected.
 
 ## Required rollout
 
 1. Stabilize Enclii release/build processing so the Switchyard API image containing `ops.apps.retire` reaches production.
    - Release the Roundhouse Dockerfile-path normalization fix.
-   - Confirm invalid Dockerfile-path failures stop for services such as `docs-site` and `dispatch`.
+   - Confirm corrected Enclii service records stop invalid Dockerfile-path failures for `dispatch`, `docs-site`, `landing-page`, and `waybill`.
    - Confirm `enclii ops capabilities --json` advertises app action `retire`.
 2. Retire the legacy `phyne-crm-production` ArgoCD application through Enclii:
    - `enclii ops apps retire phyne-crm-production --apply --reason "retire legacy Phyne CRM app after Phynd CRM successor onboarding"`
