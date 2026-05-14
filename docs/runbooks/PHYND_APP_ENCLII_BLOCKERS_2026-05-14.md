@@ -24,6 +24,7 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 - Enclii reports zero ExternalSecrets in namespace `phynd-crm`; production secret material has not been restored.
 - Phynd web and worker pods are blocked at `CreateContainerConfigError`.
 - The Cloudflare tunnel provider command is currently useful for inventory/planning but does not yet provide a complete conflict-resolution path for replacing the existing `crm.madfam.io` legacy route.
+- `ops.apps.retire` has been added to the Enclii contract so stale Argo Applications can be retired through Enclii instead of raw `kubectl`/Argo access.
 
 ## Remediation shipped in code
 
@@ -31,11 +32,16 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 - Unit coverage was added for the trusted-operator tier bypass helper.
 - Phynd onboarding and service registration completed through Enclii after the Phynd manifest digest pins were committed and pushed.
 - Enclii junctions were created for `phynd.app`, `www.phynd.app`, and `crm.madfam.io`.
+- Phynd production now declares a Vault-backed ExternalSecret for `phynd-crm-secrets` at `secret/phynd-crm`.
 
 ## Required rollout
 
-1. Retire the legacy `phyne-crm-production` ArgoCD application through Enclii/GitOps so `phynd-crm-services` is the sole owner of namespace `phynd-crm`.
+1. Release Enclii with `ops.apps.retire`, then retire the legacy `phyne-crm-production` ArgoCD application:
+   - `enclii ops apps retire phyne-crm-production --apply --reason "retire legacy Phyne CRM app after Phynd CRM successor onboarding"`
+   - Default propagation is orphan, so this removes the stale Argo Application without deleting the Phynd namespace/resources.
 2. Restore production secret material through Enclii/Vault or an approved Selva secret workflow.
+   - Vault key: `secret/phynd-crm`
+   - ExternalSecret target: `phynd-crm-secrets`
 3. Configure DNS ownership for `phynd.app` using one Enclii-owned path:
    - Preferred: delegate `phynd.app` to the MADFAM Cloudflare account managed by Enclii.
    - Alternate: configure the Enclii Porkbun adapter and keep Porkbun authoritative.

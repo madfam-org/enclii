@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -24,6 +25,7 @@ import (
 
 func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "status", opsCapabilities))
+	require.True(t, operationSupported("apps", "retire", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("quote-flow", "verify", opsCapabilities))
@@ -151,6 +153,53 @@ func TestHandleOpsAppsSyncApplyUsesDynamicAdapter(t *testing.T) {
 	assert.Equal(t, "ops.apps.sync", annotations["enclii.dev/last-ops-operation"])
 	assert.Equal(t, "sync-monitoring-1", annotations["enclii.dev/last-ops-idempotency-key"])
 	assert.Equal(t, "recover reviewed GitOps drift", annotations["enclii.dev/last-ops-reason"])
+}
+
+func TestHandleOpsAppsRetireApplyDeletesApplicationWithOrphanPropagation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	app := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "argoproj.io/v1alpha1",
+			"kind":       "Application",
+			"metadata": map[string]any{
+				"name":      "legacy-crm",
+				"namespace": "argocd",
+			},
+			"status": map[string]any{
+				"sync":   map[string]any{"status": "OutOfSync", "revision": "abc123"},
+				"health": map[string]any{"status": "Degraded"},
+			},
+		},
+	}
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), app)
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation:      "ops.apps.retire",
+		DryRun:         false,
+		Reason:         "retire reviewed legacy Argo application after successor onboarding",
+		IdempotencyKey: "retire-legacy-crm-1",
+		Scope:          map[string]string{"namespace": "argocd"},
+		Args:           map[string]string{"target": "legacy-crm"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/apps/retire", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+	assert.Equal(t, "ops.apps.retire", resp.Operation)
+	assert.Equal(t, "Orphan", resp.Data.(map[string]any)["propagation"])
+
+	_, err = dynClient.Resource(argoApplicationGVR).Namespace("argocd").Get(context.Background(), "legacy-crm", metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
 }
 
 func TestHandleOpsJobsTriggerApplyUsesCronJobTemplate(t *testing.T) {

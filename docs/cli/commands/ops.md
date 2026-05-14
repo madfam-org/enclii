@@ -25,7 +25,7 @@ encouraging direct `kubectl`.
 | Command | Purpose |
 |---------|---------|
 | `enclii ops capabilities` | List server-supported operator capabilities |
-| `enclii ops apps status|sync|diff|rollback` | Argo app inspection and remediation |
+| `enclii ops apps status|sync|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis, logs, and safe restarts |
 | `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan` | PVC/PV/Longhorn inspection and repair planning |
@@ -39,6 +39,7 @@ encouraging direct `kubectl`.
 enclii ops capabilities
 enclii ops apps status digifab-quoting-services --json
 enclii ops apps diff monitoring -n argocd --json
+enclii ops apps retire legacy-app -n argocd --apply --reason "retire reviewed legacy Argo application"
 enclii ops jobs list -n forgesight --json
 enclii ops jobs trigger forgesight-mexico-wave-seed -n forgesight --apply --reason "populate verified market data"
 enclii ops storage pvc redis-pvc -n enclii
@@ -73,6 +74,10 @@ without direct `kubectl` access:
 - `apps rollback`, `pods restart`, `storage repair-plan`, `secrets refresh`,
   `policy waiver-plan`, and `runners drain` are contract-only until guarded
   apply adapters are wired.
+- `apps retire` deletes only the Argo Application by default and uses orphan
+  propagation so live resources are not pruned during routine legacy-app
+  retirement. Destructive cascade retirement must be explicitly requested by
+  API callers.
 - `jobs trigger` creates a Kubernetes Job from the existing CronJob
   `jobTemplate`; it does not edit the CronJob schedule, image, command, env, or
   secret references.

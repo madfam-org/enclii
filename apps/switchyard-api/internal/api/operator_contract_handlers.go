@@ -62,8 +62,8 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "apps",
 		Status:      "partial",
-		Description: "Argo application status/diff reads plus audited sync execution and rollback workflow contracts",
-		Actions:     []string{"status", "sync", "diff", "rollback"},
+		Description: "Argo application status/diff reads plus audited sync, retire, and rollback workflow contracts",
+		Actions:     []string{"status", "sync", "diff", "retire", "rollback"},
 		Scopes:      []string{"namespace", "project", "service", "target"},
 	},
 	{
@@ -249,6 +249,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 		resp, statusCode := h.handleOpsAppsSyncApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
+	if prefix == "ops" && domain == "apps" && action == "retire" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsAppsRetireApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
 	if prefix == "ops" && domain == "jobs" && action == "trigger" && h.opsKubeClient() != nil {
 		resp, statusCode := h.handleOpsJobsTriggerApply(ctx, operation, req)
 		return resp, statusCode, true
@@ -411,6 +415,95 @@ func (h *Handler) handleOpsAppsSyncApply(ctx context.Context, operation string, 
 		Next: []string{
 			"poll ops.apps.status until sync and health converge",
 			"escalate to human review if Argo reports Degraded, Error, or Unknown after timeout",
+		},
+	}, http.StatusAccepted
+}
+
+func (h *Handler) handleOpsAppsRetireApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
+	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
+	namespace := strings.TrimSpace(req.Scope["namespace"])
+	if namespace == "" {
+		namespace = strings.TrimSpace(req.Args["namespace"])
+	}
+	if namespace == "" {
+		namespace = "argocd"
+	}
+	target := strings.TrimSpace(req.Args["target"])
+	if target == "" {
+		target = strings.TrimSpace(req.Scope["target"])
+	}
+	if target == "" {
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      "invalid_request",
+			DryRun:      false,
+			Summary:     "apps.retire requires a target Argo Application name",
+			Warnings:    []string{"missing args.target or scope.target"},
+		}, http.StatusBadRequest
+	}
+
+	appResource := h.k8sClient.DynamicClient.Resource(argoApplicationGVR).Namespace(namespace)
+	app, err := appResource.Get(ctx, target, metav1.GetOptions{})
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		status := "failed"
+		if k8serrors.IsNotFound(err) {
+			statusCode = http.StatusNotFound
+			status = "not_found"
+		}
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      status,
+			DryRun:      false,
+			Summary:     fmt.Sprintf("failed to load Argo Application %s/%s", namespace, target),
+			Warnings:    []string{err.Error()},
+		}, statusCode
+	}
+
+	propagation := metav1.DeletePropagationOrphan
+	if strings.EqualFold(strings.TrimSpace(req.Args["cascade"]), "true") {
+		propagation = metav1.DeletePropagationForeground
+	}
+	if err := appResource.Delete(ctx, target, metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil {
+		return operatorOperationResponse{
+			OperationID: operationID,
+			Operation:   operation,
+			Status:      "failed",
+			DryRun:      false,
+			Summary:     fmt.Sprintf("failed to retire Argo Application %s/%s", namespace, target),
+			Warnings:    []string{err.Error()},
+		}, http.StatusInternalServerError
+	}
+
+	syncStatus, _, _ := unstructured.NestedString(app.Object, "status", "sync", "status")
+	healthStatus, _, _ := unstructured.NestedString(app.Object, "status", "health", "status")
+	currentRevision, _, _ := unstructured.NestedString(app.Object, "status", "sync", "revision")
+	return operatorOperationResponse{
+		OperationID: operationID,
+		Operation:   operation,
+		Status:      "submitted",
+		DryRun:      false,
+		Summary:     fmt.Sprintf("retired Argo Application %s/%s through Enclii", namespace, target),
+		Data: map[string]any{
+			"application":      target,
+			"namespace":        namespace,
+			"previousSync":     syncStatus,
+			"previousHealth":   healthStatus,
+			"previousRevision": currentRevision,
+			"propagation":      string(propagation),
+		},
+		Steps: []operatorOperationStep{
+			{Name: "authorize", Status: "completed", Detail: "reason supplied and caller passed endpoint authorization"},
+			{Name: "load-state", Status: "completed", Detail: "loaded Argo Application from cluster"},
+			{Name: "diff", Status: "completed", Detail: "retire target selected; resources orphaned unless cascade=true"},
+			{Name: "audit", Status: "completed", Detail: "operation executed through Enclii API audit path"},
+		},
+		Next: []string{
+			"poll ops.apps.status for the successor application",
+			"confirm shared resource warnings disappear",
+			"only use cascade=true for reviewed destructive retirements",
 		},
 	}, http.StatusAccepted
 }
