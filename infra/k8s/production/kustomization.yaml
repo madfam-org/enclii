@@ -53,7 +53,7 @@ images:
 - digest: sha256:9bf792e6ca10f7fb305014d646d4a3d383992bcac897f6b21002fbc496637d17
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:98a70b9d65ec088cb4c962ed9ec02480a123fcbd632dca7f6028461a4447d6bb
+- digest: sha256:13b7e563d20a5cbf661ad044b1e720f486e501140294226be52450e749734bbc
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 - name: dispatch
