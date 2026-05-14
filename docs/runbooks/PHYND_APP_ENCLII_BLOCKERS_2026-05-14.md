@@ -67,3 +67,27 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 ## Operational boundary
 
 Do not fix this by using raw `kubectl`, direct Cloudflare dashboard changes, or direct Porkbun dashboard changes unless Enclii is unavailable during a production incident. Any break-glass change must be reconciled back into Enclii immediately afterward.
+
+## Continuation status — 2026-05-14
+
+Completed through Enclii:
+
+- Added the Switchyard RBAC needed for application retirement and ExternalSecret refresh.
+- Retired `phyne-crm-production` through `enclii ops apps retire`.
+- Recreated the `crm.madfam.io` junction through Enclii with id `15118c4b-aaf1-4c7a-bba7-27e58c688e96`.
+- Verified the active tunnel route now maps `crm.madfam.io`, `phynd.app`, and `www.phynd.app` to `http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
+
+Still blocked:
+
+- `phynd-crm-services` is `Synced` but `Degraded`.
+- `ExternalSecret/phynd-crm-secrets` is `Ready=False`, reason `SecretSyncedError`, message `could not get secret data from provider`.
+- Enclii/Selva secret namespace lookup for `phynd-crm` returns `404`, so no secret key set is currently available through that API path.
+- `https://crm.madfam.io` reaches Cloudflare but returns `502` because the upstream Phynd pods cannot start without `phynd-crm-secrets`.
+- `phynd.app` and `www.phynd.app` still resolve to Porkbun/Pixie IPs, so they do not reach the Enclii tunnel despite the tunnel route existing.
+
+Required remediation:
+
+- Populate Vault key `secret/phynd-crm` or the active ExternalSecret provider path with real values for the Phynd secret contract.
+- Refresh `ExternalSecret/phynd-crm-secrets` through `enclii ops secrets refresh`.
+- Transfer `phynd.app` DNS ownership to Enclii-managed Cloudflare or configure the Enclii Porkbun adapter before changing Porkbun records.
+- Keep raw `kubectl` secret writes as break-glass only; the standard path is Selva RFC 0005 for secret material and Enclii for deploy/provisioning/health.
