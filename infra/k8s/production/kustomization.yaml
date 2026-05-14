@@ -58,7 +58,7 @@ images:
   newName: ghcr.io/madfam-org/enclii/waybill
 - name: dispatch
   newName: ghcr.io/madfam-org/enclii/dispatch
-  digest: sha256:70613acc33d88bb71d1c20f14d9143ace82a3d9a4a05083690620103ace23d5d
+  digest: sha256:ddc18f3ad0ce4c750d8b806c44e5838c9647749162dc79840dacea10cddc9d18
 # Note: commonLabels removed - it adds to selectors which are immutable.
 # Labels are already defined in base manifests.
 commonAnnotations:
