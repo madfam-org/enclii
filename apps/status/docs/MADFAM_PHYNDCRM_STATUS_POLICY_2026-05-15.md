@@ -16,9 +16,11 @@ Date: 2026-05-15
 ## Probe rules
 
 - The Phynd landing entry probes `https://phynd.app` and asserts the correct repository link: `github.com/madfam-org/phynd-crm`.
-- The MADFAM slice entry probes `https://crm.madfam.io` and asserts the Janua SSO login copy for MADFAM users.
-- The generic app entry probes `https://app.phyne.app` and asserts generic Janua SSO login copy.
+- The MADFAM slice entry probes `https://crm.madfam.io`, asserts the final redirected URL contains `crm.madfam.io/login`, and asserts the Janua SSO login copy for MADFAM users.
+- The generic app entry probes `https://app.phyne.app`, asserts the final redirected URL contains `app.phyne.app/login`, and asserts generic Janua SSO login copy.
 - The API entry probes `https://phynd.app/api/health`.
+
+An HTTP 200 is not enough for either authenticated app surface. The status page must mark the service degraded if the response body or final redirected URL does not match the intended tenant/auth surface.
 
 ## Truthfulness constraint
 

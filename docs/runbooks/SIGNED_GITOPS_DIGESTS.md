@@ -40,3 +40,23 @@ When `core-services` is blocked by Kyverno image signature verification:
 ## Enclii-first rule
 
 Use Enclii operations for deployment sync and health checks. Direct cluster access is reserved for emergency diagnostics when Enclii cannot expose the required evidence.
+
+## madfam-bot commit policy
+
+`madfam-bot` may update production GitOps only as a release controller, not as an unbounded build callback.
+
+Allowed behavior:
+
+1. Verify the exact image digest with cosign.
+2. Attach release evidence: source SHA, build run, image digest, signature identity, Enclii operation ID, and target environment.
+3. Batch all service image updates for a promotion wave into one idempotent commit.
+4. Leave production unchanged when any image is unsigned, missing provenance, or rejected by policy.
+
+Disallowed behavior:
+
+1. Direct-to-main digest churn after every build callback.
+2. Repeated commits for the same service and target environment without a new verified release intent.
+3. Any production pin to an unsigned image digest.
+4. Treating a digest commit as proof that a service is deployed, healthy, or policy-admissible.
+
+If `madfam-bot` continues producing unsigned or repetitive production digest commits after the guarded Switchyard API image is live, stop the writer path through Enclii first. If Enclii cannot identify the writer, rotate the affected GitHub token through the approved Selva/Enclii secret workflow and keep the old token disabled until the callback source is found.

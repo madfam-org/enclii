@@ -39,6 +39,10 @@ export interface ServiceConfig {
                                 // otherwise the service is reported degraded.
   assertNotContains?: string    // If set, body must NOT contain this string;
                                 // otherwise the service is reported degraded.
+  assertFinalUrlContains?: string    // If set, the final fetch URL after
+                                     // redirects must contain this string.
+  assertFinalUrlNotContains?: string // If set, the final fetch URL after
+                                     // redirects must NOT contain this string.
 }
 
 /**

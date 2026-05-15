@@ -27,6 +27,8 @@ interface CheckUrlResult {
 interface AssertionOptions {
   assertContains?: string
   assertNotContains?: string
+  assertFinalUrlContains?: string
+  assertFinalUrlNotContains?: string
 }
 
 /** Hard cap on body bytes read for content-match assertions (1 MiB). */
@@ -129,6 +131,44 @@ async function evaluateAssertions(
 }
 
 /**
+ * Apply final URL assertions after redirects. These checks let status entries
+ * verify auth/tenant routing contracts that would otherwise look green with a
+ * plain HTTP 200, for example crm.madfam.io requiring a Janua login surface.
+ */
+function evaluateFinalUrlAssertions(
+  response: Response,
+  responseTime: number,
+  statusCode: number,
+  opts: AssertionOptions
+): CheckUrlResult | null {
+  if (!opts.assertFinalUrlContains && !opts.assertFinalUrlNotContains) return null
+
+  const finalUrl = response.url || ''
+
+  if (opts.assertFinalUrlContains && !finalUrl.includes(opts.assertFinalUrlContains)) {
+    return {
+      status: 'degraded',
+      responseTime,
+      statusCode,
+      error: 'final URL missing required content',
+      retryable: false,
+    }
+  }
+
+  if (opts.assertFinalUrlNotContains && finalUrl.includes(opts.assertFinalUrlNotContains)) {
+    return {
+      status: 'degraded',
+      responseTime,
+      statusCode,
+      error: 'final URL contains forbidden content',
+      retryable: false,
+    }
+  }
+
+  return null
+}
+
+/**
  * Check if a URL is healthy
  * Returns status, response time, and whether the result is retryable.
  * Retryable means a transient issue that may resolve on retry (5xx, timeouts, network errors).
@@ -167,6 +207,14 @@ async function checkUrl(
 
     // 2xx = operational — but optionally subject to content-match assertions.
     if (statusCode >= 200 && statusCode < 300) {
+      const finalUrlFailure = evaluateFinalUrlAssertions(
+        response,
+        responseTime,
+        statusCode,
+        assertions
+      )
+      if (finalUrlFailure) return finalUrlFailure
+
       const assertionFailure = await evaluateAssertions(
         response,
         responseTime,
@@ -239,7 +287,13 @@ export async function checkService(service: ServiceConfig): Promise<HealthCheckR
   // probeUrl overrides url for the actual probe (so url can stay a
   // human-friendly link); falls back to url for backwards compatibility.
   const probeTarget = service.probeUrl ?? service.url
-  const cacheKey = probeTarget
+  const assertions: AssertionOptions = {
+    ...(service.assertContains !== undefined && { assertContains: service.assertContains }),
+    ...(service.assertNotContains !== undefined && { assertNotContains: service.assertNotContains }),
+    ...(service.assertFinalUrlContains !== undefined && { assertFinalUrlContains: service.assertFinalUrlContains }),
+    ...(service.assertFinalUrlNotContains !== undefined && { assertFinalUrlNotContains: service.assertFinalUrlNotContains }),
+  }
+  const cacheKey = JSON.stringify({ probeTarget, assertions })
   const now = Date.now()
   const ttl = getCacheTTL() * 1000
 
@@ -253,11 +307,6 @@ export async function checkService(service: ServiceConfig): Promise<HealthCheckR
   const timeout = getHealthCheckTimeout()
   const maxRetries = getRetryCount()
   const baseDelay = getRetryDelayMs()
-
-  const assertions: AssertionOptions = {
-    ...(service.assertContains !== undefined && { assertContains: service.assertContains }),
-    ...(service.assertNotContains !== undefined && { assertNotContains: service.assertNotContains }),
-  }
 
   let checkResult = await checkUrl(probeTarget, timeout, assertions)
 
@@ -318,6 +367,14 @@ export function clearCache(): void {
 export function getCacheStats(): { size: number; entries: string[] } {
   return {
     size: cache.size,
-    entries: Array.from(cache.keys()),
+    entries: Array.from(cache.keys()).map((key) => {
+      try {
+        const parsed = JSON.parse(key) as { probeTarget?: unknown }
+        if (typeof parsed.probeTarget === 'string') return parsed.probeTarget
+      } catch {
+        // Older cache keys were plain URLs. Preserve them as-is.
+      }
+      return key
+    }),
   }
 }

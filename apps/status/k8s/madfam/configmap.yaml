@@ -36,6 +36,8 @@ data:
   # Janua-gated tenant slice; app.phyne.app is the generic authenticated
   # app host for non-MADFAM tenants. Removed old planned app/admin/api
   # phynd.app targets from green-path monitoring so status stays truthful.
+  # Added final-URL assertions so a plain HTTP 200 cannot hide a wrong
+  # tenant routing surface.
   #
   # Updated: 2026-05-14 — corrected Tulana to the canonical hyphenated
   # MADFAM domain pattern from the Tulana repo: tulana.madfam.io,
@@ -369,6 +371,7 @@ data:
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
         "description": "MADFAM tenant slice; root must redirect to the Janua SSO login surface",
+        "assertFinalUrlContains": "crm.madfam.io/login",
         "assertContains": "Sign in with your MADFAM Janua SSO account"
       },
       {
@@ -378,6 +381,7 @@ data:
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
         "description": "Generic authenticated PhyneCRM app host for non-MADFAM tenants",
+        "assertFinalUrlContains": "app.phyne.app/login",
         "assertContains": "Sign in with Janua SSO"
       },
       {

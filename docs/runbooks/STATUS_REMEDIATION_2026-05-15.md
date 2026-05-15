@@ -4,19 +4,21 @@ Date: 2026-05-15
 
 ## Current verified baseline
 
-Live `status.madfam.io` currently reports `1 of 60` affected services:
+Live `status.madfam.io/api/status` reported the following on 2026-05-15T19:08:45.629Z:
 
-- `Routecraft API` at `https://api.routecraft.app` returns HTTP 502.
+- Overall: `outage`
+- Total services: `68`
+- Affected services: `5`
 
-The corrected source configuration targets the expanded 68-service inventory, but
-that projection has not been promoted to the public page yet. Once promoted, the
-known non-green entries to re-check are:
+Affected services:
 
 - `Forgesight App` at `https://app.forgesight.quest` returns HTTP 502.
 - `PhyneCRM App` at `https://app.phyne.app` has no public DNS answer.
 - `Tulana` at `https://tulana.madfam.io` fetch fails.
 - `Tulana App` at `https://tulana-app.madfam.io` fetch fails.
 - `Tulana API` at `https://tulana-api.madfam.io/api/v1/health/` fetch fails.
+
+The browser-rendered page can lag or render a cached summary during regeneration. Treat `/api/status` as the operator source of truth when diagnosing affected-service counts.
 
 Status regenerate safety note:
 
@@ -39,6 +41,7 @@ Completed:
 - `crm.madfam.io` now redirects unauthenticated users to MADFAM Janua SSO.
 - `phynd.app` serves the public landing with the canonical repository link.
 - Enclii now has an `app.phyne.app` junction and the active Cloudflare tunnel route targets `phynd-crm-web`.
+- Status probes now support final redirected URL assertions. `crm.madfam.io` must end at `crm.madfam.io/login`, and `app.phyne.app` must end at `app.phyne.app/login`; a generic landing page with HTTP 200 is not considered operational.
 
 Blocked:
 
@@ -48,6 +51,19 @@ Blocked:
 Next step:
 
 - Bring `phyne.app` under Enclii DNS authority, then apply the `app.phyne.app` record.
+
+## Enclii core release governance
+
+Verified through Enclii on 2026-05-15:
+
+- `core-services` is `Synced` and `Healthy`.
+- The active source is `recovery/signed-enclii-core`.
+- The synced revision is `2839ba573b04685594f53a887dde2ac4d7a58ed2`.
+- The live `switchyard-api` image is `ghcr.io/madfam-org/enclii/switchyard-api@sha256:03c75c6f37482c7b0bc4f224b2d74389ce97cb6e3da7a383a81754bf3afec5ea`, which contains the signed-digest guard path.
+
+Next step:
+
+- Watch for any new `madfam-bot` digest commits after this revision. Any unsigned or repetitive direct-to-main digest commit is an incident in the release controller, not normal GitOps behavior.
 
 ## Forgesight App
 

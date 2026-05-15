@@ -35,9 +35,10 @@ function makeService(overrides?: Partial<ServiceConfig>): ServiceConfig {
 // `readBodyCapped`'s fallback branch.
 function fakeResponse(
   status: number,
-  body?: string
-): { status: number; ok: boolean; text?: () => Promise<string>; body?: null } {
-  const base = { status, ok: status >= 200 && status < 300 }
+  body?: string,
+  url = 'https://api.test.com/health'
+): { status: number; ok: boolean; url: string; text?: () => Promise<string>; body?: null } {
+  const base = { status, ok: status >= 200 && status < 300, url }
   if (body === undefined) return base
   return {
     ...base,
@@ -239,6 +240,24 @@ describe('checkService', () => {
 
     expect(result.description).toBe('Control plane API')
   })
+
+  it('uses assertion options in the cache key', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(fakeResponse(200, 'MADFAM login', 'https://crm.madfam.io/login'))
+      .mockResolvedValueOnce(fakeResponse(200, 'Generic login', 'https://app.phyne.app/login'))
+
+    await checkService(makeService({
+      url: 'https://crm.test/login',
+      assertContains: 'MADFAM login',
+    }))
+    await checkService(makeService({
+      url: 'https://crm.test/login',
+      assertContains: 'Generic login',
+    }))
+
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('checkService — content-match assertions', () => {
@@ -334,6 +353,50 @@ describe('checkService — content-match assertions', () => {
       'https://forgesight.quest/health',
       expect.any(Object)
     )
+  })
+})
+
+describe('checkService — final URL assertions', () => {
+  it('assertFinalUrlContains pass: 200 + redirected URL has the marker → operational', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, '<html>login</html>', 'https://crm.madfam.io/login'))
+
+    const result = await checkService(
+      makeService({ assertFinalUrlContains: 'crm.madfam.io/login' })
+    )
+
+    expect(result.status).toBe('operational')
+    expect(result.statusCode).toBe(200)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('assertFinalUrlContains fail: 200 + redirected URL missing the marker → degraded', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, '<html>landing</html>', 'https://crm.madfam.io/'))
+
+    const result = await checkService(
+      makeService({ assertFinalUrlContains: 'crm.madfam.io/login' })
+    )
+
+    expect(result.status).toBe('degraded')
+    expect(result.statusCode).toBe(200)
+    expect(result.error).toBe('final URL missing required content')
+  })
+
+  it('assertFinalUrlNotContains fail: 200 + redirected URL has the forbidden marker → degraded', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(fakeResponse(200, '<html>generic</html>', 'https://app.phyne.app/landing'))
+
+    const result = await checkService(
+      makeService({ assertFinalUrlNotContains: '/landing' })
+    )
+
+    expect(result.status).toBe('degraded')
+    expect(result.statusCode).toBe(200)
+    expect(result.error).toBe('final URL contains forbidden content')
   })
 })
 

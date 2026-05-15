@@ -100,7 +100,9 @@ Schema:
 
   "probeUrl":          "https://forgesight.quest/health",  // override: hit /health while `url` stays the human-friendly link
   "assertContains":    "Karafiel marketplace",             // body MUST contain this string
-  "assertNotContains": "localhost:"                        // body MUST NOT contain this string
+  "assertNotContains": "localhost:",                       // body MUST NOT contain this string
+  "assertFinalUrlContains": "crm.madfam.io/login",         // final redirected URL MUST contain this string
+  "assertFinalUrlNotContains": "/landing"                  // final redirected URL MUST NOT contain this string
 }
 ```
 
@@ -118,9 +120,16 @@ fields above close that gap:
   (e.g. "real app shipped, not React-Router scaffold").
 - **`assertNotContains`** — fail when the body contains a forbidden token
   (e.g. bundle should NOT have `localhost:` baked in).
+- **`assertFinalUrlContains`** — fail when redirects do not land on the
+  expected surface, e.g. `crm.madfam.io` must end at the MADFAM Janua
+  login route instead of a generic landing page.
+- **`assertFinalUrlNotContains`** — fail when redirects land on a forbidden
+  surface.
 
 A failed assertion produces `status: degraded` with one of two errors:
-`body missing required content` or `body contains forbidden content`.
+`body missing required content`, `body contains forbidden content`,
+`final URL missing required content`, or `final URL contains forbidden
+content`.
 Rolling these out is a per-repo change — each ecosystem repo declares
 its own assertions in its `enclii.yaml` `status.entries[]`.
 
