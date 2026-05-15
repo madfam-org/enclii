@@ -1,612 +1,96 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: status-config-madfam
-  namespace: enclii
+    name: status-config-madfam
+    namespace: enclii
 data:
-  site-name: "MADFAM System Status"
-  site-url: "https://status.madfam.io"
-  prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
-  response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
-  auto-incidents-enabled: "true"
-  auto-incident-threshold: "2"
-  # Services monitored by status.madfam.io.
-  #
-  # Schema (RFC 0002 S1 — product family grouping):
-  #   - name         : display name
-  #   - url          : health probe URL
-  #   - href         : optional user-facing URL (falls back to url)
-  #   - group        : fine-grained product grouping (e.g. "Karafiel")
-  #   - family       : optional product family wrapping multiple groups
-  #                    (e.g. "MADFAM Platform"). Drives the two-level
-  #                    collapsible UI. Services without `family` fall into
-  #                    the "Other" family.
-  #   - description  : short description
-  #
-  # Product families (RFC 0002 S1):
-  #   MADFAM Platform      — avala, factlas, karafiel, dhanam, tezca, fortuna, phyndcrm, routecraft, tulana, enclii, janua
-  #   Selva Swarm          — selva-office services
-  #   Rondelio             — rondel.io family
-  #   Digital Fabrication  — digifab, yantra4d, pravara-mes, primavera3d, forj, forgesight
-  #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
-  #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
-  #
-  # Updated: 2026-05-15 — corrected PhyndCRM probes:
-  # phynd.app is the public landing page; crm.madfam.io is the MADFAM
-  # Janua-gated tenant slice; app.phyne.app is the generic authenticated
-  # app host for non-MADFAM tenants. Removed old planned app/admin/api
-  # phynd.app targets from green-path monitoring so status stays truthful.
-  #
-  # Updated: 2026-05-14 — corrected Tulana to the canonical hyphenated
-  # MADFAM domain pattern from the Tulana repo: tulana.madfam.io,
-  # tulana-app.madfam.io, and tulana-api.madfam.io.
-  #
-  # Updated: 2026-04-26 — added Tulana group (Admin, API) per operator request.
-  # Tulana is the pricing-intelligence + PMF-measurement platform consumed by
-  # every product's billing module (RFC 0004 + RFC 0013). Tracking it here
-  # surfaces the deployment gap if tulana-api.madfam.io ever goes down or has
-  # not yet been deployed (initial probe will show it red until deploy lands).
-  #
-  # Updated: 2026-04-23 — 60 services across 25 groups. Added Routecraft
-  # group (Dashboard, BFF API, Admin) per request to track all Routecraft
-  # services. Internal services (auth-svc, scoring-svc, routing-svc,
-  # ingestion-svc, dossier-svc) are reached via the BFF and are covered
-  # transitively by the api.routecraft.app probe — no public domain of
-  # their own, so no point probing directly.
-  #
-  # Updated: 2026-04-20 — 57 services across 17 groups. Renamed
-  # "Bloom Scroll" group to "Almanac" (product brand) and split
-  # into Web + API rows after the netpol port-8080 fix brought both
-  # endpoints green (tunnel was dropping 100% of traffic at the
-  # NetworkPolicy layer since the web pod binds 8080 not 80).
-  #
-  # Updated: 2026-04-19 — 56 services across 17 groups. Added Factlas
-  # group (web, atlas, api, tiles) after the Geographic Fact Graph
-  # platform went live (all four endpoints verified 200 pre-add).
-  #
-  # Updated: 2026-04-17 (late) — 52 services across 16 groups after the
-  # status.madfam.io audit. Added 3 coverage gaps verified with live
-  # curl: app.karafiel.mx, enclii.dev (landing), sniper.madfam.io
-  # (foundry-scout / deal-sniper).
-  #
-  # Earlier 2026-04-17: added 8 services that were live in prod but
-  # missing from tracking (Avala, Cotiza API, Primavera3D, Nuit, Forj,
-  # Almanac / Bloom Scroll, Blueprint Harvester). Six of those
-  # currently return 502 because the repos exist + DNS + tunnels are
-  # wired but the pods aren't healthy; the status page correctly
-  # surfaces that outage rather than hiding it — remediation is on
-  # the service side, not the status page.
-  #
-  # Previous: 2026-04-15 — 41 services across 15 groups (Karafiel
-  # URLs fixed to /login, AutoSwarm → Selva Office on selva.town).
-  #
-  # Intentional exclusions — not a bug, do not add without thinking:
-  #   - status.madfam.io + status.enclii.dev — cannot reliably monitor
-  #     oneself. If the status page is down, its own up-check is
-  #     meaningless. Use the external StatusCake / UptimeRobot probe
-  #     (configured in Cloudflare) as the backstop.
-  #   - grafana.enclii.dev + metrics.enclii.dev — the monitoring
-  #     stack. Meta-monitoring your own monitoring creates blind
-  #     spots; monitor via external probe.
-  #   - ssh.madfam.io — Cloudflare tunnel endpoint, doesn't speak
-  #     HTTP. Probe failure == tunnel outage == status page is
-  #     probably broken too.
-  #   - agents-api.madfam.io, agents.madfam.io, agents-admin.madfam.io,
-  #     agents-ws.madfam.io — being retired by the pending Selva
-  #     cutover (selva.town replaces). Adding them would add flake
-  #     sources that get torn down in the same maintenance window.
-  #   - Vault (deferred — not initialized/unsealed yet).
-  #   - MES Admin (pravara-gateway image doesn't exist).
-  #   - api.yantra4d.com + cms.madfam.io — return 404 on / with no
-  #     documented /health path. Re-add once upstream exposes a probe
-  #     endpoint.
-  services-config: |
-    [
-      {
-        "name": "Enclii API",
-        "url": "https://api.enclii.dev/health/public",
-        "href": "https://api.enclii.dev",
-        "group": "Enclii",
-        "family": "MADFAM Platform",
-        "description": "Control plane API"
-      },
-      {
-        "name": "Enclii Dashboard",
-        "url": "https://app.enclii.dev",
-        "group": "Enclii",
-        "family": "MADFAM Platform",
-        "description": "Web management console"
-      },
-      {
-        "name": "Enclii Admin",
-        "url": "https://admin.enclii.dev",
-        "group": "Enclii",
-        "family": "MADFAM Platform",
-        "description": "Infrastructure operations"
-      },
-      {
-        "name": "Enclii Docs",
-        "url": "https://docs.enclii.dev",
-        "group": "Enclii",
-        "family": "MADFAM Platform",
-        "description": "Platform documentation"
-      },
-      {
-        "name": "Analytics Proxy",
-        "url": "https://analytics.madfam.io/static/array.js",
-        "href": "https://analytics.madfam.io",
-        "group": "Enclii",
-        "family": "MADFAM Platform",
-        "description": "PostHog analytics proxy"
-      },
-      {
-        "name": "Auth",
-        "url": "https://auth.madfam.io/health",
-        "href": "https://auth.madfam.io",
-        "group": "Janua",
-        "family": "MADFAM Platform",
-        "description": "SSO authentication service"
-      },
-      {
-        "name": "Janua Website",
-        "url": "https://janua.dev",
-        "group": "Janua",
-        "family": "MADFAM Platform",
-        "description": "Product landing page"
-      },
-      {
-        "name": "Janua Docs",
-        "url": "https://docs.janua.dev",
-        "group": "Janua",
-        "family": "MADFAM Platform",
-        "description": "Authentication documentation"
-      },
-      {
-        "name": "Dhanam API",
-        "url": "https://api.dhan.am/health",
-        "href": "https://api.dhan.am",
-        "group": "Dhanam",
-        "family": "MADFAM Platform",
-        "description": "Financial platform API"
-      },
-      {
-        "name": "Dhanam Admin",
-        "url": "https://admin.dhan.am",
-        "group": "Dhanam",
-        "family": "MADFAM Platform",
-        "description": "Financial operations console"
-      },
-      {
-        "name": "Dhanam Web",
-        "url": "https://dhan.am",
-        "group": "Dhanam",
-        "family": "MADFAM Platform",
-        "description": "Landing page"
-      },
-      {
-        "name": "Dhanam App",
-        "url": "https://app.dhan.am",
-        "group": "Dhanam",
-        "family": "MADFAM Platform",
-        "description": "User application"
-      },
-      {
-        "name": "Tezca Web",
-        "url": "https://tezca.mx",
-        "group": "Tezca",
-        "family": "MADFAM Platform",
-        "description": "Legal intelligence platform"
-      },
-      {
-        "name": "Tezca API",
-        "url": "https://api.tezca.mx/health",
-        "href": "https://api.tezca.mx",
-        "group": "Tezca",
-        "family": "MADFAM Platform",
-        "description": "Legal data API"
-      },
-      {
-        "name": "Tezca Admin",
-        "url": "https://admin.tezca.mx",
-        "group": "Tezca",
-        "family": "MADFAM Platform",
-        "description": "Legal ops console"
-      },
-      {
-        "name": "Yantra4D Web",
-        "url": "https://yantra4d.com",
-        "group": "Yantra4D",
-        "family": "Digital Fabrication",
-        "description": "3D printing platform"
-      },
-      {
-        "name": "Yantra4D Studio",
-        "url": "https://app.yantra4d.com",
-        "group": "Yantra4D",
-        "family": "Digital Fabrication",
-        "description": "3D design studio"
-      },
-      {
-        "name": "Yantra4D Admin",
-        "url": "https://admin.yantra4d.com",
-        "group": "Yantra4D",
-        "family": "Digital Fabrication",
-        "description": "Print operations console"
-      },
-      {
-        "name": "Forgesight Web",
-        "url": "https://forgesight.quest",
-        "group": "Forgesight",
-        "family": "Digital Fabrication",
-        "description": "Pricing intelligence platform"
-      },
-      {
-        "name": "Forgesight App",
-        "url": "https://app.forgesight.quest",
-        "group": "Forgesight",
-        "family": "Digital Fabrication",
-        "description": "Price tracking dashboard"
-      },
-      {
-        "name": "Forgesight Admin",
-        "url": "https://admin.forgesight.quest",
-        "group": "Forgesight",
-        "family": "Digital Fabrication",
-        "description": "Data operations console"
-      },
-      {
-        "name": "Forgesight API",
-        "url": "https://api.forgesight.quest",
-        "group": "Forgesight",
-        "family": "Digital Fabrication",
-        "description": "Pricing data API"
-      },
-      {
-        "name": "Karafiel Web",
-        "url": "https://karafiel.mx/login",
-        "href": "https://karafiel.mx",
-        "group": "Karafiel",
-        "family": "MADFAM Platform",
-        "description": "Tax compliance platform"
-      },
-      {
-        "name": "Karafiel Admin",
-        "url": "https://admin.karafiel.mx/login",
-        "href": "https://admin.karafiel.mx",
-        "group": "Karafiel",
-        "family": "MADFAM Platform",
-        "description": "Compliance operations console"
-      },
-      {
-        "name": "MADFAM Website",
-        "url": "https://madfam.io",
-        "group": "MADFAM Site",
-        "family": "MADFAM Corporate",
-        "description": "Corporate website"
-      },
-      {
-        "name": "MES API",
-        "url": "https://mes-api.madfam.io/health",
-        "href": "https://mes-api.madfam.io",
-        "group": "Pravara MES",
-        "family": "Digital Fabrication",
-        "description": "Manufacturing execution API"
-      },
-      {
-        "name": "MES Web",
-        "url": "https://mes.madfam.io",
-        "group": "Pravara MES",
-        "family": "Digital Fabrication",
-        "description": "Manufacturing dashboard"
-      },
-      {
-        "name": "Selva Landing",
-        "url": "https://selva.town",
-        "group": "Selva Office",
-        "family": "Selva Swarm",
-        "description": "AI workforce landing page"
-      },
-      {
-        "name": "Selva API",
-        "url": "https://api.selva.town/health",
-        "href": "https://api.selva.town",
-        "group": "Selva Office",
-        "family": "Selva Swarm",
-        "description": "Agent orchestration API"
-      },
-      {
-        "name": "Selva Demo",
-        "url": "https://app.selva.town/demo",
-        "href": "https://app.selva.town",
-        "group": "Selva Office",
-        "family": "Selva Swarm",
-        "description": "Virtual office demo"
-      },
-      {
-        "name": "Selva Admin",
-        "url": "https://admin.selva.town/login",
-        "href": "https://admin.selva.town",
-        "group": "Selva Office",
-        "family": "Selva Swarm",
-        "description": "Admin operations console"
-      },
-      {
-        "name": "Karafiel API",
-        "url": "https://api.karafiel.mx/api/v1/health/",
-        "href": "https://api.karafiel.mx",
-        "group": "Karafiel",
-        "family": "MADFAM Platform",
-        "description": "Combat accounting API"
-      },
-      {
-        "name": "Fortuna API",
-        "url": "https://api.fortuna.tube/health",
-        "href": "https://api.fortuna.tube",
-        "group": "Fortuna",
-        "family": "MADFAM Platform",
-        "description": "Problem intelligence API"
-      },
-      {
-        "name": "Fortuna Web",
-        "url": "https://fortuna.tube",
-        "group": "Fortuna",
-        "family": "MADFAM Platform",
-        "description": "Problem intelligence dashboard"
-      },
-      {
-        "name": "Phynd Landing",
-        "url": "https://phynd.app",
-        "href": "https://phynd.app",
-        "group": "PhyndCRM",
-        "family": "MADFAM Platform",
-        "description": "Public Phynd landing page",
-        "assertContains": "github.com/madfam-org/phynd-crm"
-      },
-      {
-        "name": "PhyndCRM MADFAM Slice",
-        "url": "https://crm.madfam.io",
-        "href": "https://crm.madfam.io",
-        "group": "PhyndCRM",
-        "family": "MADFAM Platform",
-        "description": "MADFAM tenant slice; root must redirect to the Janua SSO login surface",
-        "assertContains": "Sign in with your MADFAM Janua SSO account"
-      },
-      {
-        "name": "PhyneCRM App",
-        "url": "https://app.phyne.app",
-        "href": "https://app.phyne.app",
-        "group": "PhyndCRM",
-        "family": "MADFAM Platform",
-        "description": "Generic authenticated PhyneCRM app host for non-MADFAM tenants",
-        "assertContains": "Sign in with Janua SSO"
-      },
-      {
-        "name": "PhyndCRM API",
-        "url": "https://phynd.app/api/health",
-        "href": "https://phynd.app",
-        "group": "PhyndCRM",
-        "family": "MADFAM Platform",
-        "description": "Primary PhyndCRM health endpoint"
-      },
-      {
-        "name": "NPM Registry",
-        "url": "https://npm.madfam.io",
-        "group": "Platform",
-        "family": "MADFAM Corporate",
-        "description": "Private Verdaccio registry"
-      },
-      {
-        "name": "Rondelio Web",
-        "url": "https://rondel.io",
-        "group": "Rondelio",
-        "family": "Rondelio",
-        "description": "Game intelligence platform"
-      },
-      {
-        "name": "Rondelio API",
-        "url": "https://api.rondel.io/health",
-        "href": "https://api.rondel.io",
-        "group": "Rondelio",
-        "family": "Rondelio",
-        "description": "Game data API"
-      },
-      {
-        "name": "Rondelio Play",
-        "url": "https://play.rondel.io",
-        "group": "Rondelio",
-        "family": "Rondelio",
-        "description": "Game simulator"
-      },
-      {
-        "name": "Coforma Studio",
-        "url": "https://coforma.studio",
-        "group": "Coforma",
-        "family": "Content & Creative",
-        "description": "Customer advisory boards"
-      },
-      {
-        "name": "Cotiza Studio",
-        "url": "https://cotiza.studio",
-        "group": "DigiFab",
-        "family": "Digital Fabrication",
-        "description": "Automated quoting platform"
-      },
-      {
-        "name": "CEQ Studio",
-        "url": "https://ceq.lol",
-        "group": "CEQ",
-        "family": "Content & Creative",
-        "description": "ComfyUI creative engine"
-      },
-      {
-        "name": "Avala Web",
-        "url": "https://avala.studio",
-        "group": "Avala",
-        "family": "MADFAM Platform",
-        "description": "Learning verification platform"
-      },
-      {
-        "name": "Avala API",
-        "url": "https://api.avala.studio/v1/health",
-        "href": "https://api.avala.studio",
-        "group": "Avala",
-        "family": "MADFAM Platform",
-        "description": "Learning verification API"
-      },
-      {
-        "name": "Cotiza API",
-        "url": "https://api.cotiza.studio/api/docs",
-        "href": "https://api.cotiza.studio",
-        "group": "DigiFab",
-        "family": "Digital Fabrication",
-        "description": "Automated quoting API"
-      },
-      {
-        "name": "Primavera3D",
-        "url": "https://primavera3d.pro",
-        "group": "Primavera3D",
-        "family": "Digital Fabrication",
-        "description": "3D portfolio"
-      },
-      {
-        "name": "Nuit One",
-        "url": "https://nuit.one",
-        "group": "Nuit",
-        "family": "Content & Creative",
-        "description": "Audio platform"
-      },
-      {
-        "name": "Forj Design",
-        "url": "https://forj.design",
-        "group": "Forj",
-        "family": "Digital Fabrication",
-        "description": "Fabrication storefronts"
-      },
-      {
-        "name": "Almanac Web",
-        "url": "https://almanac.solar",
-        "group": "Almanac",
-        "family": "Content & Creative",
-        "description": "Slow web aggregator — 20 items, then stop"
-      },
-      {
-        "name": "Almanac API",
-        "url": "https://api.almanac.solar/health",
-        "href": "https://api.almanac.solar",
-        "group": "Almanac",
-        "family": "Content & Creative",
-        "description": "Serendipity curation + embeddings API"
-      },
-      {
-        "name": "Karafiel App",
-        "url": "https://app.karafiel.mx",
-        "href": "https://app.karafiel.mx",
-        "group": "Karafiel",
-        "family": "MADFAM Platform",
-        "description": "Self-serve tax-compliance workspace"
-      },
-      {
-        "name": "Enclii Landing",
-        "url": "https://enclii.dev",
-        "href": "https://enclii.dev",
-        "group": "Enclii",
-        "family": "MADFAM Platform",
-        "description": "Product landing page"
-      },
-      {
-        "name": "Deal Sniper",
-        "url": "https://sniper.madfam.io",
-        "href": "https://sniper.madfam.io",
-        "group": "Platform",
-        "family": "MADFAM Corporate",
-        "description": "Hetzner auction intelligence (foundry-scout)"
-      },
-      {
-        "name": "Factlas Web",
-        "url": "https://factl.as",
-        "group": "Factlas",
-        "family": "MADFAM Platform",
-        "description": "Geographic Fact Graph — landing page"
-      },
-      {
-        "name": "Factlas Atlas",
-        "url": "https://app.factl.as",
-        "group": "Factlas",
-        "family": "MADFAM Platform",
-        "description": "2D/3D geospatial viewer"
-      },
-      {
-        "name": "Factlas API",
-        "url": "https://api.factl.as/health",
-        "href": "https://api.factl.as",
-        "group": "Factlas",
-        "family": "MADFAM Platform",
-        "description": "Geographic facts REST API"
-      },
-      {
-        "name": "Factlas Tiles",
-        "url": "https://tiles.factl.as",
-        "group": "Factlas",
-        "family": "MADFAM Platform",
-        "description": "COG / vector tile server (TiTiler)"
-      },
-      {
-        "name": "Blueprint Harvester",
-        "url": "https://blueprint.tube/health",
-        "href": "https://blueprint.tube",
-        "group": "Blueprint Harvester",
-        "family": "Content & Creative",
-        "description": "3D-file discovery / harvesting — spec-phase landing"
-      },
-      {
-        "name": "Routecraft Dashboard",
-        "url": "https://routecraft.app",
-        "group": "Routecraft",
-        "family": "MADFAM Platform",
-        "description": "Trip Engine — city-date scoring dashboard"
-      },
-      {
-        "name": "Routecraft API",
-        "url": "https://api.routecraft.app/health",
-        "href": "https://api.routecraft.app",
-        "group": "Routecraft",
-        "family": "MADFAM Platform",
-        "description": "BFF / API gateway (fronts auth-svc, scoring-svc, routing-svc, ingestion-svc, dossier-svc)"
-      },
-      {
-        "name": "Routecraft Admin",
-        "url": "https://admin.routecraft.app",
-        "group": "Routecraft",
-        "family": "MADFAM Platform",
-        "description": "Operations console"
-      },
-      {
-        "name": "Tulana",
-        "url": "https://tulana.madfam.io",
-        "href": "https://tulana.madfam.io",
-        "group": "Tulana",
-        "family": "MADFAM Platform",
-        "description": "Marketing landing page (public, no auth)"
-      },
-      {
-        "name": "Tulana App",
-        "url": "https://tulana-app.madfam.io",
-        "href": "https://tulana-app.madfam.io",
-        "group": "Tulana",
-        "family": "MADFAM Platform",
-        "description": "Pricing intelligence + PMF measurement operator dashboard — Janua-gated (RFC 0004 + RFC 0013)"
-      },
-      {
-        "name": "Tulana API",
-        "url": "https://tulana-api.madfam.io/api/v1/health/",
-        "href": "https://tulana-api.madfam.io",
-        "group": "Tulana",
-        "family": "MADFAM Platform",
-        "description": "/api/v1/recommendations + /api/v1/pmf endpoints for internal pricing and PMF workflows"
-      },
-      {
-        "name": "Symbiosis HCM",
-        "url": "https://hcm.madfam.io",
-        "group": "Symbiosis HCM"
-      }
-    ]
+    auto-incident-threshold: "2"
+    auto-incidents-enabled: "true"
+    prometheus-url: http://prometheus.monitoring.svc.cluster.local:9090
+    response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
+    services-config: |
+        [
+              {
+                "name": "Enclii API",
+                "url": "https://api.enclii.dev/health/public",
+                "href": "https://api.enclii.dev",
+                "group": "Enclii",
+                "family": "MADFAM Platform",
+                "description": "Control plane API"
+              },
+              {
+                "name": "Enclii Dashboard",
+                "url": "https://app.enclii.dev",
+                "group": "Enclii",
+                "family": "MADFAM Platform",
+                "description": "Web management console"
+              },
+              {
+                "name": "Enclii Admin",
+                "url": "https://admin.enclii.dev",
+                "group": "Enclii",
+                "family": "MADFAM Platform",
+                "description": "Infrastructure operations"
+              },
+              {
+                "name": "Enclii Docs",
+                "url": "https://docs.enclii.dev",
+                "group": "Enclii",
+                "family": "MADFAM Platform",
+                "description": "Platform documentation"
+              },
+              {
+                "name": "Enclii Landing",
+                "url": "https://enclii.dev",
+                "href": "https://enclii.dev",
+                "group": "Enclii",
+                "family": "MADFAM Platform",
+                "description": "Product landing page"
+              },
+              {
+                "name": "Auth",
+                "url": "https://auth.madfam.io/health",
+                "href": "https://auth.madfam.io",
+                "group": "Janua",
+                "family": "MADFAM Platform",
+                "description": "SSO authentication service"
+              },
+              {
+                "name": "Janua Website",
+                "url": "https://janua.dev",
+                "group": "Janua",
+                "family": "MADFAM Platform",
+                "description": "Product landing page"
+              },
+              {
+                "name": "Janua Docs",
+                "url": "https://docs.janua.dev",
+                "group": "Janua",
+                "family": "MADFAM Platform",
+                "description": "Authentication documentation"
+              },
+              {
+                "name": "MADFAM Website",
+                "url": "https://madfam.io",
+                "group": "MADFAM Site",
+                "family": "MADFAM Corporate",
+                "description": "Corporate website"
+              },
+              {
+                "name": "NPM Registry",
+                "url": "https://npm.madfam.io",
+                "group": "Platform",
+                "family": "MADFAM Corporate",
+                "description": "Private Verdaccio registry"
+              },
+              {
+                "name": "Deal Sniper",
+                "url": "https://sniper.madfam.io",
+                "href": "https://sniper.madfam.io",
+                "group": "Platform",
+                "family": "MADFAM Corporate",
+                "description": "Hetzner auction intelligence (foundry-scout)"
+              }
+            ]
+    site-name: MADFAM System Status
+    site-url: https://status.madfam.io
