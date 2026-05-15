@@ -30,13 +30,20 @@ Enclii uses [Kyverno](https://kyverno.io/) for Kubernetes-native policy enforcem
 | Run-as-nonroot | Enforce | Active |
 | Host namespaces | Enforce | Active |
 | Capabilities | Enforce | Active |
-| Image signatures (cosign) | Audit | Active (Enforce pending PR #47 verification) |
-| Registry restrictions | Audit | Active |
+| Image signatures (cosign) | Enforce | Active for namespaces labeled `enclii.dev/verify-signatures: "true"` |
+| Registry restrictions | Enforce | Active outside infrastructure namespaces |
 | Resource limits | Audit | Active |
 | Required labels | Audit | Active |
 | Health probes | Audit | Active |
 
 ## Troubleshooting
+
+Image signature verification is keyless and must match MADFAM GitHub Actions
+OIDC identities. The verifier accepts identities matching
+`^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$`
+with issuer `https://token.actions.githubusercontent.com`. If Kyverno reports
+`no matching signatures` for an image whose CI sign step succeeded, first check
+the certificate identity pattern before creating a PolicyException.
 
 ```bash
 # View cluster-wide policy reports

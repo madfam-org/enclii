@@ -316,7 +316,7 @@ kubectl get application vault -n argocd
 
 ## Section 4 -- Cosign Enforce Activation (P1)
 
-**Context:** The Kyverno ClusterPolicy `verify-image-signatures` is committed to git at `infra/k8s/base/kyverno/policies/image-policies.yaml` with `validationFailureAction: Enforce`. It uses keyless Cosign verification with GitHub Actions OIDC (`issuer: https://token.actions.githubusercontent.com`, `subject: https://github.com/madfam-org/*`). The policy only applies to namespaces with the label `enclii.dev/verify-signatures: "true"`.
+**Context:** The Kyverno ClusterPolicy `verify-image-signatures` is committed to git at `infra/k8s/base/kyverno/policies/image-policies.yaml` with `validationFailureAction: Enforce`. It uses keyless Cosign verification with GitHub Actions OIDC (`issuer: https://token.actions.githubusercontent.com`) and a `subjectRegExp` scoped to MADFAM GitHub Actions workflows on `main` or version tags. The policy only applies to namespaces with the label `enclii.dev/verify-signatures: "true"`.
 
 **Pre-conditions:**
 - PR #47 merged (Kyverno policy in Enforce mode)
@@ -333,12 +333,12 @@ kubectl get application vault -n argocd
 kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' \
   | grep ghcr.io/madfam-org | sort -u
 
-# Verify each image has a cosign signature
+# Verify each image has a cosign signature from an approved MADFAM workflow
 # (replace image references from the output above)
 for img in $(kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | grep ghcr.io/madfam-org | sort -u); do
   echo -n "$img: "
   cosign verify \
-    --certificate-identity-regexp=".*" \
+    --certificate-identity-regexp="^https://github\\.com/madfam-org/[A-Za-z0-9_.-]+/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@refs/(heads/main|tags/v[0-9].*)$" \
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
     "$img" 2>/dev/null && echo "SIGNED" || echo "UNSIGNED"
 done
