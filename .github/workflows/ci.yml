@@ -921,8 +921,8 @@ jobs:
             # artifact digest is the signed source of truth; resolving tags or
             # manifests after the fact can pin an unsigned digest into GitOps.
             if [ -z "$DIGEST" ]; then
-              echo "ERROR: Missing digest artifact for ${NAME}; refusing to pin an unverifiable registry fallback"
-              exit 1
+              echo "WARNING: Missing digest artifact for ${NAME}; skipping this service instead of pinning an unverifiable registry fallback"
+              continue
             fi
 
             if [ -n "$DIGEST" ]; then
@@ -946,9 +946,9 @@ jobs:
               done
 
               if [ "$VERIFIED" -ne 1 ]; then
-                echo "ERROR: Refusing to pin unsigned or unverifiable digest ${REF}"
+                echo "WARNING: Refusing to pin unsigned or unverifiable digest ${REF}; skipping this service"
                 cat /tmp/cosign-verify-${NAME}.err || true
-                exit 1
+                continue
               fi
 
               echo "Updating ${NAME} in ${KUSTOMIZATION}: signed digest=${DIGEST}"

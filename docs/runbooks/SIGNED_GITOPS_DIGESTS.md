@@ -18,13 +18,15 @@ The production digest commit job must:
 4. Verify the exact `ghcr.io/...@sha256:...` reference with cosign before editing any production kustomization.
 5. Commit the production GitOps pin only after cosign verification succeeds.
 
+Digest promotion is per service. If one built service is missing its digest artifact or has an unsigned/unverifiable digest, that service must be skipped and left unchanged. Other built services whose exact digests verify successfully may still be promoted in the same run. The job must fail only when no built service can be verified and promoted.
+
 The reusable `build-publish` workflow and the Enclii platform build callback follow the same rule. When Roundhouse reports a completed build, Switchyard API verifies the exact image digest with cosign before it writes any `kustomization.yaml` update through the GitHub Contents API. A missing `cosign` binary, an unsigned digest, or a digest signed by an untrusted identity must fail closed and leave GitOps unchanged.
 
 ## Expected failure mode
 
 If CI or the Enclii platform cannot verify the signature for the exact digest, the digest commit path must fail closed and leave production unchanged.
 
-This is intentional. A failed digest commit is less risky than an unsigned production image pin that blocks Argo CD sync and prevents Enclii from rolling out critical provider changes.
+This is intentional. A skipped digest commit for that service is less risky than an unsigned production image pin that blocks Argo CD sync and prevents Enclii from rolling out critical provider changes.
 
 ## Remediation steps
 
