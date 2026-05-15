@@ -222,6 +222,23 @@ def test_fetcher_none_skips_with_warning_not_failure():
 
 
 # ---------------------------------------------------------------------------
+# 8. Sentinel timestamps from registry metadata are soft skips, not failures.
+# ---------------------------------------------------------------------------
+
+def test_implausible_created_timestamp_skips_with_warning_not_failure():
+    now = datetime(2026, 5, 4, 12, 0, 0, tzinfo=timezone.utc)
+    img = _img("switchyard-api")
+    fetcher = lambda _i: datetime(1, 1, 1, tzinfo=timezone.utc)
+
+    failures, warnings = mod.evaluate(
+        images=[img], threshold_days=30, now=now,
+        fetcher=fetcher, exemptions={},
+    )
+    assert failures == []
+    assert any("SKIP" in w and "implausible creation timestamp" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
 # Extra: ISO8601 parser handles GHCR's nanosecond precision and Z suffix.
 # Cheap, but it's the most likely fragility point in the registry path.
 # ---------------------------------------------------------------------------

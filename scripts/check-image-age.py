@@ -68,6 +68,7 @@ GHCR_HOST = "ghcr.io"
 DEFAULT_THRESHOLD_DAYS = 30
 KUSTOMIZATION_GLOB = "infra/k8s/**/kustomization.yaml"
 EXEMPT_PREFIX = "AGE_RATCHET_EXEMPT_"
+MIN_PLAUSIBLE_CREATED = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 # Accept both OCI and Docker manifest types — GHCR can return either depending
 # on how the image was pushed.
@@ -292,6 +293,12 @@ def evaluate(images: Iterable[PinnedImage], threshold_days: int,
             warnings.append(
                 f"SKIP {img.new_name}@{img.digest[:19]}... — could not resolve "
                 f"creation timestamp (registry auth or network issue)"
+            )
+            continue
+        if created < MIN_PLAUSIBLE_CREATED:
+            warnings.append(
+                f"SKIP {img.new_name}@{img.digest[:19]}... — registry returned "
+                f"implausible creation timestamp {created.date().isoformat()}"
             )
             continue
         age = now - created
