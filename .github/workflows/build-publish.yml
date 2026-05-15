@@ -399,6 +399,11 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+        with:
+          cosign-release: ${{ inputs.cosign_release }}
+
       - name: Download all digest artifacts
         uses: actions/download-artifact@v4
         with:
@@ -419,7 +424,32 @@ jobs:
             line=$(cat "$f")
             name="${line%%=*}"
             digest="${line#*=}"
-            echo "Pinning $name to $digest"
+            if [[ "$digest" != sha256:* ]]; then
+              echo "ERROR: Refusing to pin non-sha256 digest for $name: $digest"
+              exit 1
+            fi
+            ref="${IMAGE_PREFIX}/${name}@${digest}"
+            echo "Verifying cosign signature for $ref"
+            verified=0
+            for wait in 0 5 10 20 30 60; do
+              if [ "$wait" -gt 0 ]; then
+                echo "Signature not visible yet for $ref, retrying in ${wait}s..."
+                sleep "$wait"
+              fi
+              if COSIGN_EXPERIMENTAL=1 cosign verify \
+                --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
+                --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+                "$ref" >/tmp/cosign-verify-${name}.json 2>/tmp/cosign-verify-${name}.err; then
+                verified=1
+                break
+              fi
+            done
+            if [ "$verified" -ne 1 ]; then
+              echo "ERROR: Refusing to pin unsigned or unverifiable digest $ref"
+              cat /tmp/cosign-verify-${name}.err || true
+              exit 1
+            fi
+            echo "Pinning signed digest $name to $digest"
             kustomize edit set image "${IMAGE_PREFIX}/${name}=${IMAGE_PREFIX}/${name}@${digest}"
           done
 

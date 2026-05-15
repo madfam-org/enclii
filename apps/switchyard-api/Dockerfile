@@ -59,6 +59,13 @@ RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${
 ENV PACK_VERSION=0.35.1
 RUN curl -sSL "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux.tgz" | tar -xz -C /usr/local/bin
 
+# Install cosign so the API can verify signed image digests before committing
+# production GitOps pins from platform build callbacks.
+ENV COSIGN_VERSION=v2.4.3
+RUN curl -fsSL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
+    -o /usr/local/bin/cosign \
+    && chmod +x /usr/local/bin/cosign
+
 # Create non-root user for running the application
 RUN addgroup -g 65532 nonroot && \
     adduser -u 65532 -G nonroot -s /bin/sh -D nonroot

@@ -4,14 +4,22 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+)
+
+const (
+	cosignOIDCIssuer              = "https://token.actions.githubusercontent.com"
+	cosignGitHubActionsIdentityRE = `^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$`
 )
 
 // BuildCallbackRequest represents the callback payload from Roundhouse after a build completes
@@ -293,6 +301,41 @@ func (h *Handler) commitDigestToTargetRepo(ctx context.Context, service *types.S
 	if idx := strings.LastIndex(imageName, "@"); idx != -1 {
 		imageName = imageName[:idx]
 	}
+	imageRef, err := buildDigestImageRef(imageName, imageDigest)
+	if err != nil {
+		h.logger.Error(ctx, "Refusing to commit invalid image digest to GitOps",
+			logging.String("repo", repoFullName),
+			logging.String("service", service.Name),
+			logging.String("image", imageName),
+			logging.String("digest", imageDigest),
+			logging.Error("error", err))
+		return
+	}
+	if err := verifyImageDigestSignature(ctx, imageRef); err != nil {
+		h.logger.Error(ctx, "Refusing to commit unsigned or unverifiable image digest to GitOps",
+			logging.String("repo", repoFullName),
+			logging.String("service", service.Name),
+			logging.String("image_ref", imageRef),
+			logging.Error("error", err))
+
+		failMsg := "Refused to commit unsigned or unverifiable image digest to target repo: " + err.Error()
+		h.emitLifecycleEvent(&types.DeploymentLifecycleEvent{
+			ReleaseID:    &release.ID,
+			ProjectID:    &service.ProjectID,
+			RepoFullName: repoFullName,
+			CommitSHA:    release.GitSHA,
+			Branch:       release.GitBranch,
+			EventType:    types.LifecycleDeployFailed,
+			Source:       types.SourcePlatform,
+			Message:      &failMsg,
+			Metadata: map[string]interface{}{
+				"image_ref":        imageRef,
+				"verification":     "cosign",
+				"verification_ref": cosignGitHubActionsIdentityRE,
+			},
+		})
+		return
+	}
 
 	// Read the current kustomization.yaml
 	kustomizationFile := kustomizationPath + "/kustomization.yaml"
@@ -372,6 +415,46 @@ func (h *Handler) commitDigestToTargetRepo(ctx context.Context, service *types.S
 			"kustomization":     kustomizationFile,
 		},
 	})
+}
+
+func buildDigestImageRef(imageName, imageDigest string) (string, error) {
+	imageName = strings.TrimSpace(imageName)
+	imageDigest = strings.TrimSpace(imageDigest)
+	if imageName == "" {
+		return "", fmt.Errorf("image name is required")
+	}
+	if !strings.HasPrefix(imageDigest, "sha256:") {
+		return "", fmt.Errorf("digest must be sha256-pinned")
+	}
+	return imageName + "@" + imageDigest, nil
+}
+
+func verifyImageDigestSignature(ctx context.Context, imageRef string) error {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(
+		timeoutCtx,
+		"cosign",
+		"verify",
+		"--certificate-identity-regexp", cosignGitHubActionsIdentityRE,
+		"--certificate-oidc-issuer", cosignOIDCIssuer,
+		imageRef,
+	)
+	cmd.Env = append(os.Environ(), "COSIGN_EXPERIMENTAL=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+
+	msg := strings.TrimSpace(string(output))
+	if len(msg) > 500 {
+		msg = msg[:500] + "..."
+	}
+	if msg == "" {
+		return fmt.Errorf("cosign verify failed: %w", err)
+	}
+	return fmt.Errorf("cosign verify failed: %w: %s", err, msg)
 }
 
 // resolveKustomizationPath determines where the kustomization.yaml lives for a given repo/service.

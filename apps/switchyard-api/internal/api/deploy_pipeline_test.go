@@ -738,6 +738,59 @@ images:
 	})
 }
 
+func TestDeployPipeline_BuildDigestImageRef(t *testing.T) {
+	tests := []struct {
+		name        string
+		imageName   string
+		imageDigest string
+		want        string
+		wantErr     bool
+	}{
+		{
+			name:        "builds sha256 digest ref",
+			imageName:   "ghcr.io/madfam-org/enclii/switchyard-api",
+			imageDigest: "sha256:" + strings.Repeat("a", 64),
+			want:        "ghcr.io/madfam-org/enclii/switchyard-api@sha256:" + strings.Repeat("a", 64),
+		},
+		{
+			name:        "trims whitespace",
+			imageName:   " ghcr.io/madfam-org/enclii/switchyard-api ",
+			imageDigest: " sha256:" + strings.Repeat("b", 64) + " ",
+			want:        "ghcr.io/madfam-org/enclii/switchyard-api@sha256:" + strings.Repeat("b", 64),
+		},
+		{
+			name:        "rejects tag digest",
+			imageName:   "ghcr.io/madfam-org/enclii/switchyard-api",
+			imageDigest: "latest",
+			wantErr:     true,
+		},
+		{
+			name:        "rejects empty image",
+			imageName:   "",
+			imageDigest: "sha256:" + strings.Repeat("c", 64),
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildDigestImageRef(tt.imageName, tt.imageDigest)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("buildDigestImageRef() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // =============================================================================
 // Phase 8: GitHub URL Parsing Tests
 // =============================================================================
