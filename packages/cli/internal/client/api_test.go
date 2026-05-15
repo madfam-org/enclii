@@ -184,6 +184,58 @@ func TestAPIClient_BuildService(t *testing.T) {
 	assert.Equal(t, release.Status, result.Status)
 }
 
+func TestAPIClient_UpdateServiceSendsServiceSourceMetadata(t *testing.T) {
+	serviceID := uuid.New()
+	service := &types.Service{
+		ID:               serviceID,
+		Name:             "forgesight-app",
+		GitRepo:          "https://github.com/madfam-org/forgesight",
+		AppPath:          "apps/app",
+		AutoDeploy:       true,
+		AutoDeployBranch: "main",
+		AutoDeployEnv:    "production",
+		BuildConfig: types.BuildConfig{
+			Type:       types.BuildTypeDockerfile,
+			Dockerfile: "apps/app/Dockerfile",
+			Context:    ".",
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "PATCH", r.Method)
+		assert.Equal(t, "/v1/services/"+serviceID.String(), r.URL.Path)
+
+		var req map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		require.NoError(t, err)
+		assert.Equal(t, "forgesight-app", req["name"])
+		assert.Equal(t, "https://github.com/madfam-org/forgesight", req["git_repo"])
+		assert.Equal(t, "apps/app", req["app_path"])
+		assert.Equal(t, true, req["auto_deploy"])
+		assert.Equal(t, "main", req["auto_deploy_branch"])
+		assert.Equal(t, "production", req["auto_deploy_env"])
+		buildConfig, ok := req["build_config"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "dockerfile", buildConfig["type"])
+		assert.Equal(t, "apps/app/Dockerfile", buildConfig["dockerfile"])
+		assert.Equal(t, ".", buildConfig["context"])
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"service": service,
+			"message": "Service updated successfully",
+		})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	result, err := client.UpdateService(context.Background(), serviceID.String(), service)
+
+	require.NoError(t, err)
+	assert.Equal(t, serviceID, result.ID)
+	assert.Equal(t, "https://github.com/madfam-org/forgesight", result.GitRepo)
+}
+
 func TestAPIClient_GetServiceLogsHistoryRaw(t *testing.T) {
 	serviceID := uuid.New().String()
 

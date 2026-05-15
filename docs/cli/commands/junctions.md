@@ -26,11 +26,13 @@ List all routing rules for a project.
 
 ```bash
 enclii junctions list --project <project-slug>
+enclii junctions list --project <project-slug> --json
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--project`, `-p` | string | | Project slug (required) |
+| `--json` | bool | `false` | Emit full machine-readable junction records |
 
 ### `add`
 
@@ -81,11 +83,14 @@ enclii junctions list --project my-api
 
 **Output:**
 ```
-ID        DOMAIN              PATH   PROTOCOL  TLS                CREATED
-a1b2c3d4  api.example.com     /      https     letsencrypt-prod   2026-03-15
-e5f6a7b8  app.example.com     /app   https     letsencrypt-prod   2026-03-16
-c9d0e1f2  grpc.example.com    /      grpc      letsencrypt-prod   2026-03-17
+ID                                    DOMAIN              PATH   PROTOCOL  TLS                CREATED
+00000000-0000-0000-0000-000000000001  api.example.com     /      https     letsencrypt-prod   2026-03-15
+00000000-0000-0000-0000-000000000002  app.example.com     /app   https     letsencrypt-prod   2026-03-16
+00000000-0000-0000-0000-000000000003  grpc.example.com    /      grpc      letsencrypt-prod   2026-03-17
 ```
+
+Use the full `ID` value with `junctions get` and `junctions delete`; truncated
+UUID prefixes are not accepted by the API.
 
 ### Add a Custom Domain Route
 

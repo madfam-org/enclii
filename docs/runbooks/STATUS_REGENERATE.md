@@ -104,6 +104,17 @@ The commit lands directly on `main` (the kustomization's tracked branch).
 
 ## Guardrails
 
+The API refuses unsafe shrink projections before committing any generated
+configmap. Current floors:
+
+- `status.enclii.dev`: at least 5 services.
+- `status.madfam.io`: at least 60 services.
+
+The API also refuses to commit if the generated service count is lower than the
+checked-in configmap count. If a genuine catalog reduction is needed, land an
+explicit source-of-truth migration first and document why the public inventory is
+being reduced.
+
 Before accepting a regeneration, compare the returned service counts with the
 current public status surface:
 

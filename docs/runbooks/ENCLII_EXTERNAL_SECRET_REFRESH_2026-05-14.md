@@ -44,6 +44,24 @@ forgesight/forgesight-secrets: refresh can retry sync, but provider data must ex
 phynd-crm/phynd-crm-secrets: refresh can retry sync, but provider data must exist.
 ```
 
+## Pod diagnosis dependency
+
+When dependent pods fail before container startup, use:
+
+```text
+enclii ops pods diagnose <workload-prefix> --namespace <namespace> --json
+```
+
+The local Switchyard API now includes container waiting state, reason, and
+message in the response. This is required for failures such as:
+
+```text
+CreateContainerConfigError: secret "<name>" not found
+```
+
+Without that field, agents were forced into a read-only break-glass Kubernetes
+query to discover the missing Secret name.
+
 ## Acceptance gate
 
 After the adapter is live, the expected loop is:

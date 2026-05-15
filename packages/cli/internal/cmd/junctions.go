@@ -105,6 +105,7 @@ type junctionCreateResponse struct {
 
 func newJunctionsListCommand(cfg *config.Config) *cobra.Command {
 	var projectSlug string
+	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -115,17 +116,18 @@ func newJunctionsListCommand(cfg *config.Config) *cobra.Command {
 Examples:
   enclii junctions list --project my-project`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runJunctionsList(cfg, projectSlug)
+			return runJunctionsList(cfg, projectSlug, jsonOutput)
 		},
 	}
 
 	cmd.Flags().StringVarP(&projectSlug, "project", "p", "", "Project slug (required)")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Emit full machine-readable junction records")
 	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
 }
 
-func runJunctionsList(cfg *config.Config, projectSlug string) error {
+func runJunctionsList(cfg *config.Config, projectSlug string, jsonOutput bool) error {
 	resp, err := junctionsRequest(cfg, http.MethodGet, fmt.Sprintf("/v1/projects/%s/junctions", projectSlug), nil)
 	if err != nil {
 		return fmt.Errorf("failed to list junctions: %w", err)
@@ -136,6 +138,12 @@ func runJunctionsList(cfg *config.Config, projectSlug string) error {
 		return err
 	}
 	junctions := listResp.Junctions
+
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(listResp)
+	}
 
 	if len(junctions) == 0 {
 		fmt.Println("No junctions found.")
@@ -160,7 +168,7 @@ func runJunctionsList(cfg *config.Config, projectSlug string) error {
 		}
 
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			j.ID.String()[:8],
+			j.ID.String(),
 			j.Domain,
 			path,
 			j.Protocol,

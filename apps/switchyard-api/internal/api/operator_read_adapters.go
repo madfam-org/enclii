@@ -113,7 +113,7 @@ func (h *Handler) handleOpsReadOperation(ctx context.Context, domain, action, op
 		}
 		return operatorReadSuccess(operation, domain, action, data)
 	case "pods.diagnose":
-		if h.k8sClient.Clientset == nil {
+		if h.opsKubeClient() == nil {
 			return operatorReadUnavailable(operation, domain, action, "kubernetes typed client is not configured on switchyard-api")
 		}
 		data, err := h.readPods(ctx, req)
@@ -122,7 +122,7 @@ func (h *Handler) handleOpsReadOperation(ctx context.Context, domain, action, op
 		}
 		return operatorReadSuccess(operation, domain, action, data)
 	case "pods.logs":
-		if h.k8sClient.Clientset == nil {
+		if h.opsKubeClient() == nil {
 			return operatorReadUnavailable(operation, domain, action, "kubernetes typed client is not configured on switchyard-api")
 		}
 		data, err := h.readPodLogs(ctx, req)

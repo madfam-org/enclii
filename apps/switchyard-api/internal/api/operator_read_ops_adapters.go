@@ -293,12 +293,16 @@ func (h *Handler) readPodsInNamespace(ctx context.Context, namespace string, req
 		containers := make([]gin.H, 0, len(pod.Status.ContainerStatuses))
 		for _, status := range pod.Status.ContainerStatuses {
 			restarts += status.RestartCount
-			containers = append(containers, gin.H{
+			container := gin.H{
 				"name":         status.Name,
 				"ready":        status.Ready,
 				"restartCount": status.RestartCount,
 				"image":        status.Image,
-			})
+			}
+			if state := containerStatusState(status); len(state) > 0 {
+				container["state"] = state
+			}
+			containers = append(containers, container)
 		}
 		out = append(out, gin.H{
 			"name":       pod.Name,
@@ -314,6 +318,32 @@ func (h *Handler) readPodsInNamespace(ctx context.Context, namespace string, req
 		return fmt.Sprint(out[left]["name"]) < fmt.Sprint(out[right]["name"])
 	})
 	return gin.H{"namespace": namespace, "target": target, "pods": out, "count": len(out)}, nil
+}
+
+func containerStatusState(status corev1.ContainerStatus) gin.H {
+	if status.State.Waiting != nil {
+		return gin.H{
+			"state":   "waiting",
+			"reason":  status.State.Waiting.Reason,
+			"message": status.State.Waiting.Message,
+		}
+	}
+	if status.State.Terminated != nil {
+		return gin.H{
+			"state":      "terminated",
+			"reason":     status.State.Terminated.Reason,
+			"message":    status.State.Terminated.Message,
+			"exitCode":   status.State.Terminated.ExitCode,
+			"finishedAt": status.State.Terminated.FinishedAt,
+		}
+	}
+	if status.State.Running != nil {
+		return gin.H{
+			"state":     "running",
+			"startedAt": status.State.Running.StartedAt,
+		}
+	}
+	return gin.H{}
 }
 
 func (h *Handler) readPodLogs(ctx context.Context, req operatorOperationRequest) (gin.H, error) {

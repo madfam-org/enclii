@@ -1,132 +1,91 @@
-# enclii services sync
+# enclii services-sync
 
-Synchronize service configuration with the control plane.
+Synchronize checked-in Enclii service specs with the control plane.
 
 ## Synopsis
 
 ```bash
-enclii services sync [flags]
+enclii services-sync --dir <path> --project <slug> [flags]
 ```
 
 ## Description
 
-The `services sync` command uploads your local `enclii.yaml` configuration to the Enclii control plane. This updates the service definition without triggering a deployment. Use `enclii deploy` to apply the changes.
+The `services-sync` command scans a directory for Enclii service specs
+(`apiVersion: enclii.dev/v1` or `enclii.dev/v1alpha`, `kind: Service`) and
+registers missing services in the Enclii control plane.
+
+By default, existing services are left untouched. Use `--reconcile-existing`
+when the checked-in spec should repair persisted service metadata drift, such
+as an empty `git_repo`, stale `app_path`, stale auto-deploy fields, or stale
+`build_config`.
 
 ## Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--file`, `-f` | string | `enclii.yaml` | Path to service configuration file |
-| `--dry-run` | bool | `false` | Validate and show diff without applying |
-| `--force` | bool | `false` | Skip confirmation prompt |
-| `--output`, `-o` | string | `table` | Output format: `table`, `json`, `yaml`, `diff` |
+| `--dir` | string | `.` | Directory containing Enclii service YAML files |
+| `--project` | string | `enclii` | Project slug to register services under |
+| `--dry-run` | bool | `false` | Show what would be done without making changes |
+| `--ignore-project-mismatch` | bool | `false` | Sync specs even when `metadata.project` differs from `--project` |
+| `--reconcile-existing` | bool | `false` | Update existing service metadata when it differs from the checked-in spec |
 
 ## Examples
 
-### Sync Configuration
+### Register missing services
+
 ```bash
-enclii services sync
+enclii services-sync --dir . --project enclii
 ```
 
-**Output:**
-```
-Syncing service configuration...
+### Dry run before applying
 
-Changes detected:
-  spec.runtime.instances: 1 → 2
-  spec.runtime.resources.memory: 256Mi → 512Mi
-  spec.env[+]: DATABASE_POOL_SIZE=10
-
-Apply changes? [y/N]: y
-
-Configuration synced successfully!
-  Service: api
-  Version: 3
-
-To deploy these changes:
-  enclii deploy --env staging
-```
-
-### Dry Run (Preview Changes)
 ```bash
-enclii services sync --dry-run
+enclii services-sync --dir apps/app --project forgesight --dry-run
 ```
 
-**Output:**
-```
-DRY RUN - No changes will be applied
+### Repair existing service metadata drift
 
-Current → New:
-  spec:
-    runtime:
--     instances: 1
-+     instances: 2
-      resources:
--       memory: "256Mi"
-+       memory: "512Mi"
-    env:
-+     - name: DATABASE_POOL_SIZE
-+       value: "10"
-```
-
-### Show Diff Output
 ```bash
-enclii services sync --dry-run -o diff
+enclii services-sync --dir apps/app --project forgesight --dry-run --reconcile-existing
+enclii services-sync --dir apps/app --project forgesight --reconcile-existing
 ```
 
-### Sync from Custom File
-```bash
-enclii services sync -f ./config/production.yaml
-```
-
-### Force Sync (Skip Confirmation)
-```bash
-enclii services sync --force
-```
+This updates metadata only. It does not build or deploy. Run `enclii deploy`
+after the service record is aligned.
 
 ## Validation
 
 Before syncing, the CLI validates:
-- YAML syntax
-- Required fields (`apiVersion`, `kind`, `metadata.name`)
-- Resource limits within quotas
-- Valid environment variable names
-- Port range (1-65535)
 
-## Configuration Versioning
+- YAML syntax.
+- Enclii service specs only; Kubernetes `kind: Service` manifests are ignored.
+- `metadata.project` alignment unless `--ignore-project-mismatch` is set.
+- Service source metadata used by Enclii builds and webhooks.
 
-Each sync creates a new configuration version:
-- Versions are immutable
-- Previous versions can be restored
-- Changes tracked with author and timestamp
-
-View version history:
-```bash
-enclii services history api
-```
-
-## Relationship to Deploy
+## Relationship to deploy
 
 | Command | Effect |
 |---------|--------|
-| `services sync` | Updates config definition only |
+| `services-sync` | Creates missing service records and optionally reconciles existing metadata |
 | `deploy` | Builds, creates release, and deploys |
 
 Typical workflow:
+
 ```bash
-# 1. Update enclii.yaml locally
-vim enclii.yaml
+# 1. Update checked-in .enclii.yml/service specs locally.
 
-# 2. Validate and sync config
-enclii services sync --dry-run
-enclii services sync
+# 2. Inspect planned control-plane metadata changes.
+enclii services-sync --dir apps/app --project forgesight --dry-run --reconcile-existing
 
-# 3. Deploy when ready
-enclii deploy --env staging
+# 3. Apply metadata reconciliation.
+enclii services-sync --dir apps/app --project forgesight --reconcile-existing
+
+# 4. Deploy when ready.
+enclii deploy -f apps/app/.enclii.yml --env prod --wait
 ```
 
-## See Also
+## See also
 
-- [`enclii init`](./init.md) - Create initial configuration
-- [`enclii deploy`](./deploy.md) - Deploy the service
-- [Service Specification Reference](../../reference/service-spec.md)
+- [`enclii init`](./init.md) - Create initial configuration.
+- [`enclii deploy`](./deploy.md) - Deploy the service.
+- [Service Specification Reference](../../reference/service-spec.md).

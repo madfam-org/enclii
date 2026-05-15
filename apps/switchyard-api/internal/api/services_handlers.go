@@ -82,11 +82,15 @@ func (h *Handler) CreateService(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        string            `json:"name" binding:"required"`
-		GitRepo     string            `json:"git_repo" binding:"required"`
-		Type        types.ServiceType `json:"type"`
-		Region      string            `json:"region"`
-		BuildConfig types.BuildConfig `json:"build_config"`
+		Name             string            `json:"name" binding:"required"`
+		GitRepo          string            `json:"git_repo" binding:"required"`
+		AppPath          string            `json:"app_path"`
+		AutoDeploy       *bool             `json:"auto_deploy"`
+		AutoDeployBranch string            `json:"auto_deploy_branch"`
+		AutoDeployEnv    string            `json:"auto_deploy_env"`
+		Type             types.ServiceType `json:"type"`
+		Region           string            `json:"region"`
+		BuildConfig      types.BuildConfig `json:"build_config"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -96,15 +100,19 @@ func (h *Handler) CreateService(c *gin.Context) {
 
 	// Use service layer for service creation
 	createReq := &services.CreateServiceRequest{
-		ProjectID:   project.ID.String(),
-		Name:        req.Name,
-		GitRepo:     req.GitRepo,
-		Type:        req.Type,
-		Region:      req.Region,
-		BuildConfig: req.BuildConfig,
-		UserID:      c.GetString("user_id"),
-		UserEmail:   c.GetString("user_email"),
-		UserRole:    c.GetString("user_role"),
+		ProjectID:        project.ID.String(),
+		Name:             req.Name,
+		GitRepo:          req.GitRepo,
+		AppPath:          req.AppPath,
+		AutoDeploy:       req.AutoDeploy,
+		AutoDeployBranch: req.AutoDeployBranch,
+		AutoDeployEnv:    req.AutoDeployEnv,
+		Type:             req.Type,
+		Region:           req.Region,
+		BuildConfig:      req.BuildConfig,
+		UserID:           c.GetString("user_id"),
+		UserEmail:        c.GetString("user_email"),
+		UserRole:         c.GetString("user_role"),
 	}
 
 	resp, err := h.projectService.CreateService(ctx, createReq)

@@ -98,6 +98,25 @@ func (c *APIClient) post(ctx context.Context, path string, payload interface{}, 
 	return c.handleResponse(resp, result)
 }
 
+func (c *APIClient) patch(ctx context.Context, path string, payload interface{}, result interface{}) error {
+	var body io.Reader
+	if payload != nil {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("failed to marshal payload: %w", err)
+		}
+		body = bytes.NewBuffer(jsonData)
+	}
+
+	resp, err := c.makeRequest(ctx, "PATCH", path, body)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return c.handleResponse(resp, result)
+}
+
 func (c *APIClient) handleResponse(resp *http.Response, result interface{}) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -169,11 +188,7 @@ func (c *APIClient) ListProjects(ctx context.Context) ([]*types.Project, error) 
 
 // Services
 func (c *APIClient) CreateService(ctx context.Context, projectSlug string, service *types.Service) (*types.Service, error) {
-	payload := map[string]interface{}{
-		"name":         service.Name,
-		"git_repo":     service.GitRepo,
-		"build_config": service.BuildConfig,
-	}
+	payload := servicePayload(service)
 
 	var createdService types.Service
 	if err := c.post(ctx, fmt.Sprintf("/v1/projects/%s/services", projectSlug), payload, &createdService); err != nil {
@@ -181,6 +196,42 @@ func (c *APIClient) CreateService(ctx context.Context, projectSlug string, servi
 	}
 
 	return &createdService, nil
+}
+
+func (c *APIClient) UpdateService(ctx context.Context, serviceID string, service *types.Service) (*types.Service, error) {
+	payload := servicePayload(service)
+
+	var response struct {
+		Service *types.Service `json:"service"`
+		Message string         `json:"message"`
+	}
+	if err := c.patch(ctx, fmt.Sprintf("/v1/services/%s", serviceID), payload, &response); err != nil {
+		return nil, fmt.Errorf("failed to update service: %w", err)
+	}
+	if response.Service == nil {
+		return nil, fmt.Errorf("failed to update service: missing service response")
+	}
+
+	return response.Service, nil
+}
+
+func servicePayload(service *types.Service) map[string]interface{} {
+	payload := map[string]interface{}{
+		"name":               service.Name,
+		"git_repo":           service.GitRepo,
+		"app_path":           service.AppPath,
+		"auto_deploy":        service.AutoDeploy,
+		"auto_deploy_branch": service.AutoDeployBranch,
+		"auto_deploy_env":    service.AutoDeployEnv,
+		"build_config":       service.BuildConfig,
+	}
+	if service.Type != "" {
+		payload["type"] = service.Type
+	}
+	if service.Region != "" {
+		payload["region"] = service.Region
+	}
+	return payload
 }
 
 func (c *APIClient) GetService(ctx context.Context, serviceID string) (*types.Service, error) {

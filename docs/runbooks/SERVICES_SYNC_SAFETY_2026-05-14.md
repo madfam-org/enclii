@@ -23,8 +23,12 @@ The dry run exposed two unsafe behaviors:
 - `services-sync` now reads multi-document YAML files, so a canonical
   `.enclii.yml` can define both API and UI services without silently ignoring
   later documents.
+- `services-sync --reconcile-existing` can now repair existing service metadata
+  drift from checked-in specs, including `git_repo`, `app_path`, auto-deploy
+  fields, and `build_config`. The behavior is opt-in so broad syncs do not
+  surprise-update live service records.
 - Regression tests cover Kubernetes-service exclusion and multi-document Enclii
-  service parsing.
+  service parsing, source metadata preservation, and reconcile drift detection.
 
 ## Operational rule
 
@@ -37,6 +41,13 @@ enclii services-sync --dir . --project enclii --dry-run
 
 Only run the non-dry-run sync after the dry run shows existing intended
 services and no accidental service creations.
+
+For existing-service drift, use the explicit reconcile flag:
+
+```bash
+enclii services-sync --dir apps/app --project forgesight --dry-run --reconcile-existing
+enclii services-sync --dir apps/app --project forgesight --reconcile-existing
+```
 
 ## Deployment note
 

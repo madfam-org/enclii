@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 func TestReadRawServiceSpecsSkipsKubernetesServices(t *testing.T) {
@@ -81,6 +83,95 @@ spec:
 	}
 	if specs[1].Metadata.Name != "switchyard-ui" {
 		t.Fatalf("expected second spec switchyard-ui, got %q", specs[1].Metadata.Name)
+	}
+}
+
+func TestRawSpecToServiceCarriesBuildSourceMetadata(t *testing.T) {
+	spec := &RawServiceSpec{}
+	spec.Metadata.Name = "forgesight-app"
+	spec.Spec.Build.Type = "dockerfile"
+	spec.Spec.Build.Dockerfile = "apps/app/Dockerfile"
+	spec.Spec.Build.Context = "."
+	spec.Spec.Build.Source.Git.Repository = "https://github.com/madfam-org/forgesight"
+	spec.Spec.Build.Source.Git.Path = "apps/app"
+	spec.Spec.Build.Source.Git.Branch = "main"
+	spec.Spec.Build.Source.Git.AutoDeploy = true
+
+	service := rawSpecToService(spec)
+
+	if service.GitRepo != "https://github.com/madfam-org/forgesight" {
+		t.Fatalf("expected ForgeSight git repo, got %q", service.GitRepo)
+	}
+	if service.AppPath != "apps/app" {
+		t.Fatalf("expected apps/app path, got %q", service.AppPath)
+	}
+	if service.BuildConfig.Type != types.BuildTypeDockerfile {
+		t.Fatalf("expected dockerfile build type, got %q", service.BuildConfig.Type)
+	}
+	if service.BuildConfig.Dockerfile != "apps/app/Dockerfile" {
+		t.Fatalf("expected app Dockerfile, got %q", service.BuildConfig.Dockerfile)
+	}
+	if service.BuildConfig.Context != "." {
+		t.Fatalf("expected repo-root context, got %q", service.BuildConfig.Context)
+	}
+	if !service.AutoDeploy {
+		t.Fatal("expected auto deploy to be enabled")
+	}
+}
+
+func TestServiceReconcileChangesDetectsPersistedSourceDrift(t *testing.T) {
+	existing := &types.Service{
+		Name:             "forgesight-app",
+		GitRepo:          "",
+		AppPath:          "",
+		AutoDeploy:       false,
+		AutoDeployBranch: "",
+		AutoDeployEnv:    "",
+		BuildConfig:      types.BuildConfig{Type: types.BuildTypeAuto},
+	}
+	desired := &types.Service{
+		Name:             "forgesight-app",
+		GitRepo:          "https://github.com/madfam-org/forgesight",
+		AppPath:          "apps/app",
+		AutoDeploy:       true,
+		AutoDeployBranch: "main",
+		AutoDeployEnv:    "production",
+		BuildConfig: types.BuildConfig{
+			Type:       types.BuildTypeDockerfile,
+			Dockerfile: "apps/app/Dockerfile",
+			Context:    ".",
+		},
+	}
+
+	changes := serviceReconcileChanges(existing, desired)
+	want := []string{"git_repo", "app_path", "auto_deploy", "auto_deploy_branch", "auto_deploy_env", "build_config"}
+	if len(changes) != len(want) {
+		t.Fatalf("expected %d changes, got %d: %v", len(want), len(changes), changes)
+	}
+	for i := range want {
+		if changes[i] != want[i] {
+			t.Fatalf("change[%d] = %q, want %q", i, changes[i], want[i])
+		}
+	}
+}
+
+func TestServiceReconcileChangesReturnsEmptyWhenAligned(t *testing.T) {
+	service := &types.Service{
+		Name:             "forgesight-app",
+		GitRepo:          "https://github.com/madfam-org/forgesight",
+		AppPath:          "apps/app",
+		AutoDeploy:       true,
+		AutoDeployBranch: "main",
+		AutoDeployEnv:    "production",
+		BuildConfig: types.BuildConfig{
+			Type:       types.BuildTypeDockerfile,
+			Dockerfile: "apps/app/Dockerfile",
+			Context:    ".",
+		},
+	}
+
+	if changes := serviceReconcileChanges(service, service); len(changes) != 0 {
+		t.Fatalf("expected no reconcile changes, got %v", changes)
 	}
 }
 

@@ -309,6 +309,70 @@ func TestHandleOpsJobsTriggerDryRunReportsApplyReady(t *testing.T) {
 	assert.Equal(t, true, data["apply"])
 }
 
+func TestHandleOpsPodsDiagnoseReportsContainerWaitingReason(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "forgesight-app-abc123",
+			Namespace: "forgesight",
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:         "app",
+				Image:        "ghcr.io/madfam-org/forgesight/app@sha256:test",
+				Ready:        false,
+				RestartCount: 0,
+				State: corev1.ContainerState{
+					Waiting: &corev1.ContainerStateWaiting{
+						Reason:  "CreateContainerConfigError",
+						Message: `secret "forgesight-secrets" not found`,
+					},
+				},
+			}},
+		},
+	}
+	clientset := k8sfake.NewSimpleClientset(pod)
+	handler := &Handler{k8sClient: &k8sclient.Client{KubeClient: clientset}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.pods.diagnose",
+		DryRun:    true,
+		Scope:     map[string]string{"namespace": "forgesight"},
+		Args:      map[string]string{"target": "forgesight-app"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/pods/diagnose", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "succeeded", resp.Status)
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	pods, ok := data["pods"].([]any)
+	require.True(t, ok)
+	require.Len(t, pods, 1)
+	podData, ok := pods[0].(map[string]any)
+	require.True(t, ok)
+	containers, ok := podData["containers"].([]any)
+	require.True(t, ok)
+	require.Len(t, containers, 1)
+	container, ok := containers[0].(map[string]any)
+	require.True(t, ok)
+	state, ok := container["state"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "waiting", state["state"])
+	assert.Equal(t, "CreateContainerConfigError", state["reason"])
+	assert.Equal(t, `secret "forgesight-secrets" not found`, state["message"])
+}
+
 func TestHandleOpsSecretsRefreshApplyAnnotatesExternalSecret(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	externalSecret := &unstructured.Unstructured{

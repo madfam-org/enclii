@@ -152,6 +152,44 @@ data:
 	}
 }
 
+func TestStatusHandler_RegenerateGuardRefusesUnsafeMadfamShrink(t *testing.T) {
+	if err := validateStatusRegenerateServiceCount(statusSiteMadfam, 11, 68); err == nil {
+		t.Fatal("expected unsafe MADFAM shrink to be refused")
+	}
+}
+
+func TestStatusHandler_RegenerateGuardAllowsStableCounts(t *testing.T) {
+	if err := validateStatusRegenerateServiceCount(statusSiteMadfam, 68, 68); err != nil {
+		t.Fatalf("stable MADFAM count should be allowed: %v", err)
+	}
+	if err := validateStatusRegenerateServiceCount(statusSiteEnclii, 5, 5); err != nil {
+		t.Fatalf("stable Enclii count should be allowed: %v", err)
+	}
+}
+
+func TestStatusHandler_CountStatusConfigmapServices(t *testing.T) {
+	existing := []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: status-config-madfam
+  namespace: enclii
+data:
+  services-config: |
+    [
+      {"name":"A","url":"https://a","group":"G"},
+      {"name":"B","url":"https://b","group":"G"}
+    ]
+`)
+
+	got, err := countStatusConfigmapServices(existing)
+	if err != nil {
+		t.Fatalf("countStatusConfigmapServices: %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("countStatusConfigmapServices = %d, want 2", got)
+	}
+}
+
 // TestStatusHandler_GenerateMadfamIncludesCoreAndOnboarded verifies the
 // projection: the JSON list inside services-config equals core ∪ onboarded.
 func TestStatusHandler_GenerateMadfamIncludesCoreAndOnboarded(t *testing.T) {

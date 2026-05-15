@@ -59,6 +59,10 @@ func TestJunctionsListSubcommand(t *testing.T) {
 	require.NotNil(t, projectFlag)
 	assert.Equal(t, "p", projectFlag.Shorthand)
 	assert.Equal(t, "", projectFlag.DefValue)
+
+	jsonFlag := listCmd.Flags().Lookup("json")
+	require.NotNil(t, jsonFlag)
+	assert.Equal(t, "false", jsonFlag.DefValue)
 }
 
 func TestJunctionsAddSubcommand(t *testing.T) {
@@ -259,7 +263,36 @@ func TestRunJunctionsList_DecodesWrappedResponse(t *testing.T) {
 		APIToken:    "test-token",
 	}
 
-	require.NoError(t, runJunctionsList(cfg, "madfam-site"))
+	require.NoError(t, runJunctionsList(cfg, "madfam-site", false))
+}
+
+func TestRunJunctionsList_JSON_DecodesWrappedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/v1/projects/phynd-crm/junctions", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"junctions": []map[string]interface{}{
+				{
+					"id":       "00000000-0000-0000-0000-000000000001",
+					"domain":   "app.phyne.app",
+					"path":     "/",
+					"protocol": "https",
+				},
+			},
+			"total": 1,
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	require.NoError(t, runJunctionsList(cfg, "phynd-crm", true))
 }
 
 func TestRunJunctionsAdd_DecodesWrappedResponse(t *testing.T) {
