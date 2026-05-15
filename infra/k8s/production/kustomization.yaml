@@ -44,7 +44,7 @@ images:
 - digest: sha256:215e17808292f5e0015aefd05b4597392bb3ec3cff2a9b480d238d511e397dd1
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
-- digest: sha256:99abe9d72513eeb640a7922fe81d2654a5f0552af04dde0165333e00899b28c9
+- digest: sha256:06fe576d6e912e05a80f8a5c70d75e1d6084a0b7fb85c1d05f6c051fb9bf3617
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
 - digest: sha256:112cb621c7115ef22e1c354554bab74c812637c8acd5fb12a98a6a65ec70719d
