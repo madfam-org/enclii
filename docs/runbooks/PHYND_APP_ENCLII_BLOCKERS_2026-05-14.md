@@ -91,3 +91,25 @@ Required remediation:
 - Refresh `ExternalSecret/phynd-crm-secrets` through `enclii ops secrets refresh`.
 - Transfer `phynd.app` DNS ownership to Enclii-managed Cloudflare or configure the Enclii Porkbun adapter before changing Porkbun records.
 - Keep raw `kubectl` secret writes as break-glass only; the standard path is Selva RFC 0005 for secret material and Enclii for deploy/provisioning/health.
+
+## Continuation status — 2026-05-15
+
+Completed through Enclii and GitOps:
+
+- `https://phynd.app` is live through Cloudflare and serves the Phynd landing.
+- `https://crm.madfam.io/` redirects unauthenticated visitors to `/login` and exposes the MADFAM Janua SSO login copy.
+- The Phynd web image containing the corrected host policy and repository link was promoted to production through the Phynd production workflow.
+- Enclii junction `1bf7e7d5-86f0-40df-a4b8-a2d68c0eae16` was created for `app.phyne.app`.
+- Enclii's active Cloudflare tunnel inventory now includes `app.phyne.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
+
+Still blocked:
+
+- `app.phyne.app` has no public DNS answer.
+- Enclii Cloudflare DNS reports no zone for `phyne.app`.
+- Enclii Porkbun provider still reports `adapter_unconfigured`, so Enclii cannot yet read or mutate registrar/DNS state for `phyne.app`.
+
+Required remediation:
+
+- Delegate/import `phyne.app` into the Enclii-managed Cloudflare account, or configure and apply the Enclii Porkbun adapter for `phyne.app`.
+- After DNS authority exists, create the `app.phyne.app` CNAME/record to the Enclii tunnel target through Enclii.
+- Keep `PhyneCRM App` red on `status.madfam.io` until external DNS and HTTPS are live.

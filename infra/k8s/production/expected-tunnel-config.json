@@ -194,6 +194,10 @@
     "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
   },
   {
+    "hostname": "app.phyne.app",
+    "service": "http://phynd-crm-web.phynd-crm.svc.cluster.local:80"
+  },
+  {
     "hostname": "api.phynd.app",
     "service": "http://phynd-crm-api.phynd-crm.svc.cluster.local:80"
   },
