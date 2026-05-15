@@ -29,4 +29,5 @@ Do not represent planned or retired Phynd app surfaces as operational by probing
 - Enclii junction `1bf7e7d5-86f0-40df-a4b8-a2d68c0eae16` now maps `app.phyne.app` to `phynd-crm-web`.
 - The active Cloudflare tunnel inventory includes `app.phyne.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
 - Enclii Cloudflare DNS reports no `phyne.app` zone, and the Porkbun adapter reports `adapter_unconfigured`.
-- Therefore `PhyneCRM App` must remain an outage on `status.madfam.io` until `phyne.app` DNS authority is delegated/imported into Enclii-managed Cloudflare or the Enclii Porkbun adapter is configured and applied.
+- Enclii Cloudflare `dns-apply` now has a real provider path for zones Enclii controls. For `phyne.app`, it must still block until the apex zone is delegated/imported into Enclii-managed Cloudflare or the Enclii Porkbun adapter is configured and applied.
+- Therefore `PhyneCRM App` must remain an outage on `status.madfam.io` until Enclii can truthfully apply and verify the `app.phyne.app` DNS record.

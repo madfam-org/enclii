@@ -204,7 +204,7 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 			c.JSON(http.StatusOK, resp)
 			return
 		}
-		if resp, handled := h.handleApplyOperatorDryRun(prefix, domain, action, operation, req); handled {
+		if resp, handled := h.handleApplyOperatorDryRun(c.Request.Context(), prefix, domain, action, operation, req); handled {
 			c.JSON(http.StatusOK, resp)
 			return
 		}
@@ -248,7 +248,13 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 	c.JSON(http.StatusNotImplemented, resp)
 }
 
-func (h *Handler) handleApplyOperatorDryRun(prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, bool) {
+func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, bool) {
+	if prefix == "providers" {
+		if domain == "cloudflare" && action == "dns-apply" {
+			return h.handleProviderCloudflareDNSApplyDryRun(ctx, operation, req), true
+		}
+		return operatorOperationResponse{}, false
+	}
 	if prefix != "ops" {
 		return operatorOperationResponse{}, false
 	}
@@ -317,6 +323,10 @@ func (h *Handler) handleApplyOperatorDryRun(prefix, domain, action, operation st
 }
 
 func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, int, bool) {
+	if prefix == "providers" && domain == "cloudflare" && action == "dns-apply" {
+		resp, statusCode := h.handleProviderCloudflareDNSApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsAppsSyncApply(ctx, operation, req)
 		return resp, statusCode, true

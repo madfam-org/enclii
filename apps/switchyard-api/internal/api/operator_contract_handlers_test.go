@@ -627,6 +627,61 @@ func TestHandleProviderOperationApplyRequiresReason(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "reason is required")
 }
 
+func TestHandleProviderCloudflareDNSApplyDryRunReportsUnconfiguredAdapter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &Handler{}
+	router := gin.New()
+	router.POST("/v1/providers/:provider/:action", handler.HandleProviderOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "providers.cloudflare.dns-apply",
+		DryRun:    true,
+		Args:      map[string]string{"target": "app.phyne.app"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers/cloudflare/dns-apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "adapter_unconfigured", resp.Status)
+	assert.Equal(t, "providers.cloudflare.dns-apply", resp.Operation)
+	require.NotEmpty(t, resp.Warnings)
+	assert.Contains(t, resp.Warnings[0], "cloudflare domain sync service")
+}
+
+func TestHandleProviderCloudflareDNSApplyReportsUnconfiguredAdapter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &Handler{}
+	router := gin.New()
+	router.POST("/v1/providers/:provider/:action", handler.HandleProviderOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "providers.cloudflare.dns-apply",
+		DryRun:    false,
+		Reason:    "provision PhyneCRM app host through Enclii",
+		Args:      map[string]string{"target": "app.phyne.app"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers/cloudflare/dns-apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "adapter_unconfigured", resp.Status)
+	assert.Equal(t, "providers.cloudflare.dns-apply", resp.Operation)
+	require.NotEmpty(t, resp.Warnings)
+	assert.Contains(t, resp.Warnings[0], "cloudflare domain sync service")
+}
+
 func TestHandleOpsQuoteFlowVerifyReportsAuthAndMarketBlockers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
