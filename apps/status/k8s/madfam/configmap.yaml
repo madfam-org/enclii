@@ -31,6 +31,12 @@ data:
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
   #
+  # Updated: 2026-05-15 — corrected PhyndCRM probes:
+  # phynd.app is the public landing page; crm.madfam.io is the MADFAM
+  # Janua-gated tenant slice; app.phyne.app is the generic authenticated
+  # app host for non-MADFAM tenants. Removed old planned app/admin/api
+  # phynd.app targets from green-path monitoring so status stays truthful.
+  #
   # Updated: 2026-05-14 — corrected Tulana to the canonical hyphenated
   # MADFAM domain pattern from the Tulana repo: tulana.madfam.io,
   # tulana-app.madfam.io, and tulana-api.madfam.io.
@@ -348,36 +354,39 @@ data:
         "description": "Problem intelligence dashboard"
       },
       {
-        "name": "PhyndCRM",
-        "url": "https://crm.madfam.io",
+        "name": "Phynd Landing",
+        "url": "https://phynd.app",
         "href": "https://phynd.app",
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
-        "description": "Phygital CRM (currently live at crm.madfam.io → migrating to phynd.app)"
+        "description": "Public Phynd landing page",
+        "assertContains": "github.com/madfam-org/phynd-crm"
       },
       {
-        "name": "PhyndCRM App",
-        "url": "https://app.phynd.app",
-        "href": "https://app.phynd.app",
+        "name": "PhyndCRM MADFAM Slice",
+        "url": "https://crm.madfam.io",
+        "href": "https://crm.madfam.io",
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
-        "description": "Authenticated CRM workspace (planned — not yet live)"
+        "description": "MADFAM tenant slice; root must redirect to the Janua SSO login surface",
+        "assertContains": "Sign in with your MADFAM Janua SSO account"
       },
       {
-        "name": "PhyndCRM Admin",
-        "url": "https://admin.phynd.app",
-        "href": "https://admin.phynd.app",
+        "name": "PhyneCRM App",
+        "url": "https://app.phyne.app",
+        "href": "https://app.phyne.app",
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
-        "description": "Operator admin console (planned — not yet live)"
+        "description": "Generic authenticated PhyneCRM app host for non-MADFAM tenants",
+        "assertContains": "Sign in with Janua SSO"
       },
       {
         "name": "PhyndCRM API",
-        "url": "https://api.phynd.app/api/health",
-        "href": "https://api.phynd.app",
+        "url": "https://phynd.app/api/health",
+        "href": "https://phynd.app",
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
-        "description": "Synthetic single pane of glass API (planned — not yet live)"
+        "description": "Primary PhyndCRM health endpoint"
       },
       {
         "name": "NPM Registry",
