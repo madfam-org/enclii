@@ -53,7 +53,7 @@ images:
 - digest: sha256:75af00864084b23b795e36fcec68730db6ec46aa3a5b43f6deb6fe217e682f74
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:87096571bc49b0844fccc2388d787520658763dc1bbd7fe2d78a43ce8f89129c
+- digest: sha256:95033c6756f0f208c5215ee61b839405d4fa640762fcf7dcd370b638023e1e60
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
 - digest: sha256:cf7738f7af79c7c66b4bfdff211ee229fd3e8c47268e9e926381a13ca0aafcae
