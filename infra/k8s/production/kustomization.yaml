@@ -56,7 +56,7 @@ images:
 - digest: sha256:4ff4113925c743f35425396add61ff16675517b683811db6f1e67f73fe44d602
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:391ef731ed3817821e8ea6f0804c200195f15dd6af7e6f12213cba73145a205a
+- digest: sha256:fc994c13fd24d622402f0bc9738a6e12f0b45f7d31c09815b66796909ff89d31
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
