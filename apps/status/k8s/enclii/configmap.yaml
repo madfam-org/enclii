@@ -1,52 +1,112 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-    name: status-config-enclii
-    namespace: enclii
+  name: status-config-enclii
+  namespace: enclii
 data:
-    auto-incident-threshold: "2"
-    auto-incidents-enabled: "true"
-    prometheus-url: http://prometheus.monitoring.svc.cluster.local:9090
-    response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
-    services-config: |
-        [
-              {
-                "name": "Switchyard API",
-                "url": "https://api.enclii.dev/health/public",
-                "href": "https://api.enclii.dev",
-                "group": "Enclii",
-                "family": "MADFAM Platform",
-                "description": "Control plane API"
-              },
-              {
-                "name": "Web Dashboard",
-                "url": "https://app.enclii.dev",
-                "group": "Enclii",
-                "family": "MADFAM Platform",
-                "description": "Web management console"
-              },
-              {
-                "name": "Admin Console",
-                "url": "https://admin.enclii.dev",
-                "group": "Enclii",
-                "family": "MADFAM Platform",
-                "description": "Infrastructure operations"
-              },
-              {
-                "name": "Documentation",
-                "url": "https://docs.enclii.dev",
-                "group": "Enclii",
-                "family": "MADFAM Platform",
-                "description": "Platform documentation"
-              },
-              {
-                "name": "Auth",
-                "url": "https://auth.madfam.io/health",
-                "href": "https://auth.madfam.io",
-                "group": "Janua",
-                "family": "MADFAM Platform",
-                "description": "SSO authentication service"
-              }
-            ]
-    site-name: Enclii Status
-    site-url: https://status.enclii.dev
+  site-name: "Enclii Status"
+  site-url: "https://status.enclii.dev"
+  prometheus-url: "http://prometheus.monitoring.svc.cluster.local:9090"
+  response-time-thresholds: '{"fast":1500,"normal":2500,"slow":4000}'
+  auto-incidents-enabled: "true"
+  auto-incident-threshold: "2"
+  # Services to monitor for Enclii Platform + core ecosystem
+  #
+  # Schema (RFC 0002 S1 — product family grouping):
+  #   - name / url / href / group / description as before
+  #   - family: optional product family wrapping multiple `group`s
+  #     (e.g. "MADFAM Platform"). Drives the two-level collapsible UI.
+  #
+  # Excluded to avoid false-alarm auto-incidents:
+  #   - Vault (not initialized/unsealed — deferred; re-add after deploy)
+  services-config: |
+    [
+      {
+        "name": "Switchyard API",
+        "url": "https://api.enclii.dev/health/public",
+        "href": "https://api.enclii.dev",
+        "group": "Enclii",
+        "family": "MADFAM Platform",
+        "description": "Control plane API"
+      },
+      {
+        "name": "Web Dashboard",
+        "url": "https://app.enclii.dev",
+        "group": "Enclii",
+        "family": "MADFAM Platform",
+        "description": "Web management console"
+      },
+      {
+        "name": "Admin Console",
+        "url": "https://admin.enclii.dev",
+        "group": "Enclii",
+        "family": "MADFAM Platform",
+        "description": "Infrastructure operations"
+      },
+      {
+        "name": "Documentation",
+        "url": "https://docs.enclii.dev",
+        "group": "Enclii",
+        "family": "MADFAM Platform",
+        "description": "Platform documentation"
+      },
+      {
+        "name": "Analytics Proxy",
+        "url": "https://analytics.madfam.io/static/array.js",
+        "href": "https://analytics.madfam.io",
+        "group": "Enclii",
+        "family": "MADFAM Platform",
+        "description": "PostHog analytics proxy"
+      },
+      {
+        "name": "Auth",
+        "url": "https://auth.madfam.io/health",
+        "href": "https://auth.madfam.io",
+        "group": "Janua",
+        "family": "MADFAM Platform",
+        "description": "SSO authentication service"
+      },
+      {
+        "name": "Janua Website",
+        "url": "https://janua.dev",
+        "group": "Janua",
+        "family": "MADFAM Platform",
+        "description": "Product landing page"
+      },
+      {
+        "name": "Janua Docs",
+        "url": "https://docs.janua.dev",
+        "group": "Janua",
+        "family": "MADFAM Platform",
+        "description": "Authentication documentation"
+      },
+      {
+        "name": "Dhanam API",
+        "url": "https://api.dhan.am/health",
+        "href": "https://api.dhan.am",
+        "group": "Dhanam",
+        "family": "MADFAM Platform",
+        "description": "Financial platform API"
+      },
+      {
+        "name": "Dhanam Admin",
+        "url": "https://admin.dhan.am",
+        "group": "Dhanam",
+        "family": "MADFAM Platform",
+        "description": "Financial operations console"
+      },
+      {
+        "name": "Dhanam Web",
+        "url": "https://dhan.am",
+        "group": "Dhanam",
+        "family": "MADFAM Platform",
+        "description": "Landing page"
+      },
+      {
+        "name": "Dhanam App",
+        "url": "https://app.dhan.am",
+        "group": "Dhanam",
+        "family": "MADFAM Platform",
+        "description": "User application"
+      }
+    ]
