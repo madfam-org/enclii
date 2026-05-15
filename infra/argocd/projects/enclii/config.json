@@ -1,7 +1,7 @@
 {
   "name": "core",
   "repoURL": "https://github.com/madfam-org/enclii.git",
-  "branch": "main",
+  "branch": "recovery/signed-enclii-core",
   "manifestPath": "infra/k8s/production",
   "namespace": "enclii",
   "partOf": "enclii"
