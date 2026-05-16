@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/porkbun"
 )
 
 func (h *Handler) handleProviderReadOperation(ctx context.Context, provider, action, operation string, req operatorOperationRequest) operatorOperationResponse {
@@ -19,9 +20,91 @@ func (h *Handler) handleProviderReadOperation(ctx context.Context, provider, act
 		return h.handleCloudflareReadOperation(ctx, provider, action, operation, req)
 	case "github":
 		return h.handleGitHubReadOperation(ctx, provider, action, operation, req)
+	case "porkbun":
+		return h.handlePorkbunReadOperation(ctx, provider, action, operation, req)
 	default:
 		return operatorReadUnavailable(operation, provider, action, fmt.Sprintf("%s provider adapter is not configured", provider))
 	}
+}
+
+func (h *Handler) handlePorkbunReadOperation(ctx context.Context, provider, action, operation string, req operatorOperationRequest) operatorOperationResponse {
+	client := h.porkbunProviderClient()
+	if client == nil {
+		return operatorReadUnavailable(operation, provider, action, "porkbun API credentials are not configured on switchyard-api")
+	}
+
+	target := operationTarget(req)
+	switch action {
+	case "domains":
+		if target != "" {
+			domain, err := client.GetDomain(ctx, target)
+			if err != nil {
+				return operatorReadFailed(operation, provider, action, err)
+			}
+			return operatorReadSuccess(operation, provider, action, gin.H{"target": target, "domain": domain.Domain})
+		}
+		domains, err := client.ListDomains(ctx)
+		if err != nil {
+			return operatorReadFailed(operation, provider, action, err)
+		}
+		return operatorReadSuccess(operation, provider, action, gin.H{"domains": domains.Domains, "count": len(domains.Domains)})
+	case "nameservers":
+		domain := porkbunManagedDomainFromRequest(req)
+		if domain == "" {
+			return operatorReadUnavailable(operation, provider, action, "target domain is required for porkbun nameserver reads")
+		}
+		nameservers, err := client.GetNameservers(ctx, domain)
+		if err != nil {
+			return operatorReadFailed(operation, provider, action, err)
+		}
+		return operatorReadSuccess(operation, provider, action, gin.H{"target": domain, "nameservers": nameservers.Nameservers})
+	case "dns":
+		domain := porkbunManagedDomainFromRequest(req)
+		if domain == "" {
+			return operatorReadUnavailable(operation, provider, action, "target domain is required for porkbun DNS reads")
+		}
+		records, err := client.ListDNSRecords(ctx, domain)
+		if err != nil {
+			return operatorReadFailed(operation, provider, action, err)
+		}
+		return operatorReadSuccess(operation, provider, action, gin.H{
+			"target":  domain,
+			"records": records.Records,
+			"count":   len(records.Records),
+		})
+	case "renewals":
+		domains, err := client.ListDomains(ctx)
+		if err != nil {
+			return operatorReadFailed(operation, provider, action, err)
+		}
+		renewals := make([]gin.H, 0, len(domains.Domains))
+		for _, domain := range domains.Domains {
+			renewals = append(renewals, gin.H{
+				"domain":     domain.Domain,
+				"status":     domain.Status,
+				"expireDate": domain.ExpireDate,
+				"autoRenew":  domain.AutoRenew,
+			})
+		}
+		return operatorReadSuccess(operation, provider, action, gin.H{"domains": renewals, "count": len(renewals)})
+	default:
+		return operatorReadUnavailable(operation, provider, action, "porkbun read adapter is not wired for this operation")
+	}
+}
+
+func (h *Handler) porkbunProviderClient() *porkbun.Client {
+	if h == nil || h.config == nil {
+		return nil
+	}
+	client := porkbun.NewClient(porkbun.Config{
+		APIKey:       h.config.PorkbunAPIKey,
+		SecretAPIKey: h.config.PorkbunSecretAPIKey,
+		BaseURL:      h.config.PorkbunAPIBaseURL,
+	})
+	if !client.Configured() {
+		return nil
+	}
+	return client
 }
 
 func (h *Handler) handleCloudflareReadOperation(ctx context.Context, provider, action, operation string, req operatorOperationRequest) operatorOperationResponse {

@@ -63,15 +63,18 @@ Do not create placeholder secrets. If a temporary direct Kubernetes Secret is us
 
 ### P1: Restore PhyneCRM generic app host
 
-Blocker: `app.phyne.app` is not under Enclii-owned DNS authority yet. Cloudflare cannot apply the record until the zone is owned/imported, and the Porkbun adapter is still not a complete Enclii mutation path.
+Blocker: `app.phyne.app` is not under Enclii-owned DNS authority yet. Cloudflare cannot apply the record until the zone is owned/imported or the registrar delegates `phyne.app` to the Enclii-managed Cloudflare account. Enclii now exposes Porkbun DNS create and nameserver apply operations so registrar remediation can stay inside the Enclii audit path.
 
 Plan:
 
-1. Complete or configure the Enclii Porkbun adapter.
-2. Import or delegate `phyne.app` into the Enclii-managed Cloudflare path.
-3. Apply `app.phyne.app` as the generic authenticated PhyneCRM app host.
-4. Assert final URL contains `app.phyne.app/login`.
-5. Keep `crm.madfam.io` as the MADFAM tenant slice that immediately asks for Janua SSO login.
+1. Configure Switchyard API with `ENCLII_PORKBUN_API_KEY` and `ENCLII_PORKBUN_SECRET_API_KEY` through Enclii-managed secrets.
+2. Run `enclii providers porkbun domains phyne.app --json` and `enclii providers porkbun nameservers phyne.app --json` to verify Enclii can read the registrar source of truth.
+3. If `phyne.app` should delegate to Cloudflare, run `enclii providers porkbun nameservers-apply phyne.app --nameservers <cloudflare-ns-1>,<cloudflare-ns-2> --apply --reason "delegate phyne.app to Enclii-managed Cloudflare"`.
+4. If delegation is not ready, run `enclii providers porkbun dns-apply app.phyne.app --domain phyne.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyneCRM app host through Enclii"`.
+5. Apply `app.phyne.app` as the generic authenticated PhyneCRM app host.
+6. Rerun `enclii providers cloudflare dns-apply app.phyne.app --json` after delegation/import; expected state is no longer `blocked_by_dns_authority`.
+7. Assert final URL contains `app.phyne.app/login`.
+8. Keep `crm.madfam.io` as the MADFAM tenant slice that immediately asks for Janua SSO login.
 
 ### P1: Provision Tulana production surfaces
 

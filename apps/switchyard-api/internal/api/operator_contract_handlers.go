@@ -134,9 +134,9 @@ var providerCapabilities = []operatorCapability{
 	},
 	{
 		Name:        "porkbun",
-		Status:      "contract",
-		Description: "Domain inventory, DNS fallback, renewals, and nameserver ops",
-		Actions:     []string{"domains", "dns", "renewals", "nameservers"},
+		Status:      "partial",
+		Description: "Domain inventory, DNS fallback create, renewals, and nameserver ops",
+		Actions:     []string{"domains", "dns", "dns-apply", "renewals", "nameservers", "nameservers-apply"},
 		Scopes:      []string{"target"},
 	},
 	{
@@ -253,6 +253,12 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		if domain == "cloudflare" && action == "dns-apply" {
 			return h.handleProviderCloudflareDNSApplyDryRun(ctx, operation, req), true
 		}
+		if domain == "porkbun" && action == "dns-apply" {
+			return h.handleProviderPorkbunDNSApplyDryRun(ctx, operation, req), true
+		}
+		if domain == "porkbun" && action == "nameservers-apply" {
+			return h.handleProviderPorkbunNameserversApplyDryRun(ctx, operation, req), true
+		}
 		return operatorOperationResponse{}, false
 	}
 	if prefix != "ops" {
@@ -325,6 +331,14 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, int, bool) {
 	if prefix == "providers" && domain == "cloudflare" && action == "dns-apply" {
 		resp, statusCode := h.handleProviderCloudflareDNSApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "providers" && domain == "porkbun" && action == "dns-apply" {
+		resp, statusCode := h.handleProviderPorkbunDNSApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "providers" && domain == "porkbun" && action == "nameservers-apply" {
+		resp, statusCode := h.handleProviderPorkbunNameserversApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {

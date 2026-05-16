@@ -14,9 +14,11 @@ when the corresponding provider adapter is wired and the audit reason is clear.
 Read-only commands call live Switchyard adapters when configured. Current first
 coverage includes GitHub workflow runs, repository Actions secrets, GHCR package
 metadata/versions, branch protection, Cloudflare DNS, Cloudflare tunnel status,
-Cloudflare DNS apply for zones Enclii controls, and tunnel route inventory.
-Porkbun, Hetzner, Cloudflare Access, and R2 remain contract surfaces until their
-adapters are wired; missing coverage returns `adapter_unconfigured`.
+Cloudflare DNS apply for zones Enclii controls, tunnel route inventory, Porkbun
+domain inventory, Porkbun DNS reads, Porkbun DNS create fallback, Porkbun
+renewal reads, and Porkbun nameserver apply. Hetzner, Cloudflare Access, and R2
+remain contract surfaces until their adapters are wired; missing coverage
+returns `adapter_unconfigured`.
 
 ## Commands
 
@@ -25,7 +27,7 @@ adapters are wired; missing coverage returns `adapter_unconfigured`.
 | `enclii providers capabilities` | List server-supported provider capabilities |
 | `enclii providers github runs|rerun|cancel|secrets|packages|protection` | GitHub Actions, repo secrets, GHCR, branch protection |
 | `enclii providers cloudflare dns|dns-apply|tunnels|access|r2|hostnames` | DNS, tunnels, Access, R2, custom hostnames |
-| `enclii providers porkbun domains|dns|renewals|nameservers` | Domain inventory, DNS fallback, renewal state |
+| `enclii providers porkbun domains|dns|dns-apply|renewals|nameservers|nameservers-apply` | Domain inventory, DNS create fallback, renewal state, registrar delegation |
 | `enclii providers hetzner nodes|lb|vswitch|storage|firewall` | Robot/Cloud nodes, DR LB, vSwitch, storage boxes, firewall |
 
 ## Examples
@@ -37,6 +39,8 @@ enclii providers github packages madfam-org/enclii --json
 enclii providers cloudflare dns cotiza.studio
 enclii providers cloudflare dns-apply app.example.com --project example --service web --apply --reason "point app host at Enclii tunnel"
 enclii providers cloudflare tunnels --json
+enclii providers porkbun dns-apply app.phyne.app --domain phyne.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyneCRM app host through Enclii"
+enclii providers porkbun nameservers-apply phyne.app --nameservers ns1.cloudflare.com,ns2.cloudflare.com --apply --reason "delegate phyne.app to Enclii-managed Cloudflare"
 enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR token scope fix"
 ```
 
@@ -61,4 +65,9 @@ enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR to
 - Cloudflare `access` and `r2` remain contract-only.
 - Cloudflare `hostnames` currently reads DNS-shaped state; full SaaS custom
   hostname inventory is a follow-up.
-- Porkbun and Hetzner surfaces are declared but not yet backed by clients.
+- Porkbun `dns-apply` currently supports idempotent create/no-op semantics and
+  blocks on existing records with different content until explicit update/delete
+  support is added.
+- Porkbun `nameservers-apply` supports registrar delegation updates through the
+  configured Switchyard Porkbun credentials.
+- Hetzner surfaces are declared but not yet backed by clients.

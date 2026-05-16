@@ -109,6 +109,9 @@ type Config struct {
 	CloudflareAccountID string
 	CloudflareZoneID    string
 	CloudflareTunnelID  string
+	PorkbunAPIKey       string
+	PorkbunSecretAPIKey string
+	PorkbunAPIBaseURL   string
 
 	// Provisioning (for onboarding pipeline)
 	PostgresAdminURL string // Superuser connection string for provisioning databases
@@ -248,6 +251,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("cloudflare-account-id", "")
 	viper.SetDefault("cloudflare-zone-id", "")
 	viper.SetDefault("cloudflare-tunnel-id", "")
+	viper.SetDefault("porkbun-api-key", "")
+	viper.SetDefault("porkbun-secret-api-key", "")
+	viper.SetDefault("porkbun-api-base-url", "https://api.porkbun.com/api/json/v3")
 	viper.SetDefault("function-base-domain", "fn.enclii.dev")
 
 	// K8s environment variable defaults (wired from infra/k8s docs)
@@ -347,6 +353,9 @@ func Load() (*Config, error) {
 		CloudflareAccountID:        viper.GetString("cloudflare-account-id"),
 		CloudflareZoneID:           viper.GetString("cloudflare-zone-id"),
 		CloudflareTunnelID:         viper.GetString("cloudflare-tunnel-id"),
+		PorkbunAPIKey:              viper.GetString("porkbun-api-key"),
+		PorkbunSecretAPIKey:        viper.GetString("porkbun-secret-api-key"),
+		PorkbunAPIBaseURL:          viper.GetString("porkbun-api-base-url"),
 		PostgresAdminURL:           viper.GetString("postgres-admin-url"),
 		FunctionBaseDomain:         viper.GetString("function-base-domain"),
 		DBPoolSize:                 viper.GetInt("db-pool-size"),

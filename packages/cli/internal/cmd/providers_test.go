@@ -40,6 +40,16 @@ func TestProviderCloudflare_Subcommands(t *testing.T) {
 	}
 }
 
+func TestProviderPorkbun_Subcommands(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	porkbun := findSubcommand(NewProvidersCommand(cfg), "porkbun")
+	require.NotNil(t, porkbun)
+
+	for _, want := range []string{"domains", "dns", "dns-apply", "renewals", "nameservers", "nameservers-apply"} {
+		assert.NotNil(t, findSubcommand(porkbun, want), "expected providers porkbun %s", want)
+	}
+}
+
 func TestProviderActionFlags(t *testing.T) {
 	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
 	rerun := findSubcommand(findSubcommand(NewProvidersCommand(cfg), "github"), "rerun")
@@ -47,5 +57,15 @@ func TestProviderActionFlags(t *testing.T) {
 
 	for _, want := range []string{"apply", "reason", "idempotency-key", "namespace", "project", "service", "json"} {
 		assert.NotNil(t, rerun.Flags().Lookup(want), "expected --%s", want)
+	}
+}
+
+func TestProviderPorkbunDNSApplyFlags(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	dnsApply := findSubcommand(findSubcommand(NewProvidersCommand(cfg), "porkbun"), "dns-apply")
+	require.NotNil(t, dnsApply)
+
+	for _, want := range []string{"type", "content", "ttl", "domain", "name"} {
+		assert.NotNil(t, dnsApply.Flags().Lookup(want), "expected --%s", want)
 	}
 }

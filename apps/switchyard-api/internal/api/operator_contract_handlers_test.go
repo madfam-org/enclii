@@ -40,7 +40,7 @@ func TestOperatorCapabilitiesAdvertiseReadAdapterStatus(t *testing.T) {
 	}
 	assertCapabilityStatus(t, providerCapabilities, "github", "partial")
 	assertCapabilityStatus(t, providerCapabilities, "cloudflare", "partial")
-	assertCapabilityStatus(t, providerCapabilities, "porkbun", "contract")
+	assertCapabilityStatus(t, providerCapabilities, "porkbun", "partial")
 	assertCapabilityStatus(t, providerCapabilities, "hetzner", "contract")
 }
 
