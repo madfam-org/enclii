@@ -65,6 +65,12 @@ func (h *Handler) CreateProject(c *gin.Context) {
 		return
 	}
 
+	if _, err := h.ensureDefaultProductionEnvironment(ctx, resp.Project); err != nil {
+		h.logger.Warn(ctx, "Failed to ensure default production environment after project creation",
+			logging.Error("error", err),
+			logging.String("project_slug", req.Slug))
+	}
+
 	// Clear project cache on creation
 	if h.cache != nil {
 		if err := h.cache.InvalidateTags(ctx, "projects"); err != nil {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,6 +12,46 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+const defaultProductionEnvironmentName = "production"
+
+func (h *Handler) ensureDefaultProductionEnvironment(ctx context.Context, project *types.Project) (*types.Environment, error) {
+	if h == nil || h.repos == nil || h.repos.Environments == nil || project == nil {
+		return nil, nil
+	}
+
+	if existing, err := h.repos.Environments.GetByProjectAndName(project.ID, defaultProductionEnvironmentName); err == nil && existing != nil {
+		return existing, nil
+	}
+
+	env := &types.Environment{
+		ProjectID:     project.ID,
+		Name:          defaultProductionEnvironmentName,
+		KubeNamespace: defaultProductionNamespace(project),
+	}
+	if err := h.repos.Environments.Create(env); err != nil {
+		if existing, lookupErr := h.repos.Environments.GetByProjectAndName(project.ID, defaultProductionEnvironmentName); lookupErr == nil && existing != nil {
+			return existing, nil
+		}
+		return nil, err
+	}
+
+	h.logger.Info(ctx, "Default production environment created",
+		logging.String("project", project.Slug),
+		logging.String("namespace", env.KubeNamespace))
+
+	return env, nil
+}
+
+func defaultProductionNamespace(project *types.Project) string {
+	if project == nil {
+		return ""
+	}
+	if strings.TrimSpace(project.Slug) != "" {
+		return strings.TrimSpace(project.Slug)
+	}
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(project.Name), "_", "-"))
+}
 
 // CreateEnvironment creates a new environment for a project
 func (h *Handler) CreateEnvironment(c *gin.Context) {
@@ -77,6 +118,12 @@ func (h *Handler) ListEnvironments(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 		return
+	}
+
+	if _, err := h.ensureDefaultProductionEnvironment(c.Request.Context(), project); err != nil {
+		h.logger.Warn(c.Request.Context(), "Failed to ensure default production environment before listing",
+			logging.String("project", projectSlug),
+			logging.Error("error", err))
 	}
 
 	environments, err := h.repos.Environments.ListByProject(project.ID)

@@ -81,6 +81,11 @@ func (h *Handler) CreateService(c *gin.Context) {
 		return
 	}
 
+	if _, err := h.ensureDefaultProductionEnvironment(ctx, project); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to ensure default environment"})
+		return
+	}
+
 	var req struct {
 		Name             string            `json:"name" binding:"required"`
 		GitRepo          string            `json:"git_repo" binding:"required"`
@@ -302,6 +307,11 @@ func (h *Handler) BulkCreateServices(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
 		}
+		return
+	}
+
+	if _, err := h.ensureDefaultProductionEnvironment(ctx, project); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to ensure default environment"})
 		return
 	}
 

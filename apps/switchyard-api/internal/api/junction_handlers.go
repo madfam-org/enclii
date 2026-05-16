@@ -90,6 +90,14 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 		return
 	}
 
+	if _, err := h.ensureDefaultProductionEnvironment(ctx, project); err != nil {
+		h.logger.Error(ctx, "Failed to ensure default environment for junction provisioning",
+			logging.String("project", slug),
+			logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to ensure default environment"})
+		return
+	}
+
 	// Parse service ID
 	serviceID, err := uuid.Parse(req.ServiceID)
 	if err != nil {
@@ -140,13 +148,13 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 
 	// Provision infrastructure: tunnel route + DNS CNAME
 	// Get the service for namespace resolution
+	var provisioning junctionProvisioningSummary
+	var reconcile junctionRouteReconcileSummary
 	service, svcErr := h.repos.Services.GetByID(serviceID)
 	if svcErr == nil {
-		// Add tunnel route (non-blocking)
-		h.ensureTunnelRoute(ctx, req.Domain, service, "production", 80)
-
-		// Create DNS CNAME (non-blocking)
-		h.ensureDNSRecord(ctx, req.Domain)
+		provisioning = h.ensureJunctionInfrastructure(ctx, req.Domain, service)
+		reconcile = h.reconcileJunctionTunnelRoutesForProject(ctx, project)
+		h.scheduleJunctionTunnelRouteReconcile(project)
 	} else {
 		h.logger.Warn(ctx, "Service lookup failed during junction provisioning, skipping infra setup",
 			logging.String("service_id", serviceID.String()),
@@ -158,8 +166,10 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 		logging.String("project", slug))
 
 	c.JSON(http.StatusCreated, gin.H{
-		"junction": junction,
-		"message":  "Junction created successfully",
+		"junction":     junction,
+		"message":      "Junction created successfully",
+		"provisioning": provisioning,
+		"reconcile":    reconcile,
 	})
 }
 

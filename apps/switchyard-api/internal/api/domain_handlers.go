@@ -113,7 +113,7 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		routeSpec := &services.RouteSpec{
 			Hostname:         req.Domain,
 			ServiceName:      service.Name,
-			ServiceNamespace: fmt.Sprintf("enclii-%s", req.Environment),
+			ServiceNamespace: h.resolveServiceNamespace(ctx, service, req.Environment),
 			ServicePort:      80, // K8s Service port (not container port)
 		}
 

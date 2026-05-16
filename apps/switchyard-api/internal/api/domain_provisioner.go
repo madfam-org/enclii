@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"time"
+
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 
 	"github.com/google/uuid"
@@ -10,6 +12,19 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+type junctionProvisioningSummary struct {
+	Domain           string   `json:"domain"`
+	TunnelRouteReady bool     `json:"tunnel_route_ready"`
+	DNSRequested     bool     `json:"dns_requested"`
+	Warnings         []string `json:"warnings,omitempty"`
+}
+
+type junctionRouteReconcileSummary struct {
+	Total  int      `json:"total"`
+	Ready  int      `json:"ready"`
+	Failed []string `json:"failed,omitempty"`
+}
 
 // provisionDomainsFromYAML auto-provisions custom domains declared in enclii.yaml.
 // For each domain it:
@@ -246,6 +261,108 @@ func (h *Handler) ensureDNSRecord(ctx context.Context, domain string) {
 			logging.String("domain", domain),
 			logging.String("existing_content", record.Content))
 	}
+}
+
+func (h *Handler) ensureJunctionInfrastructure(ctx context.Context, domain string, service *types.Service) junctionProvisioningSummary {
+	summary := junctionProvisioningSummary{
+		Domain:       domain,
+		DNSRequested: h != nil && h.domainSyncService != nil,
+	}
+	if h == nil || service == nil {
+		summary.Warnings = append(summary.Warnings, "service unavailable")
+		return summary
+	}
+
+	h.ensureTunnelRoute(ctx, domain, service, defaultProductionEnvironmentName, 80)
+	if h.tunnelRoutesService != nil {
+		ready, err := h.tunnelRoutesService.RouteExists(ctx, domain)
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, "tunnel route readback failed: "+err.Error())
+		}
+		summary.TunnelRouteReady = ready
+	}
+
+	h.ensureDNSRecord(ctx, domain)
+	return summary
+}
+
+func (h *Handler) reconcileJunctionTunnelRoutesForProject(ctx context.Context, project *types.Project) junctionRouteReconcileSummary {
+	summary := junctionRouteReconcileSummary{}
+	if h == nil || h.repos == nil || h.repos.Junctions == nil || h.repos.Services == nil || project == nil {
+		return summary
+	}
+
+	if _, err := h.ensureDefaultProductionEnvironment(ctx, project); err != nil {
+		h.logger.Warn(ctx, "Failed to ensure default environment before junction route reconciliation",
+			logging.String("project", project.Slug),
+			logging.Error("error", err))
+	}
+
+	junctions, err := h.repos.Junctions.ListByProject(ctx, project.ID)
+	if err != nil {
+		h.logger.Warn(ctx, "Failed to list junctions during route reconciliation",
+			logging.String("project", project.Slug),
+			logging.Error("error", err))
+		return summary
+	}
+
+	summary.Total = len(junctions)
+	for _, junction := range junctions {
+		if junction == nil || junction.Domain == "" {
+			continue
+		}
+
+		service, err := h.repos.Services.GetByID(junction.ServiceID)
+		if err != nil {
+			summary.Failed = append(summary.Failed, junction.Domain)
+			h.logger.Warn(ctx, "Skipping junction route reconciliation because service lookup failed",
+				logging.String("domain", junction.Domain),
+				logging.String("service_id", junction.ServiceID.String()),
+				logging.Error("error", err))
+			continue
+		}
+
+		h.ensureTunnelRoute(ctx, junction.Domain, service, defaultProductionEnvironmentName, 80)
+		h.ensureDNSRecord(ctx, junction.Domain)
+
+		if h.tunnelRoutesService == nil {
+			continue
+		}
+		ready, err := h.tunnelRoutesService.RouteExists(ctx, junction.Domain)
+		if err != nil || !ready {
+			summary.Failed = append(summary.Failed, junction.Domain)
+			if err != nil {
+				h.logger.Warn(ctx, "Junction tunnel route readback failed after reconciliation",
+					logging.String("domain", junction.Domain),
+					logging.Error("error", err))
+			}
+			continue
+		}
+		summary.Ready++
+	}
+
+	return summary
+}
+
+func (h *Handler) scheduleJunctionTunnelRouteReconcile(project *types.Project) {
+	if h == nil || project == nil {
+		return
+	}
+
+	go func(projectCopy types.Project) {
+		for _, delay := range []time.Duration{2 * time.Second, 15 * time.Second} {
+			time.Sleep(delay)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			summary := h.reconcileJunctionTunnelRoutesForProject(ctx, &projectCopy)
+			cancel()
+
+			h.logger.Info(context.Background(), "Delayed junction route reconciliation completed",
+				logging.String("project", projectCopy.Slug),
+				logging.Int("total", summary.Total),
+				logging.Int("ready", summary.Ready))
+		}
+	}(*project)
 }
 
 // cleanupDomainsForService removes tunnel routes and DNS records for all domains of a service.

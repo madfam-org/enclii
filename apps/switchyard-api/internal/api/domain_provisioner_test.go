@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	route "github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -25,6 +26,40 @@ func (n nopLogger) WithError(_ error) logging.Logger                    { return
 func (n nopLogger) WithContext(_ context.Context) logging.Logger        { return n }
 
 func newNopLogger() logging.Logger { return nopLogger{} }
+
+type mockTunnelRoutesManager struct {
+	routes map[string]*route.RouteSpec
+}
+
+func newMockTunnelRoutesManager() *mockTunnelRoutesManager {
+	return &mockTunnelRoutesManager{routes: map[string]*route.RouteSpec{}}
+}
+
+func (m *mockTunnelRoutesManager) AddRoute(_ context.Context, spec *route.RouteSpec) error {
+	m.routes[spec.Hostname] = spec
+	return nil
+}
+
+func (m *mockTunnelRoutesManager) RemoveRoute(_ context.Context, hostname string) error {
+	delete(m.routes, hostname)
+	return nil
+}
+
+func (m *mockTunnelRoutesManager) ListRoutes(_ context.Context) ([]route.IngressRule, error) {
+	routes := make([]route.IngressRule, 0, len(m.routes))
+	for _, spec := range m.routes {
+		routes = append(routes, route.IngressRule{
+			Hostname: spec.Hostname,
+			Service:  "http://" + spec.ServiceName + "." + spec.ServiceNamespace + ".svc.cluster.local:80",
+		})
+	}
+	return routes, nil
+}
+
+func (m *mockTunnelRoutesManager) RouteExists(_ context.Context, hostname string) (bool, error) {
+	_, ok := m.routes[hostname]
+	return ok, nil
+}
 
 func TestIsValidDomain(t *testing.T) {
 	tests := []struct {
@@ -154,5 +189,46 @@ func TestResolveServiceNamespace_PrefersServiceK8sNamespace(t *testing.T) {
 
 	if got != namespace {
 		t.Fatalf("resolveServiceNamespace() = %q, want %q", got, namespace)
+	}
+}
+
+func TestDefaultProductionNamespaceUsesProjectSlug(t *testing.T) {
+	got := defaultProductionNamespace(&types.Project{
+		Name: "Tulana Pricing",
+		Slug: "tulana",
+	})
+
+	if got != "tulana" {
+		t.Fatalf("defaultProductionNamespace() = %q, want tulana", got)
+	}
+}
+
+func TestEnsureJunctionInfrastructureUsesResolvedServiceNamespace(t *testing.T) {
+	tunnelRoutes := newMockTunnelRoutesManager()
+	namespace := "tulana"
+	h := &Handler{
+		tunnelRoutesService: tunnelRoutes,
+		logger:              newNopLogger(),
+	}
+
+	summary := h.ensureJunctionInfrastructure(context.Background(), "tulana-app.madfam.io", &types.Service{
+		ID:           uuid.New(),
+		Name:         "tulana-web",
+		K8sNamespace: &namespace,
+	})
+
+	if !summary.TunnelRouteReady {
+		t.Fatalf("expected tunnel route to be ready, got %#v", summary)
+	}
+
+	spec := tunnelRoutes.routes["tulana-app.madfam.io"]
+	if spec == nil {
+		t.Fatalf("expected route spec to be recorded")
+	}
+	if spec.ServiceNamespace != "tulana" {
+		t.Fatalf("ServiceNamespace = %q, want tulana", spec.ServiceNamespace)
+	}
+	if spec.ServiceName != "tulana-web" {
+		t.Fatalf("ServiceName = %q, want tulana-web", spec.ServiceName)
 	}
 }
