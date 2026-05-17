@@ -64,10 +64,10 @@ spec:
               name: redis
           resources:
             requests:
-              memory: "64Mi"
+              memory: "256Mi"
               cpu: "50m"
             limits:
-              memory: "256Mi"
+              memory: "1Gi"
               cpu: "200m"
           startupProbe:
             exec:

@@ -108,8 +108,16 @@ Still blocked:
 - Enclii Cloudflare DNS reports no zone for `phyne.app`.
 - Enclii Porkbun provider still reports `adapter_unconfigured`, so Enclii cannot yet read or mutate registrar/DNS state for `phyne.app`.
 
+Continuation on 2026-05-17:
+
+- Registry RDAP for `phyne.app` returned HTTP 404 with `phyne.app not found`.
+- The authoritative `.app` nameserver returned NXDOMAIN for `phyne.app`.
+- `vault-store` is `Ready=False` / `InvalidProviderConfig`, so the
+  Vault-backed `enclii-porkbun-credentials` ExternalSecret cannot sync yet.
+
 Required remediation:
 
-- Delegate/import `phyne.app` into the Enclii-managed Cloudflare account, or configure and apply the Enclii Porkbun adapter for `phyne.app`.
+- Register/restore `phyne.app`, then delegate/import it into the Enclii-managed Cloudflare account or configure and apply the Enclii Porkbun adapter for `phyne.app`.
+- Repair Vault Kubernetes auth with `VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh` before expecting the Porkbun adapter secret to sync.
 - After DNS authority exists, create the `app.phyne.app` CNAME/record to the Enclii tunnel target through Enclii.
 - Keep `PhyneCRM App` red on `status.madfam.io` until external DNS and HTTPS are live.

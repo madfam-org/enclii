@@ -6,6 +6,7 @@ resources:
 - hpa-switchyard-api.yaml
 - hpa-switchyard-ui.yaml
 - hpa-roundhouse-api.yaml
+- porkbun-credentials.externalsecret.yaml
 # NOTE: cloudflared.yaml removed - using existing cloudflared in cloudflare-tunnel namespace
 # The cloudflare-tunnel namespace has working cloudflared pods with proper credentials
 # - cloudflared.yaml

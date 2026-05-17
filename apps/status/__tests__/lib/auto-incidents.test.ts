@@ -427,4 +427,137 @@ describe('detectAndManageIncidents', () => {
     expect(mockCreateIncident).not.toHaveBeenCalled()
     expect(mockUpdateIncident).not.toHaveBeenCalled()
   })
+
+  it('resolves orphaned auto-incidents for services no longer in the catalog', async () => {
+    const results = [makeResult('API', 'operational')]
+
+    mockQuery
+      // API: recent checks all good, no active incident
+      .mockResolvedValueOnce({
+        rows: [
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+        ],
+        command: 'SELECT',
+        rowCount: 4,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [],
+        command: 'SELECT',
+        rowCount: 0,
+        oid: 0,
+        fields: [],
+      })
+      // Active auto incident references a retired/renamed service.
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'old-inc',
+            title: '[Auto] Old Service Outage',
+            affected_services: ['Old Service'],
+          },
+        ],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+
+    mockUpdateIncident.mockResolvedValueOnce(null)
+
+    const result = await detectAndManageIncidents(results, 2)
+
+    expect(result.resolved).toEqual(['old-inc'])
+    expect(mockUpdateIncident).toHaveBeenCalledWith('old-inc', {
+      status: 'resolved',
+      message:
+        'Auto-resolved stale incident: affected service is no longer in the active status catalog',
+    })
+  })
+
+  it('does not resolve auto-incidents that still affect a current service', async () => {
+    const results = [makeResult('PhyneCRM App', 'outage')]
+
+    mockQuery
+      // Current service is still bad enough to keep its auto incident active.
+      .mockResolvedValueOnce({
+        rows: [{ status: 'outage' }, { status: 'outage' }],
+        command: 'SELECT',
+        rowCount: 2,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'current-inc', title: '[Auto] PhyneCRM App Outage' }],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'current-inc',
+            title: '[Auto] PhyneCRM App Outage',
+            affected_services: ['PhyneCRM App'],
+          },
+        ],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+
+    const result = await detectAndManageIncidents(results, 2)
+
+    expect(result.resolved).toEqual([])
+    expect(mockUpdateIncident).not.toHaveBeenCalled()
+  })
+
+  it('does not resolve orphaned manual incidents', async () => {
+    const results = [makeResult('API', 'operational')]
+
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+          { status: 'operational' },
+        ],
+        command: 'SELECT',
+        rowCount: 4,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [],
+        command: 'SELECT',
+        rowCount: 0,
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'manual-inc',
+            title: 'Old Service Investigation',
+            affected_services: ['Old Service'],
+          },
+        ],
+        command: 'SELECT',
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      })
+
+    const result = await detectAndManageIncidents(results, 2)
+
+    expect(result.resolved).toEqual([])
+    expect(mockUpdateIncident).not.toHaveBeenCalled()
+  })
 })

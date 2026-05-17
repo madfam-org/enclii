@@ -178,7 +178,27 @@ kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets -f
 
 # Verify Vault is unsealed
 kubectl exec -n vault vault-0 -- vault status
+```
 
+If the `ClusterSecretStore` itself is not ready:
+
+```bash
+kubectl get clustersecretstore vault-store
+kubectl describe clustersecretstore vault-store
+```
+
+When `vault-store` reports `InvalidProviderConfig` and Vault returns
+`permission denied` for `auth/kubernetes/login`, rebind the ESO Vault role with
+an operator-approved Vault token:
+
+```bash
+VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh
+```
+
+After `vault-store` is `Ready=True`, verify the target path and refresh the
+specific ExternalSecret:
+
+```bash
 # Verify the path exists in Vault
 kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$TOKEN" vault kv get secret/<namespace>
 

@@ -161,6 +161,21 @@ spec:
               name: enclii-cloudflare-credentials
               key: tunnel-id
               optional: true
+        # Porkbun Integration (registrar fallback for zones not yet in Cloudflare)
+        - name: ENCLII_PORKBUN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: enclii-porkbun-credentials
+              key: api-key
+              optional: true
+        - name: ENCLII_PORKBUN_SECRET_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: enclii-porkbun-credentials
+              key: secret-api-key
+              optional: true
+        - name: ENCLII_PORKBUN_API_BASE_URL
+          value: "https://api.porkbun.com/api/json/v3"
         # PostHog Analytics (self-hosted at analytics.madfam.io)
         - name: ENCLII_POSTHOG_API_KEY
           valueFrom:

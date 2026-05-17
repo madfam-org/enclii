@@ -175,6 +175,23 @@ kubectl exec -n vault vault-0 -- sh -c "
 
 ### Step 5: Configure Kubernetes Auth Method
 
+If Vault is already initialized and unsealed but `vault-store` is
+`InvalidProviderConfig` with a Vault Kubernetes auth HTTP 403, use the focused
+repair wrapper. It requires an operator-approved Vault token and never prints
+the token:
+
+```bash
+VAULT_TOKEN="$ROOT_TOKEN" ./scripts/repair-vault-eso-auth.sh
+```
+
+Then verify:
+
+```bash
+kubectl get clustersecretstore vault-store
+```
+
+For a first bootstrap, the equivalent manual commands are:
+
 ```bash
 kubectl exec -n vault vault-0 -- sh -c "
   export VAULT_TOKEN='$ROOT_TOKEN'

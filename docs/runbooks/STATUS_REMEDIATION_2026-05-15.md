@@ -47,10 +47,17 @@ Blocked:
 
 - Enclii has no Cloudflare zone for `phyne.app`.
 - The Porkbun adapter is unconfigured.
+- On May 17, 2026, registry RDAP returned `phyne.app not found` and the
+  authoritative `.app` nameserver returned NXDOMAIN. Treat this as a
+  registration/restore blocker before DNS delegation.
+- `vault-store` is not Ready, so the Vault-backed Porkbun provider secret cannot
+  sync until Vault Kubernetes auth is repaired.
 
 Next step:
 
-- Bring `phyne.app` under Enclii DNS authority, then apply the `app.phyne.app` record.
+- Register/restore `phyne.app`.
+- Repair Vault ESO auth with `VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh`.
+- Bring `phyne.app` under Enclii DNS authority, then apply the `app.phyne.app` record through Enclii.
 
 ## Enclii core release governance
 

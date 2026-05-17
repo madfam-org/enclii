@@ -17,6 +17,41 @@ Switchyard API must receive these values through Enclii-managed secrets:
 
 Do not print or copy secret values into chat, logs, docs, or shell history.
 
+For production, `infra/k8s/production/porkbun-credentials.externalsecret.yaml`
+materializes `enclii-porkbun-credentials` from `secret/enclii` properties
+`porkbun_api_key` and `porkbun_secret_api_key`. If `vault-store` is not Ready,
+repair Vault Kubernetes auth before expecting the Porkbun adapter to activate:
+
+```bash
+VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh
+```
+
+As of 2026-05-17, live `switchyard-api` is on the signed digest that supports
+`providers.porkbun.dns-apply`. A dry-run should now return
+`adapter_unconfigured` when credentials are absent; HTTP 404 for
+`unsupported operation porkbun.dns-apply` means the core-services GitOps branch
+has regressed to an older API image.
+
+## Domain registration preflight
+
+Before applying DNS, verify the apex exists. On 2026-05-17, registry RDAP for
+`phyne.app` returned HTTP 404 with `phyne.app not found`, and the authoritative
+`.app` nameserver returned NXDOMAIN. In that state, DNS writes cannot succeed:
+the domain must first be registered/restored through the registrar account.
+
+```bash
+curl -sS -i -L https://rdap.org/domain/phyne.app
+dig @ns-tld1.charlestonroadregistry.com phyne.app NS
+```
+
+The guarded end-to-end runner performs this preflight before planning or
+applying DNS:
+
+```bash
+scripts/remediate-phyne-app-host.sh
+scripts/remediate-phyne-app-host.sh --apply
+```
+
 ## Read operations
 
 ```bash

@@ -3,7 +3,77 @@
 Date: 2026-05-15
 Scope: `https://status.madfam.io`, Enclii-managed production surfaces, DNS authority, secret readiness, and release automation.
 
-## Current live state
+## 2026-05-17 live update
+
+Live status is now truthfully reduced to one real outage:
+
+- 68 monitored services.
+- 67 operational services.
+- 1 non-operational service: `PhyneCRM App` at `https://app.phyne.app`.
+- 1 active incident: `[Auto] PhyneCRM App Outage`.
+
+The stale `[Auto] Tulana Admin Outage` and `[Auto] PhyneCRM Outage`
+incidents were resolved through the status API because their affected service
+names no longer exist in the active catalog. The active `PhyneCRM App` incident
+must stay open until `app.phyne.app` resolves and reaches the generic
+authenticated app host.
+
+Additional blockers found on 2026-05-17:
+
+- Public DNS returns NXDOMAIN for both `phyne.app` and `app.phyne.app`.
+- Enclii Cloudflare DNS apply reports `blocked_by_dns_authority` with
+  `zone_owned=false`.
+- The Cloudflare tunnel route already exists:
+  `app.phyne.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
+- The live Switchyard deployment has no Porkbun provider env refs.
+- `enclii-porkbun-credentials` was added as a Vault-backed ExternalSecret and
+  applied live for validation, but it is `Ready=False`.
+- `vault-store` is `Ready=False` / `InvalidProviderConfig`; Vault itself is
+  initialized and unsealed, but Vault Kubernetes auth denies the ESO
+  `external-secrets` service account login with HTTP 403.
+
+Live remediation completed on 2026-05-17:
+
+- `switchyard-api` was rolled through the guarded
+  `recovery/signed-enclii-core` GitOps branch to the signed digest containing
+  Porkbun `dns-apply` support.
+- The Enclii Redis cache was OOMKilled during API rollout because its AOF/RDB
+  load exceeded the previous 256Mi memory limit. The cache limit is now 1Gi
+  with a 256Mi request, and both `redis` and `switchyard-api` are available.
+- `enclii providers porkbun dns-apply app.phyne.app --json` now reaches the
+  live API operation and returns `adapter_unconfigured` instead of HTTP 404.
+  The remaining blocker is credentials/domain authority, not missing API code.
+
+Updated priority order:
+
+1. Repair Vault Kubernetes auth for the `eso-reader` role so `vault-store` is
+   `Ready=True`:
+
+   ```bash
+   VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh
+   ```
+
+2. Populate `secret/enclii` with `porkbun_api_key` and
+   `porkbun_secret_api_key`, or create the equivalent approved Enclii-managed
+   secret source.
+3. Confirm `enclii-porkbun-credentials` syncs and roll Switchyard with
+   `ENCLII_PORKBUN_API_KEY` and `ENCLII_PORKBUN_SECRET_API_KEY`.
+4. If `phyne.app` is still unavailable at the registry, register/restore it
+   before DNS remediation. If it is available in Porkbun, create
+   `app.phyne.app` as a CNAME to
+   `c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com` through Enclii.
+5. Rerun status recording and confirm `status.madfam.io` reports 68/68
+   operational with no active incidents.
+
+Once `phyne.app` is registered/restored, the guarded runner can execute the
+remaining checks and Enclii DNS apply sequence:
+
+```bash
+scripts/remediate-phyne-app-host.sh
+scripts/remediate-phyne-app-host.sh --apply
+```
+
+## 2026-05-15 baseline live state
 
 The live status API reports 68 monitored services with 5 affected services:
 

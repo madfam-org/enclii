@@ -21,6 +21,10 @@ interface ActiveIncidentRow {
   title: string
 }
 
+interface ActiveAutoIncidentRow extends ActiveIncidentRow {
+  affected_services: string[] | null
+}
+
 /**
  * Detect persistent service failures and manage auto-incidents.
  *
@@ -107,5 +111,50 @@ export async function detectAndManageIncidents(
     }
   }
 
+  await resolveOrphanedAutoIncidents(results, resolved)
+
   return { created, resolved }
+}
+
+async function resolveOrphanedAutoIncidents(
+  results: HealthCheckResult[],
+  resolved: string[],
+): Promise<void> {
+  const currentServices = new Set(results.map((result) => result.service))
+  const alreadyResolved = new Set(resolved)
+
+  const activeAutoIncidents = await query<ActiveAutoIncidentRow>(
+    `SELECT id, title, affected_services FROM incidents
+     WHERE status != 'resolved'
+       AND title LIKE '[Auto]%'
+     ORDER BY created_at DESC`,
+  )
+
+  if (!activeAutoIncidents || activeAutoIncidents.rows.length === 0) return
+
+  for (const row of activeAutoIncidents.rows) {
+    if (alreadyResolved.has(row.id)) continue
+    if (typeof row.title !== 'string' || !row.title.startsWith('[Auto]')) continue
+
+    const affectedServices = Array.isArray(row.affected_services)
+      ? row.affected_services
+      : []
+    const isOrphaned =
+      affectedServices.length === 0 ||
+      affectedServices.every((service) => !currentServices.has(service))
+
+    if (!isOrphaned) continue
+
+    try {
+      await updateIncident(row.id, {
+        status: 'resolved',
+        message:
+          'Auto-resolved stale incident: affected service is no longer in the active status catalog',
+      })
+      resolved.push(row.id)
+      alreadyResolved.add(row.id)
+    } catch (err) {
+      console.error(`Failed to resolve orphaned auto-incident ${row.id}:`, err)
+    }
+  }
 }
