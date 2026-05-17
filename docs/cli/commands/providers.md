@@ -39,7 +39,7 @@ enclii providers github packages madfam-org/enclii --json
 enclii providers cloudflare dns cotiza.studio
 enclii providers cloudflare dns-apply app.example.com --project example --service web --apply --reason "point app host at Enclii tunnel"
 enclii providers cloudflare tunnels --json
-enclii providers porkbun dns-apply app.phyne.app --domain phyne.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyneCRM app host through Enclii"
+enclii providers porkbun dns-apply crm.phyne.app --domain phyne.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyneCRM app host through Enclii"
 enclii providers porkbun nameservers-apply phyne.app --nameservers ns1.cloudflare.com,ns2.cloudflare.com --apply --reason "delegate phyne.app to Enclii-managed Cloudflare"
 enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR token scope fix"
 ```

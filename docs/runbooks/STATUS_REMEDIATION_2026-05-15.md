@@ -13,7 +13,7 @@ Live `status.madfam.io/api/status` reported the following on 2026-05-15T19:08:45
 Affected services:
 
 - `Forgesight App` at `https://app.forgesight.quest` returns HTTP 502.
-- `PhyneCRM App` at `https://app.phyne.app` has no public DNS answer.
+- `PhyneCRM App` at `https://crm.phyne.app` has no public DNS answer.
 - `Tulana` at `https://tulana.madfam.io` fetch fails.
 - `Tulana App` at `https://tulana-app.madfam.io` fetch fails.
 - `Tulana API` at `https://tulana-api.madfam.io/api/v1/health/` fetch fails.
@@ -40,8 +40,8 @@ Completed:
 
 - `crm.madfam.io` now redirects unauthenticated users to MADFAM Janua SSO.
 - `phynd.app` serves the public landing with the canonical repository link.
-- Enclii now has an `app.phyne.app` junction and the active Cloudflare tunnel route targets `phynd-crm-web`.
-- Status probes now support final redirected URL assertions. `crm.madfam.io` must end at `crm.madfam.io/login`, and `app.phyne.app` must end at `app.phyne.app/login`; a generic landing page with HTTP 200 is not considered operational.
+- Enclii now has a `crm.phyne.app` junction and the active Cloudflare tunnel route targets `phynd-crm-web`.
+- Status probes now support final redirected URL assertions. `crm.madfam.io` must end at `crm.madfam.io/login`, and `crm.phyne.app` must end at `crm.phyne.app/login`; a generic landing page with HTTP 200 is not considered operational.
 
 Blocked:
 
@@ -57,7 +57,7 @@ Next step:
 
 - Register/restore `phyne.app`.
 - Repair Vault ESO auth with `VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh`.
-- Bring `phyne.app` under Enclii DNS authority, then apply the `app.phyne.app` record through Enclii.
+- Bring `phyne.app` under Enclii DNS authority, then apply the `crm.phyne.app` record through Enclii.
 
 ## Enclii core release governance
 

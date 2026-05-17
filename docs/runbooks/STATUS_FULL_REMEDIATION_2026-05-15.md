@@ -9,22 +9,22 @@ Live status is now truthfully reduced to one real outage:
 
 - 68 monitored services.
 - 67 operational services.
-- 1 non-operational service: `PhyneCRM App` at `https://app.phyne.app`.
+- 1 non-operational service: `PhyneCRM App` at `https://crm.phyne.app`.
 - 1 active incident: `[Auto] PhyneCRM App Outage`.
 
 The stale `[Auto] Tulana Admin Outage` and `[Auto] PhyneCRM Outage`
 incidents were resolved through the status API because their affected service
 names no longer exist in the active catalog. The active `PhyneCRM App` incident
-must stay open until `app.phyne.app` resolves and reaches the generic
+must stay open until `crm.phyne.app` resolves and reaches the generic
 authenticated app host.
 
 Additional blockers found on 2026-05-17:
 
-- Public DNS returns NXDOMAIN for both `phyne.app` and `app.phyne.app`.
+- Public DNS returns NXDOMAIN for both `phyne.app` and `crm.phyne.app`.
 - Enclii Cloudflare DNS apply reports `blocked_by_dns_authority` with
   `zone_owned=false`.
 - The Cloudflare tunnel route already exists:
-  `app.phyne.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
+  `crm.phyne.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
 - The live Switchyard deployment has no Porkbun provider env refs.
 - `enclii-porkbun-credentials` was added as a Vault-backed ExternalSecret and
   applied live for validation, but it is `Ready=False`.
@@ -40,7 +40,7 @@ Live remediation completed on 2026-05-17:
 - The Enclii Redis cache was OOMKilled during API rollout because its AOF/RDB
   load exceeded the previous 256Mi memory limit. The cache limit is now 1Gi
   with a 256Mi request, and both `redis` and `switchyard-api` are available.
-- `enclii providers porkbun dns-apply app.phyne.app --json` now reaches the
+- `enclii providers porkbun dns-apply crm.phyne.app --json` now reaches the
   live API operation and returns `adapter_unconfigured` instead of HTTP 404.
   The remaining blocker is credentials/domain authority, not missing API code.
 
@@ -60,7 +60,7 @@ Updated priority order:
    `ENCLII_PORKBUN_API_KEY` and `ENCLII_PORKBUN_SECRET_API_KEY`.
 4. If `phyne.app` is still unavailable at the registry, register/restore it
    before DNS remediation. If it is available in Porkbun, create
-   `app.phyne.app` as a CNAME to
+   `crm.phyne.app` as a CNAME to
    `c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com` through Enclii.
 5. Rerun status recording and confirm `status.madfam.io` reports 68/68
    operational with no active incidents.
@@ -78,7 +78,7 @@ scripts/remediate-phyne-app-host.sh --apply
 The live status API reports 68 monitored services with 5 affected services:
 
 - Forgesight App: `https://app.forgesight.quest`, HTTP 502.
-- PhyneCRM App: `https://app.phyne.app`, DNS/routing not yet truthful.
+- PhyneCRM App: `https://crm.phyne.app`, DNS/routing not yet truthful.
 - Tulana: `https://tulana.madfam.io`, not yet provisioned as a truthful production surface.
 - Tulana App: `https://tulana-app.madfam.io`, not yet provisioned as a truthful production surface.
 - Tulana API: `https://tulana-api.madfam.io/api/v1/health/`, not yet provisioned as a truthful production surface.
@@ -133,17 +133,17 @@ Do not create placeholder secrets. If a temporary direct Kubernetes Secret is us
 
 ### P1: Restore PhyneCRM generic app host
 
-Blocker: `app.phyne.app` is not under Enclii-owned DNS authority yet. Cloudflare cannot apply the record until the zone is owned/imported or the registrar delegates `phyne.app` to the Enclii-managed Cloudflare account. Enclii now exposes Porkbun DNS create and nameserver apply operations so registrar remediation can stay inside the Enclii audit path.
+Blocker: `crm.phyne.app` is not under Enclii-owned DNS authority yet. Cloudflare cannot apply the record until the zone is owned/imported or the registrar delegates `phyne.app` to the Enclii-managed Cloudflare account. Enclii now exposes Porkbun DNS create and nameserver apply operations so registrar remediation can stay inside the Enclii audit path.
 
 Plan:
 
 1. Configure Switchyard API with `ENCLII_PORKBUN_API_KEY` and `ENCLII_PORKBUN_SECRET_API_KEY` through Enclii-managed secrets.
 2. Run `enclii providers porkbun domains phyne.app --json` and `enclii providers porkbun nameservers phyne.app --json` to verify Enclii can read the registrar source of truth.
 3. If `phyne.app` should delegate to Cloudflare, run `enclii providers porkbun nameservers-apply phyne.app --nameservers <cloudflare-ns-1>,<cloudflare-ns-2> --apply --reason "delegate phyne.app to Enclii-managed Cloudflare"`.
-4. If delegation is not ready, run `enclii providers porkbun dns-apply app.phyne.app --domain phyne.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyneCRM app host through Enclii"`.
-5. Apply `app.phyne.app` as the generic authenticated PhyneCRM app host.
-6. Rerun `enclii providers cloudflare dns-apply app.phyne.app --json` after delegation/import; expected state is no longer `blocked_by_dns_authority`.
-7. Assert final URL contains `app.phyne.app/login`.
+4. If delegation is not ready, run `enclii providers porkbun dns-apply crm.phyne.app --domain phyne.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyneCRM app host through Enclii"`.
+5. Apply `crm.phyne.app` as the generic authenticated PhyneCRM app host.
+6. Rerun `enclii providers cloudflare dns-apply crm.phyne.app --json` after delegation/import; expected state is no longer `blocked_by_dns_authority`.
+7. Assert final URL contains `crm.phyne.app/login`.
 8. Keep `crm.madfam.io` as the MADFAM tenant slice that immediately asks for Janua SSO login.
 
 ### P1: Provision Tulana production surfaces

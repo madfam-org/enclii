@@ -67,7 +67,7 @@ enclii providers porkbun renewals --json
 Use this only when Cloudflare returns `blocked_by_dns_authority` and registrar-level DNS must be restored before Cloudflare delegation/import is complete.
 
 ```bash
-enclii providers porkbun dns-apply app.phyne.app \
+enclii providers porkbun dns-apply crm.phyne.app \
   --domain phyne.app \
   --type CNAME \
   --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com \
@@ -95,16 +95,16 @@ enclii providers porkbun nameservers-apply phyne.app \
 After delegation, rerun:
 
 ```bash
-enclii providers cloudflare dns-apply app.phyne.app --json
+enclii providers cloudflare dns-apply crm.phyne.app --json
 ```
 
 The expected outcome is that Cloudflare no longer reports `blocked_by_dns_authority`.
 
-## Completion criteria for `app.phyne.app`
+## Completion criteria for `crm.phyne.app`
 
 - `enclii providers porkbun domains phyne.app --json` succeeds.
 - `enclii providers porkbun nameservers phyne.app --json` reflects the intended delegation.
-- Public DNS resolves `app.phyne.app`.
-- `https://app.phyne.app` reaches the generic PhyneCRM authenticated app and not the MADFAM tenant slice.
+- Public DNS resolves `crm.phyne.app`.
+- `https://crm.phyne.app` reaches the generic PhyneCRM authenticated app and not the MADFAM tenant slice.
 - `https://crm.madfam.io` immediately routes to the MADFAM tenant Janua SSO flow.
-- `https://status.madfam.io/api/status` no longer lists `https://app.phyne.app` as affected.
+- `https://status.madfam.io/api/status` no longer lists `https://crm.phyne.app` as affected.

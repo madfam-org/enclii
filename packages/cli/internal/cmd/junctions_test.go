@@ -277,7 +277,7 @@ func TestRunJunctionsList_JSON_DecodesWrappedResponse(t *testing.T) {
 			"junctions": []map[string]interface{}{
 				{
 					"id":       "00000000-0000-0000-0000-000000000001",
-					"domain":   "app.phyne.app",
+					"domain":   "crm.phyne.app",
 					"path":     "/",
 					"protocol": "https",
 				},

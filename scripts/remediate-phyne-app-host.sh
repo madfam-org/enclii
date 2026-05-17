@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore app.phyne.app through Enclii-managed DNS paths.
+# Restore crm.phyne.app through Enclii-managed DNS paths.
 #
 # Dry-run by default. Use --apply only after the domain is registered/restored
 # and the required provider credentials are present through approved secret
@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-TARGET="${TARGET:-app.phyne.app}"
+TARGET="${TARGET:-crm.phyne.app}"
 DOMAIN="${DOMAIN:-phyne.app}"
 RECORD_TYPE="${RECORD_TYPE:-CNAME}"
 RECORD_CONTENT="${RECORD_CONTENT:-c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com}"
@@ -26,7 +26,7 @@ usage() {
 Usage: scripts/remediate-phyne-app-host.sh [--apply|--dry-run] [--skip-vault-repair]
 
 Environment:
-  TARGET          Host to restore. Default: app.phyne.app
+  TARGET          Host to restore. Default: crm.phyne.app
   DOMAIN          Apex domain. Default: phyne.app
   RECORD_CONTENT  Tunnel CNAME target. Default: Enclii prod tunnel CNAME
   REASON          Audit reason used for Enclii apply operations

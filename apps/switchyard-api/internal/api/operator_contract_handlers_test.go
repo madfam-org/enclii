@@ -636,7 +636,7 @@ func TestHandleProviderCloudflareDNSApplyDryRunReportsUnconfiguredAdapter(t *tes
 	body, err := json.Marshal(operatorOperationRequest{
 		Operation: "providers.cloudflare.dns-apply",
 		DryRun:    true,
-		Args:      map[string]string{"target": "app.phyne.app"},
+		Args:      map[string]string{"target": "crm.phyne.app"},
 	})
 	require.NoError(t, err)
 
@@ -664,7 +664,7 @@ func TestHandleProviderCloudflareDNSApplyReportsUnconfiguredAdapter(t *testing.T
 		Operation: "providers.cloudflare.dns-apply",
 		DryRun:    false,
 		Reason:    "provision PhyneCRM app host through Enclii",
-		Args:      map[string]string{"target": "app.phyne.app"},
+		Args:      map[string]string{"target": "crm.phyne.app"},
 	})
 	require.NoError(t, err)
 

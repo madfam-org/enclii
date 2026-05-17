@@ -245,7 +245,7 @@ describe('checkService', () => {
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(fakeResponse(200, 'MADFAM login', 'https://crm.madfam.io/login'))
-      .mockResolvedValueOnce(fakeResponse(200, 'Generic login', 'https://app.phyne.app/login'))
+      .mockResolvedValueOnce(fakeResponse(200, 'Generic login', 'https://crm.phyne.app/login'))
 
     await checkService(makeService({
       url: 'https://crm.test/login',
@@ -388,7 +388,7 @@ describe('checkService — final URL assertions', () => {
   it('assertFinalUrlNotContains fail: 200 + redirected URL has the forbidden marker → degraded', async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValue(fakeResponse(200, '<html>generic</html>', 'https://app.phyne.app/landing'))
+      .mockResolvedValue(fakeResponse(200, '<html>generic</html>', 'https://crm.phyne.app/landing'))
 
     const result = await checkService(
       makeService({ assertFinalUrlNotContains: '/landing' })
