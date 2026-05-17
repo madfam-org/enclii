@@ -23,7 +23,7 @@ die() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage: scripts/remediate-phyne-app-host.sh [--apply] [--skip-vault-repair]
+Usage: scripts/remediate-phyne-app-host.sh [--apply|--dry-run] [--skip-vault-repair]
 
 Environment:
   TARGET          Host to restore. Default: app.phyne.app
@@ -41,6 +41,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply)
       APPLY=true
+      shift
+      ;;
+    --dry-run)
+      APPLY=false
       shift
       ;;
     --skip-vault-repair)

@@ -267,6 +267,50 @@ port_consistency_check() {
 }
 
 # ==============================================================================
+# Section 1.6: Redis Endpoint Guard
+# ==============================================================================
+
+redis_endpoint_guard() {
+    echo ""
+    echo -e "${YELLOW}[1.6/4] Redis Endpoint Guard${NC}"
+    echo ""
+
+    local forbidden_endpoint="redis-master.data.svc.cluster.local"
+    local scan_paths=()
+    local matches
+
+    [[ -d "${REPO_ROOT}/infra" ]] && scan_paths+=("${REPO_ROOT}/infra")
+    [[ -d "${REPO_ROOT}/apps" ]] && scan_paths+=("${REPO_ROOT}/apps")
+
+    if [[ ${#scan_paths[@]} -eq 0 ]]; then
+        echo -e "  ${YELLOW}No infra/apps paths found, skipping Redis endpoint guard${NC}"
+        return 0
+    fi
+
+    matches="$(grep -RIn \
+        --exclude-dir='.git' \
+        --exclude-dir='.next' \
+        --exclude-dir='build' \
+        --exclude-dir='coverage' \
+        --exclude-dir='dist' \
+        --exclude-dir='node_modules' \
+        --include='*.yaml' \
+        --include='*.yml' \
+        --include='*.json' \
+        -- "${forbidden_endpoint}" "${scan_paths[@]}" 2>/dev/null || true)"
+
+    if [[ -n "${matches}" ]]; then
+        echo -e "  ${RED}FORBIDDEN: ${forbidden_endpoint} found in active manifests${NC}"
+        printf '%s\n' "${matches}"
+        echo -e "  ${RED}Use redis.data.svc.cluster.local for non-Sentinel clients, or redis-sentinel.data.svc.cluster.local for Sentinel-aware clients.${NC}"
+        return 1
+    fi
+
+    echo -e "  ${GREEN}no unsafe redis-master fallback endpoints found${NC}"
+    return 0
+}
+
+# ==============================================================================
 # Section 2: Go Lint (golangci-lint)
 # ==============================================================================
 
@@ -389,6 +433,11 @@ fi
 
 # Run port consistency check (Operation Fortification - always)
 if ! port_consistency_check; then
+    ERRORS=$((ERRORS + 1))
+fi
+
+# Run Redis endpoint guard (always)
+if ! redis_endpoint_guard; then
     ERRORS=$((ERRORS + 1))
 fi
 

@@ -7,10 +7,9 @@
 # Services created by this app:
 #   - redis-sentinel.data.svc.cluster.local:26379   (Sentinel-aware clients)
 #   - redis-ha-headless.data.svc.cluster.local      (per-pod DNS)
-#   - redis-master.data.svc.cluster.local:6379      (fallback / non-Sentinel)
 #
 # The existing `redis.data.svc.cluster.local:6379` Service remains untouched
-# for the duration of the gradual cutover.
+# for non-Sentinel clients and the duration of the gradual cutover.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -37,9 +36,9 @@ spec:
 
   syncPolicy:
     automated:
-      # prune=false during rollout so operators can intervene if Sentinel or
-      # replication misbehaves; flip to true after 2 weeks of clean operation.
-      prune: false
+      # Redis Sentinel has completed its initial soak. Prune stale resources so
+      # unsafe fallback Services cannot remain live after GitOps removal.
+      prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=false

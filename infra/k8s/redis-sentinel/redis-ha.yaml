@@ -11,9 +11,12 @@
 #   NEW (this PR):
 #     redis-sentinel.data.svc.cluster.local:26379   — Sentinel-aware clients
 #     redis-ha-headless.data.svc.cluster.local      — per-pod DNS for replication
-#     redis-master.data.svc.cluster.local:6379      — fallback (points at current
-#                                                     master via Sentinel-managed
-#                                                     label selector)
+#
+# There is intentionally no `redis-master` Service. Kubernetes cannot select the
+# current Redis master without an operator updating pod labels on failover, and a
+# static Service that selects all Redis pods causes write clients to hit replicas
+# and fail with READONLY. Non-Sentinel clients must stay on the existing
+# single-instance `redis.data.svc.cluster.local:6379` until they are upgraded.
 #
 # Auth: reuses the existing `redis-auth` Secret (key: `redis-password`) — same
 # password as single-instance Redis so consumers keep working when they cut over.
@@ -401,31 +404,6 @@ spec:
     - port: 26379
       targetPort: 26379
       name: sentinel
-  selector:
-    app: redis-ha
----
-# Master Service — fallback for clients that do NOT support Sentinel. Points
-# at all Redis pods; clients will hit whichever replies. Only `redis-ha-0` is
-# guaranteed-master on initial bring-up; after a failover, use Sentinel
-# discovery or restart the consumer to re-resolve.
-#
-# A future enhancement is to manage this selector dynamically via an operator
-# or Service-selector-flip sidecar. For now, the Sentinel Service is the
-# supported HA path; this Service is a compatibility shim.
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis-master
-  namespace: data
-  labels:
-    app: redis-ha
-    app.kubernetes.io/component: redis-master
-spec:
-  type: ClusterIP
-  ports:
-    - port: 6379
-      targetPort: 6379
-      name: redis
   selector:
     app: redis-ha
 ---

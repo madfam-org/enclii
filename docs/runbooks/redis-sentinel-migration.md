@@ -15,9 +15,9 @@
 ## What this runbook covers
 
 P1.3 deploys a 3-node Redis Sentinel cluster **in parallel** with the existing
-single-instance Redis in the `data` namespace. Nothing is removed. Consumers
-cut over service-by-service at their own pace, and can fall back to the
-single-instance Service if the new cluster misbehaves.
+single-instance Redis in the `data` namespace. Consumers cut over
+service-by-service at their own pace, and can fall back to the single-instance
+Service if the new cluster misbehaves.
 
 The two stacks:
 
@@ -25,7 +25,6 @@ The two stacks:
 |---|---|---|---|
 | **Single-instance (existing)** | `redis` | `redis.data.svc.cluster.local:6379` | Stays live during and after migration. Single point of failure. |
 | **Sentinel HA (new, P1.3)** | `redis-sentinel` (discovery) | `redis-sentinel.data.svc.cluster.local:26379` | Sentinel-aware clients connect here. |
-| | `redis-master` (fallback) | `redis-master.data.svc.cluster.local:6379` | Clients without Sentinel support. See caveat in [Non-Sentinel clients](#non-sentinel-clients). |
 | | `redis-ha-headless` | `redis-ha-0/1/2.redis-ha-headless.data.svc.cluster.local` | Per-pod DNS, used by Sentinel for master discovery. |
 
 The `redis-auth` Secret (key: `redis-password`) is **shared** between the two
@@ -134,21 +133,21 @@ rdb := redis.NewFailoverClient(&redis.FailoverOptions{
 
 ### Non-Sentinel clients (fallback)
 
-Some legacy clients (or simple URL-based configs) can't speak Sentinel. They
-point at `redis-master.data.svc.cluster.local:6379`:
+Some legacy clients (or simple URL-based configs) can't speak Sentinel. Keep
+them on the existing single-instance Redis Service:
 
 ```
-REDIS_URL=redis://:PASSWORD@redis-master.data.svc.cluster.local:6379/0
+REDIS_URL=redis://:PASSWORD@redis.data.svc.cluster.local:6379/0
 ```
 
-**Caveat — known limitation of the `redis-master` Service:**
+**Why there is no `redis-master` fallback Service:**
 
 Kubernetes Services select pods by label, but there is no built-in way to
 auto-update the selector to point at "whichever pod is currently master."
-Today, `redis-master` selects `app=redis-ha` without filtering by role, so
-connections round-robin across all 3 pods. This works for **reads** but a
-client doing `SET` on a replica will get `READONLY You can't write against a
-read only replica`.
+The retired `redis-master` Service selected `app=redis-ha` without filtering by
+role, so connections round-robined across all 3 pods. This worked for **reads**
+but write clients intermittently hit replicas and failed with `READONLY You
+can't write against a read only replica`.
 
 **Options for non-Sentinel clients:**
 
