@@ -41,8 +41,13 @@ Live remediation completed on 2026-05-17:
   load exceeded the previous 256Mi memory limit. The cache limit is now 1Gi
   with a 256Mi request, and both `redis` and `switchyard-api` are available.
 - `enclii providers porkbun dns-apply crm.phyne.app --json` now reaches the
-  live API operation and returns `adapter_unconfigured` instead of HTTP 404.
-  The remaining blocker is credentials/domain authority, not missing API code.
+  live API operation. On 2026-05-17, active Porkbun credentials were restored
+  as a break-glass Enclii provider secret.
+- Cloudflare now has a pending `phyne.app` zone and a `crm.phyne.app` DNS
+  record. The active tunnel route also uses `crm.phyne.app`.
+- Porkbun registration of `phyne.app` was attempted and blocked by
+  `INSUFFICIENT_FUNDS`; the remaining public status blocker is registrar
+  account funding/domain registration, not missing API code.
 
 Updated priority order:
 

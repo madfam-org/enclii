@@ -17,7 +17,9 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
   - `fortaleza.ns.porkbun.com`
   - `curitiba.ns.porkbun.com`
 - Enclii Cloudflare provider has no Cloudflare zone for `phynd.app`.
-- Enclii Porkbun provider currently returns `adapter_unconfigured`.
+- Historical: Enclii Porkbun provider returned `adapter_unconfigured` at the
+  time of this blocker capture. Active credentials were restored as a
+  break-glass provider secret on 2026-05-17.
 - Active Cloudflare tunnel config routes `crm.madfam.io` to the legacy `phyne-crm` service target instead of `phynd-crm`.
 - Active Cloudflare tunnel config now includes `phynd.app` and `www.phynd.app` pointing to `http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
 - `phyne-crm-production` has now been retired through Enclii with orphan propagation.
@@ -105,8 +107,8 @@ Completed through Enclii and GitOps:
 Still blocked:
 
 - `crm.phyne.app` has no public DNS answer.
-- Enclii Cloudflare DNS reports no zone for `phyne.app`.
-- Enclii Porkbun provider still reports `adapter_unconfigured`, so Enclii cannot yet read or mutate registrar/DNS state for `phyne.app`.
+- Enclii Cloudflare now has a pending `phyne.app` zone and a `crm.phyne.app` DNS record, but the zone is not active until the apex domain is registered and delegated.
+- Enclii Porkbun provider credentials were restored as a break-glass provider secret on 2026-05-17. Porkbun registration of `phyne.app` was attempted and blocked by `INSUFFICIENT_FUNDS`.
 
 Continuation on 2026-05-17:
 
