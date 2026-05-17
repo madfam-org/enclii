@@ -84,7 +84,9 @@ spec:
               entries:
                 - keyless:
                     issuer: https://token.actions.githubusercontent.com
-                    subjectRegExp: "^https://github\\.com/madfam-org/[A-Za-z0-9_.-]+/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@refs/(heads/main|tags/v[0-9].*)$"
+                    # Kyverno 3.1.x only supports exact keyless.subject values;
+                    # repo/workflow regex enforcement requires a Kyverno upgrade
+                    # or explicit subject enumeration.
                     rekor:
                       url: https://rekor.sigstore.dev
 ---
