@@ -45,8 +45,6 @@ spec:
     # PrometheusRule CRDs for WAL archive health live alongside other
     # platform rules so Prometheus discovers them without additional config.
     path: infra/k8s/production/monitoring/wal-archive-rules
-    directory:
-      recurse: false
 
   destination:
     server: https://kubernetes.default.svc
