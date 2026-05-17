@@ -88,7 +88,7 @@ func coreEncliiServicesForEncliiSite() []statusServiceEntry {
 //   - OUT: dhanam, tezca, yantra4d, forgesight, karafiel, pravara-mes,
 //     fortuna, avala, digifab (cotiza), primavera3d, ceq, nuit, forj,
 //     almanac (bloom-scroll), blueprint-harvester, coforma, selva-office,
-//     rondelio, routecraft, tulana, factlas, phynecrm — these all live
+//     rondelio, routecraft, tulana, factlas, phyndcrm — these all live
 //     in their own repos with `status.entries[]` in enclii.yaml.
 //
 // When a service moves from "manual" to "onboarded with status entries",

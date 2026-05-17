@@ -480,7 +480,7 @@ describe('detectAndManageIncidents', () => {
   })
 
   it('does not resolve auto-incidents that still affect a current service', async () => {
-    const results = [makeResult('PhyneCRM App', 'outage')]
+    const results = [makeResult('PhyndCRM App', 'outage')]
 
     mockQuery
       // Current service is still bad enough to keep its auto incident active.
@@ -492,7 +492,7 @@ describe('detectAndManageIncidents', () => {
         fields: [],
       })
       .mockResolvedValueOnce({
-        rows: [{ id: 'current-inc', title: '[Auto] PhyneCRM App Outage' }],
+        rows: [{ id: 'current-inc', title: '[Auto] PhyndCRM App Outage' }],
         command: 'SELECT',
         rowCount: 1,
         oid: 0,
@@ -502,8 +502,8 @@ describe('detectAndManageIncidents', () => {
         rows: [
           {
             id: 'current-inc',
-            title: '[Auto] PhyneCRM App Outage',
-            affected_services: ['PhyneCRM App'],
+            title: '[Auto] PhyndCRM App Outage',
+            affected_services: ['PhyndCRM App'],
           },
         ],
         command: 'SELECT',

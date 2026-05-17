@@ -13,7 +13,7 @@ Live `status.madfam.io/api/status` reported the following on 2026-05-15T19:08:45
 Affected services:
 
 - `Forgesight App` at `https://app.forgesight.quest` returns HTTP 502.
-- `PhyneCRM App` at `https://crm.phyne.app` has no public DNS answer.
+- `PhyndCRM App` at `https://crm.phynd.app` is the generic CRM app host.
 - `Tulana` at `https://tulana.madfam.io` fetch fails.
 - `Tulana App` at `https://tulana-app.madfam.io` fetch fails.
 - `Tulana API` at `https://tulana-api.madfam.io/api/v1/health/` fetch fails.
@@ -34,30 +34,31 @@ Status regenerate safety note:
 - Do not use direct `kubectl` unless Enclii operator paths cannot recover a production incident.
 - Keep status probes red when DNS, routing, or semantic app behavior is missing.
 
-## PhyndCRM / PhyneCRM
+## PhyndCRM
 
 Completed:
 
 - `crm.madfam.io` now redirects unauthenticated users to MADFAM Janua SSO.
 - `phynd.app` serves the public landing with the canonical repository link.
-- Enclii now has a `crm.phyne.app` junction and the active Cloudflare tunnel route targets `phynd-crm-web`.
-- Status probes now support final redirected URL assertions. `crm.madfam.io` must end at `crm.madfam.io/login`, and `crm.phyne.app` must end at `crm.phyne.app/login`; a generic landing page with HTTP 200 is not considered operational.
+- Enclii now has a `crm.phynd.app` junction and the active Cloudflare tunnel route targets `phynd-crm-web`.
+- Status probes now support final redirected URL assertions. `crm.madfam.io` must end at `crm.madfam.io/login`, and `crm.phynd.app` must end at `crm.phynd.app/login`; a generic landing page with HTTP 200 is not considered operational.
 
 Blocked:
 
-- Enclii has no Cloudflare zone for `phyne.app`.
-- The Porkbun adapter is unconfigured.
-- On May 17, 2026, registry RDAP returned `phyne.app not found` and the
-  authoritative `.app` nameserver returned NXDOMAIN. Treat this as a
-  registration/restore blocker before DNS delegation.
+- `phynd.app` is registered through Porkbun and delegated to Cloudflare
+  nameservers.
+- `crm.phynd.app` now resolves publicly and is routed through the production
+  Cloudflare tunnel.
+- The Porkbun adapter is for registrar inventory or fallback recovery; the
+  delegated Cloudflare path is preferred for DNS changes.
 - `vault-store` is not Ready, so the Vault-backed Porkbun provider secret cannot
   sync until Vault Kubernetes auth is repaired.
 
 Next step:
 
-- Register/restore `phyne.app`.
 - Repair Vault ESO auth with `VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh`.
-- Bring `phyne.app` under Enclii DNS authority, then apply the `crm.phyne.app` record through Enclii.
+- Apply the `crm.phynd.app` record through Enclii/Cloudflare, then verify the
+  tunnel route and status probe.
 
 ## Enclii core release governance
 

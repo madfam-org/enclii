@@ -4,17 +4,17 @@ import "testing"
 
 func TestPorkbunDNSApplyIntentFromRequestDerivesApexAndRelativeName(t *testing.T) {
 	req := operatorOperationRequest{
-		Scope: map[string]string{"project": "phyne", "service": "app"},
-		Args:  map[string]string{"target": "crm.phyne.app", "content": "example.cfargotunnel.com"},
+		Scope: map[string]string{"project": "phynd", "service": "app"},
+		Args:  map[string]string{"target": "crm.phynd.app", "content": "example.cfargotunnel.com"},
 	}
 
 	intent := porkbunDNSApplyIntentFromRequest(req, "default.cfargotunnel.com")
 
-	if intent.Target != "crm.phyne.app" {
-		t.Fatalf("target = %q, want crm.phyne.app", intent.Target)
+	if intent.Target != "crm.phynd.app" {
+		t.Fatalf("target = %q, want crm.phynd.app", intent.Target)
 	}
-	if intent.Domain != "phyne.app" {
-		t.Fatalf("domain = %q, want phyne.app", intent.Domain)
+	if intent.Domain != "phynd.app" {
+		t.Fatalf("domain = %q, want phynd.app", intent.Domain)
 	}
 	if intent.Name != "crm" {
 		t.Fatalf("name = %q, want crm", intent.Name)
@@ -67,15 +67,15 @@ func TestPorkbunNameserverParsingNormalizesAndDedupes(t *testing.T) {
 }
 
 func TestPorkbunRecordNameMatchesFullAndRelativeNames(t *testing.T) {
-	intent := porkbunDNSApplyIntent{Target: "crm.phyne.app", Domain: "phyne.app", Name: "crm", RecordType: "CNAME"}
+	intent := porkbunDNSApplyIntent{Target: "crm.phynd.app", Domain: "phynd.app", Name: "crm", RecordType: "CNAME"}
 
 	if !porkbunRecordNameMatches("crm", intent) {
 		t.Fatal("relative record name should match")
 	}
-	if !porkbunRecordNameMatches("crm.phyne.app", intent) {
+	if !porkbunRecordNameMatches("crm.phynd.app", intent) {
 		t.Fatal("fully qualified record name should match")
 	}
-	if porkbunRecordNameMatches("www.phyne.app", intent) {
+	if porkbunRecordNameMatches("www.phynd.app", intent) {
 		t.Fatal("different record name should not match")
 	}
 }

@@ -251,7 +251,7 @@ func sharedPostgresCandidates() []discoveryCandidate {
 	// If the project hasn't been onboarded as an Enclii project (no row in
 	// `projects`), the candidate is omitted here — surfacing it as "errored:
 	// project not found" was noisy and operators can't fix it from /databases
-	// anyway. The 3 currently-omitted DBs (cotiza_production, phyne_crm,
+	// anyway. The 3 currently-omitted DBs (cotiza_production, phynd_crm,
 	// rondelio_production) own no project row as of 2026-04-29; re-add them
 	// here once their owning projects are onboarded.
 	dbs := []struct {

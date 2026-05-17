@@ -67,7 +67,7 @@ func TestStatusHandler_CoreMadfamHasNoEcosystemRepoEntries(t *testing.T) {
 		"coforma.studio":       "coforma",
 		"selva.town":           "selva",
 		"api.selva.town":       "selva",
-		"crm.madfam.io":        "phynecrm",
+		"crm.madfam.io":        "phyndcrm",
 		"api.rondel.io":        "rondelio",
 		"routecraft.app":       "routecraft",
 		"api.routecraft.app":   "routecraft",

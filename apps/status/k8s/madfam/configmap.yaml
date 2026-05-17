@@ -33,7 +33,7 @@ data:
   #
   # Updated: 2026-05-15 — corrected PhyndCRM probes:
   # phynd.app is the public landing page; crm.madfam.io is the MADFAM
-  # Janua-gated tenant slice; crm.phyne.app is the generic authenticated
+  # Janua-gated tenant slice; crm.phynd.app is the generic authenticated
   # app host for non-MADFAM tenants. Removed old planned app/admin/api
   # phynd.app targets from green-path monitoring so status stays truthful.
   # Added final-URL assertions so a plain HTTP 200 cannot hide a wrong
@@ -375,13 +375,13 @@ data:
         "assertContains": "Sign in with your MADFAM Janua SSO account"
       },
       {
-        "name": "PhyneCRM App",
-        "url": "https://crm.phyne.app",
-        "href": "https://crm.phyne.app",
+        "name": "PhyndCRM App",
+        "url": "https://crm.phynd.app",
+        "href": "https://crm.phynd.app",
         "group": "PhyndCRM",
         "family": "MADFAM Platform",
-        "description": "Generic authenticated PhyneCRM app host for non-MADFAM tenants",
-        "assertFinalUrlContains": "crm.phyne.app/login",
+        "description": "Generic authenticated PhyndCRM app host for non-MADFAM tenants",
+        "assertFinalUrlContains": "crm.phynd.app/login",
         "assertContains": "Sign in with Janua SSO"
       },
       {

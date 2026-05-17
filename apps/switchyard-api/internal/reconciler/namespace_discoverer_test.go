@@ -130,18 +130,18 @@ func TestNamespaceDiscoverer_HealthyMatch(t *testing.T) {
 	svcs := &fakeServicesView{
 		services: []*types.Service{{
 			ID:           svcID,
-			Name:         "phynecrm-web",
-			K8sNamespace: ptrString("phynecrm"),
+			Name:         "phyndcrm-web",
+			K8sNamespace: ptrString("phyndcrm"),
 		}},
 	}
 	orphans := &fakeOrphansView{}
 
 	lister := &fakeWorkloadLister{workloads: []workloadRef{{
-		Namespace:       "phynecrm",
-		Name:            "phynecrm-web",
+		Namespace:       "phyndcrm",
+		Name:            "phyndcrm-web",
 		Kind:            kindDeployment,
-		ServiceLabel:    "phynecrm-web",
-		Image:           "ghcr.io/madfam-org/phynecrm-web@sha256:abc",
+		ServiceLabel:    "phyndcrm-web",
+		Image:           "ghcr.io/madfam-org/phyndcrm-web@sha256:abc",
 		ReplicasDesired: 2,
 		ReplicasReady:   2,
 	}}}
@@ -253,17 +253,17 @@ func TestNamespaceDiscoverer_Idempotent(t *testing.T) {
 	svcs := &fakeServicesView{
 		services: []*types.Service{{
 			ID:           svcID,
-			Name:         "phynecrm-web",
-			K8sNamespace: ptrString("phynecrm"),
+			Name:         "phyndcrm-web",
+			K8sNamespace: ptrString("phyndcrm"),
 		}},
 	}
 	orphans := &fakeOrphansView{}
 
 	lister := &fakeWorkloadLister{workloads: []workloadRef{{
-		Namespace:       "phynecrm",
-		Name:            "phynecrm-web",
+		Namespace:       "phyndcrm",
+		Name:            "phyndcrm-web",
 		Kind:            kindDeployment,
-		ServiceLabel:    "phynecrm-web",
+		ServiceLabel:    "phyndcrm-web",
 		ReplicasDesired: 2,
 		ReplicasReady:   2,
 	}}}
@@ -288,8 +288,8 @@ func TestNamespaceDiscoverer_ZombieRecovery(t *testing.T) {
 	svcID := uuid.New()
 	svc := &types.Service{
 		ID:           svcID,
-		Name:         "phynecrm-web",
-		K8sNamespace: ptrString("phynecrm"),
+		Name:         "phyndcrm-web",
+		K8sNamespace: ptrString("phyndcrm"),
 	}
 	svcs := &fakeServicesView{services: []*types.Service{svc}}
 	orphans := &fakeOrphansView{}
@@ -303,10 +303,10 @@ func TestNamespaceDiscoverer_ZombieRecovery(t *testing.T) {
 
 	// Pass 2: workload appears
 	lister := &fakeWorkloadLister{workloads: []workloadRef{{
-		Namespace:    "phynecrm",
-		Name:         "phynecrm-web",
+		Namespace:    "phyndcrm",
+		Name:         "phyndcrm-web",
 		Kind:         kindDeployment,
-		ServiceLabel: "phynecrm-web",
+		ServiceLabel: "phyndcrm-web",
 	}}}
 	d.reconcileWith(context.Background(), lister, svcs, orphans)
 	assert.Len(t, svcs.healthyCalls, 1, "recovered service marked healthy")
@@ -337,8 +337,8 @@ func TestNamespaceDiscoverer_ListerError(t *testing.T) {
 	svcs := &fakeServicesView{
 		services: []*types.Service{{
 			ID:           uuid.New(),
-			Name:         "phynecrm-web",
-			K8sNamespace: ptrString("phynecrm"),
+			Name:         "phyndcrm-web",
+			K8sNamespace: ptrString("phyndcrm"),
 		}},
 	}
 	orphans := &fakeOrphansView{}

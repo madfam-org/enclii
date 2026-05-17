@@ -95,4 +95,4 @@ Remediation path:
 2. Re-run `enclii deploy -f .enclii.yml -e prod --wait` from the Enclii repo.
 3. Confirm dry-run output changes from `planned`/`adapter execution is not wired` to `ready_to_apply` for `ops.secrets.refresh` and `ops.apps.retire`.
 4. Apply `ops.secrets.refresh` for `forgesight-secrets` and `phynd-crm-secrets` through Enclii.
-5. Apply `ops.apps.retire` for `phyne-crm-production` through Enclii to remove shared-resource ownership conflicts with `phynd-crm-services`.
+5. Apply `ops.apps.retire` for `phynd-crm-production` through Enclii to remove shared-resource ownership conflicts with `phynd-crm-services`.

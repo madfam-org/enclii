@@ -337,7 +337,7 @@ func TestCanaryDeploymentNaming(t *testing.T) {
 	if got := canaryDeploymentName("fortuna-api"); got != "fortuna-api-canary" {
 		t.Errorf("canaryDeploymentName = %q", got)
 	}
-	if got := newStableDeploymentName("phynecrm-web"); got != "phynecrm-web-stable-new" {
+	if got := newStableDeploymentName("phyndcrm-web"); got != "phyndcrm-web-stable-new" {
 		t.Errorf("newStableDeploymentName = %q", got)
 	}
 }

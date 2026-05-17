@@ -11,18 +11,17 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 - `phynd-crm` is now registered in Enclii project inventory.
 - `phynd-crm-web` is registered as service `55d2ba51-d6b3-481c-ae56-e5410c3b5a6d`.
 - `phynd-crm-worker` is registered as service `5e1a20e4-2302-4aa0-a37e-fa7dc9fa87ea`.
-- `phynd.app` is delegated to Porkbun nameservers:
-  - `salvador.ns.porkbun.com`
-  - `maceio.ns.porkbun.com`
-  - `fortaleza.ns.porkbun.com`
-  - `curitiba.ns.porkbun.com`
-- Enclii Cloudflare provider has no Cloudflare zone for `phynd.app`.
+- `phynd.app` is registered through Porkbun and delegated to Cloudflare
+  nameservers:
+  - `chin.ns.cloudflare.com`
+  - `woz.ns.cloudflare.com`
 - Historical: Enclii Porkbun provider returned `adapter_unconfigured` at the
   time of this blocker capture. Active credentials were restored as a
   break-glass provider secret on 2026-05-17.
-- Active Cloudflare tunnel config routes `crm.madfam.io` to the legacy `phyne-crm` service target instead of `phynd-crm`.
+- Active Cloudflare tunnel config must route `crm.madfam.io` and
+  `crm.phynd.app` to the current `phynd-crm` service target.
 - Active Cloudflare tunnel config now includes `phynd.app` and `www.phynd.app` pointing to `http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
-- `phyne-crm-production` has now been retired through Enclii with orphan propagation.
+- `phynd-crm-production` has now been retired through Enclii with orphan propagation.
 - `phynd-crm-services` now syncs cleanly, but remains `Degraded` because its runtime secrets are not materialized.
 - `ExternalSecret/phynd-crm-secrets` now exists in namespace `phynd-crm`, but Enclii reports it as `Ready=False` with `SecretSyncedError` and message `could not get secret data from provider`.
 - Phynd web and worker pods are blocked pending container readiness while `phynd-crm-secrets` is not materialized.
@@ -54,10 +53,8 @@ This runbook captures the Enclii-side blockers preventing `https://phynd.app` fr
 1. Restore production secret material through Enclii/Vault or an approved Selva secret workflow.
    - Vault key: `secret/phynd-crm`
    - ExternalSecret target: `phynd-crm-secrets`
-2. Configure DNS ownership for `phynd.app` using one Enclii-owned path:
-   - Preferred: delegate `phynd.app` to the MADFAM Cloudflare account managed by Enclii.
-   - Alternate: configure the Enclii Porkbun adapter and keep Porkbun authoritative.
-3. Reconcile `crm.madfam.io` by removing/replacing the legacy `phyne-crm` tunnel route through Enclii.
+2. Confirm Enclii can operate the delegated Cloudflare zone for `phynd.app`.
+3. Reconcile `crm.madfam.io` by removing/replacing the legacy `phynd-crm` tunnel route through Enclii.
 4. Configure Janua OIDC client redirects:
    - `https://phynd.app/api/auth/callback/janua`
    - `https://crm.madfam.io/api/auth/callback/janua`
@@ -75,7 +72,7 @@ Do not fix this by using raw `kubectl`, direct Cloudflare dashboard changes, or 
 Completed through Enclii:
 
 - Added the Switchyard RBAC needed for application retirement and ExternalSecret refresh.
-- Retired `phyne-crm-production` through `enclii ops apps retire`.
+- Retired `phynd-crm-production` through `enclii ops apps retire`.
 - Recreated the `crm.madfam.io` junction through Enclii with id `15118c4b-aaf1-4c7a-bba7-27e58c688e96`.
 - Verified the active tunnel route now maps `crm.madfam.io`, `phynd.app`, and `www.phynd.app` to `http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
 
@@ -91,7 +88,8 @@ Required remediation:
 
 - Populate Vault key `secret/phynd-crm` or the active ExternalSecret provider path with real values for the Phynd secret contract.
 - Refresh `ExternalSecret/phynd-crm-secrets` through `enclii ops secrets refresh`.
-- Transfer `phynd.app` DNS ownership to Enclii-managed Cloudflare or configure the Enclii Porkbun adapter before changing Porkbun records.
+- Keep `phynd.app` delegated to the Enclii-managed Cloudflare zone and apply
+  DNS changes through Enclii where possible.
 - Keep raw `kubectl` secret writes as break-glass only; the standard path is Selva RFC 0005 for secret material and Enclii for deploy/provisioning/health.
 
 ## Continuation status — 2026-05-15
@@ -101,25 +99,27 @@ Completed through Enclii and GitOps:
 - `https://phynd.app` is live through Cloudflare and serves the Phynd landing.
 - `https://crm.madfam.io/` redirects unauthenticated visitors to `/login` and exposes the MADFAM Janua SSO login copy.
 - The Phynd web image containing the corrected host policy and repository link was promoted to production through the Phynd production workflow.
-- Enclii junction `1bf7e7d5-86f0-40df-a4b8-a2d68c0eae16` was created for `crm.phyne.app`.
-- Enclii's active Cloudflare tunnel inventory now includes `crm.phyne.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
+- Enclii junction `1bf7e7d5-86f0-40df-a4b8-a2d68c0eae16` was created for `crm.phynd.app`.
+- Enclii's active Cloudflare tunnel inventory now includes `crm.phynd.app -> http://phynd-crm-web.phynd-crm.svc.cluster.local:80`.
 
 Still blocked:
 
-- `crm.phyne.app` has no public DNS answer.
-- Enclii Cloudflare now has a pending `phyne.app` zone and a `crm.phyne.app` DNS record, but the zone is not active until the apex domain is registered and delegated.
-- Enclii Porkbun provider credentials were restored as a break-glass provider secret on 2026-05-17. Porkbun registration of `phyne.app` was attempted and blocked by `INSUFFICIENT_FUNDS`.
+- `crm.phynd.app` now has public DNS and routes through the production
+  Cloudflare tunnel to `phynd-crm-web`.
+- Enclii Porkbun provider credentials were restored as a break-glass provider
+  secret on 2026-05-17 for registrar inventory and fallback operations.
 
 Continuation on 2026-05-17:
 
-- Registry RDAP for `phyne.app` returned HTTP 404 with `phyne.app not found`.
-- The authoritative `.app` nameserver returned NXDOMAIN for `phyne.app`.
+- RDAP confirms `phynd.app` is registered through Porkbun and delegated to
+  Cloudflare nameservers.
 - `vault-store` is `Ready=False` / `InvalidProviderConfig`, so the
   Vault-backed `enclii-porkbun-credentials` ExternalSecret cannot sync yet.
 
 Required remediation:
 
-- Register/restore `phyne.app`, then delegate/import it into the Enclii-managed Cloudflare account or configure and apply the Enclii Porkbun adapter for `phyne.app`.
+- Verify Enclii Cloudflare authority for `phynd.app`; use Porkbun only for
+  registrar inventory or fallback recovery.
 - Repair Vault Kubernetes auth with `VAULT_TOKEN="$TOKEN" ./scripts/repair-vault-eso-auth.sh` before expecting the Porkbun adapter secret to sync.
-- After DNS authority exists, create the `crm.phyne.app` CNAME/record to the Enclii tunnel target through Enclii.
-- Keep `PhyneCRM App` red on `status.madfam.io` until external DNS and HTTPS are live.
+- After DNS authority exists, create the `crm.phynd.app` CNAME/record to the Enclii tunnel target through Enclii.
+- Keep `PhyndCRM App` red on `status.madfam.io` until external DNS and HTTPS are live.

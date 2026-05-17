@@ -22,13 +22,13 @@ func TestBuildFlippedSelector(t *testing.T) {
 		{
 			name: "preserves app and enclii.dev/service labels",
 			existing: map[string]string{
-				"app":                "phynecrm-web",
-				"enclii.dev/service": "phynecrm-web",
+				"app":                "phyndcrm-web",
+				"enclii.dev/service": "phyndcrm-web",
 			},
 			target: "11111111-2222-3333-4444-555555555555",
 			wantKeys: map[string]string{
-				"app":                   "phynecrm-web",
-				"enclii.dev/service":    "phynecrm-web",
+				"app":                   "phyndcrm-web",
+				"enclii.dev/service":    "phyndcrm-web",
 				"enclii.dev/deployment": "11111111-2222-3333-4444-555555555555",
 			},
 		},
