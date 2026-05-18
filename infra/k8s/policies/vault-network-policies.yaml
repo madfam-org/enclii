@@ -4,7 +4,8 @@
 # Default-deny + explicit allow rules for the vault namespace.
 # Contains: HashiCorp Vault (port 8200)
 # Accessed by: enclii (switchyard-api lockbox client), external-secrets (ESO),
-#              monitoring (Prometheus), cloudflare-tunnel (Vault UI)
+#              Selva workers (MADFAM platform-slice tooling only), monitoring
+#              (Prometheus), cloudflare-tunnel (Vault UI)
 # Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
 # =============================================================================
 
@@ -84,6 +85,41 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: external-secrets
+      ports:
+        - protocol: TCP
+          port: 8200
+
+# Allow Selva worker pods -> Vault API.
+#
+# NetworkPolicy cannot distinguish tenant-vs-platform tasks inside a shared
+# worker deployment. The tighter boundary is enforced above this layer by
+# Selva's PLATFORM_ORG_ID/AUDIENCE_FILTER_ENABLED gates and by Vault's
+# Kubernetes-auth role/policy. This policy only keeps non-worker pods out of
+# the Vault network path.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-ingress-selva-workers
+  namespace: vault
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: autoswarm
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: workers
+              app.kubernetes.io/component: worker
       ports:
         - protocol: TCP
           port: 8200
