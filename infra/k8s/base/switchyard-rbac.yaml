@@ -36,6 +36,40 @@ subjects:
     name: switchyard-api
     namespace: enclii
 ---
+# Role: allows opt-in runtime ArgoCD Application reconciliation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-argocd-application-manager
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+# RoleBinding: binds the ArgoCD Application manager role to switchyard-api
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-argocd-application-manager
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-argocd-application-manager
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii
+---
 # Role: allows switchyard-api to manage PgBouncer config in data namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

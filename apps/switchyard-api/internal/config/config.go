@@ -75,7 +75,9 @@ type Config struct {
 	GitHubWebhookSecret string // Secret for verifying GitHub webhook signatures
 
 	// ArgoCD Integration
-	ArgocdWebhookSecret string
+	ArgocdWebhookSecret    string
+	ArgocdRegistrationMode string // "gitops" (default legacy Enclii config write) or "runtime"
+	ArgocdNamespace        string // Namespace containing ArgoCD Application CRs (default: argocd)
 
 	// Compliance Webhooks
 	ComplianceWebhooksEnabled bool
@@ -237,6 +239,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("self-url", "http://switchyard-api:4200") // This service's URL for callbacks
 	viper.SetDefault("github-webhook-secret", "")              // Webhook disabled until secret configured
 	viper.SetDefault("argocd-webhook-secret", "")
+	viper.SetDefault("argocd-registration-mode", "gitops") // "gitops" or "runtime"
+	viper.SetDefault("argocd-namespace", "argocd")
 	viper.SetDefault("compliance-webhooks-enabled", false)
 	viper.SetDefault("secret-rotation-enabled", false)
 	viper.SetDefault("vault-poll-interval", 60) // Poll every 60 seconds
@@ -334,6 +338,8 @@ func Load() (*Config, error) {
 		GitHubToken:                viper.GetString("github-token"),
 		GitHubWebhookSecret:        viper.GetString("github-webhook-secret"),
 		ArgocdWebhookSecret:        viper.GetString("argocd-webhook-secret"),
+		ArgocdRegistrationMode:     viper.GetString("argocd-registration-mode"),
+		ArgocdNamespace:            viper.GetString("argocd-namespace"),
 		ComplianceWebhooksEnabled:  viper.GetBool("compliance-webhooks-enabled"),
 		VantaWebhookURL:            viper.GetString("vanta-webhook-url"),
 		DrataWebhookURL:            viper.GetString("drata-webhook-url"),

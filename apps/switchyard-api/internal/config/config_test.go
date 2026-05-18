@@ -43,6 +43,38 @@ func TestLoad_SessionRevocationFailMode_Override(t *testing.T) {
 	}
 }
 
+func TestLoad_ArgocdRegistrationMode_Default(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ArgocdRegistrationMode != "gitops" {
+		t.Fatalf("expected default gitops mode, got %q", cfg.ArgocdRegistrationMode)
+	}
+	if cfg.ArgocdNamespace != "argocd" {
+		t.Fatalf("expected default argocd namespace, got %q", cfg.ArgocdNamespace)
+	}
+}
+
+func TestLoad_ArgocdRegistrationMode_Override(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+	t.Setenv("ENCLII_ARGOCD_REGISTRATION_MODE", "runtime")
+	t.Setenv("ENCLII_ARGOCD_NAMESPACE", "custom-argocd")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ArgocdRegistrationMode != "runtime" {
+		t.Fatalf("expected runtime mode, got %q", cfg.ArgocdRegistrationMode)
+	}
+	if cfg.ArgocdNamespace != "custom-argocd" {
+		t.Fatalf("expected custom namespace, got %q", cfg.ArgocdNamespace)
+	}
+}
+
 func TestLoad_SEC003_ProductionRequiresAllowedOrigins(t *testing.T) {
 	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
 	t.Setenv("ENCLII_ENVIRONMENT", "production")

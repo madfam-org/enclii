@@ -155,7 +155,9 @@ The onboarding pipeline executes a multi-step provisioning workflow:
 4. **Validates manifest path** — checks the directory exists in the repo and contains YAML files
 5. Registers ArgoCD desired state. The current production implementation still
    uses a legacy Enclii repo `config.json` write; the target zero-touch path is
-   runtime ArgoCD reconciliation from the client repo declaration.
+   runtime ArgoCD reconciliation from the client repo declaration. Operators can
+   opt into the runtime path with `ENCLII_ARGOCD_REGISTRATION_MODE=runtime` once
+   ArgoCD RBAC is confirmed.
 6. Refuses new app-specific Enclii catalog entries outside the legacy allowlist
    enforced by `scripts/check-zero-touch-boundaries.sh`
 7. Creates K8s namespace with labels (`enclii.dev/data-access=true`, `enclii.dev/type=application`), **default-deny NetworkPolicy** (DNS-only egress), and copies GHCR credentials. These labels auto-grant access to shared data services (PostgreSQL, Redis, PgBouncer) and Janua SSO — no manual NetworkPolicy edits needed.

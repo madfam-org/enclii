@@ -64,7 +64,9 @@ Current legacy implementation still writes an ArgoCD registration file into the
 Enclii repo. That path is adopted legacy state, not the target zero-touch
 contract. New onboarding work must move toward runtime ArgoCD reconciliation
 from client repo desired state and must not add new app-specific Enclii catalog
-entries.
+entries. The runtime path is selected with
+`ENCLII_ARGOCD_REGISTRATION_MODE=runtime`; the default remains `gitops` until
+legacy ApplicationSet ownership has been migrated safely.
 
 ### OAuth Client Registration
 

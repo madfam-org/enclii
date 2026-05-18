@@ -80,6 +80,10 @@ spec:
               value: "true"
             - name: ENCLII_RATE_LIMIT_REQUESTS_PER_MINUTE
               value: "1000"
+            - name: ENCLII_ARGOCD_REGISTRATION_MODE
+              value: "gitops"
+            - name: ENCLII_ARGOCD_NAMESPACE
+              value: "argocd"
           ports:
             - containerPort: 4200
               name: http

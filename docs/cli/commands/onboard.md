@@ -40,7 +40,8 @@ The command executes a multi-step provisioning pipeline via `POST /v1/admin/onbo
 4. **Validate manifest path** — checks the path exists in the repo and contains YAML files
 5. Register ArgoCD desired state. Current production still uses a legacy Enclii
    repo `config.json` write; new implementation work targets runtime ArgoCD
-   reconciliation from the client repo declaration.
+   reconciliation from the client repo declaration. Operators can opt into the
+   runtime path with `ENCLII_ARGOCD_REGISTRATION_MODE=runtime`.
 6. Preserve the zero-touch boundary by rejecting new app-specific Enclii catalog
    entries outside the legacy allowlist.
 7. Create K8s namespace with required labels, **default-deny NetworkPolicy**, and GHCR credentials
