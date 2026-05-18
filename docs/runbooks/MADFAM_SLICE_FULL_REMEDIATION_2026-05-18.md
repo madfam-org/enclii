@@ -7,26 +7,29 @@ listed services synced and healthy after the Vault reboot recovery.
 
 Services in scope:
 
+- `forgesight-services`
+- `tulana-services`
+- `phynd-crm-services`
 - `digifab-quoting-services`
 - `rondelio-services`
 - `ceq-services`
-- `forgesight-services`
 - `phynd-crm-staging`
 
 ## Current State
 
 - `https://app.enclii.dev/projects` returns HTTP 200.
+- `core-services` is `Synced/Healthy` at recovery revision
+  `c484c83d0ac6582c3536044dc0fa18deff31e840`, with the verified
+  `switchyard-api` and `switchyard-ui` image digests deployed.
+- `forgesight-services`, `tulana-services`, and `phynd-crm-services` are
+  `Synced/Healthy`.
 - `digifab-quoting-services`, `rondelio-services`, and `ceq-services` are
   `Synced/Healthy`.
-- `forgesight-services` is `Synced/Degraded` at revision `b09d1e6`. Runtime
-  pods are up, and fixes have been deployed for discovery JSONB serialization,
-  production `vendor_type` enum mapping, manual-review JSONB parameter casting,
-  and Docker Hub pull-rate avoidance via the public ECR Python base image
-  mirror. Discovery logs on the current image processed the previously failing
-  candidate without repeating the SQL parameter type error. Its runtime secret
-  is temporarily working from a break-glass Kubernetes Secret patch, but
-  `ExternalSecret/forgesight-secrets` remains `Ready=False` until Vault
-  contains the missing `secret/forgesight.api_key_salt` property.
+- `ExternalSecret/forgesight-secrets` is `Ready=True` and ForgeSight runtime
+  pods are running.
+- The Switchyard database service projection has zero unhealthy service rows:
+  all services with card-facing health facts are `healthy`, `running`, and have
+  `ready_replicas >= desired_replicas`.
 - `phynd-crm-staging` is `Synced/Degraded`. As of commit
   `1add140` in `madfam-org/phynd-crm`, the staging overlay owns
   `ExternalSecret/phynd-crm-staging-secrets`; ESO now reports
@@ -38,16 +41,24 @@ Services in scope:
   `argocd.argoproj.io/compare-options: IgnoreExtraneous`, and updating the
   stuck-runner watchdog for ARC v0.14 `.status.workflowRunId`, pod phase, and
   `pods/log` inspection.
+- `enclii-infrastructure` and `external-secrets-config` are `Healthy` but
+  `OutOfSync`; these are infrastructure drift items, not project-card health
+  blockers.
 
 ### Distance to 100% MADFAM-slice health
 
-- **Service-level health:** 3/5 services are currently `Synced/Healthy` (**60%**).
-- **Blocking items:** 2 (`forgesight-services`, `phynd-crm-staging`).
+- **Production project-card health:** 3/3 named projects are `Synced/Healthy`
+  (`forgesight`, `tulana`, and `phynd-crm`).
+- **Wider MADFAM slice service health:** zero unhealthy Switchyard service rows
+  remain in the database projection.
+- **Blocking item:** 1 (`phynd-crm-staging`), caused by missing Vault source
+  material for `secret/phynd-crm-staging`.
 - **Deck and /projects truth status:** both `/` and `/projects` are wired to the
   same `/v1/projects/cards` backend aggregate. The aggregate uses backend
   service/release facts and rollout inspection, not UI-side MADFAM product
-  inference. Production still must deploy the matching `switchyard-api` and
-  `switchyard-ui` images before the live dashboards reflect this code path.
+  inference. Production now runs the matching `switchyard-api` and
+  `switchyard-ui` images; already-open browser tabs may need a hard refresh to
+  discard older client chunks.
 - **Status catalog ownership:** runtime status projection is now the default,
   and ArgoCD ignores only the runtime-owned `services-config` key on
   `status-config-enclii` and `status-config-madfam`, preventing self-heal from
@@ -56,40 +67,24 @@ Services in scope:
   refresh annotations on project `ExternalSecret` resources, so approved
   runtime secret refreshes do not leave otherwise healthy client apps
   permanently `OutOfSync`.
-- **Readiness for full green:** not yet true until both blockers are fixed and
-  verified through ArgoCD + ESO reconciliation.
+- **Readiness for full green:** production project cards are green; strict
+  all-Argo green still requires PhyndCRM staging Vault backfill and cleanup of
+  the two healthy-but-`OutOfSync` infrastructure apps.
 
 ### What “fully healthy and truthful” means for `/projects`
 
-`/projects` is not complete until all five target ArgoCD applications are
+`/projects` is not complete until all production card-backed applications are
 `Synced/Healthy` and their cards show:
 
 1. No `degraded`, `blocked`, `progressing`, or `unknown` aggregate status.
 2. A valid `latest_deployment_id` and rollout metadata for services that are in
    the rollout path.
-3. No break-glass-only dependency (secret material must come from Vault-backed
-   ESO sources for both ForgeSight and PhyndCRM staging).
+3. No break-glass-only dependency; secret material must come from Vault-backed
+   ESO sources.
 
 ## Remediation Plan
 
-1. Backfill ForgeSight Vault source of truth.
-   - Write the real production value for `secret/forgesight.api_key_salt`
-     through the approved Vault/Enclii secret workflow.
-   - If the break-glass Kubernetes Secret is present and approved as the source
-     for recovery, backfill Vault without printing values:
-     ```bash
-     VAULT_TOKEN_FILE=/secure/vault-token \
-       scripts/backfill-vault-path-from-k8s-secret.sh \
-         --namespace forgesight \
-         --secret forgesight-secrets \
-         --vault-path secret/forgesight
-     ```
-   - Refresh `ExternalSecret/forgesight-secrets`.
-   - Verify `kubectl -n forgesight get externalsecret forgesight-secrets`
-     reports `Ready=True`.
-   - Restart the API and discovery Deployments only after Vault is authoritative.
-
-2. Install PhyndCRM staging secret.
+1. Install PhyndCRM staging secret.
    - Generate staging-only values for every required key in
      `phynd-crm/infra/k8s/staging-secrets-template.yaml`.
    - Write those values to Vault path `secret/phynd-crm-staging` using
@@ -107,13 +102,23 @@ Services in scope:
      payment/billing credentials distinct from production.
    - Reconcile the Argo CD Application and wait for web and worker rollouts.
 
-3. Validate PhyndCRM PP.5 bootstrap.
+2. Validate PhyndCRM PP.5 bootstrap.
    - Confirm `https://staging-phynd.app/api/health` returns HTTP 200.
    - Run the PP.5 wave-0 checks in the PhyndCRM repo.
    - Run synthetic webhook probes only after staging provider destinations and
      distinct HMAC secrets exist.
    - Capture proof that staging probes create no production rows, jobs, emails,
      payment events, grants, or provider artifacts.
+
+3. Reconcile healthy infrastructure drift.
+   - Inspect and intentionally resolve `external-secrets-config`, currently
+     `OutOfSync` on `Secret/digifab-quoting/digifab-quoting-secrets`.
+   - Inspect and intentionally resolve `enclii-infrastructure`, currently
+     `OutOfSync` on child app declarations including `external-secrets`,
+     `external-secrets-config`, `network-policies`, `vault`, and
+     `project-applications`.
+   - Do not overwrite runtime-owned secret refresh annotations or status
+     projections while clearing this drift.
 
 4. Clear pipeline health gates.
    - Resolve the GitHub-hosted runner billing/spending-limit blocker that causes
@@ -139,14 +144,13 @@ Services in scope:
 
 ```bash
 curl -I --max-time 10 https://app.enclii.dev/projects
-kubectl -n argocd get applications digifab-quoting-services rondelio-services ceq-services forgesight-services phynd-crm-staging -o wide
+kubectl -n argocd get applications forgesight-services tulana-services phynd-crm-services phynd-crm-staging -o wide
 kubectl -n forgesight get externalsecret forgesight-secrets
-kubectl -n forgesight logs deploy/forgesight-discovery --since=5m --tail=120
 kubectl -n phynd-crm-staging get externalsecret phynd-crm-staging-secrets
 kubectl -n phynd-crm-staging get secret phynd-crm-staging-secrets
 kubectl -n phynd-crm-staging get pods
-kubectl -n argocd get application forgesight-services phynd-crm-staging -o wide
-kubectl -n enclii get deployment switchyard-api -o wide
+kubectl -n argocd get application core-services phynd-crm-staging external-secrets-config enclii-infrastructure -o wide
+kubectl -n enclii get deployment switchyard-api switchyard-ui -o wide
 ```
 
 ## Bitwarden Safe Note Template
@@ -312,13 +316,14 @@ Verification command:
 
 ## Completion Criteria
 
-- All five Argo CD Applications in scope are `Synced/Healthy`.
+- All production project-card applications in scope are `Synced/Healthy`.
 - `ExternalSecret/forgesight-secrets` is `Ready=True`; no break-glass-only
-  secret material remains outside Vault.
+  ForgeSight secret material remains outside Vault.
 - `ExternalSecret/phynd-crm-staging-secrets` is `Ready=True` from
   `secret/phynd-crm-staging`; no manual staging Secret is required.
 - PhyndCRM staging web and worker pods are running, and PP.5 wave-0 passes.
-- The projects page returns HTTP 200 and displays no unhealthy MADFAM-slice
-  services.
+- The projects page returns HTTP 200 and displays no unhealthy production
+  MADFAM-slice services.
+- Strict all-Argo green has no `Degraded` or `OutOfSync` applications.
 - Safe-note custody metadata is complete for every credential set involved in
   the Vault reboot and staging/provider recovery.
