@@ -18,13 +18,15 @@ Services in scope:
 - `https://app.enclii.dev/projects` returns HTTP 200.
 - `digifab-quoting-services`, `rondelio-services`, and `ceq-services` are
   `Synced/Healthy`.
-- `forgesight-services` is `Synced/Degraded`. Runtime pods are up, and fixes
-  have been pushed for discovery JSONB serialization, production
-  `vendor_type` enum mapping, and Docker Hub pull-rate avoidance via the public
-  ECR Python base image mirror. The latest deploy is building from commit
-  `a4fe8bf`. Its runtime secret is temporarily working from a break-glass
-  Kubernetes Secret patch, but `ExternalSecret/forgesight-secrets` remains
-  `Ready=False` until Vault contains `secret/forgesight.api_key_salt` and
+- `forgesight-services` is `Synced/Degraded` at revision `b09d1e6`. Runtime
+  pods are up, and fixes have been deployed for discovery JSONB serialization,
+  production `vendor_type` enum mapping, manual-review JSONB parameter casting,
+  and Docker Hub pull-rate avoidance via the public ECR Python base image
+  mirror. Discovery logs on the current image processed the previously failing
+  candidate without repeating the SQL parameter type error. Its runtime secret
+  is temporarily working from a break-glass Kubernetes Secret patch, but
+  `ExternalSecret/forgesight-secrets` remains `Ready=False` until Vault
+  contains `secret/forgesight.api_key_salt` and
   `secret/forgesight.janua_jwt_secret`.
 - `phynd-crm-staging` is `Synced/Degraded` because
   `phynd-crm-staging-secrets` is not installed. Pods are blocked by
@@ -37,15 +39,7 @@ Services in scope:
 
 ## Remediation Plan
 
-1. Finish ForgeSight deployment.
-   - Confirm the pushed ForgeSight fixes are built and signed by the
-     `Deploy API` and `Deploy Backend Services` workflows.
-   - Fast-forward the local worktree to the resulting digest commit.
-   - Wait for Argo CD to reconcile `forgesight-services`.
-   - Confirm discovery logs no longer report JSONB serialization errors,
-     `vendor_type` enum errors, or SQL parameter type inference errors.
-
-2. Backfill ForgeSight Vault source of truth.
+1. Backfill ForgeSight Vault source of truth.
    - Write real production values for `secret/forgesight.api_key_salt` and
      `secret/forgesight.janua_jwt_secret` through the approved Vault/Enclii
      secret workflow.
@@ -54,7 +48,7 @@ Services in scope:
      reports `Ready=True`.
    - Restart the API and discovery Deployments only after Vault is authoritative.
 
-3. Install PhyndCRM staging secret.
+2. Install PhyndCRM staging secret.
    - Generate staging-only values for every required key in
      `phynd-crm/infra/k8s/staging-secrets-template.yaml`.
    - Install `phynd-crm-staging-secrets` in namespace `phynd-crm-staging`.
@@ -62,7 +56,7 @@ Services in scope:
      payment/billing credentials distinct from production.
    - Reconcile the Argo CD Application and wait for web and worker rollouts.
 
-4. Validate PhyndCRM PP.5 bootstrap.
+3. Validate PhyndCRM PP.5 bootstrap.
    - Confirm `https://staging-phynd.app/api/health` returns HTTP 200.
    - Run the PP.5 wave-0 checks in the PhyndCRM repo.
    - Run synthetic webhook probes only after staging provider destinations and
@@ -70,7 +64,7 @@ Services in scope:
    - Capture proof that staging probes create no production rows, jobs, emails,
      payment events, grants, or provider artifacts.
 
-5. Clear pipeline health gates.
+4. Clear pipeline health gates.
    - Resolve the GitHub-hosted runner billing/spending-limit blocker that causes
      ForgeSight `CI`, `Test Suite`, and `Test Automation and CI/CD` jobs to fail
      before starting.
