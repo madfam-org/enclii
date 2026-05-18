@@ -19,6 +19,11 @@ on:
         required: false
         default: ''
         type: string
+      docker_runner:
+        description: 'Optional runner label for Docker builds, e.g. ubuntu-latest to bypass saturated ARC'
+        required: false
+        default: ''
+        type: string
 
 env:
   GO_VERSION: '1.25.0'
@@ -671,21 +676,26 @@ jobs:
               fi
             done
 
-            # Check if service or its dependencies changed
+            # Check if service or its dependencies changed. An explicit
+            # workflow_dispatch services list is an override, not an addition
+            # to changed-path detection; this keeps targeted rebuilds precise
+            # after docs or workflow-only remediations.
             CHANGED=false
             if [ "$FORCE_ALL" == "true" ]; then
               CHANGED=true
-            fi
-            if echo "$CHANGED_FILES" | grep -q "^${PATH_PREFIX}/"; then
-              CHANGED=true
-            fi
-            for dep in $DEPS; do
-              if echo "$CHANGED_FILES" | grep -q "^${dep}/"; then
+            elif [ -n "$REQUESTED_SERVICES" ]; then
+              if echo "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -qx "$NAME"; then
                 CHANGED=true
               fi
-            done
-            if [ -n "$REQUESTED_SERVICES" ] && echo "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -qx "$NAME"; then
-              CHANGED=true
+            else
+              if echo "$CHANGED_FILES" | grep -q "^${PATH_PREFIX}/"; then
+                CHANGED=true
+              fi
+              for dep in $DEPS; do
+                if echo "$CHANGED_FILES" | grep -q "^${dep}/"; then
+                  CHANGED=true
+                fi
+              done
             fi
 
             if [ "$CHANGED" == "true" ]; then
@@ -723,7 +733,7 @@ jobs:
   # =============================================================================
   docker-build:
     name: 'Build: ${{ matrix.name }}'
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.docker_runner != '' && inputs.docker_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
     needs: [build, ui-tests, detect-changes, ecosystem-e2e]
     if: |
       always() &&
