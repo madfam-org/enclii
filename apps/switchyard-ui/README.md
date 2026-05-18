@@ -86,6 +86,11 @@ apps/switchyard-ui/
 - Resource usage metrics
 - Recent activity feed
 - Quick actions
+- Truthful project card status computed from both service status/health and
+  rollout state so stale `healthy` flags do not hide in-flight or blocked
+  deployments.
+- Shared `/v1/projects/:slug/services` mapping logic in
+  `lib/project-card-transform.ts` keeps `/` and `/projects` cards aligned.
 
 ### Project Management
 - Create/edit projects

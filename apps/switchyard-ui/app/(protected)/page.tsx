@@ -16,9 +16,7 @@ import {
   ProjectRowCompact,
   type CompactProject,
   type CompactRepoMeta,
-  type CompactService,
 } from "@/components/dashboard/project-card-compact";
-import { resolveLatestDeployment } from "@/lib/project-deploy";
 import { inferFrameworkFromContext } from "@/components/dashboard/framework-icon";
 import { type SortOption } from "@/components/dashboard/project-search-filter";
 import { useViewMode } from "@/components/dashboard/view-toggle";
@@ -32,42 +30,14 @@ import {
   processLiveState,
   serviceSummariesById,
 } from "@/lib/project-process-feed";
+import {
+  buildCompactProject,
+  type ApiProjectForCards,
+  type ApiServiceForCards,
+} from "@/lib/project-card-transform";
 
-interface ApiProject {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
+interface ApiProject extends ApiProjectForCards {
   created_at: string;
-  updated_at: string;
-}
-
-interface ApiService {
-  id: string;
-  name: string;
-  project_id: string;
-  git_repo: string;
-  status: string;
-  health: string;
-  last_deployment: string;
-  domain?: string;
-  framework?: string;
-  last_commit_message?: string;
-  last_commit_branch?: string;
-  desired_replicas?: number;
-  ready_replicas?: number;
-  auto_deploy_env?: string;
-  // Surfaced by ListByProject as of switchyard-api PR #155 — the
-  // currently-running release's image URI (digest-pinned in production
-  // by Kyverno). Drives the digest chip in project-card-compact.tsx.
-  current_image_uri?: string;
-  // Rollout truthfulness signals — separate from `health`. Reports whether
-  // the *newest* ReplicaSet has actually landed. The legacy `health` field
-  // reports "healthy" while a new RS may have been failing readiness for
-  // days; rollout_state surfaces that lie.
-  // See switchyard-api/internal/k8s/rollout_state.go.
-  rollout_state?: string;
-  rollout_blocked_reason?: string;
 }
 
 const INITIAL_VISIBLE = 10;
@@ -107,99 +77,29 @@ export default function Dashboard() {
       // Fetch services per project in parallel
       const serviceResults = await Promise.allSettled(
         apiProjects.map((p) =>
-          apiGet<{ services: ApiService[] }>(`/v1/projects/${p.slug}/services`),
+          apiGet<{ services: ApiServiceForCards[] }>(
+            `/v1/projects/${p.slug}/services`,
+          ),
         ),
       );
 
-      const compactProjects: CompactProject[] = apiProjects.map(
-        (project, i) => {
-          const result = serviceResults[i];
-          const apiServices =
-            result.status === "fulfilled" ? result.value.services || [] : [];
+      const compactProjects: CompactProject[] = apiProjects.map((project, i) => {
+        const result = serviceResults[i];
+        const apiServices =
+          result.status === "fulfilled" ? result.value.services || [] : [];
 
-          const healthyCount = apiServices.filter(
-            (s) => s.health === "healthy",
-          ).length;
+        const gitRepo = apiServices.find((s) => s.git_repo)?.git_repo;
+        const framework =
+          apiServices.find((s) => s.framework)?.framework ||
+          inferFrameworkFromContext(apiServices[0]?.name || project.name, gitRepo);
 
-          const domain =
-            apiServices.find((s) => s.domain)?.domain || undefined;
-
-          const gitRepo = apiServices.find((s) => s.git_repo)?.git_repo;
-
-          // Framework: API value → heuristic from name/repo
-          const framework =
-            apiServices.find((s) => s.framework)?.framework ||
-            inferFrameworkFromContext(
-              apiServices[0]?.name || project.name,
-              gitRepo,
-            );
-
-          // Map to CompactService[]. Each service now carries its own
-          // `domain` so the card can render a per-service deep-link
-          // sub-row instead of the lossy first-service-wins
-          // project-level link. The project-level `domain` field is
-          // still derived (a few lines up) for the fallback link the
-          // card keeps for projects whose API didn't return any
-          // per-service URL yet.
-          const compactServices: CompactService[] = apiServices.map((s) => ({
-            id: s.id,
-            name: s.name,
-            status: (["running", "pending", "failed", "deploying"].includes(s.status)
-              ? s.status
-              : "unknown") as CompactService["status"],
-            health: (["healthy", "unhealthy"].includes(s.health)
-              ? s.health
-              : "unknown") as CompactService["health"],
-            replicas:
-              s.ready_replicas !== undefined && s.desired_replicas !== undefined
-                ? `${s.ready_replicas}/${s.desired_replicas}`
-                : undefined,
-            environment: s.auto_deploy_env || undefined,
-            currentImageUri: s.current_image_uri || undefined,
-            domain: s.domain || undefined,
-          }));
-
-          // Compute aggregate status
-          const hasAny = compactServices.length > 0;
-          const hasFailed = compactServices.some((s) => s.status === "failed");
-          const allHealthy = compactServices.every(
-            (s) => s.status === "running" && s.health === "healthy",
-          );
-          const aggregateStatus: CompactProject["aggregateStatus"] = !hasAny
-            ? "unknown"
-            : hasFailed
-              ? "failing"
-              : allHealthy
-                ? "healthy"
-                : "degraded";
-
-          // Single source of truth for "latest deployment" — see
-          // lib/project-deploy.ts. Both /dashboard and /projects must
-          // route through this helper or PR-1 (the empty-state drift)
-          // will regress.
-          const resolution = resolveLatestDeployment(
-            apiServices,
-            result.status === "fulfilled",
-          );
-
-          return {
-            id: project.id,
-            name: project.name,
-            slug: project.slug,
-            description: project.description,
-            framework,
-            gitRepo,
-            domain,
-            lastDeployment: resolution.latest,
-            deployResolution: resolution.status,
-            serviceCount: apiServices.length,
-            healthyCount,
-            services: compactServices,
-            aggregateStatus,
-            updatedAt: project.updated_at,
-          };
-        },
-      );
+        return buildCompactProject({
+          project,
+          services: apiServices,
+          servicesResolved: result.status === "fulfilled",
+          framework,
+        });
+      });
 
       setProjects(compactProjects);
       setLastSyncedAt(new Date().toISOString());

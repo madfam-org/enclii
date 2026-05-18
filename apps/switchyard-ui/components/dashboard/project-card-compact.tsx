@@ -27,6 +27,7 @@ import { HealthBadge } from "./health-badge";
 import { SentryErrorBadge } from "./sentry-error-badge";
 import { ServiceLink, normalizeEnv } from "./service-link";
 import { ProjectCardMenu } from "./project-card-menu";
+import { RolloutStateIndicator } from "./rollout-state-indicator";
 import {
   ProjectProcessDrawer,
   ProjectProcessRail,
@@ -82,6 +83,8 @@ export interface CompactService {
   version?: string;
   replicas?: string;
   environment?: string;
+  rolloutState?: "ok" | "progressing" | "blocked";
+  rolloutBlockedReason?: string;
   // Image URI of the currently-running release. Digest-pinned in production by
   // the Kyverno require-image-digest policy. Used to render the truncated
   // digest chip so operators can confirm what's running before triggering a
@@ -479,6 +482,10 @@ export function ProjectCardCompact({
                             >
                               {serviceStatusLabel[service.status] || "Unknown"}
                             </Link>
+                            <RolloutStateIndicator
+                              state={service.rolloutState}
+                              reason={service.rolloutBlockedReason}
+                            />
                             <ServiceProcessIndicator
                               projectSlug={project.slug}
                               service={service}
