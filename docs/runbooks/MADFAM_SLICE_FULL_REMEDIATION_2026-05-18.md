@@ -28,9 +28,12 @@ Services in scope:
   `ExternalSecret/forgesight-secrets` remains `Ready=False` until Vault
   contains `secret/forgesight.api_key_salt` and
   `secret/forgesight.janua_jwt_secret`.
-- `phynd-crm-staging` is `Synced/Degraded` because
-  `phynd-crm-staging-secrets` is not installed. Pods are blocked by
-  `CreateContainerConfigError`. Do not copy production values into staging.
+- `phynd-crm-staging` is `Synced/Degraded`. As of commit
+  `1add140` in `madfam-org/phynd-crm`, the staging overlay owns
+  `ExternalSecret/phynd-crm-staging-secrets`; ESO now reports
+  `SecretSyncedError` because Vault path `secret/phynd-crm-staging` does not
+  exist yet. Pods remain blocked by `CreateContainerConfigError` until ESO
+  materializes the target Secret. Do not copy production values into staging.
 - ARC blue is `Synced/Healthy` after removing unsupported listener HTTP probes,
   preserving controller-generated listener RBAC with
   `argocd.argoproj.io/compare-options: IgnoreExtraneous`, and updating the
@@ -73,7 +76,10 @@ Services in scope:
 2. Install PhyndCRM staging secret.
    - Generate staging-only values for every required key in
      `phynd-crm/infra/k8s/staging-secrets-template.yaml`.
-   - Install `phynd-crm-staging-secrets` in namespace `phynd-crm-staging`.
+   - Write those values to Vault path `secret/phynd-crm-staging` using
+     lower-snake-case property names that match the staging ExternalSecret.
+   - Refresh `ExternalSecret/phynd-crm-staging-secrets` and verify it reports
+     `Ready=True`.
    - Keep staging DB, Redis, Janua/OIDC, webhook, provider API, SMTP, and
      payment/billing credentials distinct from production.
    - Reconcile the Argo CD Application and wait for web and worker rollouts.
@@ -113,6 +119,7 @@ curl -I --max-time 10 https://app.enclii.dev/projects
 kubectl -n argocd get applications digifab-quoting-services rondelio-services ceq-services forgesight-services phynd-crm-staging -o wide
 kubectl -n forgesight get externalsecret forgesight-secrets
 kubectl -n forgesight logs deploy/forgesight-discovery --since=5m --tail=120
+kubectl -n phynd-crm-staging get externalsecret phynd-crm-staging-secrets
 kubectl -n phynd-crm-staging get secret phynd-crm-staging-secrets
 kubectl -n phynd-crm-staging get pods
 kubectl -n argocd get application forgesight-services phynd-crm-staging -o wide
@@ -285,6 +292,8 @@ Verification command:
 - All five Argo CD Applications in scope are `Synced/Healthy`.
 - `ExternalSecret/forgesight-secrets` is `Ready=True`; no break-glass-only
   secret material remains outside Vault.
+- `ExternalSecret/phynd-crm-staging-secrets` is `Ready=True` from
+  `secret/phynd-crm-staging`; no manual staging Secret is required.
 - PhyndCRM staging web and worker pods are running, and PP.5 wave-0 passes.
 - The projects page returns HTTP 200 and displays no unhealthy MADFAM-slice
   services.
