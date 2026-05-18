@@ -46,7 +46,8 @@ The command executes a multi-step provisioning pipeline via `POST /v1/admin/onbo
    entries outside the legacy allowlist.
 7. Create K8s namespace with required labels, **default-deny NetworkPolicy**, and GHCR credentials
 8. Provision domains from `enclii.yaml` (Cloudflare tunnel routes + DNS CNAMEs)
-9. Register onboarding in DB
+9. Register onboarding in DB, including `status.entries[]` for later status
+   ConfigMap projection without editing the Enclii repo
 10. Create Postgres database + role, grant privileges, update PgBouncer (if `--db-name`)
 11. Create K8s Secret with entries from `.env` file (if `--secrets-file`)
 12. Create R2 bucket + append R2 credentials to K8s Secret (if `--r2-bucket`)

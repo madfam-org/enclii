@@ -79,6 +79,10 @@ type Config struct {
 	ArgocdRegistrationMode string // "gitops" (default legacy Enclii config write) or "runtime"
 	ArgocdNamespace        string // Namespace containing ArgoCD Application CRs (default: argocd)
 
+	// Status ConfigMap Projection
+	StatusProjectionMode  string // "gitops" (default legacy Enclii config commit) or "runtime"
+	StatusConfigNamespace string // Namespace containing status-config-{enclii,madfam} (default: enclii)
+
 	// Compliance Webhooks
 	ComplianceWebhooksEnabled bool
 	VantaWebhookURL           string
@@ -241,6 +245,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("argocd-webhook-secret", "")
 	viper.SetDefault("argocd-registration-mode", "gitops") // "gitops" or "runtime"
 	viper.SetDefault("argocd-namespace", "argocd")
+	viper.SetDefault("status-projection-mode", "gitops") // "gitops" or "runtime"
+	viper.SetDefault("status-config-namespace", "enclii")
 	viper.SetDefault("compliance-webhooks-enabled", false)
 	viper.SetDefault("secret-rotation-enabled", false)
 	viper.SetDefault("vault-poll-interval", 60) // Poll every 60 seconds
@@ -340,6 +346,8 @@ func Load() (*Config, error) {
 		ArgocdWebhookSecret:        viper.GetString("argocd-webhook-secret"),
 		ArgocdRegistrationMode:     viper.GetString("argocd-registration-mode"),
 		ArgocdNamespace:            viper.GetString("argocd-namespace"),
+		StatusProjectionMode:       viper.GetString("status-projection-mode"),
+		StatusConfigNamespace:      viper.GetString("status-config-namespace"),
 		ComplianceWebhooksEnabled:  viper.GetBool("compliance-webhooks-enabled"),
 		VantaWebhookURL:            viper.GetString("vanta-webhook-url"),
 		DrataWebhookURL:            viper.GetString("drata-webhook-url"),

@@ -180,9 +180,10 @@ func (h *Handler) buildServiceListForSite(ctx context.Context, site statusSiteTa
 
 // regenerateStatusConfigResponse is the JSON body returned by RegenerateStatusConfig.
 type regenerateStatusConfigResponse struct {
-	Status     string                          `json:"status"` // "regenerated" | "no_changes"
-	Targets    map[string]regenerateSiteResult `json:"targets"`
-	TotalCount int                             `json:"total_count"`
+	Status         string                          `json:"status"` // "regenerated" | "no_changes"
+	ProjectionMode string                          `json:"projection_mode"`
+	Targets        map[string]regenerateSiteResult `json:"targets"`
+	TotalCount     int                             `json:"total_count"`
 }
 
 // regenerateSiteResult is the per-site outcome of a regenerate cycle.
@@ -190,6 +191,8 @@ type regenerateSiteResult struct {
 	ServiceCount int    `json:"service_count"`
 	Changed      bool   `json:"changed"`
 	CommitSHA    string `json:"commit_sha,omitempty"`
+	Action       string `json:"action,omitempty"`
+	ConfigMap    string `json:"configmap,omitempty"`
 }
 
 type regenerateSitePlan struct {
@@ -200,21 +203,33 @@ type regenerateSitePlan struct {
 	ExistingServiceCount int
 }
 
-// RegenerateStatusConfig rebuilds and commits the status configmaps for both
-// status.enclii.dev and status.madfam.io. Skips the commit for any target
-// whose generated content matches the current file (idempotent).
+// RegenerateStatusConfig rebuilds the status configmaps for both
+// status.enclii.dev and status.madfam.io. It either commits generated files
+// (gitops mode) or updates the live ConfigMaps (runtime mode), and skips any
+// target whose generated content already matches the existing projection.
 //
 // POST /v1/admin/status/regenerate
 func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 	ctx := c.Request.Context()
+	mode := h.statusProjectionMode()
+	namespace := h.statusConfigNamespace()
 
-	if h.config.GitHubToken == "" || h.config.EncliiRepoOwner == "" || h.config.EncliiRepoName == "" {
+	if mode != statusProjectionModeGitOps && mode != statusProjectionModeRuntime {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported status projection mode %q (expected %q or %q)", mode, statusProjectionModeGitOps, statusProjectionModeRuntime)})
+		return
+	}
+	if mode == statusProjectionModeGitOps && (h == nil || h.config == nil || h.config.GitHubToken == "" || h.config.EncliiRepoOwner == "" || h.config.EncliiRepoName == "") {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "GitHub token or enclii repo not configured"})
+		return
+	}
+	if mode == statusProjectionModeRuntime && h.opsKubeClient() == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Kubernetes client not configured for runtime status projection"})
 		return
 	}
 
 	resp := regenerateStatusConfigResponse{
-		Targets: make(map[string]regenerateSiteResult, 2),
+		ProjectionMode: mode,
+		Targets:        make(map[string]regenerateSiteResult, 2),
 	}
 	plans := make([]regenerateSitePlan, 0, 2)
 	anyChanged := false
@@ -223,16 +238,15 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 		services := h.buildServiceListForSite(ctx, site)
 		resp.TotalCount += len(services)
 
-		// Read the existing checked-in configmap so we can preserve every
+		// Read the existing projected configmap so we can preserve every
 		// non-services-config key (site-name, prometheus-url, thresholds,
-		// flags, etc.). Falling back to a synthesized skeleton would silently
-		// drop those keys on first regenerate.
-		existing, _, err := getGitHubFileContent(ctx, h.config.GitHubToken, h.config.EncliiRepoOwner, h.config.EncliiRepoName, site.configmapPath(), "main")
+		// flags, etc.). In gitops mode that source is the checked-in file; in
+		// runtime mode it is the live ConfigMap.
+		existingBytes, err := h.readExistingStatusConfigmap(ctx, mode, site, namespace)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to read existing %s configmap: %v", site, err)})
 			return
 		}
-		existingBytes := []byte(existing)
 
 		existingServiceCount, err := countStatusConfigmapServices(existingBytes)
 		if err != nil {
@@ -250,7 +264,7 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 			return
 		}
 
-		generated, err := generateStatusConfigmap(site, services, existingBytes)
+		generated, err := generateStatusConfigmapForNamespace(site, services, existingBytes, namespace)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to generate %s configmap: %v", site, err)})
 			return
@@ -270,27 +284,50 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 			resp.Targets[string(plan.Site)] = regenerateSiteResult{
 				ServiceCount: len(plan.Services),
 				Changed:      false,
+				Action:       "unchanged",
+				ConfigMap:    statusConfigMapRef(namespace, plan.Site),
 			}
 			continue
 		}
 
-		commitMsg := fmt.Sprintf("feat(status): regenerate %s configmap (%d services)\n\nRegenerated by POST /v1/admin/status/regenerate.\nSource of truth: coreEncliiServices*() + onboarded enclii.yaml status entries.", plan.Site, len(plan.Services))
-		commitSHA, commitErr := createOrUpdateGitHubFile(ctx, h.config.GitHubToken, h.config.EncliiRepoOwner, h.config.EncliiRepoName, plan.Site.configmapPath(), plan.Generated, commitMsg, "main")
-		if commitErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to commit %s configmap: %v", plan.Site, commitErr)})
-			return
+		result := regenerateSiteResult{
+			ServiceCount: len(plan.Services),
+			Changed:      true,
+			ConfigMap:    statusConfigMapRef(namespace, plan.Site),
+		}
+
+		switch mode {
+		case statusProjectionModeGitOps:
+			commitMsg := fmt.Sprintf("feat(status): regenerate %s configmap (%d services)\n\nRegenerated by POST /v1/admin/status/regenerate.\nSource of truth: coreEncliiServices*() + onboarded enclii.yaml status entries.", plan.Site, len(plan.Services))
+			commitSHA, commitErr := createOrUpdateGitHubFile(ctx, h.config.GitHubToken, h.config.EncliiRepoOwner, h.config.EncliiRepoName, plan.Site.configmapPath(), plan.Generated, commitMsg, "main")
+			if commitErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to commit %s configmap: %v", plan.Site, commitErr)})
+				return
+			}
+			result.CommitSHA = commitSHA
+			result.Action = "committed"
+			h.logger.Info(ctx, "Regenerated status configmap",
+				logging.String("site", string(plan.Site)),
+				logging.Int("service_count", len(plan.Services)),
+				logging.String("projection_mode", mode),
+				logging.String("commit", commitSHA))
+		case statusProjectionModeRuntime:
+			action, applyErr := h.applyRuntimeStatusConfigmap(ctx, namespace, plan.Site, plan.Generated)
+			if applyErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to apply %s configmap: %v", plan.Site, applyErr)})
+				return
+			}
+			result.Action = action
+			h.logger.Info(ctx, "Regenerated status configmap",
+				logging.String("site", string(plan.Site)),
+				logging.Int("service_count", len(plan.Services)),
+				logging.String("projection_mode", mode),
+				logging.String("configmap", result.ConfigMap),
+				logging.String("action", action))
 		}
 
 		anyChanged = true
-		resp.Targets[string(plan.Site)] = regenerateSiteResult{
-			ServiceCount: len(plan.Services),
-			Changed:      true,
-			CommitSHA:    commitSHA,
-		}
-		h.logger.Info(ctx, "Regenerated status configmap",
-			logging.String("site", string(plan.Site)),
-			logging.Int("service_count", len(plan.Services)),
-			logging.String("commit", commitSHA))
+		resp.Targets[string(plan.Site)] = result
 	}
 
 	if anyChanged {
@@ -385,20 +422,25 @@ func (h *Handler) fetchStatusEntriesForProject(ctx context.Context, repoFullName
 }
 
 // generateStatusConfigmap produces the structurally-correct configmap YAML
-// for the given site. Non-services-config keys from the existing checked-in
+// for the given site. Non-services-config keys from the existing source
 // file are preserved verbatim — only `services-config` is replaced.
 //
-// `existing` is the raw bytes of the current `configmap.yaml` in git. When
-// empty (e.g., very first regenerate before the file exists), a minimal
+// `existing` is the raw bytes of the current GitOps file or live ConfigMap.
+// When empty (e.g., very first regenerate before the object exists), a minimal
 // skeleton is synthesized with sensible defaults so the deployment doesn't
 // break. The skeleton intentionally mirrors the deployed schema (site-name,
 // site-url, prometheus-url, response-time-thresholds, auto-incidents-enabled,
 // auto-incident-threshold).
 //
-// The output preserves the kustomization-friendly metadata (namespace=enclii,
+// The output preserves the kustomization-friendly metadata (default namespace=enclii,
 // name=status-config-{site}) so the existing rename patches continue to work
 // without modification.
 func generateStatusConfigmap(site statusSiteTarget, services []statusServiceEntry, existing []byte) ([]byte, error) {
+	return generateStatusConfigmapForNamespace(site, services, existing, defaultStatusConfigNamespace)
+}
+
+func generateStatusConfigmapForNamespace(site statusSiteTarget, services []statusServiceEntry, existing []byte, namespace string) ([]byte, error) {
+	namespace = normalizeStatusConfigNamespace(namespace)
 	servicesJSON, err := json.MarshalIndent(services, "    ", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal services: %w", err)
@@ -411,7 +453,7 @@ func generateStatusConfigmap(site statusSiteTarget, services []statusServiceEntr
 		Kind:       "ConfigMap",
 		Metadata: configMapMeta{
 			Name:      site.configmapName(),
-			Namespace: "enclii",
+			Namespace: namespace,
 		},
 		Data: map[string]string{},
 	}
@@ -429,7 +471,7 @@ func generateStatusConfigmap(site statusSiteTarget, services []statusServiceEntr
 		cm.APIVersion = "v1"
 		cm.Kind = "ConfigMap"
 		cm.Metadata.Name = site.configmapName()
-		cm.Metadata.Namespace = "enclii"
+		cm.Metadata.Namespace = namespace
 	}
 
 	// Apply skeleton defaults only when the existing file is missing the key.
@@ -462,9 +504,10 @@ type configMap struct {
 }
 
 type configMapMeta struct {
-	Name      string            `yaml:"name"`
-	Namespace string            `yaml:"namespace"`
-	Labels    map[string]string `yaml:"labels,omitempty"`
+	Name        string            `yaml:"name"`
+	Namespace   string            `yaml:"namespace"`
+	Labels      map[string]string `yaml:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty"`
 }
 
 // siteSkeletonDefaults returns the data keys the deployed configmap MUST

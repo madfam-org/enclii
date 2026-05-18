@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
+	"os"
 	"strings"
 	"testing"
 
@@ -267,6 +268,22 @@ func TestStatusHandler_GenerateEncliiOnlyCore(t *testing.T) {
 		if e.Group != "Enclii" && e.Group != "Janua" {
 			t.Errorf("enclii site emitted unexpected group %q (entry=%s)", e.Group, e.Name)
 		}
+	}
+}
+
+func TestStatusHandler_CheckedInEncliiConfigmapMatchesGenerator(t *testing.T) {
+	existing, err := os.ReadFile("../../../status/k8s/enclii/configmap.yaml")
+	if err != nil {
+		t.Fatalf("read checked-in configmap: %v", err)
+	}
+
+	generated, err := generateStatusConfigmap(statusSiteEnclii, coreEncliiServicesForEncliiSite(), existing)
+	if err != nil {
+		t.Fatalf("generateStatusConfigmap: %v", err)
+	}
+
+	if string(generated) != string(existing) {
+		t.Errorf("checked-in Enclii status configmap is not generator-stable\n--- generated ---\n%s\n--- checked in ---\n%s", generated, existing)
 	}
 }
 

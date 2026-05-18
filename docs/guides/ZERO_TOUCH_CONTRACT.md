@@ -68,6 +68,15 @@ entries. The runtime path is selected with
 `ENCLII_ARGOCD_REGISTRATION_MODE=runtime`; the default remains `gitops` until
 legacy ApplicationSet ownership has been migrated safely.
 
+### Status Projection
+
+Product status entries belong in the client repo's `enclii.yaml` under
+`status.entries[]`. Enclii stores those entries in the onboarding DB snapshot
+and projects the public status ConfigMaps from DB/core state. The legacy
+projection path commits regenerated ConfigMaps to this repo; the zero-touch
+path updates `status-config-enclii` and `status-config-madfam` directly in
+Kubernetes with `ENCLII_STATUS_PROJECTION_MODE=runtime`.
+
 ### OAuth Client Registration
 
 ```bash

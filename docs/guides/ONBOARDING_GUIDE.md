@@ -162,7 +162,8 @@ The onboarding pipeline executes a multi-step provisioning workflow:
    enforced by `scripts/check-zero-touch-boundaries.sh`
 7. Creates K8s namespace with labels (`enclii.dev/data-access=true`, `enclii.dev/type=application`), **default-deny NetworkPolicy** (DNS-only egress), and copies GHCR credentials. These labels auto-grant access to shared data services (PostgreSQL, Redis, PgBouncer) and Janua SSO — no manual NetworkPolicy edits needed.
 8. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
-9. Registers onboarding in DB
+9. Registers onboarding in DB, including `status.entries[]` for later status
+   ConfigMap projection without editing the Enclii repo
 10. Creates Postgres database + role, updates PgBouncer *(if requested)* — PgBouncer userlist is bootstrapped automatically if absent
 11. Creates K8s Secret (name configurable via `secret_name`, default: `<project>-credentials`) from `.env` entries *(if requested)*
 12. Creates R2 bucket + appends R2 credentials to K8s Secret *(if requested)*

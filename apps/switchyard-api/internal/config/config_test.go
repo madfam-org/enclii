@@ -75,6 +75,38 @@ func TestLoad_ArgocdRegistrationMode_Override(t *testing.T) {
 	}
 }
 
+func TestLoad_StatusProjectionMode_Default(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.StatusProjectionMode != "gitops" {
+		t.Fatalf("expected default gitops mode, got %q", cfg.StatusProjectionMode)
+	}
+	if cfg.StatusConfigNamespace != "enclii" {
+		t.Fatalf("expected default status namespace, got %q", cfg.StatusConfigNamespace)
+	}
+}
+
+func TestLoad_StatusProjectionMode_Override(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+	t.Setenv("ENCLII_STATUS_PROJECTION_MODE", "runtime")
+	t.Setenv("ENCLII_STATUS_CONFIG_NAMESPACE", "status")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.StatusProjectionMode != "runtime" {
+		t.Fatalf("expected runtime mode, got %q", cfg.StatusProjectionMode)
+	}
+	if cfg.StatusConfigNamespace != "status" {
+		t.Fatalf("expected custom status namespace, got %q", cfg.StatusConfigNamespace)
+	}
+}
+
 func TestLoad_SEC003_ProductionRequiresAllowedOrigins(t *testing.T) {
 	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
 	t.Setenv("ENCLII_ENVIRONMENT", "production")

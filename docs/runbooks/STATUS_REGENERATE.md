@@ -1,11 +1,11 @@
 # Status Configmap Regeneration Runbook
 
-_Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot instead of editing configmaps._
+_Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot; status projection supports GitOps commits or opt-in runtime ConfigMap updates._
 
 ## Why this exists
 
 The two status pages (`status.enclii.dev`, `status.madfam.io`) are driven by
-configmaps committed to this repo:
+Kubernetes ConfigMaps:
 
 - `apps/status/k8s/enclii/configmap.yaml` (small platform-only set)
 - `apps/status/k8s/madfam/configmap.yaml` (~60 services across the ecosystem)
@@ -21,9 +21,15 @@ makes the configmaps a pure projection of:
 2. **Per-project `enclii.yaml`** `status.entries[]` blocks captured into each
    onboarding record's `config_snapshot.status_entries` field.
 
-After a successful regenerate, the configmap files are byte-identical to
-their function-of-source equivalents. ArgoCD picks up the commit, Stakater
-Reloader restarts the status pods, and the new entries appear on the page.
+After a successful regenerate, each ConfigMap is byte-identical to its
+function-of-source equivalent. Projection mode is controlled by
+`ENCLII_STATUS_PROJECTION_MODE`:
+
+- `gitops` (default): commit regenerated files to this repo; ArgoCD applies
+  the commit and Stakater Reloader restarts the status pods.
+- `runtime`: update `status-config-enclii` and `status-config-madfam`
+  directly in Kubernetes from DB/core state; Stakater Reloader restarts the
+  status pods without requiring an Enclii repo commit.
 
 ## When to run
 
@@ -42,11 +48,13 @@ operator action.
 
 | Requirement | Where to check |
 |---|---|
-| `GITHUB_TOKEN` set in switchyard-api env | `kubectl get deploy switchyard-api -n enclii -o yaml \| grep -i github` |
-| `EncliiRepoOwner` configured | typically `madfam-org`; see `apps/switchyard-api/internal/config/config.go` |
-| `EncliiRepoName` configured | typically `enclii` |
+| `ENCLII_STATUS_PROJECTION_MODE` set | `gitops` by default; use `runtime` for zero-touch ConfigMap projection |
+| `GITHUB_TOKEN` set in switchyard-api env | required only in `gitops` mode |
+| `EncliiRepoOwner` configured | required only in `gitops` mode; typically `madfam-org` |
+| `EncliiRepoName` configured | required only in `gitops` mode; typically `enclii` |
+| Runtime ConfigMap RBAC present | required only in `runtime` mode; see `switchyard-status-config-manager` |
 | Caller has `admin` JWT role | issued by Janua; verify with `enclii auth verify` |
-| ArgoCD self-heal enabled for the `status-*` apps | `kubectl get application status-madfam -n argocd -o jsonpath='{.spec.syncPolicy.automated.selfHeal}'` |
+| ArgoCD self-heal enabled for the `status-*` apps | required for `gitops`; `kubectl get application status-madfam -n argocd -o jsonpath='{.spec.syncPolicy.automated.selfHeal}'` |
 
 ## Run the regenerate
 
@@ -75,9 +83,10 @@ Successful no-op response (configmaps already match source):
 ```json
 {
   "status": "no_changes",
+  "projection_mode": "runtime",
   "targets": {
-    "enclii": { "service_count": 5,  "changed": false },
-    "madfam": { "service_count": 62, "changed": false }
+    "enclii": { "service_count": 5,  "changed": false, "action": "unchanged", "configmap": "enclii/status-config-enclii" },
+    "madfam": { "service_count": 62, "changed": false, "action": "unchanged", "configmap": "enclii/status-config-madfam" }
   },
   "total_count": 67
 }
@@ -88,11 +97,14 @@ Successful with a real diff:
 ```json
 {
   "status": "regenerated",
+  "projection_mode": "gitops",
   "targets": {
-    "enclii": { "service_count": 5,  "changed": false },
+    "enclii": { "service_count": 5,  "changed": false, "action": "unchanged", "configmap": "enclii/status-config-enclii" },
     "madfam": {
       "service_count": 63,
       "changed": true,
+      "action": "committed",
+      "configmap": "enclii/status-config-madfam",
       "commit_sha": "abc123def456..."
     }
   },
@@ -100,7 +112,9 @@ Successful with a real diff:
 }
 ```
 
-The commit lands directly on `main` (the kustomization's tracked branch).
+In `gitops` mode the commit lands directly on `main` (the kustomization's
+tracked branch). In `runtime` mode no Enclii repo commit is made; the API
+returns `action: "created"` or `action: "updated"` for changed targets.
 
 ## Guardrails
 
@@ -110,10 +124,10 @@ configmap. Current floors:
 - `status.enclii.dev`: at least 5 services.
 - `status.madfam.io`: at least 60 services.
 
-The API also refuses to commit if the generated service count is lower than the
-checked-in configmap count. If a genuine catalog reduction is needed, land an
-explicit source-of-truth migration first and document why the public inventory is
-being reduced.
+The API also refuses to project if the generated service count is lower than
+the existing configmap count. If a genuine catalog reduction is needed, land an
+explicit source-of-truth migration first and document why the public inventory
+is being reduced.
 
 Before accepting a regeneration, compare the returned service counts with the
 current public status surface:
@@ -132,9 +146,14 @@ checks.
 
 ## Verify
 
-1. **GitHub commit appears.** Open the `commit_sha` from the response —
-   should show only `apps/status/k8s/{enclii,madfam}/configmap.yaml` modified.
-2. **ArgoCD syncs.**
+1. **Projection landed.** In `gitops` mode, open the `commit_sha` from the
+   response and confirm it changes only `apps/status/k8s/{enclii,madfam}/configmap.yaml`.
+   In `runtime` mode, inspect the returned ConfigMap:
+   ```bash
+   kubectl -n enclii get configmap status-config-madfam -o jsonpath='{.data.services-config}' | jq length
+   ```
+2. **ArgoCD syncs.** Required after `gitops` mode, optional confirmation after
+   runtime mode because the ConfigMap is already live.
    ```bash
    kubectl -n argocd get application status-madfam status-enclii \
      -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status
@@ -172,7 +191,13 @@ that committed an unwanted entry:
 **`503: GitHub token or enclii repo not configured`**
 The switchyard-api deployment is missing `ENCLII_GITHUB_TOKEN`,
 `ENCLII_ENCLII_REPO_OWNER`, or `ENCLII_ENCLII_REPO_NAME`. Patch the
-`enclii-secrets` Secret and the deployment env.
+`enclii-secrets` Secret and the deployment env, or switch
+`ENCLII_STATUS_PROJECTION_MODE=runtime`.
+
+**`503: Kubernetes client not configured for runtime status projection`**
+The API is in `runtime` projection mode but switchyard-api does not have a
+usable in-cluster Kubernetes client. Confirm the pod is running in-cluster and
+that `switchyard-api` has the `switchyard-status-config-manager` RoleBinding.
 
 **`500: failed to read existing <site> configmap`**
 The configmap file does not exist on `main` yet. This happens only on a

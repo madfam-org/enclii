@@ -84,6 +84,10 @@ spec:
               value: "gitops"
             - name: ENCLII_ARGOCD_NAMESPACE
               value: "argocd"
+            - name: ENCLII_STATUS_PROJECTION_MODE
+              value: "gitops"
+            - name: ENCLII_STATUS_CONFIG_NAMESPACE
+              value: "enclii"
           ports:
             - containerPort: 4200
               name: http

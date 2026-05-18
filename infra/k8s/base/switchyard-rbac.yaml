@@ -70,6 +70,49 @@ subjects:
     name: switchyard-api
     namespace: enclii
 ---
+# Role: allows opt-in runtime status ConfigMap projection
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: switchyard-status-config-manager
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "update", "patch"]
+    resourceNames:
+      - status-config-enclii
+      - status-config-madfam
+  # Kubernetes RBAC cannot resourceName-restrict create because the object
+  # name is in the request body, not the request URL. Existing deployments
+  # normally update the two GitOps-created ConfigMaps; create is for recovery.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+---
+# RoleBinding: binds the status ConfigMap manager role to switchyard-api
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: switchyard-status-config-manager
+  namespace: enclii
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: provisioning
+    enclii.dev/managed-by: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: switchyard-status-config-manager
+subjects:
+  - kind: ServiceAccount
+    name: switchyard-api
+    namespace: enclii
+---
 # Role: allows switchyard-api to manage PgBouncer config in data namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
