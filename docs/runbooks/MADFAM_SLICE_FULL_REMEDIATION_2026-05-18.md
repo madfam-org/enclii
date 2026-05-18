@@ -29,6 +29,12 @@ Services in scope:
 - The ARC blue runner listener must not carry HTTP probes. The GitHub
   scale-set listener does not expose `/healthz`; probing it keeps the listener
   NotReady/recycling while deploy jobs remain assigned.
+- ARC listener `Role` and `RoleBinding` resources are controller-owned runtime
+  state. They must carry `argocd.argoproj.io/compare-options: IgnoreExtraneous`
+  so Argo CD does not prune them after each listener hash rotation.
+- The stuck-runner watchdog must read `.status.workflowRunId`, pod phase, and
+  runner logs. Otherwise cancelled or deregistered EphemeralRunners can pin all
+  ARC capacity and leave deploy jobs queued even while the listener is healthy.
 
 ## Remediation Plan
 
@@ -71,6 +77,10 @@ Services in scope:
      before starting.
    - Keep `madfam-runners-blue` listener probes disabled unless the listener
      image exposes a real health endpoint.
+   - Keep the Kyverno ARC listener RBAC annotation policy installed so generated
+     listener RBAC stays ignored by Argo CD pruning.
+   - Keep the stuck-runner watchdog RBAC and JSONPath current with ARC v0.14
+     status fields, including `pods/log` access for cancellation detection.
    - Re-run failed workflows after billing/runners are healthy.
    - Keep self-hosted deploy workflows on the MADFAM runner pool.
 

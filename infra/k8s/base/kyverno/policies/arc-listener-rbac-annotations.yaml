@@ -1,0 +1,37 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: annotate-arc-listener-rbac
+  annotations:
+    policies.kyverno.io/title: Annotate ARC Listener RBAC
+    policies.kyverno.io/category: GitOps
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Role, RoleBinding
+    policies.kyverno.io/description: >-
+      Actions Runner Controller creates listener Role and RoleBinding resources
+      at runtime. They inherit Argo CD tracking labels from the runner set, so
+      Argo CD must treat them as controller-owned extraneous resources instead
+      of pruning them on every sync.
+spec:
+  background: false
+  rules:
+    - name: mark-arc-listener-rbac-ignore-extraneous
+      match:
+        any:
+          - resources:
+              kinds:
+                - Role
+                - RoleBinding
+              namespaces:
+                - arc-runners
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: runner-scale-set-listener
+                  app.kubernetes.io/instance: arc-runners-blue
+                  app.kubernetes.io/part-of: gha-runner-scale-set
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              argocd.argoproj.io/compare-options: IgnoreExtraneous

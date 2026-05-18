@@ -68,6 +68,8 @@ metadata:
   labels:
     app.kubernetes.io/name: arc-runners-blue
     app.kubernetes.io/part-of: enclii
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous=true
 spec:
   project: default
 
@@ -87,9 +89,9 @@ spec:
     syncOptions:
       - CreateNamespace=true
 
-  # ARC creates AutoscalingListener resources dynamically from the runner set.
-  # They carry Argo tracking labels, so Argo sees them as extraneous even though
-  # they are controller-owned runtime state.
+  # ARC creates listener runtime state dynamically from the runner set. Those
+  # resources inherit Argo tracking labels, so the app ignores extraneous
+  # controller-owned objects while still reconciling the rendered scale set.
   ignoreDifferences:
     # Argo injects its Application tracking label onto the rendered Helm output;
     # ARC itself expects the runner-set Helm instance label to stay stable.
