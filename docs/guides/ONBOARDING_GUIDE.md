@@ -153,8 +153,11 @@ The onboarding pipeline executes a multi-step provisioning workflow:
 2. Creates project and service records in the Enclii DB
 3. Creates service records from `enclii.yaml` metadata
 4. **Validates manifest path** — checks the directory exists in the repo and contains YAML files
-5. Generates ArgoCD `config.json` for the ApplicationSet
-6. **Auto-commits** `config.json` to `infra/argocd/projects/<name>/` in the enclii repo (no manual step)
+5. Registers ArgoCD desired state. The current production implementation still
+   uses a legacy Enclii repo `config.json` write; the target zero-touch path is
+   runtime ArgoCD reconciliation from the client repo declaration.
+6. Refuses new app-specific Enclii catalog entries outside the legacy allowlist
+   enforced by `scripts/check-zero-touch-boundaries.sh`
 7. Creates K8s namespace with labels (`enclii.dev/data-access=true`, `enclii.dev/type=application`), **default-deny NetworkPolicy** (DNS-only egress), and copies GHCR credentials. These labels auto-grant access to shared data services (PostgreSQL, Redis, PgBouncer) and Janua SSO — no manual NetworkPolicy edits needed.
 8. Provisions custom domains (Cloudflare tunnel routes + DNS CNAMEs)
 9. Registers onboarding in DB

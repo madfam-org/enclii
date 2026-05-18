@@ -40,7 +40,7 @@ func NewOnboardCommand(cfg *config.Config) *cobra.Command {
 		Long: `Onboard a new repository into the Enclii platform with automated provisioning.
 
 This command handles the complete onboarding pipeline:
-  - ArgoCD application registration (auto-commit to enclii repo)
+  - ArgoCD application registration (legacy Enclii config write until runtime reconciliation lands)
   - Namespace creation + GHCR credential copying
   - Domain provisioning (Cloudflare tunnel routes + DNS)
   - Postgres database + role creation (optional)
@@ -249,7 +249,7 @@ func printDryRun(opts onboardOpts, req types.OnboardingRequest) {
 	fmt.Println()
 
 	fmt.Println("  Provisioning steps:")
-	fmt.Println("    [1] Create project + ArgoCD config (auto-commit to enclii repo)")
+	fmt.Println("    [1] Create project + ArgoCD registration (legacy Enclii config write)")
 	fmt.Println("    [2] Create namespace + copy GHCR credentials")
 	fmt.Println("    [3] Provision domains from enclii.yaml (if present)")
 

@@ -204,6 +204,29 @@ jobs:
       - name: Run status configmap drift check
         run: ./scripts/check-status-configmaps.sh
 
+  zero-touch-boundary:
+    name: Zero-Touch Boundary Check
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # Phase 0 guardrail: legacy app-specific state is allowlisted, but new
+    # app-specific Argo/status/tunnel/auth/secret/monitor/UI catalog entries in
+    # Enclii fail CI. Client repos must own client desired state.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test deps
+        run: pip install --quiet pytest
+
+      - name: Run zero-touch boundary script tests
+        run: pytest tests/scripts/test_check_zero_touch_boundaries.py -v
+
+      - name: Run zero-touch boundary check
+        run: ./scripts/check-zero-touch-boundaries.sh
+
   golden-config:
     name: Golden Config Check (Ratchet)
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
@@ -1235,7 +1258,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e]
+    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e]
     if: always()
 
     steps:
@@ -1263,6 +1286,10 @@ jobs:
           fi
           if [ "${{ needs.status-configmap-drift.result }}" != "success" ]; then
             echo "❌ Status configmap drift check failed (audit ST-3)"
+            exit 1
+          fi
+          if [ "${{ needs.zero-touch-boundary.result }}" != "success" ]; then
+            echo "❌ Zero-touch boundary check failed (new app-specific Enclii catalog state detected)"
             exit 1
           fi
           if [ "${{ needs.networkpolicy-port-lint.result }}" != "success" ]; then

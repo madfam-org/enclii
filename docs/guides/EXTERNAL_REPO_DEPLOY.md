@@ -209,7 +209,12 @@ jobs:
 
 ### 5. ArgoCD Application
 
-Create an ArgoCD Application in the enclii repo at `infra/argocd/apps/my-project.yaml`:
+Declare the deployment source in the client repo and register it through the
+onboarding API. Historical apps may still have Enclii-owned ArgoCD files, but
+new app onboarding must not add app-specific ArgoCD files to the Enclii repo.
+The target path is runtime ArgoCD reconciliation from client repo desired state.
+The YAML below documents the ArgoCD `Application` shape Enclii reconciles, not
+a file to add to this repository.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -306,7 +311,7 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 - **Services**: myapp-api, myapp-admin, myapp-web
 - **Manifests**: `infra/k8s/production/` or `k8s/production/`
 - **Workflows**: One per service (`deploy-api.yml`, `deploy-admin.yml`, `deploy-web.yml`) or consolidated with change detection
-- **ArgoCD app**: `infra/argocd/apps/myapp.yaml` (in the enclii repo)
+- **ArgoCD app**: registered by Enclii from the client repo desired state
 
 ### Single-Service Repo
 
@@ -314,7 +319,7 @@ Without this, GHCR creates attestation manifests alongside images. ArgoCD Image 
 - **Services**: my-service
 - **Manifests**: `k8s/production/`
 - **Workflow**: `deploy-k8s.yml`
-- **ArgoCD app**: `infra/argocd/apps/my-service.yaml` (in the enclii repo)
+- **ArgoCD app**: registered by Enclii from the client repo desired state
 
 ## Troubleshooting
 

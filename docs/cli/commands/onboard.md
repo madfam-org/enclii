@@ -38,8 +38,11 @@ The command executes a multi-step provisioning pipeline via `POST /v1/admin/onbo
 2. Create project record in Enclii DB
 3. Create service record(s) from `enclii.yaml`
 4. **Validate manifest path** — checks the path exists in the repo and contains YAML files
-5. Generate ArgoCD `config.json`
-6. Auto-commit `config.json` to `infra/argocd/projects/<name>/` in the enclii repo
+5. Register ArgoCD desired state. Current production still uses a legacy Enclii
+   repo `config.json` write; new implementation work targets runtime ArgoCD
+   reconciliation from the client repo declaration.
+6. Preserve the zero-touch boundary by rejecting new app-specific Enclii catalog
+   entries outside the legacy allowlist.
 7. Create K8s namespace with required labels, **default-deny NetworkPolicy**, and GHCR credentials
 8. Provision domains from `enclii.yaml` (Cloudflare tunnel routes + DNS CNAMEs)
 9. Register onboarding in DB
@@ -52,7 +55,7 @@ Authentication provisioning is intentionally not hardcoded in Enclii. The produc
 **Status reporting**: The response includes a `step_results` array and an overall status:
 - `completed` — all steps succeeded
 - `partial` — non-critical steps failed (e.g., domain provisioning, R2)
-- `failed` — a critical step failed (namespace creation or ArgoCD config commit)
+- `failed` — a critical step failed (namespace creation or legacy ArgoCD registration)
 
 If `--preflight` is set, manifest validation runs first via `POST /v1/admin/onboard/preflight`. Violations (Kyverno policy failures, YAML parse errors) are printed and the command exits without onboarding.
 

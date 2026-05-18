@@ -60,7 +60,11 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
   -d '{"repo_full_name": "madfam-org/${APP_NAME}", "branch": "main"}'
 ```
 
-This auto-commits the ArgoCD Application config to the enclii repo via GitHub API.
+Current legacy implementation still writes an ArgoCD registration file into the
+Enclii repo. That path is adopted legacy state, not the target zero-touch
+contract. New onboarding work must move toward runtime ArgoCD reconciliation
+from client repo desired state and must not add new app-specific Enclii catalog
+entries.
 
 ### OAuth Client Registration
 

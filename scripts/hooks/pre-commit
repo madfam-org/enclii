@@ -334,6 +334,26 @@ if [ -n "$MANIFEST_FILES" ]; then
 fi
 
 # =============================================================================
+# ZERO-TOUCH BOUNDARY VALIDATION - Prevent new app-specific Enclii catalog state
+# =============================================================================
+
+ZERO_TOUCH_FILES=$(echo "$STAGED_FILES" | grep -E '^(infra/argocd/projects/|apps/status/k8s/|infra/k8s/production/(expected-tunnel-config\.json|janua-env-config\.yaml|monitoring/deploy-pipeline-monitor\.yaml)|infra/k8s/base/external-secrets/|apps/switchyard-ui/components/dashboard/framework-icon\.tsx|docs/guides/(ZERO_TOUCH_CONTRACT|ONBOARDING_GUIDE|EXTERNAL_REPO_DEPLOY)\.md|docs/cli/commands/onboard\.md|packages/cli/internal/cmd/onboard\.go|scripts/check-zero-touch-boundaries\.sh|\.github/workflows/ci\.yml)' || true)
+if [ -n "$ZERO_TOUCH_FILES" ]; then
+    echo -e "\n${BLUE}🧭 Checking zero-touch boundary...${NC}"
+    if [ -x "./scripts/check-zero-touch-boundaries.sh" ]; then
+        if ./scripts/check-zero-touch-boundaries.sh; then
+            echo -e "${GREEN}  ✓ Zero-touch boundary check passed${NC}"
+        else
+            echo -e "${RED}❌ Zero-touch boundary check failed${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}❌ scripts/check-zero-touch-boundaries.sh is missing or not executable${NC}"
+        exit 1
+    fi
+fi
+
+# =============================================================================
 # MARKDOWN LINK VALIDATION - Catch dead links before CI (DocGuard railguard)
 # =============================================================================
 

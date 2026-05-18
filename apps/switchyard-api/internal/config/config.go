@@ -147,7 +147,7 @@ type Config struct {
 	EmailFromName    string // EMAIL_FROM_NAME - From name (default: Enclii)
 	AppBaseURL       string // APP_BASE_URL - Base URL for app links in emails (default: https://app.enclii.dev)
 
-	// Enclii Repo Coordinates (for auto-committing ArgoCD apps)
+	// Enclii Repo Coordinates (legacy ArgoCD registration write path)
 	EncliiRepoOwner string // ENCLII_ENCLII_REPO_OWNER - GitHub owner for Enclii repo (default: madfam-org)
 	EncliiRepoName  string // ENCLII_ENCLII_REPO_NAME - GitHub repo name (default: enclii)
 
@@ -272,7 +272,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("email-from-name", "Enclii")                // EMAIL_FROM_NAME
 	viper.SetDefault("app-base-url", "https://app.enclii.dev")   // APP_BASE_URL
 
-	// Enclii repo coordinates (for auto-committing ArgoCD apps)
+	// Enclii repo coordinates (legacy ArgoCD registration write path)
 	viper.SetDefault("enclii-repo-owner", "madfam-org") // ENCLII_ENCLII_REPO_OWNER
 	viper.SetDefault("enclii-repo-name", "enclii")      // ENCLII_ENCLII_REPO_NAME
 
