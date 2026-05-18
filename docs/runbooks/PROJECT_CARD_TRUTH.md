@@ -84,6 +84,10 @@ Before calling the cards truthful:
    particular, `switchyard-ui` must depend on `packages/shared-lib` and
    `packages/ui-components`, otherwise shared card UI changes can pass CI
    without producing a fresh UI image.
+8. CI keeps non-container jobs on GitHub-hosted runners and reserves the
+   `madfam-runners-blue` ARC pool for Docker image builds. If the project-card
+   fix is merged but the production image does not move, check for queued
+   `docker-build` jobs rather than lint/UI/build jobs occupying ARC capacity.
 
 ## Verification
 
@@ -103,3 +107,11 @@ If `/projects` renders stale card facts after the API is correct, check whether
 the UI deployment is still on an older image. For signed-image provenance, run
 `cosign verify` on each deployment digest and compare `githubWorkflowSha` with
 the commit that introduced the card aggregate or follow-up UI fix.
+
+To rebuild only the project-card services after a CI-only remediation, dispatch
+the CI workflow with:
+
+```bash
+gh workflow run ci.yml -R madfam-org/enclii \
+  -f services=switchyard-api,switchyard-ui
+```

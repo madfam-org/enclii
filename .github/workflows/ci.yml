@@ -14,19 +14,20 @@ on:
         required: false
         default: 'false'
         type: boolean
+      services:
+        description: 'Optional comma-separated service names to rebuild, e.g. switchyard-api,switchyard-ui'
+        required: false
+        default: ''
+        type: string
 
 env:
   GO_VERSION: '1.25.0'
   NODE_VERSION: '22'
-  # Runner selection: Use self-hosted if ARC bootstrap is complete, otherwise GitHub-hosted
-  # Set ARC_BOOTSTRAP_COMPLETE=true in repository variables after ARC is installed
-  # Note: ARC runner scale set is named 'madfam-runners-blue' (blue/green deployment pattern)
-  RUNNER_LABEL: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
 
 jobs:
   lint:
     name: Lint & Format
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -77,7 +78,7 @@ jobs:
 
   manifest-audit:
     name: Manifest Audit (Ratchet)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Run in parallel with lint for speed
     steps:
       - uses: actions/checkout@v6
@@ -171,7 +172,7 @@ jobs:
 
   networkpolicy-port-lint:
     name: NetworkPolicy port consistency
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Cheap (~1.5s on the ~100-NP, ~70-workload infra/k8s tree). Runs in
     # parallel with lint. Prevents the 2026-05-04 status.enclii.dev outage
     # class: NetworkPolicy `ports:` clauses that don't intersect the
@@ -193,7 +194,7 @@ jobs:
 
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Cheap (sub-second) — runs in parallel with lint.
     # Enforces: enclii configmap ⊆ madfam configmap (by url), no in-file
     # duplicates, well-formed JSON. See scripts/check-status-configmaps.sh
@@ -206,7 +207,7 @@ jobs:
 
   zero-touch-boundary:
     name: Zero-Touch Boundary Check
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Phase 0 guardrail: legacy app-specific state is allowlisted, but new
     # app-specific Argo/status/tunnel/auth/secret/monitor/UI catalog entries in
     # Enclii fail CI. Client repos must own client desired state.
@@ -229,7 +230,7 @@ jobs:
 
   golden-config:
     name: Golden Config Check (Ratchet)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Run in parallel with lint for speed
     steps:
       - uses: actions/checkout@v6
@@ -248,7 +249,7 @@ jobs:
 
   image-age-ratchet:
     name: Image Age Ratchet
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Cheap (<5s on a typical PR). Runs after manifest-audit + golden-config
     # in parallel — fails the build when a kustomization-pinned digest is
     # older than 30 days. Catches the 2026-05-04 selva-office class of
@@ -386,7 +387,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     needs: unit-tests
 
     steps:
@@ -429,8 +430,8 @@ jobs:
 
   ui-tests:
     name: UI Tests
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
-    # Serialize with lint to avoid resource contention on self-hosted runners
+    runs-on: ubuntu-latest
+    # Keep UI tests off ARC; the self-hosted pool is reserved for Docker builds.
     needs: lint
     env:
       NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
@@ -548,8 +549,7 @@ jobs:
 
   security-scan:
     name: Security Scan
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
-    # Serialize with ui-tests to avoid resource contention on self-hosted runners
+    runs-on: ubuntu-latest
     needs: ui-tests
 
     steps:
@@ -627,10 +627,18 @@ jobs:
           SERVICES_JSON=$(cat services.json)
           MATRIX_INCLUDE="[]"
           FORCE_ALL=false
+          REQUESTED_SERVICES="${{ github.event.inputs.services || '' }}"
 
           if echo "$CHANGED_FILES" | grep -q "^services.json$"; then
             echo "services.json changed; rebuilding every registered service"
             FORCE_ALL=true
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_build || 'false' }}" = "true" ]; then
+            echo "workflow_dispatch force_build=true; rebuilding every registered service"
+            FORCE_ALL=true
+          fi
+          if [ -n "$REQUESTED_SERVICES" ]; then
+            echo "workflow_dispatch requested services: $REQUESTED_SERVICES"
           fi
 
           while IFS= read -r line; do
@@ -676,9 +684,7 @@ jobs:
                 CHANGED=true
               fi
             done
-
-            # Force build on workflow_dispatch
-            if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -n "$REQUESTED_SERVICES" ] && echo "$REQUESTED_SERVICES" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -qx "$NAME"; then
               CHANGED=true
             fi
 
@@ -1285,7 +1291,7 @@ jobs:
 
   test-summary:
     name: Test Summary
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e]
     if: always()
 
