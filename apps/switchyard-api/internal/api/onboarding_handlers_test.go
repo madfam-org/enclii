@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 )
 
 func TestComputeOnboardStatus(t *testing.T) {
@@ -182,5 +183,65 @@ func TestPreflightOnboardRequestValidation(t *testing.T) {
 				t.Errorf("%s: want status %d, got %d (body: %s)", tt.name, tt.wantStatus, w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestRegisterStatusEntriesProjectsSnapshotEntries(t *testing.T) {
+	h := &Handler{}
+	cfg := &manifest.EncliiYAML{
+		Spec: manifest.EncliiYAMLSpec{
+			Status: &manifest.EncliiYAMLStatus{
+				Enabled: true,
+				Entries: []manifest.EncliiYAMLStatusEntry{
+					{
+						Name:        "API",
+						URL:         "https://api.example.test/health",
+						Href:        "https://api.example.test",
+						Group:       "Example",
+						Family:      "Client Apps",
+						Description: "Example API",
+					},
+				},
+			},
+		},
+	}
+
+	entries, err := h.registerStatusEntries(t.Context(), "example", cfg)
+	if err != nil {
+		t.Fatalf("registerStatusEntries() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries length = %d, want 1", len(entries))
+	}
+	entry := entries[0]
+	if entry.Name != "API" || entry.URL != "https://api.example.test/health" || entry.Href != "https://api.example.test" {
+		t.Fatalf("entry did not preserve name/url/href: %#v", entry)
+	}
+	if entry.Group != "Example" || entry.Family != "Client Apps" || entry.Description != "Example API" {
+		t.Fatalf("entry did not preserve metadata: %#v", entry)
+	}
+}
+
+func TestRegisterStatusEntriesDerivesDomainsWhenEnabledWithoutEntries(t *testing.T) {
+	h := &Handler{}
+	enabled := true
+	cfg := &manifest.EncliiYAML{
+		Spec: manifest.EncliiYAMLSpec{
+			Status: &manifest.EncliiYAMLStatus{Enabled: enabled},
+			Domains: []manifest.EncliiYAMLDomain{
+				{Name: "app.example.test"},
+			},
+		},
+	}
+
+	entries, err := h.registerStatusEntries(t.Context(), "example", cfg)
+	if err != nil {
+		t.Fatalf("registerStatusEntries() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries length = %d, want 1", len(entries))
+	}
+	if entries[0].Name != "app.example.test" || entries[0].URL != "https://app.example.test" || entries[0].Group != "example" {
+		t.Fatalf("derived entry = %#v", entries[0])
 	}
 }

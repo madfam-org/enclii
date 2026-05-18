@@ -223,8 +223,10 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 		}
 	}
 
+	var statusEntries []statusServiceEntry
 	if encliiConfig != nil && encliiConfig.Spec.Status != nil {
-		statusErr := h.registerStatusEntries(ctx, req.ProjectName, encliiConfig)
+		var statusErr error
+		statusEntries, statusErr = h.registerStatusEntries(ctx, req.ProjectName, encliiConfig)
 		h.recordStep(ctx, &steps, "status_registration", false, statusErr)
 	}
 
@@ -326,6 +328,10 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	}
 	if encliiConfig != nil {
 		ensureSnapshot["enclii_yaml_found"] = true
+	}
+	if len(statusEntries) > 0 {
+		ensureSnapshot["status_entries"] = statusEntries
+		ensureSnapshot["desired_state"].(map[string]interface{})["status_entries_count"] = len(statusEntries)
 	}
 	ensureSnapshot["argocd_registration_mode"] = argocdRegistration.Mode
 	if argocdRegistration.Action != "" {

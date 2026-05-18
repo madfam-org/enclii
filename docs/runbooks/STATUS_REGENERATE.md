@@ -1,6 +1,6 @@
 # Status Configmap Regeneration Runbook
 
-_Last updated: 2026-05-14 — added Enclii CLI-first regeneration path._
+_Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot instead of editing configmaps._
 
 ## Why this exists
 
@@ -18,8 +18,8 @@ makes the configmaps a pure projection of:
 
 1. A small **platform core** set baked into the API (`coreEncliiServicesFor*Site()` in
    `apps/switchyard-api/internal/api/status_handlers.go`).
-2. **Per-project `enclii.yaml`** `status.entries[]` blocks aggregated from
-   every onboarded project.
+2. **Per-project `enclii.yaml`** `status.entries[]` blocks captured into each
+   onboarding record's `config_snapshot.status_entries` field.
 
 After a successful regenerate, the configmap files are byte-identical to
 their function-of-source equivalents. ArgoCD picks up the commit, Stakater
