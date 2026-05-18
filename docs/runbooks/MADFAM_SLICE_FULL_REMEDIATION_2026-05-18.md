@@ -41,9 +41,9 @@ Services in scope:
   `argocd.argoproj.io/compare-options: IgnoreExtraneous`, and updating the
   stuck-runner watchdog for ARC v0.14 `.status.workflowRunId`, pod phase, and
   `pods/log` inspection.
-- `enclii-infrastructure` and `external-secrets-config` are `Healthy` but
-  `OutOfSync`; these are infrastructure drift items, not project-card health
-  blockers.
+- `enclii-infrastructure`, `external-secrets-config`, `network-policies`, and
+  `vault` are `Synced/Healthy` after restoring the app-of-apps sync policy and
+  normalizing generated Secret drift.
 
 ### Distance to 100% MADFAM-slice health
 
@@ -68,8 +68,7 @@ Services in scope:
   runtime secret refreshes do not leave otherwise healthy client apps
   permanently `OutOfSync`.
 - **Readiness for full green:** production project cards are green; strict
-  all-Argo green still requires PhyndCRM staging Vault backfill and cleanup of
-  the two healthy-but-`OutOfSync` infrastructure apps.
+  all-Argo green still requires PhyndCRM staging Vault backfill.
 
 ### What “fully healthy and truthful” means for `/projects`
 
@@ -110,15 +109,14 @@ Services in scope:
    - Capture proof that staging probes create no production rows, jobs, emails,
      payment events, grants, or provider artifacts.
 
-3. Reconcile healthy infrastructure drift.
-   - Inspect and intentionally resolve `external-secrets-config`, currently
-     `OutOfSync` on `Secret/digifab-quoting/digifab-quoting-secrets`.
-   - Inspect and intentionally resolve `enclii-infrastructure`, currently
-     `OutOfSync` on child app declarations including `external-secrets`,
-     `external-secrets-config`, `network-policies`, `vault`, and
-     `project-applications`.
+3. Keep app-of-apps drift closed.
+   - Keep ESO-generated target Secrets annotated with
+     `argocd.argoproj.io/compare-options: IgnoreExtraneous`.
+   - Keep normalized Argo Application manifests free of fields the Kubernetes
+     API prunes away, such as empty `group` values and explicit
+     `prune: false`.
    - Do not overwrite runtime-owned secret refresh annotations or status
-     projections while clearing this drift.
+     projections while clearing future drift.
 
 4. Clear pipeline health gates.
    - Resolve the GitHub-hosted runner billing/spending-limit blocker that causes
