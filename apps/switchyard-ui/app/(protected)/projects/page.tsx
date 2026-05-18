@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiPost } from '@/lib/api';
 import { useTier } from '@/hooks/use-tier';
 import { usePolling } from '@/hooks/use-polling';
 import { useProjectProcessFeed } from '@/hooks/use-project-process-feed';
@@ -43,11 +43,7 @@ import {
   processLiveState,
   serviceSummariesById,
 } from '@/lib/project-process-feed';
-import {
-  buildCompactProject,
-  type ApiProjectForCards,
-  type ApiServiceForCards,
-} from '@/lib/project-card-transform';
+import { fetchProjectCards } from '@/lib/project-card-api';
 
 // /projects is the dedicated projects-only surface — distinct from the home
 // dashboard at /. Home shows the ecosystem context (usage, system health,
@@ -57,10 +53,6 @@ import {
 // re-adding the home sidebar widgets here, you're undoing the split.
 
 type StatusFilter = 'all' | 'healthy' | 'degraded' | 'failing';
-
-interface ApiProject extends ApiProjectForCards {
-  created_at: string;
-}
 
 export default function ProjectsPage() {
   const searchParams = useSearchParams();
@@ -116,30 +108,10 @@ export default function ProjectsPage() {
     try {
       setError(null);
       setRefreshing(true);
-      const data = await apiGet<{ projects: ApiProject[] }>('/v1/projects');
-      const apiProjects = data.projects || [];
-
-      // Fetch services per project in parallel
-      const serviceResults = await Promise.allSettled(
-        apiProjects.map((p) =>
-          apiGet<{ services: ApiServiceForCards[] }>(`/v1/projects/${p.slug}/services`),
-        )
-      );
-
-      const compactProjects: CompactProject[] = apiProjects.map((project, i) => {
-        const result = serviceResults[i];
-        const services =
-          result.status === 'fulfilled' ? result.value.services || [] : [];
-
-        return buildCompactProject({
-          project,
-          services,
-          servicesResolved: result.status === 'fulfilled',
-        });
-      });
+      const { projects: compactProjects, generatedAt } = await fetchProjectCards();
 
       setProjects(compactProjects);
-      setLastSyncedAt(new Date().toISOString());
+      setLastSyncedAt(generatedAt || new Date().toISOString());
       setLoading(false);
 
       // Fetch Repo Meta

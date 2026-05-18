@@ -59,10 +59,10 @@ func NewApplicationReconciler(dynamicClient dynamic.Interface, namespace string)
 
 func NormalizeRegistrationMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", RegistrationModeGitOps, "legacy", "legacy-git":
-		return RegistrationModeGitOps
-	case RegistrationModeRuntime, "kubernetes", "k8s":
+	case "", RegistrationModeRuntime, "kubernetes", "k8s":
 		return RegistrationModeRuntime
+	case RegistrationModeGitOps, "legacy", "legacy-git":
+		return RegistrationModeGitOps
 	default:
 		return strings.ToLower(strings.TrimSpace(mode))
 	}

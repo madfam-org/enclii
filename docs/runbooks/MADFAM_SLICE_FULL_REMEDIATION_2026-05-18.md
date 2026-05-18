@@ -26,8 +26,7 @@ Services in scope:
   candidate without repeating the SQL parameter type error. Its runtime secret
   is temporarily working from a break-glass Kubernetes Secret patch, but
   `ExternalSecret/forgesight-secrets` remains `Ready=False` until Vault
-  contains `secret/forgesight.api_key_salt` and
-  `secret/forgesight.janua_jwt_secret`.
+  contains the missing `secret/forgesight.api_key_salt` property.
 - `phynd-crm-staging` is `Synced/Degraded`. As of commit
   `1add140` in `madfam-org/phynd-crm`, the staging overlay owns
   `ExternalSecret/phynd-crm-staging-secrets`; ESO now reports
@@ -44,10 +43,15 @@ Services in scope:
 
 - **Service-level health:** 3/5 services are currently `Synced/Healthy` (**60%**).
 - **Blocking items:** 2 (`forgesight-services`, `phynd-crm-staging`).
-- **Deck and /projects truth status:** both `/` and `/projects` now use the same
-  rollout-aware project-card transform and now reflect rollout blocking states
-  (for example `CreateContainerConfigError`, `ImagePullBackOff`, and `CrashLoopBackOff`)
-  instead of masking them behind stale `healthy` rows.
+- **Deck and /projects truth status:** both `/` and `/projects` are wired to the
+  same `/v1/projects/cards` backend aggregate. The aggregate uses backend
+  service/release facts and rollout inspection, not UI-side MADFAM product
+  inference. Production still must deploy the matching `switchyard-api` and
+  `switchyard-ui` images before the live dashboards reflect this code path.
+- **Status catalog ownership:** runtime status projection is now the default,
+  and ArgoCD ignores only the runtime-owned `services-config` key on
+  `status-config-enclii` and `status-config-madfam`, preventing self-heal from
+  undoing zero-touch service catalog projection.
 - **Readiness for full green:** not yet true until both blockers are fixed and
   verified through ArgoCD + ESO reconciliation.
 
@@ -65,9 +69,8 @@ Services in scope:
 ## Remediation Plan
 
 1. Backfill ForgeSight Vault source of truth.
-   - Write real production values for `secret/forgesight.api_key_salt` and
-     `secret/forgesight.janua_jwt_secret` through the approved Vault/Enclii
-     secret workflow.
+   - Write the real production value for `secret/forgesight.api_key_salt`
+     through the approved Vault/Enclii secret workflow.
    - If the break-glass Kubernetes Secret is present and approved as the source
      for recovery, backfill Vault without printing values:
      ```bash

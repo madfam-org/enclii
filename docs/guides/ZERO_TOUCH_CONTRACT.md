@@ -60,22 +60,27 @@ curl -X POST "https://api.enclii.dev/v1/admin/onboard" \
   -d '{"repo_full_name": "madfam-org/${APP_NAME}", "branch": "main"}'
 ```
 
-Current legacy implementation still writes an ArgoCD registration file into the
-Enclii repo. That path is adopted legacy state, not the target zero-touch
-contract. New onboarding work must move toward runtime ArgoCD reconciliation
-from client repo desired state and must not add new app-specific Enclii catalog
-entries. The runtime path is selected with
-`ENCLII_ARGOCD_REGISTRATION_MODE=runtime`; the default remains `gitops` until
-legacy ApplicationSet ownership has been migrated safely.
+Runtime ArgoCD reconciliation is the default zero-touch path. It creates or
+updates the ArgoCD `Application` from client repo desired state without adding
+new app-specific files to this repo. The legacy Enclii-repo writer is retained
+only for documented migrations and requires both
+`ENCLII_ARGOCD_REGISTRATION_MODE=gitops` and
+`ENCLII_ALLOW_LEGACY_GITOPS_REGISTRATION=true`.
 
 ### Status Projection
 
 Product status entries belong in the client repo's `enclii.yaml` under
 `status.entries[]`. Enclii stores those entries in the onboarding DB snapshot
 and projects the public status ConfigMaps from DB/core state. The legacy
-projection path commits regenerated ConfigMaps to this repo; the zero-touch
-path updates `status-config-enclii` and `status-config-madfam` directly in
-Kubernetes with `ENCLII_STATUS_PROJECTION_MODE=runtime`.
+projection path commits regenerated ConfigMaps to this repo; the default
+zero-touch path updates `status-config-enclii` and `status-config-madfam`
+directly in Kubernetes with `ENCLII_STATUS_PROJECTION_MODE=runtime`. Legacy
+status commits require both `ENCLII_STATUS_PROJECTION_MODE=gitops` and
+`ENCLII_ALLOW_LEGACY_GITOPS_STATUS_PROJECTION=true`.
+
+ArgoCD ignores only the runtime-owned `services-config` key on those two
+status ConfigMaps. Other ConfigMap keys remain GitOps-managed, while service
+catalog changes come from Enclii's DB/client-repo projection path.
 
 ### OAuth Client Registration
 

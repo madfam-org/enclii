@@ -58,14 +58,37 @@ func TestRegisterArgoCDApplicationRuntimeModeRequiresReconciler(t *testing.T) {
 	}
 }
 
-func TestRegisterArgoCDApplicationGitOpsModeReportsLegacyConfigFailure(t *testing.T) {
+func TestRegisterArgoCDApplicationGitOpsModeRequiresBreakGlassFlag(t *testing.T) {
 	h := &Handler{
 		config: &config.Config{ArgocdRegistrationMode: argocdreg.RegistrationModeGitOps},
 	}
 
 	result, err := h.registerArgoCDApplication(context.Background(), testArgoRegistrationRequest())
 	if err == nil {
-		t.Fatal("expected gitops mode to require Enclii repo GitHub config")
+		t.Fatal("expected gitops mode to require break-glass flag")
+	}
+	if result.Mode != argocdreg.RegistrationModeGitOps {
+		t.Fatalf("mode = %q, want gitops", result.Mode)
+	}
+	if result.Action != "" {
+		t.Fatalf("action = %q, want empty action before legacy writer runs", result.Action)
+	}
+	if !strings.Contains(err.Error(), "legacy gitops argocd registration is disabled") {
+		t.Fatalf("expected disabled legacy gitops error, got %v", err)
+	}
+}
+
+func TestRegisterArgoCDApplicationGitOpsModeReportsLegacyConfigFailureWhenAllowed(t *testing.T) {
+	h := &Handler{
+		config: &config.Config{
+			ArgocdRegistrationMode:        argocdreg.RegistrationModeGitOps,
+			AllowLegacyGitOpsRegistration: true,
+		},
+	}
+
+	result, err := h.registerArgoCDApplication(context.Background(), testArgoRegistrationRequest())
+	if err == nil {
+		t.Fatal("expected enabled gitops mode to require Enclii repo GitHub config")
 	}
 	if result.Mode != argocdreg.RegistrationModeGitOps {
 		t.Fatalf("mode = %q, want gitops", result.Mode)

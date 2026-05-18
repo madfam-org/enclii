@@ -2,6 +2,7 @@ import {
   apiServiceToCompactService,
   buildCompactProject,
   computeAggregateStatus,
+  projectCardAggregateToCompactProject,
 } from "./project-card-transform";
 
 const baseProject = {
@@ -167,6 +168,74 @@ describe("buildCompactProject", () => {
         },
       ],
       servicesResolved: true,
+    });
+
+    expect(compact.framework).toBeUndefined();
+  });
+});
+
+describe("projectCardAggregateToCompactProject", () => {
+  it("maps the backend aggregate contract without UI-side product inference", () => {
+    const compact = projectCardAggregateToCompactProject({
+      id: "project-1",
+      name: "Orchard",
+      slug: "orchard",
+      description: "Backend projected card",
+      updated_at: "2026-05-18T20:00:00Z",
+      aggregate_status: "healthy",
+      service_count: 1,
+      healthy_count: 1,
+      framework: "nextjs",
+      git_repo: "https://github.com/example/orchard",
+      domain: "orchard.example.com",
+      deploy_resolution: "deployed",
+      last_deployment: {
+        timestamp: "2026-05-18T19:30:00Z",
+        status: "success",
+        branch: "main",
+        commit_message: "feat: aggregate cards",
+      },
+      services: [
+        {
+          id: "svc-1",
+          name: "api",
+          status: "running",
+          health: "healthy",
+          replicas: "2/2",
+          environment: "production",
+          current_image_uri: "ghcr.io/example/orchard/api@sha256:abc123",
+          rollout_state: "ok",
+        },
+      ],
+    });
+
+    expect(compact.framework).toBe("nextjs");
+    expect(compact.gitRepo).toBe("https://github.com/example/orchard");
+    expect(compact.aggregateStatus).toBe("healthy");
+    expect(compact.deployResolution).toBe("deployed");
+    expect(compact.lastDeployment?.commitMessage).toBe("feat: aggregate cards");
+    expect(compact.services?.[0]?.replicas).toBe("2/2");
+  });
+
+  it("does not infer a framework when the backend omits one", () => {
+    const compact = projectCardAggregateToCompactProject({
+      id: "project-1",
+      name: "Plain Product",
+      slug: "plain-product",
+      updated_at: "2026-05-18T20:00:00Z",
+      aggregate_status: "healthy",
+      service_count: 1,
+      healthy_count: 1,
+      git_repo: "https://github.com/example/plain-product",
+      deploy_resolution: "no-deploys",
+      services: [
+        {
+          id: "svc-1",
+          name: "plain-product-api",
+          status: "running",
+          health: "healthy",
+        },
+      ],
     });
 
     expect(compact.framework).toBeUndefined();

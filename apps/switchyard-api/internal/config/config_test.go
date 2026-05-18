@@ -50,8 +50,11 @@ func TestLoad_ArgocdRegistrationMode_Default(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.ArgocdRegistrationMode != "gitops" {
-		t.Fatalf("expected default gitops mode, got %q", cfg.ArgocdRegistrationMode)
+	if cfg.ArgocdRegistrationMode != "runtime" {
+		t.Fatalf("expected default runtime mode, got %q", cfg.ArgocdRegistrationMode)
+	}
+	if cfg.AllowLegacyGitOpsRegistration {
+		t.Fatal("expected legacy gitops registration to be disabled by default")
 	}
 	if cfg.ArgocdNamespace != "argocd" {
 		t.Fatalf("expected default argocd namespace, got %q", cfg.ArgocdNamespace)
@@ -62,6 +65,7 @@ func TestLoad_ArgocdRegistrationMode_Override(t *testing.T) {
 	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
 	t.Setenv("ENCLII_ARGOCD_REGISTRATION_MODE", "runtime")
 	t.Setenv("ENCLII_ARGOCD_NAMESPACE", "custom-argocd")
+	t.Setenv("ENCLII_ALLOW_LEGACY_GITOPS_REGISTRATION", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -69,6 +73,9 @@ func TestLoad_ArgocdRegistrationMode_Override(t *testing.T) {
 	}
 	if cfg.ArgocdRegistrationMode != "runtime" {
 		t.Fatalf("expected runtime mode, got %q", cfg.ArgocdRegistrationMode)
+	}
+	if !cfg.AllowLegacyGitOpsRegistration {
+		t.Fatal("expected legacy gitops registration override to load")
 	}
 	if cfg.ArgocdNamespace != "custom-argocd" {
 		t.Fatalf("expected custom namespace, got %q", cfg.ArgocdNamespace)
@@ -82,8 +89,11 @@ func TestLoad_StatusProjectionMode_Default(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.StatusProjectionMode != "gitops" {
-		t.Fatalf("expected default gitops mode, got %q", cfg.StatusProjectionMode)
+	if cfg.StatusProjectionMode != "runtime" {
+		t.Fatalf("expected default runtime mode, got %q", cfg.StatusProjectionMode)
+	}
+	if cfg.AllowLegacyGitOpsStatusProjection {
+		t.Fatal("expected legacy gitops status projection to be disabled by default")
 	}
 	if cfg.StatusConfigNamespace != "enclii" {
 		t.Fatalf("expected default status namespace, got %q", cfg.StatusConfigNamespace)
@@ -94,6 +104,7 @@ func TestLoad_StatusProjectionMode_Override(t *testing.T) {
 	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
 	t.Setenv("ENCLII_STATUS_PROJECTION_MODE", "runtime")
 	t.Setenv("ENCLII_STATUS_CONFIG_NAMESPACE", "status")
+	t.Setenv("ENCLII_ALLOW_LEGACY_GITOPS_STATUS_PROJECTION", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -101,6 +112,9 @@ func TestLoad_StatusProjectionMode_Override(t *testing.T) {
 	}
 	if cfg.StatusProjectionMode != "runtime" {
 		t.Fatalf("expected runtime mode, got %q", cfg.StatusProjectionMode)
+	}
+	if !cfg.AllowLegacyGitOpsStatusProjection {
+		t.Fatal("expected legacy gitops status projection override to load")
 	}
 	if cfg.StatusConfigNamespace != "status" {
 		t.Fatalf("expected custom status namespace, got %q", cfg.StatusConfigNamespace)

@@ -218,6 +218,10 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported status projection mode %q (expected %q or %q)", mode, statusProjectionModeGitOps, statusProjectionModeRuntime)})
 		return
 	}
+	if mode == statusProjectionModeGitOps && (h == nil || h.config == nil || !h.config.AllowLegacyGitOpsStatusProjection) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "legacy gitops status projection is disabled; set ENCLII_ALLOW_LEGACY_GITOPS_STATUS_PROJECTION=true only for documented break-glass migration work"})
+		return
+	}
 	if mode == statusProjectionModeGitOps && (h == nil || h.config == nil || h.config.GitHubToken == "" || h.config.EncliiRepoOwner == "" || h.config.EncliiRepoName == "") {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "GitHub token or enclii repo not configured"})
 		return

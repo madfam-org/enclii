@@ -99,6 +99,10 @@ spec:
           kind: ConfigMap
           jsonPointers:
             - /metadata/labels/app.kubernetes.io~1instance
+          jqPathExpressions:
+            # The status service catalog is runtime-owned by switchyard-api so
+            # zero-touch onboarding does not require Enclii repo edits.
+            - 'select(.metadata.name == "status-config-enclii" or .metadata.name == "status-config-madfam") | .data["services-config"]'
         - group: policy
           kind: PodDisruptionBudget
           jsonPointers:

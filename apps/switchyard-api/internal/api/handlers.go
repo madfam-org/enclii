@@ -439,6 +439,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// Projects
 			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), middleware.RequireTierForProject(h.repos), h.CreateProject)
 			protected.GET("/projects", h.ListProjects)
+			protected.GET("/projects/cards", h.ListProjectCards)
 			protected.GET("/project-processes/summary", h.GetProjectProcessSummaries)
 			protected.GET("/project-processes/stream", h.StreamProjectProcessSummaries)
 			protected.GET("/projects/:slug", h.GetProject)

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { usePolling } from "@/hooks/use-polling";
 import { useProjectProcessFeed } from "@/hooks/use-project-process-feed";
 import { POLLING_SLOW } from "@/lib/constants";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiPost } from "@/lib/api";
 import { useScope } from "@/contexts/ScopeContext";
 import { useTier } from "@/hooks/use-tier";
 import { PricingModal } from "@/components/modals/PricingModal";
@@ -29,15 +29,7 @@ import {
   processLiveState,
   serviceSummariesById,
 } from "@/lib/project-process-feed";
-import {
-  buildCompactProject,
-  type ApiProjectForCards,
-  type ApiServiceForCards,
-} from "@/lib/project-card-transform";
-
-interface ApiProject extends ApiProjectForCards {
-  created_at: string;
-}
+import { fetchProjectCards } from "@/lib/project-card-api";
 
 const INITIAL_VISIBLE = 10;
 
@@ -70,32 +62,10 @@ export default function Dashboard() {
     try {
       setError(null);
       setRefreshing(true);
-      const data = await apiGet<{ projects: ApiProject[] }>("/v1/projects");
-      const apiProjects = data.projects || [];
-
-      // Fetch services per project in parallel
-      const serviceResults = await Promise.allSettled(
-        apiProjects.map((p) =>
-          apiGet<{ services: ApiServiceForCards[] }>(
-            `/v1/projects/${p.slug}/services`,
-          ),
-        ),
-      );
-
-      const compactProjects: CompactProject[] = apiProjects.map((project, i) => {
-        const result = serviceResults[i];
-        const apiServices =
-          result.status === "fulfilled" ? result.value.services || [] : [];
-
-        return buildCompactProject({
-          project,
-          services: apiServices,
-          servicesResolved: result.status === "fulfilled",
-        });
-      });
+      const { projects: compactProjects, generatedAt } = await fetchProjectCards();
 
       setProjects(compactProjects);
-      setLastSyncedAt(new Date().toISOString());
+      setLastSyncedAt(generatedAt || new Date().toISOString());
       setLoading(false);
 
       // Fan out one batch call to /v1/integrations/github/repos/metadata for

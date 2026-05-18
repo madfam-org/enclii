@@ -20,7 +20,7 @@ const (
 func normalizeStatusProjectionMode(mode string) string {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "" {
-		return statusProjectionModeGitOps
+		return statusProjectionModeRuntime
 	}
 	return mode
 }
@@ -35,7 +35,7 @@ func normalizeStatusConfigNamespace(namespace string) string {
 
 func (h *Handler) statusProjectionMode() string {
 	if h == nil || h.config == nil {
-		return statusProjectionModeGitOps
+		return statusProjectionModeRuntime
 	}
 	return normalizeStatusProjectionMode(h.config.StatusProjectionMode)
 }

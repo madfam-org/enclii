@@ -125,7 +125,7 @@ func TestReconcileApplicationNilClient(t *testing.T) {
 
 func TestNormalizeRegistrationMode(t *testing.T) {
 	tests := map[string]string{
-		"":           RegistrationModeGitOps,
+		"":           RegistrationModeRuntime,
 		"gitops":     RegistrationModeGitOps,
 		"legacy-git": RegistrationModeGitOps,
 		"runtime":    RegistrationModeRuntime,

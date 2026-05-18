@@ -9,7 +9,7 @@ export interface ApiProjectForCards {
   id: string;
   name: string;
   slug: string;
-  description: string;
+  description?: string;
   updated_at: string;
 }
 
@@ -30,6 +30,41 @@ export interface ApiServiceForCards {
   current_image_uri?: string;
   rollout_state?: string;
   rollout_blocked_reason?: string;
+}
+
+export interface ApiProjectCardService {
+  id: string;
+  name: string;
+  status: string;
+  health: string;
+  replicas?: string;
+  environment?: string;
+  domain?: string;
+  current_image_uri?: string;
+  rollout_state?: string;
+  rollout_blocked_reason?: string;
+}
+
+export interface ApiProjectCardAggregate {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  updated_at: string;
+  aggregate_status: CompactProject["aggregateStatus"];
+  service_count: number;
+  healthy_count: number;
+  framework?: string;
+  git_repo?: string;
+  domain?: string;
+  deploy_resolution: CompactProject["deployResolution"];
+  last_deployment?: {
+    timestamp: string;
+    status: "success" | "failed" | "pending" | "building";
+    branch: string;
+    commit_message?: string;
+  };
+  services: ApiProjectCardService[];
 }
 
 const SERVICE_STATUSES = [
@@ -155,5 +190,44 @@ export function buildCompactProject({
     services: compactServices,
     aggregateStatus,
     updatedAt: project.updated_at,
+  };
+}
+
+export function projectCardAggregateToCompactProject(
+  card: ApiProjectCardAggregate,
+): CompactProject {
+  return {
+    id: card.id,
+    name: card.name,
+    slug: card.slug,
+    description: card.description,
+    framework: card.framework || undefined,
+    gitRepo: card.git_repo || undefined,
+    domain: card.domain || undefined,
+    lastDeployment: card.last_deployment
+      ? {
+          timestamp: card.last_deployment.timestamp,
+          status: card.last_deployment.status,
+          branch: card.last_deployment.branch,
+          commitMessage: card.last_deployment.commit_message || undefined,
+        }
+      : undefined,
+    deployResolution: card.deploy_resolution,
+    serviceCount: card.service_count,
+    healthyCount: card.healthy_count,
+    services: card.services.map((service) => ({
+      id: service.id,
+      name: service.name,
+      status: normalizeServiceStatus(service.status),
+      health: normalizeServiceHealth(service.health),
+      replicas: service.replicas || undefined,
+      environment: service.environment || undefined,
+      currentImageUri: service.current_image_uri || undefined,
+      domain: service.domain || undefined,
+      rolloutState: asRolloutState(service.rollout_state),
+      rolloutBlockedReason: service.rollout_blocked_reason || undefined,
+    })),
+    aggregateStatus: card.aggregate_status,
+    updatedAt: card.updated_at,
   };
 }

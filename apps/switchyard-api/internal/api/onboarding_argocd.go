@@ -35,6 +35,9 @@ func (h *Handler) registerArgoCDApplication(ctx context.Context, req argoCDRegis
 
 	switch mode {
 	case argocdreg.RegistrationModeGitOps:
+		if h == nil || h.config == nil || !h.config.AllowLegacyGitOpsRegistration {
+			return argoCDRegistrationResult{Mode: mode, AppName: req.AppName}, fmt.Errorf("legacy gitops argocd registration is disabled; set ENCLII_ALLOW_LEGACY_GITOPS_REGISTRATION=true only for documented break-glass migration work")
+		}
 		sha, err := h.commitLegacyArgoCDProjectConfig(ctx, req)
 		action := "legacy_config_committed"
 		if err != nil {

@@ -298,6 +298,7 @@ func RequireDeveloper() gin.HandlerFunc {
 var EndpointPermissions = map[string]map[string]Permission{
 	"GET": {
 		"/v1/projects":                     PermissionProjectRead,
+		"/v1/projects/cards":               PermissionProjectRead,
 		"/v1/projects/:slug":               PermissionProjectRead,
 		"/v1/projects/:slug/services":      PermissionServiceRead,
 		"/v1/services/:id":                 PermissionServiceRead,

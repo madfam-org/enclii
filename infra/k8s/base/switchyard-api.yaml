@@ -81,11 +81,15 @@ spec:
             - name: ENCLII_RATE_LIMIT_REQUESTS_PER_MINUTE
               value: "1000"
             - name: ENCLII_ARGOCD_REGISTRATION_MODE
-              value: "gitops"
+              value: "runtime"
+            - name: ENCLII_ALLOW_LEGACY_GITOPS_REGISTRATION
+              value: "false"
             - name: ENCLII_ARGOCD_NAMESPACE
               value: "argocd"
             - name: ENCLII_STATUS_PROJECTION_MODE
-              value: "gitops"
+              value: "runtime"
+            - name: ENCLII_ALLOW_LEGACY_GITOPS_STATUS_PROJECTION
+              value: "false"
             - name: ENCLII_STATUS_CONFIG_NAMESPACE
               value: "enclii"
           ports:

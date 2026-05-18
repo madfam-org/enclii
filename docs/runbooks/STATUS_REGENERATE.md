@@ -1,6 +1,6 @@
 # Status Configmap Regeneration Runbook
 
-_Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot; status projection supports GitOps commits or opt-in runtime ConfigMap updates._
+_Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot; runtime ConfigMap projection is the default zero-touch path._
 
 ## Why this exists
 
@@ -25,11 +25,14 @@ After a successful regenerate, each ConfigMap is byte-identical to its
 function-of-source equivalent. Projection mode is controlled by
 `ENCLII_STATUS_PROJECTION_MODE`:
 
-- `gitops` (default): commit regenerated files to this repo; ArgoCD applies
-  the commit and Stakater Reloader restarts the status pods.
-- `runtime`: update `status-config-enclii` and `status-config-madfam`
+- `runtime` (default): update `status-config-enclii` and `status-config-madfam`
   directly in Kubernetes from DB/core state; Stakater Reloader restarts the
-  status pods without requiring an Enclii repo commit.
+  status pods without requiring an Enclii repo commit. ArgoCD ignores only the
+  runtime-owned `services-config` key for these two ConfigMaps so self-heal does
+  not revert the projected catalog.
+- `gitops` (legacy break-glass): commit regenerated files to this repo; ArgoCD
+  applies the commit and Stakater Reloader restarts the status pods. This mode
+  requires `ENCLII_ALLOW_LEGACY_GITOPS_STATUS_PROJECTION=true`.
 
 ## When to run
 
@@ -48,7 +51,8 @@ operator action.
 
 | Requirement | Where to check |
 |---|---|
-| `ENCLII_STATUS_PROJECTION_MODE` set | `gitops` by default; use `runtime` for zero-touch ConfigMap projection |
+| `ENCLII_STATUS_PROJECTION_MODE` set | `runtime` by default; `gitops` is legacy break-glass only |
+| `ENCLII_ALLOW_LEGACY_GITOPS_STATUS_PROJECTION` | required only when deliberately using legacy `gitops` mode |
 | `GITHUB_TOKEN` set in switchyard-api env | required only in `gitops` mode |
 | `EncliiRepoOwner` configured | required only in `gitops` mode; typically `madfam-org` |
 | `EncliiRepoName` configured | required only in `gitops` mode; typically `enclii` |
@@ -165,8 +169,8 @@ checks.
    ```
 4. **Status page reflects new entries.**
    ```bash
-   curl -sS https://status.madfam.io/api/services | jq '.services | length'
-   curl -sS https://status.madfam.io/api/services | jq '.services[] | select(.name == "<your new service>")'
+   curl -sS https://status.madfam.io/api/status | jq '.services | length'
+   curl -sS https://status.madfam.io/api/status | jq '.services[] | select(.service == "<your new service>")'
    ```
 
 ## Rollback
