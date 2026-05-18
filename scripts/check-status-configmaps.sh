@@ -62,21 +62,26 @@ done
 extract_services_json() {
   local file="$1"
   awk '
-    BEGIN { in_block = 0; indent = 0 }
-    /^  services-config:[[:space:]]*\|/ { in_block = 1; next }
+    BEGIN { in_block = 0; key_indent = -1; content_indent = 0 }
+    /^[[:space:]]*services-config:[[:space:]]*\|/ {
+      match($0, /^[[:space:]]*/)
+      key_indent = RLENGTH
+      in_block = 1
+      next
+    }
     in_block {
       # First content line establishes the block-scalar indent level.
-      if (indent == 0) {
+      if (content_indent == 0) {
         match($0, /^[[:space:]]*/)
-        indent = RLENGTH
-        if (indent == 0) { in_block = 0; next }
+        content_indent = RLENGTH
+        if (content_indent <= key_indent) { in_block = 0; next }
       }
       # Block ends when we hit a line less-indented than the block content.
-      if ($0 !~ /^[[:space:]]*$/ && match($0, /^[[:space:]]*/) && RLENGTH < indent) {
+      if ($0 !~ /^[[:space:]]*$/ && match($0, /^[[:space:]]*/) && RLENGTH < content_indent) {
         in_block = 0; next
       }
       # Strip the block-scalar indent prefix.
-      print substr($0, indent + 1)
+      print substr($0, content_indent + 1)
     }
   ' "$file"
 }
