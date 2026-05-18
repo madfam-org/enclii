@@ -134,8 +134,12 @@ def find_pod_env_value(
         if status.get("phase") != "Running":
             continue
         pod_name = pod.get("metadata", {}).get("name", "")
+        if "-admin-" in pod_name:
+            continue
         for container in pod.get("spec", {}).get("containers", []):
             container_name = container.get("name", "")
+            if container_name == "admin":
+                continue
             if dry_run:
                 result = run_capture(
                     [
@@ -267,13 +271,37 @@ def write_vault_path(
     vault_path: str,
     values: dict[str, str],
     *,
-    token: str,
+    token: str | None,
+    token_file: str | None,
     namespace: str,
     pod: str,
 ) -> None:
-    payload = json.dumps(values, ensure_ascii=False)
-    result = run_capture(
-        [
+    existing = read_vault_path(
+        vault_path,
+        token=token,
+        token_file=token_file,
+        namespace=namespace,
+        pod=pod,
+    )
+    payload = json.dumps({**existing, **values}, ensure_ascii=False)
+    if token_file:
+        command = [
+            "kubectl",
+            "exec",
+            "-i",
+            "-n",
+            namespace,
+            pod,
+            "--",
+            "sh",
+            "-c",
+            'VAULT_TOKEN="$(cat "$1")" vault kv put -format=json "$2" -',
+            "sh",
+            token_file,
+            vault_path,
+        ]
+    else:
+        command = [
             "kubectl",
             "exec",
             "-i",
@@ -289,13 +317,69 @@ def write_vault_path(
             "-format=json",
             vault_path,
             "-",
-        ],
+        ]
+
+    result = run_capture(
+        command,
         input_text=payload,
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip().splitlines()
         message = detail[0] if detail else "unknown Vault write failure"
         raise RuntimeError(f"{vault_path}: {message}")
+
+
+def read_vault_path(
+    vault_path: str,
+    *,
+    token: str | None,
+    token_file: str | None,
+    namespace: str,
+    pod: str,
+) -> dict[str, str]:
+    if token_file:
+        command = [
+            "kubectl",
+            "exec",
+            "-n",
+            namespace,
+            pod,
+            "--",
+            "sh",
+            "-c",
+            'VAULT_TOKEN="$(cat "$1")" vault kv get -format=json "$2"',
+            "sh",
+            token_file,
+            vault_path,
+        ]
+    else:
+        command = [
+            "kubectl",
+            "exec",
+            "-n",
+            namespace,
+            pod,
+            "--",
+            "env",
+            f"VAULT_TOKEN={token}",
+            "vault",
+            "kv",
+            "get",
+            "-format=json",
+            vault_path,
+        ]
+
+    result = run_capture(command)
+    if result.returncode != 0:
+        detail = result.stderr or result.stdout
+        if "No value found" in detail:
+            return {}
+        lines = detail.strip().splitlines()
+        message = lines[0] if lines else "unknown Vault read failure"
+        raise RuntimeError(f"{vault_path}: {message}")
+
+    data = json.loads(result.stdout)
+    return dict(data.get("data", {}).get("data", {}) or {})
 
 
 def main() -> int:
@@ -305,6 +389,14 @@ def main() -> int:
     parser.add_argument("--store-name", default="vault-store")
     parser.add_argument("--vault-namespace", default=os.environ.get("VAULT_NS", "vault"))
     parser.add_argument("--vault-pod", default=os.environ.get("VAULT_POD", "vault-0"))
+    parser.add_argument(
+        "--vault-token-file",
+        default=os.environ.get("VAULT_TOKEN_FILE"),
+        help=(
+            "Path inside the Vault pod containing the Vault token. This avoids "
+            "placing the token in kubectl process arguments."
+        ),
+    )
     parser.add_argument(
         "--fallback-pod-env",
         action="store_true",
@@ -352,8 +444,11 @@ def main() -> int:
         return 0 if values_by_path else 2
 
     token = os.environ.get("VAULT_TOKEN", "")
-    if not token:
-        print("VAULT_TOKEN is required unless --dry-run is set", file=sys.stderr)
+    if not token and not args.vault_token_file:
+        print(
+            "VAULT_TOKEN or --vault-token-file is required unless --dry-run is set",
+            file=sys.stderr,
+        )
         return 2
 
     failures: list[str] = []
@@ -362,7 +457,8 @@ def main() -> int:
             write_vault_path(
                 path,
                 values,
-                token=token,
+                token=token or None,
+                token_file=args.vault_token_file,
                 namespace=args.vault_namespace,
                 pod=args.vault_pod,
             )

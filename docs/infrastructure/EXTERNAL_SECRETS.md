@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** March 2026
+**Last Updated:** May 2026
 **Status:** Operational (Vault-backed)
 **Active Providers:** `vault-store` (HashiCorp Vault KV v2) + `kubernetes-store` (legacy, cross-namespace)
 
@@ -30,7 +30,7 @@ For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](
 │    UI: https://vault.madfam.io          │
 └─────────────────────────────────────────┘
                     │
-          K8s ServiceAccount auth
+          Vault token bridge
                     │
                     ▼
 ┌─────────────────────────────────────────┐
@@ -66,15 +66,18 @@ spec:
       path: "secret"
       version: "v2"
       auth:
-        kubernetes:
-          mountPath: "kubernetes"
-          role: "eso-reader"
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets
-            audiences:
-              - vault
+        tokenSecretRef:
+          name: vault-eso-token
+          namespace: external-secrets
+          key: token
 ```
+
+> [!NOTE]
+> `vault-store` is temporarily using a scoped `eso-reader` token in
+> `external-secrets/vault-eso-token` after the 2026-05-18 Vault rebootstrap.
+> Vault Kubernetes auth remains the desired steady state, but the Vault pod
+> currently cannot reach the Kubernetes API for TokenReview. Repair that
+> reachability before moving this store back to service-account auth.
 
 ### ClusterSecretStore (Legacy kubernetes-store)
 
@@ -114,7 +117,7 @@ spec:
 | `janua-secrets` | janua | `secret/janua` | 9 |
 | `data-secrets` | data | `secret/data` | 8 |
 | `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
-| `dhanam-secrets` | dhanam | `secret/dhanam` | 17 |
+| `dhanam-secrets` | dhanam | `secret/dhanam` | 33 |
 | `autoswarm-secrets` | autoswarm | `secret/autoswarm` | 3 |
 | `tezca-secrets` | tezca | `secret/tezca` | 11 |
 | `yantra4d-secrets` | yantra4d | `secret/yantra4d` | 3 |
