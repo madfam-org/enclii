@@ -19,7 +19,8 @@ spec:
     server: https://kubernetes.default.svc
   syncPolicy:
     automated:
-      prune: false      # Never auto-delete policies removed from git
+      # Default prune=false; omit the field so API normalization does not
+      # keep the app-of-apps permanently OutOfSync.
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
