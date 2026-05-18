@@ -37,6 +37,28 @@ Services in scope:
   stuck-runner watchdog for ARC v0.14 `.status.workflowRunId`, pod phase, and
   `pods/log` inspection.
 
+### Distance to 100% MADFAM-slice health
+
+- **Service-level health:** 3/5 services are currently `Synced/Healthy` (**60%**).
+- **Blocking items:** 2 (`forgesight-services`, `phynd-crm-staging`).
+- **Deck and /projects truth status:** both `/` and `/projects` now use the same
+  rollout-aware project-card transform and now reflect rollout blocking states
+  (for example `CreateContainerConfigError`, `ImagePullBackOff`, and `CrashLoopBackOff`)
+  instead of masking them behind stale `healthy` rows.
+- **Readiness for full green:** not yet true until both blockers are fixed and
+  verified through ArgoCD + ESO reconciliation.
+
+### What “fully healthy and truthful” means for `/projects`
+
+`/projects` is not complete until all five target ArgoCD applications are
+`Synced/Healthy` and their cards show:
+
+1. No `degraded`, `blocked`, `progressing`, or `unknown` aggregate status.
+2. A valid `latest_deployment_id` and rollout metadata for services that are in
+   the rollout path.
+3. No break-glass-only dependency (secret material must come from Vault-backed
+   ESO sources for both ForgeSight and PhyndCRM staging).
+
 ## Remediation Plan
 
 1. Backfill ForgeSight Vault source of truth.
@@ -77,6 +99,13 @@ Services in scope:
    - Re-run failed workflows after billing/runners are healthy.
    - Keep self-hosted deploy workflows on the MADFAM runner pool.
 
+5. Lock in UI/UX truthfulness checks.
+   - Keep the shared rollout transform unchanged and validated by unit tests.
+   - Require a periodic regression check after each prod rollout:
+     - `https://app.enclii.dev` and `https://app.enclii.dev/projects` show identical aggregate states for MADFAM cards.
+     - A project marked unhealthy must show an explicit rollout state reason.
+     - A service blocked at pod level must not appear healthy in either screen.
+
 ## Verification Commands
 
 ```bash
@@ -86,15 +115,19 @@ kubectl -n forgesight get externalsecret forgesight-secrets
 kubectl -n forgesight logs deploy/forgesight-discovery --since=5m --tail=120
 kubectl -n phynd-crm-staging get secret phynd-crm-staging-secrets
 kubectl -n phynd-crm-staging get pods
+kubectl -n argocd get application forgesight-services phynd-crm-staging -o wide
+kubectl -n enclii get deployment switchyard-api -o wide
 ```
 
 ## Bitwarden Safe Note Template
 
 Populate one entry per credential set. Do not store placeholder values as if
-they were active credentials.
+they were active credentials. Store only environment-specific values.
 
 ```text
-Credential:
+Safe Note: MADFAM Vault Reboot Recovery
+
+Credential #1: Vault root/operator token
 Vault address:
 Vault path / provider account:
 Token type / purpose:
@@ -102,28 +135,150 @@ Policy or scope name:
 TTL / expiry:
 Created:
 Last rotated:
-Rotation owner:
-Revocation notes:
+Rotation / revocation notes:
 Unseal / recovery key custody notes:
-Dependent Kubernetes Secret / ExternalSecret:
+Verification command:
+
+Credential #2: Vault Enclii/Ops tokens (secret-refresh, if any)
+Vault address:
+Vault path / provider account:
+Token type / purpose:
+Policy or scope name:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #3: Cloudflare API token
+Vault address:
+Vault path / provider account:
+Token type / purpose:
+Policy or scope name:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #4: Porkbun API credentials
+Vault address:
+Vault path / provider account:
+Credential type / purpose:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #5: GitHub deploy/admin tokens
+Vault address:
+Vault path / provider account:
+Token type / purpose:
+Policy or scope name:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #6: Database admin credentials
+Vault address:
+Vault path / provider account:
+Environment:
+Credential type / purpose:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #7: Redis admin credentials
+Vault address:
+Vault path / provider account:
+Environment:
+Credential type / purpose:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #8: Janua/SSO client secrets
+Vault address:
+Vault path / provider account:
+Tenant / client id:
+Token type / purpose:
+Policy or scope name:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #9: SMTP/provider keys
+Vault address:
+Vault path / provider account:
+Provider:
+Credential type / purpose:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #10: Payment/billing provider keys
+Vault address:
+Vault path / provider account:
+Provider:
+Credential type / purpose:
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #11: ForgeSight recovery values
+Vault address:
+Vault path:
+Keys:
+- API_KEY_SALT
+- JANUA_JWT_SECRET
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
+Verification command:
+
+Credential #12: PhyndCRM staging values
+Vault address:
+Vault path:
+Namespace:
+Depends on:
+- DB
+- Redis
+- Janua/OIDC
+- webhook
+- provider API
+- SMTP
+- payment/billing
+TTL / expiry:
+Created:
+Last rotated:
+Rotation / revocation notes:
+Unseal / recovery key custody notes:
 Verification command:
 ```
-
-Credential sets to record:
-
-- Vault root/operator token and any scoped Enclii secret-refresh tokens.
-- Cloudflare API token.
-- Porkbun API credentials.
-- GitHub deploy/admin tokens.
-- Database admin credentials.
-- Redis admin credentials.
-- Janua/SSO client secrets.
-- SMTP/provider keys.
-- Payment/billing provider keys.
-- ForgeSight break-glass replacement values for `API_KEY_SALT` and
-  `JANUA_JWT_SECRET`, after they are written to Vault.
-- PhyndCRM staging-only DB, Redis, Janua/OIDC, webhook, provider API, SMTP, and
-  payment/billing values.
 
 ## Completion Criteria
 
