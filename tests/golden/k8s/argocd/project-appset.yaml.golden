@@ -114,6 +114,15 @@ spec:
             - /stringData
         - group: external-secrets.io
           kind: ExternalSecret
+          jsonPointers:
+            # Runtime ESO refreshes are operator actions, not desired-state
+            # drift in client repositories.
+            - /metadata/annotations/force-sync
+            - /metadata/annotations/enclii.dev~1last-ops-idempotency-key
+            - /metadata/annotations/enclii.dev~1last-ops-operation
+            - /metadata/annotations/enclii.dev~1last-ops-reason
+            - /metadata/annotations/enclii.dev~1last-ops-requested
+            - /metadata/annotations/enclii.dev~1refresh-requested-at
           jqPathExpressions:
             - .spec.data[]?.remoteRef.conversionStrategy
             - .spec.data[]?.remoteRef.decodingStrategy

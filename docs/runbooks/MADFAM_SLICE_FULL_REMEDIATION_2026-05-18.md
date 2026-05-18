@@ -52,6 +52,10 @@ Services in scope:
   and ArgoCD ignores only the runtime-owned `services-config` key on
   `status-config-enclii` and `status-config-madfam`, preventing self-heal from
   undoing zero-touch service catalog projection.
+- **Runtime ESO refresh ownership:** ArgoCD also ignores Enclii's operator
+  refresh annotations on project `ExternalSecret` resources, so approved
+  runtime secret refreshes do not leave otherwise healthy client apps
+  permanently `OutOfSync`.
 - **Readiness for full green:** not yet true until both blockers are fixed and
   verified through ArgoCD + ESO reconciliation.
 
