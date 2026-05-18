@@ -18,33 +18,32 @@ Services in scope:
 - `https://app.enclii.dev/projects` returns HTTP 200.
 - `digifab-quoting-services`, `rondelio-services`, and `ceq-services` are
   `Synced/Healthy`.
-- `forgesight-services` is `Synced/Degraded` while a discovery worker image
-  containing the enum-cast fix deploys. Its runtime secret is temporarily
-  working from a break-glass Kubernetes Secret patch, but
-  `ExternalSecret/forgesight-secrets` remains `Ready=False` until Vault contains
-  `secret/forgesight.api_key_salt` and `secret/forgesight.janua_jwt_secret`.
+- `forgesight-services` is `Synced/Degraded`. Runtime pods are up, and fixes
+  have been pushed for discovery JSONB serialization, production
+  `vendor_type` enum mapping, and Docker Hub pull-rate avoidance via the public
+  ECR Python base image mirror. The latest deploy is building from commit
+  `a4fe8bf`. Its runtime secret is temporarily working from a break-glass
+  Kubernetes Secret patch, but `ExternalSecret/forgesight-secrets` remains
+  `Ready=False` until Vault contains `secret/forgesight.api_key_salt` and
+  `secret/forgesight.janua_jwt_secret`.
 - `phynd-crm-staging` is `Synced/Degraded` because
   `phynd-crm-staging-secrets` is not installed. Pods are blocked by
   `CreateContainerConfigError`. Do not copy production values into staging.
-- The ARC blue runner listener must not carry HTTP probes. The GitHub
-  scale-set listener does not expose `/healthz`; probing it keeps the listener
-  NotReady/recycling while deploy jobs remain assigned.
-- ARC listener `Role` and `RoleBinding` resources are controller-owned runtime
-  state. They must carry `argocd.argoproj.io/compare-options: IgnoreExtraneous`
-  so Argo CD does not prune them after each listener hash rotation.
-- The stuck-runner watchdog must read `.status.workflowRunId`, pod phase, and
-  runner logs. Otherwise cancelled or deregistered EphemeralRunners can pin all
-  ARC capacity and leave deploy jobs queued even while the listener is healthy.
+- ARC blue is `Synced/Healthy` after removing unsupported listener HTTP probes,
+  preserving controller-generated listener RBAC with
+  `argocd.argoproj.io/compare-options: IgnoreExtraneous`, and updating the
+  stuck-runner watchdog for ARC v0.14 `.status.workflowRunId`, pod phase, and
+  `pods/log` inspection.
 
 ## Remediation Plan
 
 1. Finish ForgeSight deployment.
-   - Confirm the pushed discovery fix is built and signed by the
-     `Deploy Backend Services` workflow.
+   - Confirm the pushed ForgeSight fixes are built and signed by the
+     `Deploy API` and `Deploy Backend Services` workflows.
    - Fast-forward the local worktree to the resulting digest commit.
    - Wait for Argo CD to reconcile `forgesight-services`.
-   - Confirm discovery logs no longer report `inconsistent types deduced for
-     parameter $2`.
+   - Confirm discovery logs no longer report JSONB serialization errors,
+     `vendor_type` enum errors, or SQL parameter type inference errors.
 
 2. Backfill ForgeSight Vault source of truth.
    - Write real production values for `secret/forgesight.api_key_salt` and
