@@ -303,7 +303,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		"k8s_namespace", "health", "status",
 		"desired_replicas", "ready_replicas", "last_health_check",
 		"last_deployment", "last_commit_message", "last_commit_branch",
-		"current_image_uri", "current_release_id", "current_release_created_at", "recent_releases",
+		"current_image_uri", "current_release_id", "current_release_created_at", "framework", "recent_releases",
 		"created_at", "updated_at", "jobs", "type", "region",
 	}
 
@@ -324,7 +324,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 				"enclii", "healthy", "running",
 				2, 2, now,
 				now, "feat: add feature", "main",
-				"ghcr.io/madfam-org/svc-1@sha256:abc123", releaseID.String(), now, recentJSON,
+				"ghcr.io/madfam-org/svc-1@sha256:abc123", releaseID.String(), now, "nextjs", recentJSON,
 				now, now, []byte(`[]`), "web", "default")
 
 		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
@@ -340,6 +340,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		assert.Equal(t, 2, results[0].DesiredReplicas)
 		assert.Equal(t, 2, results[0].ReadyReplicas)
 		assert.Equal(t, "feat: add feature", results[0].LastCommitMsg)
+		assert.Equal(t, "nextjs", results[0].Framework)
 		assert.NotNil(t, results[0].K8sNamespace)
 		assert.Equal(t, "enclii", *results[0].K8sNamespace)
 		// New release-tracking fields surface to the dashboard so operators can
@@ -386,7 +387,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 				nil, "unknown", "unknown",
 				0, 0, nil,
 				nil, nil, nil,
-				nil, nil, nil, []byte(`[]`),
+				nil, nil, nil, nil, []byte(`[]`),
 				now, now, []byte(`[]`), "web", "default")
 
 		mock.ExpectQuery(`SELECT s\.id, s\.project_id, s\.name, s\.git_repo`).
@@ -401,6 +402,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		assert.Nil(t, results[0].LastDeployment)
 		assert.Empty(t, results[0].LastCommitMsg)
 		assert.Empty(t, results[0].CurrentImageURI)
+		assert.Empty(t, results[0].Framework)
 		assert.Nil(t, results[0].CurrentReleaseID)
 		assert.Nil(t, results[0].CurrentReleaseCreatedAt)
 		assert.Empty(t, results[0].RecentReleases)

@@ -90,6 +90,7 @@ type Service struct {
 	LastDeployment       *time.Time `json:"last_deployment,omitempty" db:"-"`
 	LastCommitMsg        string     `json:"last_commit_message,omitempty" db:"-"`
 	LastCommitBranch     string     `json:"last_commit_branch,omitempty" db:"-"`
+	Framework            string     `json:"framework,omitempty" db:"-"` // Latest backend-detected framework slug for project cards.
 	// Current release tracking (populated by ListByProject from the latest deployment).
 	// Lets the dashboard show the running image digest + recent release history without
 	// a per-service round trip. CurrentImageURI is the digest-pinned image actually running.

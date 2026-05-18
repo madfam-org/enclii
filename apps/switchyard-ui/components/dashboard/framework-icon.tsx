@@ -104,11 +104,10 @@ export function FrameworkIcon({
         role="img"
         aria-label={fw.displayName}
         className={cn("inline-flex shrink-0", sizes[size], fw.colorClass)}
-        // eslint-disable-next-line react/no-danger -- static, trusted SVG strings from catalog
         dangerouslySetInnerHTML={{ __html: fw.iconSVG }}
       />
       {showLabel && (
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-muted-foreground text-xs font-medium">
           {fw.displayName}
         </span>
       )}
@@ -179,28 +178,11 @@ export function getFrameworkLabel(framework: FrameworkType | string): string {
   return resolveFramework(framework).displayName;
 }
 
-// Maps repo slugs and service/project name prefixes to catalog slugs.
-// This preserves the previous hand-curated mapping for MADFAM repos
-// so the dashboard keeps rendering correct icons for legacy services
-// that haven't been rebuilt (and therefore have no backend-emitted slug).
-const KNOWN_REPO_FRAMEWORKS: Record<string, FrameworkType> = {
-  janua: "fastapi",
-  "pravara-mes": "python",
-  tezca: "django",
-  "leyes-como-codigo-mx": "django",
-  dhanam: "nextjs",
-  forgesight: "nextjs",
-  karafiel: "nextjs",
-  yantra4d: "nextjs",
-  enclii: "go",
-  "madfam-site": "nextjs",
-  "autoswarm-office": "nextjs",
-};
-
 /**
  * Infer framework from service name and git repo URL when the API
- * returns no framework slug. Heuristic fallback only; prefer backend
- * slug when available.
+ * returns no framework slug. This is generic pattern matching only; project
+ * cards should prefer backend-emitted slugs so app-specific knowledge stays
+ * out of the UI.
  */
 export function inferFrameworkFromContext(
   serviceName: string,
@@ -208,15 +190,6 @@ export function inferFrameworkFromContext(
 ): FrameworkType {
   const name = serviceName.toLowerCase();
   const repo = (gitRepo || "").toLowerCase();
-
-  // Known repo slug match (last path segment of git URL).
-  const repoSlug = repo.split("/").pop()?.replace(/\.git$/, "") || "";
-  if (KNOWN_REPO_FRAMEWORKS[repoSlug]) return KNOWN_REPO_FRAMEWORKS[repoSlug];
-
-  // Known name prefix match (e.g. "tezca-api" → "tezca").
-  const namePrefix = name.split("-")[0];
-  if (KNOWN_REPO_FRAMEWORKS[namePrefix])
-    return KNOWN_REPO_FRAMEWORKS[namePrefix];
 
   // Repo name substring matches.
   if (repo.includes("nextjs") || repo.includes("next-")) return "nextjs";

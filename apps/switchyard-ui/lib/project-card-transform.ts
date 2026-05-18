@@ -121,18 +121,17 @@ interface BuildCompactProjectParams {
   project: ApiProjectForCards;
   services: ApiServiceForCards[];
   servicesResolved: boolean;
-  framework?: string;
 }
 
 export function buildCompactProject({
   project,
   services,
   servicesResolved,
-  framework,
 }: BuildCompactProjectParams): CompactProject {
   const compactServices: CompactService[] = services.map(apiServiceToCompactService);
   const domain = compactServices.find((s) => s.domain)?.domain || undefined;
   const gitRepo = services.find((s) => s.git_repo)?.git_repo;
+  const framework = services.find((s) => s.framework)?.framework;
   const healthyCount = compactServices.filter((s) => s.health === "healthy").length;
   const aggregateStatus = computeAggregateStatus(compactServices);
 

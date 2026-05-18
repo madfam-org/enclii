@@ -10,131 +10,25 @@ import {
   inferFrameworkFromContext,
   detectFramework,
   getFrameworkLabel,
-  type FrameworkType,
 } from './framework-icon';
 
 // ---------------------------------------------------------------------------
-// inferFrameworkFromContext — known repo map
+// inferFrameworkFromContext — no app-specific catalog
 // ---------------------------------------------------------------------------
 
-describe('inferFrameworkFromContext — known repo map', () => {
-  it('maps janua repo to fastapi', () => {
+describe('inferFrameworkFromContext — no app-specific catalog', () => {
+  it('does not infer MADFAM repo slugs without generic framework hints', () => {
     expect(
-      inferFrameworkFromContext('janua-api', 'https://github.com/madfam-org/janua'),
-    ).toBe('fastapi');
-  });
-
-  it('maps tezca repo (leyes-como-codigo-mx) to django', () => {
+      inferFrameworkFromContext('api', 'https://github.com/madfam-org/plain-product'),
+    ).toBe('unknown');
     expect(
-      inferFrameworkFromContext(
-        'tezca-api',
-        'https://github.com/madfam-org/leyes-como-codigo-mx',
-      ),
-    ).toBe('django');
+      inferFrameworkFromContext('api', 'https://github.com/madfam-org/plain-product.git'),
+    ).toBe('unknown');
   });
 
-  it('maps tezca by name prefix to django', () => {
-    expect(inferFrameworkFromContext('tezca-web', '')).toBe('django');
-  });
-
-  it('maps pravara-mes repo to python', () => {
-    expect(
-      inferFrameworkFromContext(
-        'pravara-api',
-        'https://github.com/madfam-org/pravara-mes',
-      ),
-    ).toBe('python');
-  });
-
-  it('maps dhanam repo to nextjs', () => {
-    expect(
-      inferFrameworkFromContext('dhanam-web', 'https://github.com/madfam-org/dhanam'),
-    ).toBe('nextjs');
-  });
-
-  it('maps forgesight repo to nextjs', () => {
-    expect(
-      inferFrameworkFromContext(
-        'forgesight-app',
-        'https://github.com/madfam-org/forgesight',
-      ),
-    ).toBe('nextjs');
-  });
-
-  it('maps karafiel repo to nextjs', () => {
-    expect(
-      inferFrameworkFromContext(
-        'karafiel-web',
-        'https://github.com/madfam-org/karafiel',
-      ),
-    ).toBe('nextjs');
-  });
-
-  it('maps yantra4d repo to nextjs', () => {
-    expect(
-      inferFrameworkFromContext(
-        'yantra4d-frontend',
-        'https://github.com/madfam-org/yantra4d',
-      ),
-    ).toBe('nextjs');
-  });
-
-  it('maps enclii repo to go', () => {
-    expect(
-      inferFrameworkFromContext(
-        'switchyard-api',
-        'https://github.com/madfam-org/enclii',
-      ),
-    ).toBe('go');
-  });
-
-  it('maps madfam-site repo to nextjs', () => {
-    expect(
-      inferFrameworkFromContext(
-        'madfam-landing',
-        'https://github.com/madfam-org/madfam-site',
-      ),
-    ).toBe('nextjs');
-  });
-
-  it('maps autoswarm-office repo to nextjs', () => {
-    expect(
-      inferFrameworkFromContext(
-        'office-ui',
-        'https://github.com/madfam-org/autoswarm-office',
-      ),
-    ).toBe('nextjs');
-  });
-
-  it('strips .git suffix from repo slug', () => {
-    expect(
-      inferFrameworkFromContext(
-        'api',
-        'https://github.com/madfam-org/janua.git',
-      ),
-    ).toBe('fastapi');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// inferFrameworkFromContext — name prefix fallback
-// ---------------------------------------------------------------------------
-
-describe('inferFrameworkFromContext — name prefix fallback', () => {
-  it('infers django from tezca-admin name (no repo)', () => {
-    expect(inferFrameworkFromContext('tezca-admin', '')).toBe('django');
-  });
-
-  it('infers go from enclii-api name (no repo)', () => {
-    expect(inferFrameworkFromContext('enclii-api', '')).toBe('go');
-  });
-
-  it('infers nextjs from dhanam-web name (no repo)', () => {
-    expect(inferFrameworkFromContext('dhanam-web', '')).toBe('nextjs');
-  });
-
-  it('infers nextjs from forgesight-app name (no repo)', () => {
-    expect(inferFrameworkFromContext('forgesight-app', '')).toBe('nextjs');
+  it('does not infer framework from product name prefixes', () => {
+    expect(inferFrameworkFromContext('tezca-api', '')).toBe('unknown');
+    expect(inferFrameworkFromContext('enclii-api', '')).toBe('unknown');
   });
 });
 
@@ -223,22 +117,14 @@ describe('inferFrameworkFromContext — generic patterns', () => {
 });
 
 // ---------------------------------------------------------------------------
-// inferFrameworkFromContext — repo slug takes priority over name patterns
+// inferFrameworkFromContext — repo hints take priority over name patterns
 // ---------------------------------------------------------------------------
 
 describe('inferFrameworkFromContext — priority', () => {
-  it('repo slug match takes priority over name-suffix heuristic', () => {
-    // janua-api would match -api pattern → "unknown" via generic,
-    // but repo slug "janua" should win → "fastapi"
+  it('generic repo hints take priority over name-suffix heuristics', () => {
     expect(
-      inferFrameworkFromContext('janua-api', 'https://github.com/madfam-org/janua'),
+      inferFrameworkFromContext('my-ui', 'https://github.com/org/fastapi-service'),
     ).toBe('fastapi');
-  });
-
-  it('name prefix match takes priority over generic -ui pattern', () => {
-    // tezca-ui would match -ui → nextjs via generic,
-    // but name prefix "tezca" should win → "django"
-    expect(inferFrameworkFromContext('tezca-ui', '')).toBe('django');
   });
 });
 

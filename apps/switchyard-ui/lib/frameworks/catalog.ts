@@ -4,10 +4,9 @@
  * Keep this in sync with the Go catalog when adding entries. The ordered
  * `catalog` array encodes detection priority (earlier wins).
  *
- * The backend (switchyard-api / roundhouse) emits a `framework_slug` on
- * build/release records. The UI looks it up here for display. When the
- * backend has not yet populated a slug (legacy data) the UI falls back
- * to the heuristic `inferFrameworkFromContext` defined in framework-icon.tsx.
+ * The backend (switchyard-api / roundhouse) emits framework slugs from
+ * build/release records. Project cards use those backend facts directly;
+ * unknown legacy rows stay unknown until rebuilt or analyzed.
  */
 
 export interface Framework {

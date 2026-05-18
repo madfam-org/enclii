@@ -17,7 +17,6 @@ import {
   type CompactProject,
   type CompactRepoMeta,
 } from "@/components/dashboard/project-card-compact";
-import { inferFrameworkFromContext } from "@/components/dashboard/framework-icon";
 import { type SortOption } from "@/components/dashboard/project-search-filter";
 import { useViewMode } from "@/components/dashboard/view-toggle";
 import { SubNavActionBar } from "@/components/dashboard/sub-nav-action-bar";
@@ -88,16 +87,10 @@ export default function Dashboard() {
         const apiServices =
           result.status === "fulfilled" ? result.value.services || [] : [];
 
-        const gitRepo = apiServices.find((s) => s.git_repo)?.git_repo;
-        const framework =
-          apiServices.find((s) => s.framework)?.framework ||
-          inferFrameworkFromContext(apiServices[0]?.name || project.name, gitRepo);
-
         return buildCompactProject({
           project,
           services: apiServices,
           servicesResolved: result.status === "fulfilled",
-          framework,
         });
       });
 

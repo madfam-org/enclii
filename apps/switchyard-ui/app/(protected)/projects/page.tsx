@@ -135,7 +135,6 @@ export default function ProjectsPage() {
           project,
           services,
           servicesResolved: result.status === 'fulfilled',
-          framework: services.find((s) => s.framework)?.framework,
         });
       });
 

@@ -125,7 +125,6 @@ describe("buildCompactProject", () => {
         },
       ],
       servicesResolved: true,
-      framework: "nextjs",
     });
 
     expect(compact.gitRepo).toBe("org/repo");
@@ -152,5 +151,24 @@ describe("buildCompactProject", () => {
     expect(compact.lastDeployment).toBeUndefined();
     expect(compact.aggregateStatus).toBe("unknown");
     expect(compact.services).toHaveLength(0);
+  });
+
+  it("leaves framework empty when backend service facts do not include one", () => {
+    const compact = buildCompactProject({
+      project: baseProject,
+      services: [
+        {
+          id: "svc-1",
+          name: "product-web",
+          git_repo: "https://github.com/example/plain-product",
+          status: "running",
+          health: "healthy",
+          last_deployment: "",
+        },
+      ],
+      servicesResolved: true,
+    });
+
+    expect(compact.framework).toBeUndefined();
   });
 });

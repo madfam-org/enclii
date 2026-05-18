@@ -20,6 +20,18 @@ Policy definition used for this audit:
 
 Enclii is not fully zero-touch today.
 
+Progress since this audit was opened:
+
+- Boundary guardrails now reject new app-specific Enclii catalog entries in CI
+  and pre-commit.
+- ArgoCD registration has an opt-in runtime `Application` reconciler behind
+  `ENCLII_ARGOCD_REGISTRATION_MODE=runtime`.
+- Onboarding now persists `status.entries[]` in the onboarding DB snapshot, and
+  status regeneration has an opt-in runtime ConfigMap projector behind
+  `ENCLII_STATUS_PROJECTION_MODE=runtime`.
+- Project-card framework rendering now uses backend service facts from release
+  `framework_slug`; the UI no longer carries a MADFAM repo/framework map.
+
 The repo has important zero-touch foundations:
 
 - `apps/switchyard-api/internal/manifest/enclii_yaml.go` reads `enclii.yaml`
@@ -53,7 +65,7 @@ still partly Enclii-as-catalog.
 
 ### 1. ArgoCD app registration writes client desired state into Enclii
 
-Evidence:
+Original evidence:
 
 - `apps/switchyard-api/internal/api/onboarding_handlers.go:214` generates a
   project `config.json` for the ApplicationSet.
@@ -95,7 +107,16 @@ Required target:
 
 ### 2. Status registration and regeneration write app monitors to Enclii
 
-Evidence:
+Current status:
+
+- Fixed: onboarding/ensure no longer edit `apps/status/k8s/madfam/configmap.yaml`;
+  they persist `status.entries[]` into `config_snapshot.status_entries`.
+- Fixed: `POST /v1/admin/status/regenerate` now supports runtime Kubernetes
+  ConfigMap projection with `ENCLII_STATUS_PROJECTION_MODE=runtime`.
+- Remaining: production must be switched from legacy `gitops` projection after
+  historical MADFAM status entries have DB provenance and shrink-guard parity.
+
+Original evidence:
 
 - `apps/switchyard-api/internal/api/onboarding_handlers.go:264` registers
   status entries during onboarding.
@@ -299,7 +320,16 @@ Required target:
 
 ### 9. Dashboard framework fallback hardcodes product knowledge
 
-Evidence:
+Current status:
+
+- Fixed: project services now expose backend-detected `framework` from the
+  latest non-empty release `framework_slug`.
+- Fixed: both the main dashboard and `/projects` use the shared project-card
+  transform and no longer apply a MADFAM-specific repo/framework fallback.
+- Remaining: add backend freshness/provenance fields and a single aggregate
+  project-card endpoint so both pages avoid per-project fan-out.
+
+Original evidence:
 
 - `apps/switchyard-ui/components/dashboard/framework-icon.tsx:186` defines
   `KNOWN_REPO_FRAMEWORKS`.

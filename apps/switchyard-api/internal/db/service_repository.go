@@ -301,6 +301,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		(SELECT r4.image_uri FROM releases r4 WHERE r4.service_id = s.id AND r4.status = 'succeeded' ORDER BY r4.created_at DESC LIMIT 1) as current_image_uri,
 		(SELECT r5.id FROM releases r5 WHERE r5.service_id = s.id AND r5.status = 'succeeded' ORDER BY r5.created_at DESC LIMIT 1) as current_release_id,
 		(SELECT r6.created_at FROM releases r6 WHERE r6.service_id = s.id AND r6.status = 'succeeded' ORDER BY r6.created_at DESC LIMIT 1) as current_release_created_at,
+		(SELECT r7.framework_slug FROM releases r7 WHERE r7.service_id = s.id AND COALESCE(r7.framework_slug, '') <> '' ORDER BY r7.created_at DESC LIMIT 1) as framework,
 		(SELECT COALESCE(json_agg(rr ORDER BY rr.created_at DESC), '[]'::json)
 			FROM (
 				SELECT id, version, image_uri, git_sha, status, created_at
@@ -332,6 +333,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		var currentImageURI sql.NullString
 		var currentReleaseID sql.NullString
 		var currentReleaseCreatedAt sql.NullTime
+		var framework sql.NullString
 		var recentReleasesJSON []byte
 
 		err := rows.Scan(&service.ID, &service.ProjectID, &service.Name, &service.GitRepo, &appPath, &buildConfigJSON,
@@ -339,7 +341,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 			&k8sNamespace, &service.Health, &service.Status,
 			&service.DesiredReplicas, &service.ReadyReplicas, &lastHealthCheck,
 			&lastDeployment, &lastCommitMsg, &lastCommitBranch,
-			&currentImageURI, &currentReleaseID, &currentReleaseCreatedAt, &recentReleasesJSON,
+			&currentImageURI, &currentReleaseID, &currentReleaseCreatedAt, &framework, &recentReleasesJSON,
 			&service.CreatedAt, &service.UpdatedAt, &jobsJSON, &service.Type, &service.Region)
 		if err != nil {
 			return nil, err
@@ -373,6 +375,9 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		}
 		if currentReleaseCreatedAt.Valid {
 			service.CurrentReleaseCreatedAt = &currentReleaseCreatedAt.Time
+		}
+		if framework.Valid {
+			service.Framework = framework.String
 		}
 		if len(recentReleasesJSON) > 0 {
 			if err := json.Unmarshal(recentReleasesJSON, &service.RecentReleases); err != nil {
