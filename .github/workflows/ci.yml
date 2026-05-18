@@ -626,6 +626,12 @@ jobs:
           # Build matrix of changed services
           SERVICES_JSON=$(cat services.json)
           MATRIX_INCLUDE="[]"
+          FORCE_ALL=false
+
+          if echo "$CHANGED_FILES" | grep -q "^services.json$"; then
+            echo "services.json changed; rebuilding every registered service"
+            FORCE_ALL=true
+          fi
 
           while IFS= read -r line; do
             NAME=$(echo "$line" | jq -r '.name')
@@ -638,8 +644,30 @@ jobs:
             SCAN=$(echo "$line" | jq -r '.scan')
             BUILD_ARGS=$(echo "$line" | jq -c '.build_args // {}')
 
+            if [ ! -d "$PATH_PREFIX" ]; then
+              echo "::error::services.json entry '$NAME' path does not exist: $PATH_PREFIX"
+              exit 1
+            fi
+            if [ ! -f "$DOCKERFILE" ]; then
+              echo "::error::services.json entry '$NAME' dockerfile does not exist: $DOCKERFILE"
+              exit 1
+            fi
+            if [ ! -d "$KUSTOMIZATION" ]; then
+              echo "::error::services.json entry '$NAME' kustomization does not exist: $KUSTOMIZATION"
+              exit 1
+            fi
+            for dep in $DEPS; do
+              if [ ! -d "$dep" ]; then
+                echo "::error::services.json entry '$NAME' dependency does not exist: $dep"
+                exit 1
+              fi
+            done
+
             # Check if service or its dependencies changed
             CHANGED=false
+            if [ "$FORCE_ALL" == "true" ]; then
+              CHANGED=true
+            fi
             if echo "$CHANGED_FILES" | grep -q "^${PATH_PREFIX}/"; then
               CHANGED=true
             fi

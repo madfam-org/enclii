@@ -80,6 +80,10 @@ Before calling the cards truthful:
 5. `generated_at` drives the visible last-sync timestamp.
 6. Production `switchyard-api` and `switchyard-ui` images are built from the
    commit containing this endpoint and UI wiring.
+7. `services.json` dependency paths point at real repo directories. In
+   particular, `switchyard-ui` must depend on `packages/shared-lib` and
+   `packages/ui-components`, otherwise shared card UI changes can pass CI
+   without producing a fresh UI image.
 
 ## Verification
 
@@ -96,4 +100,6 @@ kubectl -n enclii get deploy switchyard-api switchyard-ui \
 ```
 
 If `/projects` renders stale card facts after the API is correct, check whether
-the UI deployment is still on an older image.
+the UI deployment is still on an older image. For signed-image provenance, run
+`cosign verify` on each deployment digest and compare `githubWorkflowSha` with
+the commit that introduced the card aggregate or follow-up UI fix.

@@ -10,7 +10,7 @@
       "image": "switchyard-api",
       "kustomization": "infra/k8s/production",
       "kustomize_image": "switchyard-api",
-      "dependencies": ["packages/core", "packages/sdk-go"],
+      "dependencies": ["packages/sdk-go", "packages/otel-go"],
       "scan": true,
       "deploy_check": "switchyard-api",
       "build_args": {}
@@ -23,7 +23,7 @@
       "image": "switchyard-ui",
       "kustomization": "infra/k8s/production",
       "kustomize_image": "switchyard-ui",
-      "dependencies": ["packages/ui"],
+      "dependencies": ["packages/shared-lib", "packages/ui-components"],
       "scan": true,
       "deploy_check": "switchyard-ui",
       "build_args": {
@@ -40,7 +40,7 @@
       "image": "roundhouse",
       "kustomization": "infra/k8s/production",
       "kustomize_image": "roundhouse",
-      "dependencies": ["packages/core"],
+      "dependencies": ["packages/sdk-go", "packages/otel-go"],
       "scan": true,
       "deploy_check": "roundhouse"
     },
@@ -52,7 +52,7 @@
       "image": "waybill",
       "kustomization": "infra/k8s/production",
       "kustomize_image": "waybill",
-      "dependencies": ["packages/core"],
+      "dependencies": ["packages/otel-go"],
       "scan": false,
       "deploy_check": "waybill"
     },
@@ -76,7 +76,7 @@
       "image": "dispatch",
       "kustomization": "apps/admin-console/k8s",
       "kustomize_image": "ghcr.io/madfam-org/enclii/admin-console",
-      "dependencies": ["packages/ui"],
+      "dependencies": ["packages/shared-lib", "packages/ui-components"],
       "scan": false,
       "deploy_check": null
     },
