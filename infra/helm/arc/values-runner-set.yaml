@@ -86,28 +86,6 @@ listenerTemplate:
           requests:
             cpu: 50m
             memory: 64Mi
-        # Health probes for reliability (Wave 13 stability recommendation)
-        startupProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          failureThreshold: 30
-          timeoutSeconds: 3
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
+        # Do not add HTTP probes here. The GitHub scale-set listener does not
+        # expose /healthz, and probing it keeps the listener NotReady/recycling
+        # while assigned jobs remain queued.

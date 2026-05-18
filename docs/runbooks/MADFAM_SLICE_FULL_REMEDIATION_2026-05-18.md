@@ -26,6 +26,9 @@ Services in scope:
 - `phynd-crm-staging` is `Synced/Degraded` because
   `phynd-crm-staging-secrets` is not installed. Pods are blocked by
   `CreateContainerConfigError`. Do not copy production values into staging.
+- The ARC blue runner listener must not carry HTTP probes. The GitHub
+  scale-set listener does not expose `/healthz`; probing it keeps the listener
+  NotReady/recycling while deploy jobs remain assigned.
 
 ## Remediation Plan
 
@@ -66,6 +69,8 @@ Services in scope:
    - Resolve the GitHub-hosted runner billing/spending-limit blocker that causes
      ForgeSight `CI`, `Test Suite`, and `Test Automation and CI/CD` jobs to fail
      before starting.
+   - Keep `madfam-runners-blue` listener probes disabled unless the listener
+     image exposes a real health endpoint.
    - Re-run failed workflows after billing/runners are healthy.
    - Keep self-hosted deploy workflows on the MADFAM runner pool.
 

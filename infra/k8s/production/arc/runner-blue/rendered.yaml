@@ -136,23 +136,7 @@ spec:
   listenerTemplate:
     spec:
       containers:
-      - livenessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 30
-          timeoutSeconds: 5
-        name: listener
-        readinessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 3
+      - name: listener
         resources:
           limits:
             cpu: 100m
@@ -160,14 +144,6 @@ spec:
           requests:
             cpu: 50m
             memory: 64Mi
-        startupProbe:
-          failureThreshold: 30
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
 
   template:
     metadata:
