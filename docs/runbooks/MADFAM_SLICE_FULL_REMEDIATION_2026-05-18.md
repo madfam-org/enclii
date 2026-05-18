@@ -87,6 +87,13 @@ Services in scope:
      `phynd-crm/infra/k8s/staging-secrets-template.yaml`.
    - Write those values to Vault path `secret/phynd-crm-staging` using
      lower-snake-case property names that match the staging ExternalSecret.
+     From the `phynd-crm` repo, use the PP.5 writer so values are validated and
+     not printed:
+     ```bash
+     VAULT_TOKEN_FILE=/secure/vault-token \
+       node scripts/pp5-write-staging-vault.mjs \
+         /secure/path/phynd-crm-staging.env
+     ```
    - Refresh `ExternalSecret/phynd-crm-staging-secrets` and verify it reports
      `Ready=True`.
    - Keep staging DB, Redis, Janua/OIDC, webhook, provider API, SMTP, and
