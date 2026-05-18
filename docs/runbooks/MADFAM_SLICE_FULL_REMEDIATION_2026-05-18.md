@@ -68,6 +68,15 @@ Services in scope:
    - Write real production values for `secret/forgesight.api_key_salt` and
      `secret/forgesight.janua_jwt_secret` through the approved Vault/Enclii
      secret workflow.
+   - If the break-glass Kubernetes Secret is present and approved as the source
+     for recovery, backfill Vault without printing values:
+     ```bash
+     VAULT_TOKEN_FILE=/secure/vault-token \
+       scripts/backfill-vault-path-from-k8s-secret.sh \
+         --namespace forgesight \
+         --secret forgesight-secrets \
+         --vault-path secret/forgesight
+     ```
    - Refresh `ExternalSecret/forgesight-secrets`.
    - Verify `kubectl -n forgesight get externalsecret forgesight-secrets`
      reports `Ready=True`.
