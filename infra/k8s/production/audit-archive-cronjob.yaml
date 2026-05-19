@@ -57,7 +57,7 @@ spec:
                 - name: ENCLII_DATABASE_URL
                   valueFrom:
                     secretKeyRef:
-                      name: postgres-credentials
+                      name: enclii-secrets
                       key: database-url
                 - name: R2_ENDPOINT
                   valueFrom:
