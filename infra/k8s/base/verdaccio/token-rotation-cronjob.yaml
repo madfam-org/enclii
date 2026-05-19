@@ -85,8 +85,10 @@ data:
     # Step 2: Push metric to Pushgateway
     # ------------------------------------------------------------------
     push_metric() {
-      cat <<METRIC_EOF | curl -sf --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/npm_token_rotation" || \
-        log "WARN  Failed to push metric to pushgateway"
+      METRIC_ATTEMPT=1
+      METRIC_MAX_ATTEMPTS=6
+      while [ "${METRIC_ATTEMPT}" -le "${METRIC_MAX_ATTEMPTS}" ]; do
+        if cat <<METRIC_EOF | curl -sf --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/npm_token_rotation"; then
     # HELP npm_token_expiry_days Days until NPM registry token expires
     # TYPE npm_token_expiry_days gauge
     npm_token_expiry_days ${DAYS_LEFT}
@@ -94,6 +96,19 @@ data:
     # TYPE npm_token_rotation_last_run gauge
     npm_token_rotation_last_run $(date +%s)
     METRIC_EOF
+          log "INFO  Metric pushed to pushgateway"
+          return 0
+        fi
+
+        if [ "${METRIC_ATTEMPT}" -ge "${METRIC_MAX_ATTEMPTS}" ]; then
+          log "WARN  Failed to push metric to pushgateway after ${METRIC_ATTEMPT} attempts"
+          return 0
+        fi
+
+        log "INFO  Pushgateway metric endpoint not ready (${METRIC_ATTEMPT}/${METRIC_MAX_ATTEMPTS}); retrying"
+        METRIC_ATTEMPT=$((METRIC_ATTEMPT + 1))
+        sleep 5
+      done
     }
     push_metric
 
