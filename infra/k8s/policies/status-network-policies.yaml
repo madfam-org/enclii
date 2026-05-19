@@ -3,12 +3,12 @@
 # =============================================================================
 # Egress rules for status page pods in the enclii namespace.
 # Pods: status-enclii (port 4204), status-madfam (port 4204)
-# CronJobs: status-recorder-enclii, status-recorder-madfam
-# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# CronJobs: status-recorder-*, stale-outage-digest-*
+# Managed by enclii repo, synced via ArgoCD network-policies Application.
 #
-# NOTE: The enclii namespace does NOT have default-deny policies (too many
-# services). These are targeted policies for status pods that need cross-
-# namespace access (PostgreSQL in data namespace).
+# NOTE: The enclii namespace has default-deny egress. Every status CronJob
+# that curls an in-namespace status service must be selected by the CronJob
+# egress policy below.
 # =============================================================================
 
 # Allow status pods egress to DNS, HTTP/HTTPS (service checks), and PostgreSQL
@@ -55,7 +55,7 @@ spec:
         - protocol: TCP
           port: 5432
 
-# Allow recorder CronJob pods egress to DNS + status service (HTTP)
+# Allow status CronJob pods egress to DNS + status service (HTTP)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -73,6 +73,8 @@ spec:
         values:
           - status-recorder-enclii
           - status-recorder-madfam
+          - stale-outage-digest-enclii
+          - stale-outage-digest-madfam
   policyTypes:
     - Egress
   egress:
