@@ -48,7 +48,8 @@ data:
         select(.spec.type == "NodePort" or .spec.type == "LoadBalancer") |
         . as $svc |
         .spec.ports[]? |
-        select([5432,6379,3306,27017] | index(.port)) |
+        .port as $port |
+        select([5432,6379,3306,27017] | index($port)) |
         "\($svc.metadata.namespace)/\($svc.metadata.name):\(.port) \($svc.spec.type)"' || true)
 
     if [ -n "$EXPOSED_DB_SERVICES" ]; then
@@ -71,8 +72,7 @@ data:
 
     CRASHLOOP_PODS=$(kubectl get pods -A -o json 2>/dev/null | \
         jq -r '.items[] |
-        select(.status.containerStatuses != null) |
-        select(.status.containerStatuses[].state.waiting.reason == "CrashLoopBackOff") |
+        select(any(.status.containerStatuses[]?; .state.waiting.reason == "CrashLoopBackOff")) |
         "\(.metadata.namespace)/\(.metadata.name)"' || true)
 
     if [ -n "$CRASHLOOP_PODS" ]; then
@@ -95,8 +95,7 @@ data:
 
     HOSTPORT_PODS=$(kubectl get pods -A -o json 2>/dev/null | \
         jq -r '.items[] |
-        select(.spec.containers[].ports != null) |
-        select(.spec.containers[].ports[].hostPort != null) |
+        select(any(.spec.containers[]?.ports[]?; .hostPort != null)) |
         "\(.metadata.namespace)/\(.metadata.name)"' || true)
 
     if [ -n "$HOSTPORT_PODS" ]; then
@@ -137,26 +136,30 @@ data:
     echo ""
 
     # --------------------------------------------
-    # CHECK 5: Health Endpoint Verification
-    # Rule: Core services must respond healthy
+    # CHECK 5: Core Deployment Readiness
+    # Rule: Core API deployments must have all desired replicas ready
     # --------------------------------------------
-    echo "📍 CHECK 5: Health Endpoints"
-    echo "   Rule: Core APIs must respond healthy"
+    echo "📍 CHECK 5: Core Deployment Readiness"
+    echo "   Rule: Core API deployments must have all desired replicas ready"
 
-    check_health() {
+    check_deployment_ready() {
         local name=$1
-        local url=$2
-        local response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
-        if [ "$response" = "200" ]; then
-            echo "   ✅ $name: HTTP $response"
+        local namespace=$2
+        local deployment=$3
+        local desired=$(kubectl -n "$namespace" get deployment "$deployment" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+        local ready=$(kubectl -n "$namespace" get deployment "$deployment" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+        desired=${desired:-0}
+        ready=${ready:-0}
+        if [ "$desired" -gt 0 ] && [ "$ready" -ge "$desired" ]; then
+            echo "   ✅ $name: $ready/$desired ready"
         else
-            echo "   ❌ $name: HTTP $response (UNHEALTHY)"
+            echo "   ❌ $name: $ready/$desired ready (UNHEALTHY)"
             VIOLATIONS=$((VIOLATIONS + 1))
         fi
     }
 
-    check_health "api.janua.dev" "https://api.janua.dev/health"
-    check_health "api.enclii.dev" "https://api.enclii.dev/health"
+    check_deployment_ready "janua-api" "janua" "janua-api"
+    check_deployment_ready "switchyard-api" "enclii" "switchyard-api"
     echo ""
 
     # --------------------------------------------
@@ -167,10 +170,9 @@ data:
     echo "   Rule: Redis accessed via K8s internal DNS only"
 
     EXTERNAL_REDIS=$(kubectl get deployments -A -o json 2>/dev/null | \
-        jq -r '.items[].spec.template.spec.containers[].env[]? |
-        select(.name | test("REDIS")) |
-        select(.value != null) |
-        select(.value | test("95\\.217|0\\.0\\.0\\.0|localhost:6379")) |
+        jq -r '.items[].spec.template.spec.containers[]?.env[]? |
+        select((.name // "") | test("REDIS")) |
+        select((.value // "") | test("95\\.217|0\\.0\\.0\\.0|localhost:6379")) |
         .value' | head -5 || true)
 
     if [ -n "$EXTERNAL_REDIS" ]; then
