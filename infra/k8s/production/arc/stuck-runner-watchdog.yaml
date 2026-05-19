@@ -41,6 +41,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -114,6 +117,25 @@ spec:
                     return 1
                   }
 
+                  runner_worker_state() {
+                    target="$1"
+                    output="$(kubectl -n arc-runners exec "$target" -c runner -- /bin/sh -c 'if ps -eo args | grep "[R]unner.Worker" >/dev/null; then echo active; else echo inactive; fi' 2>&1)" || {
+                      echo "  warn: could not inspect runner worker process for $target; leaving runner untouched this cycle: $output" >&2
+                      echo "unknown"
+                      return 0
+                    }
+
+                    case "$output" in
+                      active|inactive)
+                        echo "$output"
+                        ;;
+                      *)
+                        echo "  warn: unexpected runner worker inspection output for $target; leaving runner untouched this cycle: $output" >&2
+                        echo "unknown"
+                        ;;
+                    esac
+                  }
+
                   # List all EphemeralRunners with creation timestamp +
                   # the workflow run they reference (if any).
                   kubectl -n arc-runners get ephemeralrunners \
@@ -147,6 +169,13 @@ spec:
                       fi
 
                       if [ "${pod_phase:-missing}" = "Running" ] && [ "$age" -ge "$ORPHAN_THRESHOLD_SEC" ]; then
+                        worker_state="$(runner_worker_state "$name")"
+                        if [ "$worker_state" = "inactive" ]; then
+                          echo "  deleting stale EphemeralRunner $name after assigned runner had no active worker process"
+                          delete_ephemeralrunner "$name"
+                          continue
+                        fi
+
                         runner_log="$(kubectl -n arc-runners logs "$name" -c runner --tail=80 2>/dev/null || true)"
                         if echo "$runner_log" | grep -Eq 'Registration .* was not found|Job cancellation request'; then
                           echo "  deleting stale EphemeralRunner $name after runner log showed cancellation or missing registration"
