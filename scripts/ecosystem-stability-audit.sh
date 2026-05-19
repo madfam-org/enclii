@@ -116,6 +116,34 @@ else
   issue "unable to read Argo Applications"
 fi
 
+section "Declared Staging Applications"
+LABSPACE_ROOT="${LABSPACE_ROOT:-$(cd "$ROOT/.." && pwd)}"
+if [[ -d "$LABSPACE_ROOT" && -s "$TMP_DIR/argo-app-names.txt" ]]; then
+  declared_missing=0
+  while IFS= read -r manifest; do
+    app_json="$(kubectl create --dry-run=client -f "$manifest" -o json 2>/dev/null || true)"
+    if [[ -z "$app_json" ]]; then
+      continue
+    fi
+    app_name="$(jq -r 'select(.kind == "Application") | .metadata.name // empty' <<<"$app_json")"
+    destination_namespace="$(jq -r 'select(.kind == "Application") | .spec.destination.namespace // empty' <<<"$app_json")"
+    if [[ -z "$app_name" ]]; then
+      continue
+    fi
+    if ! grep -qx "$app_name" "$TMP_DIR/argo-app-names.txt"; then
+      printf 'Declared staging app not registered in ArgoCD: %s -> %s (namespace=%s)\n' "$manifest" "$app_name" "${destination_namespace:-unknown}"
+      declared_missing=$((declared_missing + 1))
+    fi
+  done < <(find "$LABSPACE_ROOT" -maxdepth 4 -type f \( -name '*staging*.yaml' -o -name '*staging*.yml' -o -name 'staging.yaml' -o -name 'staging.yml' \) -path '*/infra/argocd/*' | sort)
+  if [[ "$declared_missing" -gt 0 ]]; then
+    issue "$declared_missing declared staging Argo application(s) are not registered"
+  else
+    printf 'All locally declared staging Argo Applications are registered\n'
+  fi
+else
+  printf 'Skipped: no labspace staging manifests found or Argo inventory unavailable\n'
+fi
+
 section "ExternalSecrets"
 if kubectl get externalsecrets.external-secrets.io -A -o json > "$TMP_DIR/externalsecrets.json"; then
   not_ready="$(
