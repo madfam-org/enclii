@@ -207,10 +207,12 @@ func (r *CustomDomainRepository) GetByServiceAndEnvironment(ctx context.Context,
 
 // Update updates a custom domain
 func (r *CustomDomainRepository) Update(ctx context.Context, domain *types.CustomDomain) error {
+	normalizeCustomDomainDefaults(domain)
+
 	query := `
 		UPDATE custom_domains
-		SET verified = $1, tls_enabled = $2, tls_issuer = $3, verified_at = $4, updated_at = NOW()
-		WHERE id = $5
+		SET verified = $1, tls_enabled = $2, tls_issuer = $3, verified_at = $4, status = $5, updated_at = NOW()
+		WHERE id = $6
 		RETURNING updated_at
 	`
 
@@ -221,6 +223,7 @@ func (r *CustomDomainRepository) Update(ctx context.Context, domain *types.Custo
 		domain.TLSEnabled,
 		domain.TLSIssuer,
 		domain.VerifiedAt,
+		domain.Status,
 		domain.ID,
 	).Scan(&domain.UpdatedAt)
 

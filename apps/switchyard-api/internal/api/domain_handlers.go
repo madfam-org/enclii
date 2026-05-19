@@ -345,6 +345,7 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 
 	// Mark as verified
 	domain.Verified = true
+	domain.Status = services.StatusVerified
 	verifiedAt := time.Now()
 	domain.VerifiedAt = &verifiedAt
 

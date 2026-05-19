@@ -156,6 +156,7 @@ func (s *DomainSyncService) SyncDomain(ctx context.Context, domainID uuid.UUID) 
 	now := time.Now()
 	domain.Verified = result.DNSVerified
 	domain.TLSEnabled = result.TLSEnabled
+	domain.Status = result.NewStatus
 	if result.DNSVerified && domain.VerifiedAt == nil {
 		domain.VerifiedAt = &now
 	}

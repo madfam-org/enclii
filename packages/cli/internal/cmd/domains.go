@@ -275,6 +275,9 @@ func runDomainsList(cfg *config.Config, serviceName, envName, specFile string, s
 		if status == "" {
 			status = "pending"
 		}
+		if d.Verified && status == "pending" {
+			status = "verified"
+		}
 
 		if showAll {
 			cname := d.DNSCNAME
@@ -453,6 +456,9 @@ func runDomainsStatus(cfg *config.Config, domain, serviceName, envName, specFile
 	status := domainInfo.Status
 	if status == "" {
 		status = "pending"
+	}
+	if domainInfo.Verified && status == "pending" {
+		status = "verified"
 	}
 	fmt.Printf("  Status:         %s\n", status)
 

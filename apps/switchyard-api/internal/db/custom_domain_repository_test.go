@@ -243,10 +243,11 @@ func TestCustomDomainRepository_Update(t *testing.T) {
 			TLSEnabled: true,
 			TLSIssuer:  "letsencrypt-prod",
 			VerifiedAt: &verifiedAt,
+			Status:     "verified",
 		}
 
 		mock.ExpectQuery(`UPDATE custom_domains`).
-			WithArgs(true, true, "letsencrypt-prod", &verifiedAt, id).
+			WithArgs(true, true, "letsencrypt-prod", &verifiedAt, "verified", id).
 			WillReturnRows(sqlmock.NewRows([]string{"updated_at"}).AddRow(now))
 
 		err := repo.Update(context.Background(), domain)
@@ -263,7 +264,7 @@ func TestCustomDomainRepository_Update(t *testing.T) {
 		}
 
 		mock.ExpectQuery(`UPDATE custom_domains`).
-			WithArgs(false, false, "", (*time.Time)(nil), domain.ID).
+			WithArgs(false, false, "", (*time.Time)(nil), "pending", domain.ID).
 			WillReturnError(fmt.Errorf("update failed"))
 
 		err := repo.Update(context.Background(), domain)
