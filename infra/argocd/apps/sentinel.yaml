@@ -1,0 +1,33 @@
+# Sentinel Infrastructure Audit Application
+# Deploys the restricted Kubernetes-native drift audit CronJob.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sentinel
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: sentinel
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: audit
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/sentinel
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sentinel
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

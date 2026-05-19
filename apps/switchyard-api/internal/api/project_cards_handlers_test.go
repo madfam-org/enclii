@@ -400,6 +400,58 @@ func TestSummarizeProjectCardCronJobsTreatsNewerSuccessAsRecovered(t *testing.T)
 	assert.Equal(t, 0, evidence.Items[0].RecentFailedJobs)
 }
 
+func TestSummarizeProjectCardCronJobsDoesNotTreatActiveRetryAsRecovered(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	failedAt := metav1.NewTime(now.Add(-2 * time.Hour))
+	startedAt := metav1.NewTime(now.Add(-30 * time.Minute))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "forgesight-pipeline", Namespace: "forgesight"},
+	}
+	failedJob := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "forgesight-pipeline-proof-failed",
+			Namespace:         "forgesight",
+			CreationTimestamp: metav1.NewTime(now.Add(-2 * time.Hour)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "forgesight-pipeline",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			Failed: 1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobFailed,
+				Status:             "True",
+				LastTransitionTime: failedAt,
+			}},
+		},
+	}
+	activeJob := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "forgesight-pipeline-proof-active",
+			Namespace:         "forgesight",
+			CreationTimestamp: metav1.NewTime(now.Add(-30 * time.Minute)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "forgesight-pipeline",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			StartTime: &startedAt,
+			Active:    1,
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{failedJob, activeJob}, now)
+
+	assert.Equal(t, "failing", evidence.Status)
+	assert.Equal(t, 1, evidence.FailedCount)
+	assert.Equal(t, 1, evidence.ActiveCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "failing", evidence.Items[0].Status)
+	assert.Equal(t, "forgesight-pipeline-proof-active", evidence.Items[0].LatestJobName)
+}
+
 func TestSummarizeProjectCardCronJobsTreatsNewCronJobWithoutRunsAsPending(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	cronJob := batchv1.CronJob{

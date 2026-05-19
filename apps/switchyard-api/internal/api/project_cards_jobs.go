@@ -199,8 +199,6 @@ func summarizeProjectCardCronJob(cronJob batchv1.CronJob, jobs []batchv1.Job, ob
 		}
 		if job.Status.Active > 0 {
 			item.ActiveJobs += int(job.Status.Active)
-			activeObservedAt := projectCardJobObservedAt(job)
-			recoveredAt = laterTime(recoveredAt, &activeObservedAt)
 			if projectCardActiveJobIsStuck(job, cronJob, observedAt) {
 				item.StuckJobs += int(job.Status.Active)
 			}

@@ -37,23 +37,28 @@ data:
     echo ""
 
     # --------------------------------------------
-    # CHECK 1: Exposed 0.0.0.0 Ports (Docker)
-    # Law 1: All databases MUST bind to 127.0.0.1
+    # CHECK 1: Exposed database Services
+    # Law 1: Databases MUST NOT be exposed through NodePort/LoadBalancer
     # --------------------------------------------
-    echo "📍 CHECK 1: Docker Port Bindings"
-    echo "   Rule: No services bound to 0.0.0.0"
+    echo "📍 CHECK 1: Kubernetes Database Service Exposure"
+    echo "   Rule: No database Service uses NodePort or LoadBalancer"
 
-    # Check docker port bindings on host via netstat
-    EXPOSED_PORTS=$(ss -tlnp 2>/dev/null | grep -E "0\.0\.0\.0:(5432|6379|3306|27017)" || true)
+    EXPOSED_DB_SERVICES=$(kubectl get services -A -o json 2>/dev/null | \
+        jq -r '.items[] |
+        select(.spec.type == "NodePort" or .spec.type == "LoadBalancer") |
+        . as $svc |
+        .spec.ports[]? |
+        select([5432,6379,3306,27017] | index(.port)) |
+        "\($svc.metadata.namespace)/\($svc.metadata.name):\(.port) \($svc.spec.type)"' || true)
 
-    if [ -n "$EXPOSED_PORTS" ]; then
-        echo "   ❌ VIOLATION: Database ports exposed on 0.0.0.0"
-        echo "$EXPOSED_PORTS" | while read line; do
+    if [ -n "$EXPOSED_DB_SERVICES" ]; then
+        echo "   ❌ VIOLATION: Database Service exposed outside the cluster"
+        echo "$EXPOSED_DB_SERVICES" | while read line; do
             echo "      - $line"
         done
         VIOLATIONS=$((VIOLATIONS + 1))
     else
-        echo "   ✅ PASS: No database ports exposed publicly"
+        echo "   ✅ PASS: No database Service exposed through NodePort/LoadBalancer"
     fi
     echo ""
 
@@ -106,20 +111,28 @@ data:
     echo ""
 
     # --------------------------------------------
-    # CHECK 4: Systemd Tunnel Services (should be disabled)
-    # Law 4: Only K8s ConfigMap tunnels allowed
+    # CHECK 4: Kubernetes Tunnel Ownership
+    # Law 4: Only the approved cloudflare-tunnel namespace may run cloudflared
     # --------------------------------------------
-    echo "📍 CHECK 4: Systemd Tunnel Services"
-    echo "   Rule: No systemd cloudflared services active"
+    echo "📍 CHECK 4: Kubernetes Tunnel Ownership"
+    echo "   Rule: cloudflared runs only in cloudflare-tunnel namespace"
 
-    SYSTEMD_TUNNELS=$(systemctl is-active cloudflared.service cloudflared-janua.service 2>/dev/null | grep -c "^active$" || echo "0")
+    CLOUDFLARED_PODS=$(kubectl get pods -A -l app=cloudflared -o json 2>/dev/null | \
+        jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name):\(.status.phase)"' || true)
+    UNAPPROVED_TUNNELS=$(echo "$CLOUDFLARED_PODS" | grep -v '^cloudflare-tunnel/' || true)
+    APPROVED_RUNNING_TUNNELS=$(echo "$CLOUDFLARED_PODS" | grep '^cloudflare-tunnel/.*:Running$' || true)
 
-    if [ "$SYSTEMD_TUNNELS" -gt 0 ]; then
-        echo "   ❌ VIOLATION: Systemd tunnel services still active"
-        systemctl status cloudflared.service cloudflared-janua.service --no-pager 2>/dev/null | head -10
+    if [ -n "$UNAPPROVED_TUNNELS" ]; then
+        echo "   ❌ VIOLATION: cloudflared pod outside cloudflare-tunnel namespace"
+        echo "$UNAPPROVED_TUNNELS" | while read pod; do
+            echo "      - $pod"
+        done
+        VIOLATIONS=$((VIOLATIONS + 1))
+    elif [ -z "$APPROVED_RUNNING_TUNNELS" ]; then
+        echo "   ❌ VIOLATION: no approved cloudflared pod is Running"
         VIOLATIONS=$((VIOLATIONS + 1))
     else
-        echo "   ✅ PASS: No systemd tunnel services active"
+        echo "   ✅ PASS: cloudflared is running only in approved namespace"
     fi
     echo ""
 
@@ -233,6 +246,7 @@ metadata:
     app.kubernetes.io/component: audit
 spec:
   schedule: "0 9 * * *"  # Daily at 9:00 AM UTC
+  timeZone: Etc/UTC
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 7
   failedJobsHistoryLimit: 3
@@ -246,7 +260,6 @@ spec:
             app.kubernetes.io/component: audit
         spec:
           serviceAccountName: sentinel-sa
-          hostNetwork: true  # Required to check host netstat
           securityContext:
             runAsNonRoot: true
             runAsUser: 65534
