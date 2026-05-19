@@ -418,6 +418,34 @@ func TestSummarizeProjectCardCronJobsTreatsNewCronJobWithoutRunsAsPending(t *tes
 	assert.Equal(t, "pending", evidence.Items[0].Status)
 }
 
+func TestMatchProjectCardJobEvidencePreservesPendingCount(t *testing.T) {
+	project := &types.Project{
+		ID:   uuid.New(),
+		Name: "Tulana",
+		Slug: "tulana",
+	}
+	evidenceByNamespace := map[string]projectCardJobsEvidence{
+		"tulana": {
+			Status:         "pending",
+			NamespaceCount: 1,
+			CronJobCount:   2,
+			PendingCount:   2,
+			LastObservedAt: time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC),
+			Items: []projectCardJobEvidence{
+				{Namespace: "tulana", Name: "tulana-pull-catalog", Status: "pending"},
+				{Namespace: "tulana", Name: "tulana-pull-fx", Status: "pending"},
+			},
+		},
+	}
+
+	evidence := matchProjectCardJobEvidence(project, nil, nil, evidenceByNamespace)
+
+	require.NotNil(t, evidence)
+	assert.Equal(t, "pending", evidence.Status)
+	assert.Equal(t, 2, evidence.PendingCount)
+	assert.Equal(t, "healthy", aggregateStatusFromJobEvidence(evidence))
+}
+
 func TestMatchProjectCardArgoEvidenceUsesCandidatesAndRepoFallback(t *testing.T) {
 	projectID := uuid.New()
 	project := &types.Project{ID: projectID, Name: "Phynd CRM Staging", Slug: "phynd-crm-staging"}

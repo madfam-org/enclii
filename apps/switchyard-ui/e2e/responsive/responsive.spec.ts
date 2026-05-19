@@ -112,8 +112,8 @@ test.describe('Responsive Design', () => {
       await expect(branding.first()).toBeVisible();
 
       // Login form should be visible
-      const heading = page.getByRole('heading', { name: /sign in/i });
-      await expect(heading).toBeVisible();
+      const ssoButton = page.getByRole('button', { name: /sign in with janua/i });
+      await expect(ssoButton).toBeVisible();
     });
   });
 

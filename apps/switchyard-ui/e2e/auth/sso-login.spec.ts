@@ -56,7 +56,7 @@ test.describe('SSO Authentication', () => {
       await waitForAppReady(page);
 
       // Should have a heading
-      const heading = page.getByRole('heading', { name: /sign in/i });
+      const heading = page.getByRole('heading', { name: /enclii/i });
       await expect(heading).toBeVisible({ timeout: 10000 });
     });
   });

@@ -266,6 +266,65 @@ export async function setupApiMocking(page: Page, customMocks?: Record<string, u
   });
 }
 
+type MockOidcUser = {
+  id: string;
+  email: string;
+  name?: string;
+  roles?: string[];
+  foundry_tier?: string | null;
+};
+
+type MockOidcTokens = {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+};
+
+export async function setupOidcSession(
+  page: Page,
+  user: MockOidcUser,
+  tokens: MockOidcTokens,
+): Promise<void> {
+  await page.unroute('**/auth.madfam.io/**').catch(() => {});
+  await page.context().addCookies([
+    {
+      name: 'enclii_auth',
+      value: tokens.accessToken,
+      url: 'http://localhost:3000',
+      sameSite: 'Lax',
+    },
+  ]);
+
+  const fulfillAuthMe = async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        roles: user.roles || [],
+        is_admin: (user.roles || []).includes('admin'),
+        user_metadata: {
+          foundry_tier: user.foundry_tier || null,
+        },
+      }),
+    });
+  };
+
+  await page.route('**/auth.madfam.io/api/v1/auth/me', fulfillAuthMe);
+  await page.route('**/api/v1/auth/me', fulfillAuthMe);
+
+  await page.addInitScript(
+    ({ user, tokens }) => {
+      localStorage.setItem('enclii_user', JSON.stringify(user));
+      localStorage.setItem('enclii_tokens', JSON.stringify(tokens));
+      document.cookie = `enclii_auth=${tokens.accessToken}; path=/; samesite=lax`;
+    },
+    { user, tokens },
+  );
+}
+
 /**
  * Wait for the app to finish loading (no "Checking session..." or loading spinners)
  */

@@ -94,6 +94,7 @@ func matchProjectCardJobEvidence(
 		combined.FailedCount += evidence.FailedCount
 		combined.ActiveCount += evidence.ActiveCount
 		combined.StuckCount += evidence.StuckCount
+		combined.PendingCount += evidence.PendingCount
 		combined.SucceededCount += evidence.SucceededCount
 		if evidence.LastObservedAt.After(combined.LastObservedAt) {
 			combined.LastObservedAt = evidence.LastObservedAt

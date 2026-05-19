@@ -1,5 +1,5 @@
 import { test, expect, Route } from '@playwright/test';
-import { setupApiMocking, waitForAppReady } from '../fixtures';
+import { setupApiMocking, setupOidcSession, waitForAppReady } from '../fixtures';
 
 /**
  * Consolidated audit log E2E test (P1.5).
@@ -125,13 +125,7 @@ test.describe('Consolidated audit log (/audit)', () => {
     await setupApiMocking(page);
     await setupAuditMock(page);
     const { user, tokens } = adminAuth();
-    await page.addInitScript(
-      ({ user, tokens }) => {
-        localStorage.setItem('enclii_user', JSON.stringify(user));
-        localStorage.setItem('enclii_tokens', JSON.stringify(tokens));
-      },
-      { user, tokens },
-    );
+    await setupOidcSession(page, user, tokens);
   });
 
   test('renders merged rows and narrows by category filter, drawer shows details', async ({

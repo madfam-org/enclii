@@ -1,5 +1,5 @@
 import { test, expect, type Route } from '@playwright/test';
-import { setupApiMocking, waitForAppReady } from '../fixtures';
+import { setupApiMocking, setupOidcSession, waitForAppReady } from '../fixtures';
 
 /**
  * P2.1 in-UI log tail E2E.
@@ -113,18 +113,39 @@ test.describe('Service logs page (P2.1)', () => {
     );
 
     const { user, tokens } = authedLocalStorage();
-    await page.addInitScript(
-      ({ user, tokens }) => {
-        localStorage.setItem('enclii_user', JSON.stringify(user));
-        localStorage.setItem('enclii_tokens', JSON.stringify(tokens));
-      },
-      { user, tokens },
-    );
+    await setupOidcSession(page, user, tokens);
   });
 
   test('renders history, toggles live tail, and narrows by level filter', async ({
     page,
   }) => {
+    // Live tail toggle: the viewer opens a WS in live mode. Register the
+    // route before navigation so we catch the initial connection as well as
+    // any reconnect caused by later interactions.
+    await page.routeWebSocket(
+      new RegExp(`/v1/services/${SERVICE_ID}/logs/tail`),
+      (ws) => {
+        let sends = 0;
+        const timer = setInterval(() => {
+          sends += 1;
+          ws.send(
+            JSON.stringify({
+              type: 'entry',
+              entry: {
+                timestamp: new Date().toISOString(),
+                level: 'info',
+                pod: 'karafiel-api-abc',
+                message: 'live-tail hello',
+              },
+            }),
+          );
+          if (sends >= 5) {
+            clearInterval(timer);
+          }
+        }, 300);
+      },
+    );
+
     await page.goto(
       `/projects/${PROJECT_SLUG}/services/${SERVICE_ID}/logs`,
     );
@@ -153,30 +174,7 @@ test.describe('Service logs page (P2.1)', () => {
     await page.getByLabel('error logs').uncheck();
     await expect(logRegion).toContainText('server listening', { timeout: 5000 });
 
-    // 3. Live tail toggle: the viewer opens a WS on toggle. We use
-    //    routeWebSocket to intercept and push a synthetic entry.
-    await page.routeWebSocket(
-      new RegExp(`/v1/services/${SERVICE_ID}/logs/tail`),
-      (ws) => {
-        // Server-side of the mock: push one entry so the test can
-        // assert it renders.
-        setTimeout(() => {
-          ws.send(
-            JSON.stringify({
-              type: 'entry',
-              entry: {
-                timestamp: new Date().toISOString(),
-                level: 'info',
-                pod: 'karafiel-api-abc',
-                message: 'live-tail hello',
-              },
-            }),
-          );
-        }, 300);
-      },
-    );
-
-    // Ensure live is on (default when time range = live).
+    // 3. Ensure live is on (default when time range = live).
     const liveButton = page.getByRole('button', { name: /live|paused/i });
     // If toggled off by the earlier filter interaction, re-enable it.
     const label = await liveButton.textContent();

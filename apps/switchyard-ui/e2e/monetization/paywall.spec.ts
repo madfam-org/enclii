@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupApiMocking, waitForAppReady } from '../fixtures';
+import { setupApiMocking, setupOidcSession, waitForAppReady } from '../fixtures';
 
 /**
  * Paywall E2E Tests — "Operation Golden Key"
@@ -69,11 +69,7 @@ test.describe('Paywall — requireTier + PricingModal', () => {
 
     const { user, tokens } = injectAuth('community');
 
-    // Inject auth state before navigation
-    await page.addInitScript(({ user, tokens }) => {
-      localStorage.setItem('enclii_user', JSON.stringify(user));
-      localStorage.setItem('enclii_tokens', JSON.stringify(tokens));
-    }, { user, tokens });
+    await setupOidcSession(page, user, tokens);
 
     await page.goto('/services/new');
     await waitForAppReady(page);
@@ -119,10 +115,7 @@ test.describe('Paywall — requireTier + PricingModal', () => {
 
     const { user, tokens } = injectAuth('sovereign'); // Legacy tier name still works
 
-    await page.addInitScript(({ user, tokens }) => {
-      localStorage.setItem('enclii_user', JSON.stringify(user));
-      localStorage.setItem('enclii_tokens', JSON.stringify(tokens));
-    }, { user, tokens });
+    await setupOidcSession(page, user, tokens);
 
     await page.goto('/services/new');
     await waitForAppReady(page);
@@ -142,10 +135,7 @@ test.describe('Paywall — requireTier + PricingModal', () => {
 
     const { user, tokens } = injectAuth('community');
 
-    await page.addInitScript(({ user, tokens }) => {
-      localStorage.setItem('enclii_user', JSON.stringify(user));
-      localStorage.setItem('enclii_tokens', JSON.stringify(tokens));
-    }, { user, tokens });
+    await setupOidcSession(page, user, tokens);
 
     await page.goto('/services/new');
     await waitForAppReady(page);
