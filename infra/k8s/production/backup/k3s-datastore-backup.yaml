@@ -135,13 +135,21 @@ spec:
                   mkdir -p "$WORKDIR"
 
                   if [ -d /var/lib/rancher/k3s/server/db/etcd ]; then
-                    echo "Embedded etcd datastore detected; creating k3s etcd snapshot..."
-                    k3s etcd-snapshot save \
+                    echo "Embedded etcd datastore directory detected; attempting k3s etcd snapshot..."
+                    if k3s etcd-snapshot save \
                       --name "$SNAPSHOT_NAME" \
-                      --dir "$WORKDIR"
-                  else
+                      --dir "$WORKDIR"; then
+                      echo "K3s etcd snapshot created"
+                    else
+                      echo "K3s etcd snapshot unavailable; falling back to SQLite datastore copy..."
+                      cp /var/lib/rancher/k3s/server/db/state.db "$WORKDIR/state.db"
+                    fi
+                  elif [ -f /var/lib/rancher/k3s/server/db/state.db ]; then
                     echo "SQLite datastore detected; copying state.db..."
                     cp /var/lib/rancher/k3s/server/db/state.db "$WORKDIR/state.db"
+                  else
+                    echo "No supported k3s datastore found under /var/lib/rancher/k3s/server/db" >&2
+                    exit 1
                   fi
 
                   echo "Copying k3s recovery materials..."
