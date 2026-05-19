@@ -133,7 +133,7 @@ describe("ProjectCardCompact process drawer", () => {
 
     await waitFor(() =>
       expect(mockApiRequest).toHaveBeenCalledWith(
-        "/v1/projects/orchard/processes?limit=50&active_only=false",
+        "/v1/projects/orchard/processes?limit=50&active_only=true",
         expect.objectContaining({ method: "GET" }),
       ),
     );

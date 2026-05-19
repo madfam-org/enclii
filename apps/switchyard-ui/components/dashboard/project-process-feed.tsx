@@ -213,7 +213,7 @@ export function ProjectProcessDrawer({
     setError(null);
 
     apiRequest<ProjectProcessTimelineResponse>(
-      `/v1/projects/${encodeURIComponent(project.slug)}/processes?limit=50&active_only=false`,
+      `/v1/projects/${encodeURIComponent(project.slug)}/processes?limit=50&active_only=true`,
       { method: "GET", signal: controller.signal },
     )
       .then((response) => {
@@ -246,7 +246,7 @@ export function ProjectProcessDrawer({
         <SheetHeader>
           <SheetTitle>{project.name} process feed</SheetTitle>
           <SheetDescription>
-            Active, failed, blocked, and recent service processes for this project.
+            Active service processes currently reported for this project.
           </SheetDescription>
         </SheetHeader>
 
@@ -260,7 +260,7 @@ export function ProjectProcessDrawer({
           {loading && historyProcesses === null && (
             <div className="border-border/60 bg-muted/30 text-muted-foreground flex items-center gap-2 rounded-md border p-3 text-sm">
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-              Loading full process history…
+              Loading active process events...
             </div>
           )}
 
