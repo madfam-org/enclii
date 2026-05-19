@@ -182,6 +182,8 @@ func summarizeProjectCardCronJob(cronJob batchv1.CronJob, jobs []batchv1.Job, ob
 
 	var latestJob *batchv1.Job
 	var lastFailureTime *time.Time
+	var recoveredAt *time.Time
+	failureTimes := []*time.Time{}
 	for i := range jobs {
 		job := &jobs[i]
 		if !projectCardJobOwnedByCronJob(job, cronJob.Name) {
@@ -192,17 +194,26 @@ func summarizeProjectCardCronJob(cronJob batchv1.CronJob, jobs []batchv1.Job, ob
 		}
 		if job.Status.Active > 0 {
 			item.ActiveJobs += int(job.Status.Active)
+			activeObservedAt := projectCardJobObservedAt(job)
+			recoveredAt = laterTime(recoveredAt, &activeObservedAt)
 			if projectCardActiveJobIsStuck(job, cronJob, observedAt) {
 				item.StuckJobs += int(job.Status.Active)
 			}
 		}
 		if job.Status.Succeeded > 0 {
 			item.SucceededJobs += int(job.Status.Succeeded)
+			recoveredAt = laterTime(recoveredAt, projectCardJobSuccessTime(job))
 		}
 		if failureTime := projectCardJobFailureTime(job); failureTime != nil && observedAt.Sub(*failureTime) <= projectCardJobFailureWindow {
-			item.RecentFailedJobs++
-			lastFailureTime = laterTime(lastFailureTime, failureTime)
+			failureTimes = append(failureTimes, failureTime)
 		}
+	}
+	for _, failureTime := range failureTimes {
+		if recoveredAt != nil && !failureTime.After(*recoveredAt) {
+			continue
+		}
+		item.RecentFailedJobs++
+		lastFailureTime = laterTime(lastFailureTime, failureTime)
 	}
 	if latestJob != nil {
 		item.LatestJobName = latestJob.Name
@@ -289,15 +300,43 @@ func projectCardJobFailureTime(job *batchv1.Job) *time.Time {
 	if job == nil || job.Status.Failed == 0 {
 		return nil
 	}
+	if job.Status.Succeeded > 0 || projectCardJobHasCondition(job, batchv1.JobComplete) {
+		return nil
+	}
 	for _, condition := range job.Status.Conditions {
 		if condition.Type == batchv1.JobFailed && condition.Status == "True" {
 			return projectCardMetaTimePtr(&condition.LastTransitionTime)
 		}
 	}
+	if job.Status.Active > 0 {
+		return nil
+	}
 	if job.Status.CompletionTime != nil {
 		return projectCardMetaTimePtr(job.Status.CompletionTime)
 	}
 	return projectCardMetaTimePtr(&job.CreationTimestamp)
+}
+
+func projectCardJobSuccessTime(job *batchv1.Job) *time.Time {
+	if job == nil || job.Status.Succeeded == 0 {
+		return nil
+	}
+	if job.Status.CompletionTime != nil {
+		return projectCardMetaTimePtr(job.Status.CompletionTime)
+	}
+	return projectCardTimePtr(projectCardJobObservedAt(job))
+}
+
+func projectCardJobHasCondition(job *batchv1.Job, conditionType batchv1.JobConditionType) bool {
+	if job == nil {
+		return false
+	}
+	for _, condition := range job.Status.Conditions {
+		if condition.Type == conditionType && condition.Status == "True" {
+			return true
+		}
+	}
+	return false
 }
 
 func projectCardActiveJobIsStuck(job *batchv1.Job, cronJob batchv1.CronJob, observedAt time.Time) bool {

@@ -237,6 +237,102 @@ func TestSummarizeProjectCardCronJobsCountsRecentFailures(t *testing.T) {
 	assert.Equal(t, "forgesight-pipeline-29652480", evidence.Items[0].LatestJobName)
 }
 
+func TestSummarizeProjectCardCronJobsIgnoresFailedRetriesAfterSuccess(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	completedAt := metav1.NewTime(now.Add(-time.Hour))
+	startedAt := metav1.NewTime(now.Add(-2 * time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "status-recorder", Namespace: "enclii"},
+	}
+	job := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "status-recorder-29652480",
+			Namespace:         "enclii",
+			CreationTimestamp: metav1.NewTime(now.Add(-2 * time.Hour)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "status-recorder",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			StartTime:      &startedAt,
+			CompletionTime: &completedAt,
+			Failed:         1,
+			Succeeded:      1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobComplete,
+				Status:             "True",
+				LastTransitionTime: completedAt,
+			}},
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{job}, now)
+
+	assert.Equal(t, "healthy", evidence.Status)
+	assert.Equal(t, 0, evidence.FailedCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "healthy", evidence.Items[0].Status)
+	assert.Equal(t, 0, evidence.Items[0].RecentFailedJobs)
+}
+
+func TestSummarizeProjectCardCronJobsTreatsNewerSuccessAsRecovered(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	failedAt := metav1.NewTime(now.Add(-3 * time.Hour))
+	successAt := metav1.NewTime(now.Add(-time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "foundry-scout", Namespace: "foundry-scout"},
+	}
+	failedJob := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "foundry-scout-29652360",
+			Namespace:         "foundry-scout",
+			CreationTimestamp: metav1.NewTime(now.Add(-3 * time.Hour)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "foundry-scout",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			Failed: 1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobFailed,
+				Status:             "True",
+				LastTransitionTime: failedAt,
+			}},
+		},
+	}
+	successJob := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "foundry-scout-29652480",
+			Namespace:         "foundry-scout",
+			CreationTimestamp: metav1.NewTime(now.Add(-time.Hour)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "foundry-scout",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			CompletionTime: &successAt,
+			Succeeded:      1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobComplete,
+				Status:             "True",
+				LastTransitionTime: successAt,
+			}},
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{failedJob, successJob}, now)
+
+	assert.Equal(t, "healthy", evidence.Status)
+	assert.Equal(t, 0, evidence.FailedCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "healthy", evidence.Items[0].Status)
+	assert.Equal(t, "foundry-scout-29652480", evidence.Items[0].LatestJobName)
+	assert.Equal(t, 0, evidence.Items[0].RecentFailedJobs)
+}
+
 func TestMatchProjectCardArgoEvidenceUsesCandidatesAndRepoFallback(t *testing.T) {
 	projectID := uuid.New()
 	project := &types.Project{ID: projectID, Name: "Phynd CRM Staging", Slug: "phynd-crm-staging"}
@@ -289,6 +385,29 @@ func TestMatchProjectCardArgoEvidencePrefersWorstMatchingApplication(t *testing.
 	require.NotNil(t, matched)
 	assert.Equal(t, "phynd-crm-staging", matched.Name)
 	assert.Equal(t, "Degraded", matched.HealthStatus)
+}
+
+func TestMatchProjectCardArgoEvidencePrefersDirectCandidateOverBroadPartOf(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Name: "Enclii", Slug: "enclii"}
+	evidenceByName := map[string]projectCardArgoApplicationEvidence{
+		"core-services": {
+			Name:         "core-services",
+			SyncStatus:   "Synced",
+			HealthStatus: "Healthy",
+			PartOf:       "enclii",
+		},
+		"arc-runners": {
+			Name:         "arc-runners",
+			SyncStatus:   "OutOfSync",
+			HealthStatus: "Degraded",
+			PartOf:       "enclii",
+		},
+	}
+
+	matched := matchProjectCardArgoEvidence(project, nil, nil, evidenceByName)
+
+	require.NotNil(t, matched)
+	assert.Equal(t, "core-services", matched.Name)
 }
 
 func TestBuildProjectCardAggregateDoesNotInferFramework(t *testing.T) {

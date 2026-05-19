@@ -110,43 +110,46 @@ func matchProjectCardArgoEvidence(
 	}
 
 	var matched *projectCardArgoApplicationEvidence
+	matchedRank := 0
 	for _, evidence := range argoEvidenceByName {
-		if !projectCardArgoEvidenceMatchesProject(evidence, candidateNames, projectKeys, serviceRepos) {
+		rank := projectCardArgoEvidenceMatchRank(evidence, candidateNames, projectKeys, serviceRepos)
+		if rank == 0 {
 			continue
 		}
 		evidence := evidence
-		if matched == nil || projectCardArgoEvidenceLessSevere(*matched, evidence) {
+		if matched == nil || rank > matchedRank || (rank == matchedRank && projectCardArgoEvidenceLessSevere(*matched, evidence)) {
 			matched = &evidence
+			matchedRank = rank
 		}
 	}
 	return matched
 }
 
-func projectCardArgoEvidenceMatchesProject(
+func projectCardArgoEvidenceMatchRank(
 	evidence projectCardArgoApplicationEvidence,
 	candidateNames map[string]bool,
 	projectKeys map[string]bool,
 	serviceRepos map[string]bool,
-) bool {
+) int {
 	name := projectCardSanitizeArgoName(evidence.Name)
 	if candidateNames[name] {
-		return true
+		return 2
 	}
 	for projectKey := range projectKeys {
 		if projectKey == "" {
 			continue
 		}
 		if name == projectKey || strings.HasPrefix(name, projectKey+"-") {
-			return true
+			return 2
 		}
 	}
 	if projectKeys[projectCardSanitizeArgoName(evidence.PartOf)] {
-		return true
+		return 1
 	}
 	if repo := normalizeProjectCardGitRepo(evidence.SourceRepo); repo != "" && serviceRepos[repo] {
-		return true
+		return 1
 	}
-	return false
+	return 0
 }
 
 func projectCardArgoEvidenceLessSevere(current, candidate projectCardArgoApplicationEvidence) bool {
@@ -183,6 +186,9 @@ func projectCardArgoNameCandidates(project *types.Project, onboardingArgoAppsByP
 
 	if onboardingArgoAppsByProject != nil {
 		add(onboardingArgoAppsByProject[project.ID])
+	}
+	if projectCardSanitizeArgoName(project.Slug) == "enclii" {
+		add("core-services")
 	}
 	add(project.Slug)
 	add(project.Slug + "-services")
