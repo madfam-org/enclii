@@ -119,6 +119,48 @@ func TestRawSpecToServiceCarriesBuildSourceMetadata(t *testing.T) {
 	}
 }
 
+func TestRawSpecToServiceCarriesBuildArgsAliases(t *testing.T) {
+	dir := t.TempDir()
+
+	writeTestFile(t, dir, "dhanam-web.yaml", `apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: dhanam-web
+  project: dhanam
+spec:
+  build:
+    type: dockerfile
+    dockerfile: apps/web/Dockerfile
+    context: .
+    args:
+      NEXT_PUBLIC_API_URL: https://api.dhan.am/v1
+      NEXT_PUBLIC_BASE_URL: https://app.dhan.am
+    build_args:
+      NEXT_PUBLIC_ADMIN_URL: https://admin.dhan.am
+    buildArgs:
+      NEXT_PUBLIC_BASE_URL: https://override.dhan.am
+`)
+
+	specs, err := readRawServiceSpecs(dir)
+	if err != nil {
+		t.Fatalf("readRawServiceSpecs returned error: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 service spec, got %d", len(specs))
+	}
+
+	service := rawSpecToService(specs[0])
+	if service.BuildConfig.BuildArgs["NEXT_PUBLIC_API_URL"] != "https://api.dhan.am/v1" {
+		t.Fatalf("expected args alias to populate build arg, got %q", service.BuildConfig.BuildArgs["NEXT_PUBLIC_API_URL"])
+	}
+	if service.BuildConfig.BuildArgs["NEXT_PUBLIC_ADMIN_URL"] != "https://admin.dhan.am" {
+		t.Fatalf("expected build_args alias to populate build arg, got %q", service.BuildConfig.BuildArgs["NEXT_PUBLIC_ADMIN_URL"])
+	}
+	if service.BuildConfig.BuildArgs["NEXT_PUBLIC_BASE_URL"] != "https://override.dhan.am" {
+		t.Fatalf("expected buildArgs to take precedence, got %q", service.BuildConfig.BuildArgs["NEXT_PUBLIC_BASE_URL"])
+	}
+}
+
 func TestServiceReconcileChangesDetectsPersistedSourceDrift(t *testing.T) {
 	existing := &types.Service{
 		Name:             "forgesight-app",

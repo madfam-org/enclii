@@ -29,13 +29,15 @@ type RawServiceSpec struct {
 	} `yaml:"metadata"`
 	Spec struct {
 		Build struct {
-			Type       string            `yaml:"type"`
-			Dockerfile string            `yaml:"dockerfile"`
-			Context    string            `yaml:"context"`
-			Buildpack  string            `yaml:"buildpack"`
-			BuildArgs  map[string]string `yaml:"buildArgs"`
-			Target     string            `yaml:"target"`
-			Source     struct {
+			Type           string            `yaml:"type"`
+			Dockerfile     string            `yaml:"dockerfile"`
+			Context        string            `yaml:"context"`
+			Buildpack      string            `yaml:"buildpack"`
+			Args           map[string]string `yaml:"args"`
+			BuildArgsSnake map[string]string `yaml:"build_args"`
+			BuildArgs      map[string]string `yaml:"buildArgs"`
+			Target         string            `yaml:"target"`
+			Source         struct {
 				Git struct {
 					Repository string `yaml:"repository"`
 					Branch     string `yaml:"branch"`
@@ -489,8 +491,25 @@ func rawSpecToService(s *RawServiceSpec) *types.Service {
 			Dockerfile: s.Spec.Build.Dockerfile,
 			Context:    s.Spec.Build.Context,
 			Buildpack:  s.Spec.Build.Buildpack,
-			BuildArgs:  s.Spec.Build.BuildArgs,
+			BuildArgs:  serviceSpecBuildArgs(s),
 			Target:     s.Spec.Build.Target,
 		},
 	}
+}
+
+func serviceSpecBuildArgs(s *RawServiceSpec) map[string]string {
+	buildArgs := make(map[string]string)
+	for key, value := range s.Spec.Build.Args {
+		buildArgs[key] = value
+	}
+	for key, value := range s.Spec.Build.BuildArgsSnake {
+		buildArgs[key] = value
+	}
+	for key, value := range s.Spec.Build.BuildArgs {
+		buildArgs[key] = value
+	}
+	if len(buildArgs) == 0 {
+		return nil
+	}
+	return buildArgs
 }
