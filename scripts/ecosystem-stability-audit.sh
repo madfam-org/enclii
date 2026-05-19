@@ -165,6 +165,13 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
       def cron_name:
         ([.metadata.ownerReferences[]? | select(.kind == "CronJob") | .name][0]
           // (.metadata.name | sub("-[0-9]+$"; "")));
+      def is_complete:
+        ((.status.succeeded // 0) > 0)
+        or (([.status.conditions[]? | select(.type == "Complete" and .status == "True")] | length) > 0);
+      def is_failed_terminal:
+        (([.status.conditions[]? | select(.type == "Failed" and .status == "True")] | length) > 0)
+        or (((.status.succeeded // 0) == 0) and ((.status.active // 0) == 0) and ((.status.failed // 0) > 0));
+
       [
         .items[]
         | ([.metadata.ownerReferences[]? | select(.kind == "CronJob")] | length) as $cron_owner_count
@@ -172,19 +179,28 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
         | select($cron_owner_count > 0 or $scheduled_annotation != "")
         | (.metadata.annotations["batch.kubernetes.io/cronjob-scheduled-timestamp"] // .status.completionTime // .metadata.creationTimestamp) as $ts
         | ($ts | fromdateiso8601? // 0) as $epoch
-        | select($epoch >= $cutoff)
-        | . + {"_cron_name": cron_name, "_scheduled": $ts, "_epoch": $epoch}
+        | . + {
+            "_cron_name": cron_name,
+            "_scheduled": $ts,
+            "_epoch": $epoch,
+            "_failed": (.status.failed // 0),
+            "_active": (.status.active // 0),
+            "_complete": is_complete,
+            "_failed_terminal": is_failed_terminal
+          }
       ]
       | sort_by(.metadata.namespace, ._cron_name, ._epoch)
       | group_by([.metadata.namespace, ._cron_name])[]
-      | last
-      | ([.status.conditions[]? | select(.type == "Failed" and .status == "True")] | length) as $failed_condition
-      | (.status.succeeded // 0) as $succeeded
-      | (.status.active // 0) as $active
-      | (.status.failed // 0) as $failed
-      | select($succeeded == 0)
-      | select($failed_condition > 0 or ($succeeded == 0 and $active == 0 and $failed > 0))
-      | "\(.metadata.namespace)/\(.metadata.name)\tcronjob=\(._cron_name)\tfailed=\($failed)\tscheduled=\(._scheduled)"
+      | . as $runs
+      | ($runs | map(select(._complete) | ._epoch) | max // 0) as $recovered_epoch
+      | ($runs
+          | map(select(._epoch >= $cutoff))
+          | map(select(._epoch > $recovered_epoch))
+          | map(select(._failed_terminal))
+        ) as $unrecovered_failures
+      | select(($unrecovered_failures | length) > 0)
+      | ($unrecovered_failures | last) as $last
+      | "\($last.metadata.namespace)/\($last.metadata.name)\tcronjob=\($last._cron_name)\tunrecovered_failures=\($unrecovered_failures | length)\tfailed=\($last._failed)\tactive=\($last._active)\tscheduled=\($last._scheduled)"
     ' "$TMP_DIR/jobs.json"
   )"
   if [[ -n "$failed_jobs" ]]; then
