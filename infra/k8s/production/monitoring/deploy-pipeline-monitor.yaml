@@ -491,6 +491,16 @@ spec:
       ports:
         - protocol: TCP
           port: 9091
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: npm-registry
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: verdaccio
+      ports:
+        - protocol: TCP
+          port: 9091
 
 ---
 # Alerting rules

@@ -46,3 +46,14 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Allow token-rotation jobs to push expiry metrics.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app: pushgateway
+      ports:
+        - protocol: TCP
+          port: 9091
