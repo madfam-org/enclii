@@ -651,7 +651,7 @@ func lifecycleProcessKindAndStatus(eventType string) (string, string) {
 	case types.LifecycleDeployStarted:
 		return "deploy", "running"
 	case types.LifecycleDeploySynced:
-		return "gitops_sync", "running"
+		return "gitops_sync", "succeeded"
 	case types.LifecycleDeployHealthy:
 		return "deploy", "succeeded"
 	case types.LifecycleDeployDegraded:

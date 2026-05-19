@@ -16,6 +16,7 @@ import (
 const (
 	projectCardJobFailureWindow    = 24 * time.Hour
 	projectCardJobActiveStaleAfter = 30 * time.Minute
+	projectCardCronJobNoRunGrace   = 8 * 24 * time.Hour
 )
 
 func (h *Handler) listProjectCardJobEvidence(ctx context.Context, observedAt time.Time) map[string]projectCardJobsEvidence {
@@ -162,6 +163,9 @@ func summarizeProjectCardCronJobs(cronJobs []batchv1.CronJob, jobs []batchv1.Job
 		evidence.ActiveCount += item.ActiveJobs
 		evidence.StuckCount += item.StuckJobs
 		evidence.SucceededCount += item.SucceededJobs
+		if item.Status == "pending" {
+			evidence.PendingCount++
+		}
 		evidence.Items = append(evidence.Items, item)
 	}
 	evidence.Status = projectCardJobsStatus(evidence)
@@ -232,6 +236,8 @@ func summarizeProjectCardCronJob(cronJob batchv1.CronJob, jobs []batchv1.Job, ob
 		item.Status = "active"
 	case item.SucceededJobs > 0:
 		item.Status = "healthy"
+	case projectCardCronJobIsWaitingForFirstRun(cronJob, observedAt):
+		item.Status = "pending"
 	default:
 		item.Status = "unknown"
 	}
@@ -250,6 +256,8 @@ func projectCardJobsStatus(evidence projectCardJobsEvidence) string {
 		return "active"
 	case evidence.SucceededCount > 0:
 		return "healthy"
+	case evidence.PendingCount > 0:
+		return "pending"
 	default:
 		return "unknown"
 	}
@@ -263,13 +271,28 @@ func projectCardJobStatusSeverity(status string) int {
 		return 4
 	case "active":
 		return 3
-	case "unknown":
+	case "pending", "unknown":
 		return 2
 	case "healthy":
 		return 1
 	default:
 		return 0
 	}
+}
+
+func projectCardCronJobIsWaitingForFirstRun(cronJob batchv1.CronJob, observedAt time.Time) bool {
+	if cronJob.Status.LastScheduleTime != nil {
+		return false
+	}
+	createdAt := cronJob.CreationTimestamp.Time.UTC()
+	if createdAt.IsZero() {
+		return false
+	}
+	age := observedAt.Sub(createdAt)
+	if age < 0 {
+		age = 0
+	}
+	return age <= projectCardCronJobNoRunGrace
 }
 
 func projectCardJobOwnedByCronJob(job *batchv1.Job, cronJobName string) bool {

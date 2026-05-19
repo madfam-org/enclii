@@ -139,8 +139,10 @@ spec:
             runAsGroup: 1000
           containers:
             - name: rotate
-              image: ghcr.io/madfam-org/enclii/alpine-gh@sha256:e9c68fd809b0962d37ccf6c6793c3c4ec7e081b2dea4daf0c5dd912c9f6dd1a4
+              image: ghcr.io/madfam-org/enclii/switchyard-api@sha256:e9c68fd809b0962d37ccf6c6793c3c4ec7e081b2dea4daf0c5dd912c9f6dd1a4
               # Alpine 3.x + curl + jq + gh CLI. Source: infra/docker/alpine-gh.
+              # Hosted under an existing GHCR package so cluster pull credentials
+              # inherit the same package access path as other Enclii workloads.
               command: ["/bin/sh", "/scripts/rotate.sh"]
               env:
                 - name: NPM_REGISTRY_USER

@@ -37,7 +37,7 @@ func TestLifecycleProcessKindAndStatus(t *testing.T) {
 		{name: "push", eventType: types.LifecyclePushReceived, kind: "git_push", status: "succeeded"},
 		{name: "build started", eventType: types.LifecycleBuildStarted, kind: "build", status: "running"},
 		{name: "build failed", eventType: types.LifecycleBuildFailed, kind: "build", status: "failed"},
-		{name: "deploy synced", eventType: types.LifecycleDeploySynced, kind: "gitops_sync", status: "running"},
+		{name: "deploy synced", eventType: types.LifecycleDeploySynced, kind: "gitops_sync", status: "succeeded"},
 		{name: "deploy degraded", eventType: types.LifecycleDeployDegraded, kind: "rollout", status: "blocked"},
 		{name: "unknown", eventType: "provider_probe", kind: "operator", status: "unknown"},
 	}

@@ -97,6 +97,7 @@ type projectCardJobsEvidence struct {
 	FailedCount    int                      `json:"failed_count"`
 	ActiveCount    int                      `json:"active_count"`
 	StuckCount     int                      `json:"stuck_count"`
+	PendingCount   int                      `json:"pending_count,omitempty"`
 	SucceededCount int                      `json:"succeeded_count"`
 	LastObservedAt time.Time                `json:"last_observed_at"`
 	Items          []projectCardJobEvidence `json:"items,omitempty"`
@@ -367,6 +368,7 @@ func aggregateStatusForCard(services []projectCardService, argoEvidence *project
 	}
 
 	allHealthyAndStable := true
+	allStableWithOnlyStaleHealth := len(services) > 0
 	for _, service := range services {
 		if service.RolloutState == "blocked" || service.Status == "failed" {
 			return "failing"
@@ -374,8 +376,14 @@ func aggregateStatusForCard(services []projectCardService, argoEvidence *project
 		if service.Status != "running" || service.Health != "healthy" || service.RolloutState == "progressing" {
 			allHealthyAndStable = false
 		}
+		if service.Status != "running" || service.RolloutState == "progressing" || (service.Health != "healthy" && service.Health != "stale") {
+			allStableWithOnlyStaleHealth = false
+		}
 	}
 	if allHealthyAndStable && argoStatus != "degraded" && jobStatus != "degraded" {
+		return "healthy"
+	}
+	if allStableWithOnlyStaleHealth && argoStatus == "healthy" && jobStatus != "degraded" {
 		return "healthy"
 	}
 	return "degraded"
@@ -390,7 +398,7 @@ func aggregateStatusFromJobEvidence(jobEvidence *projectCardJobsEvidence) string
 		return "failing"
 	case "degraded", "unknown":
 		return "degraded"
-	case "healthy", "active", "empty":
+	case "healthy", "active", "pending", "empty":
 		return "healthy"
 	default:
 		return ""

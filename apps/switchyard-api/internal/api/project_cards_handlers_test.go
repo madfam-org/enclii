@@ -111,6 +111,39 @@ func TestBuildProjectCardAggregateDowngradesStaleServiceHealth(t *testing.T) {
 	assert.True(t, card.Services[0].HealthStale)
 }
 
+func TestBuildProjectCardAggregateTrustsHealthyArgoOverStaleServiceRows(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	observedAt := now.Add(-projectCardServiceHealthStaleAfter - time.Hour)
+
+	card := buildProjectCardAggregateAt(&types.Project{
+		ID:   uuid.New(),
+		Name: "Yantra4D",
+		Slug: "yantra4d",
+	}, []*types.Service{
+		{
+			ID:              uuid.New(),
+			Name:            "api",
+			Health:          types.HealthStatusHealthy,
+			Status:          "running",
+			DesiredReplicas: 1,
+			ReadyReplicas:   1,
+			LastHealthCheck: &observedAt,
+			RolloutState:    "ok",
+		},
+	}, &projectCardArgoApplicationEvidence{
+		Name:         "yantra4d-services",
+		SyncStatus:   "Synced",
+		HealthStatus: "Healthy",
+		ObservedAt:   now,
+	}, nil, now)
+
+	assert.Equal(t, "healthy", card.AggregateStatus)
+	assert.Equal(t, "stale", card.Evidence.ServiceRows.Status)
+	assert.Equal(t, 1, card.Evidence.ServiceRows.StaleCount)
+	require.Len(t, card.Services, 1)
+	assert.Equal(t, "stale", card.Services[0].Health)
+}
+
 func TestBuildProjectCardAggregateUsesArgoEvidence(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	card := buildProjectCardAggregateAt(&types.Project{
@@ -331,6 +364,24 @@ func TestSummarizeProjectCardCronJobsTreatsNewerSuccessAsRecovered(t *testing.T)
 	assert.Equal(t, "healthy", evidence.Items[0].Status)
 	assert.Equal(t, "foundry-scout-29652480", evidence.Items[0].LatestJobName)
 	assert.Equal(t, 0, evidence.Items[0].RecentFailedJobs)
+}
+
+func TestSummarizeProjectCardCronJobsTreatsNewCronJobWithoutRunsAsPending(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "fresh-scheduled-job",
+			Namespace:         "tulana",
+			CreationTimestamp: metav1.NewTime(now.Add(-time.Hour)),
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, nil, now)
+
+	assert.Equal(t, "pending", evidence.Status)
+	assert.Equal(t, 1, evidence.PendingCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "pending", evidence.Items[0].Status)
 }
 
 func TestMatchProjectCardArgoEvidenceUsesCandidatesAndRepoFallback(t *testing.T) {
