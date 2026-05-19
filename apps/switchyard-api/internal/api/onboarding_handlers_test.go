@@ -186,6 +186,15 @@ func TestPreflightOnboardRequestValidation(t *testing.T) {
 	}
 }
 
+func TestShouldSkipPreflightObjectSkipsKustomizationControlFile(t *testing.T) {
+	if !shouldSkipPreflightObject("kustomize.config.k8s.io/v1beta1", "Kustomization") {
+		t.Fatal("expected kustomize Kustomization control files to be skipped")
+	}
+	if shouldSkipPreflightObject("apps/v1", "Deployment") {
+		t.Fatal("deployment manifests must still be dry-run validated")
+	}
+}
+
 func TestRegisterStatusEntriesProjectsSnapshotEntries(t *testing.T) {
 	h := &Handler{}
 	cfg := &manifest.EncliiYAML{

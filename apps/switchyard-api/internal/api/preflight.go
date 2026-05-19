@@ -109,12 +109,16 @@ func (h *Handler) PreflightOnboard(c *gin.Context) {
 			}
 
 			kind, _ := obj["kind"].(string)
+			apiVersion, _ := obj["apiVersion"].(string)
 			metadata, _ := obj["metadata"].(map[string]interface{})
 			name := "unknown"
 			if metadata != nil {
 				if n, ok := metadata["name"].(string); ok {
 					name = n
 				}
+			}
+			if shouldSkipPreflightObject(apiVersion, kind) {
+				continue
 			}
 
 			// Warn if project manifests contain NetworkPolicy resources
@@ -151,4 +155,8 @@ func (h *Handler) PreflightOnboard(c *gin.Context) {
 		logging.String("violations", fmt.Sprintf("%d", len(violations))))
 
 	c.JSON(http.StatusOK, result)
+}
+
+func shouldSkipPreflightObject(apiVersion, kind string) bool {
+	return kind == "Kustomization" && strings.HasPrefix(apiVersion, "kustomize.config.k8s.io/")
 }

@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -270,28 +271,38 @@ func (c *Client) DryRunApply(ctx context.Context, namespace string, obj map[stri
 		return fmt.Errorf("manifest missing kind")
 	}
 
-	// Build GVR from apiVersion and kind
-	gvr, err := resolveGVR(c, gvk, kind)
+	// Build GVR from apiVersion and kind.
+	gvr, namespaced, err := resolveGVRWithScope(c, gvk, kind)
 	if err != nil {
 		return fmt.Errorf("resolve resource for %s/%s: %w", gvk, kind, err)
 	}
 
 	// Convert to unstructured
 	unstructuredObj := &unstructured.Unstructured{Object: obj}
-	if namespace != "" && unstructuredObj.GetNamespace() == "" {
+	if namespaced && namespace != "" && unstructuredObj.GetNamespace() == "" {
 		unstructuredObj.SetNamespace(namespace)
+	}
+	if unstructuredObj.GetName() == "" {
+		return fmt.Errorf("manifest missing metadata.name")
 	}
 
 	// Server-side dry-run
 	var resource dynamic.ResourceInterface
-	if namespace != "" {
+	if namespaced && namespace != "" {
 		resource = c.DynamicClient.Resource(gvr).Namespace(namespace)
 	} else {
 		resource = c.DynamicClient.Resource(gvr)
 	}
 
-	_, err = resource.Create(ctx, unstructuredObj, metav1.CreateOptions{
-		DryRun: []string{metav1.DryRunAll},
+	force := true
+	payload, err := json.Marshal(unstructuredObj.Object)
+	if err != nil {
+		return fmt.Errorf("marshal manifest: %w", err)
+	}
+	_, err = resource.Patch(ctx, unstructuredObj.GetName(), k8stypes.ApplyPatchType, payload, metav1.PatchOptions{
+		DryRun:       []string{metav1.DryRunAll},
+		Force:        &force,
+		FieldManager: "enclii-preflight",
 	})
 	return err
 }
@@ -613,14 +624,19 @@ func yamlDecodeNetworkPolicy(data []byte, np *networkingv1.NetworkPolicy) error 
 
 // resolveGVR maps an apiVersion + kind to a GroupVersionResource using the discovery API.
 func resolveGVR(c *Client, apiVersion, kind string) (schema.GroupVersionResource, error) {
+	gvr, _, err := resolveGVRWithScope(c, apiVersion, kind)
+	return gvr, err
+}
+
+func resolveGVRWithScope(c *Client, apiVersion, kind string) (schema.GroupVersionResource, bool, error) {
 	gv, err := schema.ParseGroupVersion(apiVersion)
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("parse apiVersion %q: %w", apiVersion, err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("parse apiVersion %q: %w", apiVersion, err)
 	}
 
 	resources, err := c.Clientset.Discovery().ServerResourcesForGroupVersion(apiVersion)
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("discover resources for %s: %w", apiVersion, err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("discover resources for %s: %w", apiVersion, err)
 	}
 
 	for _, r := range resources.APIResources {
@@ -629,11 +645,11 @@ func resolveGVR(c *Client, apiVersion, kind string) (schema.GroupVersionResource
 				Group:    gv.Group,
 				Version:  gv.Version,
 				Resource: r.Name,
-			}, nil
+			}, r.Namespaced, nil
 		}
 	}
 
-	return schema.GroupVersionResource{}, fmt.Errorf("no resource found for %s/%s", apiVersion, kind)
+	return schema.GroupVersionResource{}, false, fmt.Errorf("no resource found for %s/%s", apiVersion, kind)
 }
 
 // getPreviousImage finds the image from the previous ReplicaSet revision
