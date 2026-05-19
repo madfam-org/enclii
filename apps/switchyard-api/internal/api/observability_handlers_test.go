@@ -103,6 +103,62 @@ func TestGetServiceHealth_CacheHitSkipsRecompute(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestGetServiceHealth_ServiceIDFiltersCachedFleetResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, mock, cleanup := setupObservabilityTestHandler(t)
+	defer cleanup()
+
+	targetID := uuid.New().String()
+	otherID := uuid.New().String()
+	resetHealthCache()
+	healthCacheMu.Lock()
+	healthCache = &healthCacheEntry{
+		resp: ServiceHealthResponse{
+			Services: []ServiceHealth{
+				{ServiceID: targetID, Status: "unhealthy"},
+				{ServiceID: otherID, Status: "healthy"},
+			},
+			HealthySvcs:   1,
+			UnhealthySvcs: 1,
+			Timestamp:     time.Now(),
+		},
+		expiresAt: time.Now().Add(15 * time.Second),
+	}
+	healthCacheMu.Unlock()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/v1/observability/health?service_id="+targetID, nil)
+
+	h.GetServiceHealth(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp ServiceHealthResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp.Services, 1)
+	assert.Equal(t, targetID, resp.Services[0].ServiceID)
+	assert.Equal(t, 0, resp.HealthySvcs)
+	assert.Equal(t, 1, resp.UnhealthySvcs)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetServiceHealth_RejectsInvalidServiceID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, mock, cleanup := setupObservabilityTestHandler(t)
+	defer cleanup()
+	resetHealthCache()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/v1/observability/health?service_id=not-a-uuid", nil)
+
+	h.GetServiceHealth(c)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid service_id")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestComputeServiceHealth_HappyPath_NoK8s exercises the extracted recompute
 // against a single service with no K8s client wired. It validates:
 //

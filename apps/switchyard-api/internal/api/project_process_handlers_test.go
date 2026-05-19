@@ -101,6 +101,142 @@ func TestSummarizeProjectProcessesCountsAndLimits(t *testing.T) {
 	assert.Equal(t, "blocked", summary.Services[0].Latest.ID)
 }
 
+func TestCompactProjectProcessesForActiveSummaryDropsSupersededFailures(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "selva"}
+	serviceID := uuid.New().String()
+	now := time.Date(2026, 5, 18, 18, 0, 0, 0, time.UTC)
+
+	processes := compactProjectProcessesForActiveSummary([]projectProcess{
+		{
+			ID:          "deploy-failed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "deploy",
+			Status:      "failed",
+			Environment: "production",
+			UpdatedAt:   now.Add(-30 * time.Minute),
+		},
+		{
+			ID:          "deploy-healthy",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "deploy",
+			Status:      "succeeded",
+			Environment: "production",
+			UpdatedAt:   now.Add(-20 * time.Minute),
+		},
+		{
+			ID:          "build-failed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "build",
+			Status:      "failed",
+			UpdatedAt:   now.Add(-15 * time.Minute),
+		},
+		{
+			ID:          "image-pushed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "image",
+			Status:      "succeeded",
+			UpdatedAt:   now.Add(-10 * time.Minute),
+		},
+	}, now)
+
+	assert.Empty(t, processes)
+}
+
+func TestCompactProjectProcessesForActiveSummaryKeepsCurrentFailure(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "selva"}
+	serviceID := uuid.New().String()
+	now := time.Date(2026, 5, 18, 18, 0, 0, 0, time.UTC)
+
+	processes := compactProjectProcessesForActiveSummary([]projectProcess{
+		{
+			ID:          "deploy-healthy",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "deploy",
+			Status:      "succeeded",
+			Environment: "production",
+			UpdatedAt:   now.Add(-30 * time.Minute),
+		},
+		{
+			ID:          "deploy-failed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "deploy",
+			Status:      "failed",
+			Environment: "production",
+			UpdatedAt:   now.Add(-20 * time.Minute),
+		},
+	}, now)
+
+	require.Len(t, processes, 1)
+	assert.Equal(t, "deploy-failed", processes[0].ID)
+}
+
+func TestCompactProjectProcessesForActiveSummaryKeepsLiveServiceState(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "selva"}
+	serviceID := uuid.New().String()
+	now := time.Date(2026, 5, 18, 18, 0, 0, 0, time.UTC)
+
+	processes := compactProjectProcessesForActiveSummary([]projectProcess{
+		{
+			ID:            "service-state:" + serviceID + ":rollout_blocked",
+			CorrelationID: "service:" + serviceID + ":rollout_blocked",
+			ProjectID:     project.ID.String(),
+			ProjectSlug:   project.Slug,
+			ServiceID:     serviceID,
+			Kind:          "rollout",
+			Status:        "blocked",
+			Environment:   "production",
+			UpdatedAt:     now.Add(-12 * time.Hour),
+		},
+		{
+			ID:          "deploy-healthy",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "deploy",
+			Status:      "succeeded",
+			Environment: "production",
+			UpdatedAt:   now.Add(-10 * time.Minute),
+		},
+	}, now)
+
+	require.Len(t, processes, 1)
+	assert.Equal(t, "service-state:"+serviceID+":rollout_blocked", processes[0].ID)
+	assert.Equal(t, "blocked", processes[0].Status)
+}
+
+func TestCompactProjectProcessesForActiveSummaryDropsStaleRunningLifecycle(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "selva"}
+	serviceID := uuid.New().String()
+	now := time.Date(2026, 5, 18, 18, 0, 0, 0, time.UTC)
+
+	processes := compactProjectProcessesForActiveSummary([]projectProcess{
+		{
+			ID:          "deploy-synced",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID,
+			Kind:        "gitops_sync",
+			Status:      "running",
+			Environment: "production",
+			UpdatedAt:   now.Add(-3 * time.Hour),
+		},
+	}, now)
+
+	assert.Empty(t, processes)
+}
+
 func TestProcessFromLifecycleEventBuildsCorrelationAndLinks(t *testing.T) {
 	project := &types.Project{ID: uuid.New(), Slug: "enclii"}
 	serviceID := uuid.New()

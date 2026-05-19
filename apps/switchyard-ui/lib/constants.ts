@@ -56,4 +56,5 @@ export const HEALTH_STATUS_COLORS: Record<string, string> = {
   healthy: 'bg-status-success-muted text-status-success-foreground',
   unhealthy: 'bg-status-error-muted text-status-error-foreground',
   unknown: 'bg-muted text-muted-foreground',
+  stale: 'bg-status-warning-muted text-status-warning-foreground',
 };

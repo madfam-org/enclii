@@ -142,4 +142,34 @@ describe("ProjectCardCompact process drawer", () => {
     expect(screen.getByText("api.example.test")).toBeInTheDocument();
     expect(screen.getByText("web.example.test")).toBeInTheDocument();
   });
+
+  it("renders CronJob failure evidence as a card chip", () => {
+    const project = {
+      ...projectWithDomains(),
+      aggregateStatus: "failing" as const,
+      evidence: {
+        serviceRows: {
+          status: "fresh",
+          count: 2,
+          healthyCount: 2,
+          staleCount: 0,
+          staleAfterSeconds: 600,
+        },
+        jobs: {
+          status: "failing",
+          namespaceCount: 1,
+          cronJobCount: 1,
+          failedCount: 2,
+          activeCount: 0,
+          stuckCount: 0,
+          succeededCount: 0,
+          lastObservedAt: "2026-05-18T20:00:00Z",
+        },
+      },
+    };
+
+    render(<ProjectCardCompact project={project} />);
+
+    expect(screen.getByText("2 job failed")).toBeInTheDocument();
+  });
 });

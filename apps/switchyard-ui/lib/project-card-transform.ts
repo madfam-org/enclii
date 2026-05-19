@@ -43,6 +43,49 @@ export interface ApiProjectCardService {
   current_image_uri?: string;
   rollout_state?: string;
   rollout_blocked_reason?: string;
+  health_observed_at?: string;
+  health_stale?: boolean;
+}
+
+export interface ApiProjectCardEvidence {
+  service_rows: {
+    status: "fresh" | "stale" | "empty" | string;
+    count: number;
+    healthy_count: number;
+    stale_count: number;
+    last_observed_at?: string;
+    stale_after_seconds: number;
+  };
+  argo_application?: {
+    name: string;
+    sync_status: string;
+    health_status: string;
+    revision?: string;
+    destination_namespace?: string;
+    observed_at: string;
+  };
+  jobs?: {
+    status: string;
+    namespace_count: number;
+    cron_job_count: number;
+    failed_count: number;
+    active_count: number;
+    stuck_count: number;
+    succeeded_count: number;
+    last_observed_at: string;
+    items?: {
+      namespace: string;
+      name: string;
+      status: string;
+      latest_job_name?: string;
+      recent_failed_jobs?: number;
+      active_jobs?: number;
+      stuck_jobs?: number;
+      succeeded_jobs?: number;
+      last_schedule_time?: string;
+      last_failure_time?: string;
+    }[];
+  };
 }
 
 export interface ApiProjectCardAggregate {
@@ -64,6 +107,7 @@ export interface ApiProjectCardAggregate {
     branch: string;
     commit_message?: string;
   };
+  evidence?: ApiProjectCardEvidence;
   services: ApiProjectCardService[];
 }
 
@@ -77,7 +121,7 @@ const SERVICE_STATUSES = [
 
 type ServiceStatus = (typeof SERVICE_STATUSES)[number];
 
-const SERVICE_HEALTHS = ["healthy", "unhealthy", "unknown"] as const;
+const SERVICE_HEALTHS = ["healthy", "unhealthy", "unknown", "stale"] as const;
 type ServiceHealth = (typeof SERVICE_HEALTHS)[number];
 
 function normalizeServiceStatus(status: string): CompactService["status"] {
@@ -226,8 +270,57 @@ export function projectCardAggregateToCompactProject(
       domain: service.domain || undefined,
       rolloutState: asRolloutState(service.rollout_state),
       rolloutBlockedReason: service.rollout_blocked_reason || undefined,
+      healthObservedAt: service.health_observed_at || undefined,
+      healthStale: service.health_stale || service.health === "stale" || undefined,
     })),
     aggregateStatus: card.aggregate_status,
+    evidence: card.evidence
+      ? {
+          serviceRows: {
+            status: card.evidence.service_rows.status,
+            count: card.evidence.service_rows.count,
+            healthyCount: card.evidence.service_rows.healthy_count,
+            staleCount: card.evidence.service_rows.stale_count,
+            lastObservedAt: card.evidence.service_rows.last_observed_at,
+            staleAfterSeconds: card.evidence.service_rows.stale_after_seconds,
+          },
+          argoApplication: card.evidence.argo_application
+            ? {
+                name: card.evidence.argo_application.name,
+                syncStatus: card.evidence.argo_application.sync_status,
+                healthStatus: card.evidence.argo_application.health_status,
+                revision: card.evidence.argo_application.revision,
+                destinationNamespace:
+                  card.evidence.argo_application.destination_namespace,
+                observedAt: card.evidence.argo_application.observed_at,
+              }
+            : undefined,
+          jobs: card.evidence.jobs
+            ? {
+                status: card.evidence.jobs.status,
+                namespaceCount: card.evidence.jobs.namespace_count,
+                cronJobCount: card.evidence.jobs.cron_job_count,
+                failedCount: card.evidence.jobs.failed_count,
+                activeCount: card.evidence.jobs.active_count,
+                stuckCount: card.evidence.jobs.stuck_count,
+                succeededCount: card.evidence.jobs.succeeded_count,
+                lastObservedAt: card.evidence.jobs.last_observed_at,
+                items: card.evidence.jobs.items?.map((item) => ({
+                  namespace: item.namespace,
+                  name: item.name,
+                  status: item.status,
+                  latestJobName: item.latest_job_name,
+                  recentFailedJobs: item.recent_failed_jobs,
+                  activeJobs: item.active_jobs,
+                  stuckJobs: item.stuck_jobs,
+                  succeededJobs: item.succeeded_jobs,
+                  lastScheduleTime: item.last_schedule_time,
+                  lastFailureTime: item.last_failure_time,
+                })),
+              }
+            : undefined,
+        }
+      : undefined,
     updatedAt: card.updated_at,
   };
 }

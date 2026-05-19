@@ -38,20 +38,23 @@ type projectCardAggregate struct {
 	DeployResolution string                     `json:"deploy_resolution"`
 	LastDeployment   *projectCardLastDeployment `json:"last_deployment,omitempty"`
 
+	Evidence projectCardEvidence  `json:"evidence"`
 	Services []projectCardService `json:"services"`
 }
 
 type projectCardService struct {
-	ID                   uuid.UUID `json:"id"`
-	Name                 string    `json:"name"`
-	Status               string    `json:"status"`
-	Health               string    `json:"health"`
-	Replicas             string    `json:"replicas,omitempty"`
-	Environment          string    `json:"environment,omitempty"`
-	Domain               string    `json:"domain,omitempty"`
-	CurrentImageURI      string    `json:"current_image_uri,omitempty"`
-	RolloutState         string    `json:"rollout_state,omitempty"`
-	RolloutBlockedReason string    `json:"rollout_blocked_reason,omitempty"`
+	ID                   uuid.UUID  `json:"id"`
+	Name                 string     `json:"name"`
+	Status               string     `json:"status"`
+	Health               string     `json:"health"`
+	Replicas             string     `json:"replicas,omitempty"`
+	Environment          string     `json:"environment,omitempty"`
+	Domain               string     `json:"domain,omitempty"`
+	CurrentImageURI      string     `json:"current_image_uri,omitempty"`
+	RolloutState         string     `json:"rollout_state,omitempty"`
+	RolloutBlockedReason string     `json:"rollout_blocked_reason,omitempty"`
+	HealthObservedAt     *time.Time `json:"health_observed_at,omitempty"`
+	HealthStale          bool       `json:"health_stale,omitempty"`
 }
 
 type projectCardLastDeployment struct {
@@ -60,6 +63,59 @@ type projectCardLastDeployment struct {
 	Branch        string    `json:"branch"`
 	CommitMessage string    `json:"commit_message,omitempty"`
 }
+
+type projectCardEvidence struct {
+	ServiceRows     projectCardServiceRowsEvidence      `json:"service_rows"`
+	ArgoApplication *projectCardArgoApplicationEvidence `json:"argo_application,omitempty"`
+	Jobs            *projectCardJobsEvidence            `json:"jobs,omitempty"`
+}
+
+type projectCardServiceRowsEvidence struct {
+	Status            string     `json:"status"`
+	Count             int        `json:"count"`
+	HealthyCount      int        `json:"healthy_count"`
+	StaleCount        int        `json:"stale_count"`
+	LastObservedAt    *time.Time `json:"last_observed_at,omitempty"`
+	StaleAfterSeconds int        `json:"stale_after_seconds"`
+}
+
+type projectCardArgoApplicationEvidence struct {
+	Name                 string    `json:"name"`
+	SyncStatus           string    `json:"sync_status"`
+	HealthStatus         string    `json:"health_status"`
+	Revision             string    `json:"revision,omitempty"`
+	DestinationNamespace string    `json:"destination_namespace,omitempty"`
+	ObservedAt           time.Time `json:"observed_at"`
+	SourceRepo           string    `json:"-"`
+	PartOf               string    `json:"-"`
+}
+
+type projectCardJobsEvidence struct {
+	Status         string                   `json:"status"`
+	NamespaceCount int                      `json:"namespace_count"`
+	CronJobCount   int                      `json:"cron_job_count"`
+	FailedCount    int                      `json:"failed_count"`
+	ActiveCount    int                      `json:"active_count"`
+	StuckCount     int                      `json:"stuck_count"`
+	SucceededCount int                      `json:"succeeded_count"`
+	LastObservedAt time.Time                `json:"last_observed_at"`
+	Items          []projectCardJobEvidence `json:"items,omitempty"`
+}
+
+type projectCardJobEvidence struct {
+	Namespace        string     `json:"namespace"`
+	Name             string     `json:"name"`
+	Status           string     `json:"status"`
+	LatestJobName    string     `json:"latest_job_name,omitempty"`
+	RecentFailedJobs int        `json:"recent_failed_jobs,omitempty"`
+	ActiveJobs       int        `json:"active_jobs,omitempty"`
+	StuckJobs        int        `json:"stuck_jobs,omitempty"`
+	SucceededJobs    int        `json:"succeeded_jobs,omitempty"`
+	LastScheduleTime *time.Time `json:"last_schedule_time,omitempty"`
+	LastFailureTime  *time.Time `json:"last_failure_time,omitempty"`
+}
+
+const projectCardServiceHealthStaleAfter = 10 * time.Minute
 
 // ListProjectCards returns the dashboard/project-card aggregate used by both
 // the main dashboard and /projects. It preserves /v1/projects as the raw
@@ -85,6 +141,9 @@ func (h *Handler) ListProjectCards(c *gin.Context) {
 
 	generatedAt := time.Now().UTC()
 	cards := make([]projectCardAggregate, 0, len(projects))
+	argoEvidenceByName := h.listProjectCardArgoEvidence(ctx, generatedAt)
+	onboardingArgoAppsByProject := h.projectCardOnboardingArgoApps(ctx)
+	jobEvidenceByNamespace := h.listProjectCardJobEvidence(ctx, generatedAt)
 
 	for _, project := range projects {
 		services, err := h.projectService.ListServices(ctx, project.Slug)
@@ -100,7 +159,9 @@ func (h *Handler) ListProjectCards(c *gin.Context) {
 		}
 
 		h.enrichServicesWithRolloutState(ctx, services)
-		cards = append(cards, buildProjectCardAggregate(project, services))
+		argoEvidence := matchProjectCardArgoEvidence(project, services, onboardingArgoAppsByProject, argoEvidenceByName)
+		jobEvidence := matchProjectCardJobEvidence(project, services, argoEvidence, jobEvidenceByNamespace)
+		cards = append(cards, buildProjectCardAggregateAt(project, services, argoEvidence, jobEvidence, generatedAt))
 	}
 
 	c.JSON(http.StatusOK, projectCardAggregateResponse{
@@ -111,20 +172,31 @@ func (h *Handler) ListProjectCards(c *gin.Context) {
 }
 
 func buildProjectCardAggregate(project *types.Project, services []*types.Service) projectCardAggregate {
+	return buildProjectCardAggregateAt(project, services, nil, nil, time.Now().UTC())
+}
+
+func buildProjectCardAggregateAt(project *types.Project, services []*types.Service, argoEvidence *projectCardArgoApplicationEvidence, jobEvidence *projectCardJobsEvidence, now time.Time) projectCardAggregate {
 	cardServices := make([]projectCardService, 0, len(services))
 	healthyCount := 0
+	staleCount := 0
 	var framework string
 	var gitRepo string
 	var domain string
 	var latest *types.Service
+	var lastObservedAt *time.Time
 
 	for _, service := range services {
 		if service == nil {
 			continue
 		}
-		if service.Health == types.HealthStatusHealthy {
+		health, healthStale := cardServiceHealth(service, now)
+		if health == string(types.HealthStatusHealthy) {
 			healthyCount++
 		}
+		if healthStale {
+			staleCount++
+		}
+		lastObservedAt = laterTime(lastObservedAt, service.LastHealthCheck)
 		if framework == "" {
 			framework = service.Framework
 		}
@@ -141,13 +213,15 @@ func buildProjectCardAggregate(project *types.Project, services []*types.Service
 			ID:                   service.ID,
 			Name:                 service.Name,
 			Status:               normalizeCardServiceStatus(service.Status),
-			Health:               normalizeCardServiceHealth(service.Health),
+			Health:               health,
 			Replicas:             formatCardReplicas(service.ReadyReplicas, service.DesiredReplicas),
 			Environment:          service.AutoDeployEnv,
 			Domain:               "",
 			CurrentImageURI:      service.CurrentImageURI,
 			RolloutState:         normalizeCardRolloutState(service.RolloutState),
 			RolloutBlockedReason: service.RolloutBlockedReason,
+			HealthObservedAt:     service.LastHealthCheck,
+			HealthStale:          healthStale,
 		})
 	}
 
@@ -167,12 +241,19 @@ func buildProjectCardAggregate(project *types.Project, services []*types.Service
 		}
 	}
 
+	serviceRowsStatus := "fresh"
+	if len(cardServices) == 0 {
+		serviceRowsStatus = "empty"
+	} else if staleCount > 0 {
+		serviceRowsStatus = "stale"
+	}
+
 	return projectCardAggregate{
 		ID:               project.ID,
 		Name:             project.Name,
 		Slug:             project.Slug,
 		UpdatedAt:        project.UpdatedAt,
-		AggregateStatus:  aggregateStatusForCard(cardServices),
+		AggregateStatus:  aggregateStatusForCard(cardServices, argoEvidence, jobEvidence),
 		ServiceCount:     len(cardServices),
 		HealthyCount:     healthyCount,
 		Framework:        framework,
@@ -180,7 +261,19 @@ func buildProjectCardAggregate(project *types.Project, services []*types.Service
 		Domain:           domain,
 		DeployResolution: deployResolution,
 		LastDeployment:   lastDeployment,
-		Services:         cardServices,
+		Evidence: projectCardEvidence{
+			ServiceRows: projectCardServiceRowsEvidence{
+				Status:            serviceRowsStatus,
+				Count:             len(cardServices),
+				HealthyCount:      healthyCount,
+				StaleCount:        staleCount,
+				LastObservedAt:    lastObservedAt,
+				StaleAfterSeconds: int(projectCardServiceHealthStaleAfter.Seconds()),
+			},
+			ArgoApplication: argoEvidence,
+			Jobs:            jobEvidence,
+		},
+		Services: cardServices,
 	}
 }
 
@@ -211,6 +304,29 @@ func normalizeCardRolloutState(state string) string {
 	}
 }
 
+func cardServiceHealth(service *types.Service, now time.Time) (string, bool) {
+	health := normalizeCardServiceHealth(service.Health)
+	if health != string(types.HealthStatusHealthy) || service.LastHealthCheck == nil {
+		return health, false
+	}
+	observedAt := service.LastHealthCheck.UTC()
+	if now.Sub(observedAt) > projectCardServiceHealthStaleAfter {
+		return "stale", true
+	}
+	return health, false
+}
+
+func laterTime(current, candidate *time.Time) *time.Time {
+	if candidate == nil {
+		return current
+	}
+	candidateUTC := candidate.UTC()
+	if current == nil || candidateUTC.After(*current) {
+		return &candidateUTC
+	}
+	return current
+}
+
 func formatCardReplicas(ready, desired int) string {
 	if desired <= 0 && ready <= 0 {
 		return ""
@@ -231,8 +347,22 @@ func deploymentStatusForCard(serviceStatus string) string {
 	}
 }
 
-func aggregateStatusForCard(services []projectCardService) string {
+func aggregateStatusForCard(services []projectCardService, argoEvidence *projectCardArgoApplicationEvidence, jobEvidence *projectCardJobsEvidence) string {
+	argoStatus := aggregateStatusFromArgoEvidence(argoEvidence)
+	if argoStatus == "failing" {
+		return "failing"
+	}
+	jobStatus := aggregateStatusFromJobEvidence(jobEvidence)
+	if jobStatus == "failing" {
+		return "failing"
+	}
 	if len(services) == 0 {
+		if jobStatus != "" {
+			return jobStatus
+		}
+		if argoStatus != "" {
+			return argoStatus
+		}
 		return "unknown"
 	}
 
@@ -245,8 +375,52 @@ func aggregateStatusForCard(services []projectCardService) string {
 			allHealthyAndStable = false
 		}
 	}
-	if allHealthyAndStable {
+	if allHealthyAndStable && argoStatus != "degraded" && jobStatus != "degraded" {
 		return "healthy"
 	}
 	return "degraded"
+}
+
+func aggregateStatusFromJobEvidence(jobEvidence *projectCardJobsEvidence) string {
+	if jobEvidence == nil {
+		return ""
+	}
+	switch jobEvidence.Status {
+	case "failing":
+		return "failing"
+	case "degraded", "unknown":
+		return "degraded"
+	case "healthy", "active", "empty":
+		return "healthy"
+	default:
+		return ""
+	}
+}
+
+func aggregateStatusFromArgoEvidence(argoEvidence *projectCardArgoApplicationEvidence) string {
+	if argoEvidence == nil {
+		return ""
+	}
+	switch argoEvidence.HealthStatus {
+	case "Degraded", "Missing":
+		return "failing"
+	case "Progressing", "Suspended", "Unknown":
+		return "degraded"
+	}
+	switch argoEvidence.SyncStatus {
+	case "Failed", "Error":
+		return "failing"
+	case "OutOfSync", "Unknown":
+		return "degraded"
+	}
+	if argoEvidence.SyncStatus != "" && argoEvidence.SyncStatus != "Synced" {
+		return "degraded"
+	}
+	if argoEvidence.HealthStatus != "" && argoEvidence.HealthStatus != "Healthy" {
+		return "degraded"
+	}
+	if argoEvidence.SyncStatus == "Synced" && argoEvidence.HealthStatus == "Healthy" {
+		return "healthy"
+	}
+	return ""
 }

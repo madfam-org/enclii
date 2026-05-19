@@ -1,7 +1,7 @@
 ---
 # K3s Datastore Backup to Cloudflare R2
 #
-# Architecture: initContainer (k3s image + nsenter inline) creates host archive →
+# Architecture: initContainer (k3s image + nsenter inline) creates host archive ->
 #               main container (aws-cli) uploads to R2
 #
 # Requires: hostPID, control-plane nodeSelector, PolicyException
@@ -128,15 +128,32 @@ spec:
                   set -e
                   echo "=== K3s Datastore Backup Started: $(date -u) ==="
                   TMPFILE=/tmp/k3s-state.tar.gz
+                  WORKDIR=/tmp/k3s-datastore-backup
+                  SNAPSHOT_NAME="enclii-k3s-$(date -u +%Y%m%d%H%M%S)"
+
+                  rm -rf "$WORKDIR"
+                  mkdir -p "$WORKDIR"
+
+                  if [ -d /var/lib/rancher/k3s/server/db/etcd ]; then
+                    echo "Embedded etcd datastore detected; creating k3s etcd snapshot..."
+                    k3s etcd-snapshot save \
+                      --name "$SNAPSHOT_NAME" \
+                      --dir "$WORKDIR"
+                  else
+                    echo "SQLite datastore detected; copying state.db..."
+                    cp /var/lib/rancher/k3s/server/db/state.db "$WORKDIR/state.db"
+                  fi
+
+                  echo "Copying k3s recovery materials..."
+                  cp -a /var/lib/rancher/k3s/server/tls "$WORKDIR/tls"
+                  cp /var/lib/rancher/k3s/server/token "$WORKDIR/token"
+
                   echo "Archiving k3s state..."
-                  tar czf "$TMPFILE" \
-                    /var/lib/rancher/k3s/server/db/state.db \
-                    /var/lib/rancher/k3s/server/tls/ \
-                    /var/lib/rancher/k3s/server/token \
-                    2>/dev/null
+                  tar czf "$TMPFILE" -C "$WORKDIR" .
                   BACKUP_SIZE=$(du -h "$TMPFILE" | cut -f1)
                   echo "Archive created: $BACKUP_SIZE"
                   echo "=== K3s Datastore Backup Completed: $(date -u) ==="
+              terminationMessagePolicy: FallbackToLogsOnError
               volumeMounts:
                 - name: backup-data
                   mountPath: /backup
@@ -165,6 +182,7 @@ spec:
                   cp /proc/1/root/tmp/k3s-state.tar.gz /backup/k3s-state.tar.gz
                   date +%Y%m%d > /backup/TIMESTAMP
                   echo "Copy complete: $(du -h /backup/k3s-state.tar.gz | cut -f1)"
+              terminationMessagePolicy: FallbackToLogsOnError
               volumeMounts:
                 - name: backup-data
                   mountPath: /backup
@@ -188,6 +206,7 @@ spec:
               command:
                 - /bin/bash
                 - /scripts/upload.sh
+              terminationMessagePolicy: FallbackToLogsOnError
               env:
                 - name: R2_ACCOUNT_ID
                   valueFrom:

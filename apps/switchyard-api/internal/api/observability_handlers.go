@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -183,12 +184,20 @@ func (h *Handler) GetMetricsHistory(c *gin.Context) {
 // @Success 200 {object} ServiceHealthResponse
 // @Router /v1/observability/health [get]
 func (h *Handler) GetServiceHealth(c *gin.Context) {
+	serviceID := strings.TrimSpace(c.Query("service_id"))
+	if serviceID != "" {
+		if _, err := uuid.Parse(serviceID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service_id"})
+			return
+		}
+	}
+
 	// Cache hit: a previous fan-out completed inside the TTL. Return
 	// immediately so the dashboard's polling tick is sub-millisecond.
 	// We keep the lock scope tight so concurrent requests don't queue.
 	healthCacheMu.Lock()
 	if healthCache != nil && time.Now().Before(healthCache.expiresAt) {
-		cached := healthCache.resp
+		cached := filterServiceHealthResponse(healthCache.resp, serviceID)
 		healthCacheMu.Unlock()
 		c.JSON(http.StatusOK, cached)
 		return
@@ -237,7 +246,7 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 			return
 		}
 		out := res.Val.(sfResult)
-		response = out.resp
+		response = filterServiceHealthResponse(out.resp, serviceID)
 		partial = out.partial
 	case <-c.Request.Context().Done():
 		// Caller went away (browser tab closed, intermediary timed out).
@@ -383,6 +392,34 @@ func (h *Handler) computeServiceHealth(ctx context.Context) (ServiceHealthRespon
 
 	partial := ctx.Err() == context.DeadlineExceeded
 	return response, partial, nil
+}
+
+func filterServiceHealthResponse(response ServiceHealthResponse, serviceID string) ServiceHealthResponse {
+	serviceID = strings.TrimSpace(serviceID)
+	if serviceID == "" {
+		return response
+	}
+
+	filtered := response
+	filtered.Services = make([]ServiceHealth, 0, 1)
+	filtered.HealthySvcs = 0
+	filtered.DegradedSvcs = 0
+	filtered.UnhealthySvcs = 0
+	for _, health := range response.Services {
+		if health.ServiceID != serviceID {
+			continue
+		}
+		filtered.Services = append(filtered.Services, health)
+		switch health.Status {
+		case "healthy":
+			filtered.HealthySvcs++
+		case "degraded", "unknown":
+			filtered.DegradedSvcs++
+		case "unhealthy":
+			filtered.UnhealthySvcs++
+		}
+	}
+	return filtered
 }
 
 // GetRecentErrors returns recent errors

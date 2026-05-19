@@ -104,7 +104,7 @@ describe('DEPLOYMENT_STATUS_COLORS', () => {
 
 describe('HEALTH_STATUS_COLORS', () => {
   it('defines colors for all expected health statuses', () => {
-    const expectedStatuses = ['healthy', 'unhealthy', 'unknown'];
+    const expectedStatuses = ['healthy', 'unhealthy', 'unknown', 'stale'];
     for (const status of expectedStatuses) {
       expect(HEALTH_STATUS_COLORS[status]).toBeDefined();
       expect(typeof HEALTH_STATUS_COLORS[status]).toBe('string');

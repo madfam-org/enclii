@@ -182,7 +182,7 @@ describe("projectCardAggregateToCompactProject", () => {
       slug: "orchard",
       description: "Backend projected card",
       updated_at: "2026-05-18T20:00:00Z",
-      aggregate_status: "healthy",
+      aggregate_status: "failing",
       service_count: 1,
       healthy_count: 1,
       framework: "nextjs",
@@ -200,21 +200,73 @@ describe("projectCardAggregateToCompactProject", () => {
           id: "svc-1",
           name: "api",
           status: "running",
-          health: "healthy",
+          health: "stale",
           replicas: "2/2",
           environment: "production",
           current_image_uri: "ghcr.io/example/orchard/api@sha256:abc123",
           rollout_state: "ok",
+          health_observed_at: "2026-05-18T19:00:00Z",
+          health_stale: true,
         },
       ],
+      evidence: {
+        service_rows: {
+          status: "stale",
+          count: 1,
+          healthy_count: 0,
+          stale_count: 1,
+          last_observed_at: "2026-05-18T19:00:00Z",
+          stale_after_seconds: 600,
+        },
+        argo_application: {
+          name: "orchard-services",
+          sync_status: "Synced",
+          health_status: "Degraded",
+          destination_namespace: "orchard",
+          revision: "abc123",
+          observed_at: "2026-05-18T20:00:00Z",
+        },
+        jobs: {
+          status: "failing",
+          namespace_count: 1,
+          cron_job_count: 1,
+          failed_count: 1,
+          active_count: 0,
+          stuck_count: 0,
+          succeeded_count: 0,
+          last_observed_at: "2026-05-18T20:00:00Z",
+          items: [
+            {
+              namespace: "orchard",
+              name: "orchard-sync",
+              status: "failing",
+              latest_job_name: "orchard-sync-29652480",
+              recent_failed_jobs: 1,
+              last_failure_time: "2026-05-18T19:55:00Z",
+            },
+          ],
+        },
+      },
     });
 
     expect(compact.framework).toBe("nextjs");
     expect(compact.gitRepo).toBe("https://github.com/example/orchard");
-    expect(compact.aggregateStatus).toBe("healthy");
+    expect(compact.aggregateStatus).toBe("failing");
     expect(compact.deployResolution).toBe("deployed");
     expect(compact.lastDeployment?.commitMessage).toBe("feat: aggregate cards");
     expect(compact.services?.[0]?.replicas).toBe("2/2");
+    expect(compact.services?.[0]?.health).toBe("stale");
+    expect(compact.services?.[0]?.healthStale).toBe(true);
+    expect(compact.evidence?.serviceRows.staleCount).toBe(1);
+    expect(compact.evidence?.argoApplication?.healthStatus).toBe("Degraded");
+    expect(compact.evidence?.argoApplication?.destinationNamespace).toBe(
+      "orchard",
+    );
+    expect(compact.evidence?.jobs?.status).toBe("failing");
+    expect(compact.evidence?.jobs?.failedCount).toBe(1);
+    expect(compact.evidence?.jobs?.items?.[0]?.latestJobName).toBe(
+      "orchard-sync-29652480",
+    );
   });
 
   it("does not infer a framework when the backend omits one", () => {

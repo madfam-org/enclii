@@ -64,6 +64,11 @@ type projectProcessSummaryResponse struct {
 	Summaries []projectProcessSummary `json:"summaries"`
 }
 
+const (
+	lifecycleActiveProcessStaleAfter = 2 * time.Hour
+	lifecycleFailedProcessStaleAfter = 24 * time.Hour
+)
+
 func (h *Handler) GetProjectProcessSummaries(c *gin.Context) {
 	ctx := c.Request.Context()
 	if h == nil || h.repos == nil || h.repos.Projects == nil || h.repos.Services == nil {
@@ -312,20 +317,133 @@ func (h *Handler) buildProjectProcessSummary(ctx context.Context, projectID uuid
 		}
 		for _, event := range events {
 			process := processFromLifecycleEvent(project, serviceNames, event)
-			if !activeOnly || isVisibleWhenActiveOnly(process.Status) {
-				processes = append(processes, process)
-			}
+			processes = append(processes, process)
 		}
 	}
 
 	for _, service := range services {
 		process, ok := processFromServiceState(project, service)
-		if ok && (!activeOnly || isVisibleWhenActiveOnly(process.Status)) {
+		if ok {
 			processes = append(processes, process)
 		}
 	}
 
+	if activeOnly {
+		processes = compactProjectProcessesForActiveSummary(processes, time.Now().UTC())
+	}
+
 	return summarizeProjectProcesses(project, processes, limit), nil
+}
+
+func compactProjectProcessesForActiveSummary(processes []projectProcess, now time.Time) []projectProcess {
+	if len(processes) == 0 {
+		return processes
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	current := make([]projectProcess, 0, len(processes))
+	liveServiceKeys := map[string]struct{}{}
+	for _, process := range processes {
+		if !isServiceStateProcess(process) {
+			continue
+		}
+		if !isVisibleInActiveProcessSummary(process, now) {
+			continue
+		}
+		current = append(current, process)
+		liveServiceKeys[activeProcessStateKey(process)] = struct{}{}
+	}
+
+	sorted := append([]projectProcess(nil), processes...)
+	sortProjectProcesses(sorted)
+	seenLifecycleKeys := map[string]struct{}{}
+	for _, process := range sorted {
+		if isServiceStateProcess(process) {
+			continue
+		}
+		key := activeProcessStateKey(process)
+		if _, ok := liveServiceKeys[key]; ok {
+			continue
+		}
+		if _, ok := seenLifecycleKeys[key]; ok {
+			continue
+		}
+		seenLifecycleKeys[key] = struct{}{}
+		if isVisibleInActiveProcessSummary(process, now) {
+			current = append(current, process)
+		}
+	}
+
+	sortProjectProcesses(current)
+	return current
+}
+
+func isVisibleInActiveProcessSummary(process projectProcess, now time.Time) bool {
+	if !isVisibleWhenActiveOnly(process.Status) {
+		return false
+	}
+	if isServiceStateProcess(process) {
+		return true
+	}
+	if process.UpdatedAt.IsZero() {
+		return false
+	}
+	age := now.Sub(process.UpdatedAt)
+	if age < 0 {
+		age = 0
+	}
+	switch process.Status {
+	case "queued", "running", "waiting":
+		return age <= lifecycleActiveProcessStaleAfter
+	case "failed", "blocked":
+		return age <= lifecycleFailedProcessStaleAfter
+	default:
+		return true
+	}
+}
+
+func activeProcessStateKey(process projectProcess) string {
+	project := process.ProjectID
+	if project == "" {
+		project = process.ProjectSlug
+	}
+	service := process.ServiceID
+	if service == "" {
+		service = process.ServiceName
+	}
+	if service == "" {
+		service = "__project__"
+	}
+	environment := process.Environment
+	if environment == "" {
+		environment = "__default__"
+	}
+	return strings.Join([]string{
+		project,
+		service,
+		environment,
+		activeProcessFamily(process.Kind),
+	}, ":")
+}
+
+func activeProcessFamily(kind string) string {
+	switch kind {
+	case "git_push", "ci", "build", "image", "digest":
+		return "build"
+	case "deploy", "gitops_sync", "rollout", "rollback":
+		return "deploy"
+	default:
+		if kind == "" {
+			return "operator"
+		}
+		return kind
+	}
+}
+
+func isServiceStateProcess(process projectProcess) bool {
+	return strings.HasPrefix(process.ID, "service-state:") || strings.HasPrefix(process.CorrelationID, "service:")
 }
 
 func summarizeProjectProcesses(project *types.Project, processes []projectProcess, limit int) *projectProcessSummary {
@@ -668,32 +786,4 @@ func isVisibleWhenActiveOnly(status string) bool {
 	default:
 		return false
 	}
-}
-
-func sortProjectProcesses(processes []projectProcess) {
-	for i := 1; i < len(processes); i++ {
-		current := processes[i]
-		j := i - 1
-		for j >= 0 && processes[j].UpdatedAt.Before(current.UpdatedAt) {
-			processes[j+1] = processes[j]
-			j--
-		}
-		processes[j+1] = current
-	}
-}
-
-func sortServiceProcessSummaries(summaries []serviceProcessSummary) {
-	for i := 1; i < len(summaries); i++ {
-		current := summaries[i]
-		j := i - 1
-		for j >= 0 && serviceSummarySortKey(summaries[j]) < serviceSummarySortKey(current) {
-			summaries[j+1] = summaries[j]
-			j--
-		}
-		summaries[j+1] = current
-	}
-}
-
-func serviceSummarySortKey(summary serviceProcessSummary) int {
-	return summary.BlockedCount*100 + summary.FailedCount*10 + summary.ActiveCount
 }
