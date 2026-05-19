@@ -103,7 +103,7 @@ spec:
 
                   delete_ephemeralrunner() {
                     target="$1"
-                    for delay in 1 2 4; do
+                    for delay in 1 2 4 8 16 32; do
                       if kubectl -n arc-runners delete ephemeralrunner "$target" --ignore-not-found; then
                         return 0
                       fi
