@@ -73,14 +73,14 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 1
+      backoffLimit: 0
       ttlSecondsAfterFinished: 600
       template:
         metadata:
           labels:
             app: stuck-runner-watchdog
         spec:
-          restartPolicy: OnFailure
+          restartPolicy: Never
           serviceAccountName: stuck-runner-watchdog
           securityContext:
             runAsNonRoot: true
@@ -101,6 +101,19 @@ spec:
                   ORPHAN_THRESHOLD_SEC=1200  # 20 minutes
                   RUNNING_THRESHOLD_SEC=14400 # 4 hours
 
+                  delete_ephemeralrunner() {
+                    target="$1"
+                    for delay in 1 2 4; do
+                      if kubectl -n arc-runners delete ephemeralrunner "$target" --ignore-not-found; then
+                        return 0
+                      fi
+                      echo "  warn: delete failed for $target; retrying in ${delay}s" >&2
+                      sleep "$delay"
+                    done
+                    echo "  error: failed to delete stale EphemeralRunner $target after retries" >&2
+                    return 1
+                  }
+
                   # List all EphemeralRunners with creation timestamp +
                   # the workflow run they reference (if any).
                   kubectl -n arc-runners get ephemeralrunners \
@@ -114,7 +127,16 @@ spec:
                       now=$(date +%s)
                       age=$(( now - created_sec ))
 
-                      pod_phase="$(kubectl -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                      pod_phase=""
+                      pod_lookup="$(kubectl -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>&1)" || {
+                        if echo "$pod_lookup" | grep -Eiq 'not found|NotFound'; then
+                          pod_phase="missing"
+                        else
+                          echo "  warn: could not read pod for $name; leaving runner untouched this cycle" >&2
+                          continue
+                        fi
+                      }
+                      pod_phase="${pod_phase:-${pod_lookup:-missing}}"
                       echo "candidate: $name (age ${age}s, er_phase=${phase:-unknown}, pod_phase=${pod_phase:-missing}, workflow_run=${run_id:-none})"
 
                       # If no jobWorkflowRunId, it's a fresh CR waiting — leave alone.
@@ -128,7 +150,7 @@ spec:
                         runner_log="$(kubectl -n arc-runners logs "$name" -c runner --tail=80 2>/dev/null || true)"
                         if echo "$runner_log" | grep -Eq 'Registration .* was not found|Job cancellation request'; then
                           echo "  deleting stale EphemeralRunner $name after runner log showed cancellation or missing registration"
-                          kubectl -n arc-runners delete ephemeralrunner "$name" --ignore-not-found
+                          delete_ephemeralrunner "$name"
                           continue
                         fi
                       fi
@@ -144,8 +166,9 @@ spec:
                       fi
 
                       echo "  deleting stale EphemeralRunner $name"
-                      kubectl -n arc-runners delete ephemeralrunner "$name" --ignore-not-found
+                      delete_ephemeralrunner "$name"
                   done
+              terminationMessagePolicy: FallbackToLogsOnError
               resources:
                 requests:
                   cpu: 20m
