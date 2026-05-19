@@ -148,6 +148,7 @@ func TestBuildProjectCardAggregateTrustsHealthyArgoOverStaleServiceRows(t *testi
 func TestProjectCardVisibleServicesDropsProjectPlaceholder(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	observedAt := now.Add(-projectCardServiceHealthStaleAfter - time.Hour)
+	lastDeployment := now.Add(-30 * time.Minute)
 	project := &types.Project{
 		ID:   uuid.New(),
 		Name: "Forgesight",
@@ -161,6 +162,7 @@ func TestProjectCardVisibleServicesDropsProjectPlaceholder(t *testing.T) {
 			Health:          types.HealthStatusHealthy,
 			Status:          "running",
 			LastHealthCheck: &observedAt,
+			LastDeployment:  &lastDeployment,
 		},
 		{
 			ID:              uuid.New(),

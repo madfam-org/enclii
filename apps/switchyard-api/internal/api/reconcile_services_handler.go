@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -16,6 +18,7 @@ type ReconcileServicesResponse struct {
 	Inserted    int                          `json:"inserted"`
 	Updated     int                          `json:"updated"`
 	AlreadyOK   int                          `json:"already_ok"`
+	Refreshed   int                          `json:"refreshed"`
 	Services    []ReconcileServicesServiceOK `json:"services"`
 }
 
@@ -23,6 +26,12 @@ type ReconcileServicesServiceOK struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
 	Action    string `json:"action"` // inserted | updated_namespace | already_ok
+}
+
+type reconcileServicesDeployment struct {
+	Name            string
+	DesiredReplicas int32
+	ReadyReplicas   int32
 }
 
 // ReconcileServicesFromCluster discovers Deployments in a project's K8s
@@ -68,7 +77,7 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 		}
 	}
 
-	var deployments []string
+	var deployments []reconcileServicesDeployment
 	var nsUsed string
 	for _, ns := range candidates {
 		deps, err := h.k8sClient.ListDeployments(ctx, ns)
@@ -80,7 +89,15 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 		if len(deps) > 0 {
 			nsUsed = ns
 			for i := range deps {
-				deployments = append(deployments, deps[i].Name)
+				desiredReplicas := int32(0)
+				if deps[i].Spec.Replicas != nil {
+					desiredReplicas = *deps[i].Spec.Replicas
+				}
+				deployments = append(deployments, reconcileServicesDeployment{
+					Name:            deps[i].Name,
+					DesiredReplicas: desiredReplicas,
+					ReadyReplicas:   deps[i].Status.ReadyReplicas,
+				})
 			}
 			break
 		}
@@ -114,7 +131,8 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 		byName[s.Name] = s
 	}
 
-	for _, name := range deployments {
+	for _, deployment := range deployments {
+		name := deployment.Name
 		svc, found := byName[name]
 		switch {
 		case !found:
@@ -140,6 +158,9 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 					logging.String("name", name), logging.Error("error", err))
 				continue
 			}
+			if h.refreshReconciledServiceHealth(ctx, newSvc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas) {
+				resp.Refreshed++
+			}
 			resp.Inserted++
 			resp.Services = append(resp.Services, ReconcileServicesServiceOK{
 				Name: name, Namespace: ns, Action: "inserted",
@@ -151,11 +172,17 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 					logging.String("name", name), logging.Error("error", err))
 				continue
 			}
+			if h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas) {
+				resp.Refreshed++
+			}
 			resp.Updated++
 			resp.Services = append(resp.Services, ReconcileServicesServiceOK{
 				Name: name, Namespace: nsUsed, Action: "updated_namespace",
 			})
 		default:
+			if h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas) {
+				resp.Refreshed++
+			}
 			resp.AlreadyOK++
 			resp.Services = append(resp.Services, ReconcileServicesServiceOK{
 				Name: name, Namespace: *svc.K8sNamespace, Action: "already_ok",
@@ -170,6 +197,19 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 		logging.Int("inserted", resp.Inserted),
 		logging.Int("updated", resp.Updated),
 		logging.Int("already_ok", resp.AlreadyOK),
+		logging.Int("refreshed", resp.Refreshed),
 	)
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) refreshReconciledServiceHealth(ctx context.Context, serviceID uuid.UUID, name string, desiredReplicas, readyReplicas int32) bool {
+	if h == nil || h.repos == nil || h.repos.Services == nil {
+		return false
+	}
+	if err := h.repos.Services.MarkReconciledHealthy(ctx, serviceID, desiredReplicas, readyReplicas); err != nil {
+		h.logger.Error(ctx, "MarkReconciledHealthy failed",
+			logging.String("name", name), logging.Error("error", err))
+		return false
+	}
+	return true
 }

@@ -183,9 +183,20 @@ func projectCardVisibleServices(project *types.Project, services []*types.Servic
 	if len(services) == 0 {
 		return services
 	}
+	hasConcreteService := false
+	for _, service := range services {
+		if service == nil || projectCardProjectRootService(project, service) {
+			continue
+		}
+		if service.DesiredReplicas > 0 || service.ReadyReplicas > 0 || service.K8sNamespace != nil {
+			hasConcreteService = true
+			break
+		}
+	}
+
 	visible := make([]*types.Service, 0, len(services))
 	for _, service := range services {
-		if projectCardPlaceholderService(project, service) {
+		if projectCardPlaceholderService(project, service, hasConcreteService) {
 			continue
 		}
 		visible = append(visible, service)
@@ -193,15 +204,21 @@ func projectCardVisibleServices(project *types.Project, services []*types.Servic
 	return visible
 }
 
-func projectCardPlaceholderService(project *types.Project, service *types.Service) bool {
+func projectCardProjectRootService(project *types.Project, service *types.Service) bool {
 	if project == nil || service == nil {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(service.Name), strings.TrimSpace(project.Slug)) &&
-		service.K8sNamespace == nil &&
-		service.DesiredReplicas == 0 &&
-		service.ReadyReplicas == 0 &&
-		service.LastDeployment == nil
+	return strings.EqualFold(strings.TrimSpace(service.Name), strings.TrimSpace(project.Slug))
+}
+
+func projectCardPlaceholderService(project *types.Project, service *types.Service, hasConcreteService bool) bool {
+	if !projectCardProjectRootService(project, service) {
+		return false
+	}
+	if service.DesiredReplicas != 0 || service.ReadyReplicas != 0 {
+		return false
+	}
+	return hasConcreteService || (service.K8sNamespace == nil && service.LastDeployment == nil)
 }
 
 func buildProjectCardAggregateAt(project *types.Project, services []*types.Service, argoEvidence *projectCardArgoApplicationEvidence, jobEvidence *projectCardJobsEvidence, now time.Time) projectCardAggregate {
