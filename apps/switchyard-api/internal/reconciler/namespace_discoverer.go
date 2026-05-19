@@ -56,7 +56,7 @@ const (
 // classifies each workload as:
 //
 //   - Healthy: K8s workload + matching service row → update replica counts
-//     and last_reconciled_at on the service.
+//     and last_reconciled_at/last_health_check on the service.
 //   - Orphan : K8s workload, no matching service row → upsert into
 //     discovered_orphans with last_seen=NOW().
 //   - Zombie : service row with k8s_namespace pinned, no matching K8s
@@ -230,15 +230,10 @@ func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workload
 	currentOrphanKeys := make(map[string]struct{}, len(workloads))
 
 	for _, wl := range workloads {
-		// An Enclii-managed workload must carry the enclii.dev/service
-		// label. Workloads without it (system DaemonSets, ArgoCD, etc.)
-		// are intentionally ignored — they are not in scope for the
-		// services table.
-		if wl.ServiceLabel == "" {
-			continue
-		}
-
 		svc := pickServiceForWorkload(byName[wl.ServiceLabel], wl.Namespace)
+		if svc == nil && wl.ServiceLabel == "" {
+			svc = pickPinnedServiceForWorkload(byName[wl.Name], wl.Namespace)
+		}
 		if svc != nil {
 			matchedServiceIDs[svc.ID] = struct{}{}
 			if err := svcs.MarkReconciledHealthy(ctx, svc.ID, wl.ReplicasDesired, wl.ReplicasReady); err != nil {
@@ -249,6 +244,12 @@ func (d *NamespaceDiscoverer) reconcileWith(ctx context.Context, lister workload
 				}).Warn("NamespaceDiscoverer: failed to mark service healthy")
 			}
 			d.observeZombieFlip(svc.ID, false, svc.Name, wl.Namespace)
+			continue
+		}
+
+		// Unlabeled workloads are not tracked as orphans. They may still refresh
+		// a pinned service row by exact namespace/name match above.
+		if wl.ServiceLabel == "" {
 			continue
 		}
 
@@ -324,6 +325,18 @@ func pickServiceForWorkload(candidates []*types.Service, namespace string) *type
 		}
 	}
 	return candidates[0]
+}
+
+func pickPinnedServiceForWorkload(candidates []*types.Service, namespace string) *types.Service {
+	for _, svc := range candidates {
+		if svc == nil || svc.K8sNamespace == nil {
+			continue
+		}
+		if *svc.K8sNamespace == namespace {
+			return svc
+		}
+	}
+	return nil
 }
 
 // orphanKey builds the stable identifier for change-detection logging.

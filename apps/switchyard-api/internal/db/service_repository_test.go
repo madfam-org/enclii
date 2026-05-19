@@ -709,6 +709,20 @@ func TestServiceRepository_UpdateHealthStatus(t *testing.T) {
 	})
 }
 
+func TestServiceRepository_MarkReconciledHealthyRefreshesHealthCheck(t *testing.T) {
+	repo, mock, cleanup := newServiceMockDB(t)
+	defer cleanup()
+
+	id := uuid.New()
+	mock.ExpectExec(`UPDATE services`).
+		WithArgs(int32(2), int32(2), id).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := repo.MarkReconciledHealthy(context.Background(), id, 2, 2)
+	assert.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // --- Delete ---
 
 func TestServiceRepository_Delete(t *testing.T) {

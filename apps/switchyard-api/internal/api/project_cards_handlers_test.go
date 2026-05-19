@@ -145,6 +145,48 @@ func TestBuildProjectCardAggregateTrustsHealthyArgoOverStaleServiceRows(t *testi
 	assert.Equal(t, "stale", card.Services[0].Health)
 }
 
+func TestProjectCardVisibleServicesDropsProjectPlaceholder(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	observedAt := now.Add(-projectCardServiceHealthStaleAfter - time.Hour)
+	project := &types.Project{
+		ID:   uuid.New(),
+		Name: "Forgesight",
+		Slug: "forgesight",
+	}
+
+	visible := projectCardVisibleServices(project, []*types.Service{
+		{
+			ID:              uuid.New(),
+			Name:            "forgesight",
+			Health:          types.HealthStatusHealthy,
+			Status:          "running",
+			LastHealthCheck: &observedAt,
+		},
+		{
+			ID:              uuid.New(),
+			Name:            "forgesight-api",
+			Health:          types.HealthStatusHealthy,
+			Status:          "running",
+			DesiredReplicas: 1,
+			ReadyReplicas:   1,
+			LastHealthCheck: &now,
+			RolloutState:    "ok",
+		},
+	})
+
+	card := buildProjectCardAggregateAt(project, visible, &projectCardArgoApplicationEvidence{
+		Name:         "forgesight-services",
+		SyncStatus:   "Synced",
+		HealthStatus: "Healthy",
+		ObservedAt:   now,
+	}, nil, now)
+
+	assert.Equal(t, 1, card.ServiceCount)
+	assert.Equal(t, 1, card.HealthyCount)
+	require.Len(t, card.Services, 1)
+	assert.Equal(t, "forgesight-api", card.Services[0].Name)
+}
+
 func TestBuildProjectCardAggregateUsesArgoEvidence(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	card := buildProjectCardAggregateAt(&types.Project{

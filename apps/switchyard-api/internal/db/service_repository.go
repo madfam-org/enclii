@@ -612,12 +612,24 @@ func (r *ServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID
 }
 
 // MarkReconciledHealthy updates the namespace-discoverer fields for a service
-// that is matched to a live K8s workload: clears zombie_since (if set) and
-// stamps last_reconciled_at, replica counts. Idempotent.
+// that is matched to a live K8s workload: clears zombie_since (if set), stamps
+// last_reconciled_at and last_health_check, and reflects replica health.
+// Idempotent.
 func (r *ServiceRepository) MarkReconciledHealthy(ctx context.Context, id uuid.UUID, desiredReplicas, readyReplicas int32) error {
 	query := `UPDATE services
 		SET zombie_since = NULL,
 		    last_reconciled_at = NOW(),
+		    last_health_check = NOW(),
+		    health = CASE
+		        WHEN $1 = 0 THEN 'unknown'
+		        WHEN $2 >= $1 THEN 'healthy'
+		        ELSE 'unhealthy'
+		    END,
+		    status = CASE
+		        WHEN $1 = 0 THEN 'unknown'
+		        WHEN $2 >= $1 THEN 'running'
+		        ELSE 'failed'
+		    END,
 		    desired_replicas = $1,
 		    ready_replicas = $2,
 		    updated_at = NOW()

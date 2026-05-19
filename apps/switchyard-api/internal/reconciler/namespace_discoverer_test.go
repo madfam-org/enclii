@@ -202,6 +202,35 @@ func TestNamespaceDiscoverer_UnlabeledWorkloadIgnored(t *testing.T) {
 	assert.Empty(t, svcs.zombieCalls)
 }
 
+func TestNamespaceDiscoverer_UnlabeledPinnedWorkloadRefreshesService(t *testing.T) {
+	svcID := uuid.New()
+	svcs := &fakeServicesView{
+		services: []*types.Service{{
+			ID:           svcID,
+			Name:         "yantra4d-admin",
+			K8sNamespace: ptrString("yantra4d"),
+		}},
+	}
+	orphans := &fakeOrphansView{}
+
+	lister := &fakeWorkloadLister{workloads: []workloadRef{{
+		Namespace:       "yantra4d",
+		Name:            "yantra4d-admin",
+		Kind:            kindDeployment,
+		ServiceLabel:    "",
+		ReplicasDesired: 1,
+		ReplicasReady:   1,
+	}}}
+
+	d := newDiscovererForTest()
+	d.reconcileWith(context.Background(), lister, svcs, orphans)
+
+	assert.Len(t, svcs.healthyCalls, 1)
+	assert.Equal(t, svcID, svcs.healthyCalls[0].ID)
+	assert.Empty(t, orphans.upserts)
+	assert.Empty(t, svcs.zombieCalls)
+}
+
 func TestNamespaceDiscoverer_ZombieService(t *testing.T) {
 	svcID := uuid.New()
 	svcs := &fakeServicesView{

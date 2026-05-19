@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -163,7 +164,8 @@ func (h *Handler) ListProjectCards(c *gin.Context) {
 		h.enrichServicesWithRolloutState(ctx, services)
 		argoEvidence := matchProjectCardArgoEvidence(project, services, onboardingArgoAppsByProject, argoEvidenceByName)
 		jobEvidence := matchProjectCardJobEvidence(project, services, argoEvidence, jobEvidenceByNamespace)
-		cards = append(cards, buildProjectCardAggregateAt(project, services, argoEvidence, jobEvidence, generatedAt))
+		cardServices := projectCardVisibleServices(project, services)
+		cards = append(cards, buildProjectCardAggregateAt(project, cardServices, argoEvidence, jobEvidence, generatedAt))
 	}
 
 	c.JSON(http.StatusOK, projectCardAggregateResponse{
@@ -175,6 +177,31 @@ func (h *Handler) ListProjectCards(c *gin.Context) {
 
 func buildProjectCardAggregate(project *types.Project, services []*types.Service) projectCardAggregate {
 	return buildProjectCardAggregateAt(project, services, nil, nil, time.Now().UTC())
+}
+
+func projectCardVisibleServices(project *types.Project, services []*types.Service) []*types.Service {
+	if len(services) == 0 {
+		return services
+	}
+	visible := make([]*types.Service, 0, len(services))
+	for _, service := range services {
+		if projectCardPlaceholderService(project, service) {
+			continue
+		}
+		visible = append(visible, service)
+	}
+	return visible
+}
+
+func projectCardPlaceholderService(project *types.Project, service *types.Service) bool {
+	if project == nil || service == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(service.Name), strings.TrimSpace(project.Slug)) &&
+		service.K8sNamespace == nil &&
+		service.DesiredReplicas == 0 &&
+		service.ReadyReplicas == 0 &&
+		service.LastDeployment == nil
 }
 
 func buildProjectCardAggregateAt(project *types.Project, services []*types.Service, argoEvidence *projectCardArgoApplicationEvidence, jobEvidence *projectCardJobsEvidence, now time.Time) projectCardAggregate {
