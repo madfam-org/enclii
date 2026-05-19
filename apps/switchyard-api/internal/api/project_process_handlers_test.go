@@ -237,6 +237,93 @@ func TestCompactProjectProcessesForActiveSummaryDropsStaleRunningLifecycle(t *te
 	assert.Empty(t, processes)
 }
 
+func TestCompactProjectProcessesForActiveSummaryDropsStableServiceDeployFailure(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "tulana"}
+	serviceID := uuid.New()
+	now := time.Date(2026, 5, 19, 7, 0, 0, 0, time.UTC)
+
+	stableKeys := stableServiceActiveProcessKeys(project, []*types.Service{
+		{
+			ID:            serviceID,
+			ProjectID:     project.ID,
+			Name:          "tulana-api",
+			Status:        "running",
+			Health:        types.HealthStatusHealthy,
+			AutoDeployEnv: "production",
+			RolloutState:  "ok",
+		},
+	})
+
+	processes := compactProjectProcessesForActiveSummaryWithStableServices([]projectProcess{
+		{
+			ID:          "old-deploy-failed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID.String(),
+			ServiceName: "tulana-api",
+			Kind:        "deploy",
+			Status:      "failed",
+			Environment: "production",
+			UpdatedAt:   now.Add(-30 * time.Minute),
+		},
+	}, stableKeys, now)
+
+	assert.Empty(t, processes)
+}
+
+func TestCompactProjectProcessesForActiveSummaryKeepsBuildFailureWhenServiceStable(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "tulana"}
+	serviceID := uuid.New()
+	now := time.Date(2026, 5, 19, 7, 0, 0, 0, time.UTC)
+
+	stableKeys := stableServiceActiveProcessKeys(project, []*types.Service{
+		{
+			ID:            serviceID,
+			ProjectID:     project.ID,
+			Name:          "tulana-api",
+			Status:        "running",
+			Health:        types.HealthStatusHealthy,
+			AutoDeployEnv: "production",
+			RolloutState:  "ok",
+		},
+	})
+
+	processes := compactProjectProcessesForActiveSummaryWithStableServices([]projectProcess{
+		{
+			ID:          "build-failed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			ServiceID:   serviceID.String(),
+			ServiceName: "tulana-api",
+			Kind:        "build",
+			Status:      "failed",
+			UpdatedAt:   now.Add(-30 * time.Minute),
+		},
+	}, stableKeys, now)
+
+	require.Len(t, processes, 1)
+	assert.Equal(t, "build-failed", processes[0].ID)
+}
+
+func TestCompactProjectProcessesForActiveSummaryDropsProjectLevelPreviewFailure(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Slug: "forgesight"}
+	now := time.Date(2026, 5, 19, 7, 0, 0, 0, time.UTC)
+
+	processes := compactProjectProcessesForActiveSummary([]projectProcess{
+		{
+			ID:          "preview-deploy-failed",
+			ProjectID:   project.ID.String(),
+			ProjectSlug: project.Slug,
+			Kind:        "deploy",
+			Status:      "failed",
+			Environment: "preview",
+			UpdatedAt:   now.Add(-30 * time.Minute),
+		},
+	}, now)
+
+	assert.Empty(t, processes)
+}
+
 func TestProcessFromLifecycleEventBuildsCorrelationAndLinks(t *testing.T) {
 	project := &types.Project{ID: uuid.New(), Slug: "enclii"}
 	serviceID := uuid.New()

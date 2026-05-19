@@ -329,121 +329,14 @@ func (h *Handler) buildProjectProcessSummary(ctx context.Context, projectID uuid
 	}
 
 	if activeOnly {
-		processes = compactProjectProcessesForActiveSummary(processes, time.Now().UTC())
+		processes = compactProjectProcessesForActiveSummaryWithStableServices(
+			processes,
+			stableServiceActiveProcessKeys(project, services),
+			time.Now().UTC(),
+		)
 	}
 
 	return summarizeProjectProcesses(project, processes, limit), nil
-}
-
-func compactProjectProcessesForActiveSummary(processes []projectProcess, now time.Time) []projectProcess {
-	if len(processes) == 0 {
-		return processes
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-
-	current := make([]projectProcess, 0, len(processes))
-	liveServiceKeys := map[string]struct{}{}
-	for _, process := range processes {
-		if !isServiceStateProcess(process) {
-			continue
-		}
-		if !isVisibleInActiveProcessSummary(process, now) {
-			continue
-		}
-		current = append(current, process)
-		liveServiceKeys[activeProcessStateKey(process)] = struct{}{}
-	}
-
-	sorted := append([]projectProcess(nil), processes...)
-	sortProjectProcesses(sorted)
-	seenLifecycleKeys := map[string]struct{}{}
-	for _, process := range sorted {
-		if isServiceStateProcess(process) {
-			continue
-		}
-		key := activeProcessStateKey(process)
-		if _, ok := liveServiceKeys[key]; ok {
-			continue
-		}
-		if _, ok := seenLifecycleKeys[key]; ok {
-			continue
-		}
-		seenLifecycleKeys[key] = struct{}{}
-		if isVisibleInActiveProcessSummary(process, now) {
-			current = append(current, process)
-		}
-	}
-
-	sortProjectProcesses(current)
-	return current
-}
-
-func isVisibleInActiveProcessSummary(process projectProcess, now time.Time) bool {
-	if !isVisibleWhenActiveOnly(process.Status) {
-		return false
-	}
-	if isServiceStateProcess(process) {
-		return true
-	}
-	if process.UpdatedAt.IsZero() {
-		return false
-	}
-	age := now.Sub(process.UpdatedAt)
-	if age < 0 {
-		age = 0
-	}
-	switch process.Status {
-	case "queued", "running", "waiting":
-		return age <= lifecycleActiveProcessStaleAfter
-	case "failed", "blocked":
-		return age <= lifecycleFailedProcessStaleAfter
-	default:
-		return true
-	}
-}
-
-func activeProcessStateKey(process projectProcess) string {
-	project := process.ProjectID
-	if project == "" {
-		project = process.ProjectSlug
-	}
-	service := process.ServiceID
-	if service == "" {
-		service = process.ServiceName
-	}
-	if service == "" {
-		service = "__project__"
-	}
-	environment := process.Environment
-	if environment == "" {
-		environment = "__default__"
-	}
-	return strings.Join([]string{
-		project,
-		service,
-		environment,
-		activeProcessFamily(process.Kind),
-	}, ":")
-}
-
-func activeProcessFamily(kind string) string {
-	switch kind {
-	case "git_push", "ci", "build", "image", "digest":
-		return "build"
-	case "deploy", "gitops_sync", "rollout", "rollback":
-		return "deploy"
-	default:
-		if kind == "" {
-			return "operator"
-		}
-		return kind
-	}
-}
-
-func isServiceStateProcess(process projectProcess) bool {
-	return strings.HasPrefix(process.ID, "service-state:") || strings.HasPrefix(process.CorrelationID, "service:")
 }
 
 func summarizeProjectProcesses(project *types.Project, processes []projectProcess, limit int) *projectProcessSummary {
@@ -777,13 +670,4 @@ func (h *Handler) projectVisibleInActingScope(ctx context.Context, c *gin.Contex
 		return false, err
 	}
 	return teamID == actingTeamID, nil
-}
-
-func isVisibleWhenActiveOnly(status string) bool {
-	switch status {
-	case "queued", "running", "waiting", "failed", "blocked":
-		return true
-	default:
-		return false
-	}
 }
