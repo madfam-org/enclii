@@ -26,43 +26,63 @@ data:
 
     log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"; }
 
-    # ------------------------------------------------------------------
-    # Step 1: Authenticate against Verdaccio
-    # ------------------------------------------------------------------
-    log "INFO  Authenticating against ${VERDACCIO_URL}"
-    LOGIN_RESPONSE=$(curl -sf -X POST \
-      "${VERDACCIO_URL}/-/verdaccio/sec/login" \
-      -H 'Content-Type: application/json' \
-      -d "{\"username\":\"${NPM_REGISTRY_USER}\",\"password\":\"${NPM_REGISTRY_PASSWORD}\"}" \
-    ) || { log "ERROR Login request failed"; exit 1; }
+    login_for_token() {
+      if [ -z "${NPM_REGISTRY_USER:-}" ] || [ -z "${NPM_REGISTRY_PASSWORD:-}" ]; then
+        log "ERROR Registry username/password are required when the current token needs renewal"
+        exit 1
+      fi
 
-    TOKEN=$(echo "${LOGIN_RESPONSE}" | jq -r '.token // empty')
-    if [ -z "${TOKEN}" ]; then
-      log "ERROR No token in login response"
-      echo "${LOGIN_RESPONSE}" | jq . 2>/dev/null || echo "${LOGIN_RESPONSE}"
-      exit 1
-    fi
-    log "INFO  Token obtained (length=${#TOKEN})"
+      log "INFO  Authenticating against ${VERDACCIO_URL}"
+      LOGIN_RESPONSE=$(curl -sf -X POST \
+        "${VERDACCIO_URL}/-/verdaccio/sec/login" \
+        -H 'Content-Type: application/json' \
+        -d "{\"username\":\"${NPM_REGISTRY_USER}\",\"password\":\"${NPM_REGISTRY_PASSWORD}\"}" \
+      ) || { log "ERROR Login request failed"; exit 1; }
+
+      TOKEN=$(echo "${LOGIN_RESPONSE}" | jq -r '.token // empty')
+      if [ -z "${TOKEN}" ]; then
+        log "ERROR No token in login response"
+        echo "${LOGIN_RESPONSE}" | jq . 2>/dev/null || echo "${LOGIN_RESPONSE}"
+        exit 1
+      fi
+      log "INFO  Token obtained (length=${#TOKEN})"
+    }
+
+    compute_days_left() {
+      TOKEN_PAYLOAD_SEGMENT=$(printf '%s' "${TOKEN}" | cut -d. -f2)
+      PADDING=$(( (4 - ${#TOKEN_PAYLOAD_SEGMENT} % 4) % 4 ))
+      if [ "${PADDING}" -gt 0 ]; then
+        TOKEN_PAYLOAD_SEGMENT="${TOKEN_PAYLOAD_SEGMENT}$(printf '=%.0s' $(seq 1 "${PADDING}"))"
+      fi
+
+      PAYLOAD=$(printf '%s' "${TOKEN_PAYLOAD_SEGMENT}" | tr '_-' '/+' | base64 -d 2>/dev/null || true)
+      EXP=$(printf '%s' "${PAYLOAD}" | jq -r '.exp // empty' 2>/dev/null || true)
+
+      if [ -z "${EXP}" ]; then
+        log "WARN  Could not extract exp from JWT payload; treating as needing rotation"
+        DAYS_LEFT=0
+      else
+        NOW=$(date +%s)
+        DAYS_LEFT=$(( (EXP - NOW) / 86400 ))
+      fi
+    }
 
     # ------------------------------------------------------------------
-    # Step 2: Decode JWT and check expiry
+    # Step 1: Check the current token when one is already provisioned
     # ------------------------------------------------------------------
-    # JWT is base64url-encoded; decode the payload (second segment).
-    PAYLOAD=$(echo "${TOKEN}" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null || true)
-    EXP=$(echo "${PAYLOAD}" | jq -r '.exp // empty')
-
-    if [ -z "${EXP}" ]; then
-      log "WARN  Could not extract exp from JWT payload; treating as needing rotation"
-      DAYS_LEFT=0
+    TOKEN="${NPM_MADFAM_TOKEN:-}"
+    if [ -n "${TOKEN}" ]; then
+      log "INFO  Using provisioned npm token (length=${#TOKEN})"
     else
-      NOW=$(date +%s)
-      DAYS_LEFT=$(( (EXP - NOW) / 86400 ))
+      log "INFO  No provisioned npm token found; requesting one from Verdaccio"
+      login_for_token
     fi
 
+    compute_days_left
     log "INFO  Token expires in ${DAYS_LEFT} day(s) (threshold: ${ROTATION_THRESHOLD_DAYS}d)"
 
     # ------------------------------------------------------------------
-    # Step 3: Push metric to Pushgateway
+    # Step 2: Push metric to Pushgateway
     # ------------------------------------------------------------------
     push_metric() {
       cat <<METRIC_EOF | curl -sf --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/npm_token_rotation" || \
@@ -78,12 +98,18 @@ data:
     push_metric
 
     # ------------------------------------------------------------------
-    # Step 4: Rotate across repos if expiry is close
+    # Step 3: Rotate across repos if expiry is close
     # ------------------------------------------------------------------
     if [ "${DAYS_LEFT}" -ge "${ROTATION_THRESHOLD_DAYS}" ]; then
       log "INFO  Token has ${DAYS_LEFT}d remaining (>= ${ROTATION_THRESHOLD_DAYS}d). No rotation needed."
       exit 0
     fi
+
+    log "INFO  Token has ${DAYS_LEFT}d remaining. Requesting a fresh Verdaccio token before rotation..."
+    login_for_token
+    compute_days_left
+    log "INFO  Fresh token expires in ${DAYS_LEFT} day(s)"
+    push_metric
 
     log "INFO  Token has ${DAYS_LEFT}d remaining. Rotating across ${ORG} repos..."
 
@@ -150,16 +176,24 @@ spec:
                     secretKeyRef:
                       name: npm-token-rotation-creds
                       key: username
+                      optional: true
                 - name: NPM_REGISTRY_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: npm-token-rotation-creds
                       key: password
+                      optional: true
                 - name: GH_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: npm-token-rotation-creds
                       key: gh_token
+                - name: NPM_MADFAM_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: npm-token-rotation-creds
+                      key: token
+                      optional: true
                 - name: VERDACCIO_URL
                   value: "https://npm.madfam.io"
                 - name: PUSHGATEWAY_URL
@@ -210,5 +244,3 @@ metadata:
 type: Opaque
 stringData:
   username: "admin@madfam.io"
-  password: "REPLACE_VIA_EXTERNALSECRET"
-  gh_token: "REPLACE_VIA_EXTERNALSECRET"

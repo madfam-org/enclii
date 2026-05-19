@@ -20,6 +20,7 @@ resources:
   - hpa.yaml
   - plugin-configmap.yaml
   - token-rotation-cronjob.yaml
+  - token-rotation-externalsecrets.yaml
   - npm-token-alert.yaml
 
 commonLabels:
