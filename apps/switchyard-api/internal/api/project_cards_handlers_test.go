@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -192,6 +193,39 @@ func TestBuildProjectCardAggregateCanUseHealthyArgoOnlyEvidence(t *testing.T) {
 	assert.Equal(t, "empty", card.Evidence.ServiceRows.Status)
 	require.NotNil(t, card.Evidence.ArgoApplication)
 	assert.Equal(t, "status-enclii-services", card.Evidence.ArgoApplication.Name)
+}
+
+func TestBuildProjectCardAggregateUsesArgoDeploymentHistoryFallback(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	deployedAt := now.Add(-30 * time.Minute)
+
+	card := buildProjectCardAggregateAt(&types.Project{
+		ID:   uuid.New(),
+		Name: "Janua",
+		Slug: "janua",
+	}, []*types.Service{
+		{
+			ID:              uuid.New(),
+			Name:            "api",
+			Health:          types.HealthStatusHealthy,
+			Status:          "running",
+			DesiredReplicas: 1,
+			ReadyReplicas:   1,
+			RolloutState:    "ok",
+		},
+	}, &projectCardArgoApplicationEvidence{
+		Name:         "janua-services",
+		SyncStatus:   "Synced",
+		HealthStatus: "Healthy",
+		Revision:     "abc123",
+		ObservedAt:   now,
+		DeployedAt:   &deployedAt,
+	}, nil, now)
+
+	assert.Equal(t, "deployed", card.DeployResolution)
+	require.NotNil(t, card.LastDeployment)
+	assert.Equal(t, deployedAt, card.LastDeployment.Timestamp)
+	assert.Equal(t, "success", card.LastDeployment.Status)
 }
 
 func TestBuildProjectCardAggregateSurfacesRecentCronJobFailures(t *testing.T) {
@@ -414,6 +448,34 @@ func TestMatchProjectCardArgoEvidenceUsesCandidatesAndRepoFallback(t *testing.T)
 	)
 	require.NotNil(t, repoMatched)
 	assert.Equal(t, "plain-runtime", repoMatched.Name)
+}
+
+func TestProjectCardArgoEvidenceFromApplicationUsesLatestHistoryDeployment(t *testing.T) {
+	observedAt := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	oldDeployment := "2026-05-18T20:00:00Z"
+	latestDeployment := "2026-05-18T20:30:00Z"
+	app := unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"name": "janua-services",
+		},
+		"spec": map[string]interface{}{
+			"destination": map[string]interface{}{"namespace": "janua"},
+		},
+		"status": map[string]interface{}{
+			"sync":   map[string]interface{}{"status": "Synced", "revision": "abc123"},
+			"health": map[string]interface{}{"status": "Healthy"},
+			"history": []interface{}{
+				map[string]interface{}{"deployedAt": oldDeployment},
+				map[string]interface{}{"deployedAt": latestDeployment},
+			},
+		},
+	}}
+
+	evidence := projectCardArgoEvidenceFromApplication(app, observedAt)
+
+	require.NotNil(t, evidence.DeployedAt)
+	assert.Equal(t, latestDeployment, evidence.DeployedAt.Format(time.RFC3339))
+	assert.Equal(t, "janua", evidence.DestinationNamespace)
 }
 
 func TestMatchProjectCardArgoEvidencePrefersWorstMatchingApplication(t *testing.T) {

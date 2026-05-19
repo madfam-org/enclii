@@ -26,11 +26,13 @@ export function ProjectCardEvidenceChips({
     evidence?.serviceRows.staleCount ??
     services.filter((service) => service.healthStale || service.health === "stale")
       .length;
+  const argoHealthy = Boolean(argoEvidence) && !argoDegraded;
+  const visibleStaleHealthCount = argoHealthy ? 0 : staleHealthCount;
   const jobFailureCount = evidence?.jobs?.failedCount ?? 0;
   const jobStuckCount = evidence?.jobs?.stuckCount ?? 0;
   const hasJobIssues = jobFailureCount > 0 || jobStuckCount > 0;
 
-  if (!argoDegraded && staleHealthCount === 0 && !hasJobIssues) return null;
+  if (!argoDegraded && visibleStaleHealthCount === 0 && !hasJobIssues) return null;
 
   return (
     <div className="relative z-10 mt-2 flex min-w-0 flex-wrap gap-1">
@@ -45,7 +47,7 @@ export function ProjectCardEvidenceChips({
           </span>
         </span>
       )}
-      {staleHealthCount > 0 && (
+      {visibleStaleHealthCount > 0 && (
         <span
           className="border-status-warning/35 bg-status-warning/10 text-status-warning inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
           title={
@@ -55,7 +57,7 @@ export function ProjectCardEvidenceChips({
           }
         >
           <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
-          <span>{staleHealthCount} stale</span>
+          <span>{visibleStaleHealthCount} stale</span>
         </span>
       )}
       {hasJobIssues && evidence?.jobs && (

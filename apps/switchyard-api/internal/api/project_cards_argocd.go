@@ -48,6 +48,7 @@ func projectCardArgoEvidenceFromApplication(app unstructured.Unstructured, obser
 	}
 	revision, _, _ := unstructured.NestedString(app.Object, "status", "sync", "revision")
 	destinationNamespace, _, _ := unstructured.NestedString(app.Object, "spec", "destination", "namespace")
+	deployedAt := projectCardArgoLatestDeployedAt(app)
 
 	labels := app.GetLabels()
 	annotations := app.GetAnnotations()
@@ -58,9 +59,39 @@ func projectCardArgoEvidenceFromApplication(app unstructured.Unstructured, obser
 		Revision:             revision,
 		DestinationNamespace: destinationNamespace,
 		ObservedAt:           observedAt,
+		DeployedAt:           deployedAt,
 		SourceRepo:           annotations["enclii.dev/source-repo"],
 		PartOf:               labels["app.kubernetes.io/part-of"],
 	}
+}
+
+func projectCardArgoLatestDeployedAt(app unstructured.Unstructured) *time.Time {
+	history, found, err := unstructured.NestedSlice(app.Object, "status", "history")
+	if err != nil || !found {
+		return nil
+	}
+
+	var latest *time.Time
+	for _, item := range history {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		value, _, err := unstructured.NestedString(entry, "deployedAt")
+		if err != nil || strings.TrimSpace(value) == "" {
+			continue
+		}
+		deployedAt, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			continue
+		}
+		deployedAt = deployedAt.UTC()
+		if latest == nil || deployedAt.After(*latest) {
+			candidate := deployedAt
+			latest = &candidate
+		}
+	}
+	return latest
 }
 
 func (h *Handler) projectCardOnboardingArgoApps(ctx context.Context) map[uuid.UUID]string {

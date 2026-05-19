@@ -77,6 +77,20 @@ func TestEnvironmentRepository_Create(t *testing.T) {
 	})
 }
 
+func TestEnvironmentRepository_UpdateKubeNamespace(t *testing.T) {
+	repo, mock, cleanup := newEnvironmentMockDB(t)
+	defer cleanup()
+
+	envID := uuid.New()
+	mock.ExpectExec(`UPDATE environments SET kube_namespace = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+		WithArgs("enclii", envID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := repo.UpdateKubeNamespace(context.Background(), envID, "enclii")
+	assert.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // --- GetByID ---
 
 func TestEnvironmentRepository_GetByID(t *testing.T) {

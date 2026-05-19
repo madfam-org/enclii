@@ -327,10 +327,7 @@ func (h *Handler) triggerAutoDeploy(ctx context.Context, service *types.Service,
 			logging.String("environment", service.AutoDeployEnv),
 			logging.String("project_id", service.ProjectID.String()))
 
-		// Generate kubernetes namespace with consistent pattern: enclii-{project_slug}-{env_name}
-		// This matches the pattern used in logs_handlers.go and environment_handlers.go
-		envNameNormalized := strings.ToLower(strings.ReplaceAll(service.AutoDeployEnv, "_", "-"))
-		kubeNamespace := fmt.Sprintf("enclii-%s-%s", project.Slug, envNameNormalized)
+		kubeNamespace := autoDeployKubeNamespace(project, service.AutoDeployEnv)
 
 		env = &types.Environment{
 			ProjectID:     service.ProjectID,
@@ -348,6 +345,22 @@ func (h *Handler) triggerAutoDeploy(ctx context.Context, service *types.Service,
 			logging.String("environment_id", env.ID.String()),
 			logging.String("environment", service.AutoDeployEnv),
 			logging.String("kube_namespace", kubeNamespace))
+	} else if repairedNamespace, shouldRepair := autoDeployNamespaceRepair(project, service.AutoDeployEnv, env.KubeNamespace); shouldRepair {
+		if err := h.repos.Environments.UpdateKubeNamespace(ctx, env.ID, repairedNamespace); err != nil {
+			h.logger.Error(ctx, "Auto-deploy failed: could not repair environment namespace",
+				logging.String("environment_id", env.ID.String()),
+				logging.String("environment", service.AutoDeployEnv),
+				logging.String("current_namespace", env.KubeNamespace),
+				logging.String("repaired_namespace", repairedNamespace),
+				logging.Error("db_error", err))
+			return
+		}
+		h.logger.Warn(ctx, "Repaired legacy auto-deploy environment namespace",
+			logging.String("environment_id", env.ID.String()),
+			logging.String("environment", service.AutoDeployEnv),
+			logging.String("previous_namespace", env.KubeNamespace),
+			logging.String("repaired_namespace", repairedNamespace))
+		env.KubeNamespace = repairedNamespace
 	}
 
 	// GUARDRAIL: Ensure registry credentials exist in target namespace before deploying
@@ -480,6 +493,37 @@ func (h *Handler) ensureRegistryCredentials(ctx context.Context, targetNamespace
 	h.logger.Info(ctx, "Successfully copied registry credentials to namespace",
 		logging.String("namespace", targetNamespace))
 	return nil
+}
+
+func autoDeployKubeNamespace(project *types.Project, envName string) string {
+	if strings.EqualFold(strings.TrimSpace(envName), defaultProductionEnvironmentName) {
+		return defaultProductionNamespace(project)
+	}
+	return legacyAutoDeployKubeNamespace(project, envName)
+}
+
+func legacyAutoDeployKubeNamespace(project *types.Project, envName string) string {
+	projectSlug := ""
+	if project != nil {
+		projectSlug = strings.TrimSpace(project.Slug)
+	}
+	envNameNormalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(envName), "_", "-"))
+	return fmt.Sprintf("enclii-%s-%s", projectSlug, envNameNormalized)
+}
+
+func autoDeployNamespaceRepair(project *types.Project, envName, currentNamespace string) (string, bool) {
+	currentNamespace = strings.TrimSpace(currentNamespace)
+	desiredNamespace := autoDeployKubeNamespace(project, envName)
+	if desiredNamespace == "" || currentNamespace == "" || currentNamespace == desiredNamespace {
+		return "", false
+	}
+	if !strings.EqualFold(strings.TrimSpace(envName), defaultProductionEnvironmentName) {
+		return "", false
+	}
+	if currentNamespace != legacyAutoDeployKubeNamespace(project, envName) {
+		return "", false
+	}
+	return desiredNamespace, true
 }
 
 // ListReleases returns all releases for a given service

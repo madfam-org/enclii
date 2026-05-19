@@ -80,14 +80,15 @@ type projectCardServiceRowsEvidence struct {
 }
 
 type projectCardArgoApplicationEvidence struct {
-	Name                 string    `json:"name"`
-	SyncStatus           string    `json:"sync_status"`
-	HealthStatus         string    `json:"health_status"`
-	Revision             string    `json:"revision,omitempty"`
-	DestinationNamespace string    `json:"destination_namespace,omitempty"`
-	ObservedAt           time.Time `json:"observed_at"`
-	SourceRepo           string    `json:"-"`
-	PartOf               string    `json:"-"`
+	Name                 string     `json:"name"`
+	SyncStatus           string     `json:"sync_status"`
+	HealthStatus         string     `json:"health_status"`
+	Revision             string     `json:"revision,omitempty"`
+	DestinationNamespace string     `json:"destination_namespace,omitempty"`
+	ObservedAt           time.Time  `json:"observed_at"`
+	DeployedAt           *time.Time `json:"deployed_at,omitempty"`
+	SourceRepo           string     `json:"-"`
+	PartOf               string     `json:"-"`
 }
 
 type projectCardJobsEvidence struct {
@@ -241,6 +242,14 @@ func buildProjectCardAggregateAt(project *types.Project, services []*types.Servi
 			CommitMessage: latest.LastCommitMsg,
 		}
 	}
+	if lastDeployment == nil && argoEvidence != nil && argoEvidence.DeployedAt != nil {
+		deployResolution = "deployed"
+		lastDeployment = &projectCardLastDeployment{
+			Timestamp: *argoEvidence.DeployedAt,
+			Status:    deploymentStatusForArgoEvidence(argoEvidence),
+			Branch:    "main",
+		}
+	}
 
 	serviceRowsStatus := "fresh"
 	if len(cardServices) == 0 {
@@ -275,6 +284,17 @@ func buildProjectCardAggregateAt(project *types.Project, services []*types.Servi
 			Jobs:            jobEvidence,
 		},
 		Services: cardServices,
+	}
+}
+
+func deploymentStatusForArgoEvidence(argoEvidence *projectCardArgoApplicationEvidence) string {
+	switch aggregateStatusFromArgoEvidence(argoEvidence) {
+	case "healthy":
+		return "success"
+	case "failing":
+		return "failed"
+	default:
+		return "pending"
 	}
 }
 

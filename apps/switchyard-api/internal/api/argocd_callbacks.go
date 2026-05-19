@@ -61,6 +61,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		logging.Int("image_count", len(req.Images)))
 
 	isSyncFailure := isArgocdSyncFailure(req.Trigger, req.SyncStatus)
+	callbackHealthy := argocdCallbackIsHealthy(req.SyncStatus, req.HealthStatus, isSyncFailure)
 
 	deploymentsCreated := 0
 
@@ -118,12 +119,12 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			continue
 		}
 
-		// Skip if this service already has a running deployment with the same release
-		// (happens when ArgoCD syncs an Application but not all images changed)
+		// Skip if this service already has a running deployment with the same release.
+		// If the latest same-release row is failed and Argo reports success, keep
+		// processing so the callback can recover the deployment record.
 		latestDeployment, _ := h.repos.Deployments.GetLatestByService(ctx, service.ID.String())
-		if latestDeployment != nil && latestDeployment.ReleaseID == release.ID &&
-			(latestDeployment.Status == types.DeploymentStatusRunning ||
-				latestDeployment.Status == types.DeploymentStatusFailed) {
+		skipSameReleaseDeployment, recoverSameReleaseDeployment := argocdSameReleaseDeploymentDecision(latestDeployment, release.ID, callbackHealthy)
+		if skipSameReleaseDeployment {
 			h.logger.Debug(ctx, "Service already deployed with this release, skipping",
 				logging.String("service_name", serviceName),
 				logging.String("release_id", release.ID.String()))
@@ -185,6 +186,13 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 					logging.String("deployment_id", existingDeployment.ID.String()))
 			}
 		}
+		if existingDeployment == nil && recoverSameReleaseDeployment != nil {
+			existingDeployment = recoverSameReleaseDeployment
+			h.logger.Info(ctx, "Recovering failed deployment from successful ArgoCD callback",
+				logging.String("service_name", serviceName),
+				logging.String("deployment_id", existingDeployment.ID.String()),
+				logging.String("release_id", release.ID.String()))
+		}
 
 		// Determine deployment status based on sync result
 		var targetStatus types.DeploymentStatus
@@ -194,7 +202,7 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			targetHealth = types.HealthStatusUnhealthy
 		} else {
 			targetStatus = types.DeploymentStatusRunning
-			targetHealth = types.HealthStatusHealthy
+			targetHealth = argocdDeploymentHealth(req.HealthStatus)
 		}
 
 		var deployment *types.Deployment
@@ -309,6 +317,34 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		"status":              "processed",
 		"deployments_created": deploymentsCreated,
 	})
+}
+
+func argocdSameReleaseDeploymentDecision(latestDeployment *types.Deployment, releaseID uuid.UUID, callbackHealthy bool) (bool, *types.Deployment) {
+	if latestDeployment == nil || latestDeployment.ReleaseID != releaseID {
+		return false, nil
+	}
+	if latestDeployment.Status == types.DeploymentStatusRunning && callbackHealthy {
+		return true, nil
+	}
+	if latestDeployment.Status == types.DeploymentStatusFailed && callbackHealthy {
+		return false, latestDeployment
+	}
+	return false, nil
+}
+
+func argocdCallbackIsHealthy(syncStatus, healthStatus string, isSyncFailure bool) bool {
+	return !isSyncFailure && syncStatus == "Synced" && healthStatus == "Healthy"
+}
+
+func argocdDeploymentHealth(healthStatus string) types.HealthStatus {
+	switch healthStatus {
+	case "Healthy":
+		return types.HealthStatusHealthy
+	case "Degraded", "Missing":
+		return types.HealthStatusUnhealthy
+	default:
+		return types.HealthStatusUnknown
+	}
 }
 
 // findOrCreateRelease finds an existing release matching the image+SHA or creates a new one

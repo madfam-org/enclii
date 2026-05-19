@@ -791,6 +791,139 @@ func TestDeployPipeline_BuildDigestImageRef(t *testing.T) {
 	}
 }
 
+func TestDeployPipeline_CosignVerifyEnvUsesWritableHome(t *testing.T) {
+	env := cosignVerifyEnv(
+		[]string{
+			"HOME=/home/nonroot",
+			"XDG_CACHE_HOME=/home/nonroot/.cache",
+			"COSIGN_EXPERIMENTAL=0",
+			"PATH=/usr/bin",
+		},
+		"/tmp/enclii-cosign-test",
+	)
+
+	assertEnvValue := func(key, want string) {
+		t.Helper()
+		prefix := key + "="
+		count := 0
+		var got string
+		for _, entry := range env {
+			if strings.HasPrefix(entry, prefix) {
+				count++
+				got = strings.TrimPrefix(entry, prefix)
+			}
+		}
+		if count != 1 {
+			t.Fatalf("%s appeared %d times in env; want exactly once", key, count)
+		}
+		if got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+
+	assertEnvValue("HOME", "/tmp/enclii-cosign-test")
+	assertEnvValue("XDG_CACHE_HOME", "/tmp/enclii-cosign-test")
+	assertEnvValue("COSIGN_EXPERIMENTAL", "1")
+	assertEnvValue("PATH", "/usr/bin")
+}
+
+func TestDeployPipeline_AutoDeployKubeNamespaceUsesProjectSlugForProduction(t *testing.T) {
+	project := &types.Project{
+		Name: "Enclii",
+		Slug: "enclii",
+	}
+
+	got := autoDeployKubeNamespace(project, "production")
+	if got != "enclii" {
+		t.Fatalf("autoDeployKubeNamespace(production) = %q, want enclii", got)
+	}
+
+	legacy := legacyAutoDeployKubeNamespace(project, "production")
+	if legacy != "enclii-enclii-production" {
+		t.Fatalf("legacyAutoDeployKubeNamespace(production) = %q, want enclii-enclii-production", legacy)
+	}
+}
+
+func TestDeployPipeline_AutoDeployNamespaceRepairOnlyRepairsLegacyProduction(t *testing.T) {
+	project := &types.Project{
+		Name: "Enclii",
+		Slug: "enclii",
+	}
+
+	got, ok := autoDeployNamespaceRepair(project, "production", "enclii-enclii-production")
+	if !ok || got != "enclii" {
+		t.Fatalf("autoDeployNamespaceRepair legacy production = (%q, %v), want (enclii, true)", got, ok)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		env       string
+		namespace string
+	}{
+		{name: "custom production namespace", env: "production", namespace: "prod-runtime"},
+		{name: "non production legacy namespace", env: "staging", namespace: "enclii-enclii-staging"},
+		{name: "already desired", env: "production", namespace: "enclii"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := autoDeployNamespaceRepair(project, tt.env, tt.namespace)
+			if ok || got != "" {
+				t.Fatalf("autoDeployNamespaceRepair(%q, %q) = (%q, %v), want no repair", tt.env, tt.namespace, got, ok)
+			}
+		})
+	}
+}
+
+func TestDeployPipeline_ArgocdSameReleaseDeploymentDecisionRecoversFailedSuccess(t *testing.T) {
+	releaseID := uuid.New()
+	deployment := &types.Deployment{
+		ID:        uuid.New(),
+		ReleaseID: releaseID,
+		Status:    types.DeploymentStatusFailed,
+	}
+
+	skip, recover := argocdSameReleaseDeploymentDecision(deployment, releaseID, true)
+	if skip {
+		t.Fatal("failed same-release deployment must not be skipped after a successful ArgoCD callback")
+	}
+	if recover == nil || recover.ID != deployment.ID {
+		t.Fatalf("recover = %#v, want deployment %s", recover, deployment.ID)
+	}
+}
+
+func TestDeployPipeline_ArgocdSameReleaseDeploymentDecisionSkipsAlreadyRunningSuccess(t *testing.T) {
+	releaseID := uuid.New()
+	deployment := &types.Deployment{
+		ID:        uuid.New(),
+		ReleaseID: releaseID,
+		Status:    types.DeploymentStatusRunning,
+	}
+
+	skip, recover := argocdSameReleaseDeploymentDecision(deployment, releaseID, true)
+	if !skip {
+		t.Fatal("running same-release deployment should be skipped after a successful ArgoCD callback")
+	}
+	if recover != nil {
+		t.Fatalf("recover = %#v, want nil", recover)
+	}
+}
+
+func TestDeployPipeline_ArgocdSameReleaseDeploymentDecisionDoesNotSkipDegradedCallback(t *testing.T) {
+	releaseID := uuid.New()
+	deployment := &types.Deployment{
+		ID:        uuid.New(),
+		ReleaseID: releaseID,
+		Status:    types.DeploymentStatusRunning,
+	}
+
+	skip, recover := argocdSameReleaseDeploymentDecision(deployment, releaseID, false)
+	if skip {
+		t.Fatal("same-release degraded callbacks must not be skipped")
+	}
+	if recover != nil {
+		t.Fatalf("recover = %#v, want nil", recover)
+	}
+}
+
 // =============================================================================
 // Phase 8: GitHub URL Parsing Tests
 // =============================================================================

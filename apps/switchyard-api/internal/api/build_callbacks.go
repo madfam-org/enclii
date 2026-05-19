@@ -433,6 +433,12 @@ func verifyImageDigestSignature(ctx context.Context, imageRef string) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
+	cosignHome, err := os.MkdirTemp("", "enclii-cosign-*")
+	if err != nil {
+		return fmt.Errorf("create writable cosign cache: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(cosignHome) }()
+
 	cmd := exec.CommandContext(
 		timeoutCtx,
 		"cosign",
@@ -441,7 +447,7 @@ func verifyImageDigestSignature(ctx context.Context, imageRef string) error {
 		"--certificate-oidc-issuer", cosignOIDCIssuer,
 		imageRef,
 	)
-	cmd.Env = append(os.Environ(), "COSIGN_EXPERIMENTAL=1")
+	cmd.Env = cosignVerifyEnv(os.Environ(), cosignHome)
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return nil
@@ -455,6 +461,36 @@ func verifyImageDigestSignature(ctx context.Context, imageRef string) error {
 		return fmt.Errorf("cosign verify failed: %w", err)
 	}
 	return fmt.Errorf("cosign verify failed: %w: %s", err, msg)
+}
+
+func cosignVerifyEnv(base []string, writableHome string) []string {
+	return envWithOverrides(base, map[string]string{
+		"COSIGN_EXPERIMENTAL": "1",
+		"HOME":                writableHome,
+		"XDG_CACHE_HOME":      writableHome,
+	})
+}
+
+func envWithOverrides(base []string, overrides map[string]string) []string {
+	result := make([]string, 0, len(base)+len(overrides))
+	seen := make(map[string]bool, len(overrides))
+	for _, entry := range base {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if value, exists := overrides[key]; exists {
+				result = append(result, key+"="+value)
+				seen[key] = true
+				continue
+			}
+		}
+		result = append(result, entry)
+	}
+	for key, value := range overrides {
+		if !seen[key] {
+			result = append(result, key+"="+value)
+		}
+	}
+	return result
 }
 
 // resolveKustomizationPath determines where the kustomization.yaml lives for a given repo/service.

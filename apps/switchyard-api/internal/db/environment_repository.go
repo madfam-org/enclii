@@ -30,6 +30,15 @@ func (r *EnvironmentRepository) Create(env *types.Environment) error {
 	return err
 }
 
+func (r *EnvironmentRepository) UpdateKubeNamespace(ctx context.Context, id uuid.UUID, namespace string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE environments SET kube_namespace = $1, updated_at = NOW() WHERE id = $2`,
+		namespace,
+		id,
+	)
+	return err
+}
+
 func (r *EnvironmentRepository) GetByProjectAndName(projectID uuid.UUID, name string) (*types.Environment, error) {
 	env := &types.Environment{}
 	query := `SELECT id, project_id, name, kube_namespace, created_at, updated_at FROM environments WHERE project_id = $1 AND name = $2`

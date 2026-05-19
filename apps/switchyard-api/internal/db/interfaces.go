@@ -42,6 +42,7 @@ type ProjectRepositoryInterface interface {
 // EnvironmentRepositoryInterface defines operations for environments
 type EnvironmentRepositoryInterface interface {
 	Create(env *types.Environment) error
+	UpdateKubeNamespace(ctx context.Context, id uuid.UUID, namespace string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*types.Environment, error)
 	GetByProjectAndName(projectID uuid.UUID, name string) (*types.Environment, error)
 	ListByProject(projectID uuid.UUID) ([]*types.Environment, error)
