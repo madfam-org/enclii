@@ -309,6 +309,34 @@ spec:
         - protocol: TCP
           port: 443
 
+# Allow backup verification egress (DNS + HTTPS for R2 download)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-verify-egress
+  namespace: data
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: backup-verify
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
 # Allow restore drill egress (same as backup — DNS + HTTPS + PostgreSQL)
 ---
 apiVersion: networking.k8s.io/v1

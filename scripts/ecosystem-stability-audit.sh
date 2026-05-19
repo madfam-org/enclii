@@ -182,6 +182,7 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
       | (.status.succeeded // 0) as $succeeded
       | (.status.active // 0) as $active
       | (.status.failed // 0) as $failed
+      | select($succeeded == 0)
       | select($failed_condition > 0 or ($succeeded == 0 and $active == 0 and $failed > 0))
       | "\(.metadata.namespace)/\(.metadata.name)\tcronjob=\(._cron_name)\tfailed=\($failed)\tscheduled=\(._scheduled)"
     ' "$TMP_DIR/jobs.json"

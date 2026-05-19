@@ -23,6 +23,7 @@ NAMESPACES=(
     janua
     dhanam
     enclii-builds
+    npm-registry
     argocd
     cloudflare-tunnel
     foundry-scout

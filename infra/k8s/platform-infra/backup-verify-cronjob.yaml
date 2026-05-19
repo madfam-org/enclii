@@ -133,28 +133,60 @@ spec:
                     sleep 1
                   done
 
-                  # Create database and restore
+                  cleanup() {
+                    pg_ctl -D "${PGDATA}" stop -m fast >/dev/null 2>&1 || true
+                  }
+                  trap cleanup EXIT
+
+                  # Restore the pg_dumpall archive into the temporary cluster.
                   echo "Restoring backup..."
-                  createdb -U postgres enclii_verify
-                  gunzip -c /shared/backup.sql.gz | psql -U postgres -d enclii_verify -q 2>/dev/null
-
-                  # Validate
-                  echo "Validating restored data..."
-                  TABLE_COUNT=$(psql -U postgres -d enclii_verify -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
-                  PROJECT_COUNT=$(psql -U postgres -d enclii_verify -t -c "SELECT count(*) FROM projects;" 2>/dev/null | tr -d ' ')
-
-                  echo "=== Verification Result ==="
-                  echo "Tables: ${TABLE_COUNT}"
-                  echo "Project count: ${PROJECT_COUNT:-unknown}"
-
-                  if [ -z "${TABLE_COUNT}" ] || [ "${TABLE_COUNT}" = "0" ]; then
-                    echo "ERROR: No tables found after restore"
-                    pg_ctl -D "${PGDATA}" stop -m fast
+                  if ! gunzip -c /shared/backup.sql.gz | psql -U postgres -d postgres -q 2>/tmp/restore.err; then
+                    echo "ERROR: Restore failed"
+                    sed -n '1,80p' /tmp/restore.err
                     exit 1
                   fi
 
-                  # Cleanup
-                  pg_ctl -D "${PGDATA}" stop -m fast
+                  # Validate
+                  echo "Validating restored data..."
+                  DB_LIST=$(psql -U postgres -d postgres -tAc "SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname;")
+                  TABLE_COUNT=0
+                  DB_SUMMARY=""
+                  PROJECT_COUNT="not-found"
+
+                  echo "Databases found:"
+                  printf '%s\n' "${DB_LIST}"
+
+                  for DB_NAME in ${DB_LIST}; do
+                    echo "Checking database: ${DB_NAME}"
+                    if ! DB_TABLES=$(psql -U postgres -d "${DB_NAME}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/tmp/validate.err); then
+                      echo "WARN: Could not validate database ${DB_NAME}"
+                      sed -n '1,40p' /tmp/validate.err
+                      continue
+                    fi
+
+                    TABLE_COUNT=$((TABLE_COUNT + DB_TABLES))
+                    DB_SUMMARY="${DB_SUMMARY}${DB_NAME}:${DB_TABLES} "
+
+                    if [ "${PROJECT_COUNT}" = "not-found" ]; then
+                      HAS_PROJECTS=$(psql -U postgres -d "${DB_NAME}" -tAc "SELECT to_regclass('public.projects') IS NOT NULL;" 2>/dev/null || echo "f")
+                      if [ "${HAS_PROJECTS}" = "t" ]; then
+                        PROJECT_COUNT=$(psql -U postgres -d "${DB_NAME}" -tAc "SELECT count(*) FROM public.projects;" 2>/dev/null || echo "unknown")
+                      fi
+                    fi
+                  done
+
+                  echo "=== Verification Result ==="
+                  echo "Tables: ${TABLE_COUNT}"
+                  echo "Databases: ${DB_SUMMARY}"
+                  echo "Project count: ${PROJECT_COUNT}"
+
+                  if [ -z "${TABLE_COUNT}" ] || [ "${TABLE_COUNT}" = "0" ]; then
+                    echo "ERROR: No tables found after restore"
+                    echo "Restore stderr sample:"
+                    sed -n '1,80p' /tmp/restore.err
+                    exit 1
+                  fi
+
                   echo "Status: SUCCESS"
                   echo "=== Backup Verification Complete ==="
               resources:

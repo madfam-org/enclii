@@ -131,15 +131,16 @@ spec:
             app.kubernetes.io/component: token-rotation
         spec:
           restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: ghcr-credentials
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
           containers:
             - name: rotate
-              image: ghcr.io/madfam-org/alpine-gh:latest
-              # Alpine 3.x + curl + jq + gh CLI.
-              # Build: FROM alpine:3.20 && apk add --no-cache curl jq github-cli
+              image: ghcr.io/madfam-org/enclii/alpine-gh@sha256:e9c68fd809b0962d37ccf6c6793c3c4ec7e081b2dea4daf0c5dd912c9f6dd1a4
+              # Alpine 3.x + curl + jq + gh CLI. Source: infra/docker/alpine-gh.
               command: ["/bin/sh", "/scripts/rotate.sh"]
               env:
                 - name: NPM_REGISTRY_USER
@@ -175,6 +176,7 @@ spec:
                   cpu: "200m"
                   memory: "128Mi"
               securityContext:
+                privileged: false
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
                 capabilities:
