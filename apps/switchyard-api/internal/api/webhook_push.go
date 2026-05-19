@@ -139,6 +139,24 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		logging.String("pusher", event.Pusher.Name),
 		logging.String("commit_message", truncateString(event.HeadCommit.Message, 100)))
 
+	if h.config == nil || !h.config.GitHubWebhookBuildsEnabled {
+		h.logger.Warn(ctx, "GitHub push auto-builds disabled; acknowledging without creating releases",
+			logging.Int("service_count", len(services)),
+			logging.String("repo", event.Repository.FullName),
+			logging.String("git_sha", gitSHA))
+		c.JSON(http.StatusOK, gin.H{
+			"message":         "GitHub push received; Roundhouse auto-builds are disabled",
+			"repo":            event.Repository.FullName,
+			"git_sha":         gitSHA,
+			"branch":          branch,
+			"service_count":   len(services),
+			"triggered_count": 0,
+			"skipped_count":   len(services),
+			"changed_files":   len(changedFiles),
+		})
+		return
+	}
+
 	// Emit push_received lifecycle event
 	pushMsg := fmt.Sprintf("Push to %s by %s: %s", branch, event.Pusher.Name, truncateString(event.HeadCommit.Message, 80))
 	var firstProjectID, firstServiceID *uuid.UUID
@@ -188,16 +206,17 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 	}
 
 	for _, service := range services {
-		// Check if service should be rebuilt based on changed files and WatchPaths
-		if len(service.WatchPaths) > 0 && !shouldRebuildService(service.WatchPaths, changedFiles) {
-			h.logger.Info(ctx, "Skipping build for service - no relevant file changes",
+		shouldBuild, skipReason := shouldTriggerWebhookBuild(service, branch, changedFiles)
+		if !shouldBuild {
+			h.logger.Info(ctx, "Skipping GitHub push auto-build for service",
 				logging.String("service", service.Name),
-				logging.String("watch_paths", strings.Join(service.WatchPaths, ", ")))
+				logging.String("watch_paths", strings.Join(service.WatchPaths, ", ")),
+				logging.String("reason", skipReason))
 			results = append(results, buildResult{
 				Service: service.Name,
 				Status:  "skipped",
 				Skipped: true,
-				Reason:  "No files changed in watched paths",
+				Reason:  skipReason,
 			})
 			skippedCount++
 			continue

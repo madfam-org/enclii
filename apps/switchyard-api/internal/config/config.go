@@ -71,8 +71,9 @@ type Config struct {
 	SelfURL          string // This service's URL for callbacks (e.g., http://switchyard-api:4200)
 
 	// Provenance / PR Approval
-	GitHubToken         string // GitHub API token for PR verification
-	GitHubWebhookSecret string // Secret for verifying GitHub webhook signatures
+	GitHubToken                string // GitHub API token for PR verification
+	GitHubWebhookSecret        string // Secret for verifying GitHub webhook signatures
+	GitHubWebhookBuildsEnabled bool   // Allow GitHub push webhooks to create Roundhouse builds
 
 	// ArgoCD Integration
 	ArgocdWebhookSecret           string
@@ -244,6 +245,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("roundhouse-api-key", "")                 // API key for roundhouse
 	viper.SetDefault("self-url", "http://switchyard-api:4200") // This service's URL for callbacks
 	viper.SetDefault("github-webhook-secret", "")              // Webhook disabled until secret configured
+	viper.SetDefault("github-webhook-builds-enabled", false)   // Roundhouse push-builds are opt-in
 	viper.SetDefault("argocd-webhook-secret", "")
 	viper.SetDefault("argocd-registration-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-registration", false)
@@ -347,6 +349,7 @@ func Load() (*Config, error) {
 		SelfURL:                           viper.GetString("self-url"),
 		GitHubToken:                       viper.GetString("github-token"),
 		GitHubWebhookSecret:               viper.GetString("github-webhook-secret"),
+		GitHubWebhookBuildsEnabled:        viper.GetBool("github-webhook-builds-enabled"),
 		ArgocdWebhookSecret:               viper.GetString("argocd-webhook-secret"),
 		ArgocdRegistrationMode:            viper.GetString("argocd-registration-mode"),
 		AllowLegacyGitOpsRegistration:     viper.GetBool("allow-legacy-gitops-registration"),

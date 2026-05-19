@@ -168,6 +168,7 @@ func newTestService(name, gitRepo string) *types.Service {
 		GitRepo:         gitRepo,
 		AutoDeploy:      true,
 		AutoDeployEnv:   "production",
+		BuildConfig:     types.BuildConfig{Type: types.BuildTypeAuto},
 		Status:          "running",
 		Health:          types.HealthStatusHealthy,
 		DesiredReplicas: 1,
@@ -331,15 +332,16 @@ func newTestLogger(t *testing.T) logging.Logger {
 // newTestConfig creates a config suitable for pipeline testing.
 func newTestConfig() *config.Config {
 	return &config.Config{
-		Environment:         "test",
-		Port:                "8080",
-		Registry:            testRegistry,
-		GitHubWebhookSecret: testWebhookSecret,
-		RoundhouseAPIKey:    testRoundhouseAPIKey,
-		ArgocdWebhookSecret: testArgocdSecret,
-		GitHubToken:         testGitHubToken,
-		BuildMode:           "roundhouse",
-		SelfURL:             "http://localhost:8080",
-		AuthMode:            "local",
+		Environment:                "test",
+		Port:                       "8080",
+		Registry:                   testRegistry,
+		GitHubWebhookSecret:        testWebhookSecret,
+		RoundhouseAPIKey:           testRoundhouseAPIKey,
+		ArgocdWebhookSecret:        testArgocdSecret,
+		GitHubToken:                testGitHubToken,
+		GitHubWebhookBuildsEnabled: true,
+		BuildMode:                  "roundhouse",
+		SelfURL:                    "http://localhost:8080",
+		AuthMode:                   "local",
 	}
 }

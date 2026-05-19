@@ -381,6 +381,122 @@ func TestDeployPipeline_MonorepoWatchPaths(t *testing.T) {
 	}
 }
 
+func TestDeployPipeline_ShouldTriggerWebhookBuild(t *testing.T) {
+	tests := []struct {
+		name         string
+		mutate       func(*types.Service)
+		branch       string
+		changedFiles []string
+		wantBuild    bool
+		wantReason   string
+	}{
+		{
+			name:         "auto build config on main builds",
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantBuild:    true,
+		},
+		{
+			name: "auto deploy disabled skips",
+			mutate: func(s *types.Service) {
+				s.AutoDeploy = false
+			},
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantReason:   "auto-deploy disabled",
+		},
+		{
+			name: "branch mismatch skips",
+			mutate: func(s *types.Service) {
+				s.AutoDeployBranch = "release"
+			},
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantReason:   "does not match auto-deploy branch",
+		},
+		{
+			name: "watch path miss skips",
+			mutate: func(s *types.Service) {
+				s.WatchPaths = []string{"apps/api/"}
+			},
+			branch:       "main",
+			changedFiles: []string{"apps/web/index.ts"},
+			wantReason:   "no files changed in watched paths",
+		},
+		{
+			name: "empty build config skips",
+			mutate: func(s *types.Service) {
+				s.BuildConfig = types.BuildConfig{}
+			},
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantReason:   "build config incomplete",
+		},
+		{
+			name: "dockerfile type without dockerfile or app path skips",
+			mutate: func(s *types.Service) {
+				s.BuildConfig = types.BuildConfig{Type: types.BuildTypeDockerfile}
+			},
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantReason:   "build config incomplete",
+		},
+		{
+			name: "dockerfile type with dockerfile builds",
+			mutate: func(s *types.Service) {
+				s.BuildConfig = types.BuildConfig{
+					Type:       types.BuildTypeDockerfile,
+					Dockerfile: "apps/api/Dockerfile",
+				}
+			},
+			branch:       "main",
+			changedFiles: []string{"apps/api/main.go"},
+			wantBuild:    true,
+		},
+		{
+			name: "buildpack type without buildpack skips",
+			mutate: func(s *types.Service) {
+				s.BuildConfig = types.BuildConfig{Type: types.BuildTypeBuildpack}
+			},
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantReason:   "build config incomplete",
+		},
+		{
+			name: "buildpack type with buildpack builds",
+			mutate: func(s *types.Service) {
+				s.BuildConfig = types.BuildConfig{
+					Type:      types.BuildTypeBuildpack,
+					Buildpack: "paketobuildpacks/builder-jammy-base",
+				}
+			},
+			branch:       "main",
+			changedFiles: []string{"src/main.go"},
+			wantBuild:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newTestService("api", testRepoHTMLURL)
+			if tt.mutate != nil {
+				tt.mutate(svc)
+			}
+
+			gotBuild, gotReason := shouldTriggerWebhookBuild(svc, tt.branch, tt.changedFiles)
+			if gotBuild != tt.wantBuild {
+				t.Fatalf("shouldTriggerWebhookBuild() build = %v, want %v; reason=%q", gotBuild, tt.wantBuild, gotReason)
+			}
+			if tt.wantReason != "" && !strings.Contains(gotReason, tt.wantReason) {
+				t.Fatalf("shouldTriggerWebhookBuild() reason = %q, want substring %q", gotReason, tt.wantReason)
+			}
+			if tt.wantBuild && gotReason != "" {
+				t.Fatalf("shouldTriggerWebhookBuild() reason = %q, want empty for buildable service", gotReason)
+			}
+		})
+	}
+}
+
 // =============================================================================
 // Phase 4: Build Callback Tests
 // =============================================================================

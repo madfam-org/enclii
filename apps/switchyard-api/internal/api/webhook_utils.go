@@ -112,6 +112,44 @@ func shouldRebuildService(watchPaths []string, changedFiles []string) bool {
 	return false
 }
 
+func shouldTriggerWebhookBuild(service *types.Service, branch string, changedFiles []string) (bool, string) {
+	if service == nil {
+		return false, "service missing"
+	}
+	if !service.AutoDeploy {
+		return false, "auto-deploy disabled"
+	}
+	autoDeployBranch := strings.TrimSpace(service.AutoDeployBranch)
+	if autoDeployBranch == "" {
+		autoDeployBranch = "main"
+	}
+	if branch != autoDeployBranch {
+		return false, fmt.Sprintf("branch %q does not match auto-deploy branch %q", branch, autoDeployBranch)
+	}
+	if len(service.WatchPaths) > 0 && !shouldRebuildService(service.WatchPaths, changedFiles) {
+		return false, "no files changed in watched paths"
+	}
+	if !hasWebhookBuildConfig(service) {
+		return false, "build config incomplete for webhook auto-build"
+	}
+	return true, ""
+}
+
+func hasWebhookBuildConfig(service *types.Service) bool {
+	buildType := strings.TrimSpace(string(service.BuildConfig.Type))
+	switch buildType {
+	case string(types.BuildTypeAuto):
+		return true
+	case string(types.BuildTypeBuildpack):
+		return strings.TrimSpace(service.BuildConfig.Buildpack) != ""
+	case string(types.BuildTypeDockerfile):
+		return strings.TrimSpace(service.BuildConfig.Dockerfile) != "" ||
+			strings.TrimSpace(service.AppPath) != ""
+	default:
+		return false
+	}
+}
+
 // matchWatchPath checks if a file path matches a watch path pattern
 // Supports:
 // - Exact file matches: "package.json"
