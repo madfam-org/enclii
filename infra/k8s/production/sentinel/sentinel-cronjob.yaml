@@ -95,6 +95,7 @@ data:
 
     HOSTPORT_PODS=$(kubectl get pods -A -o json 2>/dev/null | \
         jq -r '.items[] |
+        select((.metadata.namespace == "kube-system" and (.metadata.name | startswith("svclb-traefik-"))) | not) |
         select(any(.spec.containers[]?.ports[]?; .hostPort != null)) |
         "\(.metadata.namespace)/\(.metadata.name)"' || true)
 
