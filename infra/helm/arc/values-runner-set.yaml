@@ -53,13 +53,16 @@ template:
       - name: runner
         # MADFAM hardened runner image: thin overlay on
         # ghcr.io/actions/actions-runner that adds the system packages our
-        # CI needs (libatomic1 for pnpm; libasound2t64 + libnss3 +
-        # libxkbcommon0 + libgbm1 for Playwright; jq + python3-pip for
-        # misc CI scripting). Pinned to base 2.334.0.
+        # CI needs (libatomic1 for pnpm; xz-utils for setup-node;
+        # libasound2t64 + libnss3 + libxkbcommon0 + libgbm1 for Playwright;
+        # jq + python3-pip for misc CI scripting). Pinned to base 2.334.0.
         # Built by .github/workflows/arc-runner-image.yml.
         # Source: infra/docker/arc-runner/.
         image: ghcr.io/madfam-org/enclii/arc-runner:stable
-        imagePullPolicy: IfNotPresent
+        # Stable is intentionally mutable after the image workflow signs and
+        # publishes a hardened runner. Always pull on new pods so runner fixes
+        # do not wait for manual node image-cache eviction.
+        imagePullPolicy: Always
         # Explicit command — chart 0.14.0 does NOT inject one when user
         # supplies a `containers:` block, and the runner image's CMD
         # is /bin/bash (intentional, lets Dockerfile overlays inherit

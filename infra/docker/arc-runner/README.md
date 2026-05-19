@@ -14,6 +14,9 @@ image, which is intentionally lean. It does **not** include:
 - `libasound2t64`, `libnss3`, `libxkbcommon0`, `libgbm1` — required by
   Chromium, which Playwright launches headless. Playwright downloads
   the browser binary itself, but it cannot supply OS shared libraries.
+- `xz-utils` — required before any per-job Node install exists because
+  `actions/setup-node` unpacks upstream Node Linux archives. Without it,
+  jobs can reach `pnpm` with `node: not found` even though setup-node ran.
 
 Result: every UI Tests / Playwright job across the org fails. Branch
 protection becomes meaningless because every PR has red CI.
@@ -84,6 +87,7 @@ docker run --rm --entrypoint bash arc-runner:dev -c '
   ldconfig -p | grep -E "libatomic|libasound|libnss3|libxkbcommon|libgbm"
   jq --version
   pip3 --version
+  xz --version
 '
 ```
 

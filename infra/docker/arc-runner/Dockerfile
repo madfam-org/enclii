@@ -18,6 +18,8 @@
 ARG BASE_IMAGE=ghcr.io/actions/actions-runner
 ARG BASE_TAG=2.334.0
 FROM ${BASE_IMAGE}:${BASE_TAG}
+ARG BASE_IMAGE
+ARG BASE_TAG
 
 # Switch to root for apt operations; the upstream image switches back to
 # the unprivileged `runner` user via its ENTRYPOINT.
@@ -32,12 +34,14 @@ USER root
 #   libgbm1           - Playwright Chromium GPU buffer manager (headless)
 #   jq                - ubiquitous in our CI scripts (status checks, JSON munging)
 #   python3-pip       - some workflows use python tooling (uv, pre-commit hooks)
+#   xz-utils          - actions/setup-node extracts upstream Node tar.xz payloads
 #   ca-certificates   - explicit so cert bundle is fresh post-base-image bump
 #
 # Intentionally NOT installed (kept minimal):
 #   - chromium / firefox themselves (Playwright manages browsers via its own download)
 #   - docker / buildkit (DinD is disabled in our runner config)
-#   - language toolchains (Node, Go, etc. — installed per-job via setup-* actions)
+#   - language toolchains (Node, Go, etc. — installed per-job via setup-* actions;
+#     keep xz-utils here because setup-node needs it before Node exists)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libatomic1 \
@@ -48,6 +52,7 @@ RUN apt-get update \
       libgbm1 \
       jq \
       python3-pip \
+      xz-utils \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
@@ -59,7 +64,8 @@ RUN ldconfig -p | grep -q libatomic.so.1 \
  && ldconfig -p | grep -q libxkbcommon.so.0 \
  && ldconfig -p | grep -q libgbm.so.1 \
  && command -v jq >/dev/null \
- && command -v pip3 >/dev/null
+ && command -v pip3 >/dev/null \
+ && command -v xz >/dev/null
 
 # Drop back to the runner user the upstream image expects.
 USER runner
