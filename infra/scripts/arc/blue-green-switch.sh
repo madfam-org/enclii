@@ -137,6 +137,11 @@ activate_scale_set() {
     local color=$1
     local scale_set="${SCALE_SET_PREFIX}-${color}"
     local values_file="${REPO_ROOT}/infra/helm/arc/values-runner-set-${color}.yaml"
+    local max_runners=2
+
+    if [[ "${color}" == "blue" ]]; then
+        max_runners=9
+    fi
 
     log_info "Activating ${scale_set}..."
 
@@ -147,6 +152,7 @@ activate_scale_set() {
         --values "${REPO_ROOT}/infra/helm/arc/values-runner-set.yaml" \
         --values "${values_file}" \
         --set minRunners="${MIN_RUNNERS}" \
+        --set maxRunners="${max_runners}" \
         --set-string 'template.metadata.labels.arc\.enclii\.dev/active=true' \
         --set "template.metadata.annotations.arc\\.enclii\\.dev/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --wait \
