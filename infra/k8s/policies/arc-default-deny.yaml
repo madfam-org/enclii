@@ -98,6 +98,38 @@ spec:
     # HTTPS egress for GitHub API (runner registration, webhook)
     # Port 443 already covered above
 
+# Allow ARC scale-set listener egress (DNS + K8s API + GitHub API)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arc-listener-egress
+  namespace: arc-system
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: runner-scale-set-listener
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HTTPS for GitHub API and the in-cluster Kubernetes API service
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
 # ---- arc-runners namespace ----
 
 # Default deny all ingress to arc-runners namespace
