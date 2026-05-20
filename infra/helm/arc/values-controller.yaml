@@ -17,10 +17,12 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+podSecurityContext:
+  fsGroup: 1000
+
 securityContext:
   runAsNonRoot: true
   runAsUser: 1000
-  fsGroup: 1000
   seccompProfile:
     type: RuntimeDefault
 

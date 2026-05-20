@@ -55,7 +55,7 @@ concurrency:
 
 env:
   HELM_VERSION: '3.14.0'
-  CHART_VERSION: '0.10.1'
+  CHART_VERSION: '0.14.0'
   KUBECTL_VERSION: 'v1.33.4'
 
 jobs:
@@ -80,6 +80,7 @@ jobs:
             infra/helm/arc/**
             infra/k8s/*/arc/**
             infra/scripts/arc/**
+            .github/workflows/arc-self-deploy.yml
 
       - name: Setup Helm
         uses: azure/setup-helm@v5
@@ -222,17 +223,11 @@ jobs:
             echo "::warning::Prometheus Operator CRDs not found, skipping monitoring.yaml"
           fi
 
-      - name: Upgrade ARC Controller
+      - name: Verify ARC Controller
         if: steps.check-secret.outputs.skip != 'true'
         run: |
-          echo "Upgrading ARC Controller..."
-          helm upgrade --install arc-controller \
-            oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller \
-            --namespace arc-system \
-            --version ${{ env.CHART_VERSION }} \
-            --values infra/helm/arc/values-controller.yaml \
-            --wait \
-            --timeout 5m
+          echo "Verifying Argo-managed ARC Controller rollout..."
+          kubectl -n arc-system rollout status deployment/arc-controller-gha-rs-controller --timeout=5m
 
       - name: Determine target color
         if: steps.check-secret.outputs.skip != 'true'
