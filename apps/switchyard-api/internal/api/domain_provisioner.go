@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
@@ -142,21 +144,6 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 		return
 	}
 
-	// Check if route already exists
-	exists, err := h.tunnelRoutesService.RouteExists(ctx, domain)
-	if err != nil {
-		h.logger.Warn(ctx, "Failed to check tunnel route existence",
-			logging.String("domain", domain),
-			logging.Error("error", err))
-		// Continue to try adding — AddRoute handles duplicates gracefully
-	}
-
-	if exists {
-		h.logger.Debug(ctx, "Tunnel route already exists",
-			logging.String("domain", domain))
-		return
-	}
-
 	// Determine namespace from the service's project record
 	namespace := h.resolveServiceNamespace(ctx, service, envName)
 
@@ -174,6 +161,13 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 		ServicePort:      servicePort,
 	}
 
+	if h.tunnelRouteMatches(ctx, routeSpec) {
+		h.logger.Debug(ctx, "Tunnel route already targets desired service",
+			logging.String("domain", domain),
+			logging.String("namespace", namespace))
+		return
+	}
+
 	if err := h.tunnelRoutesService.AddRoute(ctx, routeSpec); err != nil {
 		h.logger.Warn(ctx, "Failed to add tunnel route for domain",
 			logging.String("domain", domain),
@@ -187,21 +181,54 @@ func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service 
 	}
 }
 
+func (h *Handler) tunnelRouteMatches(ctx context.Context, spec *services.RouteSpec) bool {
+	if h == nil || h.tunnelRoutesService == nil || spec == nil {
+		return false
+	}
+
+	routes, err := h.tunnelRoutesService.ListRoutes(ctx)
+	if err != nil {
+		h.logger.Warn(ctx, "Failed to list tunnel routes before reconciliation",
+			logging.String("domain", spec.Hostname),
+			logging.Error("error", err))
+		return false
+	}
+
+	want := tunnelRouteServiceURL(spec)
+	for _, route := range routes {
+		if route.Hostname != spec.Hostname {
+			continue
+		}
+		return route.Service == want
+	}
+	return false
+}
+
+func tunnelRouteServiceURL(spec *services.RouteSpec) string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
+		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
+}
+
 // resolveServiceNamespace determines the Kubernetes namespace for a service.
 // It prefers the explicit service namespace because imported/adopted workloads
-// can live outside their Enclii project namespace.
+// can live outside their Enclii project namespace. Non-production routes prefer
+// the environment namespace first so staging custom domains do not point at
+// production workloads when the service row was adopted from a live namespace.
 func (h *Handler) resolveServiceNamespace(ctx context.Context, service *types.Service, envName string) string {
 	if service == nil {
 		return ""
+	}
+	if !isProductionEnvironmentName(envName) {
+		if namespace := h.environmentNamespace(service, envName); namespace != "" {
+			return namespace
+		}
 	}
 	if service.K8sNamespace != nil && *service.K8sNamespace != "" {
 		return *service.K8sNamespace
 	}
 
-	// Try to get the namespace from the environment record
-	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
-	if err == nil && env.KubeNamespace != "" {
-		return env.KubeNamespace
+	if namespace := h.environmentNamespace(service, envName); namespace != "" {
+		return namespace
 	}
 
 	// Fall back to project slug
@@ -214,6 +241,27 @@ func (h *Handler) resolveServiceNamespace(ctx context.Context, service *types.Se
 	h.logger.Warn(ctx, "Could not resolve namespace from project, using service name prefix",
 		logging.String("service", service.Name))
 	return service.Name
+}
+
+func (h *Handler) environmentNamespace(service *types.Service, envName string) string {
+	if h == nil || h.repos == nil || h.repos.Environments == nil || service == nil || strings.TrimSpace(envName) == "" {
+		return ""
+	}
+
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err == nil && env != nil && env.KubeNamespace != "" {
+		return env.KubeNamespace
+	}
+	return ""
+}
+
+func isProductionEnvironmentName(envName string) bool {
+	switch strings.ToLower(strings.TrimSpace(envName)) {
+	case "", "production", "prod":
+		return true
+	default:
+		return false
+	}
 }
 
 // ensureDNSRecord creates a CNAME DNS record in Cloudflare for the domain.

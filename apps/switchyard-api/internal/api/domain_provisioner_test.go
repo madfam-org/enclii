@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	route "github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -189,6 +192,72 @@ func TestResolveServiceNamespace_PrefersServiceK8sNamespace(t *testing.T) {
 
 	if got != namespace {
 		t.Fatalf("resolveServiceNamespace() = %q, want %q", got, namespace)
+	}
+}
+
+func TestResolveServiceNamespace_StagingPrefersEnvironmentNamespace(t *testing.T) {
+	database, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer func() { _ = database.Close() }()
+
+	projectID := uuid.New()
+	envID := uuid.New()
+	now := time.Now()
+	productionNamespace := "dhanam"
+
+	mock.ExpectQuery("SELECT id, project_id, name, kube_namespace, created_at, updated_at FROM environments WHERE project_id = \\$1 AND name = \\$2").
+		WithArgs(projectID, "staging").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "project_id", "name", "kube_namespace", "created_at", "updated_at"}).
+			AddRow(envID, projectID, "staging", "enclii-dhanam-staging", now, now))
+
+	h := &Handler{
+		repos:  db.NewRepositories(database),
+		logger: newNopLogger(),
+	}
+
+	got := h.resolveServiceNamespace(context.Background(), &types.Service{
+		ID:           uuid.New(),
+		ProjectID:    projectID,
+		Name:         "dhanam-api",
+		K8sNamespace: &productionNamespace,
+	}, "staging")
+
+	if got != "enclii-dhanam-staging" {
+		t.Fatalf("resolveServiceNamespace(staging) = %q, want enclii-dhanam-staging", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestEnsureTunnelRouteUpdatesWrongExistingTarget(t *testing.T) {
+	tunnelRoutes := newMockTunnelRoutesManager()
+	tunnelRoutes.routes["staging-admin.dhan.am"] = &route.RouteSpec{
+		Hostname:         "staging-admin.dhan.am",
+		ServiceName:      "dhanam-admin",
+		ServiceNamespace: "dhanam",
+		ServicePort:      80,
+	}
+	stagingNamespace := "enclii-dhanam-staging"
+	h := &Handler{
+		tunnelRoutesService: tunnelRoutes,
+		logger:              newNopLogger(),
+	}
+
+	h.ensureTunnelRoute(context.Background(), "staging-admin.dhan.am", &types.Service{
+		ID:           uuid.New(),
+		Name:         "dhanam-admin",
+		K8sNamespace: &stagingNamespace,
+	}, "staging", 80)
+
+	spec := tunnelRoutes.routes["staging-admin.dhan.am"]
+	if spec == nil {
+		t.Fatalf("expected route spec to be recorded")
+	}
+	if spec.ServiceNamespace != stagingNamespace {
+		t.Fatalf("ServiceNamespace = %q, want %q", spec.ServiceNamespace, stagingNamespace)
 	}
 }
 
