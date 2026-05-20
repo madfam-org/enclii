@@ -123,7 +123,7 @@ metadata:
     actions.github.com/scale-set-name: madfam-runners-blue
     actions.github.com/scale-set-namespace: arc-runners
   annotations:
-    actions.github.com/values-hash: 4999a71a6c072069ad583387ff15a33866375c2f2f8e04917a9acf4edd50e5b
+    actions.github.com/values-hash: 0d1e35d3aeb08226581d53f64236ad81fae07dcd90f75dd8cd8c5a597f79990
     actions.github.com/cleanup-manager-role-binding: madfam-runners-blue-gha-rs-manager
     actions.github.com/cleanup-manager-role-name: madfam-runners-blue-gha-rs-manager
 
@@ -162,6 +162,8 @@ spec:
       annotations:
         arc.enclii.dev/deployed-at: ""
     spec:
+      imagePullSecrets:
+        - name: ghcr-credentials
       nodeSelector: 
         role: builder
       terminationGracePeriodSeconds: 

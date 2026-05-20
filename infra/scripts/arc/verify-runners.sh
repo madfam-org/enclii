@@ -77,6 +77,46 @@ check_scale_sets() {
     fi
 }
 
+check_image_pull_secrets() {
+    log_info "Checking Runner Image Pull Secrets..."
+
+    local failed=0
+    local scale_sets
+    scale_sets=$(kubectl get autoscalingrunnerset -n "${NAMESPACE}" -o json 2>/dev/null | jq -r '.items[].metadata.name' || true)
+
+    if [[ -z "${scale_sets}" ]]; then
+        log_error "No scale sets found for image pull secret validation"
+        return 1
+    fi
+
+    while IFS= read -r scale_set; do
+        [[ -z "${scale_set}" ]] && continue
+
+        local runner_image pull_secret
+        runner_image=$(kubectl get autoscalingrunnerset "${scale_set}" -n "${NAMESPACE}" \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="runner")].image}' 2>/dev/null || true)
+        pull_secret=$(kubectl get autoscalingrunnerset "${scale_set}" -n "${NAMESPACE}" \
+            -o jsonpath='{.spec.template.spec.imagePullSecrets[?(@.name=="ghcr-credentials")].name}' 2>/dev/null || true)
+
+        if [[ "${runner_image}" == ghcr.io/madfam-org/* ]]; then
+            if [[ "${pull_secret}" == "ghcr-credentials" ]]; then
+                log_success "${scale_set}: ghcr-credentials configured"
+            else
+                log_error "${scale_set}: missing ghcr-credentials for ${runner_image}"
+                failed=$((failed + 1))
+            fi
+        else
+            log_info "${scale_set}: runner image is not a private MADFAM GHCR image"
+        fi
+    done <<< "${scale_sets}"
+
+    if [[ ${failed} -eq 0 ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Check if runners are registered (pods running)
 check_runner_pods() {
     log_info "Checking Runner Pods..."
@@ -202,6 +242,9 @@ run_checks() {
     echo ""
 
     check_scale_sets || failed=$((failed + 1))
+    echo ""
+
+    check_image_pull_secrets || failed=$((failed + 1))
     echo ""
 
     check_runner_pods || failed=$((failed + 1))

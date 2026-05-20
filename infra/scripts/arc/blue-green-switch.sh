@@ -60,16 +60,27 @@ max_runners_for_color() {
 
 # Get the currently active color from scale set labels
 get_active_color() {
+    local scale_sets_json
+    if ! scale_sets_json=$(kubectl get autoscalingrunnerset -n "${NAMESPACE}" -o json 2>/dev/null); then
+        log_error "Unable to read ARC scale sets from ${NAMESPACE}" >&2
+        return 1
+    fi
+
     local active
-    active=$(kubectl get autoscalingrunnerset -n "${NAMESPACE}" -o json 2>/dev/null | \
-        jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' | \
+    active=$(jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' <<< "${scale_sets_json}" | \
         grep -oE '(blue|green)' | head -1) || true
 
     if [[ -z "${active}" ]]; then
         # If no active label, check which one has runners
         local blue_runners green_runners
-        blue_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=${SCALE_SET_PREFIX}-blue" --no-headers 2>/dev/null | wc -l || echo "0")
-        green_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=${SCALE_SET_PREFIX}-green" --no-headers 2>/dev/null | wc -l || echo "0")
+        if ! blue_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=${SCALE_SET_PREFIX}-blue" --no-headers 2>/dev/null | wc -l | tr -d ' '); then
+            log_error "Unable to read blue runner pods from ${NAMESPACE}" >&2
+            return 1
+        fi
+        if ! green_runners=$(kubectl get pods -n "${NAMESPACE}" -l "actions.github.com/scale-set-name=${SCALE_SET_PREFIX}-green" --no-headers 2>/dev/null | wc -l | tr -d ' '); then
+            log_error "Unable to read green runner pods from ${NAMESPACE}" >&2
+            return 1
+        fi
 
         if [[ ${blue_runners} -gt 0 ]]; then
             echo "blue"

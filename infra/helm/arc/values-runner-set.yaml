@@ -39,6 +39,8 @@ containerMode:
 template:
   spec:
     serviceAccountName: arc-runner
+    imagePullSecrets:
+      - name: ghcr-credentials
     terminationGracePeriodSeconds: 300
     # Target the builder node "The Forge" (foundry-builder-01)
     nodeSelector:
