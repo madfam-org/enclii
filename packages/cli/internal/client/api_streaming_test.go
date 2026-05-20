@@ -196,6 +196,53 @@ func TestAPIClient_AddCustomDomain(t *testing.T) {
 	assert.Equal(t, "abc123.cfargotunnel.com", domain.DNSCNAME)
 }
 
+func TestAPIClient_AddCustomDomain_ReconciledEnvelope(t *testing.T) {
+	domainID := uuid.New()
+	serviceID := uuid.New()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/v1/services/"+serviceID.String()+"/domains", r.URL.Path)
+
+		var req CustomDomainRequest
+		err := json.NewDecoder(r.Body).Decode(&req)
+		require.NoError(t, err)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"message":              "Domain already existed; tunnel route reconciled",
+			"reconciled":           true,
+			"tunnel_route_added":   true,
+			"tunnel_route_matches": true,
+			"domain": CustomDomainResponse{
+				ID:         domainID,
+				ServiceID:  serviceID,
+				Domain:     req.Domain,
+				TLSEnabled: req.TLSEnabled,
+				Status:     "active",
+				Verified:   true,
+				CreatedAt:  time.Now(),
+				UpdatedAt:  time.Now(),
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	ctx := context.Background()
+
+	domain, err := client.AddCustomDomain(ctx, serviceID.String(), CustomDomainRequest{
+		Domain:     "staging-api.example.com",
+		TLSEnabled: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "staging-api.example.com", domain.Domain)
+	assert.Equal(t, "active", domain.Status)
+	assert.True(t, domain.Verified)
+	assert.Equal(t, serviceID, domain.ServiceID)
+}
+
 func TestAPIClient_GetCustomDomain(t *testing.T) {
 	domainID := uuid.New()
 	serviceID := uuid.New()

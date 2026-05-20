@@ -44,6 +44,33 @@ type CustomDomainResponse struct {
 	VerifiedAt       *time.Time `json:"verified_at,omitempty"`
 }
 
+type addCustomDomainResponse struct {
+	CustomDomainResponse
+}
+
+func (r *addCustomDomainResponse) UnmarshalJSON(data []byte) error {
+	var envelope struct {
+		Domain json.RawMessage `json:"domain"`
+	}
+	if err := json.Unmarshal(data, &envelope); err == nil && len(envelope.Domain) > 0 && envelope.Domain[0] == '{' {
+		var wrapped struct {
+			Domain CustomDomainResponse `json:"domain"`
+		}
+		if err := json.Unmarshal(data, &wrapped); err != nil {
+			return err
+		}
+		r.CustomDomainResponse = wrapped.Domain
+		return nil
+	}
+
+	var domain CustomDomainResponse
+	if err := json.Unmarshal(data, &domain); err != nil {
+		return err
+	}
+	r.CustomDomainResponse = domain
+	return nil
+}
+
 // DomainVerifyResponse represents the verification response
 type DomainVerifyResponse struct {
 	Message           string                `json:"message"`
@@ -67,12 +94,12 @@ func (c *APIClient) ListCustomDomains(ctx context.Context, serviceID string) ([]
 
 // AddCustomDomain adds a custom domain to a service
 func (c *APIClient) AddCustomDomain(ctx context.Context, serviceID string, req CustomDomainRequest) (*CustomDomainResponse, error) {
-	var domain CustomDomainResponse
+	var domain addCustomDomainResponse
 	if err := c.post(ctx, fmt.Sprintf("/v1/services/%s/domains", serviceID), req, &domain); err != nil {
 		return nil, fmt.Errorf("failed to add domain: %w", err)
 	}
 
-	return &domain, nil
+	return &domain.CustomDomainResponse, nil
 }
 
 // GetCustomDomain gets a specific custom domain
