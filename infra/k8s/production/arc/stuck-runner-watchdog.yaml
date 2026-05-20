@@ -85,6 +85,7 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: stuck-runner-watchdog
+          automountServiceAccountToken: true
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -103,11 +104,19 @@ spec:
                   set -euo pipefail
                   ORPHAN_THRESHOLD_SEC=1200  # 20 minutes
                   RUNNING_THRESHOLD_SEC=14400 # 4 hours
+                  SERVICEACCOUNT_DIR=/var/run/secrets/kubernetes.io/serviceaccount
+                  KUBE_API="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
+                  KUBECTL=(
+                    kubectl
+                    --server="$KUBE_API"
+                    --certificate-authority="${SERVICEACCOUNT_DIR}/ca.crt"
+                    --token="$(cat "${SERVICEACCOUNT_DIR}/token")"
+                  )
 
                   delete_ephemeralrunner() {
                     target="$1"
                     for delay in 1 2 4 8 16 32; do
-                      if kubectl --request-timeout=10s -n arc-runners delete ephemeralrunner "$target" --ignore-not-found; then
+                      if "${KUBECTL[@]}" --request-timeout=10s -n arc-runners delete ephemeralrunner "$target" --ignore-not-found; then
                         return 0
                       fi
                       echo "  warn: delete failed for $target; retrying in ${delay}s" >&2
@@ -126,7 +135,7 @@ spec:
 
                   runner_worker_state() {
                     target="$1"
-                    output="$(kubectl --request-timeout=10s -n arc-runners exec "$target" -c runner -- /bin/sh -c 'if ps -eo args | grep "[R]unner.Worker" >/dev/null; then echo active; else echo inactive; fi' 2>&1)" || {
+                    output="$("${KUBECTL[@]}" --request-timeout=10s -n arc-runners exec "$target" -c runner -- /bin/sh -c 'if ps -eo args | grep "[R]unner.Worker" >/dev/null; then echo active; else echo inactive; fi' 2>&1)" || {
                       echo "  warn: could not inspect runner worker process for $target; leaving runner untouched this cycle: $output" >&2
                       echo "unknown"
                       return 0
@@ -145,7 +154,7 @@ spec:
 
                   # List all EphemeralRunners with creation timestamp +
                   # the workflow run they reference (if any).
-                  kubectl --request-timeout=10s -n arc-runners get ephemeralrunners \
+                  "${KUBECTL[@]}" --request-timeout=10s -n arc-runners get ephemeralrunners \
                     -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.phase}{"|"}{.status.workflowRunId}{"\n"}{end}' \
                     | while IFS='|' read -r name created phase run_id; do
                       [ -z "$name" ] && continue
@@ -157,7 +166,7 @@ spec:
                       age=$(( now - created_sec ))
 
                       pod_phase=""
-                      pod_lookup="$(kubectl --request-timeout=10s -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>&1)" || {
+                      pod_lookup="$("${KUBECTL[@]}" --request-timeout=10s -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>&1)" || {
                         if echo "$pod_lookup" | grep -Eiq 'not found|NotFound'; then
                           pod_phase="missing"
                         else
@@ -183,7 +192,7 @@ spec:
                           continue
                         fi
 
-                        runner_log="$(kubectl --request-timeout=10s -n arc-runners logs "$name" -c runner --tail=80 2>/dev/null || true)"
+                        runner_log="$("${KUBECTL[@]}" --request-timeout=10s -n arc-runners logs "$name" -c runner --tail=80 2>/dev/null || true)"
                         if echo "$runner_log" | grep -Eq 'Registration .* was not found|Job cancellation request'; then
                           echo "  deleting stale EphemeralRunner $name after runner log showed cancellation or missing registration"
                           cleanup_ephemeralrunner "$name"
