@@ -107,7 +107,7 @@ spec:
                   delete_ephemeralrunner() {
                     target="$1"
                     for delay in 1 2 4 8 16 32; do
-                      if kubectl -n arc-runners delete ephemeralrunner "$target" --ignore-not-found; then
+                      if kubectl --request-timeout=10s -n arc-runners delete ephemeralrunner "$target" --ignore-not-found; then
                         return 0
                       fi
                       echo "  warn: delete failed for $target; retrying in ${delay}s" >&2
@@ -117,9 +117,16 @@ spec:
                     return 1
                   }
 
+                  cleanup_ephemeralrunner() {
+                    target="$1"
+                    if ! delete_ephemeralrunner "$target"; then
+                      echo "  warn: leaving $target for the next watchdog cycle after cleanup retries were exhausted" >&2
+                    fi
+                  }
+
                   runner_worker_state() {
                     target="$1"
-                    output="$(kubectl -n arc-runners exec "$target" -c runner -- /bin/sh -c 'if ps -eo args | grep "[R]unner.Worker" >/dev/null; then echo active; else echo inactive; fi' 2>&1)" || {
+                    output="$(kubectl --request-timeout=10s -n arc-runners exec "$target" -c runner -- /bin/sh -c 'if ps -eo args | grep "[R]unner.Worker" >/dev/null; then echo active; else echo inactive; fi' 2>&1)" || {
                       echo "  warn: could not inspect runner worker process for $target; leaving runner untouched this cycle: $output" >&2
                       echo "unknown"
                       return 0
@@ -138,7 +145,7 @@ spec:
 
                   # List all EphemeralRunners with creation timestamp +
                   # the workflow run they reference (if any).
-                  kubectl -n arc-runners get ephemeralrunners \
+                  kubectl --request-timeout=10s -n arc-runners get ephemeralrunners \
                     -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.phase}{"|"}{.status.workflowRunId}{"\n"}{end}' \
                     | while IFS='|' read -r name created phase run_id; do
                       [ -z "$name" ] && continue
@@ -150,11 +157,11 @@ spec:
                       age=$(( now - created_sec ))
 
                       pod_phase=""
-                      pod_lookup="$(kubectl -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>&1)" || {
+                      pod_lookup="$(kubectl --request-timeout=10s -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>&1)" || {
                         if echo "$pod_lookup" | grep -Eiq 'not found|NotFound'; then
                           pod_phase="missing"
                         else
-                          echo "  warn: could not read pod for $name; leaving runner untouched this cycle" >&2
+                          echo "  warn: could not read pod for $name; leaving runner untouched this cycle: $pod_lookup" >&2
                           continue
                         fi
                       }
@@ -172,14 +179,14 @@ spec:
                         worker_state="$(runner_worker_state "$name")"
                         if [ "$worker_state" = "inactive" ]; then
                           echo "  deleting stale EphemeralRunner $name after assigned runner had no active worker process"
-                          delete_ephemeralrunner "$name"
+                          cleanup_ephemeralrunner "$name"
                           continue
                         fi
 
-                        runner_log="$(kubectl -n arc-runners logs "$name" -c runner --tail=80 2>/dev/null || true)"
+                        runner_log="$(kubectl --request-timeout=10s -n arc-runners logs "$name" -c runner --tail=80 2>/dev/null || true)"
                         if echo "$runner_log" | grep -Eq 'Registration .* was not found|Job cancellation request'; then
                           echo "  deleting stale EphemeralRunner $name after runner log showed cancellation or missing registration"
-                          delete_ephemeralrunner "$name"
+                          cleanup_ephemeralrunner "$name"
                           continue
                         fi
                       fi
@@ -195,7 +202,7 @@ spec:
                       fi
 
                       echo "  deleting stale EphemeralRunner $name"
-                      delete_ephemeralrunner "$name"
+                      cleanup_ephemeralrunner "$name"
                   done
               terminationMessagePolicy: FallbackToLogsOnError
               resources:
