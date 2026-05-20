@@ -64,6 +64,22 @@ slug_is_covered() {
   return 1
 }
 
+staging_registration_gate() {
+  local app_json="$1"
+  jq -r '
+    select(.kind == "Application")
+    | .metadata.annotations["enclii.dev/stability-audit"] // empty
+  ' <<<"$app_json"
+}
+
+staging_registration_gate_reason() {
+  local app_json="$1"
+  jq -r '
+    select(.kind == "Application")
+    | .metadata.annotations["enclii.dev/stability-gate-reason"] // "operator gated"
+  ' <<<"$app_json"
+}
+
 require_cmd jq
 require_cmd kubectl
 require_cmd curl
@@ -120,6 +136,7 @@ section "Declared Staging Applications"
 LABSPACE_ROOT="${LABSPACE_ROOT:-$(cd "$ROOT/.." && pwd)}"
 if [[ -d "$LABSPACE_ROOT" && -s "$TMP_DIR/argo-app-names.txt" ]]; then
   declared_missing=0
+  declared_gated=0
   while IFS= read -r manifest; do
     app_json="$(kubectl create --dry-run=client -f "$manifest" -o json 2>/dev/null || true)"
     if [[ -z "$app_json" ]]; then
@@ -131,6 +148,15 @@ if [[ -d "$LABSPACE_ROOT" && -s "$TMP_DIR/argo-app-names.txt" ]]; then
       continue
     fi
     if ! grep -qx "$app_name" "$TMP_DIR/argo-app-names.txt"; then
+      gate="$(staging_registration_gate "$app_json")"
+      case "$gate" in
+        gated|operator-gated|manual)
+          gate_reason="$(staging_registration_gate_reason "$app_json")"
+          printf 'Declared staging app intentionally gated: %s -> %s (namespace=%s, reason=%s)\n' "$manifest" "$app_name" "${destination_namespace:-unknown}" "$gate_reason"
+          declared_gated=$((declared_gated + 1))
+          continue
+          ;;
+      esac
       printf 'Declared staging app not registered in ArgoCD: %s -> %s (namespace=%s)\n' "$manifest" "$app_name" "${destination_namespace:-unknown}"
       declared_missing=$((declared_missing + 1))
     fi
@@ -138,7 +164,7 @@ if [[ -d "$LABSPACE_ROOT" && -s "$TMP_DIR/argo-app-names.txt" ]]; then
   if [[ "$declared_missing" -gt 0 ]]; then
     issue "$declared_missing declared staging Argo application(s) are not registered"
   else
-    printf 'All locally declared staging Argo Applications are registered\n'
+    printf 'All locally declared staging Argo Applications are registered or explicitly gated (gated=%s)\n' "$declared_gated"
   fi
 else
   printf 'Skipped: no labspace staging manifests found or Argo inventory unavailable\n'
