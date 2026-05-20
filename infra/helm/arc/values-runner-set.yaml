@@ -12,7 +12,7 @@
 # Controller service account reference (required for helm template validation)
 # Without this, helm template fails because it can't discover the controller in a cluster
 controllerServiceAccount:
-  name: arc-gha-rs-controller
+  name: arc-controller
   namespace: arc-system
 
 # Org-level registration - GitHub App has org permissions
@@ -82,6 +82,15 @@ listenerTemplate:
   spec:
     containers:
       - name: listener
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         resources:
           limits:
             cpu: 100m

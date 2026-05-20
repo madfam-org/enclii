@@ -24,7 +24,6 @@ SCALE_SET_PREFIX="${SCALE_SET_PREFIX:-madfam-runners}"  # Override via env: SCAL
 DRAIN_TIMEOUT=300        # 5 minutes max wait for jobs to complete
 REGISTRATION_WAIT=30     # Seconds to wait for runners to register
 MIN_RUNNERS=1            # Minimum runners for active scale set
-MAX_RUNNERS=2            # Maximum runners (constrained by builder node: 2vCPU/4GB)
 
 # Colors for output
 RED='\033[0;31m'
@@ -53,7 +52,7 @@ log_error() {
 get_active_color() {
     local active
     active=$(kubectl get autoscalingrunnerset -n "${NAMESPACE}" -o json 2>/dev/null | \
-        jq -r '.items[] | select(.metadata.labels["arc.enclii.dev/active"]=="true") | .metadata.name' | \
+        jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' | \
         grep -oE '(blue|green)' | head -1) || true
 
     if [[ -z "${active}" ]]; then
@@ -87,11 +86,12 @@ get_running_pods() {
 # Get count of pods with active jobs (busy runners)
 get_busy_runners() {
     local scale_set=$1
-    # Check for pods that are not in Idle state
+    # Treat a missing runner-state annotation as busy. That is conservative
+    # during drains and still returns 0 for absent standby scale sets.
     kubectl get pods -n "${NAMESPACE}" \
         -l "actions.github.com/scale-set-name=${scale_set}" \
-        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.annotations.actions\.github\.com/runner-state}{"\n"}{end}' 2>/dev/null | \
-        grep -v "idle" | grep -v "^$" | wc -l | tr -d ' '
+        -o json 2>/dev/null | \
+        jq '[.items[] | select((.metadata.annotations["actions.github.com/runner-state"] // "busy") != "idle")] | length' || echo "0"
 }
 
 # Drain a scale set by waiting for all jobs to complete
@@ -140,18 +140,23 @@ activate_scale_set() {
 
     log_info "Activating ${scale_set}..."
 
-    helm upgrade "${scale_set}" \
+    helm upgrade --install "${scale_set}" \
         oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
         --namespace "${NAMESPACE}" \
         --version "${CHART_VERSION}" \
         --values "${REPO_ROOT}/infra/helm/arc/values-runner-set.yaml" \
         --values "${values_file}" \
         --set minRunners="${MIN_RUNNERS}" \
-        --set maxRunners="${MAX_RUNNERS}" \
-        --set 'template.metadata.labels.arc\.enclii\.dev/active=true' \
+        --set-string 'template.metadata.labels.arc\.enclii\.dev/active=true' \
         --set "template.metadata.annotations.arc\\.enclii\\.dev/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --wait \
         --timeout 5m
+
+    kubectl label autoscalingrunnerset "${scale_set}" \
+        -n "${NAMESPACE}" \
+        --overwrite \
+        arc.enclii.dev/color="${color}" \
+        arc.enclii.dev/active="true"
 
     log_success "${scale_set} activated"
 }
@@ -168,9 +173,14 @@ deactivate_scale_set() {
         --namespace "${NAMESPACE}" \
         --reuse-values \
         --set minRunners=0 \
-        --set 'template.metadata.labels.arc\.enclii\.dev/active=false' \
+        --set-string 'template.metadata.labels.arc\.enclii\.dev/active=false' \
         --wait \
         --timeout 2m
+
+    kubectl label autoscalingrunnerset "${scale_set}" \
+        -n "${NAMESPACE}" \
+        --overwrite \
+        arc.enclii.dev/active="false"
 
     log_success "${scale_set} set to standby"
 }

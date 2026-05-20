@@ -132,7 +132,7 @@ install_controller() {
         --timeout 5m
 
     log_info "Waiting for controller to be ready..."
-    kubectl rollout status deployment/arc-gha-rs-controller -n "${CONTROLLER_NAMESPACE}" --timeout=2m
+    kubectl rollout status deployment/arc-controller-gha-rs-controller -n "${CONTROLLER_NAMESPACE}" --timeout=2m
 
     log_success "ARC Controller installed successfully"
 }

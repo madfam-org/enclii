@@ -145,6 +145,8 @@ jobs:
       (needs.validate.outputs.changes_detected == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: madfam-runners-blue
     environment: production
+    outputs:
+      runner_label: ${{ steps.color.outputs.runner_label }}
     steps:
       - name: Check KUBECONFIG secret
         id: check-secret
@@ -238,7 +240,7 @@ jobs:
           if [[ "${INPUT_COLOR}" == "auto" ]] || [[ -z "${INPUT_COLOR}" ]]; then
             # Get current active color
             CURRENT=$(kubectl get autoscalingrunnerset -n arc-runners -o json 2>/dev/null | \
-              jq -r '.items[] | select(.metadata.labels["arc.enclii.dev/active"]=="true") | .metadata.name' | \
+              jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' | \
               grep -oE '(blue|green)' | head -1 || echo "blue")
 
             if [[ "${CURRENT}" == "blue" ]]; then
@@ -252,6 +254,7 @@ jobs:
 
           echo "current=${CURRENT:-blue}" >> $GITHUB_OUTPUT
           echo "target=${TARGET}" >> $GITHUB_OUTPUT
+          echo "runner_label=madfam-runners-${TARGET}" >> $GITHUB_OUTPUT
           echo "::notice::Blue-green switch: ${CURRENT:-blue} -> ${TARGET}"
 
       - name: Execute blue-green switch
@@ -277,7 +280,7 @@ jobs:
     name: Verify Deployment
     needs: deploy
     # This runs on the NEW runners after the switch!
-    runs-on: madfam-runners-blue
+    runs-on: ${{ needs.deploy.outputs.runner_label || 'madfam-runners-blue' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -293,10 +296,17 @@ jobs:
           echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+
       - name: Verify ARC Controller
         run: |
           echo "Verifying ARC Controller..."
-          kubectl rollout status deployment/arc-gha-rs-controller -n arc-system --timeout=2m
+          kubectl rollout status deployment/arc-controller-gha-rs-controller -n arc-system --timeout=2m
 
       - name: Verify runners
         run: |
@@ -345,6 +355,13 @@ jobs:
           echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+
       - name: Setup Helm
         uses: azure/setup-helm@v5
         with:
@@ -361,7 +378,7 @@ jobs:
 
           # Get the failed color (current active after deploy)
           FAILED_COLOR=$(kubectl get autoscalingrunnerset -n arc-runners -o json | \
-            jq -r '.items[] | select(.metadata.labels["arc.enclii.dev/active"]=="true") | .metadata.name' | \
+            jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' | \
             grep -oE '(blue|green)' | head -1)
 
           if [[ "${FAILED_COLOR}" == "blue" ]]; then

@@ -123,7 +123,7 @@ metadata:
     actions.github.com/scale-set-name: madfam-runners-blue
     actions.github.com/scale-set-namespace: arc-runners
   annotations:
-    actions.github.com/values-hash: 10224c545ed7b6e0951207935b1c67ad983bdef64d898126fe5c24dc456b65e
+    actions.github.com/values-hash: 4999a71a6c072069ad583387ff15a33866375c2f2f8e04917a9acf4edd50e5b
     actions.github.com/cleanup-manager-role-binding: madfam-runners-blue-gha-rs-manager
     actions.github.com/cleanup-manager-role-name: madfam-runners-blue-gha-rs-manager
 
@@ -144,6 +144,15 @@ spec:
           requests:
             cpu: 50m
             memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
 
   template:
     metadata:
@@ -208,7 +217,7 @@ spec:
         image: 
           ghcr.io/madfam-org/enclii/arc-runner:stable
         imagePullPolicy: 
-          IfNotPresent
+          Always
         resources: 
           limits:
             cpu: 1500m

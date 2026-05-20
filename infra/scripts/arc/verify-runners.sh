@@ -41,11 +41,11 @@ check_controller() {
     log_info "Checking ARC Controller..."
 
     local ready
-    ready=$(kubectl get deployment arc-gha-rs-controller -n "${CONTROLLER_NAMESPACE}" \
+    ready=$(kubectl get deployment arc-controller-gha-rs-controller -n "${CONTROLLER_NAMESPACE}" \
         -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
 
     local desired
-    desired=$(kubectl get deployment arc-gha-rs-controller -n "${CONTROLLER_NAMESPACE}" \
+    desired=$(kubectl get deployment arc-controller-gha-rs-controller -n "${CONTROLLER_NAMESPACE}" \
         -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "2")
 
     if [[ "${ready}" -ge 1 ]] && [[ "${ready}" -eq "${desired}" ]]; then
@@ -128,7 +128,7 @@ check_pvcs() {
 
     if [[ ${pvcs} -ge 1 ]]; then
         local bound
-        bound=$(kubectl get pvc -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -c "Bound" || echo "0")
+        bound=$(kubectl get pvc -n "${NAMESPACE}" --no-headers 2>/dev/null | awk '$2 == "Bound" { count++ } END { print count + 0 }')
 
         if [[ ${bound} -eq ${pvcs} ]]; then
             log_success "PVCs: ${bound}/${pvcs} bound"
