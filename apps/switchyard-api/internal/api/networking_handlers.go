@@ -271,6 +271,38 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 	}
 
 	if exists {
+		domains, listErr := h.repos.CustomDomains.GetByServiceID(ctx, serviceID)
+		if listErr != nil {
+			h.logger.Error(ctx, "Failed to list service domains for existing-domain reconciliation",
+				logging.String("domain", domainName),
+				logging.Error("error", listErr))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to inspect existing domain"})
+			return
+		}
+		for _, existing := range domains {
+			if !strings.EqualFold(existing.Domain, domainName) {
+				continue
+			}
+			if existing.EnvironmentID != envUUID {
+				c.JSON(http.StatusConflict, gin.H{"error": "domain already registered for a different environment"})
+				return
+			}
+
+			h.ensureTunnelRoute(ctx, domainName, service, env.Name, 80)
+			ready := false
+			if h.tunnelRoutesService != nil {
+				ready, _ = h.tunnelRoutesService.RouteExists(ctx, domainName)
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"domain":             existing,
+				"message":            fmt.Sprintf("Domain %s already exists. Tunnel route reconciliation requested.", domainName),
+				"tunnel_route_added": ready,
+				"reconciled":         true,
+			})
+			return
+		}
+
 		c.JSON(http.StatusConflict, gin.H{"error": "domain already in use"})
 		return
 	}
