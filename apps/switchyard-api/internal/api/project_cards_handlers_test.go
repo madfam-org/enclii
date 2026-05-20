@@ -444,6 +444,68 @@ func TestSummarizeProjectCardCronJobsTreatsNewerSuccessAsRecovered(t *testing.T)
 	assert.Equal(t, 0, evidence.Items[0].RecentFailedJobs)
 }
 
+func TestSummarizeProjectCardCronJobsIgnoresUnownedManualProofJobs(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	failedAt := metav1.NewTime(now.Add(-time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "forgesight-pipeline", Namespace: "forgesight"},
+	}
+	manualJob := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "forgesight-pipeline-proof-202605200021",
+			Namespace:         "forgesight",
+			CreationTimestamp: metav1.NewTime(now.Add(-time.Hour)),
+		},
+		Status: batchv1.JobStatus{
+			Failed: 1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobFailed,
+				Status:             "True",
+				LastTransitionTime: failedAt,
+			}},
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{manualJob}, now)
+
+	assert.Equal(t, "unknown", evidence.Status)
+	assert.Equal(t, 0, evidence.FailedCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "unknown", evidence.Items[0].Status)
+	assert.Empty(t, evidence.Items[0].LatestJobName)
+}
+
+func TestSummarizeProjectCardCronJobsUsesNumericNameFallback(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	completedAt := metav1.NewTime(now.Add(-time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "foundry-scout", Namespace: "foundry-scout"},
+	}
+	job := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "foundry-scout-29654205",
+			Namespace:         "foundry-scout",
+			CreationTimestamp: metav1.NewTime(now.Add(-time.Hour)),
+		},
+		Status: batchv1.JobStatus{
+			CompletionTime: &completedAt,
+			Succeeded:      1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobComplete,
+				Status:             "True",
+				LastTransitionTime: completedAt,
+			}},
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{job}, now)
+
+	assert.Equal(t, "healthy", evidence.Status)
+	assert.Equal(t, 1, evidence.SucceededCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "foundry-scout-29654205", evidence.Items[0].LatestJobName)
+}
+
 func TestSummarizeProjectCardCronJobsDoesNotTreatActiveRetryAsRecovered(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	failedAt := metav1.NewTime(now.Add(-2 * time.Hour))

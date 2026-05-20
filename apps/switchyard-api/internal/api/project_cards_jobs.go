@@ -309,7 +309,20 @@ func projectCardJobOwnedByCronJob(job *batchv1.Job, cronJobName string) bool {
 			return true
 		}
 	}
-	return strings.HasPrefix(job.Name, cronJobName+"-")
+	prefix := cronJobName + "-"
+	if !strings.HasPrefix(job.Name, prefix) {
+		return false
+	}
+	suffix := strings.TrimPrefix(job.Name, prefix)
+	if suffix == "" {
+		return false
+	}
+	for _, char := range suffix {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func projectCardJobObservedAt(job *batchv1.Job) time.Time {
