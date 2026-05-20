@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +17,12 @@ import (
 const (
 	projectCardJobFailureWindow    = 24 * time.Hour
 	projectCardJobActiveStaleAfter = 30 * time.Minute
-	projectCardCronJobNoRunGrace   = 8 * 24 * time.Hour
+	// Longhorn recurring S3 backups walk every default-group volume serially and
+	// regularly exceed the generic 30 minute CronJob threshold while progressing.
+	projectCardLonghornBackupActiveStaleAfter = 4 * time.Hour
+	projectCardCronJobNoRunGrace              = 8 * 24 * time.Hour
+
+	projectCardActiveStaleAfterAnnotation = "enclii.dev/project-card-active-stale-after"
 )
 
 func (h *Handler) listProjectCardJobEvidence(ctx context.Context, observedAt time.Time) map[string]projectCardJobsEvidence {
@@ -366,10 +372,53 @@ func projectCardActiveJobIsStuck(job *batchv1.Job, cronJob batchv1.CronJob, obse
 		return false
 	}
 	age := observedAt.Sub(job.Status.StartTime.Time)
+	return age > projectCardActiveJobStaleAfter(job, cronJob)
+}
+
+func projectCardActiveJobStaleAfter(job *batchv1.Job, cronJob batchv1.CronJob) time.Duration {
 	if cronJob.Spec.JobTemplate.Spec.ActiveDeadlineSeconds != nil {
-		return age > time.Duration(*cronJob.Spec.JobTemplate.Spec.ActiveDeadlineSeconds)*time.Second
+		return time.Duration(*cronJob.Spec.JobTemplate.Spec.ActiveDeadlineSeconds) * time.Second
 	}
-	return age > projectCardJobActiveStaleAfter
+	if threshold, ok := projectCardDurationAnnotation(cronJob.Annotations[projectCardActiveStaleAfterAnnotation]); ok {
+		return threshold
+	}
+	if projectCardIsLonghornRecurringBackup(job, cronJob) {
+		return projectCardLonghornBackupActiveStaleAfter
+	}
+	return projectCardJobActiveStaleAfter
+}
+
+func projectCardDurationAnnotation(value string) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if duration, err := time.ParseDuration(value); err == nil && duration > 0 {
+		return duration, true
+	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second, true
+	}
+	return 0, false
+}
+
+func projectCardIsLonghornRecurringBackup(job *batchv1.Job, cronJob batchv1.CronJob) bool {
+	if cronJob.Namespace != "longhorn-system" {
+		return false
+	}
+	managedByLonghorn := cronJob.Labels["longhorn.io/managed-by"] == "longhorn-manager" ||
+		job.Labels["longhorn.io/managed-by"] == "longhorn-manager"
+	if !managedByLonghorn {
+		return false
+	}
+	recurringJob := cronJob.Labels["recurring-job.longhorn.io"]
+	if recurringJob == "" {
+		recurringJob = job.Labels["recurring-job.longhorn.io"]
+	}
+	if recurringJob == "" {
+		recurringJob = cronJob.Name
+	}
+	return strings.Contains(recurringJob, "backup")
 }
 
 func projectCardMetaTimePtr(value *metav1.Time) *time.Time {

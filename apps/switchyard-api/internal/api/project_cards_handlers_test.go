@@ -496,6 +496,114 @@ func TestSummarizeProjectCardCronJobsDoesNotTreatActiveRetryAsRecovered(t *testi
 	assert.Equal(t, "forgesight-pipeline-proof-active", evidence.Items[0].LatestJobName)
 }
 
+func TestSummarizeProjectCardCronJobsMarksGenericActiveJobStuckAfterDefaultThreshold(t *testing.T) {
+	now := time.Date(2026, 5, 20, 2, 40, 0, 0, time.UTC)
+	startedAt := metav1.NewTime(now.Add(-31 * time.Minute))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "short-task", Namespace: "default"},
+	}
+	job := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "short-task-29654040",
+			Namespace:         "default",
+			CreationTimestamp: metav1.NewTime(now.Add(-31 * time.Minute)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "short-task",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			StartTime: &startedAt,
+			Active:    1,
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{job}, now)
+
+	assert.Equal(t, "degraded", evidence.Status)
+	assert.Equal(t, 1, evidence.StuckCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "degraded", evidence.Items[0].Status)
+	assert.Equal(t, 1, evidence.Items[0].StuckJobs)
+}
+
+func TestSummarizeProjectCardCronJobsUsesLonghornBackupThreshold(t *testing.T) {
+	now := time.Date(2026, 5, 20, 2, 40, 0, 0, time.UTC)
+	startedAt := metav1.NewTime(now.Add(-2 * time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "daily-s3-backup",
+			Namespace: "longhorn-system",
+			Labels: map[string]string{
+				"longhorn.io/managed-by":      "longhorn-manager",
+				"recurring-job.longhorn.io":   "daily-s3-backup",
+				"app.kubernetes.io/component": "backup",
+			},
+		},
+	}
+	job := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "daily-s3-backup-29653980",
+			Namespace:         "longhorn-system",
+			CreationTimestamp: metav1.NewTime(now.Add(-2 * time.Hour)),
+			Labels: map[string]string{
+				"longhorn.io/managed-by":    "longhorn-manager",
+				"recurring-job.longhorn.io": "daily-s3-backup",
+			},
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "daily-s3-backup",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			StartTime: &startedAt,
+			Active:    1,
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{job}, now)
+
+	assert.Equal(t, "active", evidence.Status)
+	assert.Equal(t, 0, evidence.StuckCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "active", evidence.Items[0].Status)
+	assert.Equal(t, 0, evidence.Items[0].StuckJobs)
+}
+
+func TestSummarizeProjectCardCronJobsUsesActiveStaleAfterAnnotation(t *testing.T) {
+	now := time.Date(2026, 5, 20, 2, 40, 0, 0, time.UTC)
+	startedAt := metav1.NewTime(now.Add(-2 * time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "long-report",
+			Namespace: "analytics",
+			Annotations: map[string]string{
+				projectCardActiveStaleAfterAnnotation: "3h",
+			},
+		},
+	}
+	job := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "long-report-29654040",
+			Namespace:         "analytics",
+			CreationTimestamp: metav1.NewTime(now.Add(-2 * time.Hour)),
+			OwnerReferences: []metav1.OwnerReference{{
+				Kind: "CronJob",
+				Name: "long-report",
+			}},
+		},
+		Status: batchv1.JobStatus{
+			StartTime: &startedAt,
+			Active:    1,
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{job}, now)
+
+	assert.Equal(t, "active", evidence.Status)
+	assert.Equal(t, 0, evidence.StuckCount)
+}
+
 func TestSummarizeProjectCardCronJobsTreatsNewCronJobWithoutRunsAsPending(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	cronJob := batchv1.CronJob{
