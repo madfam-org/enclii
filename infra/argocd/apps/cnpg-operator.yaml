@@ -149,6 +149,9 @@ spec:
       - CreateNamespace=true
       - ServerSideApply=true
       - RespectIgnoreDifferences=true
+      # CNPG's largest CRDs exceed the annotation budget when Argo falls
+      # back to client-side patch metadata; replace avoids last-applied churn.
+      - Replace=true
     retry:
       limit: 5
       backoff:
