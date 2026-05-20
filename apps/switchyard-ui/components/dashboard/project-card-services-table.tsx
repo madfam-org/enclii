@@ -12,7 +12,11 @@ import type { CompactService } from "./project-card-compact";
 const MAX_VISIBLE_TABLE_ROWS = 5;
 
 const serviceStatusColor: Record<string, string> = {
-  running: "bg-status-success",
+  healthy: "bg-status-success",
+  stale: "bg-status-warning",
+  unhealthy: "bg-status-error",
+  blocked: "bg-status-error",
+  progressing: "bg-status-info animate-pulse",
   failed: "bg-status-error",
   pending: "bg-status-warning",
   deploying: "bg-status-info animate-pulse",
@@ -20,12 +24,31 @@ const serviceStatusColor: Record<string, string> = {
 };
 
 const serviceStatusLabel: Record<string, string> = {
-  running: "Running",
+  healthy: "Healthy",
+  stale: "Stale",
+  unhealthy: "Unhealthy",
+  blocked: "Blocked",
+  progressing: "Progressing",
   failed: "Failed",
   pending: "Pending",
   deploying: "Deploying",
   unknown: "Unknown",
 };
+
+function serviceDisplayStatus(service: CompactService): string {
+  if (service.rolloutState === "blocked") return "blocked";
+  if (service.status === "failed") return "failed";
+  if (service.status === "pending" || service.status === "deploying") {
+    return service.status;
+  }
+  if (service.rolloutState === "progressing") return "progressing";
+  if (service.health === "unhealthy") return "unhealthy";
+  if (service.health === "stale" || service.healthStale) return "stale";
+  if (service.status === "running" && service.health === "healthy") {
+    return "healthy";
+  }
+  return "unknown";
+}
 
 export function ServiceStatusSummary({
   services,
@@ -34,10 +57,15 @@ export function ServiceStatusSummary({
 }) {
   const counts: Record<string, number> = {};
   for (const s of services) {
-    counts[s.status] = (counts[s.status] || 0) + 1;
+    const displayStatus = serviceDisplayStatus(s);
+    counts[displayStatus] = (counts[displayStatus] || 0) + 1;
   }
   const parts: string[] = [];
-  if (counts.running) parts.push(`${counts.running} running`);
+  if (counts.healthy) parts.push(`${counts.healthy} healthy`);
+  if (counts.stale) parts.push(`${counts.stale} stale`);
+  if (counts.unhealthy) parts.push(`${counts.unhealthy} unhealthy`);
+  if (counts.blocked) parts.push(`${counts.blocked} blocked`);
+  if (counts.progressing) parts.push(`${counts.progressing} progressing`);
   if (counts.pending) parts.push(`${counts.pending} pending`);
   if (counts.deploying) parts.push(`${counts.deploying} deploying`);
   if (counts.failed) parts.push(`${counts.failed} failed`);
@@ -129,6 +157,8 @@ function ServiceRows({
   const serviceHref = `/projects/${projectSlug}/services/${service.id}`;
   const logsHrefForRow = `${serviceHref}/logs`;
   const digestKey = `digest-${service.id}`;
+  const displayStatus = serviceDisplayStatus(service);
+  const displayLabel = serviceStatusLabel[displayStatus] || "Unknown";
 
   return (
     <Fragment>
@@ -138,7 +168,7 @@ function ServiceRows({
             <div
               className={cn(
                 "h-1.5 w-1.5 shrink-0 rounded-full",
-                serviceStatusColor[service.status] || "bg-muted-foreground",
+                serviceStatusColor[displayStatus] || "bg-muted-foreground",
               )}
             />
             <Link
@@ -183,21 +213,24 @@ function ServiceRows({
               href={logsHrefForRow}
               className={cn(
                 "inline-block rounded px-1 py-0.5 text-[10px] font-medium leading-none transition-colors hover:underline",
-                service.status === "running" &&
+                displayStatus === "healthy" &&
                   "bg-status-success/15 text-status-success hover:bg-status-success/25",
-                service.status === "failed" &&
+                (displayStatus === "failed" ||
+                  displayStatus === "unhealthy" ||
+                  displayStatus === "blocked") &&
                   "bg-status-error/15 text-status-error hover:bg-status-error/25",
-                service.status === "pending" &&
+                (displayStatus === "pending" || displayStatus === "stale") &&
                   "bg-status-warning/15 text-status-warning hover:bg-status-warning/25",
-                service.status === "deploying" &&
+                (displayStatus === "deploying" ||
+                  displayStatus === "progressing") &&
                   "bg-status-info/15 text-status-info hover:bg-status-info/25 animate-pulse",
-                service.status === "unknown" &&
+                displayStatus === "unknown" &&
                   "bg-muted text-muted-foreground hover:bg-muted/80",
               )}
-              aria-label={`View ${service.name} logs (status: ${serviceStatusLabel[service.status] || "unknown"})`}
-              title={`View logs — current status: ${serviceStatusLabel[service.status] || "unknown"}`}
+              aria-label={`View ${service.name} logs (status: ${displayLabel})`}
+              title={`View logs — current status: ${displayLabel}`}
             >
-              {serviceStatusLabel[service.status] || "Unknown"}
+              {displayLabel}
             </Link>
             <RolloutStateIndicator
               state={service.rolloutState}

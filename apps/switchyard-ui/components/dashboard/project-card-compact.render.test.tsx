@@ -120,6 +120,12 @@ describe("ProjectCardCompact process drawer", () => {
 
     expect(screen.getByText("api.example.test")).toBeInTheDocument();
     expect(screen.getByText("web.example.test")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "View api logs (status: Healthy)" }),
+    ).toHaveTextContent("Healthy");
+    expect(
+      screen.getByRole("link", { name: "View web logs (status: Healthy)" }),
+    ).toHaveTextContent("Healthy");
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -171,5 +177,26 @@ describe("ProjectCardCompact process drawer", () => {
     render(<ProjectCardCompact project={project} />);
 
     expect(screen.getByText("2 job failed")).toBeInTheDocument();
+  });
+
+  it("renders blocked rollout state as the service row status", () => {
+    const project = projectWithDomains();
+    project.liveState = "idle";
+    project.processSummary = undefined;
+    project.services = [
+      {
+        id: "svc-api",
+        name: "api",
+        status: "running",
+        health: "healthy",
+        rolloutState: "blocked",
+      },
+    ];
+
+    render(<ProjectCardCompact project={project} />);
+
+    expect(
+      screen.getByRole("link", { name: "View api logs (status: Blocked)" }),
+    ).toHaveTextContent("Blocked");
   });
 });

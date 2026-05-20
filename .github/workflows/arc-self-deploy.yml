@@ -61,9 +61,9 @@ env:
 jobs:
   validate:
     name: Validate Configuration
-    # Use self-hosted runners for validation (they have cluster access)
-    # Falls back to ubuntu-latest if self-hosted not available (bootstrap scenario)
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    # ARC deploy validation must run from the Enclii-provisioned runner network.
+    # GitHub-hosted runners cannot reach the private Kubernetes API.
+    runs-on: madfam-runners-blue
     outputs:
       changes_detected: ${{ steps.changes.outputs.any_changed }}
     steps:
@@ -142,7 +142,7 @@ jobs:
     if: |
       github.event_name != 'pull_request' &&
       (needs.validate.outputs.changes_detected == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    runs-on: madfam-runners-blue
     environment: production
     steps:
       - name: Check KUBECONFIG secret
@@ -326,8 +326,8 @@ jobs:
     name: Rollback on Failure
     needs: [deploy, verify]
     if: failure() && needs.deploy.result == 'success'
-    # Use GitHub-hosted runner for rollback (self-hosted might be broken)
-    runs-on: ubuntu-latest
+    # Rollback also needs private Kubernetes API reachability.
+    runs-on: madfam-runners-blue
     steps:
       - name: Checkout
         uses: actions/checkout@v6
