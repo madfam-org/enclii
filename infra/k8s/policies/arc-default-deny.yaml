@@ -130,7 +130,7 @@ spec:
   policyTypes:
     - Egress
 
-# Allow runner pods egress (DNS + HTTPS for GitHub API + container registries)
+# Allow runner pods egress (DNS + build internet + Kubernetes API)
 # Runners need broad HTTPS access for: GitHub API, GHCR, npm, pip, Go modules, etc.
 ---
 apiVersion: networking.k8s.io/v1
@@ -163,6 +163,11 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Kubernetes API for Enclii-provisioned self-deploy jobs
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 6443
     # SSH for git operations (port 22)
     - to: []
       ports:

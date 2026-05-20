@@ -94,6 +94,8 @@ spec:
           port: 443
         - protocol: TCP
           port: 80
+        - protocol: TCP
+          port: 6443
     # Git SSH (for private repos)
     - to:
         - ipBlock:
