@@ -22,8 +22,9 @@ NAMESPACE="arc-runners"
 CHART_VERSION="0.14.0"
 SCALE_SET_PREFIX="${SCALE_SET_PREFIX:-madfam-runners}"  # Override via env: SCALE_SET_PREFIX=custom-runners
 DRAIN_TIMEOUT=300        # 5 minutes max wait for jobs to complete
-REGISTRATION_WAIT=30     # Seconds to wait for runners to register
+REGISTRATION_WAIT=120    # Seconds to wait for runners to register
 MIN_RUNNERS=1            # Minimum runners for active scale set
+SKIP_OLD_DEACTIVATION="${ARC_SKIP_OLD_DEACTIVATION:-false}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -46,6 +47,15 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $(date '+%H:%M:%S') $1"
+}
+
+max_runners_for_color() {
+    local color=$1
+    if [[ "${color}" == "blue" ]]; then
+        echo "9"
+    else
+        echo "2"
+    fi
 }
 
 # Get the currently active color from scale set labels
@@ -137,11 +147,8 @@ activate_scale_set() {
     local color=$1
     local scale_set="${SCALE_SET_PREFIX}-${color}"
     local values_file="${REPO_ROOT}/infra/helm/arc/values-runner-set-${color}.yaml"
-    local max_runners=2
-
-    if [[ "${color}" == "blue" ]]; then
-        max_runners=9
-    fi
+    local max_runners
+    max_runners=$(max_runners_for_color "${color}")
 
     log_info "Activating ${scale_set}..."
 
@@ -171,14 +178,18 @@ activate_scale_set() {
 deactivate_scale_set() {
     local color=$1
     local scale_set="${SCALE_SET_PREFIX}-${color}"
+    local max_runners
+    max_runners=$(max_runners_for_color "${color}")
 
     log_info "Deactivating ${scale_set}..."
 
     helm upgrade "${scale_set}" \
         oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
         --namespace "${NAMESPACE}" \
+        --version "${CHART_VERSION}" \
         --reuse-values \
         --set minRunners=0 \
+        --set maxRunners="${max_runners}" \
         --set-string 'template.metadata.labels.arc\.enclii\.dev/active=false' \
         --wait \
         --timeout 2m
@@ -345,6 +356,18 @@ main() {
             deactivate_scale_set "${target_color}"
             exit 1
         }
+
+        if [[ "${SKIP_OLD_DEACTIVATION}" == "true" ]]; then
+            log_warn "Skipping ${SCALE_SET_PREFIX}-${current_active} scale-down in this job"
+            log_warn "The old scale set remains available until an out-of-band cleanup runs"
+            kubectl label autoscalingrunnerset "${SCALE_SET_PREFIX}-${current_active}" \
+                -n "${NAMESPACE}" \
+                --overwrite \
+                arc.enclii.dev/active="false"
+            print_status
+            log_success "Active scale set: ${SCALE_SET_PREFIX}-${target_color}"
+            return 0
+        fi
 
         # 3. Drain old color
         drain_scale_set "${SCALE_SET_PREFIX}-${current_active}" || {

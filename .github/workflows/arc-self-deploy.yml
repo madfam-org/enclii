@@ -259,6 +259,8 @@ jobs:
 
       - name: Execute blue-green switch
         if: steps.check-secret.outputs.skip != 'true'
+        env:
+          ARC_SKIP_OLD_DEACTIVATION: "true"
         run: |
           echo "Executing blue-green switch to ${{ steps.color.outputs.target }}..."
           chmod +x infra/scripts/arc/blue-green-switch.sh
