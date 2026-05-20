@@ -63,8 +63,12 @@ longhornManager:
     limits:
       cpu: 500m
       memory: 512Mi
-  # Tolerate GPU taints (Longhorn needs to run on all nodes)
+  # Tolerate infra taints: Longhorn must run anywhere Longhorn engines can run.
   tolerations:
+    - key: "builder"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
     - key: "nvidia.com/gpu"
       operator: "Exists"
       effect: "NoSchedule"
