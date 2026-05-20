@@ -475,6 +475,37 @@ func TestSummarizeProjectCardCronJobsIgnoresUnownedManualProofJobs(t *testing.T)
 	assert.Empty(t, evidence.Items[0].LatestJobName)
 }
 
+func TestSummarizeProjectCardCronJobsCountsManualRecoveryJobs(t *testing.T) {
+	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
+	completedAt := metav1.NewTime(now.Add(-time.Hour))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "forgesight-benchmark", Namespace: "forgesight"},
+	}
+	job := batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "forgesight-benchmark-recovery-20260520040930",
+			Namespace:         "forgesight",
+			CreationTimestamp: metav1.NewTime(now.Add(-time.Hour)),
+		},
+		Status: batchv1.JobStatus{
+			CompletionTime: &completedAt,
+			Succeeded:      1,
+			Conditions: []batchv1.JobCondition{{
+				Type:               batchv1.JobComplete,
+				Status:             "True",
+				LastTransitionTime: completedAt,
+			}},
+		},
+	}
+
+	evidence := summarizeProjectCardCronJobs([]batchv1.CronJob{cronJob}, []batchv1.Job{job}, now)
+
+	assert.Equal(t, "healthy", evidence.Status)
+	assert.Equal(t, 1, evidence.SucceededCount)
+	require.Len(t, evidence.Items, 1)
+	assert.Equal(t, "forgesight-benchmark-recovery-20260520040930", evidence.Items[0].LatestJobName)
+}
+
 func TestSummarizeProjectCardCronJobsUsesNumericNameFallback(t *testing.T) {
 	now := time.Date(2026, 5, 18, 21, 0, 0, 0, time.UTC)
 	completedAt := metav1.NewTime(now.Add(-time.Hour))

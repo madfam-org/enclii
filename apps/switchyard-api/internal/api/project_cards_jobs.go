@@ -317,6 +317,9 @@ func projectCardJobOwnedByCronJob(job *batchv1.Job, cronJobName string) bool {
 	if suffix == "" {
 		return false
 	}
+	if strings.HasPrefix(suffix, "manual-") || strings.HasPrefix(suffix, "recovery-") {
+		return true
+	}
 	for _, char := range suffix {
 		if char < '0' || char > '9' {
 			return false

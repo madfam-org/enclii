@@ -216,9 +216,14 @@ cutoff_epoch="$(epoch_hours_ago "$WINDOW_HOURS")"
 if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
   failed_jobs="$(
     jq -r --argjson cutoff "$cutoff_epoch" '
+      def is_manual_recovery_name:
+        (.metadata.name | test("-(manual|recovery)-"));
       def cron_name:
         ([.metadata.ownerReferences[]? | select(.kind == "CronJob") | .name][0]
-          // (.metadata.name | sub("-[0-9]+$"; "")));
+          // (if is_manual_recovery_name
+              then (.metadata.name | sub("-(manual|recovery)-.*$"; ""))
+              else (.metadata.name | sub("-[0-9]+$"; ""))
+            end));
       def is_complete:
         ((.status.succeeded // 0) > 0)
         or (([.status.conditions[]? | select(.type == "Complete" and .status == "True")] | length) > 0);
@@ -230,7 +235,7 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
         .items[]
         | ([.metadata.ownerReferences[]? | select(.kind == "CronJob")] | length) as $cron_owner_count
         | (.metadata.annotations["batch.kubernetes.io/cronjob-scheduled-timestamp"] // "") as $scheduled_annotation
-        | select($cron_owner_count > 0 or $scheduled_annotation != "")
+        | select($cron_owner_count > 0 or $scheduled_annotation != "" or is_manual_recovery_name)
         | (.metadata.annotations["batch.kubernetes.io/cronjob-scheduled-timestamp"] // .status.completionTime // .metadata.creationTimestamp) as $ts
         | ($ts | fromdateiso8601? // 0) as $epoch
         | . + {
