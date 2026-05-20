@@ -179,6 +179,37 @@ describe("ProjectCardCompact process drawer", () => {
     expect(screen.getByText("2 job failed")).toBeInTheDocument();
   });
 
+  it("renders CronJob pending evidence as a card chip", () => {
+    const project = {
+      ...projectWithDomains(),
+      aggregateStatus: "healthy" as const,
+      evidence: {
+        serviceRows: {
+          status: "fresh",
+          count: 2,
+          healthyCount: 2,
+          staleCount: 0,
+          staleAfterSeconds: 600,
+        },
+        jobs: {
+          status: "pending",
+          namespaceCount: 1,
+          cronJobCount: 2,
+          failedCount: 0,
+          activeCount: 0,
+          stuckCount: 0,
+          pendingCount: 2,
+          succeededCount: 0,
+          lastObservedAt: "2026-05-18T20:00:00Z",
+        },
+      },
+    };
+
+    render(<ProjectCardCompact project={project} />);
+
+    expect(screen.getByText("2 job pending")).toBeInTheDocument();
+  });
+
   it("renders blocked rollout state as the service row status", () => {
     const project = projectWithDomains();
     project.liveState = "idle";

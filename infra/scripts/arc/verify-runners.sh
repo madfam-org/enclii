@@ -11,6 +11,7 @@ set -euo pipefail
 NAMESPACE="arc-runners"
 CONTROLLER_NAMESPACE="arc-system"
 SCALE_SET_PREFIX="${SCALE_SET_PREFIX:-madfam-runners}"  # Override via env: SCALE_SET_PREFIX=custom-runners
+EXPECTED_ACTIVE_COLOR="${ARC_EXPECTED_ACTIVE_COLOR:-blue}"
 DEFAULT_TIMEOUT=120
 
 # Colors for output
@@ -75,6 +76,30 @@ check_scale_sets() {
         log_error "No scale sets found"
         return 1
     fi
+}
+
+check_active_scale_set() {
+    log_info "Checking Active Runner Scale Set..."
+
+    local expected active_sets active_count
+    expected="${SCALE_SET_PREFIX}-${EXPECTED_ACTIVE_COLOR}"
+    active_sets=$(kubectl get autoscalingrunnerset -n "${NAMESPACE}" \
+        -l arc.enclii.dev/active=true \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+    active_count=$(printf "%s\n" "${active_sets}" | sed '/^$/d' | wc -l | tr -d ' ')
+
+    if [[ "${active_count}" -ne 1 ]]; then
+        log_error "Expected exactly one active scale set (${expected}); found ${active_count}: ${active_sets:-none}"
+        return 1
+    fi
+
+    if [[ "${active_sets}" != "${expected}" ]]; then
+        log_error "Active scale set is ${active_sets}; expected ${expected}"
+        return 1
+    fi
+
+    log_success "Active scale set: ${active_sets}"
+    return 0
 }
 
 check_image_pull_secrets() {
@@ -172,15 +197,18 @@ check_pvcs() {
 
         if [[ ${bound} -eq ${pvcs} ]]; then
             log_success "PVCs: ${bound}/${pvcs} bound"
+            kubectl get pvc -n "${NAMESPACE}" 2>/dev/null || true
+            echo ""
+            return 0
         else
-            log_warn "PVCs: ${bound}/${pvcs} bound"
+            log_error "PVCs: ${bound}/${pvcs} bound"
         fi
 
         kubectl get pvc -n "${NAMESPACE}" 2>/dev/null || true
         echo ""
-        return 0
+        return 1
     else
-        log_warn "No PVCs found (caching disabled)"
+        log_success "No PVCs found (PVC cache mounts disabled by current runner-set values)"
         return 0
     fi
 }
@@ -244,13 +272,16 @@ run_checks() {
     check_scale_sets || failed=$((failed + 1))
     echo ""
 
+    check_active_scale_set || failed=$((failed + 1))
+    echo ""
+
     check_image_pull_secrets || failed=$((failed + 1))
     echo ""
 
     check_runner_pods || failed=$((failed + 1))
     echo ""
 
-    check_pvcs
+    check_pvcs || failed=$((failed + 1))
     echo ""
 
     # check_metrics  # Uncomment if you want metrics check

@@ -30,9 +30,14 @@ export function ProjectCardEvidenceChips({
   const visibleStaleHealthCount = argoHealthy ? 0 : staleHealthCount;
   const jobFailureCount = evidence?.jobs?.failedCount ?? 0;
   const jobStuckCount = evidence?.jobs?.stuckCount ?? 0;
+  const jobPendingCount = evidence?.jobs?.pendingCount ?? 0;
+  const jobStatus = evidence?.jobs?.status;
   const hasJobIssues = jobFailureCount > 0 || jobStuckCount > 0;
+  const hasJobWaitingState =
+    !hasJobIssues && Boolean(jobStatus) && !["healthy", "active", "empty"].includes(jobStatus!);
 
-  if (!argoDegraded && visibleStaleHealthCount === 0 && !hasJobIssues) return null;
+  if (!argoDegraded && visibleStaleHealthCount === 0 && !hasJobIssues && !hasJobWaitingState)
+    return null;
 
   return (
     <div className="relative z-10 mt-2 flex min-w-0 flex-wrap gap-1">
@@ -70,6 +75,19 @@ export function ProjectCardEvidenceChips({
             {jobFailureCount > 0
               ? `${jobFailureCount} job failed`
               : `${jobStuckCount} job stuck`}
+          </span>
+        </span>
+      )}
+      {hasJobWaitingState && evidence?.jobs && (
+        <span
+          className="border-status-warning/35 bg-status-warning/10 text-status-warning inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+          title={`CronJobs ${evidence.jobs.status}: ${evidence.jobs.cronJobCount} declared, ${jobPendingCount} pending first run`}
+        >
+          <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            {evidence.jobs.status === "pending"
+              ? `${jobPendingCount || evidence.jobs.cronJobCount} job pending`
+              : `jobs ${evidence.jobs.status}`}
           </span>
         </span>
       )}

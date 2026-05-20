@@ -233,6 +233,7 @@ describe("projectCardAggregateToCompactProject", () => {
           failed_count: 1,
           active_count: 0,
           stuck_count: 0,
+          pending_count: 0,
           succeeded_count: 0,
           last_observed_at: "2026-05-18T20:00:00Z",
           items: [
@@ -264,6 +265,7 @@ describe("projectCardAggregateToCompactProject", () => {
     );
     expect(compact.evidence?.jobs?.status).toBe("failing");
     expect(compact.evidence?.jobs?.failedCount).toBe(1);
+    expect(compact.evidence?.jobs?.pendingCount).toBe(0);
     expect(compact.evidence?.jobs?.items?.[0]?.latestJobName).toBe(
       "orchard-sync-29652480",
     );

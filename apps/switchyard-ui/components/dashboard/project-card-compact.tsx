@@ -193,6 +193,7 @@ export interface ProjectCardEvidence {
     failedCount: number;
     activeCount: number;
     stuckCount: number;
+    pendingCount?: number;
     succeededCount: number;
     lastObservedAt: string;
     items?: {

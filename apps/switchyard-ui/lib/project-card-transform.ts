@@ -71,6 +71,7 @@ export interface ApiProjectCardEvidence {
     failed_count: number;
     active_count: number;
     stuck_count: number;
+    pending_count?: number;
     succeeded_count: number;
     last_observed_at: string;
     items?: {
@@ -303,6 +304,7 @@ export function projectCardAggregateToCompactProject(
                 failedCount: card.evidence.jobs.failed_count,
                 activeCount: card.evidence.jobs.active_count,
                 stuckCount: card.evidence.jobs.stuck_count,
+                pendingCount: card.evidence.jobs.pending_count,
                 succeededCount: card.evidence.jobs.succeeded_count,
                 lastObservedAt: card.evidence.jobs.last_observed_at,
                 items: card.evidence.jobs.items?.map((item) => ({

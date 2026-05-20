@@ -88,7 +88,7 @@ apply_base_manifests() {
 apply_production_manifests() {
     log_info "Applying production Kubernetes manifests..."
 
-    kubectl apply -f "${REPO_ROOT}/infra/k8s/production/arc/storage.yaml"
+    log_info "ARC PVC cache manifests are disabled; runner-set values use job-level GitHub Actions caches."
 
     # Apply monitoring if CRDs exist
     if kubectl get crd servicemonitors.monitoring.coreos.com &> /dev/null; then
@@ -188,8 +188,8 @@ verify_installation() {
         kubectl get pods -n "${RUNNER_NAMESPACE}"
 
     echo ""
-    echo "=== PVCs ==="
-    kubectl get pvc -n "${RUNNER_NAMESPACE}"
+    echo "=== Cache PVCs (expected empty unless PVC caching is re-enabled) ==="
+    kubectl get pvc -n "${RUNNER_NAMESPACE}" || true
 
     echo ""
     log_success "Installation verification complete"
