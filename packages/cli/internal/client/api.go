@@ -224,6 +224,7 @@ func servicePayload(service *types.Service) map[string]interface{} {
 		"auto_deploy_branch": service.AutoDeployBranch,
 		"auto_deploy_env":    service.AutoDeployEnv,
 		"build_config":       service.BuildConfig,
+		"jobs":               service.Jobs,
 	}
 	if service.Type != "" {
 		payload["type"] = service.Type

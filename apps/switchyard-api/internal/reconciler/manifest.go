@@ -485,7 +485,7 @@ func (r *ServiceReconciler) generateCronJobs(req *ReconcileRequest, namespace, s
 
 	var cronJobs []*batchv1.CronJob
 	for _, job := range req.Service.Jobs {
-		jobName := fmt.Sprintf("%s-%s", req.Service.Name, job.Name)
+		jobName := serviceManagedCronJobName(namespace, req.Service.Name, job.Name)
 		// Ensure name is valid k8s name
 		jobName = strings.ReplaceAll(jobName, "_", "-")
 		if len(jobName) > 52 {
@@ -563,6 +563,17 @@ func (r *ServiceReconciler) generateCronJobs(req *ReconcileRequest, namespace, s
 	}
 
 	return cronJobs, nil
+}
+
+func serviceManagedCronJobName(namespace, serviceName, jobName string) string {
+	if strings.HasPrefix(jobName, serviceName+"-") || strings.HasPrefix(jobName, namespace+"-") {
+		return jobName
+	}
+	prefix := serviceName
+	if serviceName == namespace || strings.HasPrefix(serviceName, namespace+"-") {
+		prefix = namespace
+	}
+	return fmt.Sprintf("%s-%s", prefix, jobName)
 }
 
 // generateHTTPScaledObject creates a KEDA HTTPScaledObject for scale-to-zero functions

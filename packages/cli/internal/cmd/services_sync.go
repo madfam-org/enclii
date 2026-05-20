@@ -46,7 +46,19 @@ type RawServiceSpec struct {
 				} `yaml:"git"`
 			} `yaml:"source"`
 		} `yaml:"build"`
+		Jobs []RawJobSpec `yaml:"jobs"`
 	} `yaml:"spec"`
+}
+
+type RawJobSpec struct {
+	Name        string   `yaml:"name"`
+	Schedule    string   `yaml:"schedule"`
+	Timezone    string   `yaml:"timezone"`
+	Command     []string `yaml:"command"`
+	Timeout     int      `yaml:"timeout"`
+	Retries     int      `yaml:"retries"`
+	Concurrency string   `yaml:"concurrency"`
+	Suspended   bool     `yaml:"suspended"`
 }
 
 func NewServicesSyncCommand(cfg *config.Config) *cobra.Command {
@@ -235,8 +247,7 @@ func runServicesSync(cfg *config.Config, dir, projectSlug string, dryRun, ignore
 			fmt.Println("Existing service drift was detected. Re-run with --reconcile-existing to update persisted metadata.")
 			return nil
 		}
-		fmt.Println("All services are already registered and aligned. Nothing to do.")
-		return nil
+		fmt.Println("All services are already registered and aligned.")
 	}
 
 	if dryRun {
@@ -441,6 +452,9 @@ func serviceReconcileChanges(existing, desired *types.Service) []string {
 	if !reflect.DeepEqual(existing.BuildConfig, desired.BuildConfig) {
 		changes = append(changes, "build_config")
 	}
+	if !reflect.DeepEqual(normalizeJobSpecs(existing.Jobs), normalizeJobSpecs(desired.Jobs)) {
+		changes = append(changes, "jobs")
+	}
 	return changes
 }
 
@@ -494,6 +508,7 @@ func rawSpecToService(s *RawServiceSpec) *types.Service {
 			BuildArgs:  serviceSpecBuildArgs(s),
 			Target:     s.Spec.Build.Target,
 		},
+		Jobs: rawJobSpecsToServiceJobs(s.Spec.Jobs),
 	}
 }
 
@@ -512,4 +527,29 @@ func serviceSpecBuildArgs(s *RawServiceSpec) map[string]string {
 		return nil
 	}
 	return buildArgs
+}
+
+func rawJobSpecsToServiceJobs(rawJobs []RawJobSpec) []types.JobSpec {
+	if len(rawJobs) == 0 {
+		return nil
+	}
+	jobs := make([]types.JobSpec, 0, len(rawJobs))
+	for _, rawJob := range rawJobs {
+		jobs = append(jobs, types.JobSpec{
+			Name:     rawJob.Name,
+			Schedule: rawJob.Schedule,
+			Timezone: rawJob.Timezone,
+			Command:  rawJob.Command,
+			Timeout:  rawJob.Timeout,
+			Retries:  rawJob.Retries,
+		})
+	}
+	return jobs
+}
+
+func normalizeJobSpecs(jobs []types.JobSpec) []types.JobSpec {
+	if len(jobs) == 0 {
+		return nil
+	}
+	return jobs
 }

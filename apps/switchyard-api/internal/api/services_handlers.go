@@ -96,6 +96,7 @@ func (h *Handler) CreateService(c *gin.Context) {
 		Type             types.ServiceType `json:"type"`
 		Region           string            `json:"region"`
 		BuildConfig      types.BuildConfig `json:"build_config"`
+		Jobs             []types.JobSpec   `json:"jobs"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -115,6 +116,7 @@ func (h *Handler) CreateService(c *gin.Context) {
 		Type:             req.Type,
 		Region:           req.Region,
 		BuildConfig:      req.BuildConfig,
+		Jobs:             req.Jobs,
 		UserID:           c.GetString("user_id"),
 		UserEmail:        c.GetString("user_email"),
 		UserRole:         c.GetString("user_role"),

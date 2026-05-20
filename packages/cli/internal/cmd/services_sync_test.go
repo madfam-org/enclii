@@ -161,6 +161,56 @@ spec:
 	}
 }
 
+func TestRawSpecToServiceCarriesServiceJobs(t *testing.T) {
+	dir := t.TempDir()
+
+	writeTestFile(t, dir, "tulana-api.yaml", `apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: tulana-api
+  project: tulana
+spec:
+  build:
+    type: dockerfile
+  jobs:
+    - name: pull-catalog
+      schedule: "20 6 * * *"
+      timezone: America/Mexico_City
+      command: ["python", "manage.py", "tulana_pull_catalog"]
+      timeout: 3600
+      retries: 2
+`)
+
+	specs, err := readRawServiceSpecs(dir)
+	if err != nil {
+		t.Fatalf("readRawServiceSpecs returned error: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 service spec, got %d", len(specs))
+	}
+
+	service := rawSpecToService(specs[0])
+	if len(service.Jobs) != 1 {
+		t.Fatalf("expected 1 service job, got %d", len(service.Jobs))
+	}
+	job := service.Jobs[0]
+	if job.Name != "pull-catalog" {
+		t.Fatalf("expected pull-catalog, got %q", job.Name)
+	}
+	if job.Schedule != "20 6 * * *" {
+		t.Fatalf("expected schedule to be preserved, got %q", job.Schedule)
+	}
+	if job.Timezone != "America/Mexico_City" {
+		t.Fatalf("expected timezone to be preserved, got %q", job.Timezone)
+	}
+	if len(job.Command) != 3 || job.Command[2] != "tulana_pull_catalog" {
+		t.Fatalf("expected command argv to be preserved, got %#v", job.Command)
+	}
+	if job.Timeout != 3600 || job.Retries != 2 {
+		t.Fatalf("expected timeout/retries to be preserved, got timeout=%d retries=%d", job.Timeout, job.Retries)
+	}
+}
+
 func TestServiceReconcileChangesDetectsPersistedSourceDrift(t *testing.T) {
 	existing := &types.Service{
 		Name:             "forgesight-app",
@@ -194,6 +244,48 @@ func TestServiceReconcileChangesDetectsPersistedSourceDrift(t *testing.T) {
 		if changes[i] != want[i] {
 			t.Fatalf("change[%d] = %q, want %q", i, changes[i], want[i])
 		}
+	}
+}
+
+func TestServiceReconcileChangesDetectsJobDrift(t *testing.T) {
+	existing := &types.Service{
+		Name:        "tulana-api",
+		GitRepo:     "https://github.com/madfam-org/tulana",
+		BuildConfig: types.BuildConfig{Type: types.BuildTypeDockerfile},
+	}
+	desired := &types.Service{
+		Name:        "tulana-api",
+		GitRepo:     "https://github.com/madfam-org/tulana",
+		BuildConfig: types.BuildConfig{Type: types.BuildTypeDockerfile},
+		Jobs: []types.JobSpec{{
+			Name:     "pull-catalog",
+			Schedule: "20 6 * * *",
+			Command:  []string{"python", "manage.py", "tulana_pull_catalog"},
+		}},
+	}
+
+	changes := serviceReconcileChanges(existing, desired)
+	if len(changes) != 1 || changes[0] != "jobs" {
+		t.Fatalf("expected only jobs drift, got %v", changes)
+	}
+}
+
+func TestServiceReconcileChangesTreatsNilAndEmptyJobsAsAligned(t *testing.T) {
+	existing := &types.Service{
+		Name:        "tulana-web",
+		GitRepo:     "https://github.com/madfam-org/tulana",
+		BuildConfig: types.BuildConfig{Type: types.BuildTypeDockerfile},
+		Jobs:        []types.JobSpec{},
+	}
+	desired := &types.Service{
+		Name:        "tulana-web",
+		GitRepo:     "https://github.com/madfam-org/tulana",
+		BuildConfig: types.BuildConfig{Type: types.BuildTypeDockerfile},
+		Jobs:        nil,
+	}
+
+	if changes := serviceReconcileChanges(existing, desired); len(changes) != 0 {
+		t.Fatalf("expected no drift for empty jobs, got %v", changes)
 	}
 }
 

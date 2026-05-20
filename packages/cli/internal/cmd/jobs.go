@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/madfam-org/enclii/packages/cli/internal/client"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -138,6 +140,11 @@ func runJobsList(cfg *config.Config, projectSlug string) error {
 	cronJobs := payload.CronJobs
 
 	if len(cronJobs) == 0 {
+		if printed, err := printServiceDefinedJobs(cfg, projectSlug); err != nil {
+			return fmt.Errorf("no timetable cron jobs found; failed to inspect service-defined jobs: %w", err)
+		} else if printed {
+			return nil
+		}
 		fmt.Println("No cron jobs found.")
 		return nil
 	}
@@ -171,6 +178,64 @@ func runJobsList(cfg *config.Config, projectSlug string) error {
 
 	_ = w.Flush()
 	return nil
+}
+
+func printServiceDefinedJobs(cfg *config.Config, projectSlug string) (bool, error) {
+	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	services, err := apiClient.ListServices(ctx, projectSlug)
+	if err != nil {
+		return false, err
+	}
+
+	type serviceJobRow struct {
+		ID       string
+		Service  string
+		Name     string
+		Schedule string
+	}
+
+	rows := make([]serviceJobRow, 0)
+	for _, service := range services {
+		for _, job := range service.Jobs {
+			if job.Name == "" || job.Schedule == "" {
+				continue
+			}
+			rows = append(rows, serviceJobRow{
+				ID:       service.ID.String()[:8],
+				Service:  service.Name,
+				Name:     serviceManagedCronJobName(projectSlug, service.Name, job.Name),
+				Schedule: job.Schedule,
+			})
+		}
+	}
+
+	if len(rows) == 0 {
+		return false, nil
+	}
+
+	fmt.Println("No Timetable cron jobs found.")
+	fmt.Println("Service-defined CronJobs:")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "SERVICE ID\tSERVICE\tNAME\tSCHEDULE")
+	for _, row := range rows {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", row.ID, row.Service, row.Name, row.Schedule)
+	}
+	_ = w.Flush()
+	return true, nil
+}
+
+func serviceManagedCronJobName(projectSlug, serviceName, jobName string) string {
+	if strings.HasPrefix(jobName, serviceName+"-") || strings.HasPrefix(jobName, projectSlug+"-") {
+		return jobName
+	}
+	prefix := serviceName
+	if serviceName == projectSlug || strings.HasPrefix(serviceName, projectSlug+"-") {
+		prefix = projectSlug
+	}
+	return prefix + "-" + jobName
 }
 
 // --- jobs create ---

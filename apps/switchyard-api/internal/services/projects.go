@@ -151,6 +151,7 @@ type CreateServiceRequest struct {
 	AutoDeployBranch string // Branch for auto-deploy (e.g., "main")
 	AutoDeployEnv    string // Environment for auto-deploy (e.g., "production")
 	BuildConfig      types.BuildConfig
+	Jobs             []types.JobSpec
 	Type             types.ServiceType
 	Region           string
 	UserID           string
@@ -220,6 +221,7 @@ func (s *ProjectService) CreateService(ctx context.Context, req *CreateServiceRe
 		Type:             req.Type,
 		Region:           req.Region,
 		BuildConfig:      req.BuildConfig,
+		Jobs:             req.Jobs,
 		AutoDeploy:       autoDeploy,
 		AutoDeployBranch: autoDeployBranch,
 		AutoDeployEnv:    autoDeployEnv,

@@ -199,6 +199,11 @@ func TestAPIClient_UpdateServiceSendsServiceSourceMetadata(t *testing.T) {
 			Dockerfile: "apps/app/Dockerfile",
 			Context:    ".",
 		},
+		Jobs: []types.JobSpec{{
+			Name:     "pull-catalog",
+			Schedule: "20 6 * * *",
+			Command:  []string{"python", "manage.py", "tulana_pull_catalog"},
+		}},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +224,13 @@ func TestAPIClient_UpdateServiceSendsServiceSourceMetadata(t *testing.T) {
 		assert.Equal(t, "dockerfile", buildConfig["type"])
 		assert.Equal(t, "apps/app/Dockerfile", buildConfig["dockerfile"])
 		assert.Equal(t, ".", buildConfig["context"])
+		jobs, ok := req["jobs"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, jobs, 1)
+		job, ok := jobs[0].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "pull-catalog", job["name"])
+		assert.Equal(t, "20 6 * * *", job["schedule"])
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{

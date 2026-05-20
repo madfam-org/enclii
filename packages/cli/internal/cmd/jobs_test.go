@@ -184,6 +184,12 @@ func TestJobsRunOnceSubcommand(t *testing.T) {
 	assert.Equal(t, "3600", timeoutFlag.DefValue)
 }
 
+func TestServiceManagedCronJobNameUsesProjectPrefixForRoleServices(t *testing.T) {
+	assert.Equal(t, "tulana-pull-catalog", serviceManagedCronJobName("tulana", "tulana-api", "pull-catalog"))
+	assert.Equal(t, "tulana-pull-catalog", serviceManagedCronJobName("tulana", "tulana-api", "tulana-pull-catalog"))
+	assert.Equal(t, "worker-refresh", serviceManagedCronJobName("platform", "worker", "refresh"))
+}
+
 func TestJobsRequest_SetsHeaders(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))

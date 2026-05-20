@@ -23,6 +23,7 @@ type UpdateServiceRequest struct {
 	Type             *types.ServiceType `json:"type,omitempty"`
 	Region           *string            `json:"region,omitempty"`
 	BuildConfig      *types.BuildConfig `json:"build_config,omitempty"`
+	Jobs             *[]types.JobSpec   `json:"jobs,omitempty"`
 }
 
 // UpdateService updates a service's settings
@@ -89,6 +90,9 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	}
 	if req.BuildConfig != nil {
 		service.BuildConfig = *req.BuildConfig
+	}
+	if req.Jobs != nil {
+		service.Jobs = *req.Jobs
 	}
 
 	// Update in database
