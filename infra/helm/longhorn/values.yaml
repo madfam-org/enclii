@@ -22,6 +22,9 @@ defaultSettings:
   # Requires longhorn-backup-secret in longhorn-system namespace
   backupTarget: "s3://enclii-backups@auto/"
   backupTargetCredentialSecret: "longhorn-backup-secret"
+  # Keep offsite backups serialized. R2 was resetting concurrent backupstore
+  # writes, causing the daily recurring job to restart after partial success.
+  backupConcurrentLimit: 1
 
   # Performance tuning for SSD/NVMe
   # Right-sized from 12% (1440m on 12-core) to 3% (360m) — actual usage ~91m

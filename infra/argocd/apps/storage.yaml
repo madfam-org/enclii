@@ -26,6 +26,10 @@ spec:
           defaultReplicaCount: 2
           storageOverProvisioningPercentage: 100
           storageMinimalAvailablePercentage: 15
+          backupTarget: s3://enclii-backups@auto/
+          backupTargetCredentialSecret: longhorn-backup-secret
+          # Keep offsite backups serialized; R2 resets were aborting long runs.
+          backupConcurrentLimit: 1
           autoSalvage: true
           replicaAutoBalance: best-effort
           # Right-sized from 12% (1440m) to 3% (360m) — actual usage ~91m

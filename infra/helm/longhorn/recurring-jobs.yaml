@@ -1,11 +1,9 @@
 ---
 # Longhorn Recurring Jobs
 # Applied to all volumes in the "default" group.
-# Existing: daily-s3-backup (daily at 03:00, retain 7, task: backup)
-#
-# This file adds:
 # 1. Daily local snapshots (retain 7) — fast rollback without R2 download
-# 2. Weekly R2 backup (retain 4) — long-term disaster recovery
+# 2. Daily R2 backup (retain 7) — offsite disaster recovery
+# 3. Weekly R2 backup (retain 4) — longer-term offsite copies
 #
 # Usage:
 #   kubectl apply -f recurring-jobs.yaml
@@ -33,6 +31,28 @@ spec:
     - default
   labels:
     backup-type: snapshot
+    retention: daily
+---
+# Daily R2 backup — 03:00 UTC, retain 7 copies
+apiVersion: longhorn.io/v1beta1
+kind: RecurringJob
+metadata:
+  name: daily-s3-backup
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/name: longhorn
+    app.kubernetes.io/part-of: enclii
+    backup.enclii.dev/type: disaster-recovery
+spec:
+  task: backup
+  cron: "0 3 * * *"
+  retain: 7
+  concurrency: 1
+  groups:
+    - default
+  labels:
+    backup-type: scheduled
     retention: daily
 ---
 # Weekly R2 backup — Sundays at 04:00 UTC, retain 4 weeks
