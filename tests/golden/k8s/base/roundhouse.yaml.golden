@@ -112,6 +112,9 @@ spec:
               drop:
                 - ALL
           env:
+            # Disable trace export until the OTLP collector/Tempo service is deployed.
+            - name: ENCLII_OTEL_DISABLED
+              value: "1"
             # Build mode: Use Kaniko for secure rootless builds
             - name: BUILD_MODE
               value: "kaniko"
@@ -261,6 +264,9 @@ spec:
             - containerPort: 8080
               name: http
           env:
+            # Disable trace export until the OTLP collector/Tempo service is deployed.
+            - name: ENCLII_OTEL_DISABLED
+              value: "1"
             # Redis connection (URL constructed from components by config.Load)
             - name: REDIS_HOST
               value: "redis"

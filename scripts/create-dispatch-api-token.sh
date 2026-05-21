@@ -15,13 +15,13 @@
 #   # Dry run: show what would happen without making changes
 #   ./scripts/create-dispatch-api-token.sh --dry-run
 #
-#   # Direct DB fallback (if API is unreachable):
+#   # Direct DB fallback via data/postgres psql client (if API is unreachable):
 #   ./scripts/create-dispatch-api-token.sh --direct-db
 #
 # Prerequisites:
 #   - kubectl access to the enclii namespace
 #   - A valid admin JWT (obtain via Janua SSO login)
-#     OR --direct-db flag with postgres-credentials secret
+#     OR --direct-db flag with enclii-secrets/database-url and data/postgres access
 
 set -euo pipefail
 
@@ -132,64 +132,51 @@ create_via_db() {
   echo "  Scopes: [admin]"
 
   if $DRY_RUN; then
-    echo "[dry-run] Would insert via K8s Job"
+    echo "[dry-run] Would insert via data/postgres psql client"
     return 0
   fi
 
   kubectl -n "$NAMESPACE" delete job "$job_name" --ignore-not-found 2>/dev/null
 
-  kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ${job_name}
-  namespace: ${NAMESPACE}
-spec:
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 120
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: setup
-        image: postgres:16-alpine
-        command:
-        - sh
-        - -c
-        - |
-          set -e
-          echo "Looking up admin user..."
-          ADMIN_ID=\$(psql "\$DATABASE_URL" -tAc "SELECT id FROM users WHERE role = 'admin' LIMIT 1")
-          if [ -z "\$ADMIN_ID" ]; then
-            ADMIN_ID=\$(psql "\$DATABASE_URL" -tAc "SELECT id FROM users LIMIT 1")
-          fi
-          if [ -z "\$ADMIN_ID" ]; then
-            echo "ERROR: No users found in database"
-            exit 1
-          fi
-          echo "Using user_id: \$ADMIN_ID"
-          psql "\$DATABASE_URL" -c "
-            UPDATE api_tokens SET revoked = true, revoked_at = now(), updated_at = now()
-            WHERE name = '${TOKEN_NAME}' AND revoked = false;
-          "
-          psql "\$DATABASE_URL" -c "
-            INSERT INTO api_tokens (id, user_id, name, prefix, token_hash, scopes, revoked, created_at, updated_at)
-            VALUES (gen_random_uuid(), '\$ADMIN_ID', '${TOKEN_NAME}', '${prefix}', '${token_hash}', '{admin}', false, now(), now());
-          "
-          echo "Token inserted successfully."
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: database-url
-EOF
+  echo "Inserting token via data/postgres psql client..."
+  local database_url
+  database_url=$(kubectl -n "$NAMESPACE" get secret enclii-secrets -o jsonpath='{.data.database-url}' | base64 -d)
 
-  echo "Waiting for Job to complete..."
-  kubectl -n "$NAMESPACE" wait --for=condition=complete "job/${job_name}" --timeout=60s
-  echo "Job completed. Logs:"
-  kubectl -n "$NAMESPACE" logs "job/${job_name}"
-  kubectl -n "$NAMESPACE" delete job "$job_name" --ignore-not-found 2>/dev/null
+  local inserted_count
+  inserted_count=$(kubectl -n data exec -i deploy/postgres -c postgres -- \
+    env DATABASE_URL="$database_url" \
+    psql "$database_url" -v ON_ERROR_STOP=1 -At \
+      -v token_name="$TOKEN_NAME" \
+      -v token_prefix="$prefix" \
+      -v token_hash="$token_hash" <<'SQL'
+WITH selected_user AS (
+  SELECT id
+  FROM users
+  ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, created_at
+  LIMIT 1
+),
+revoked AS (
+  UPDATE api_tokens
+  SET revoked = true, revoked_at = now(), updated_at = now()
+  WHERE name = :'token_name' AND revoked = false
+  RETURNING id
+),
+inserted AS (
+  INSERT INTO api_tokens (id, user_id, name, prefix, token_hash, scopes, revoked, created_at, updated_at)
+  SELECT gen_random_uuid(), id, :'token_name', :'token_prefix', :'token_hash', '{admin}', false, now(), now()
+  FROM selected_user
+  RETURNING id
+)
+SELECT count(*) FROM inserted;
+SQL
+)
+
+  if [[ "$inserted_count" != "1" ]]; then
+    echo "ERROR: Token insert did not affect exactly one row (inserted=${inserted_count})."
+    return 1
+  fi
+
+  echo "Token inserted successfully."
 }
 
 # ──────────────────────────────────────────────
