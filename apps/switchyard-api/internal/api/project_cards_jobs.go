@@ -86,7 +86,9 @@ func matchProjectCardJobEvidence(
 	matched := make([]projectCardJobsEvidence, 0, len(namespaces))
 	for _, namespace := range namespaces {
 		if evidence, ok := jobEvidenceByNamespace[namespace]; ok && evidence.CronJobCount > 0 {
-			matched = append(matched, evidence)
+			if scoped, ok := scopeProjectCardJobEvidence(project, argoEvidence, namespace, evidence); ok {
+				matched = append(matched, scoped)
+			}
 		}
 	}
 	if len(matched) == 0 {
@@ -118,6 +120,103 @@ func matchProjectCardJobEvidence(
 		return combined.Items[i].Name < combined.Items[j].Name
 	})
 	return &combined
+}
+
+func scopeProjectCardJobEvidence(
+	project *types.Project,
+	argoEvidence *projectCardArgoApplicationEvidence,
+	namespace string,
+	evidence projectCardJobsEvidence,
+) (projectCardJobsEvidence, bool) {
+	if projectCardNamespaceIsProjectOwned(project, namespace) {
+		return evidence, true
+	}
+
+	scoped := projectCardJobsEvidence{
+		LastObservedAt: evidence.LastObservedAt,
+		Items:          make([]projectCardJobEvidence, 0, len(evidence.Items)),
+	}
+	for _, item := range evidence.Items {
+		if !projectCardJobEvidenceItemMatchesProject(project, argoEvidence, item) {
+			continue
+		}
+		scoped.CronJobCount++
+		scoped.FailedCount += item.RecentFailedJobs
+		scoped.ActiveCount += item.ActiveJobs
+		scoped.StuckCount += item.StuckJobs
+		scoped.SucceededCount += item.SucceededJobs
+		if item.Status == "pending" {
+			scoped.PendingCount++
+		}
+		scoped.Items = append(scoped.Items, item)
+	}
+	if scoped.CronJobCount == 0 {
+		return projectCardJobsEvidence{}, false
+	}
+	scoped.Status = projectCardJobsStatus(scoped)
+	return scoped, true
+}
+
+func projectCardNamespaceIsProjectOwned(project *types.Project, namespace string) bool {
+	if project == nil {
+		return false
+	}
+	namespace = projectCardSanitizeArgoName(namespace)
+	return namespace != "" && (namespace == projectCardSanitizeArgoName(project.Slug) || namespace == projectCardSanitizeArgoName(project.Name))
+}
+
+func projectCardJobEvidenceItemMatchesProject(project *types.Project, argoEvidence *projectCardArgoApplicationEvidence, item projectCardJobEvidence) bool {
+	matchKeys := projectCardJobProjectMatchKeys(project, argoEvidence)
+	for _, value := range []string{
+		item.Name,
+		item.Labels["app"],
+		item.Labels["app.kubernetes.io/name"],
+		item.Labels["app.kubernetes.io/instance"],
+		item.Labels["app.kubernetes.io/component"],
+		item.Labels["app.kubernetes.io/part-of"],
+	} {
+		if projectCardValueMatchesAnyKey(value, matchKeys) {
+			return true
+		}
+	}
+	return false
+}
+
+func projectCardJobProjectMatchKeys(project *types.Project, argoEvidence *projectCardArgoApplicationEvidence) []string {
+	seen := map[string]bool{}
+	keys := []string{}
+	add := func(value string) {
+		value = projectCardSanitizeArgoName(value)
+		if value == "" || seen[value] {
+			return
+		}
+		seen[value] = true
+		keys = append(keys, value)
+	}
+	if project != nil {
+		add(project.Slug)
+		add(project.Name)
+	}
+	if argoEvidence != nil {
+		add(argoEvidence.Name)
+	}
+	return keys
+}
+
+func projectCardValueMatchesAnyKey(value string, keys []string) bool {
+	value = projectCardSanitizeArgoName(value)
+	if value == "" {
+		return false
+	}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if value == key || strings.HasPrefix(value, key+"-") || strings.HasSuffix(value, "-"+key) {
+			return true
+		}
+	}
+	return false
 }
 
 func projectCardNamespaceCandidates(project *types.Project, services []*types.Service, argoEvidence *projectCardArgoApplicationEvidence) []string {
@@ -184,6 +283,7 @@ func summarizeProjectCardCronJob(cronJob batchv1.CronJob, jobs []batchv1.Job, ob
 		Namespace:        cronJob.Namespace,
 		Name:             cronJob.Name,
 		Status:           "unknown",
+		Labels:           cronJob.Labels,
 		LastScheduleTime: projectCardMetaTimePtr(cronJob.Status.LastScheduleTime),
 	}
 	if cronJob.Spec.Suspend != nil && *cronJob.Spec.Suspend {

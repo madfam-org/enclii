@@ -106,16 +106,17 @@ type projectCardJobsEvidence struct {
 }
 
 type projectCardJobEvidence struct {
-	Namespace        string     `json:"namespace"`
-	Name             string     `json:"name"`
-	Status           string     `json:"status"`
-	LatestJobName    string     `json:"latest_job_name,omitempty"`
-	RecentFailedJobs int        `json:"recent_failed_jobs,omitempty"`
-	ActiveJobs       int        `json:"active_jobs,omitempty"`
-	StuckJobs        int        `json:"stuck_jobs,omitempty"`
-	SucceededJobs    int        `json:"succeeded_jobs,omitempty"`
-	LastScheduleTime *time.Time `json:"last_schedule_time,omitempty"`
-	LastFailureTime  *time.Time `json:"last_failure_time,omitempty"`
+	Namespace        string            `json:"namespace"`
+	Name             string            `json:"name"`
+	Status           string            `json:"status"`
+	Labels           map[string]string `json:"-"`
+	LatestJobName    string            `json:"latest_job_name,omitempty"`
+	RecentFailedJobs int               `json:"recent_failed_jobs,omitempty"`
+	ActiveJobs       int               `json:"active_jobs,omitempty"`
+	StuckJobs        int               `json:"stuck_jobs,omitempty"`
+	SucceededJobs    int               `json:"succeeded_jobs,omitempty"`
+	LastScheduleTime *time.Time        `json:"last_schedule_time,omitempty"`
+	LastFailureTime  *time.Time        `json:"last_failure_time,omitempty"`
 }
 
 const projectCardServiceHealthStaleAfter = 10 * time.Minute

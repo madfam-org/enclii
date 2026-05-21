@@ -743,6 +743,70 @@ func TestMatchProjectCardJobEvidencePreservesPendingCount(t *testing.T) {
 	assert.Equal(t, "healthy", aggregateStatusFromJobEvidence(evidence))
 }
 
+func TestMatchProjectCardJobEvidenceScopesSharedNamespaceJobs(t *testing.T) {
+	observedAt := time.Date(2026, 5, 21, 1, 30, 0, 0, time.UTC)
+	evidenceByNamespace := map[string]projectCardJobsEvidence{
+		"data": {
+			Status:         "failing",
+			NamespaceCount: 1,
+			CronJobCount:   2,
+			FailedCount:    1,
+			SucceededCount: 1,
+			LastObservedAt: observedAt,
+			Items: []projectCardJobEvidence{
+				{
+					Namespace:        "data",
+					Name:             "postgres-backup",
+					Status:           "failing",
+					Labels:           map[string]string{"app.kubernetes.io/component": "backup", "app.kubernetes.io/instance": "platform-infra-services"},
+					RecentFailedJobs: 1,
+				},
+				{
+					Namespace:     "data",
+					Name:          "redpanda-health-check",
+					Status:        "healthy",
+					Labels:        map[string]string{"app.kubernetes.io/instance": "redpanda"},
+					SucceededJobs: 1,
+				},
+			},
+		},
+	}
+
+	sharedDataArgo := &projectCardArgoApplicationEvidence{DestinationNamespace: "data"}
+
+	redpanda := matchProjectCardJobEvidence(
+		&types.Project{ID: uuid.New(), Name: "Redpanda", Slug: "redpanda"},
+		nil,
+		sharedDataArgo,
+		evidenceByNamespace,
+	)
+	require.NotNil(t, redpanda)
+	assert.Equal(t, "healthy", redpanda.Status)
+	assert.Equal(t, 0, redpanda.FailedCount)
+	require.Len(t, redpanda.Items, 1)
+	assert.Equal(t, "redpanda-health-check", redpanda.Items[0].Name)
+
+	backup := matchProjectCardJobEvidence(
+		&types.Project{ID: uuid.New(), Name: "Backup", Slug: "backup"},
+		nil,
+		sharedDataArgo,
+		evidenceByNamespace,
+	)
+	require.NotNil(t, backup)
+	assert.Equal(t, "failing", backup.Status)
+	assert.Equal(t, 1, backup.FailedCount)
+	require.Len(t, backup.Items, 1)
+	assert.Equal(t, "postgres-backup", backup.Items[0].Name)
+
+	postgresHA := matchProjectCardJobEvidence(
+		&types.Project{ID: uuid.New(), Name: "Postgres HA", Slug: "postgres-ha"},
+		nil,
+		sharedDataArgo,
+		evidenceByNamespace,
+	)
+	assert.Nil(t, postgresHA)
+}
+
 func TestMatchProjectCardArgoEvidenceUsesCandidatesAndRepoFallback(t *testing.T) {
 	projectID := uuid.New()
 	project := &types.Project{ID: projectID, Name: "Phynd CRM Staging", Slug: "phynd-crm-staging"}
