@@ -9,16 +9,15 @@
 runnerScaleSetName: "madfam-runners-blue"
 
 # Scale configuration — runners are intentionally pinned to the dedicated
-# builder node. On 2026-05-06 the builder had 8 vCPU allocatable, 7.6 vCPU
-# already requested during CI bursts, and ARC pods started sticking Pending
-# once desired runners exceeded 9. Pending EphemeralRunner CRs count against
-# scale-set capacity, so setting max above the schedulable ceiling creates
-# artificial starvation instead of more throughput.
+# builder node. On 2026-05-21 the blue pool saturated at 9 assigned jobs while
+# private-repo workflows stayed queued. The shared runner CPU request is kept
+# at 400m so 12 runners remain schedulable on the 8 vCPU builder without
+# creating Pending EphemeralRunner capacity starvation.
 #
-# Raise this only after adding a second builder node or deliberately allowing
-# a separate spillover scale set onto non-production nodes.
+# Raise this further only after adding a second builder node or deliberately
+# allowing a separate spillover scale set onto non-production nodes.
 minRunners: 1
-maxRunners: 9
+maxRunners: 12
 
 # Blue-specific labels for identification
 template:

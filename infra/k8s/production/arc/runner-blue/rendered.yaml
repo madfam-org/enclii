@@ -131,7 +131,7 @@ spec:
   githubConfigUrl: https://github.com/madfam-org
   githubConfigSecret: github-app-secret
   runnerScaleSetName: madfam-runners-blue
-  maxRunners: 9
+  maxRunners: 12
   minRunners: 1
   listenerTemplate:
     spec:
@@ -225,7 +225,7 @@ spec:
             cpu: 1500m
             memory: 2Gi
           requests:
-            cpu: 500m
+            cpu: 400m
             memory: 1Gi
         env:
           - name: DOCKER_HOST

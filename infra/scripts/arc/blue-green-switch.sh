@@ -52,7 +52,7 @@ log_error() {
 max_runners_for_color() {
     local color=$1
     if [[ "${color}" == "blue" ]]; then
-        echo "9"
+        echo "12"
     else
         echo "2"
     fi

@@ -73,7 +73,10 @@ template:
           - /home/runner/run.sh
         resources:
           requests:
-            cpu: 500m
+            # Keep scheduler requests aligned with the dedicated 8 vCPU
+            # builder. This allows the active blue pool to burst to 12 runners
+            # without creating Pending EphemeralRunner capacity starvation.
+            cpu: 400m
             memory: 1Gi
           limits:
             cpu: 1500m
