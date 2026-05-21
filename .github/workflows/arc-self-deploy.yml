@@ -164,7 +164,7 @@ jobs:
 
       - name: Install kubectl
         if: steps.check-secret.outputs.skip != 'true'
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@v5
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
@@ -288,7 +288,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@v5
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
@@ -347,7 +347,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@v5
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
