@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENCLII_BIN="${ENCLII_BIN:-$ROOT/bin/enclii}"
 WINDOW_HOURS="${WINDOW_HOURS:-24}"
+ACTIVE_JOB_STALE_SECONDS="${ACTIVE_JOB_STALE_SECONDS:-1800}"
+LONGHORN_BACKUP_ACTIVE_JOB_STALE_SECONDS="${LONGHORN_BACKUP_ACTIVE_JOB_STALE_SECONDS:-14400}"
 TMP_DIR="$(mktemp -d)"
 ISSUES=0
 
@@ -276,22 +278,34 @@ section "Active Jobs Near Deadline"
 now_epoch="$(date -u +%s)"
 if [[ -s "$TMP_DIR/jobs.json" ]]; then
   active_jobs="$(
-    jq -r --argjson now "$now_epoch" '
+    jq -r \
+      --argjson now "$now_epoch" \
+      --argjson generic_stale "$ACTIVE_JOB_STALE_SECONDS" \
+      --argjson longhorn_stale "$LONGHORN_BACKUP_ACTIVE_JOB_STALE_SECONDS" '
+      def longhorn_recurring_backup:
+        (.metadata.namespace == "longhorn-system")
+        and ((.metadata.labels["longhorn.io/managed-by"] // "") == "longhorn-manager")
+        and (
+          ((.metadata.labels["recurring-job.longhorn.io"] // "") | ascii_downcase | contains("backup"))
+          or ((.metadata.name // "") | ascii_downcase | contains("backup"))
+        );
       .items[]
       | select((.status.active // 0) > 0)
+      | longhorn_recurring_backup as $longhorn_backup
       | (.status.startTime // .metadata.creationTimestamp) as $start
       | ($start | fromdateiso8601? // 0) as $start_epoch
       | (.spec.activeDeadlineSeconds // 0) as $deadline
       | ($now - $start_epoch) as $age
-      | select(($deadline > 0 and $age > ($deadline * 0.8)) or ($deadline == 0 and $age > 1800))
-      | "\(.metadata.namespace)/\(.metadata.name)\tactive=\(.status.active // 0)\tage_seconds=\($age)\tdeadline_seconds=\($deadline)"
+      | (if $longhorn_backup then $longhorn_stale else $generic_stale end) as $stale
+      | select(($deadline > 0 and $age > ($deadline * 0.8)) or ($deadline == 0 and $age > $stale))
+      | "\(.metadata.namespace)/\(.metadata.name)\tactive=\(.status.active // 0)\tage_seconds=\($age)\tdeadline_seconds=\($deadline)\tthreshold_seconds=\(if $deadline > 0 then (($deadline * 0.8) | floor) else $stale end)\tclass=\(if $longhorn_backup then "longhorn-recurring-backup" else "generic" end)"
     ' "$TMP_DIR/jobs.json"
   )"
   if [[ -n "$active_jobs" ]]; then
     printf '%s\n' "$active_jobs"
     issue "active Jobs are near or past their deadline"
   else
-    printf 'No active Jobs are near their activeDeadlineSeconds threshold\n'
+    printf 'No active Jobs are near their activeDeadlineSeconds or stale-runtime thresholds\n'
   fi
 else
   issue "unable to evaluate active Jobs"
