@@ -216,8 +216,20 @@ fi
 section "Recent Failed Jobs"
 cutoff_epoch="$(epoch_hours_ago "$WINDOW_HOURS")"
 if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
+  printf '{"items":[]}\n' > "$TMP_DIR/longhorn-backups.json"
+  printf '{"items":[]}\n' > "$TMP_DIR/longhorn-volumes.json"
+  if kubectl -n longhorn-system get backups.longhorn.io -o json > "$TMP_DIR/longhorn-backups.json" 2>/dev/null \
+    && kubectl -n longhorn-system get volumes.longhorn.io -o json > "$TMP_DIR/longhorn-volumes.json" 2>/dev/null; then
+    :
+  else
+    printf '{"items":[]}\n' > "$TMP_DIR/longhorn-backups.json"
+    printf '{"items":[]}\n' > "$TMP_DIR/longhorn-volumes.json"
+  fi
   failed_jobs="$(
-    jq -r --argjson cutoff "$cutoff_epoch" '
+    jq -r \
+      --argjson cutoff "$cutoff_epoch" \
+      --slurpfile longhorn_backups "$TMP_DIR/longhorn-backups.json" \
+      --slurpfile longhorn_volumes "$TMP_DIR/longhorn-volumes.json" '
       def is_manual_recovery_name:
         (.metadata.name | test("-(manual|recovery)-"));
       def cron_name:
@@ -232,6 +244,42 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
       def is_failed_terminal:
         (([.status.conditions[]? | select(.type == "Failed" and .status == "True")] | length) > 0)
         or (((.status.succeeded // 0) == 0) and ((.status.active // 0) == 0) and ((.status.failed // 0) > 0));
+      def longhorn_recurring_backup:
+        (.metadata.namespace == "longhorn-system")
+        and ((.metadata.labels["longhorn.io/managed-by"] // "") == "longhorn-manager")
+        and (
+          ((.metadata.labels["recurring-job.longhorn.io"] // "") | ascii_downcase | contains("backup"))
+          or ((.metadata.name // "") | ascii_downcase | contains("backup"))
+        );
+      def longhorn_expected_volume_count($schedule_epoch):
+        [
+          $longhorn_volumes[0].items[]?
+          | select((.status.state // "") == "attached")
+          | (.metadata.creationTimestamp // "") as $created
+          | select((($created | fromdateiso8601? // 0) <= $schedule_epoch) or $schedule_epoch == 0)
+          | .metadata.name
+        ]
+        | unique
+        | length;
+      def longhorn_completed_backup_volume_count($cron; $schedule_epoch):
+        [
+          $longhorn_backups[0].items[]?
+          | select((.status.state // "") == "Completed")
+          | select((.status.labels.RecurringJob // .spec.labels.RecurringJob // "") == $cron)
+          | ((.status.backupCreatedAt // .status.snapshotCreatedAt // .metadata.creationTimestamp // "") | fromdateiso8601? // 0) as $backup_epoch
+          | select($backup_epoch >= $schedule_epoch)
+          | (.status.volumeName // .spec.volumeName // .metadata.labels["backup-volume"] // empty)
+        ]
+        | unique
+        | length;
+      def recovered_by_longhorn_backup_crs:
+        if (._longhorn_recurring_backup | not) then
+          false
+        else
+          (longhorn_expected_volume_count(._epoch)) as $expected
+          | (longhorn_completed_backup_volume_count(._cron_name; ._epoch)) as $covered
+          | ($expected > 0 and $covered >= $expected)
+        end;
 
       [
         .items[]
@@ -247,7 +295,8 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
             "_failed": (.status.failed // 0),
             "_active": (.status.active // 0),
             "_complete": is_complete,
-            "_failed_terminal": is_failed_terminal
+            "_failed_terminal": is_failed_terminal,
+            "_longhorn_recurring_backup": longhorn_recurring_backup
           }
       ]
       | sort_by(.metadata.namespace, ._cron_name, ._epoch)
@@ -258,6 +307,7 @@ if kubectl get jobs.batch -A -o json > "$TMP_DIR/jobs.json"; then
           | map(select(._epoch >= $cutoff))
           | map(select(._epoch > $recovered_epoch))
           | map(select(._failed_terminal))
+          | map(select((recovered_by_longhorn_backup_crs) | not))
         ) as $unrecovered_failures
       | select(($unrecovered_failures | length) > 0)
       | ($unrecovered_failures | last) as $last
