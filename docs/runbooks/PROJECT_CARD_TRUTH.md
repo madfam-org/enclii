@@ -19,6 +19,8 @@ while projecting dashboard card facts from Switchyard's backend sources:
 - latest deployment and commit facts from `deployments` + `releases`
 - backend-detected framework from the latest non-empty `releases.framework_slug`
 - rollout state from live Kubernetes ReplicaSet inspection
+- CronJob/job evidence from Kubernetes, scoped to project-owned namespaces or
+  CronJobs whose labels/name identify the project
 
 The UI must not infer product/framework truth from MADFAM repo names, project
 slugs, or domain maps. If the backend omits `framework`, the cards render no
@@ -88,6 +90,12 @@ Before calling the cards truthful:
    `madfam-runners-blue` ARC pool for Docker image builds. If the project-card
    fix is merged but the production image does not move, check for queued
    `docker-build` jobs rather than lint/UI/build jobs occupying ARC capacity.
+9. Shared infrastructure namespaces must not smear one CronJob failure across
+   every Argo app in the namespace. For namespaces such as `data`, the card
+   aggregate may attach job evidence only when the CronJob name or labels
+   (`app`, `app.kubernetes.io/name`, `app.kubernetes.io/instance`,
+   `app.kubernetes.io/component`, or `app.kubernetes.io/part-of`) match the
+   project or matched Argo app.
 
 ## Verification
 
@@ -107,6 +115,11 @@ If `/projects` renders stale card facts after the API is correct, check whether
 the UI deployment is still on an older image. For signed-image provenance, run
 `cosign verify` on each deployment digest and compare `githubWorkflowSha` with
 the commit that introduced the card aggregate or follow-up UI fix.
+
+If a shared-namespace CronJob fails, verify card attribution before declaring
+the whole namespace unhealthy. A `postgres-backup` failure in `data` should
+mark backup/platform-infra evidence, not unrelated apps such as Redpanda or
+Redis, unless their CronJob labels explicitly match those projects.
 
 To rebuild only the project-card services after a CI-only remediation, dispatch
 the CI workflow with:
