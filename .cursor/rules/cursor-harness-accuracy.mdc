@@ -1,0 +1,12 @@
+---
+description: Require verified Cursor harness facts
+alwaysApply: true
+---
+
+# Cursor harness accuracy
+
+For Cursor IDE instructions, read **`internal-devops/ecosystem/cursor-harness-truth.md`** first.
+
+Never tell the user to run palette **Reindex** — use **Indexing & Docs → Sync** or **Delete Index + Compute index**.
+
+Run `python3 ../internal-devops/scripts/check-cursor-harness-docs.py` after changing Cursor-related docs.

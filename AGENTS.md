@@ -56,3 +56,4 @@ Regenerate or repair these files with
 - Default agent model: **Auto**; use **Opus 4.7** / **GPT-5.3 Codex** + Max Mode only for large infra/API spans.
 - `.cursorignore` excludes `tests/golden/` and rendered manifests from indexing.
 - Playbook: `internal-devops/ecosystem/cursor-usage-playbook.md`.
+- Cursor harness truth: `internal-devops/ecosystem/cursor-harness-truth.md`.
