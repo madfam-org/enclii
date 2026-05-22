@@ -48,3 +48,11 @@ redirect and should not become the source of truth again.
 
 Regenerate or repair these files with
 `internal-devops/scripts/sync-agent-docs.py` from the labspace ecosystem.
+
+## Cursor IDE
+
+- Open `labspace/madfam-platform.code-workspace` for platform work (not full `labspace/` root).
+- Entrypoints: `apps/switchyard-api/`, `apps/switchyard-ui/`, `packages/cli/`, `infra/k8s/`.
+- Default agent model: **Auto**; use **Opus 4.7** / **GPT-5.3 Codex** + Max Mode only for large infra/API spans.
+- `.cursorignore` excludes `tests/golden/` and rendered manifests from indexing.
+- Playbook: `internal-devops/ecosystem/cursor-usage-playbook.md`.

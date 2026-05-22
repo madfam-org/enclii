@@ -1,0 +1,35 @@
+---
+description: MADFAM Cursor workspace, models, and agent context discipline
+alwaysApply: true
+---
+
+# MADFAM Cursor operating rule
+
+## Workspace
+
+- Prefer `madfam-platform.code-workspace` (enclii + internal-devops + solarpunk-foundry) for platform work.
+- Do not assume the full `labspace/` root (~40 repos) is in scope unless the user opened it explicitly.
+
+## Instructions order
+
+1. Repo `AGENTS.md`
+2. `llms.txt` then `llms-full.txt` if needed
+3. Task-specific paths only
+
+## Enclii entrypoints
+
+- API: `apps/switchyard-api/`
+- UI: `apps/switchyard-ui/`
+- CLI: `packages/cli/`
+- K8s/Helm: `infra/k8s/`, `infra/helm/`
+- Golden tests: `tests/golden/` (regenerate deliberately; excluded from index)
+
+## Models (Ultra)
+
+- Default: **Auto** or **Composer 2.5**, Max Mode **off**.
+- Escalate to **Claude 4.7 Opus** or **GPT-5.3 Codex** for reconciler, K8s, Helm, cross-app changes; Max Mode on only for large spans.
+
+## Production
+
+- **Enclii-first** for all routine ops.
+- No secrets in chat or commits.

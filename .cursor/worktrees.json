@@ -1,0 +1,9 @@
+{
+  "setup-worktree-unix": [
+    "if [ -f apps/switchyard-ui/pnpm-lock.yaml ]; then cd apps/switchyard-ui && pnpm install --frozen-lockfile; fi",
+    "if [ -f apps/admin-console/pnpm-lock.yaml ]; then cd apps/admin-console && pnpm install --frozen-lockfile; fi"
+  ],
+  "setup-worktree": [
+    "echo 'Prefer setup-worktree-unix on macOS/Linux for Enclii pnpm apps.'"
+  ]
+}

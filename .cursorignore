@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+vendor/
+**/__pycache__/
+
+tests/golden/
+**/rendered.yaml
+infra/k8s/production/arc/runner-blue/rendered.yaml
