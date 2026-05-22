@@ -5,8 +5,8 @@ alwaysApply: true
 
 # Cursor harness accuracy
 
-For Cursor IDE instructions, read **`internal-devops/ecosystem/cursor-harness-truth.md`** first.
+Read **`internal-devops/ecosystem/cursor-harness-truth.md`** first.
 
-Never tell the user to run palette **Reindex** — use **Indexing & Docs → Sync** or **Delete Index + Compute index**.
+**Agents Window (`Cursor Agents`) ≠ Editor Window (`Cursor`).** Sync / Delete Index / Compute index exist **only in Editor Window**. From Agents: **`Cmd+Shift+P` → Open Editor Window** first.
 
-Run `python3 ../internal-devops/scripts/check-cursor-harness-docs.py` after changing Cursor-related docs.
+Never tell Agents users to use palette **Index Main Repository** or **Sync** in Glass settings.
