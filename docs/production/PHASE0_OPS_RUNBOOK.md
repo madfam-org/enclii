@@ -1,6 +1,7 @@
 # Phase 0 ops runbook — Stability GA deploy gate
 
 > **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) · [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
+> **Task checklist:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Doctrine:** Enclii web, API, or CLI for routine production work. Record adapter gaps; use break-glass only with reason.
 
 This is the **single execution order** for ops before Commercial GA staging proofs and the 30-day SLO window.

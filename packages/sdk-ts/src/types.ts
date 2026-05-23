@@ -488,6 +488,94 @@ export interface PreviewCommentListResponse {
 }
 
 // -----------------------------------------------------------------------------
+// Billing (Waybill proxy via Switchyard)
+// -----------------------------------------------------------------------------
+
+export type BudgetPeriod = 'monthly' | 'weekly' | 'quarterly';
+
+/** Project spend budget configured in Waybill. */
+export interface ProjectBudget {
+  id: UUID;
+  project_id: UUID;
+  amount_cents: number;
+  currency: string;
+  period: BudgetPeriod;
+  alert_thresholds: number[];
+  hard_throttle: boolean;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface ProjectBudgetListResponse {
+  budgets: ProjectBudget[];
+}
+
+export interface CreateProjectBudgetRequest {
+  amount_cents: number;
+  currency?: string;
+  period?: BudgetPeriod;
+  alert_thresholds?: number[];
+  hard_throttle?: boolean;
+}
+
+export interface UpdateProjectBudgetRequest {
+  amount_cents?: number;
+  currency?: string;
+  period?: BudgetPeriod;
+  alert_thresholds?: number[];
+  hard_throttle?: boolean;
+}
+
+/** Aggregated cost for a project over a billing period. */
+export interface ProjectCostResponse {
+  project_id: UUID;
+  period_start: ISODateTime;
+  period_end: ISODateTime;
+  total_cents: number;
+  group_by: string;
+  series?: Array<{
+    bucket: string;
+    cost_cents: number;
+    by_metric?: Record<string, number>;
+  }>;
+  breakdown?: Array<{ key: string; cost_cents: number }>;
+}
+
+/** Budget threshold alert dispatched (or pending) for a period. */
+export interface BudgetAlertEvent {
+  id: UUID;
+  budget_id: UUID;
+  project_id: UUID;
+  period_start: ISODateTime;
+  period_end: ISODateTime;
+  threshold: number;
+  actual_cents: number;
+  budget_cents: number;
+  dispatched_at?: ISODateTime | null;
+  dispatch_attempts: number;
+  last_error?: string;
+  created_at: ISODateTime;
+}
+
+export interface BudgetAlertListResponse {
+  alerts: BudgetAlertEvent[];
+}
+
+/** Active or historical deploy throttle when a budget is exceeded. */
+export interface BudgetThrottle {
+  id: UUID;
+  project_id: UUID;
+  reason: string;
+  env_scope: string;
+  activated_at: ISODateTime;
+  cleared_at?: ISODateTime | null;
+}
+
+export interface BudgetThrottleListResponse {
+  throttles: BudgetThrottle[];
+}
+
+// -----------------------------------------------------------------------------
 // Persistent volumes (service spec)
 // -----------------------------------------------------------------------------
 

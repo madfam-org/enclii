@@ -2,6 +2,7 @@
 
 > **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md)  
 > **Scorecard:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
+> **Open ops queue:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
 > **Last updated:** 2026-05-22
 
@@ -32,7 +33,7 @@
 | Log routes `mustServiceAccess` | Done (PR #250) |
 | Reconciler queue metrics | Done (prior `main`) |
 | OpenAPI canonical path + sdk-ts CI drift check | Done (PR #253–254) |
-| OpenAPI → `sdk-ts` UI adoption | Done — preview types via `@madfam/enclii-sdk` workspace dep |
+| OpenAPI → `sdk-ts` UI adoption | In progress — previews + billing via `@madfam/enclii-sdk`; domains/deployments local |
 | Waybill budget **enforce** on deploy/build | Done — `enforceBudgetNotThrottled` on deploy + build (main, post-#250) |
 | Budget/throttle visibility in CLI | Done — `enclii billing throttles`; UI at `/projects/:slug/billing` |
 
