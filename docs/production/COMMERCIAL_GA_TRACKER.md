@@ -39,7 +39,7 @@
 |------------|--------|
 | API (`/v1/previews`, PR webhook) | Implemented — `CreatePreview` authZ + lifecycle tests |
 | Reconciler / URL lifecycle | Partial — verify E2E in staging |
-| UI + CLI docs | Open |
+| UI + CLI docs | UI wired (Previews tab); CLI `enclii previews` + [previews.md](../cli/commands/previews.md) |
 | E2E test (SOFTWARE_SPEC) | Smoke in CI; full lifecycle opt-in via `PREVIEW_E2E_*` env |
 
 ## Product bet B — Custom domains + TLS
@@ -73,4 +73,5 @@
 2. ~~PVC persist + settings UI (#258)~~ → `main`
 3. **Deploy `main` + migration 030 + security checklist** (ops — critical path)
 4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
-5. GTM wrap (SLA, pricing, changelog) after Stability GA window starts
+5. ~~Preview CLI + docs (bet A)~~ → `main`
+6. GTM wrap (SLA, pricing, changelog) after Stability GA window starts
