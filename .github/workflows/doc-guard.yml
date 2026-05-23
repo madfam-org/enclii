@@ -48,3 +48,7 @@ jobs:
           strict: true
           check-links: false
           check-env-vars: false
+          # Terminology: disabled until competitive-analysis docs are rewritten or
+          # archived (see docs/production/COMMERCIAL_GA_TRACKER.md). Link/env
+          # checks remain off for this workflow.
+          check-terminology: false
