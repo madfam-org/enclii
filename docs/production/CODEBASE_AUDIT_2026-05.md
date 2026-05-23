@@ -50,6 +50,10 @@ Ship before or with next production deploy:
 - [x] Reconciler queue Prometheus metrics (`monitoring/reconciler_metrics.go`)
 - [x] `services.rollout_blocked_reason` migration + reconciler persist
 - [x] Doc-guard blocking on `main` (strict mode)
+- [x] Deployment routes authZ fix (`GetDeploymentByVersion`, `ListServiceDeployments`, `GetLatestDeployment`)
+- [x] Global `ErrorHandlerMiddleware` in `SetupRoutes`
+- [x] Reconciler process duration/failure Prometheus metrics
+- [x] `AUTHZ_HANDLER_AUDIT.md` + expanded cross-tenant tests
 
 ## Deferred (Phase 4, 7)
 
