@@ -28,7 +28,7 @@
 | `GET /v1/deployments` user-scoped (non-admin) | Done (PR #250) |
 | Log routes `mustServiceAccess` | Done (PR #250) |
 | Reconciler queue metrics | Done (prior `main`) |
-| OpenAPI canonical path + sdk-ts CI drift check | Done (PR pending) |
+| OpenAPI canonical path + sdk-ts CI drift check | Done (PR #253–254) |
 | OpenAPI → `sdk-ts` UI adoption | Open — workspace dep not wired yet |
 | Waybill budget **enforce** on deploy/build | Done — `enforceBudgetNotThrottled` on deploy + build (main, post-#250) |
 
@@ -36,10 +36,10 @@
 
 | Capability | Status |
 |------------|--------|
-| API (`/v1/previews`, PR webhook) | Implemented — authZ hardened |
+| API (`/v1/previews`, PR webhook) | Implemented — `CreatePreview` authZ + lifecycle tests |
 | Reconciler / URL lifecycle | Partial — verify E2E in staging |
 | UI + CLI docs | Open |
-| E2E test (SOFTWARE_SPEC) | Open |
+| E2E test (SOFTWARE_SPEC) | API + webhook harness in `preview_lifecycle_test.go`; staging Playwright open |
 
 ## Product bet B — Custom domains + TLS
 
