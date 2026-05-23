@@ -6,12 +6,14 @@ on:
       - main
     paths:
       - 'apps/switchyard-ui/**'
+      - 'packages/sdk-ts/**'
       - '.github/workflows/e2e-tests.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'apps/switchyard-ui/**'
+      - 'packages/sdk-ts/**'
       - '.github/workflows/e2e-tests.yml'
   workflow_dispatch:
 
@@ -51,6 +53,7 @@ jobs:
         run: |
           pnpm --dir ../.. --filter @enclii/shared-lib build
           pnpm --dir ../.. --filter @enclii/ui-components build
+          pnpm --dir ../.. --filter @madfam/enclii-sdk build
 
       - name: Build application
         run: pnpm run build

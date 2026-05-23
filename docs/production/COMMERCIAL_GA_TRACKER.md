@@ -29,7 +29,7 @@
 | Log routes `mustServiceAccess` | Done (PR #250) |
 | Reconciler queue metrics | Done (prior `main`) |
 | OpenAPI canonical path + sdk-ts CI drift check | Done (PR #253–254) |
-| OpenAPI → `sdk-ts` UI adoption | Open — workspace dep not wired yet |
+| OpenAPI → `sdk-ts` UI adoption | Done — preview types via `@madfam/enclii-sdk` workspace dep |
 | Waybill budget **enforce** on deploy/build | Done — `enforceBudgetNotThrottled` on deploy + build (main, post-#250) |
 
 ## Product bet A — Preview environments
@@ -39,7 +39,7 @@
 | API (`/v1/previews`, PR webhook) | Implemented — `CreatePreview` authZ + lifecycle tests |
 | Reconciler / URL lifecycle | Partial — verify E2E in staging |
 | UI + CLI docs | Open |
-| E2E test (SOFTWARE_SPEC) | API + webhook harness in `preview_lifecycle_test.go`; staging Playwright open |
+| E2E test (SOFTWARE_SPEC) | Smoke in CI; full lifecycle opt-in via `PREVIEW_E2E_*` env |
 
 ## Product bet B — Custom domains + TLS
 

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@enclii/ui-components": "workspace:*",
+    "@madfam/enclii-sdk": "workspace:*",
     "@janua/ui": "^0.1.1",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.4",
