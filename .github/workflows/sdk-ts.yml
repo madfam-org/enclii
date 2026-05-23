@@ -44,7 +44,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter @madfam/enclii-sdk...
 
       - name: Typecheck
         working-directory: packages/sdk-ts
