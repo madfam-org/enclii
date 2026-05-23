@@ -1,7 +1,8 @@
 # Commercial & Stability GA — readiness scorecard
 
-> **Last updated:** 2026-05-22  
+> **Last updated:** 2026-05-23  
 > **Canonical tracker:** [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
+> **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
 > **Ops execution:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md)  
 > **Open ops tasks (O-1–O-22):** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)
 
@@ -13,8 +14,8 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 
 | Track | Readiness | Blocker |
 |-------|-----------|---------|
-| **Stability GA** | **~55%** | Prod deploy, cluster P0, 30-day SLO not started |
-| **Commercial GA (scoped)** | **~45–50%** | Stability GA + staging proofs + GTM publish |
+| **Stability GA** | **~62%** | Deploy + migration 030 done; security sign-off + cluster P0 + SLO clock open |
+| **Commercial GA (scoped)** | **~68%** | Staging proofs green (2026-05-23); monetization QA + 30d SLO + GTM publish |
 | **Monetization path** | **~60–65%** | Signup/pricing live proof, published SLA |
 | **Retention / support** | **~35–40%** | Live status page, support tiers, on-call proof |
 
@@ -31,9 +32,9 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 | **Cluster health** | Disk &lt;40%, Longhorn, Argo synced | 🔴 Open | [REMAINING_ITEMS.md](./REMAINING_ITEMS.md) P0 |
 | **DR / backups** | Restore drill logged | 🟡 Partial | Drill in Phase 0 step 2.5 |
 | **CI quality** | Blocking on `main` | 🟢 Done | Unit, UI, ecosystem E2E smokes |
-| **Bet A — Previews** | Staging lifecycle pass | 🟡 Built / unproven | `PREVIEW_E2E_*` |
-| **Bet B — Domains** | Staging lifecycle pass | 🟡 Built / unproven | `DOMAIN_E2E_*` |
-| **Bet C — Volumes** | Staging + deploy pass | 🟡 Built / unproven | `STORAGE_E2E_*` |
+| **Bet A — Previews** | Staging lifecycle pass | 🟢 Proven | Actions run 26328015825 (2026-05-23) |
+| **Bet B — Domains** | Staging lifecycle pass | 🟢 Proven | Same run |
+| **Bet C — Volumes** | Staging + deploy pass | 🟢 Smoke proven | Same run (full deploy slice optional) |
 | **Billing enforce** | Throttle on deploy/build | 🟢 Done | Waybill + `enclii billing throttles` |
 | **Self-serve signup** | End-to-end in prod | 🟡 Checklist | [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) |
 | **Pricing / checkout** | Landing + Dhanam aligned | 🟡 Partial | Paywall E2E may skip if not deployed |
@@ -51,7 +52,7 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 
 | Item | Owner | Date | Initials |
 |------|-------|------|----------|
-| Deploy `main` + migration 030 | Ops | | |
+| Deploy `main` + migration 030 | Ops | 2026-05-23 | Argo `848c8968`; `rollout_blocked_reason` in `enclii` DB |
 | SECURITY_RELEASE_PR complete | Ops | | |
 | REMAINING_ITEMS P0 (disk, Longhorn, PostHog) | Ops | | |
 | Restore drill evidence filed | Ops | | |
@@ -60,9 +61,9 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 
 | Bet | Workflow / local pass | Date | Initials |
 |-----|----------------------|------|----------|
-| A Previews | | | |
-| B Domains | | | |
-| C Storage | | | |
+| A Previews | 2026-05-23 | [run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) | |
+| B Domains | 2026-05-23 | same | |
+| C Storage | 2026-05-23 | same | |
 
 Refs: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) · Actions **Commercial GA staging proof**
 

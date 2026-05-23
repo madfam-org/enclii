@@ -4,22 +4,24 @@
 > **Scorecard:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Open ops queue:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
-> **Last updated:** 2026-05-22
+> **Last updated:** 2026-05-23  
+> **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)
 
 ## Gate summary
 
 | Track | Target | Status |
 |-------|--------|--------|
-| Stability GA | Phase 0–2 exit criteria | In progress — authZ code largely complete; ops queue open |
-| Commercial GA | Phase 3 + Section 1 commercial checklist | Not started (blocked on Stability GA deploy proof) |
+| Stability GA | Phase 0–2 exit criteria | **In progress** — deploy at `main` (2026-05-23); ops + SLO clock open |
+| Commercial GA | Phase 3 + Section 1 commercial checklist | **In progress** — blocked on staging proofs + 30d SLO |
 
 ## Phase 0 — Ops (Enclii-first)
 
 | Item | Owner | Status |
 |------|-------|--------|
 | `SECURITY_RELEASE_PR.md` production checklist | Ops | Open |
-| `REMAINING_ITEMS.md` cluster P0/P1 | Ops | Open |
-| Migration `030` (`rollout_blocked_reason`) in prod | Ops | Open — see [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) |
+| `REMAINING_ITEMS.md` cluster P0/P1 | Ops | In progress (PostHog ns removed) |
+| Migration `030` (`rollout_blocked_reason`) in prod | Ops | Verify column — API migrates on startup |
+| Deploy `main` (Argo `enclii-infrastructure`) | Ops | **Done** 2026-05-23 (`848c8968`) |
 | Staging lifecycle proofs (bets A/B/C) | Ops | [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) · [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) |
 | Phase 0 execution order | Ops | [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) |
 
@@ -44,7 +46,7 @@
 | API (`/v1/previews`, PR webhook) | Implemented — `CreatePreview` authZ + lifecycle tests |
 | Reconciler / URL lifecycle | Partial — verify E2E in staging |
 | UI + CLI docs | UI wired (Previews tab); CLI + [preview-environments.md](../guides/preview-environments.md) |
-| E2E test (SOFTWARE_SPEC) | Smoke in CI; full lifecycle opt-in via `PREVIEW_E2E_*` env |
+| E2E test (SOFTWARE_SPEC) | **Staging proof green** 2026-05-23 (Actions 26328015825) |
 
 ## Product bet B — Custom domains + TLS
 
@@ -52,7 +54,7 @@
 |------------|--------|
 | Domain API + cert-manager path | Implemented |
 | `ToggleZeroTrust` authZ | Done (PR #250) |
-| DNS verify + Junction routing E2E | Smoke in CI; full lifecycle opt-in via `DOMAIN_E2E_*` env |
+| DNS verify + Junction routing E2E | **Staging proof green** 2026-05-23 |
 | User guide + CLI | [custom-domains.md](../guides/custom-domains.md), `enclii domains` |
 
 ## Product bet C — Persistent volumes
@@ -62,7 +64,7 @@
 | Reconciler `generatePVCs` / mount | Implemented — unit tests exist |
 | UI volume attach + lifecycle | Settings editor + API persist volumes (`ServiceVolumesEditor`) |
 | CLI + user guide | `enclii volumes` + [persistent-volumes.md](../guides/persistent-volumes.md) |
-| E2E stateful deploy | Smoke in CI; volumes opt-in via `STORAGE_E2E_*`; deploy slice needs `STORAGE_E2E_RELEASE_ID` |
+| E2E stateful deploy | **Smoke green** 2026-05-23; full deploy slice optional via `STORAGE_E2E_RELEASE_ID` |
 
 ## Commercial wrap (GTM / legal)
 
@@ -72,6 +74,16 @@
 | Support tiers + status page | Draft — [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
 | GA changelog; retire “95% ready” externally | Draft — [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
 | Pricing + self-serve signup tested | Checklist — [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md); signup API smoke in CI |
+
+## Execution log (2026-05-23)
+
+| Action | Result |
+|--------|--------|
+| PR #266 merged (`REMAINING_OPS_GA`, sdk-ts billing, structured errors) | Done |
+| Argo `enclii-infrastructure` at `848c8968` | Synced / Healthy |
+| `gh workflow run commercial-ga-staging-proof` | **Green** — [run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) (A/B/C passed) |
+| Migration 030 `rollout_blocked_reason` | Verified in `enclii` Postgres |
+| Execution roadmap published | [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md) |
 
 ## Next merge train
 
