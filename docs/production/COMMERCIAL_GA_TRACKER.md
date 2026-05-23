@@ -29,7 +29,7 @@
 | Log routes `mustServiceAccess` | Done (PR #250) |
 | Reconciler queue metrics | Done (prior `main`) |
 | OpenAPI → `sdk-ts` UI adoption | Open |
-| Waybill budget **enforce** on deploy/build | Open (throttle table exists; API check pending) |
+| Waybill budget **enforce** on deploy/build | Done — `enforceBudgetNotThrottled` on deploy + build (main, post-#250) |
 
 ## Product bet A — Preview environments
 
@@ -67,6 +67,6 @@
 
 ## Next merge train
 
-1. Merge [PR #250](https://github.com/madfam-org/enclii/pull/250) → `main`
-2. Deploy API with migration 030 + security checklist
-3. Branch `fix/ga-openapi-sdk-ts` for contract work; `feat/ga-budget-enforce` for Waybill throttle on deploy
+1. ~~Merge PR #250~~ → `main` (2026-05-23)
+2. Merge budget-enforce PR → deploy API with migration 030 + security checklist
+3. Branch `fix/ga-openapi-sdk-ts` for contract work; product E2E for previews/domains/PVCs

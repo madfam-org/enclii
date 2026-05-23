@@ -122,6 +122,11 @@ var (
 		Message:    "Insufficient permissions for this operation",
 		HTTPStatus: http.StatusForbidden,
 	}
+	ErrBudgetThrottled = &AppError{
+		Code:       "BUDGET_THROTTLED",
+		Message:    "Deploy blocked: project budget exceeded for this environment scope",
+		HTTPStatus: http.StatusForbidden,
+	}
 
 	// Validation errors (400)
 	ErrValidation = &AppError{

@@ -81,7 +81,7 @@ Commercial GA adds:
 |------|----------------|
 | Security deploy checklist | **P0** — ops |
 | Cluster P0/P1 (`REMAINING_ITEMS`) | **P0** — ops |
-| AuthZ proof tests + handler audit | **P0** — eng |
+| AuthZ proof tests + handler audit | **Done** — PR #250 on `main` |
 | Reconciler queue metrics + alerting | **P1** — eng/ops |
 | Structured API errors (50+ handlers) | **P1** — eng |
 | sdk-ts / OpenAPI sync in UI | **P1** — eng |
