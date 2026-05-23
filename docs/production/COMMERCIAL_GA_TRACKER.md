@@ -83,6 +83,9 @@
 | Argo `enclii-infrastructure` at `848c8968` | Synced / Healthy |
 | `gh workflow run commercial-ga-staging-proof` | **Green** — [run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) (A/B/C passed) |
 | Migration 030 `rollout_blocked_reason` | Verified in `enclii` Postgres |
+| Security release automated checks | [SECURITY_RELEASE_VERIFICATION.md](./SECURITY_RELEASE_VERIFICATION.md) (2026-05-23) |
+| Longhorn detached orphan cleanup | 5 volumes deleted (break-glass; 1 detached remains) |
+| Signup in prod | **Disabled** — enable `ENCLII_SIGNUP_ENABLED` for Wave 2 (O-17) |
 | Execution roadmap published | [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md) |
 
 ## Next merge train
