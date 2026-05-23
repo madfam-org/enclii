@@ -55,6 +55,5 @@ All routes under `protected` with `:slug` use `RequireProjectAccessBySlug()` mid
 
 ## Next audit targets
 
-- [ ] `GET /v1/deployments` (`ListAllDeployments`) — team/global list semantics
-- [ ] `PUT /domains/:domain_id/protection` — domain UUID without service `:id`
-- [ ] Log stream / search handlers on `/services/:id/logs/*` (verify `mustServiceAccess`)
+- [ ] `GET /v1/audit` and other global list endpoints — confirm user scoping
+- [ ] `GET /v1/services` (git_repo query) — production bearer only (documented)

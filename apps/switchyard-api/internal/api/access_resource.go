@@ -211,3 +211,22 @@ func (h *Handler) loadDeploymentGroupWithSlugAccess(c *gin.Context, groupID uuid
 	}
 	return group, true
 }
+
+// loadCustomDomainWithAccess loads a custom domain and enforces service access.
+func (h *Handler) loadCustomDomainWithAccess(c *gin.Context, domainID uuid.UUID) (*types.CustomDomain, bool) {
+	ctx := c.Request.Context()
+	domain, err := h.repos.CustomDomains.GetByID(ctx, domainID.String())
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondAppError(c, apperrors.ErrNotFound)
+		} else {
+			h.logger.Error(ctx, "Failed to get domain for access check", logging.Error("error", err))
+			respondAppError(c, apperrors.ErrInternal.WithError(err))
+		}
+		return nil, false
+	}
+	if !h.enforceServiceAccess(c, domain.ServiceID) {
+		return nil, false
+	}
+	return domain, true
+}

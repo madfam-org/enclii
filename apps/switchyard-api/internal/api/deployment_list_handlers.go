@@ -45,8 +45,13 @@ func (h *Handler) ListAllDeployments(c *gin.Context) {
 	)
 	if teamID, ok := middleware.ActingTeamID(c); ok {
 		deployments, err = h.repos.Deployments.ListAllEnrichedByTeam(ctx, teamID, since, limit)
-	} else {
+	} else if callerIsPlatformAdmin(c) {
 		deployments, err = h.repos.Deployments.ListAllEnriched(ctx, since, limit)
+	} else if userID, ok := authenticatedUserID(c); ok {
+		deployments, err = h.repos.Deployments.ListAllEnrichedForUser(ctx, userID, since, limit)
+	} else {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
 	}
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list all deployments", logging.Error("db_error", err))

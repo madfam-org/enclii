@@ -53,10 +53,19 @@ type LogStreamMessage struct {
 // GET /v1/deployments/:id/logs/stream
 func (h *Handler) StreamLogsWS(c *gin.Context) {
 	ctx := c.Request.Context()
-	deploymentID := c.Param("id")
+	deploymentIDStr := c.Param("id")
+
+	deploymentUUID, err := uuid.Parse(deploymentIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment ID"})
+		return
+	}
+	if !h.enforceDeploymentAccess(c, deploymentUUID) {
+		return
+	}
 
 	// Get deployment
-	deployment, err := h.repos.Deployments.GetByID(ctx, deploymentID)
+	deployment, err := h.repos.Deployments.GetByID(ctx, deploymentIDStr)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get deployment for log streaming", logging.Error("error", err))
 		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
@@ -207,15 +216,11 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 // GET /v1/services/:id/logs/stream
 func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-	envName := c.DefaultQuery("env", "development")
-
-	// Parse service ID
-	serviceUUID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
+	envName := c.DefaultQuery("env", "development")
 
 	// Get service
 	service, err := h.repos.Services.GetByID(serviceUUID)
@@ -352,15 +357,12 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 // GET /v1/services/:id/logs/history
 func (h *Handler) GetLogsHistory(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-	envName := c.DefaultQuery("env", "development")
-
-	// Parse service ID
-	serviceUUID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
+	serviceID := serviceUUID.String()
+	envName := c.DefaultQuery("env", "development")
 
 	// Get service
 	service, err := h.repos.Services.GetByID(serviceUUID)
@@ -422,15 +424,12 @@ func (h *Handler) GetLogsHistory(c *gin.Context) {
 // build_id corresponds to release_id
 func (h *Handler) GetBuildLogs(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-	buildID := c.Param("build_id")
-
-	// Parse service ID
-	serviceUUID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
+	serviceID := serviceUUID.String()
+	buildID := c.Param("build_id")
 
 	// Parse build/release ID
 	buildUUID, err := uuid.Parse(buildID)
@@ -479,15 +478,11 @@ func (h *Handler) GetBuildLogs(c *gin.Context) {
 // This streams logs from the builder process in real-time
 func (h *Handler) StreamBuildLogsWS(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-	buildID := c.Param("build_id")
-
-	// Parse service ID
-	serviceUUID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
+	buildID := c.Param("build_id")
 
 	// Parse build/release ID
 	buildUUID, err := uuid.Parse(buildID)
@@ -640,19 +635,16 @@ type LogSearchRequest struct {
 // POST /v1/services/:id/logs/search
 func (h *Handler) SearchLogs(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	serviceID := serviceUUID.String()
 	envName := c.DefaultQuery("env", "development")
 
 	var req LogSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// Parse service ID
-	serviceUUID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
 	}
 

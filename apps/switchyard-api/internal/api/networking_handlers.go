@@ -388,9 +388,15 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 // ToggleZeroTrust enables or disables Zero Trust protection for a domain
 // PUT /api/v1/domains/:domain_id/protection
 func (h *Handler) ToggleZeroTrust(c *gin.Context) {
-	domainID := c.Param("domain_id")
-	if domainID == "" {
+	domainIDStr := c.Param("domain_id")
+	if domainIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "domain_id is required"})
+		return
+	}
+
+	domainUUID, err := uuid.Parse(domainIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain_id"})
 		return
 	}
 
@@ -405,10 +411,8 @@ func (h *Handler) ToggleZeroTrust(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Get domain
-	domain, err := h.repos.CustomDomains.GetByID(ctx, domainID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "domain not found"})
+	domain, ok := h.loadCustomDomainWithAccess(c, domainUUID)
+	if !ok {
 		return
 	}
 

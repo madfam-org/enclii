@@ -11,6 +11,9 @@ import (
 // ENCLII_LOKI_URL). Matches the pattern used by /v1/audit which also
 // optionally 503s when the audit aggregator is nil.
 func (h *Handler) loggedLogsQuery(c *gin.Context) {
+	if _, ok := h.mustServiceAccess(c); !ok {
+		return
+	}
 	if h.logsHandler == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error":  "log_store_not_configured",
@@ -23,6 +26,9 @@ func (h *Handler) loggedLogsQuery(c *gin.Context) {
 
 // loggedLogsTail is the WebSocket counterpart of loggedLogsQuery.
 func (h *Handler) loggedLogsTail(c *gin.Context) {
+	if _, ok := h.mustServiceAccess(c); !ok {
+		return
+	}
 	if h.logsHandler == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error":  "log_store_not_configured",

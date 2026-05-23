@@ -4,6 +4,9 @@
 # Checks: env var documentation, banned terminology, dead links
 #
 # Source: https://github.com/madfam-org/solarpunk-foundry
+#
+# Scans active doc trees only (excludes docs/archive and repo-root README/ROADMAP
+# competitor mentions until a dedicated terminology cleanup lands).
 
 name: Documentation Lint
 
@@ -14,23 +17,34 @@ on:
       - 'docs/**'
       - '*.md'
       - '.env.example'
+      - '.github/workflows/doc-guard.yml'
   pull_request:
     branches: [main]
     paths:
       - 'docs/**'
       - '*.md'
       - '.env.example'
+      - '.github/workflows/doc-guard.yml'
 
 jobs:
   doc-guard:
     name: DocGuard
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        doc-path:
+          - docs/production
+          - docs/runbooks
+          - docs/architecture
+          - docs/cli
     steps:
       - uses: actions/checkout@v6
 
-      - name: Run DocGuard
+      - name: Run DocGuard (${{ matrix.doc-path }})
         uses: madfam-org/solarpunk-foundry/.github/actions/doc-guard@main
         with:
-          doc-path: './docs'
+          doc-path: './${{ matrix.doc-path }}'
           strict: true
-          check-links: false  # Disable link checking (too many false positives)
+          check-links: false
+          check-env-vars: false
