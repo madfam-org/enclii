@@ -281,6 +281,10 @@ func (h *Handler) closePreviewEnvironment(c *gin.Context, ctx context.Context, s
 // triggerPreviewBuild triggers an async build for a preview environment
 // Uses a semaphore to serialize builds and prevent OOM from concurrent operations
 func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.PreviewEnvironment, gitSHA string) {
+	if h.builder == nil {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -491,6 +495,10 @@ func (h *Handler) cleanupPreviewResources(preview *types.PreviewEnvironment) {
 		logging.String("preview_id", preview.ID.String()),
 		logging.String("subdomain", preview.PreviewSubdomain))
 
+	if h.serviceReconciler == nil && h.k8sClient == nil && h.tunnelRoutesService == nil {
+		return
+	}
+
 	// Get the service for namespace calculation
 	service, err := h.repos.Services.GetByID(preview.ServiceID)
 	if err != nil {
@@ -504,30 +512,34 @@ func (h *Handler) cleanupPreviewResources(preview *types.PreviewEnvironment) {
 	previewNamespace := "enclii-preview-" + preview.PreviewSubdomain
 
 	// Delete Kubernetes resources using the service reconciler
-	if err := h.serviceReconciler.Delete(ctx, previewNamespace, service.Name); err != nil {
-		h.logger.Error(ctx, "Failed to delete K8s resources for preview",
-			logging.String("preview_id", preview.ID.String()),
-			logging.String("namespace", previewNamespace),
-			logging.Error("error", err))
-		// Continue cleanup even if this fails
-	} else {
-		h.logger.Info(ctx, "Deleted K8s deployment and service for preview",
-			logging.String("preview_id", preview.ID.String()),
-			logging.String("namespace", previewNamespace))
+	if h.serviceReconciler != nil {
+		if err := h.serviceReconciler.Delete(ctx, previewNamespace, service.Name); err != nil {
+			h.logger.Error(ctx, "Failed to delete K8s resources for preview",
+				logging.String("preview_id", preview.ID.String()),
+				logging.String("namespace", previewNamespace),
+				logging.Error("error", err))
+			// Continue cleanup even if this fails
+		} else {
+			h.logger.Info(ctx, "Deleted K8s deployment and service for preview",
+				logging.String("preview_id", preview.ID.String()),
+				logging.String("namespace", previewNamespace))
+		}
 	}
 
 	// Delete the preview namespace itself (if empty)
-	if err := h.deletePreviewNamespace(ctx, previewNamespace); err != nil {
-		h.logger.Warn(ctx, "Failed to delete preview namespace (may not be empty)",
-			logging.String("namespace", previewNamespace),
-			logging.Error("error", err))
-	}
+	if h.k8sClient != nil {
+		if err := h.deletePreviewNamespace(ctx, previewNamespace); err != nil {
+			h.logger.Warn(ctx, "Failed to delete preview namespace (may not be empty)",
+				logging.String("namespace", previewNamespace),
+				logging.Error("error", err))
+		}
 
-	// Delete the preview ingress if it exists
-	if err := h.deletePreviewIngress(ctx, previewNamespace, service.Name); err != nil {
-		h.logger.Warn(ctx, "Failed to delete preview ingress",
-			logging.String("namespace", previewNamespace),
-			logging.Error("error", err))
+		// Delete the preview ingress if it exists
+		if err := h.deletePreviewIngress(ctx, previewNamespace, service.Name); err != nil {
+			h.logger.Warn(ctx, "Failed to delete preview ingress",
+				logging.String("namespace", previewNamespace),
+				logging.Error("error", err))
+		}
 	}
 
 	// Remove Cloudflare tunnel route for the preview subdomain

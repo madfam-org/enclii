@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -201,11 +202,15 @@ func (h *Handler) CreatePreview(c *gin.Context) {
 		return
 	}
 
-	// Get the service to verify it exists and get project info
+	if !h.enforceServiceAccess(c, serviceUUID) {
+		return
+	}
+
+	// Load service for preview metadata (access already verified)
 	service, err := h.repos.Services.GetByID(serviceUUID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
+			respondAppError(c, apperrors.ErrServiceNotFound)
 			return
 		}
 		h.logger.Error(ctx, "Failed to get service", logging.Error("error", err))

@@ -301,6 +301,38 @@ func parseArgocdResponse(t *testing.T, w *httptest.ResponseRecorder) argocdRespo
 	return resp
 }
 
+// newTestPREvent creates a valid GitHub pull_request webhook JSON payload.
+func newTestPREvent(action string, prNumber int, repo, branch, sha string, merged bool) []byte {
+	state := "open"
+	if action == "closed" {
+		state = "closed"
+	}
+
+	event := GitHubPullRequestEvent{
+		Action: action,
+		Number: prNumber,
+	}
+	event.PullRequest.Number = prNumber
+	event.PullRequest.Title = "Fix preview lifecycle"
+	event.PullRequest.State = state
+	event.PullRequest.HTMLURL = fmt.Sprintf("https://github.com/%s/pull/%d", repo, prNumber)
+	event.PullRequest.User.Login = "preview-dev"
+	event.PullRequest.Head.Ref = branch
+	event.PullRequest.Head.SHA = sha
+	event.PullRequest.Base.Ref = testDefaultBranch
+	event.PullRequest.Merged = merged
+	event.Repository.ID = 12345
+	event.Repository.Name = repoName(repo)
+	event.Repository.FullName = repo
+	event.Repository.CloneURL = "https://github.com/" + repo + ".git"
+	event.Repository.HTMLURL = "https://github.com/" + repo
+	event.Repository.SSHURL = "git@github.com:" + repo + ".git"
+	event.Sender.Login = "preview-dev"
+
+	data, _ := json.Marshal(event)
+	return data
+}
+
 // --- Utility ---
 
 func repoName(fullName string) string {
