@@ -39,6 +39,7 @@ Examples:
 	cmd.AddCommand(newBillingShowCommand(cfg))
 	cmd.AddCommand(newBillingBudgetsCommand(cfg))
 	cmd.AddCommand(newBillingAlertsCommand(cfg))
+	cmd.AddCommand(newBillingThrottlesCommand(cfg))
 	return cmd
 }
 
@@ -355,6 +356,93 @@ func newBillingAlertsCommand(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&project, "project", "p", "", "Project slug")
+	return cmd
+}
+
+// ----------------------------------------------------------------------------
+// billing throttles
+// ----------------------------------------------------------------------------
+
+func newBillingThrottlesCommand(cfg *config.Config) *cobra.Command {
+	var project string
+	var activeOnly bool
+
+	cmd := &cobra.Command{
+		Use:     "throttles",
+		Aliases: []string{"throttle"},
+		Short:   "List budget deploy throttles for a project",
+		Long: `List active or historical budget throttles.
+
+When spend crosses 100% of a budget with hard throttle enabled, non-production
+deploys and builds are blocked until the throttle is cleared in Waybill.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if project == "" {
+				project = cfg.Project
+			}
+			if project == "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--project is required")}
+			}
+
+			var resp struct {
+				Throttles []struct {
+					ID          string     `json:"id"`
+					Reason      string     `json:"reason"`
+					EnvScope    string     `json:"env_scope"`
+					ActivatedAt time.Time  `json:"activated_at"`
+					ClearedAt   *time.Time `json:"cleared_at,omitempty"`
+				} `json:"throttles"`
+			}
+			path := fmt.Sprintf("/v1/projects/%s/billing/throttles", project)
+			if err := billingRequest(context.Background(), cfg, "GET", path, nil, &resp); err != nil {
+				return err
+			}
+
+			throttles := resp.Throttles
+			if activeOnly {
+				filtered := throttles[:0]
+				for _, t := range throttles {
+					if t.ClearedAt == nil {
+						filtered = append(filtered, t)
+					}
+				}
+				throttles = filtered
+			}
+
+			if len(throttles) == 0 {
+				if activeOnly {
+					fmt.Fprintln(cmd.OutOrStdout(), "No active throttles.")
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "No throttles recorded.")
+				}
+				return nil
+			}
+
+			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(tw, "ACTIVATED\tENV\tREASON\tSTATUS\tID")
+			for _, t := range throttles {
+				status := "active"
+				if t.ClearedAt != nil {
+					status = "cleared " + t.ClearedAt.Format(time.RFC3339)
+				}
+				reason := t.Reason
+				if reason == "" {
+					reason = "-"
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+					t.ActivatedAt.Format(time.RFC3339),
+					t.EnvScope,
+					reason,
+					status,
+					t.ID,
+				)
+			}
+			return tw.Flush()
+		},
+	}
+
+	cmd.Flags().StringVarP(&project, "project", "p", "", "Project slug")
+	cmd.Flags().BoolVar(&activeOnly, "active", false, "Show only active (uncleared) throttles")
+
 	return cmd
 }
 

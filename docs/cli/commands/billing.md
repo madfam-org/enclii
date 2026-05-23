@@ -41,6 +41,21 @@ enclii billing alerts [flags]
 |------|------|---------|-------------|
 | `--project`, `-p` | string | | Project slug |
 
+### `throttles`
+
+List budget deploy throttles (active or historical). When hard throttle is enabled and spend hits 100%, non-production deploys and builds are blocked.
+
+**Aliases:** `throttle`
+
+```bash
+enclii billing throttles [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--project`, `-p` | string | | Project slug |
+| `--active` | bool | `false` | Show only uncleared throttles |
+
 ### `budgets`
 
 Manage per-project budgets.

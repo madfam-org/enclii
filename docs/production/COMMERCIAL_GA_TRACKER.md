@@ -33,6 +33,7 @@
 | OpenAPI canonical path + sdk-ts CI drift check | Done (PR #253–254) |
 | OpenAPI → `sdk-ts` UI adoption | Done — preview types via `@madfam/enclii-sdk` workspace dep |
 | Waybill budget **enforce** on deploy/build | Done — `enforceBudgetNotThrottled` on deploy + build (main, post-#250) |
+| Budget/throttle visibility in CLI | Done — `enclii billing throttles`; UI at `/projects/:slug/billing` |
 
 ## Product bet A — Preview environments
 
@@ -66,8 +67,8 @@
 | Deliverable | Status |
 |-------------|--------|
 | SLA (99.95%) | Draft — [SLA_DRAFT.md](./SLA_DRAFT.md) (legal review) |
-| Support tiers + status page | Open |
-| GA changelog; retire “95% ready” externally | Open |
+| Support tiers + status page | Draft — [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
+| GA changelog; retire “95% ready” externally | Draft — [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
 | Pricing + self-serve signup tested | Open |
 
 ## Next merge train
@@ -78,4 +79,4 @@
 4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
 5. ~~Preview CLI + docs (bet A)~~ → `main`
 6. ~~Volumes CLI + bet B/C guides~~ → `main`
-7. GTM wrap (SLA, pricing, changelog) after Stability GA window starts
+7. GTM drafts (SLA, support, changelog) — legal review + publish after SLO window
