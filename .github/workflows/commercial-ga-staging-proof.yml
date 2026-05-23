@@ -1,0 +1,87 @@
+# Manual Commercial GA lifecycle proofs (bets A/B/C).
+# Not blocking on main — run after Phase 0 deploy with staging secrets configured.
+name: Commercial GA staging proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      bets:
+        description: 'Which bet proofs to run'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - preview
+          - domains
+          - storage
+      api_base_url:
+        description: 'API base URL'
+        required: false
+        default: 'https://api.enclii.dev'
+        type: string
+
+jobs:
+  staging-proof:
+    name: Staging proof (${{ inputs.bets }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Optional: set `environment: commercial-ga-staging` after creating that GH environment + secrets.
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: tests/e2e-ecosystem
+        run: npm ci || npm install
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e-ecosystem
+        run: npx playwright install chromium --with-deps
+
+      - name: Run preview lifecycle (bet A)
+        if: inputs.bets == 'all' || inputs.bets == 'preview'
+        working-directory: tests/e2e-ecosystem
+        run: npx playwright test --project=preview-lifecycle
+        env:
+          CI: true
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          PREVIEW_E2E_TOKEN: ${{ secrets.PREVIEW_E2E_TOKEN }}
+          PREVIEW_E2E_SERVICE_ID: ${{ secrets.PREVIEW_E2E_SERVICE_ID }}
+
+      - name: Run domains lifecycle (bet B)
+        if: inputs.bets == 'all' || inputs.bets == 'domains'
+        working-directory: tests/e2e-ecosystem
+        run: npx playwright test --project=domains-lifecycle
+        env:
+          CI: true
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          DOMAIN_E2E_TOKEN: ${{ secrets.DOMAIN_E2E_TOKEN }}
+          DOMAIN_E2E_SERVICE_ID: ${{ secrets.DOMAIN_E2E_SERVICE_ID }}
+          DOMAIN_E2E_ENVIRONMENT_ID: ${{ secrets.DOMAIN_E2E_ENVIRONMENT_ID }}
+          DOMAIN_E2E_DOMAIN: ${{ secrets.DOMAIN_E2E_DOMAIN }}
+
+      - name: Run storage proof (bet C)
+        if: inputs.bets == 'all' || inputs.bets == 'storage'
+        working-directory: tests/e2e-ecosystem
+        run: npx playwright test --project=storage-smoke
+        env:
+          CI: true
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          STORAGE_E2E_TOKEN: ${{ secrets.STORAGE_E2E_TOKEN }}
+          STORAGE_E2E_SERVICE_ID: ${{ secrets.STORAGE_E2E_SERVICE_ID }}
+          STORAGE_E2E_RELEASE_ID: ${{ secrets.STORAGE_E2E_RELEASE_ID }}
+          STORAGE_E2E_ENVIRONMENT_NAME: ${{ secrets.STORAGE_E2E_ENVIRONMENT_NAME }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: commercial-ga-staging-proof-${{ inputs.bets }}
+          path: tests/e2e-ecosystem/playwright-report/
+          retention-days: 14

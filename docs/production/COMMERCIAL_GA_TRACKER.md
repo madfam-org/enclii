@@ -2,7 +2,7 @@
 
 > **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
-> **Last updated:** 2026-05-23
+> **Last updated:** 2026-05-22
 
 ## Gate summary
 
@@ -17,7 +17,8 @@
 |------|-------|--------|
 | `SECURITY_RELEASE_PR.md` production checklist | Ops | Open |
 | `REMAINING_ITEMS.md` cluster P0/P1 | Ops | Open |
-| Migration `030` (`rollout_blocked_reason`) in prod | Ops | Open |
+| Migration `030` (`rollout_blocked_reason`) in prod | Ops | Open — see [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) |
+| Staging lifecycle proofs (bets A/B/C) | Ops | Runbook: [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) |
 
 ## Phase 1 — Engineering (code on `main`)
 
@@ -55,7 +56,7 @@
 |------------|--------|
 | Reconciler `generatePVCs` / mount | Implemented — unit tests exist |
 | UI volume attach + lifecycle | Settings editor + API persist volumes (`ServiceVolumesEditor`) |
-| E2E stateful deploy | Smoke in CI; round-trip opt-in via `STORAGE_E2E_*` env |
+| E2E stateful deploy | Smoke in CI; volumes opt-in via `STORAGE_E2E_*`; deploy slice needs `STORAGE_E2E_RELEASE_ID` |
 
 ## Commercial wrap (GTM / legal)
 
@@ -68,7 +69,8 @@
 
 ## Next merge train
 
-1. ~~AuthZ / OpenAPI / preview E2E~~ → `main` (2026-05-23)
-2. **Deploy `main` + migration 030 + security checklist** (ops — critical path)
-3. Domains E2E PR → staging proof with `DOMAIN_E2E_*`
-4. PVC UI + stateful deploy E2E (bet C)
+1. ~~AuthZ / OpenAPI / preview + domains + storage E2E~~ → `main` (2026-05-22)
+2. ~~PVC persist + settings UI (#258)~~ → `main`
+3. **Deploy `main` + migration 030 + security checklist** (ops — critical path)
+4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
+5. GTM wrap (SLA, pricing, changelog) after Stability GA window starts

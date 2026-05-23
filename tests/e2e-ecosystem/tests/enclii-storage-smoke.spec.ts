@@ -10,6 +10,11 @@ import { test, expect } from '@playwright/test';
 const API_BASE_URL = process.env.API_BASE_URL || 'https://api.enclii.dev';
 const STORAGE_E2E_TOKEN = process.env.STORAGE_E2E_TOKEN;
 const STORAGE_E2E_SERVICE_ID = process.env.STORAGE_E2E_SERVICE_ID;
+const STORAGE_E2E_RELEASE_ID = process.env.STORAGE_E2E_RELEASE_ID;
+const STORAGE_E2E_ENVIRONMENT_NAME = process.env.STORAGE_E2E_ENVIRONMENT_NAME || 'production';
+
+const DEPLOY_POLL_MS = 5000;
+const DEPLOY_TIMEOUT_MS = 120_000;
 
 const fakeServiceId = '00000000-0000-4000-8000-000000000002';
 
@@ -18,6 +23,33 @@ function authHeaders(token: string) {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
+}
+
+async function pollDeploymentRunning(
+  request: import('@playwright/test').APIRequestContext,
+  deploymentId: string,
+  token: string,
+) {
+  const deadline = Date.now() + DEPLOY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const response = await request.get(`${API_BASE_URL}/v1/deployments/${deploymentId}`, {
+      headers: authHeaders(token),
+      failOnStatusCode: false,
+    });
+    if (response.status() === 200) {
+      const body = await response.json();
+      const status = String(body.status ?? '');
+      const health = String(body.health ?? '');
+      if (status === 'failed') {
+        throw new Error(`Deployment failed: ${JSON.stringify(body)}`);
+      }
+      if (status === 'running' && health === 'healthy') {
+        return body;
+      }
+    }
+    await new Promise((r) => setTimeout(r, DEPLOY_POLL_MS));
+  }
+  throw new Error(`Deployment ${deploymentId} did not reach running/healthy within ${DEPLOY_TIMEOUT_MS}ms`);
 }
 
 test.describe('Service storage API smoke (always-on)', () => {
@@ -79,6 +111,62 @@ test.describe('Service volumes round-trip (staging opt-in)', () => {
     const saved = body.settings?.volumes ?? [];
     expect(Array.isArray(saved)).toBeTruthy();
     expect(saved.some((v: { name?: string }) => v.name === 'e2e-data')).toBeTruthy();
+
+    await request.patch(`${API_BASE_URL}/v1/services/${serviceId}`, {
+      headers,
+      data: { volumes: [] },
+    });
+  });
+});
+
+test.describe('Stateful deploy with volumes (staging opt-in)', () => {
+  test.skip(
+    !STORAGE_E2E_TOKEN ||
+      !STORAGE_E2E_SERVICE_ID ||
+      !STORAGE_E2E_RELEASE_ID,
+    'Set STORAGE_E2E_TOKEN, STORAGE_E2E_SERVICE_ID, and STORAGE_E2E_RELEASE_ID',
+  );
+
+  test('patch volumes → deploy → running/healthy', async ({ request }) => {
+    test.setTimeout(DEPLOY_TIMEOUT_MS + 30_000);
+
+    const token = STORAGE_E2E_TOKEN!;
+    const serviceId = STORAGE_E2E_SERVICE_ID!;
+    const releaseId = STORAGE_E2E_RELEASE_ID!;
+    const headers = authHeaders(token);
+
+    const volumes = [
+      {
+        name: 'e2e-deploy-data',
+        mount_path: '/data/e2e-deploy',
+        size: '1Gi',
+        storage_class_name: 'longhorn',
+        access_mode: 'ReadWriteOnce',
+      },
+    ];
+
+    const patchResponse = await request.patch(`${API_BASE_URL}/v1/services/${serviceId}`, {
+      headers,
+      data: { volumes },
+    });
+    expect(patchResponse.status()).toBeLessThan(500);
+    expect([200, 204]).toContain(patchResponse.status());
+
+    const deployResponse = await request.post(`${API_BASE_URL}/v1/services/${serviceId}/deploy`, {
+      headers,
+      data: {
+        release_id: releaseId,
+        environment_name: STORAGE_E2E_ENVIRONMENT_NAME,
+      },
+    });
+    expect(deployResponse.status()).toBeLessThan(500);
+    expect([201, 200]).toContain(deployResponse.status());
+
+    const deployment = await deployResponse.json();
+    const deploymentId = deployment.id as string;
+    expect(deploymentId).toBeTruthy();
+
+    await pollDeploymentRunning(request, deploymentId, token);
 
     await request.patch(`${API_BASE_URL}/v1/services/${serviceId}`, {
       headers,
