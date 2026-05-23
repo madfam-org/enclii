@@ -1,10 +1,13 @@
 ---
 # NPM Token Rotation CronJob
 # Runs every Sunday at 02:00 UTC.
-# 1. Logs into npm.madfam.io to get a fresh JWT.
-# 2. Decodes the JWT and checks expiry.
-# 3. If expiry < 30 days: rotates NPM_MADFAM_TOKEN across all org repos via gh secret set.
-# 4. Pushes npm_token_expiry_days metric to pushgateway for Prometheus.
+# 1. Validates the current token (/-/whoami must return .username; optional publish dry-run).
+# 2. Decodes JWT expiry when applicable.
+# 3. If expiry < 30 days OR token fails validation: logs in via htpasswd and rotates.
+# 4. Propagates NPM_MADFAM_TOKEN to org repos (optional NPM_ROTATION_REPO_ALLOWLIST).
+# 5. Pushes npm_token_expiry_days metric to pushgateway for Prometheus.
+#
+# npm-token-rotation-creds must include: token, gh_token, username, password (for re-login).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,8 +26,41 @@ data:
     ROTATION_THRESHOLD_DAYS="${ROTATION_THRESHOLD_DAYS:-30}"
     ORG="${GITHUB_ORG:-madfam-org}"
     SECRET_NAME="${GH_SECRET_NAME:-NPM_MADFAM_TOKEN}"
+    REPO_ALLOWLIST="${NPM_ROTATION_REPO_ALLOWLIST:-}"
 
     log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"; }
+
+    verify_token_works() {
+      WHOAMI_BODY=$(curl -sf -H "Authorization: Bearer ${TOKEN}" \
+        "${VERDACCIO_URL}/-/whoami" 2>/dev/null || echo '{}')
+      USERNAME=$(printf '%s' "${WHOAMI_BODY}" | jq -r '.username // empty' 2>/dev/null || true)
+      if [ -z "${USERNAME}" ]; then
+        log "WARN  Token failed whoami (no username). body=${WHOAMI_BODY}"
+        return 1
+      fi
+      log "INFO  Token whoami OK (user=${USERNAME})"
+
+      if [ "${VERIFY_PUBLISH:-true}" = "true" ]; then
+        SMOKE_DIR=$(mktemp -d)
+        printf '%s\n' \
+          '{' \
+          '  "name": "@madfam/npm-publish-smoke",' \
+          '  "version": "0.0.0-smoke",' \
+          '  "private": true' \
+          '}' > "${SMOKE_DIR}/package.json"
+        if (cd "${SMOKE_DIR}" && \
+          NPM_CONFIG_REGISTRY="${VERDACCIO_URL}" \
+          npm publish --dry-run --access restricted >/dev/null 2>&1); then
+          log "INFO  Token publish dry-run OK"
+        else
+          log "WARN  Token publish dry-run failed"
+          rm -rf "${SMOKE_DIR}"
+          return 1
+        fi
+        rm -rf "${SMOKE_DIR}"
+      fi
+      return 0
+    }
 
     login_for_token() {
       if [ -z "${NPM_REGISTRY_USER:-}" ] || [ -z "${NPM_REGISTRY_PASSWORD:-}" ]; then
@@ -81,6 +117,11 @@ data:
     compute_days_left
     log "INFO  Token expires in ${DAYS_LEFT} day(s) (threshold: ${ROTATION_THRESHOLD_DAYS}d)"
 
+    TOKEN_VALID=0
+    if verify_token_works; then
+      TOKEN_VALID=1
+    fi
+
     # ------------------------------------------------------------------
     # Step 2: Push metric to Pushgateway
     # ------------------------------------------------------------------
@@ -115,21 +156,33 @@ data:
     # ------------------------------------------------------------------
     # Step 3: Rotate across repos if expiry is close
     # ------------------------------------------------------------------
-    if [ "${DAYS_LEFT}" -ge "${ROTATION_THRESHOLD_DAYS}" ]; then
-      log "INFO  Token has ${DAYS_LEFT}d remaining (>= ${ROTATION_THRESHOLD_DAYS}d). No rotation needed."
+    if [ "${TOKEN_VALID}" -eq 1 ] && [ "${DAYS_LEFT}" -ge "${ROTATION_THRESHOLD_DAYS}" ]; then
+      log "INFO  Token valid with ${DAYS_LEFT}d remaining (>= ${ROTATION_THRESHOLD_DAYS}d). No rotation needed."
       exit 0
     fi
 
-    log "INFO  Token has ${DAYS_LEFT}d remaining. Requesting a fresh Verdaccio token before rotation..."
+    if [ "${TOKEN_VALID}" -eq 0 ]; then
+      log "INFO  Current token failed validation; requesting a fresh Verdaccio token..."
+    else
+      log "INFO  Token expires in ${DAYS_LEFT}d (< ${ROTATION_THRESHOLD_DAYS}d). Requesting a fresh token..."
+    fi
     login_for_token
+    if ! verify_token_works; then
+      log "ERROR Fresh token failed validation (whoami/publish dry-run). Aborting rotation."
+      exit 1
+    fi
     compute_days_left
     log "INFO  Fresh token expires in ${DAYS_LEFT} day(s)"
     push_metric
 
-    log "INFO  Token has ${DAYS_LEFT}d remaining. Rotating across ${ORG} repos..."
+    log "INFO  Propagating ${SECRET_NAME} across ${ORG} repos..."
 
-    # List all repos in the org (pagination: up to 500)
-    REPOS=$(gh repo list "${ORG}" --limit 500 --json name -q '.[].name')
+    if [ -n "${REPO_ALLOWLIST}" ]; then
+      REPOS=$(printf '%s' "${REPO_ALLOWLIST}" | tr ',' ' ')
+      log "INFO  Using repo allowlist (${REPO_ALLOWLIST})"
+    else
+      REPOS=$(gh repo list "${ORG}" --limit 500 --json name -q '.[].name')
+    fi
     ROTATED=0
     FAILED=0
 
@@ -145,6 +198,15 @@ data:
     done
 
     log "INFO  Rotation complete: ${ROTATED} updated, ${FAILED} skipped"
+
+    # Org-level secret (preferred for new repos); requires GH_TOKEN with admin:org
+    if [ "${SET_ORG_SECRET:-true}" = "true" ]; then
+      if echo "${TOKEN}" | gh secret set "${SECRET_NAME}" --org "${ORG}" 2>/dev/null; then
+        log "INFO  Updated org-level ${SECRET_NAME}"
+      else
+        log "WARN  Could not set org-level ${SECRET_NAME} (check gh_token scopes)"
+      fi
+    fi
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -219,6 +281,12 @@ spec:
                   value: "madfam-org"
                 - name: GH_SECRET_NAME
                   value: "NPM_MADFAM_TOKEN"
+                - name: VERIFY_PUBLISH
+                  value: "true"
+                - name: SET_ORG_SECRET
+                  value: "true"
+                - name: NPM_ROTATION_REPO_ALLOWLIST
+                  value: "janua,dhanam,forj,karafiel,enclii,avala,forgesight,rondelio,janua-react-sdk"
               resources:
                 requests:
                   cpu: "50m"
@@ -258,4 +326,6 @@ metadata:
     app.kubernetes.io/component: token-rotation
 type: Opaque
 stringData:
+  # Template only — production values come from ExternalSecrets / operator.
   username: "admin@madfam.io"
+  # password: required for automated re-login when token expires or fails publish smoke
