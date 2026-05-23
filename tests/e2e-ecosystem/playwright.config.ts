@@ -41,5 +41,10 @@ export default defineConfig({
       testMatch: /enclii-preview-lifecycle\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'domains-lifecycle',
+      testMatch: /enclii-domains-lifecycle\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });

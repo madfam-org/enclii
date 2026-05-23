@@ -47,7 +47,7 @@
 |------------|--------|
 | Domain API + cert-manager path | Implemented |
 | `ToggleZeroTrust` authZ | Done (PR #250) |
-| DNS verify + Junction routing E2E | Open — staging proof |
+| DNS verify + Junction routing E2E | Smoke in CI; full lifecycle opt-in via `DOMAIN_E2E_*` env |
 
 ## Product bet C — Persistent volumes
 
@@ -68,6 +68,7 @@
 
 ## Next merge train
 
-1. ~~Merge PR #250~~ → `main` (2026-05-23)
-2. Deploy `main` + migration 030 + security checklist (ops)
-3. Merge OpenAPI/sdk-ts CI PR; then product E2E for previews/domains/PVCs
+1. ~~AuthZ / OpenAPI / preview E2E~~ → `main` (2026-05-23)
+2. **Deploy `main` + migration 030 + security checklist** (ops — critical path)
+3. Domains E2E PR → staging proof with `DOMAIN_E2E_*`
+4. PVC UI + stateful deploy E2E (bet C)
