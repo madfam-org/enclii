@@ -428,6 +428,7 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 		}
 	}
 
+	monitoring.RecordReconcilerProcess(duration, !result.Success)
 	return result
 }
 

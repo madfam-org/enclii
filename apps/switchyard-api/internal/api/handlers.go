@@ -325,6 +325,9 @@ func (h *Handler) SetProvisioners(
 // - webhook_handlers.go: GitHub webhook handlers
 // - observability_handlers.go: Metrics and monitoring endpoints
 func SetupRoutes(router *gin.Engine, h *Handler) {
+	// Structured error responses for handlers that use c.Error() / AbortWithAppError.
+	router.Use(middleware.ErrorHandlerMiddleware(h.logger))
+
 	// HTTP metrics middleware
 	if h.metrics != nil {
 		router.Use(h.metrics.HTTPMetricsMiddleware())

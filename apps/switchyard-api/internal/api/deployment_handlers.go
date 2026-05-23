@@ -16,7 +16,6 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/compliance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -525,16 +524,8 @@ func (h *Handler) GetLatestDeployment(c *gin.Context) {
 		return
 	}
 
-	// XC-2 Round 5: cross-tenant guard.
-	if _, isActing := middleware.ActingTeamID(c); isActing {
-		svc, sErr := h.repos.Services.GetByID(serviceID)
-		var projectID uuid.UUID
-		if sErr == nil && svc != nil {
-			projectID = svc.ProjectID
-		}
-		if !h.enforceActingTeamForProject(c, projectID) {
-			return
-		}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
 	}
 
 	// Get latest deployment for this service
@@ -581,16 +572,8 @@ func (h *Handler) GetDeploymentByVersion(c *gin.Context) {
 		return
 	}
 
-	// XC-2 Round 5: cross-tenant guard.
-	if _, isActing := middleware.ActingTeamID(c); isActing {
-		svc, sErr := h.repos.Services.GetByID(serviceID)
-		var projectID uuid.UUID
-		if sErr == nil && svc != nil {
-			projectID = svc.ProjectID
-		}
-		if !h.enforceActingTeamForProject(c, projectID) {
-			return
-		}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
 	}
 
 	versionStr := c.Param("version")
@@ -673,17 +656,8 @@ func (h *Handler) ListServiceDeployments(c *gin.Context) {
 		return
 	}
 
-	// XC-2 Round 5: refuse cross-tenant reads when acting-as. Resolve the
-	// service's project up front so we can 404 before doing any work.
-	if _, isActing := middleware.ActingTeamID(c); isActing {
-		svc, sErr := h.repos.Services.GetByID(serviceID)
-		var projectID uuid.UUID
-		if sErr == nil && svc != nil {
-			projectID = svc.ProjectID
-		}
-		if !h.enforceActingTeamForProject(c, projectID) {
-			return
-		}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
 	}
 
 	// Get all releases for this service

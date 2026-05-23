@@ -26,6 +26,8 @@ func setupAuthzHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 			Projects:      db.NewProjectRepository(database),
 			Services:      db.NewServiceRepository(database),
 			CronJobs:      db.NewCronJobRepository(database),
+			Junctions:     db.NewJunctionRepository(database),
+			Deployments:   db.NewDeploymentRepository(database),
 			ProjectAccess: db.NewProjectAccessRepository(database),
 		},
 		logger: testLogger(t),
@@ -196,6 +198,80 @@ func TestUpdateService_CrossTenantDenied(t *testing.T) {
 	engine.PATCH("/v1/services/:id", h.UpdateService)
 
 	req, _ := http.NewRequest(http.MethodPatch, "/v1/services/"+serviceID.String(), nil)
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertErrorCode(t, w, "NOT_FOUND")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+var junctionSelectColumns = []string{
+	"id", "project_id", "service_id", "domain", "path", "protocol",
+	"tls_enabled", "tls_issuer", "tls_cert_secret", "tls_min_version", "tls_force_redirect",
+	"created_at", "updated_at",
+}
+
+func TestGetJunction_CrossTenantDenied(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, mock, cleanup := setupAuthzHandler(t)
+	defer cleanup()
+
+	userA := uuid.New()
+	projectB := uuid.New()
+	junctionID := uuid.New()
+	now := time.Now()
+
+	mock.ExpectQuery(`FROM junctions WHERE id`).
+		WillReturnRows(sqlmock.NewRows(junctionSelectColumns).AddRow(
+			junctionID, projectB, uuid.New(), "api.example.com", "/", "https",
+			true, "letsencrypt", nil, nil, true,
+			now, now,
+		))
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).
+		WithArgs(userA, projectB).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.Use(withUserContext(userA, "developer"))
+	engine.GET("/v1/junctions/:id", h.GetJunction)
+
+	req, _ := http.NewRequest(http.MethodGet, "/v1/junctions/"+junctionID.String(), nil)
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertErrorCode(t, w, "NOT_FOUND")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetDeploymentByVersion_CrossTenantDenied(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, mock, cleanup := setupAuthzHandler(t)
+	defer cleanup()
+
+	userA := uuid.New()
+	projectB := uuid.New()
+	serviceID := uuid.New()
+
+	mock.ExpectQuery(`FROM services WHERE id = \$1`).
+		WillReturnRows(sqlmock.NewRows(serviceListByGitRepoColumns).AddRow(
+			serviceID, projectB, "api", "https://github.com/org/repo", "",
+			[]byte(`{"type":"dockerfile"}`),
+			true, "main", "production",
+			time.Now(), time.Now(), []byte(`[]`), "web", "default",
+		))
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).
+		WithArgs(userA, projectB).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.Use(withUserContext(userA, "developer"))
+	engine.GET("/v1/services/:id/deployments/v:version", h.GetDeploymentByVersion)
+
+	req, _ := http.NewRequest(http.MethodGet, "/v1/services/"+serviceID.String()+"/deployments/v1", nil)
 	engine.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)

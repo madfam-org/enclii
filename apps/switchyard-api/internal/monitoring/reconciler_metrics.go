@@ -1,6 +1,8 @@
 package monitoring
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -35,6 +37,19 @@ var (
 			Help: "Total reconciliation work items accepted into the main queue",
 		},
 	)
+	reconcilerProcessDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "enclii_reconciler_process_duration_seconds",
+			Help:    "Duration of a single deployment reconciliation work unit",
+			Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		},
+	)
+	reconcilerProcessFailures = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "enclii_reconciler_process_failures_total",
+			Help: "Total reconciliation work units that returned a failed result",
+		},
+	)
 )
 
 // ReconcilerMetricsCollectors returns Prometheus collectors for the custom registry.
@@ -45,6 +60,16 @@ func ReconcilerMetricsCollectors() []prometheus.Collector {
 		reconcilerRetryQueueSize,
 		reconcilerDroppedWorkTotal,
 		reconcilerWorkScheduledTotal,
+		reconcilerProcessDuration,
+		reconcilerProcessFailures,
+	}
+}
+
+// RecordReconcilerProcess observes reconcile work duration and failure count.
+func RecordReconcilerProcess(duration time.Duration, failed bool) {
+	reconcilerProcessDuration.Observe(duration.Seconds())
+	if failed {
+		reconcilerProcessFailures.Inc()
 	}
 }
 
