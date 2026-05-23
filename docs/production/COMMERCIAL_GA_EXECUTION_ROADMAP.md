@@ -14,7 +14,7 @@ This is the **time-ordered execution roadmap** from current state (~50% Commerci
 | Track | Completion | Notes |
 |-------|------------|--------|
 | Engineering (bets A+B+C on `main`) | **~90%** | Code merged; staging proofs **green** (2026-05-23) |
-| Phase 0 ops | **~55%** | O-1/O-2/O-7 done; O-3 security sign-off + O-5–O-6 cluster P0 open |
+| Phase 0 ops | **~70%** | O-1/2/4/7 done or mostly done; O-3 partial verify; O-5–O-6 + O-8 open |
 | Staging proof (Gate 2) | **100%** | [Actions run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) |
 | SLO window (Gate 4) | **0%** | **30 calendar days** — starts after Phase 0 sign-off |
 | GTM / legal (Gate 5) | **~15%** | Drafts only |
@@ -90,8 +90,8 @@ Local fallback: `tests/e2e-ecosystem` Playwright projects per [COMMERCIAL_GA_STA
 
 | ID | Task | When |
 |----|------|------|
-| O-8–O-11 | Argo sweep, backup drill, Vault, Cosign | Before or early in window |
-| O-12 | **Record SLO start date** in scorecard | Day 0 after Wave 0 sign-off |
+| O-8–O-11 | Argo sweep, backup drill, Vault, Cosign | O-8: 3 apps OutOfSync (`blueprint-harvester-services`, `ceq-services`, `npm-registry-services`) |
+| O-12 | **Record SLO start date** in scorecard | Day 0 **after** O-3 platform sign-off (do not start early) |
 
 **Cannot accelerate:** Commercial GA announce (Wave 4) waits for this window unless leadership accepts risk and scopes SLA differently.
 

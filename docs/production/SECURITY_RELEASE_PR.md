@@ -1,7 +1,7 @@
 # Security remediation release checklist
 
 > **Code status:** Merged to `main` (authZ matrix, handler audit, tenant-scoped listings).  
-> **Ops status:** Apply this checklist on the **next production deploy** of Switchyard API.
+> **Ops status:** Deploy at `main` applied (2026-05-23). Automated verification: [SECURITY_RELEASE_VERIFICATION.md](./SECURITY_RELEASE_VERIFICATION.md). Platform sign-off still required.
 
 ## Included changes (on `main`)
 

@@ -15,9 +15,9 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
 | O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Done** — column present in `enclii` DB (2026-05-23) | `apps/switchyard-api/internal/db/migrations/030_*` |
-| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | Open | Steps 1–7 |
-| O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Partial** — `posthog` ns gone; Longhorn orphans TBD | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
-| O-5 | Longhorn helm upgrade (committed CPU values) | 10m | Open | [REMAINING_ITEMS §1B](./REMAINING_ITEMS.md) |
+| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — [SECURITY_RELEASE_VERIFICATION.md](./SECURITY_RELEASE_VERIFICATION.md); manual Roundhouse + tenant smoke | Steps 1–7 |
+| O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Mostly done** — `posthog` ns gone; 5 detached LH volumes deleted 2026-05-23 (1 detached remains) | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
+| O-5 | Longhorn helm upgrade (committed CPU values) | 10m | Open — one `instance-manager` **255m** (&gt;200m target) | [REMAINING_ITEMS §1B](./REMAINING_ITEMS.md) |
 | O-6 | Disk prune (crictl, journal, logs) | 10m | Open — no DiskPressure on nodes | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
 | O-7 | API post-deploy smoke | 10m | **Done** — `/health/public` + `/health/ready` OK (2026-05-23) | Enclii or CI rerun on prod URL |
 
@@ -58,7 +58,7 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 | ID | Task | Owner | Reference |
 |----|------|-------|-----------|
 | O-16 | Signup + pricing manual checklist | GTM/QA | [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) |
-| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | API env on Switchyard deployment |
+| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | **Open** — not set on prod; `/v1/signup/*` returns 404 (disabled-by-default) |
 | O-18 | Landing pricing section deployed (or document skip) | GTM | `enclii-paywall` E2E |
 
 ---
