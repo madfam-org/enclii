@@ -30,6 +30,9 @@ func (h *Handler) DeployService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
 	}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
+	}
 
 	var req struct {
 		ReleaseID       string            `json:"release_id" binding:"required"`
@@ -403,6 +406,9 @@ func (h *Handler) RollbackDeployment(c *gin.Context) {
 	deploymentID, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment ID"})
+		return
+	}
+	if !h.enforceDeploymentAccess(c, deploymentID) {
 		return
 	}
 

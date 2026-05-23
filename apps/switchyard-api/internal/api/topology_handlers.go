@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
@@ -30,7 +31,11 @@ func (h *Handler) GetTopology(c *gin.Context) {
 // GetServiceDependencies returns upstream and downstream dependencies for a service
 func (h *Handler) GetServiceDependencies(c *gin.Context) {
 	ctx := c.Request.Context()
-	idStr := c.Param("id")
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	idStr := serviceID.String()
 
 	h.logger.Info(ctx, "Getting service dependencies", logging.String("service_id", idStr))
 
@@ -47,7 +52,11 @@ func (h *Handler) GetServiceDependencies(c *gin.Context) {
 // GetServiceImpact returns impact analysis for a service
 func (h *Handler) GetServiceImpact(c *gin.Context) {
 	ctx := c.Request.Context()
-	idStr := c.Param("id")
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	idStr := serviceID.String()
 
 	h.logger.Info(ctx, "Analyzing service impact", logging.String("service_id", idStr))
 
@@ -70,6 +79,23 @@ func (h *Handler) FindDependencyPath(c *gin.Context) {
 
 	if sourceID == "" || targetID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Both source and target query parameters are required"})
+		return
+	}
+
+	sourceUUID, err := uuid.Parse(sourceID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid source service ID"})
+		return
+	}
+	targetUUID, err := uuid.Parse(targetID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target service ID"})
+		return
+	}
+	if !h.enforceServiceAccess(c, sourceUUID) {
+		return
+	}
+	if !h.enforceServiceAccess(c, targetUUID) {
 		return
 	}
 

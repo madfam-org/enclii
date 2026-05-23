@@ -486,12 +486,8 @@ func (h *Handler) GetRealTimeMetrics(c *gin.Context) {
 // GET /v1/services/:id/metrics
 func (h *Handler) GetServiceResourceMetrics(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceIDStr := c.Param("id")
-
-	// Parse service ID
-	serviceID, err := uuid.Parse(serviceIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 

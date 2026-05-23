@@ -118,17 +118,39 @@ func TestListAllDeployments_ActingAs_FiltersByTeam(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestListAllDeployments_NoActingAs_UsesUnscopedQuery(t *testing.T) {
+func TestListAllDeployments_Admin_UsesUnscopedQuery(t *testing.T) {
 	h, mock, cleanup := newXc2TestHandler(t)
 	defer cleanup()
 
-	// Unscoped path uses LEFT JOINs (no projects join).
 	mock.ExpectQuery(`(?s)FROM deployments d\s+LEFT JOIN releases r ON d\.release_id = r\.id\s+LEFT JOIN services s ON r\.service_id = s\.id`).
 		WillReturnRows(sqlmock.NewRows(xc2EnrichedColumns))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/deployments", nil)
+	c.Set("user_id", uuid.New().String())
+	c.Set("user_roles", []string{"admin"})
+
+	h.ListAllDeployments(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestListAllDeployments_Developer_UsesUserScopedQuery(t *testing.T) {
+	h, mock, cleanup := newXc2TestHandler(t)
+	defer cleanup()
+
+	userID := uuid.New()
+	mock.ExpectQuery(`JOIN project_access pa ON pa\.project_id = p\.id AND pa\.user_id`).
+		WithArgs(userID, 50).
+		WillReturnRows(sqlmock.NewRows(xc2EnrichedColumns))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/deployments", nil)
+	c.Set("user_id", userID.String())
+	c.Set("user_roles", []string{"developer"})
 
 	h.ListAllDeployments(c)
 

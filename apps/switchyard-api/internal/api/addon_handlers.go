@@ -431,6 +431,9 @@ func (h *Handler) CreateAddonBinding(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid addon_id format"})
 		return
 	}
+	if _, ok := h.loadAddonWithAccess(c, addonUUID); !ok {
+		return
+	}
 
 	// Parse request body
 	var req CreateBindingRequest
@@ -443,6 +446,9 @@ func (h *Handler) CreateAddonBinding(c *gin.Context) {
 	serviceUUID, err := uuid.Parse(req.ServiceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service_id format"})
+		return
+	}
+	if !h.enforceServiceAccess(c, serviceUUID) {
 		return
 	}
 
@@ -507,6 +513,12 @@ func (h *Handler) DeleteAddonBinding(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service_id format"})
 		return
 	}
+	if _, ok := h.loadAddonWithAccess(c, addonUUID); !ok {
+		return
+	}
+	if !h.enforceServiceAccess(c, serviceUUID) {
+		return
+	}
 
 	if err := h.addonService.DeleteBindingBy(ctx, addonUUID, serviceUUID, addonActorFromContext(c)); err != nil {
 		h.logger.Error(ctx, "Failed to delete addon binding",
@@ -528,14 +540,11 @@ func (h *Handler) DeleteAddonBinding(c *gin.Context) {
 // GET /v1/services/:id/bindings
 func (h *Handler) GetServiceBindings(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-
-	// Parse service ID
-	serviceUUID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service_id format"})
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
+	serviceID := serviceUUID.String()
 
 	bindings, err := h.addonService.GetBindingsForService(ctx, serviceUUID)
 	if err != nil {
@@ -595,13 +604,7 @@ func (h *Handler) GetAddonEvents(c *gin.Context) {
 		return
 	}
 
-	// Verify the addon exists — prevents info leak via "events on unknown id".
-	if _, err := h.addonService.GetAddon(ctx, addonUUID); err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve addon"})
+	if _, ok := h.loadAddonWithAccess(c, addonUUID); !ok {
 		return
 	}
 

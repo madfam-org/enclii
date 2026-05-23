@@ -54,10 +54,8 @@ type InstantRollbackAPIResponse struct {
 func (h *Handler) InstantRollback(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	serviceIDStr := c.Param("id")
-	serviceID, err := uuid.Parse(serviceIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 

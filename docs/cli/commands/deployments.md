@@ -65,7 +65,7 @@ enclii deployments latest --service <id> [flags]
 
 ### `by-version`
 
-Resolve a deployment by Heroku-style version number (`v1`, `v2`, ...). Pass the integer without the `v` prefix.
+Resolve a deployment by Enclii version number (`v1`, `v2`, ...). Pass the integer without the `v` prefix.
 
 ```bash
 enclii deployments by-version --service <id> --version <n> [flags]
@@ -74,7 +74,7 @@ enclii deployments by-version --service <id> --version <n> [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--service` | string | | Service ID (required) |
-| `--version` | int | `0` | Heroku-style version number (required, positive integer) |
+| `--version` | int | `0` | Enclii version number (required, positive integer) |
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
 ## Examples

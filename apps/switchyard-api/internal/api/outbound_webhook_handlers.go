@@ -120,19 +120,12 @@ func (h *Handler) ListOutboundWebhooks(c *gin.Context) {
 
 // GetOutboundWebhook GET /v1/lifecycle-webhooks/:sub_id
 func (h *Handler) GetOutboundWebhook(c *gin.Context) {
-	ctx := c.Request.Context()
 	id, ok := h.parseSubID(c)
 	if !ok {
 		return
 	}
-	sub, err := h.repos.OutboundWebhooks.GetSubscription(ctx, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
-			return
-		}
-		h.logger.Error(ctx, "get subscription failed", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read subscription"})
+	sub, ok := h.loadOutboundWebhookWithAccess(c, id)
+	if !ok {
 		return
 	}
 	c.JSON(http.StatusOK, sub)
@@ -143,6 +136,9 @@ func (h *Handler) UpdateOutboundWebhook(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := h.parseSubID(c)
 	if !ok {
+		return
+	}
+	if _, ok := h.loadOutboundWebhookWithAccess(c, id); !ok {
 		return
 	}
 
@@ -189,6 +185,9 @@ func (h *Handler) DeleteOutboundWebhook(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if _, ok := h.loadOutboundWebhookWithAccess(c, id); !ok {
+		return
+	}
 	if err := h.repos.OutboundWebhooks.DeleteSubscription(ctx, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
@@ -213,13 +212,8 @@ func (h *Handler) RotateOutboundWebhookSecret(c *gin.Context) {
 		return
 	}
 
-	sub, err := h.repos.OutboundWebhooks.GetSubscription(ctx, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read subscription"})
+	sub, ok := h.loadOutboundWebhookWithAccess(c, id)
+	if !ok {
 		return
 	}
 
@@ -260,13 +254,8 @@ func (h *Handler) TestOutboundWebhook(c *gin.Context) {
 	if !ok {
 		return
 	}
-	sub, err := h.repos.OutboundWebhooks.GetSubscription(ctx, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read subscription"})
+	sub, ok := h.loadOutboundWebhookWithAccess(c, id)
+	if !ok {
 		return
 	}
 
@@ -316,6 +305,9 @@ func (h *Handler) ListOutboundWebhookDeliveries(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if _, ok := h.loadOutboundWebhookWithAccess(c, id); !ok {
+		return
+	}
 	limit := 50
 	if q := c.Query("limit"); q != "" {
 		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 200 {
@@ -343,7 +335,11 @@ func (h *Handler) ListOutboundWebhookDeliveries(c *gin.Context) {
 // RedeliverOutboundWebhook POST /v1/lifecycle-webhooks/:sub_id/deliveries/:delivery_id/redeliver
 func (h *Handler) RedeliverOutboundWebhook(c *gin.Context) {
 	ctx := c.Request.Context()
-	if _, ok := h.parseSubID(c); !ok {
+	subID, ok := h.parseSubID(c)
+	if !ok {
+		return
+	}
+	if _, ok := h.loadOutboundWebhookWithAccess(c, subID); !ok {
 		return
 	}
 	deliveryID, err := uuid.Parse(c.Param("delivery_id"))

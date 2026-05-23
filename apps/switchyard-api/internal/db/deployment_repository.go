@@ -506,6 +506,76 @@ func (r *DeploymentRepository) ListAllEnrichedByTeam(ctx context.Context, teamID
 	return deployments, rows.Err()
 }
 
+// ListAllEnrichedForUser returns deployments for projects the user can access.
+func (r *DeploymentRepository) ListAllEnrichedForUser(ctx context.Context, userID uuid.UUID, since *time.Time, limit int) ([]*types.DeploymentEnriched, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	baseQuery := `
+		SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health,
+		       d.error_message,
+		       d.version_number,
+		       d.created_at, d.updated_at,
+		       s.id as service_id,
+		       COALESCE(s.name, '') as service_name,
+		       COALESCE(r.git_sha, '') as git_sha,
+		       COALESCE(r.git_branch, '') as git_branch,
+		       COALESCE(r.commit_message, '') as commit_message,
+		       COALESCE(r.commit_author_name, '') as commit_author,
+		       COALESCE(r.commit_author_email, '') as commit_author_email,
+		       r.pr_number,
+		       COALESCE(r.pr_title, '') as pr_title,
+		       COALESCE(r.pr_url, '') as pr_url,
+		       COALESCE(r.repo_url, '') as repo_url
+		FROM deployments d
+		JOIN releases r ON d.release_id = r.id
+		JOIN services s ON r.service_id = s.id
+		JOIN projects p ON p.id = s.project_id
+		JOIN project_access pa ON pa.project_id = p.id AND pa.user_id = $1`
+
+	var query string
+	var args []interface{}
+
+	if since != nil {
+		query = baseQuery + ` AND d.created_at >= $2 ORDER BY d.created_at DESC LIMIT $3`
+		args = []interface{}{userID, *since, limit}
+	} else {
+		query = baseQuery + ` ORDER BY d.created_at DESC LIMIT $2`
+		args = []interface{}{userID, limit}
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var deployments []*types.DeploymentEnriched
+	for rows.Next() {
+		d := &types.DeploymentEnriched{}
+		var prNumber *int
+		err := rows.Scan(
+			&d.ID, &d.ReleaseID, &d.EnvironmentID, &d.Replicas, &d.Status, &d.Health,
+			&d.ErrorMessage,
+			&d.VersionNumber,
+			&d.CreatedAt, &d.UpdatedAt,
+			&d.ServiceID, &d.ServiceName, &d.GitSHA, &d.GitBranch, &d.CommitMessage,
+			&d.CommitAuthor, &d.CommitAuthorEmail,
+			&prNumber, &d.PRTitle, &d.PRURL, &d.RepoURL,
+		)
+		if err != nil {
+			return nil, err
+		}
+		d.PRNumber = prNumber
+		sid := d.ServiceID
+		d.Deployment.ServiceID = &sid
+		deployments = append(deployments, d)
+	}
+
+	return deployments, rows.Err()
+}
+
 // GetByIDEnriched retrieves a single deployment with joined release and service data
 func (r *DeploymentRepository) GetByIDEnriched(ctx context.Context, id string) (*types.DeploymentEnriched, error) {
 	query := `
