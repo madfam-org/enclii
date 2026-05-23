@@ -1,7 +1,8 @@
 # Commercial & Stability GA — readiness scorecard
 
-> **Last updated:** 2026-05-22  
+> **Last updated:** 2026-05-23  
 > **Canonical tracker:** [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
+> **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
 > **Ops execution:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md)  
 > **Open ops tasks (O-1–O-22):** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)
 
@@ -13,8 +14,8 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 
 | Track | Readiness | Blocker |
 |-------|-----------|---------|
-| **Stability GA** | **~55%** | Prod deploy, cluster P0, 30-day SLO not started |
-| **Commercial GA (scoped)** | **~45–50%** | Stability GA + staging proofs + GTM publish |
+| **Stability GA** | **~58%** | Deploy at `main` (2026-05-23); security checklist + cluster P0 + SLO clock open |
+| **Commercial GA (scoped)** | **~48%** | Staging proofs + 30d SLO + GTM publish |
 | **Monetization path** | **~60–65%** | Signup/pricing live proof, published SLA |
 | **Retention / support** | **~35–40%** | Live status page, support tiers, on-call proof |
 
@@ -51,7 +52,7 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 
 | Item | Owner | Date | Initials |
 |------|-------|------|----------|
-| Deploy `main` + migration 030 | Ops | | |
+| Deploy `main` + migration 030 | Ops | 2026-05-23 | Argo `848c8968`; verify migration 030 column |
 | SECURITY_RELEASE_PR complete | Ops | | |
 | REMAINING_ITEMS P0 (disk, Longhorn, PostHog) | Ops | | |
 | Restore drill evidence filed | Ops | | |
