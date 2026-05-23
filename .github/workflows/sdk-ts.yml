@@ -1,0 +1,64 @@
+name: SDK TypeScript
+
+# Lint, test, and verify OpenAPI type drift for @madfam/enclii-sdk.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/sdk-ts/**"
+      - "docs/api/**"
+      - "docs/api-reference/**"
+      - ".github/workflows/sdk-ts.yml"
+  pull_request:
+    paths:
+      - "packages/sdk-ts/**"
+      - "docs/api/**"
+      - "docs/api-reference/**"
+      - ".github/workflows/sdk-ts.yml"
+
+concurrency:
+  group: sdk-ts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          cache-dependency-path: packages/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: packages
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: packages/sdk-ts
+        run: pnpm run typecheck
+
+      - name: Run tests
+        working-directory: packages/sdk-ts
+        run: pnpm run test
+
+      - name: Verify OpenAPI type drift
+        working-directory: packages/sdk-ts
+        run: pnpm run verify-types
+
+      - name: Build
+        if: matrix.node-version == '22'
+        working-directory: packages/sdk-ts
+        run: pnpm run build
