@@ -9,7 +9,7 @@ This runbook is the **ROI-ordered proof sequence** after engineering merges to `
 
 ## 0. Phase 0 ops gate (before bet proofs)
 
-Complete in order; details in [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) and [REMAINING_ITEMS.md](./REMAINING_ITEMS.md).
+Complete in order; **single checklist:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md). Details also in [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) and [REMAINING_ITEMS.md](./REMAINING_ITEMS.md).
 
 | Step | Done when |
 |------|-----------|

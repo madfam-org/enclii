@@ -19,6 +19,7 @@
 | `REMAINING_ITEMS.md` cluster P0/P1 | Ops | Open |
 | Migration `030` (`rollout_blocked_reason`) in prod | Ops | Open — see [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) |
 | Staging lifecycle proofs (bets A/B/C) | Ops | Runbook: [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) |
+| Phase 0 execution order | Ops | [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) |
 
 ## Phase 1 — Engineering (code on `main`)
 
@@ -64,7 +65,7 @@
 
 | Deliverable | Status |
 |-------------|--------|
-| SLA (99.95%) | Open |
+| SLA (99.95%) | Draft — [SLA_DRAFT.md](./SLA_DRAFT.md) (legal review) |
 | Support tiers + status page | Open |
 | GA changelog; retire “95% ready” externally | Open |
 | Pricing + self-serve signup tested | Open |
@@ -73,7 +74,7 @@
 
 1. ~~AuthZ / OpenAPI / preview + domains + storage E2E~~ → `main` (2026-05-22)
 2. ~~PVC persist + settings UI (#258)~~ → `main`
-3. **Deploy `main` + migration 030 + security checklist** (ops — critical path)
+3. **Deploy `main` + migration 030 + security checklist** — [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) (ops — critical path)
 4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
 5. ~~Preview CLI + docs (bet A)~~ → `main`
 6. ~~Volumes CLI + bet B/C guides~~ → `main`
