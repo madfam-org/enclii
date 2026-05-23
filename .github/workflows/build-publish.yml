@@ -11,6 +11,10 @@ name: Reusable — Build, sign, publish, pin
 # Then, across all services once:
 #   5. kustomize edit set image → @sha256:<digest> in kustomization.yaml
 #   6. Commit the digest pin back to main (triggers ArgoCD sync)
+#      Partial success: if the build matrix has mixed results, pin still runs
+#      and commits digests for every service that uploaded an artifact.
+#      Sibling build failures must not block deploy of successful builds
+#      (RFC 0017 Tier B — forj-api 4-day outage class).
 #   7. (optional) POST an Enclii lifecycle callback
 #
 # What it accepts:
@@ -380,8 +384,13 @@ jobs:
 
   pin:
     name: Commit digest pins
-    needs: build
-    if: needs.build.result == 'success'
+    needs: [detect-changes, build]
+    # Pin every successfully built service even when sibling matrix jobs fail.
+    if: >-
+      always() &&
+      needs.detect-changes.outputs.any == 'true' &&
+      needs.build.result != 'cancelled' &&
+      needs.build.result != 'skipped'
     # Digest pinning is git/kustomize/curl work; do not burn an ARC build slot.
     runs-on: ubuntu-latest
     steps:
@@ -411,7 +420,24 @@ jobs:
           pattern: digest-*
           merge-multiple: true
 
+      - name: Skip when no successful builds produced digests
+        id: digests
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(digests/*.txt "$GITHUB_WORKSPACE"/digests/*.txt)
+          count=0
+          for f in "${files[@]}"; do
+            [ -f "$f" ] || continue
+            count=$((count + 1))
+          done
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "No digest artifacts from successful builds; skipping pin."
+          fi
+
       - name: Update kustomization image digests
+        if: steps.digests.outputs.count != '0'
         env:
           IMAGE_PREFIX: ${{ inputs.image_prefix }}
           KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
@@ -454,6 +480,7 @@ jobs:
           done
 
       - name: Commit & push digest update
+        if: steps.digests.outputs.count != '0'
         env:
           CI_USER_NAME: ${{ inputs.ci_user_name }}
           CI_USER_EMAIL: ${{ inputs.ci_user_email }}
@@ -472,7 +499,7 @@ jobs:
           git push
 
       - name: Notify enclii lifecycle
-        if: ${{ inputs.enclii_notify_event != '' && env.ENCLII_API_URL != '' }}
+        if: ${{ steps.digests.outputs.count != '0' && inputs.enclii_notify_event != '' && env.ENCLII_API_URL != '' }}
         env:
           ENCLII_API_URL: ${{ secrets.ENCLII_API_URL }}
           ENCLII_DEPLOY_TOKEN: ${{ secrets.ENCLII_DEPLOY_TOKEN }}
