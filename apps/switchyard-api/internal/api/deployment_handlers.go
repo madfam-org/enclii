@@ -59,6 +59,9 @@ func (h *Handler) DeployService(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
+	if !h.enforceBudgetNotThrottled(c, service.ProjectID, req.EnvironmentName) {
+		return
+	}
 
 	// Parse release ID
 	releaseID, err := uuid.Parse(req.ReleaseID)

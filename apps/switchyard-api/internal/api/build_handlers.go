@@ -56,6 +56,9 @@ func (h *Handler) BuildService(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
 	}
+	if !h.enforceBudgetNotThrottled(c, service.ProjectID, "development") {
+		return
+	}
 
 	// Create release record
 	// Get project for scoped image naming

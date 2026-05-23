@@ -39,6 +39,7 @@ type Repositories struct {
 	Templates                 *TemplateRepository
 	Webhooks                  *WebhookRepository
 	OutboundWebhooks          *OutboundWebhookRepository
+	WaybillThrottles          *WaybillThrottleRepository
 	CIRuns                    *CIRunRepository
 	Functions                 *FunctionRepository
 
@@ -141,6 +142,7 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		Templates:                 NewTemplateRepositoryWithTx(tx),
 		Webhooks:                  NewWebhookRepositoryWithTx(tx),
 		OutboundWebhooks:          NewOutboundWebhookRepositoryWithTx(tx),
+		WaybillThrottles:          NewWaybillThrottleRepositoryWithTx(tx),
 		CIRuns:                    NewCIRunRepositoryWithTx(tx),
 		Functions:                 NewFunctionRepositoryWithTx(tx),
 
@@ -224,6 +226,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		Templates:                 NewTemplateRepository(db),
 		Webhooks:                  NewWebhookRepository(db),
 		OutboundWebhooks:          NewOutboundWebhookRepository(db),
+		WaybillThrottles:          NewWaybillThrottleRepository(db),
 		CIRuns:                    NewCIRunRepository(db),
 		Functions:                 NewFunctionRepository(db),
 
