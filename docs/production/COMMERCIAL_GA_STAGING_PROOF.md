@@ -27,7 +27,7 @@ Complete in order; **single checklist:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RU
 
 Create a **staging-only** API token (developer role on a throwaway project) with access to one **non-production-critical** service per bet.
 
-Store in GitHub **environment** `commercial-ga-staging` (recommended) or repository secrets:
+Store in GitHub **environment** `commercial-ga-staging` (recommended) or repository secrets. Step-by-step: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md).
 
 | Secret | Used for |
 |--------|----------|

@@ -71,7 +71,7 @@ Optional manual: `enclii login` + `enclii whoami` against production API.
 | 2 | B Domains | same | `DOMAIN_E2E_*` |
 | 3 | C Storage | same | `STORAGE_E2E_*`, optional `STORAGE_E2E_RELEASE_ID` |
 
-**GitHub:** Actions → **Commercial GA staging proof** → `all` (configure repo secrets first).
+**GitHub:** Actions → **Commercial GA staging proof** → `all` (configure secrets per [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md)).
 
 Record pass/fail + date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md).
 
