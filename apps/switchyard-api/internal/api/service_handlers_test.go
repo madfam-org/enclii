@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 )
 
@@ -33,6 +34,7 @@ func setupServiceTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 	require.NoError(t, err)
 
 	h := &Handler{
+		config: &config.Config{AuthMode: "local", Environment: "development"},
 		repos: &db.Repositories{
 			Services: db.NewServiceRepository(database),
 		},

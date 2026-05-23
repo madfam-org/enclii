@@ -54,19 +54,16 @@ func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWork
 		// Start post-deploy health observation (fire-and-forget with stopCh guard)
 		c.observePostDeployHealth(work.DeploymentID)
 	} else {
-		const maxRetries = 10
-
-		if result.NextCheck != nil && work.Attempt < maxRetries {
-			// Retry with exponential backoff: min(30s * 2^retries, 5m)
+		if result.NextCheck != nil && work.Attempt < DefaultMaxRetries {
 			status = types.DeploymentStatusPending
 			health = types.HealthStatusUnknown
 
-			backoff := 30 * time.Second
+			backoff := DefaultRetryBaseDelay
 			for i := 1; i < work.Attempt; i++ {
 				backoff *= 2
 			}
-			if backoff > 5*time.Minute {
-				backoff = 5 * time.Minute
+			if backoff > DefaultRetryMaxDelay {
+				backoff = DefaultRetryMaxDelay
 			}
 			nextCheck := time.Now().Add(backoff)
 
@@ -101,7 +98,7 @@ func (c *Controller) handleResult(ctx context.Context, workResult *ReconcileWork
 			// Failed permanently (no NextCheck or max retries exceeded)
 			status = types.DeploymentStatusFailed
 			health = types.HealthStatusUnhealthy
-			if work.Attempt >= maxRetries {
+			if work.Attempt >= DefaultMaxRetries {
 				logger.WithField("attempts", work.Attempt).Error("Deployment failed after max retries")
 			} else {
 				logger.WithError(result.Error).Error("Deployment reconciliation failed")

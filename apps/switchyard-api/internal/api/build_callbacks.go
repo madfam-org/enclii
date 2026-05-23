@@ -49,13 +49,7 @@ type BuildCallbackRequest struct {
 func (h *Handler) BuildCompleteCallback(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Verify the request comes from Roundhouse (API key auth)
-	authHeader := c.GetHeader("Authorization")
-	expectedAuth := "Bearer " + h.config.RoundhouseAPIKey
-	if h.config.RoundhouseAPIKey != "" && authHeader != expectedAuth {
-		h.logger.Warn(ctx, "Build callback unauthorized",
-			logging.String("remote_addr", c.ClientIP()))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	if !h.verifyRoundhouseCallbackAuth(c) {
 		return
 	}
 

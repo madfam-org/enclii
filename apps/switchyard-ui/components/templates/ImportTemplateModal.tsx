@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@enclii/ui-components/dialog";
 import { Spinner } from '@/components/ui/spinner';
+import { apiPost } from '@/lib/api';
 import type { TemplateCategory } from "@/app/(protected)/templates/page";
 
 interface ImportTemplateModalProps {
@@ -111,32 +112,16 @@ export function ImportTemplateModal({ isOpen, onClose, onSuccess }: ImportTempla
     setIsSubmitting(true);
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4200";
-      const storedTokens = localStorage.getItem("enclii_tokens");
-      const tokens = storedTokens ? JSON.parse(storedTokens) : {};
-
-      const response = await fetch(`${API_BASE_URL}/v1/templates/import`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': tokens.accessToken ? `Bearer ${tokens.accessToken}` : '',
-        },
-        body: JSON.stringify({
-          repo_url: formData.repoUrl,
-          name: formData.name,
-          description: formData.description,
-          category: formData.category,
-          framework: formData.framework,
-          language: formData.language,
-          branch: formData.branch || 'main',
-          tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-        }),
+      await apiPost('/v1/templates/import', {
+        repo_url: formData.repoUrl,
+        name: formData.name,
+        description: formData.description,
+        category: formData.category,
+        framework: formData.framework,
+        language: formData.language,
+        branch: formData.branch || 'main',
+        tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to import template: ${response.status}`);
-      }
 
       // Success - reset form and close
       setFormData({

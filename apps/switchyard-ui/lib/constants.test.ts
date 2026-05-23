@@ -52,15 +52,14 @@ describe('polling intervals', () => {
     expect(POLLING_SLOW).toBe(60_000);
   });
 
-  it('POLLING_IDLE is 60 seconds', () => {
-    expect(POLLING_IDLE).toBe(60_000);
+  it('POLLING_IDLE is 120 seconds', () => {
+    expect(POLLING_IDLE).toBe(120_000);
   });
 
   it('intervals are in non-decreasing order', () => {
     expect(POLLING_FAST).toBeLessThan(POLLING_NORMAL);
     expect(POLLING_NORMAL).toBeLessThan(POLLING_SLOW);
-    // After #229 bump, SLOW and IDLE are both 60s. The contract is
-    // non-decreasing, not strictly increasing.
+    // SLOW (60s) <= IDLE (120s). Non-decreasing, not strictly increasing.
     expect(POLLING_SLOW).toBeLessThanOrEqual(POLLING_IDLE);
   });
 });

@@ -33,6 +33,7 @@ import {
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime, formatFullTimestamp, formatDuration } from '@/lib/formatting';
+import { stripGithubRemoteUrl } from '@/lib/github-repo';
 import { FrameworkIcon, FrameworkType } from "./framework-icon";
 
 interface Service {
@@ -176,7 +177,7 @@ export function ProjectCard({ project, className, onDelete }: ProjectCardProps) 
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 {project.gitRepo && (
                   <span className="truncate max-w-[150px]">
-                    {project.gitRepo.replace(/^https?:\/\/github\.com\//, "")}
+                    {stripGithubRemoteUrl(project.gitRepo)}
                   </span>
                 )}
               </div>

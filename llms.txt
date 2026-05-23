@@ -14,3 +14,11 @@ Compact LLM context index for this repository.
 Routine production operations are Enclii-first. Use Enclii web, API, or CLI
 before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 `docker exec`, or direct container access is bootstrap/break-glass only.
+
+## Audit remediation (May 2026)
+
+- `docs/production/CODEBASE_AUDIT_2026-05.md` — findings and checklist
+- `docs/production/SECURITY_RELEASE_PR.md` — pending production deploy PR
+- `docs/contracts/DEV_ENV_ALIGNMENT.md` — UI/CLI/API URL and log endpoint matrix
+- `docs/testing/GOLDEN_TESTS.md` — golden manifest regeneration
+- `docs/ADAPTER_GAPS.md` — Enclii adapter gap registry

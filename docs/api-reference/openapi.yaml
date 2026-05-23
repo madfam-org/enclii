@@ -198,11 +198,12 @@ paths:
       summary: Dashboard statistics
       description: |
         Returns aggregated statistics for the dashboard including healthy services count,
-        deployments today, active projects, and recent activity. This endpoint is public
-        (no authentication required) for local development dashboards.
+        deployments today, active projects, and recent activity. Requires authentication
+        (same session as other `/v1` protected routes).
       tags: [health]
       operationId: getDashboardStats
-      security: []
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Dashboard statistics

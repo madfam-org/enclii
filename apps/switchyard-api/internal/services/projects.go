@@ -141,6 +141,23 @@ func (s *ProjectService) ListProjectsScoped(ctx context.Context, teamID *uuid.UU
 	return projects, nil
 }
 
+// ListProjectsForUser returns projects visible to a non-admin user via project_access.
+func (s *ProjectService) ListProjectsForUser(ctx context.Context, userID uuid.UUID) ([]*types.Project, error) {
+	accessRows, err := s.repos.ProjectAccess.ListByUser(ctx, userID)
+	if err != nil {
+		s.logger.Error("Failed to list project access for user", "user_id", userID.String(), "error", err)
+		return nil, errors.Wrap(err, errors.ErrDatabaseError)
+	}
+	if len(accessRows) == 0 {
+		return []*types.Project{}, nil
+	}
+	ids := make([]uuid.UUID, len(accessRows))
+	for i, row := range accessRows {
+		ids[i] = row.ProjectID
+	}
+	return s.repos.Projects.ListByIDs(ctx, ids)
+}
+
 // CreateServiceRequest represents a request to create a service
 type CreateServiceRequest struct {
 	ProjectID        string

@@ -44,6 +44,7 @@ import {
   serviceSummariesById,
 } from '@/lib/project-process-feed';
 import { fetchProjectCards } from '@/lib/project-card-api';
+import { stripGithubRemoteUrl } from '@/lib/github-repo';
 
 // /projects is the dedicated projects-only surface — distinct from the home
 // dashboard at /. Home shows the ecosystem context (usage, system health,
@@ -120,11 +121,7 @@ export default function ProjectsPage() {
           compactProjects
             .map((p) => p.gitRepo)
             .filter((r): r is string => !!r)
-            .map((r) =>
-              r
-                .replace(/^https?:\/\/github\.com\//, "")
-                .replace(/\.git$/, ""),
-            ),
+            .map((r) => stripGithubRemoteUrl(r)),
         ),
       );
       if (repoSlugs.length > 0) {
@@ -150,9 +147,7 @@ export default function ProjectsPage() {
           setProjects((prev) =>
             prev.map((p) => {
               if (!p.gitRepo) return p;
-              const key = p.gitRepo
-                .replace(/^https?:\/\/github\.com\//, "")
-                .replace(/\.git$/, "");
+              const key = stripGithubRemoteUrl(p.gitRepo);
               const m = meta.repos?.[key];
               const errored = meta.errors?.[key];
               if (!m && !errored) return p;

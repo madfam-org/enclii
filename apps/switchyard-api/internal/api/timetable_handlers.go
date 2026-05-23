@@ -116,6 +116,12 @@ func (h *Handler) CreateCronJob(c *gin.Context) {
 		return
 	}
 
+	svc, err := h.repos.Services.GetByID(serviceID)
+	if err != nil || svc == nil || svc.ProjectID != project.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "service does not belong to this project"})
+		return
+	}
+
 	job := &types.CronJob{
 		ProjectID:   project.ID,
 		ServiceID:   serviceID,
@@ -204,6 +210,10 @@ func (h *Handler) GetCronJob(c *gin.Context) {
 		return
 	}
 
+	if !h.enforceUserProjectAccess(c, job.ProjectID) {
+		return
+	}
+
 	c.JSON(http.StatusOK, job)
 }
 
@@ -233,6 +243,10 @@ func (h *Handler) UpdateCronJob(c *gin.Context) {
 		}
 		h.logger.Error(ctx, "Failed to get cron job", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get cron job"})
+		return
+	}
+
+	if !h.enforceUserProjectAccess(c, job.ProjectID) {
 		return
 	}
 

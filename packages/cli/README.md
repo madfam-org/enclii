@@ -188,6 +188,10 @@ Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry,
 
 Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN`, `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`).
 
+When `ENCLII_ENVIRONMENT=development` and `ENCLII_API_ENDPOINT` is unset, the CLI targets `http://localhost:4200` (aligned with `switchyard-ui`). See `docs/contracts/DEV_ENV_ALIGNMENT.md`.
+
+Timetable (`enclii jobs`) and Junction (`enclii junctions`) commands use the same `apiRequest` / `apiRequestResponse` helpers as billing and admin commands.
+
 ## Authentication Flow
 
 The CLI uses OAuth 2.0 with PKCE:
@@ -203,7 +207,7 @@ The CLI uses OAuth 2.0 with PKCE:
 
 ## API Client
 
-`internal/client/api.go` (and `api_admin.go`, `api_canary.go`, `api_streaming.go`) hold the typed `APIClient` covering projects, services, releases, deployments, env-vars, functions, and admin/onboarding endpoints. Commands without a typed method use the shared `apiRequest` helper in `internal/cmd/apirequest.go`, which wraps `httpClient()` (30s timeout) and adds auth + standard headers.
+`internal/client/api.go` (and `api_admin.go`, `api_canary.go`, `api_streaming.go`) hold the typed `APIClient` covering projects, services, releases, deployments, env-vars, functions, and admin/onboarding endpoints. Commands without a typed method use the shared `apiRequest` helper in `internal/cmd/apirequest.go`, which wraps `httpClient()` (30s timeout) and adds auth + standard headers. Legacy per-command HTTP wrappers (`billingRequest`, `jobsRequest`, `junctionsRequest`) delegate to these helpers.
 
 ## Output Formatting
 

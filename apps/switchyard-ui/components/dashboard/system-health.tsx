@@ -12,7 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL } from "@/lib/constants";
+import { apiPublicGet } from "@/lib/api";
 
 interface HealthStatus {
   status: "healthy" | "degraded" | "unhealthy" | "unknown";
@@ -90,13 +90,13 @@ export function SystemHealth({ className, compact = false }: SystemHealthProps) 
   const fetchHealth = async () => {
     try {
       setError(null);
-      const response = await fetch(`${API_BASE_URL}/health`);
-
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await apiPublicGet<{
+        status: string;
+        database?: { status: string; message?: string };
+        cache?: { status: string; message?: string };
+        kubernetes?: { status: string; message?: string };
+        builds?: { status: string; message?: string };
+      }>("/health");
 
       // Transform simple health response to SystemHealthResponse format
       const healthData: SystemHealthResponse = {
@@ -295,8 +295,8 @@ export function SystemHealthBadge({ className }: { className?: string }) {
 
   const checkHealth = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
-      setStatus(response.ok ? "healthy" : "unhealthy");
+      await apiPublicGet<{ status: string }>("/health");
+      setStatus("healthy");
     } catch {
       setStatus("unhealthy");
     } finally {

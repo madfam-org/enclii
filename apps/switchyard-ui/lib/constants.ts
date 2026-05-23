@@ -30,8 +30,8 @@ export const POLLING_NORMAL = 15_000;
  */
 export const POLLING_SLOW = 60_000;
 
-/** Idle polling for rarely changing data (60s) */
-export const POLLING_IDLE = 60_000;
+/** Idle polling for rarely changing data (120s) */
+export const POLLING_IDLE = 120_000;
 
 // ---------------------------------------------------------------------------
 // Status color maps (reusable across badge / indicator components)

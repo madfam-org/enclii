@@ -358,9 +358,6 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 	// Build status - public endpoint for cross-service commit status lookup
 	router.GET("/v1/builds/:commit_sha/status", h.GetBuildStatusByCommit)
 
-	// Dashboard stats (public endpoint for local development)
-	router.GET("/v1/dashboard/stats", h.GetDashboardStats)
-
 	// GitHub webhook (no auth required - uses HMAC signature verification)
 	// Endpoint for GitHub to send push events for auto-deployments
 	router.POST("/v1/webhooks/github", h.GitHubWebhook)
@@ -435,7 +432,11 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 		protected.Use(middleware.ActingAsMiddleware(
 			middleware.NewRepoActingAsResolver(h.repos.AdminActingSessions, h.repos.Teams),
 		))
+		protected.Use(h.RequireProjectAccessBySlug())
 		{
+			// Dashboard stats (authenticated; was public for local dev only)
+			protected.GET("/dashboard/stats", h.GetDashboardStats)
+
 			// Projects
 			protected.POST("/projects", h.auth.RequireRole(string(types.RoleAdmin)), middleware.RequireTierForProject(h.repos), h.CreateProject)
 			protected.GET("/projects", h.ListProjects)
@@ -729,7 +730,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/functions/:id/logs", h.GetFunctionLogs)
 			protected.GET("/functions/:id/metrics", h.GetFunctionMetrics)
 
-			// Timetable — Cron Jobs & One-Off Jobs (NOT IMPLEMENTED — stubs return 501)
+			// Timetable — Cron Jobs & One-Off Jobs
 			protected.POST("/projects/:slug/cron-jobs", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateCronJob)
 			protected.GET("/projects/:slug/cron-jobs", h.ListCronJobs)
 			protected.GET("/cron-jobs/:id", h.GetCronJob)
@@ -738,7 +739,7 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/cron-jobs/:id/runs", h.ListCronJobRuns)
 			protected.POST("/projects/:slug/one-off-jobs", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateOneOffJob)
 
-			// Junctions — Routing & Ingress (NOT IMPLEMENTED — stubs return 501)
+			// Junctions — Routing & Ingress
 			protected.POST("/projects/:slug/junctions", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateJunction)
 			protected.GET("/projects/:slug/junctions", h.ListJunctions)
 			protected.GET("/junctions/:id", h.GetJunction)

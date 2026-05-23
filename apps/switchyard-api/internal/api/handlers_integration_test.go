@@ -99,6 +99,8 @@ func TestGetProject(t *testing.T) {
 }
 
 func TestGetDashboardStats(t *testing.T) {
+	// Handler-only integration (no auth middleware). Production routes register
+	// GET /v1/dashboard/stats on the authenticated group — see handlers.go.
 	requireTestDB(t)
 	h, engine := setupIntegrationHandler(t)
 	engine.GET("/v1/dashboard/stats", h.GetDashboardStats)

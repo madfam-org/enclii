@@ -212,16 +212,15 @@ func TestAuthMiddleware_SEC007_IssuerRestrictedAdminFallback(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code, "trusted issuer should get admin fallback")
 }
 
-func TestAuthMiddleware_IsConfiguredIssuer_EmptyAllowsAll(t *testing.T) {
-	// When no OIDC issuer is configured, isConfiguredIssuer should return true
-	// (permissive for local/dev mode)
+func TestAuthMiddleware_IsConfiguredIssuer_EmptyRejectsForeignIssuer(t *testing.T) {
+	// SEC-007: without a configured issuer, email-based admin elevation must not apply.
 	gin.SetMode(gin.TestMode)
 	_, publicKey := generateTestRSAKeys(t)
 
 	t.Setenv("ENCLII_OIDC_ISSUER", "")
 	auth := NewAuthMiddleware(publicKey)
-	assert.True(t, auth.isConfiguredIssuer("https://any-issuer.example.com"))
-	assert.True(t, auth.isConfiguredIssuer(""))
+	assert.False(t, auth.isConfiguredIssuer("https://any-issuer.example.com"))
+	assert.False(t, auth.isConfiguredIssuer(""))
 }
 
 func TestAuthMiddleware_IsConfiguredIssuer_TrailingSlashTolerant(t *testing.T) {

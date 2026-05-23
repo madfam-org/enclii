@@ -33,14 +33,36 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Environment != "development" {
 		t.Errorf("Environment = %q, want %q", cfg.Environment, "development")
 	}
-	if cfg.APIEndpoint != "https://api.enclii.dev" {
-		t.Errorf("APIEndpoint = %q, want %q", cfg.APIEndpoint, "https://api.enclii.dev")
+	// Development + unset api-endpoint resolves to local Switchyard (see DEV_ENV_ALIGNMENT.md).
+	if cfg.APIEndpoint != "http://localhost:4200" {
+		t.Errorf("APIEndpoint = %q, want %q", cfg.APIEndpoint, "http://localhost:4200")
 	}
 	if cfg.Project != "default" {
 		t.Errorf("Project = %q, want %q", cfg.Project, "default")
 	}
 	if cfg.ProjectDir != "." {
 		t.Errorf("ProjectDir = %q, want %q", cfg.ProjectDir, ".")
+	}
+}
+
+func TestLoad_ProductionDefaultAPIEndpoint(t *testing.T) {
+	envVars := []string{
+		"ENCLII_ENVIRONMENT",
+		"ENCLII_API_ENDPOINT",
+	}
+	for _, v := range envVars {
+		prev := os.Getenv(v)
+		t.Cleanup(func() { os.Setenv(v, prev) })
+		os.Unsetenv(v)
+	}
+	os.Setenv("ENCLII_ENVIRONMENT", "production")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.APIEndpoint != "https://api.enclii.dev" {
+		t.Errorf("APIEndpoint = %q, want https://api.enclii.dev", cfg.APIEndpoint)
 	}
 }
 

@@ -9,6 +9,7 @@
 
 
 > **Created:** 2026-03-19 (Session 106)
+> **Updated:** 2026-05-22 — May codebase audit remediation (see `CODEBASE_AUDIT_2026-05.md`)
 > **Status:** In Progress
 > **Scope:** Enclii platform + 8 ecosystem repos
 > **Audit Score:** 60/100 (pre-remediation)

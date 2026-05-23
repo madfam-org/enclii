@@ -56,6 +56,10 @@ func (h *Handler) UpdateService(c *gin.Context) {
 		return
 	}
 
+	if !h.enforceUserProjectAccess(c, service.ProjectID) {
+		return
+	}
+
 	// Parse request body
 	var req UpdateServiceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -280,6 +284,10 @@ func (h *Handler) GetServiceSettings(c *gin.Context) {
 //   - 500 Internal Server Error: Failed to query services
 func (h *Handler) ListServicesByGitRepo(c *gin.Context) {
 	ctx := c.Request.Context()
+
+	if !h.verifyRoundhouseInternalReadAuth(c) {
+		return
+	}
 
 	gitRepo := c.Query("git_repo")
 	if gitRepo == "" {

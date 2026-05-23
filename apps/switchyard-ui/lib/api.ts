@@ -70,6 +70,7 @@ async function attemptTokenRefresh(): Promise<boolean> {
           const newTokens = {
             ...tokens,
             accessToken: data.access_token,
+            refreshToken: data.refresh_token || tokens.refreshToken,
             expiresAt: data.expires_at
               ? new Date(data.expires_at).getTime()
               : tokens.expiresAt,
@@ -101,6 +102,18 @@ async function attemptTokenRefresh(): Promise<boolean> {
  * Retrieves JWT token from localStorage (set by AuthContext)
  * Includes CSRF token for write operations
  */
+/** Plain-object auth headers for fetch/WebSocket APIs that cannot use HeadersInit. */
+export function getAuthHeadersRecord(includeCSRF: boolean = false): Record<string, string> {
+  const headers = getAuthHeaders(includeCSRF);
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return headers as Record<string, string>;
+}
+
 export function getAuthHeaders(includeCSRF: boolean = false): HeadersInit {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -493,3 +506,116 @@ export async function apiGetPaginated<T = unknown>(
 
   return apiRequest<PaginatedResponse<T>>(url, { method: "GET" });
 }
+
+/**
+ * GET without Authorization (health probes, pre-auth signup status).
+ * Still applies timeout and credentials for CSRF cookies when present.
+ */
+export async function apiPublicGet<T = unknown>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      method: "GET",
+      credentials: "include",
+      signal: timeoutController.signal,
+      headers: {
+        Accept: "application/json",
+        ...(options.headers as Record<string, string> | undefined),
+      },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        (error as { message?: string }).message ||
+          `API request failed: ${response.status} ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Low-level fetch returning the Response (SSE streams, CSV/blob downloads).
+ * Applies auth headers, timeout, and a single 401 refresh retry.
+ */
+export async function apiFetchResponse(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const method = options.method || "GET";
+  const isWriteOperation = ["POST", "PUT", "DELETE", "PATCH"].includes(
+    method.toUpperCase(),
+  );
+  if (
+    isWriteOperation &&
+    !csrfToken &&
+    csrfEndpointAvailable !== false
+  ) {
+    await fetchCSRFToken();
+  }
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+
+  const doFetch = () =>
+    fetch(url, {
+      ...options,
+      headers: {
+        ...getAuthHeadersRecord(isWriteOperation),
+        ...(options.headers as Record<string, string> | undefined),
+      },
+      credentials: "include",
+      signal: timeoutController.signal,
+    });
+
+  try {
+    let response = await doFetch();
+    if (response.status === 401) {
+      const refreshed = await attemptTokenRefresh();
+      if (refreshed) {
+        response = await doFetch();
+      }
+    }
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Pre-auth Switchyard requests (login/register) without Bearer or CSRF headers.
+ */
+export async function apiPublicFetchResponse(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      ...options,
+      credentials: "include",
+      signal: timeoutController.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(options.headers as Record<string, string> | undefined),
+      },
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** Exported for AuthContext to dedupe token refresh with apiRequest. */
+export { attemptTokenRefresh };

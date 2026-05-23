@@ -21,7 +21,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Button } from "@enclii/ui-components/button";
 import { Input } from "@enclii/ui-components/input";
-import { API_BASE_URL } from '@/lib/constants';
+import { buildLogTailWsUrl } from '@/lib/ws-url';
 import { apiGet } from '@/lib/api';
 
 import { parseAnsi } from './ansi';
@@ -207,26 +207,13 @@ export function LogViewer({ serviceId, serviceName, env }: LogViewerProps) {
     let cancelled = false;
     const connect = () => {
       if (cancelled) return;
-      const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
-      const base = API_BASE_URL.replace(/^https?:\/\//, '');
-      const params = new URLSearchParams();
-      for (const l of levels) params.append('level', l);
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      params.set('env', env);
+      const levelParams: Record<string, string | string[]> = {
+        env,
+      };
+      if (debouncedSearch) levelParams.search = debouncedSearch;
+      if (levels.length > 0) levelParams.level = levels;
 
-      // WebSocket auth: same convention as the existing LogsTab — token
-      // in query param since the browser WS API can't set headers.
-      try {
-        const stored = localStorage.getItem('enclii_tokens');
-        if (stored) {
-          const tokens = JSON.parse(stored);
-          if (tokens.accessToken) params.append('token', tokens.accessToken);
-        }
-      } catch {
-        // ignore
-      }
-
-      const url = `${wsProtocol}://${base}/v1/services/${serviceId}/logs/tail?${params.toString()}`;
+      const url = buildLogTailWsUrl(serviceId, levelParams);
       const ws = new WebSocket(url);
       wsRef.current = ws;
 

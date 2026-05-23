@@ -162,9 +162,9 @@ deploy-prod:
 	@echo "🚀 Deploying to production environment..."
 	@echo "⚠️  Production deployment requires manual confirmation"
 	@read -p "Deploy to production? (yes/no): " confirm && [ "$$confirm" = "yes" ]
-	kubectl create namespace enclii-production --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create namespace enclii --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k infra/k8s/production
-	kubectl rollout status deployment/switchyard-api -n enclii-production --timeout=600s
+	kubectl rollout status deployment/switchyard-api -n enclii --timeout=600s
 
 # Health check all environments
 health-check:
@@ -174,7 +174,7 @@ health-check:
 	@echo "Staging:"  
 	kubectl get pods -l app=switchyard-api -n enclii-staging || true
 	@echo "Production:"
-	kubectl get pods -l app=switchyard-api -n enclii-production || true
+	kubectl get pods -l app=switchyard-api -n enclii || true
 
 # Run all services locally (API + UI)
 run-all: build-api build-ui

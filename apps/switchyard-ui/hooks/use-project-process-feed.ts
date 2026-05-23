@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, getAuthHeaders } from "@/lib/api";
-import { API_BASE_URL, POLLING_NORMAL } from "@/lib/constants";
+import { apiFetchResponse, apiGet, getAuthHeadersRecord } from "@/lib/api";
+import { POLLING_NORMAL } from "@/lib/constants";
 import { usePolling } from "@/hooks/use-polling";
 import type {
   ProjectProcessSummary,
@@ -125,14 +125,13 @@ async function streamProcessSummaries(
     limit_per_project: "5",
     active_only: "true",
   });
-  const response = await fetch(
-    `${API_BASE_URL}/v1/project-processes/stream?${params.toString()}`,
+  const response = await apiFetchResponse(
+    `/v1/project-processes/stream?${params.toString()}`,
     {
       headers: {
-        ...authHeadersObject(),
+        ...getAuthHeadersRecord(false),
         Accept: "text/event-stream",
       },
-      credentials: "include",
       signal,
     },
   );
@@ -178,15 +177,4 @@ function handleSSEEvent(
   }
   if (event !== "summary" || data.length === 0) return;
   onSummary(JSON.parse(data.join("\n")) as ProjectProcessSummaryResponse);
-}
-
-function authHeadersObject(): Record<string, string> {
-  const headers = getAuthHeaders(false);
-  if (headers instanceof Headers) {
-    return Object.fromEntries(headers.entries());
-  }
-  if (Array.isArray(headers)) {
-    return Object.fromEntries(headers);
-  }
-  return headers as Record<string, string>;
 }

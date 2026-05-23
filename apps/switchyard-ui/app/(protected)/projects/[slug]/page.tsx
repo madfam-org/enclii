@@ -20,6 +20,7 @@ import { ChevronRight, Rocket, Webhook, ArrowRightLeft, Play, Github, Loader2, P
 import { HealthBadge } from '@/components/dashboard/health-badge';
 import { SentryErrorBadge } from '@/components/dashboard/sentry-error-badge';
 import { formatRelativeTime } from '@/lib/formatting';
+import { githubRepoHref, stripGithubRemoteUrl } from '@/lib/github-repo';
 
 interface Project {
   id: string;
@@ -379,12 +380,12 @@ export default function ProjectDetailPage() {
                   <div className="mt-1 flex items-center text-sm text-muted-foreground">
                     <Github className="h-3.5 w-3.5 mr-1.5" />
                     <a 
-                      href={service.git_repo.startsWith('http') ? service.git_repo : `https://github.com/${service.git_repo}`} 
+                      href={githubRepoHref(service.git_repo)} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="hover:text-foreground transition-colors truncate max-w-sm"
                     >
-                      {service.git_repo.replace(/^https?:\/\/github\.com\//, '')}
+                      {stripGithubRemoteUrl(service.git_repo)}
                     </a>
                   </div>
                 </CardHeader>

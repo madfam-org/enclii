@@ -319,8 +319,8 @@ func (a *AuthMiddleware) Middleware() gin.HandlerFunc {
 // SEC-007: Prevents email-based admin escalation from foreign JWT issuers.
 func (a *AuthMiddleware) isConfiguredIssuer(issuer string) bool {
 	if a.oidcIssuer == "" {
-		// No OIDC issuer configured — allow fallback for local/dev mode
-		return true
+		// SEC-007: never grant email-based admin elevation without a configured issuer.
+		return false
 	}
 	return strings.TrimRight(issuer, "/") == strings.TrimRight(a.oidcIssuer, "/")
 }

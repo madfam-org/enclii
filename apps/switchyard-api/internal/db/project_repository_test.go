@@ -407,6 +407,36 @@ func TestProjectRepository_ListByTeam(t *testing.T) {
 	})
 }
 
+func TestProjectRepository_ListByIDs(t *testing.T) {
+	t.Run("empty ids", func(t *testing.T) {
+		repo, _, cleanup := newProjectMockDB(t)
+		defer cleanup()
+		out, err := repo.ListByIDs(context.Background(), nil)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		p := &types.Project{
+			ID: id, Name: "Demo", Slug: "demo",
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id = ANY\(\$1\)`).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(projectRow(p))
+
+		out, err := repo.ListByIDs(context.Background(), []uuid.UUID{id})
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, "demo", out[0].Slug)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 // --- GetTeamID (XC-2 Round 5 enforcement helper) ---
 
 func TestProjectRepository_GetTeamID(t *testing.T) {

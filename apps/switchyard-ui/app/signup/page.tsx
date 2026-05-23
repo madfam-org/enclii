@@ -23,7 +23,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { API_BASE_URL } from "@/lib/constants";
+import { apiFetchResponse } from "@/lib/api";
 import { Button } from "@enclii/ui-components/button";
 import { Input } from "@enclii/ui-components/input";
 import { Label } from "@enclii/ui-components/label";
@@ -93,7 +93,7 @@ export default function SignupPage() {
   const refreshStatus = useCallback(async () => {
     if (!signupID) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/signup/${signupID}/status`);
+      const res = await apiFetchResponse(`/v1/signup/${signupID}/status`);
       if (res.status === 404) {
         setError("Signup is not available right now. Try again later.");
         return;
@@ -137,7 +137,7 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/signup`, {
+      const res = await apiFetchResponse("/v1/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, company_name: companyName || undefined }),
@@ -165,7 +165,7 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/signup/${signupID}/github/authorize`);
+      const res = await apiFetchResponse(`/v1/signup/${signupID}/github/authorize`);
       if (!res.ok) {
         setError("Could not start GitHub connection. Try again.");
         return;
@@ -178,7 +178,7 @@ export default function SignupPage() {
   }
 
   async function provision(id: string) {
-    const res = await fetch(`${API_BASE_URL}/v1/signup/${id}/provision`, {
+    const res = await apiFetchResponse(`/v1/signup/${id}/provision`, {
       method: "POST",
     });
     if (!res.ok) {

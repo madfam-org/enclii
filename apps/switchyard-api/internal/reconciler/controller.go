@@ -86,9 +86,9 @@ func NewController(database *sql.DB, repositories *db.Repositories, k8sClient *k
 		k8sClient:         k8sClient,
 		logger:            logger,
 		stopCh:            make(chan struct{}),
-		workCh:            make(chan *ReconcileWork, 100),
-		resultCh:          make(chan *ReconcileWorkResult, 100),
-		workers:           5, // Number of concurrent reconcilers
+		workCh:            make(chan *ReconcileWork, DefaultWorkQueueSize),
+		resultCh:          make(chan *ReconcileWorkResult, DefaultWorkQueueSize),
+		workers:           DefaultWorkerCount,
 	}
 }
 

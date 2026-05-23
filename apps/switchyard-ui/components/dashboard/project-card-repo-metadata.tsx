@@ -8,6 +8,7 @@ import {
   Star,
 } from "lucide-react";
 import type { CompactProject } from "./project-card-compact";
+import { stripGithubRemoteUrl } from "@/lib/github-repo";
 
 function formatCount(n: number | undefined): string {
   if (n === undefined || n === null) return "";
@@ -41,7 +42,7 @@ export function ProjectCardRepoMetadata({
         >
           <Github className="h-3 w-3 shrink-0" />
           <span className="truncate">
-            {project.gitRepo.replace(/^https?:\/\/github\.com\//, "")}
+            {stripGithubRemoteUrl(project.gitRepo)}
           </span>
           {project.repoMeta?.visibility === "private" && (
             <Lock

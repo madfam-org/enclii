@@ -105,6 +105,12 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 		return
 	}
 
+	svc, err := h.repos.Services.GetByID(serviceID)
+	if err != nil || svc == nil || svc.ProjectID != project.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "service does not belong to this project"})
+		return
+	}
+
 	// Check uniqueness
 	exists, err := h.repos.Junctions.ExistsByDomainPath(ctx, req.Domain, path)
 	if err != nil {
@@ -226,6 +232,10 @@ func (h *Handler) GetJunction(c *gin.Context) {
 		}
 		h.logger.Error(ctx, "Failed to get junction", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get junction"})
+		return
+	}
+
+	if !h.enforceUserProjectAccess(c, junction.ProjectID) {
 		return
 	}
 

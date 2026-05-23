@@ -20,6 +20,7 @@ import React, {
   type ReactNode,
 } from "react";
 import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-types";
+import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@/lib/api";
 
 // =============================================================================
 // CONFIGURATION
@@ -327,20 +328,10 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     if (!stored?.refreshToken) return false;
     isRefreshingRef.current = true;
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: stored.refreshToken }),
-      });
-      if (!response.ok) throw new Error("Token refresh failed");
-      const data = await response.json();
-      const newTokens = {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || stored.refreshToken,
-        expiresAt: data.expires_at ? new Date(data.expires_at).getTime() : stored.expiresAt,
-      };
-      setStoredTokens(newTokens);
-      scheduleRefresh(newTokens.expiresAt);
+      const ok = await attemptTokenRefresh();
+      if (!ok) throw new Error("Token refresh failed");
+      const newTokens = getStoredTokens();
+      if (newTokens) scheduleRefresh(newTokens.expiresAt);
       return true;
     } catch {
       setAuthError("Session expired. Please log in again.");
@@ -388,9 +379,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setAuthError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/auth/login`, {
+      const response = await apiPublicFetchResponse("/v1/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       if (!response.ok) throw new Error(await parseErrorResponse(response, "Login failed"));
@@ -410,9 +400,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setAuthError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/auth/register`, {
+      const response = await apiPublicFetchResponse("/v1/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
       });
       if (!response.ok) throw new Error(await parseErrorResponse(response, "Registration failed"));
@@ -434,7 +423,9 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     try {
       const params = new URLSearchParams({ code });
       if (state) params.append("state", state);
-      const response = await fetch(`${API_BASE_URL}/v1/auth/callback?${params.toString()}`, { method: "GET", credentials: "include" });
+      const response = await apiPublicFetchResponse(`/v1/auth/callback?${params.toString()}`, {
+        method: "GET",
+      });
       if (!response.ok) throw new Error(await parseErrorResponse(response, "OAuth callback failed"));
       const data = await response.json();
       const tokens = { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: new Date(data.expires_at).getTime() };
@@ -470,9 +461,8 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     const stored = getStoredTokens();
     try {
       if (stored?.accessToken && !options?.skipServerRevocation) {
-        const response = await fetch(`${API_BASE_URL}/v1/auth/logout`, {
+        const response = await apiFetchResponse("/v1/auth/logout", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${stored.accessToken}` },
         }).catch(() => null);
         if (response?.ok) {
           try { const data = await response.json(); if (data?.logout_url) logoutUrl = data.logout_url; } catch { /* ignore */ }

@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { API_BASE_URL } from "@/lib/constants";
+import { apiFetchResponse } from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function VerifyEmailPage() {
@@ -35,7 +35,7 @@ export default function VerifyEmailPage() {
     }
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/v1/signup/${signupID}/verify`, {
+        const res = await apiFetchResponse(`/v1/signup/${signupID}/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),

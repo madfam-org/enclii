@@ -9,7 +9,7 @@ import { Badge } from "@enclii/ui-components/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@enclii/ui-components/dialog";
 import { apiGet } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
-import { API_BASE_URL } from '@/lib/constants';
+import { buildBuildLogStreamWsUrl } from '@/lib/ws-url';
 import { formatTimestamp, formatRelativeTime } from '@/lib/formatting';
 import type { Release } from './types';
 
@@ -33,12 +33,6 @@ interface LogLine {
   container?: string;
   timestamp: Date;
   message: string;
-}
-
-function getWebSocketUrl(): string {
-  const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
-  const baseUrl = API_BASE_URL.replace(/^https?:\/\//, '');
-  return `${wsProtocol}://${baseUrl}`;
 }
 
 export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps) {
@@ -99,28 +93,7 @@ export function BuildLogsViewer({ serviceId, serviceName }: BuildLogsViewerProps
     setConnectionStatus('connecting');
     setBuildLogs([]);
 
-    // Get auth token
-    let token = '';
-    if (typeof window !== 'undefined') {
-      const storedTokens = localStorage.getItem('enclii_tokens');
-      if (storedTokens) {
-        try {
-          const tokens = JSON.parse(storedTokens);
-          token = tokens.accessToken || '';
-        } catch {
-          // Invalid JSON
-        }
-      }
-    }
-
-    const wsBaseUrl = getWebSocketUrl();
-    const endpoint = `/v1/services/${serviceId}/builds/${releaseId}/logs/stream`;
-    const params = new URLSearchParams({ timestamps: 'true' });
-    if (token) {
-      params.append('token', token);
-    }
-
-    const wsUrl = `${wsBaseUrl}${endpoint}?${params.toString()}`;
+    const wsUrl = buildBuildLogStreamWsUrl(serviceId, releaseId);
 
     try {
       const ws = new WebSocket(wsUrl);

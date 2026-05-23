@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -96,6 +97,33 @@ func (r *ProjectRepository) ListByTeam(ctx context.Context, teamID uuid.UUID) ([
 		 ORDER BY created_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, query, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var projects []*types.Project
+	for rows.Next() {
+		p := &types.Project{}
+		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.CIRunnerMode, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
+
+// ListByIDs returns projects for the given IDs, preserving no particular order.
+func (r *ProjectRepository) ListByIDs(ctx context.Context, ids []uuid.UUID) ([]*types.Project, error) {
+	if len(ids) == 0 {
+		return []*types.Project{}, nil
+	}
+	idStrings := make([]string, len(ids))
+	for i, id := range ids {
+		idStrings[i] = id.String()
+	}
+	query := `SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id = ANY($1) ORDER BY created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(idStrings))
 	if err != nil {
 		return nil, err
 	}

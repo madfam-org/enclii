@@ -38,8 +38,7 @@ import {
   TableRow,
 } from "@enclii/ui-components/table";
 import { useAuth } from '@/contexts/AuthContext';
-import { apiGet, getAuthHeaders } from '@/lib/api';
-import { API_BASE_URL } from '@/lib/constants';
+import { apiFetchResponse, apiGet } from '@/lib/api';
 
 // -----------------------------------------------------------------------
 // Types (must stay in sync with switchyard-api/internal/audit.AuditEvent)
@@ -239,13 +238,10 @@ export default function AuditPage() {
   const handleExport = useCallback(async () => {
     const params = buildQuery({ since, until, category, source, actor, target });
     params.delete('limit');
-    const url = `${API_BASE_URL}/v1/audit/export?${params.toString()}`;
-    
     try {
-      const response = await fetch(url, {
-        headers: getAuthHeaders(false),
-        credentials: 'include'
-      });
+      const response = await apiFetchResponse(
+        `/v1/audit/export?${params.toString()}`,
+      );
       if (!response.ok) {
         throw new Error(`Export failed: ${response.statusText}`);
       }
@@ -259,8 +255,7 @@ export default function AuditPage() {
       a.remove();
       window.URL.revokeObjectURL(downloadUrl);
     } catch (err) {
-      console.error('Failed to export via fetch, falling back to window.open:', err);
-      window.open(url, '_blank');
+      console.error('Failed to export audit CSV:', err);
     }
   }, [since, until, category, source, actor, target]);
 

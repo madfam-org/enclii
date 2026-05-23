@@ -1,13 +1,8 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -367,44 +362,9 @@ func newBillingAlertsCommand(cfg *config.Config) *cobra.Command {
 // helpers
 // ----------------------------------------------------------------------------
 
-// billingRequest is a thin HTTP wrapper sharing the auth conventions of
-// webhookRequest in webhooks.go. Keeping them parallel (instead of sharing
-// a generic client) matches the precedent set by P2.3.
+// billingRequest delegates to the canonical apiRequest helper.
 func billingRequest(ctx context.Context, cfg *config.Config, method, path string, payload, out interface{}) error {
-	var body io.Reader
-	if payload != nil {
-		b, err := json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("marshal payload: %w", err)
-		}
-		body = bytes.NewReader(b)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, cfg.APIEndpoint+path, body)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "enclii-cli-billing/1.0")
-	if cfg.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
-	}
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 400 {
-		fmt.Fprintf(os.Stderr, "API error (%d): %s\n", resp.StatusCode, string(respBody))
-		return fmt.Errorf("API returned %d", resp.StatusCode)
-	}
-	if out != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, out); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
-	}
-	return nil
+	return apiRequest(ctx, cfg, method, path, payload, out)
 }
 
 func parseThresholds(s string) []int {

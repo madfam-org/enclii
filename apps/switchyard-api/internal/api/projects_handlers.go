@@ -11,6 +11,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // CreateProject creates a new project for the authenticated user.
@@ -99,16 +100,25 @@ func (h *Handler) CreateProject(c *gin.Context) {
 func (h *Handler) ListProjects(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// XC-2: when the master admin is acting-as a tenant, filter the
-	// platform-wide list down to that tenant's projects. The middleware
-	// (middleware.ActingAsMiddleware) sets acting_team_id when an open
-	// session exists; absent it, behavior is unchanged.
 	var teamID *uuid.UUID
 	if id, ok := middleware.ActingTeamID(c); ok {
 		teamID = &id
 	}
 
-	projects, err := h.projectService.ListProjectsScoped(ctx, teamID)
+	var (
+		projects []*types.Project
+		err      error
+	)
+	if teamID != nil {
+		projects, err = h.projectService.ListProjectsScoped(ctx, teamID)
+	} else if callerIsPlatformAdmin(c) {
+		projects, err = h.projectService.ListProjectsScoped(ctx, nil)
+	} else if userID, ok := authenticatedUserID(c); ok {
+		projects, err = h.projectService.ListProjectsForUser(ctx, userID)
+	} else {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
 		return

@@ -30,16 +30,7 @@ import {
   type ProjectProcessSummary,
   type ServiceProcessSummary,
 } from "@/lib/project-process-feed";
-
-// Strip protocol + .git suffix from a git repo URL/path so the result is
-// always a "{owner}/{repo}" slug suitable for both display and constructing
-// downstream GitHub URLs (branch/tree/commit views).
-function repoSlugFromGitRepo(gitRepo: string | undefined | null): string {
-  if (!gitRepo) return "";
-  return gitRepo
-    .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/\.git$/, "");
-}
+import { stripGithubRemoteUrl } from "@/lib/github-repo";
 
 // Inline-button copy helper used by the digest chip + kebab menu items.
 // Falls back silently when the page isn't served over HTTPS / clipboard
@@ -238,7 +229,7 @@ export function ProjectCardCompact({
   // information with strictly more env context).
   const hasAnyServiceDomain = services.some((s) => !!s.domain);
 
-  const repoSlug = repoSlugFromGitRepo(project.gitRepo);
+  const repoSlug = stripGithubRemoteUrl(project.gitRepo);
   const githubRepoUrl = repoSlug ? `https://github.com/${repoSlug}` : "";
   const branchUrl =
     repoSlug && project.lastDeployment?.branch

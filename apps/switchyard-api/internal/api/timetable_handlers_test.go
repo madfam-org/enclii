@@ -44,6 +44,7 @@ func setupTimetableTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func())
 
 	repos := &db.Repositories{
 		Projects:    db.NewProjectRepository(database),
+		Services:    db.NewServiceRepository(database),
 		CronJobs:    db.NewCronJobRepository(database),
 		CronJobRuns: db.NewCronJobRunRepository(database),
 		OneOffJobs:  db.NewOneOffJobRepository(database),
@@ -54,6 +55,15 @@ func setupTimetableTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func())
 		logger: testLogger(t),
 	}
 	return h, mock, func() { database.Close() }
+}
+
+// withTestAdminContext marks the request as a platform admin (unit tests skip real JWT).
+func withTestAdminContext(router *gin.Engine) {
+	router.Use(func(c *gin.Context) {
+		c.Set("user_roles", []string{"admin"})
+		c.Set("user_id", uuid.New().String())
+		c.Next()
+	})
 }
 
 // projectSelectColumns matches the columns scanned by ProjectRepository.GetBySlug
@@ -94,11 +104,17 @@ func TestCreateCronJob_Success(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
 			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
+	mock.ExpectQuery(`SELECT id, project_id, name, git_repo`).
+		WithArgs(serviceID).
+		WillReturnRows(sqlmock.NewRows(serviceListByGitRepoColumns).
+			AddRow(serviceID, projectID, "api", "https://github.com/org/repo", "", []byte("{}"), true, "main", "production", now, now, []byte("[]"), "web", ""))
+
 	// Mock: CronJobs.Create (INSERT)
 	mock.ExpectExec(`INSERT INTO cron_jobs`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
 
 	body := fmt.Sprintf(`{
@@ -128,6 +144,7 @@ func TestCreateCronJob_InvalidCron(t *testing.T) {
 	defer cleanup()
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
 
 	serviceID := uuid.New()
@@ -152,6 +169,7 @@ func TestCreateCronJob_InvalidConcurrency(t *testing.T) {
 	defer cleanup()
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
 
 	serviceID := uuid.New()
@@ -182,6 +200,7 @@ func TestCreateCronJob_ProjectNotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
 
 	serviceID := uuid.New()
@@ -216,6 +235,7 @@ func TestCreateCronJob_InvalidServiceID(t *testing.T) {
 			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
 
 	body := `{
@@ -240,6 +260,7 @@ func TestCreateCronJob_MissingRequiredFields(t *testing.T) {
 	defer cleanup()
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/cron-jobs", h.CreateCronJob)
 
 	// Missing name, schedule, command, service_id
@@ -279,6 +300,7 @@ func TestListCronJobs_Success(t *testing.T) {
 		WillReturnRows(rows)
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/projects/:slug/cron-jobs", h.ListCronJobs)
 
 	req := httptest.NewRequest("GET", "/v1/projects/test-project/cron-jobs", nil)
@@ -312,6 +334,7 @@ func TestListCronJobs_Empty(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(cronJobSelectColumns))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/projects/:slug/cron-jobs", h.ListCronJobs)
 
 	req := httptest.NewRequest("GET", "/v1/projects/empty-project/cron-jobs", nil)
@@ -348,6 +371,7 @@ func TestGetCronJob_Success(t *testing.T) {
 			AddRow(cronJobID, projectID, serviceID, "nightly-job", "0 2 * * *", "backup.sh", sql.NullString{Valid: false}, 600, 3, false, "forbid", now, now, nil, nil))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/cron-jobs/:id", h.GetCronJob)
 
 	req := httptest.NewRequest("GET", "/v1/cron-jobs/"+cronJobID.String(), nil)
@@ -375,6 +399,7 @@ func TestGetCronJob_NotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/cron-jobs/:id", h.GetCronJob)
 
 	req := httptest.NewRequest("GET", "/v1/cron-jobs/"+cronJobID.String(), nil)
@@ -391,6 +416,7 @@ func TestGetCronJob_InvalidID(t *testing.T) {
 	defer cleanup()
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/cron-jobs/:id", h.GetCronJob)
 
 	req := httptest.NewRequest("GET", "/v1/cron-jobs/not-a-uuid", nil)
@@ -414,6 +440,7 @@ func TestDeleteCronJob_Success(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.DELETE("/v1/cron-jobs/:id", h.DeleteCronJob)
 
 	req := httptest.NewRequest("DELETE", "/v1/cron-jobs/"+cronJobID.String(), nil)
@@ -436,6 +463,7 @@ func TestDeleteCronJob_NotFound(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.DELETE("/v1/cron-jobs/:id", h.DeleteCronJob)
 
 	req := httptest.NewRequest("DELETE", "/v1/cron-jobs/"+cronJobID.String(), nil)
@@ -468,6 +496,7 @@ func TestCreateOneOffJob_Success(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/one-off-jobs", h.CreateOneOffJob)
 
 	body := fmt.Sprintf(`{
@@ -509,6 +538,7 @@ func TestCreateOneOffJob_WithRunAt(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/one-off-jobs", h.CreateOneOffJob)
 
 	body := fmt.Sprintf(`{
@@ -541,6 +571,7 @@ func TestCreateOneOffJob_InvalidRunAt(t *testing.T) {
 			AddRow(projectID, "Test Project", "test-project", "github", now, now))
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/one-off-jobs", h.CreateOneOffJob)
 
 	body := fmt.Sprintf(`{
@@ -569,6 +600,7 @@ func TestCreateOneOffJob_ProjectNotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.POST("/v1/projects/:slug/one-off-jobs", h.CreateOneOffJob)
 
 	serviceID := uuid.New()
@@ -615,6 +647,7 @@ func TestListCronJobRuns_Success(t *testing.T) {
 		WillReturnRows(rows)
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/cron-jobs/:id/runs", h.ListCronJobRuns)
 
 	req := httptest.NewRequest("GET", "/v1/cron-jobs/"+cronJobID.String()+"/runs", nil)
@@ -641,6 +674,7 @@ func TestListCronJobRuns_CronJobNotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	router := gin.New()
+	withTestAdminContext(router)
 	router.GET("/v1/cron-jobs/:id/runs", h.ListCronJobRuns)
 
 	req := httptest.NewRequest("GET", "/v1/cron-jobs/"+cronJobID.String()+"/runs", nil)

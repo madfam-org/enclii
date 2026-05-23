@@ -309,6 +309,7 @@ spec:
 | 2026-02-25 | Q1 progress update: ArgoCD remediation (17 apps stable), npm-registry operational, Longhorn single-replica, monitoring exporters deployed. Identity rebranded from "Railway-style PaaS" to "open source DevOps platform". Waybill, Timetable, Junctions, Signal, Lockbox remain planned/unimplemented |
 | 2026-05-01 | Platform Hardening Sweep: 100% error/loading boundary coverage across Switchyard and Dispatch. Waybill (Costs) and Drift modules launched in Admin Console. Multilingual (i18n) roadmap established (Spanish-first). |
 | 2026-05-14 | Quote-flow verification roadmap added for Selva -> Yantra4D -> Cotiza -> ForgeSight, including Enclii-first operational checks and emergency-only direct production access. |
+| 2026-05-22 | **Codebase audit remediation:** Phases 0–2, 5–6, and **Phase 3 UI/CLI consolidation** on branch (authZ, HTTP helpers, CLI `apiRequest` unification). **Pending PR:** [`docs/production/SECURITY_RELEASE_PR.md`](docs/production/SECURITY_RELEASE_PR.md) — deploy security changes before next prod push. **Deferred:** `sdk-ts` in UI, Janua-only fetch paths. |
 
 
 ---

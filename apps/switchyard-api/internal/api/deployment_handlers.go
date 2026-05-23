@@ -440,7 +440,11 @@ func (h *Handler) RollbackDeployment(c *gin.Context) {
 		}
 		deployments, err := h.repos.Deployments.ListByRelease(ctx, r.ID.String())
 		if err != nil {
-			continue // Skip on error
+			h.logger.Error(ctx, "Failed to list deployments for release during rollback",
+				logging.String("release_id", r.ID.String()),
+				logging.Error("db_error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find previous deployment"})
+			return
 		}
 		for _, d := range deployments {
 			if d.Status == types.DeploymentStatusRunning {
@@ -647,15 +651,13 @@ func (h *Handler) GetDeployment(c *gin.Context) {
 		return
 	}
 
-	// XC-2 Round 5: 403 guard for master-admin acting-as scope.
-	if _, isActing := middleware.ActingTeamID(c); isActing {
-		var projectID uuid.UUID
-		if svc, sErr := h.repos.Services.GetByID(deployment.ServiceID); sErr == nil && svc != nil {
-			projectID = svc.ProjectID
-		}
-		if !h.enforceActingTeamForProject(c, projectID) {
+	if svc, sErr := h.repos.Services.GetByID(deployment.ServiceID); sErr == nil && svc != nil {
+		if !h.enforceUserProjectAccess(c, svc.ProjectID) {
 			return
 		}
+	} else {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
+		return
 	}
 
 	c.JSON(http.StatusOK, deployment)

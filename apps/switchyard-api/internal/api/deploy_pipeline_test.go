@@ -517,27 +517,23 @@ func TestDeployPipeline_BuildCallbackRejectsUnauthorized(t *testing.T) {
 	}
 }
 
-func TestDeployPipeline_BuildCallbackEmptyKeySkipsAuth(t *testing.T) {
-	// When RoundhouseAPIKey is empty, auth check is bypassed.
-	// Verify this by checking the auth condition directly (same logic as handler).
+func TestDeployPipeline_BuildCallbackEmptyKeyRequiresAuthInProduction(t *testing.T) {
 	cfg := newTestConfig()
+	cfg.Environment = "production"
 	cfg.RoundhouseAPIKey = ""
 
-	// Condition from build_callbacks.go line 43:
-	// if h.config.RoundhouseAPIKey != "" && authHeader != expectedAuth
-	authHeader := ""
-	expectedAuth := "Bearer " + cfg.RoundhouseAPIKey
-	shouldReject := cfg.RoundhouseAPIKey != "" && authHeader != expectedAuth
-	if shouldReject {
-		t.Error("empty RoundhouseAPIKey should skip auth check")
-	}
+	h := &Handler{config: cfg, logger: newTestLogger(t)}
+	engine := gin.New()
+	engine.POST("/v1/callbacks/build-complete", h.BuildCompleteCallback)
 
-	// With a non-empty key, mismatched auth should reject
-	cfg.RoundhouseAPIKey = "real-key"
-	expectedAuth = "Bearer " + cfg.RoundhouseAPIKey
-	shouldReject = cfg.RoundhouseAPIKey != "" && authHeader != expectedAuth
-	if !shouldReject {
-		t.Error("non-empty RoundhouseAPIKey with wrong auth should reject")
+	body := `{"job_id":"00000000-0000-0000-0000-000000000001","release_id":"00000000-0000-0000-0000-000000000002","success":true}`
+	req, _ := http.NewRequest("POST", "/v1/callbacks/build-complete", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("production with empty key: got %d, want 503", w.Code)
 	}
 }
 

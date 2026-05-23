@@ -257,11 +257,7 @@ func (h *Handler) GetService(c *gin.Context) {
 		return
 	}
 
-	// XC-2 Round 5: when the master admin is acting-as a tenant, a service
-	// whose project belongs to a different team must be invisible. 404
-	// rather than 403 so the impersonation surface doesn't leak that the
-	// id exists in some other tenant.
-	if !h.enforceActingTeamForProject(c, service.ProjectID) {
+	if !h.enforceUserProjectAccess(c, service.ProjectID) {
 		return
 	}
 

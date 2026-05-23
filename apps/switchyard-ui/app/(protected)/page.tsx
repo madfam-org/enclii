@@ -30,6 +30,7 @@ import {
   serviceSummariesById,
 } from "@/lib/project-process-feed";
 import { fetchProjectCards } from "@/lib/project-card-api";
+import { stripGithubRemoteUrl } from "@/lib/github-repo";
 
 const INITIAL_VISIBLE = 10;
 
@@ -78,11 +79,7 @@ export default function Dashboard() {
           compactProjects
             .map((p) => p.gitRepo)
             .filter((r): r is string => !!r)
-            .map((r) =>
-              r
-                .replace(/^https?:\/\/github\.com\//, "")
-                .replace(/\.git$/, ""),
-            ),
+            .map((r) => stripGithubRemoteUrl(r)),
         ),
       );
       if (repoSlugs.length > 0) {
@@ -108,9 +105,7 @@ export default function Dashboard() {
           setProjects((prev) =>
             prev.map((p) => {
               if (!p.gitRepo) return p;
-              const key = p.gitRepo
-                .replace(/^https?:\/\/github\.com\//, "")
-                .replace(/\.git$/, "");
+              const key = stripGithubRemoteUrl(p.gitRepo);
               const m = meta.repos?.[key];
               const errored = meta.errors?.[key];
               if (!m && !errored) return p;

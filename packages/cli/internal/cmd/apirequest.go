@@ -76,6 +76,38 @@ func apiRequest(ctx context.Context, cfg *config.Config, method, path string, pa
 	return nil
 }
 
+// apiRequestResponse is like apiRequest but returns the raw *http.Response.
+// The caller must close resp.Body. Used by legacy timetable/junction helpers
+// that still stream or decode manually.
+func apiRequestResponse(ctx context.Context, cfg *config.Config, method, path string, payload interface{}) (*http.Response, error) {
+	var body io.Reader
+	if payload != nil {
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("marshal payload: %w", err)
+		}
+		body = bytes.NewReader(b)
+	}
+
+	endpoint := path
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = strings.TrimRight(cfg.APIEndpoint, "/") + path
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "enclii-cli/"+Version)
+	if cfg.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
+	}
+
+	return httpClient().Do(req)
+}
+
 // emitJSON writes the value to stdout as indented JSON. Used by `--json`
 // flags throughout the CLI for stable, scriptable output.
 func emitJSON(v interface{}) error {

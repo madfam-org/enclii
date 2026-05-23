@@ -63,8 +63,7 @@ var dashboardStatsCache = &dashboardCache{
 	ttl: 5 * time.Second, // Cache for 5 seconds - balances freshness with performance
 }
 
-// GetDashboardStats returns public dashboard statistics
-// This endpoint does not require authentication for local development
+// GetDashboardStats returns dashboard statistics for the authenticated principal.
 func (h *Handler) GetDashboardStats(c *gin.Context) {
 	ctx := c.Request.Context()
 

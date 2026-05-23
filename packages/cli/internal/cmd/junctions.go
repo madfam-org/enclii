@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,26 +53,7 @@ Examples:
 // junctionsRequest makes an HTTP request to the Switchyard API.
 // Used because the SDK client does not yet have Junction methods.
 func junctionsRequest(cfg *config.Config, method, path string, body interface{}) (*http.Response, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(data)
-	}
-
-	req, err := http.NewRequest(method, cfg.APIEndpoint+path, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if cfg.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
-	}
-
-	return httpClient().Do(req)
+	return apiRequestResponse(context.Background(), cfg, method, path, body)
 }
 
 // junctionsDecodeOrError reads the response body and either decodes it into
