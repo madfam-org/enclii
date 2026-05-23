@@ -28,56 +28,19 @@ import {
 } from "@enclii/ui-components/dialog";
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import type {
+  BudgetAlertEvent,
+  BudgetPeriod,
+  BudgetThrottle,
+  ProjectBudget,
+  ProjectCostResponse,
+} from '@/types/billing';
 
-// ---- Types ----
-
-type Period = 'monthly' | 'weekly' | 'quarterly';
-
-interface Budget {
-  id: string;
-  project_id: string;
-  amount_cents: number;
-  currency: string;
-  period: Period;
-  alert_thresholds: number[];
-  hard_throttle: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface CostResponse {
-  project_id: string;
-  period_start: string;
-  period_end: string;
-  total_cents: number;
-  group_by: string;
-  series?: Array<{ bucket: string; cost_cents: number; by_metric?: Record<string, number> }>;
-  breakdown?: Array<{ key: string; cost_cents: number }>;
-}
-
-interface AlertEvent {
-  id: string;
-  budget_id: string;
-  project_id: string;
-  period_start: string;
-  period_end: string;
-  threshold: number;
-  actual_cents: number;
-  budget_cents: number;
-  dispatched_at?: string | null;
-  dispatch_attempts: number;
-  last_error?: string;
-  created_at: string;
-}
-
-interface Throttle {
-  id: string;
-  project_id: string;
-  reason: string;
-  env_scope: string;
-  activated_at: string;
-  cleared_at?: string | null;
-}
+type Period = BudgetPeriod;
+type Budget = ProjectBudget;
+type CostResponse = ProjectCostResponse;
+type AlertEvent = BudgetAlertEvent;
+type Throttle = BudgetThrottle;
 
 // ---- Helpers ----
 

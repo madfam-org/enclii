@@ -15,6 +15,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/compliance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
@@ -27,7 +28,7 @@ func (h *Handler) DeployService(c *gin.Context) {
 	idStr := c.Param("id")
 	serviceID, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+		respondAppError(c, apperrors.ErrInvalidUUID.WithDetails(map[string]string{"service_id": idStr}))
 		return
 	}
 	if !h.enforceServiceAccess(c, serviceID) {
@@ -43,7 +44,7 @@ func (h *Handler) DeployService(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondAppError(c, apperrors.ErrValidation.WithError(err))
 		return
 	}
 
@@ -56,7 +57,7 @@ func (h *Handler) DeployService(c *gin.Context) {
 	service, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get service", logging.Error("db_error", err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
+		respondAppError(c, apperrors.ErrServiceNotFound)
 		return
 	}
 	if !h.enforceBudgetNotThrottled(c, service.ProjectID, req.EnvironmentName) {
@@ -66,7 +67,7 @@ func (h *Handler) DeployService(c *gin.Context) {
 	// Parse release ID
 	releaseID, err := uuid.Parse(req.ReleaseID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid release ID"})
+		respondAppError(c, apperrors.ErrInvalidUUID.WithDetails(map[string]string{"release_id": req.ReleaseID}))
 		return
 	}
 
@@ -74,13 +75,16 @@ func (h *Handler) DeployService(c *gin.Context) {
 	release, err := h.repos.Releases.GetByID(releaseID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get release", logging.Error("db_error", err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "Release not found"})
+		respondAppError(c, apperrors.ErrReleaseNotFound)
 		return
 	}
 
 	// Verify release is ready
 	if release.Status != types.ReleaseStatusReady {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Release is not ready for deployment"})
+		respondAppError(c, apperrors.ErrReleaseNotReady.WithDetails(map[string]string{
+			"release_id": req.ReleaseID,
+			"status":     string(release.Status),
+		}))
 		return
 	}
 
@@ -91,11 +95,10 @@ func (h *Handler) DeployService(c *gin.Context) {
 			logging.String("environment_name", req.EnvironmentName),
 			logging.String("project_id", service.ProjectID.String()),
 			logging.Error("db_error", err))
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":       "Environment not found",
+		respondAppError(c, apperrors.ErrEnvironmentNotFound.WithDetails(map[string]string{
 			"environment": req.EnvironmentName,
 			"hint":        "Create the environment first using POST /v1/projects/{project_id}/environments",
-		})
+		}))
 		return
 	}
 	environmentID := env.ID
@@ -217,7 +220,7 @@ func (h *Handler) DeployService(c *gin.Context) {
 	}
 	if createErr != nil {
 		h.logger.Error(ctx, "Failed to create deployment", logging.Error("db_error", createErr))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create deployment"})
+		respondAppError(c, apperrors.ErrDeploymentFailed.WithError(createErr))
 		return
 	}
 

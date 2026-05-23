@@ -78,6 +78,11 @@ var (
 		Message:    "Release not found",
 		HTTPStatus: http.StatusNotFound,
 	}
+	ErrReleaseNotReady = &AppError{
+		Code:       "RELEASE_NOT_READY",
+		Message:    "Release is not ready for deployment",
+		HTTPStatus: http.StatusBadRequest,
+	}
 	ErrDeploymentNotFound = &AppError{
 		Code:       "DEPLOYMENT_NOT_FOUND",
 		Message:    "Deployment not found",

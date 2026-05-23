@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -32,7 +33,7 @@ type UpdateServiceRequest struct {
 func (h *Handler) UpdateService(c *gin.Context) {
 	serviceID := c.Param("id")
 	if serviceID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "service_id is required"})
+		respondAppError(c, apperrors.ErrMissingParameter.WithDetails(map[string]string{"parameter": "id"}))
 		return
 	}
 
@@ -41,7 +42,7 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	// Parse service ID
 	serviceUUID, err := uuid.Parse(serviceID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service_id format"})
+		respondAppError(c, apperrors.ErrInvalidUUID.WithDetails(map[string]string{"service_id": serviceID}))
 		return
 	}
 
@@ -49,11 +50,11 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	service, err := h.repos.Services.GetByID(serviceUUID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
+			respondAppError(c, apperrors.ErrServiceNotFound)
 			return
 		}
 		h.logger.Error(ctx, "Failed to get service", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get service"})
+		respondAppError(c, apperrors.ErrInternal.WithError(err))
 		return
 	}
 
@@ -64,7 +65,7 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	// Parse request body
 	var req UpdateServiceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondAppError(c, apperrors.ErrValidation.WithError(err))
 		return
 	}
 
@@ -108,7 +109,7 @@ func (h *Handler) UpdateService(c *gin.Context) {
 		h.logger.Error(ctx, "Failed to update service",
 			logging.String("service_id", serviceID),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update service"})
+		respondAppError(c, apperrors.ErrInternal.WithError(err))
 		return
 	}
 
