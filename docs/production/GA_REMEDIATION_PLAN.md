@@ -184,7 +184,7 @@ Execute in order from [REMAINING_ITEMS.md](./REMAINING_ITEMS.md):
 |---|------|-------|
 | 1.2.1 | Structured error type + middleware | Replace ad-hoc `gin.H{"error"}` on **protected** routes first |
 | 1.2.2 | OpenAPI regen + breaking-change policy | Version or announce deprecations |
-| 1.2.3 | Generate or verify `packages/sdk-ts` from OpenAPI | UI imports from sdk-ts for Switchyard routes |
+| 1.2.3 | Generate or verify `packages/sdk-ts` from OpenAPI | CI `sdk-ts.yml` + canonical `docs/api/openapi.yaml`; UI workspace dep still open |
 | 1.2.4 | Finish Janua-adjacent raw `fetch` audit | Document as external boundary in `DEV_ENV_ALIGNMENT.md` |
 | 1.2.5 | Golden test policy | Regenerate only in dedicated PRs; `GOLDEN_TESTS.md` |
 

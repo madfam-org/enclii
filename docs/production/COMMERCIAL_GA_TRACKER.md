@@ -28,7 +28,8 @@
 | `GET /v1/deployments` user-scoped (non-admin) | Done (PR #250) |
 | Log routes `mustServiceAccess` | Done (PR #250) |
 | Reconciler queue metrics | Done (prior `main`) |
-| OpenAPI → `sdk-ts` UI adoption | Open |
+| OpenAPI canonical path + sdk-ts CI drift check | Done (PR pending) |
+| OpenAPI → `sdk-ts` UI adoption | Open — workspace dep not wired yet |
 | Waybill budget **enforce** on deploy/build | Done — `enforceBudgetNotThrottled` on deploy + build (main, post-#250) |
 
 ## Product bet A — Preview environments
@@ -68,5 +69,5 @@
 ## Next merge train
 
 1. ~~Merge PR #250~~ → `main` (2026-05-23)
-2. Merge budget-enforce PR → deploy API with migration 030 + security checklist
-3. Branch `fix/ga-openapi-sdk-ts` for contract work; product E2E for previews/domains/PVCs
+2. Deploy `main` + migration 030 + security checklist (ops)
+3. Merge OpenAPI/sdk-ts CI PR; then product E2E for previews/domains/PVCs

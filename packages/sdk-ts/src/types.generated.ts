@@ -94,8 +94,8 @@ export interface paths {
         /**
          * Dashboard statistics
          * @description Returns aggregated statistics for the dashboard including healthy services count,
-         *     deployments today, active projects, and recent activity. This endpoint is public
-         *     (no authentication required) for local development dashboards.
+         *     deployments today, active projects, and recent activity. Requires authentication
+         *     (same session as other `/v1` protected routes).
          */
         get: operations["getDashboardStats"];
         put?: never;
