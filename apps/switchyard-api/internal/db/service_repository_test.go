@@ -301,7 +301,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 		"id", "project_id", "name", "git_repo", "app_path", "build_config",
 		"auto_deploy", "auto_deploy_branch", "auto_deploy_env",
 		"k8s_namespace", "health", "status",
-		"desired_replicas", "ready_replicas", "last_health_check",
+		"desired_replicas", "ready_replicas", "rollout_blocked_reason", "last_health_check",
 		"last_deployment", "last_commit_message", "last_commit_branch",
 		"current_image_uri", "current_release_id", "current_release_created_at", "framework", "recent_releases",
 		"created_at", "updated_at", "jobs", "type", "region",
@@ -322,7 +322,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 			AddRow(uuid.New(), projID, "svc-1", "repo-1", "", bc,
 				true, "main", "production",
 				"enclii", "healthy", "running",
-				2, 2, now,
+				2, 2, "", now,
 				now, "feat: add feature", "main",
 				"ghcr.io/madfam-org/svc-1@sha256:abc123", releaseID.String(), now, "nextjs", recentJSON,
 				now, now, []byte(`[]`), "web", "default")
@@ -385,7 +385,7 @@ func TestServiceRepository_ListByProject(t *testing.T) {
 			AddRow(uuid.New(), projID, "svc-null", "repo", "", bc,
 				false, "main", "production",
 				nil, "unknown", "unknown",
-				0, 0, nil,
+				0, 0, "", nil,
 				nil, nil, nil,
 				nil, nil, nil, nil, []byte(`[]`),
 				now, now, []byte(`[]`), "web", "default")
@@ -672,10 +672,10 @@ func TestServiceRepository_UpdateHealthStatus(t *testing.T) {
 
 		id := uuid.New()
 		mock.ExpectExec(`UPDATE services SET health = \$1, status = \$2, desired_replicas = \$3, ready_replicas = \$4`).
-			WithArgs(types.HealthStatusHealthy, "running", int32(3), int32(3), id).
+			WithArgs(types.HealthStatusHealthy, "running", int32(3), int32(3), "", id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		err := repo.UpdateHealthStatus(context.Background(), id, types.HealthStatusHealthy, "running", 3, 3)
+		err := repo.UpdateHealthStatus(context.Background(), id, types.HealthStatusHealthy, "running", 3, 3, "")
 		assert.NoError(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -686,10 +686,10 @@ func TestServiceRepository_UpdateHealthStatus(t *testing.T) {
 
 		id := uuid.New()
 		mock.ExpectExec(`UPDATE services SET health = \$1, status = \$2, desired_replicas = \$3, ready_replicas = \$4`).
-			WithArgs(types.HealthStatusUnhealthy, "failed", int32(2), int32(0), id).
+			WithArgs(types.HealthStatusUnhealthy, "failed", int32(2), int32(0), "image_pull_back_off", id).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		err := repo.UpdateHealthStatus(context.Background(), id, types.HealthStatusUnhealthy, "failed", 2, 0)
+		err := repo.UpdateHealthStatus(context.Background(), id, types.HealthStatusUnhealthy, "failed", 2, 0, "image_pull_back_off")
 		assert.NoError(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -700,10 +700,10 @@ func TestServiceRepository_UpdateHealthStatus(t *testing.T) {
 
 		id := uuid.New()
 		mock.ExpectExec(`UPDATE services SET health = \$1, status = \$2`).
-			WithArgs(types.HealthStatusUnknown, "unknown", int32(0), int32(0), id).
+			WithArgs(types.HealthStatusUnknown, "unknown", int32(0), int32(0), "", id).
 			WillReturnError(fmt.Errorf("connection lost"))
 
-		err := repo.UpdateHealthStatus(context.Background(), id, types.HealthStatusUnknown, "unknown", 0, 0)
+		err := repo.UpdateHealthStatus(context.Background(), id, types.HealthStatusUnknown, "unknown", 0, 0, "")
 		assert.Error(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})

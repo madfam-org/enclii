@@ -1,11 +1,10 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 )
@@ -37,7 +36,7 @@ func authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
 // when a response has already been written (404/403/500).
 func (h *Handler) enforceUserProjectAccess(c *gin.Context, projectID uuid.UUID) bool {
 	if projectID == uuid.Nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		respondAppError(c, apperrors.ErrNotFound)
 		return false
 	}
 
@@ -51,23 +50,23 @@ func (h *Handler) enforceUserProjectAccess(c *gin.Context, projectID uuid.UUID) 
 
 	userID, ok := authenticatedUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		respondAppError(c, apperrors.ErrUnauthorized)
 		return false
 	}
 
 	if h.repos == nil || h.repos.ProjectAccess == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "authorization unavailable"})
+		respondAppError(c, apperrors.ErrInternal.WithDetails(map[string]string{"reason": "authorization unavailable"}))
 		return false
 	}
 
 	hasAccess, err := h.repos.ProjectAccess.UserHasAccess(c.Request.Context(), userID, projectID)
 	if err != nil {
 		h.logger.Error(c.Request.Context(), "Failed to verify project access", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project access"})
+		respondAppError(c, apperrors.ErrInternal.WithError(err))
 		return false
 	}
 	if !hasAccess {
-		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		respondAppError(c, apperrors.ErrNotFound)
 		return false
 	}
 	return true
@@ -85,7 +84,7 @@ func (h *Handler) RequireProjectAccessBySlug() gin.HandlerFunc {
 
 		project, err := h.repos.Projects.GetBySlug(slug)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+			respondAppError(c, apperrors.ErrProjectNotFound)
 			c.Abort()
 			return
 		}
@@ -104,7 +103,7 @@ func (h *Handler) RequireProjectAccessBySlug() gin.HandlerFunc {
 func (h *Handler) enforceServiceAccess(c *gin.Context, serviceID uuid.UUID) bool {
 	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil || svc == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "service not found"})
+		respondAppError(c, apperrors.ErrServiceNotFound)
 		return false
 	}
 	return h.enforceUserProjectAccess(c, svc.ProjectID)

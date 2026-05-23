@@ -127,7 +127,7 @@ func TestApplyServiceRolloutState(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotHealth, gotStatus := applyServiceRolloutState(
+			gotHealth, gotStatus, gotBlocked := applyServiceRolloutState(
 				tc.replicas, tc.availableReplicas, tc.eval, tc.dep, logger, "demo",
 			)
 			if gotHealth != tc.wantHealth {
@@ -135,6 +135,13 @@ func TestApplyServiceRolloutState(t *testing.T) {
 			}
 			if gotStatus != tc.wantStatus {
 				t.Errorf("status = %q, want %q", gotStatus, tc.wantStatus)
+			}
+			if tc.eval != nil && tc.eval.State == k8s.RolloutStateBlocked {
+				if gotBlocked != string(tc.eval.BlockedReason) {
+					t.Errorf("blockedReason = %q, want %q", gotBlocked, tc.eval.BlockedReason)
+				}
+			} else if gotBlocked != "" {
+				t.Errorf("blockedReason = %q, want empty", gotBlocked)
 			}
 		})
 	}

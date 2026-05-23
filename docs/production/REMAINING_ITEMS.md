@@ -8,10 +8,11 @@
 > missing Enclii adapter gap.
 
 
-> **Last updated:** 2026-03-19 (Session 106)
-> **Platform status:** Production Release Candidate v0.1.0 (95% ready)
+> **Last updated:** 2026-05-22 (GA program)
+> **Platform status:** Release Candidate — see [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) for GA gates (replaces “95% ready” narrative)
 > **Cluster:** 3-node k3s (foundry-cp [CP] + foundry-worker-01 [worker] + foundry-builder-01 [builder]), ~150 pods
 > **Full Remediation Plan:** [REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md) (8 phases, 45+ items)
+> **GA program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) — Phase 0 cluster queue maps to Section 1 here
 
 This document is the single source of truth for every remaining actionable item
 across the enclii platform and ecosystem. Items are organized by execution context

@@ -294,6 +294,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		s.auto_deploy, s.auto_deploy_branch, s.auto_deploy_env,
 		s.k8s_namespace, COALESCE(s.health, 'unknown') as health, COALESCE(s.status, 'unknown') as status,
 		COALESCE(s.desired_replicas, 0) as desired_replicas, COALESCE(s.ready_replicas, 0) as ready_replicas,
+		COALESCE(s.rollout_blocked_reason, '') as rollout_blocked_reason,
 		s.last_health_check,
 		(SELECT MAX(d.created_at) FROM deployments d JOIN releases r ON d.release_id = r.id WHERE r.service_id = s.id) as last_deployment,
 		(SELECT r2.commit_message FROM releases r2 JOIN deployments d2 ON d2.release_id = r2.id WHERE r2.service_id = s.id ORDER BY d2.created_at DESC LIMIT 1) as last_commit_message,
@@ -339,7 +340,7 @@ func (r *ServiceRepository) ListByProject(projectID uuid.UUID) ([]*types.Service
 		err := rows.Scan(&service.ID, &service.ProjectID, &service.Name, &service.GitRepo, &appPath, &buildConfigJSON,
 			&service.AutoDeploy, &service.AutoDeployBranch, &service.AutoDeployEnv,
 			&k8sNamespace, &service.Health, &service.Status,
-			&service.DesiredReplicas, &service.ReadyReplicas, &lastHealthCheck,
+			&service.DesiredReplicas, &service.ReadyReplicas, &service.RolloutBlockedReason, &lastHealthCheck,
 			&lastDeployment, &lastCommitMsg, &lastCommitBranch,
 			&currentImageURI, &currentReleaseID, &currentReleaseCreatedAt, &framework, &recentReleasesJSON,
 			&service.CreatedAt, &service.UpdatedAt, &jobsJSON, &service.Type, &service.Region)
@@ -605,9 +606,10 @@ func (r *ServiceRepository) Update(ctx context.Context, service *types.Service) 
 
 // UpdateHealthStatus updates the health and replica status of a service.
 // Called by the reconciler to propagate K8s deployment health to the parent service.
-func (r *ServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32) error {
-	query := `UPDATE services SET health = $1, status = $2, desired_replicas = $3, ready_replicas = $4, last_health_check = NOW(), updated_at = NOW() WHERE id = $5`
-	_, err := r.db.ExecContext(ctx, query, health, status, desiredReplicas, readyReplicas, id)
+func (r *ServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32, rolloutBlockedReason string) error {
+	query := `UPDATE services SET health = $1, status = $2, desired_replicas = $3, ready_replicas = $4,
+		rollout_blocked_reason = $5, last_health_check = NOW(), updated_at = NOW() WHERE id = $6`
+	_, err := r.db.ExecContext(ctx, query, health, status, desiredReplicas, readyReplicas, rolloutBlockedReason, id)
 	return err
 }
 

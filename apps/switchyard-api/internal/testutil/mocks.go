@@ -79,7 +79,7 @@ type MockServiceRepository struct {
 	CreateFn             func(*types.Service) error
 	UpdateFn             func(context.Context, *types.Service) error
 	DeleteFn             func(context.Context, uuid.UUID) error
-	UpdateHealthStatusFn func(context.Context, uuid.UUID, types.HealthStatus, string, int32, int32) error
+	UpdateHealthStatusFn func(context.Context, uuid.UUID, types.HealthStatus, string, int32, int32, string) error
 }
 
 func NewMockServiceRepository() *MockServiceRepository {
@@ -155,9 +155,9 @@ func (m *MockServiceRepository) Delete(ctx context.Context, id uuid.UUID) error 
 	return nil
 }
 
-func (m *MockServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32) error {
+func (m *MockServiceRepository) UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32, rolloutBlockedReason string) error {
 	if m.UpdateHealthStatusFn != nil {
-		return m.UpdateHealthStatusFn(ctx, id, health, status, desiredReplicas, readyReplicas)
+		return m.UpdateHealthStatusFn(ctx, id, health, status, desiredReplicas, readyReplicas, rolloutBlockedReason)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -521,4 +521,12 @@ func (m *MockProjectAccessRepository) ListByUser(ctx context.Context, userID uui
 
 func (m *MockProjectAccessRepository) HasAccess(ctx context.Context, userID, projectID uuid.UUID, environmentID *uuid.UUID, requiredRole types.Role) (bool, error) {
 	return true, nil // Default to allow for testing
+}
+
+func (m *MockProjectAccessRepository) UserHasAccess(ctx context.Context, userID, projectID uuid.UUID) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	key := userID.String() + ":" + projectID.String()
+	_, ok := m.access[key]
+	return ok, nil
 }

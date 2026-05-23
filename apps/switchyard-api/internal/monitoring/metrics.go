@@ -210,6 +210,7 @@ func NewMetricsCollector() *MetricsCollector {
 		activeServices,
 		goGoroutines,
 	}
+	metrics = append(metrics, ReconcilerMetricsCollectors()...)
 
 	for _, metric := range metrics {
 		registry.MustRegister(metric)

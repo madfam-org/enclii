@@ -56,7 +56,7 @@ type ServiceRepositoryInterface interface {
 	ListByProject(projectID uuid.UUID) ([]*types.Service, error)
 	Update(ctx context.Context, service *types.Service) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32) error
+	UpdateHealthStatus(ctx context.Context, id uuid.UUID, health types.HealthStatus, status string, desiredReplicas, readyReplicas int32, rolloutBlockedReason string) error
 }
 
 // ReleaseRepositoryInterface defines operations for releases

@@ -43,13 +43,22 @@ Ship before or with next production deploy:
 2. Communicate breaking change: `/v1/dashboard/stats` and `?git_repo=` require auth
 3. Verify non-admin users see only entitled projects
 
+## Phase 1 progress (GA execution — May 2026)
+
+- [x] AuthZ integration test matrix (`authz_matrix_test.go`, cross-tenant cron/service)
+- [x] Structured errors on access enforcement (`api_errors.go`, `access.go`)
+- [x] Reconciler queue Prometheus metrics (`monitoring/reconciler_metrics.go`)
+- [x] `services.rollout_blocked_reason` migration + reconciler persist
+- [x] Doc-guard blocking on `main` (strict mode)
+
 ## Deferred (Phase 4, 7)
 
 - SDK-ts adoption in switchyard-ui (remaining)
-- Reconciler Prometheus metrics for queue pressure
-- StatefulSet rollout state + `rollout_blocked_reason` column
+- StatefulSet rollout evaluation (EvaluateRolloutState)
 - Product gaps: edge, managed DB marketplace, preview automation (see `GAP_ANALYSIS.md`)
 
 ## Reference
+
+**Program plan:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) (stability + commercial GA).
 
 Prior plans: `REMEDIATION_PLAN.md`, `REMAINING_ITEMS.md`, `GAP_ANALYSIS.md`.

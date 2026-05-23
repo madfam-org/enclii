@@ -16,6 +16,7 @@ import (
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -178,6 +179,8 @@ func (c *Controller) enqueueWork(work *ReconcileWork) error {
 			"priority":   work.Priority,
 			"attempt":    work.Attempt,
 		}).Debug("Scheduled reconciliation work")
+		c.recordQueueMetrics()
+		monitoring.RecordReconcilerWorkScheduled()
 		return nil
 	default:
 		// Queue is full - add to retry queue with backpressure tracking
@@ -194,8 +197,19 @@ func (c *Controller) enqueueWork(work *ReconcileWork) error {
 			"dropped_total":    atomic.LoadInt64(&c.droppedWork),
 		}).Warn("Work queue full, added to retry queue")
 
+		c.recordQueueMetrics()
 		return ErrQueueFull
 	}
+}
+
+func (c *Controller) recordQueueMetrics() {
+	qp := c.GetQueuePressure()
+	monitoring.RecordReconcilerQueuePressure(
+		qp.QueueSize,
+		qp.QueueCapacity,
+		qp.RetryQueue,
+		qp.DroppedWork,
+	)
 }
 
 // worker processes reconciliation work

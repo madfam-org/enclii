@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnforceUserProjectAccess_AdminBypass(t *testing.T) {
@@ -34,4 +36,12 @@ func TestEnforceUserProjectAccess_Unauthenticated(t *testing.T) {
 	ok := h.enforceUserProjectAccess(c, uuid.New())
 	assert.False(t, ok)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "UNAUTHORIZED", body.Error.Code)
 }
