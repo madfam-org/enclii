@@ -14,12 +14,12 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 | ID | Task | Est. | Status (2026-05-23) | Reference |
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
-| O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Verify** — API auto-migrates on start | `apps/switchyard-api/internal/db/migrations/030_*` |
+| O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Done** — column present in `enclii` DB (2026-05-23) | `apps/switchyard-api/internal/db/migrations/030_*` |
 | O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | Open | Steps 1–7 |
 | O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Partial** — `posthog` ns gone; Longhorn orphans TBD | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
 | O-5 | Longhorn helm upgrade (committed CPU values) | 10m | Open | [REMAINING_ITEMS §1B](./REMAINING_ITEMS.md) |
 | O-6 | Disk prune (crictl, journal, logs) | 10m | Open — no DiskPressure on nodes | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
-| O-7 | API post-deploy smoke | 10m | **Partial** — `/health/public` + `/health/ready` OK | Enclii or CI rerun on prod URL |
+| O-7 | API post-deploy smoke | 10m | **Done** — `/health/public` + `/health/ready` OK (2026-05-23) | Enclii or CI rerun on prod URL |
 
 **Track in GitHub:** use issue template **Commercial GA — Phase 0 ops gate**.
 
@@ -41,11 +41,11 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 
 Requires API token + throwaway services. Configure secrets per [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md).
 
-| ID | Bet | Command / workflow | Secrets |
-|----|-----|-------------------|---------|
-| O-13 | A Previews | `npx playwright test --project=preview-lifecycle` | `PREVIEW_E2E_*` |
-| O-14 | B Domains | `npx playwright test --project=domains-lifecycle` | `DOMAIN_E2E_*` |
-| O-15 | C Storage | `npx playwright test --project=storage-smoke` | `STORAGE_E2E_*` (+ `RELEASE_ID` for deploy) |
+| ID | Bet | Status (2026-05-23) | Evidence |
+|----|-----|---------------------|----------|
+| O-13 | A Previews | **Done** | Actions run [26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) — 3 passed |
+| O-14 | B Domains | **Done** | Same run — 5 passed |
+| O-15 | C Storage | **Done** | Same run — 2 passed |
 
 **Or:** Actions → **Commercial GA staging proof** → `all`.
 

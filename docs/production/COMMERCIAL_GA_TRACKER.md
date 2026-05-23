@@ -46,7 +46,7 @@
 | API (`/v1/previews`, PR webhook) | Implemented — `CreatePreview` authZ + lifecycle tests |
 | Reconciler / URL lifecycle | Partial — verify E2E in staging |
 | UI + CLI docs | UI wired (Previews tab); CLI + [preview-environments.md](../guides/preview-environments.md) |
-| E2E test (SOFTWARE_SPEC) | Smoke in CI; full lifecycle opt-in via `PREVIEW_E2E_*` env |
+| E2E test (SOFTWARE_SPEC) | **Staging proof green** 2026-05-23 (Actions 26328015825) |
 
 ## Product bet B — Custom domains + TLS
 
@@ -54,7 +54,7 @@
 |------------|--------|
 | Domain API + cert-manager path | Implemented |
 | `ToggleZeroTrust` authZ | Done (PR #250) |
-| DNS verify + Junction routing E2E | Smoke in CI; full lifecycle opt-in via `DOMAIN_E2E_*` env |
+| DNS verify + Junction routing E2E | **Staging proof green** 2026-05-23 |
 | User guide + CLI | [custom-domains.md](../guides/custom-domains.md), `enclii domains` |
 
 ## Product bet C — Persistent volumes
@@ -64,7 +64,7 @@
 | Reconciler `generatePVCs` / mount | Implemented — unit tests exist |
 | UI volume attach + lifecycle | Settings editor + API persist volumes (`ServiceVolumesEditor`) |
 | CLI + user guide | `enclii volumes` + [persistent-volumes.md](../guides/persistent-volumes.md) |
-| E2E stateful deploy | Smoke in CI; volumes opt-in via `STORAGE_E2E_*`; deploy slice needs `STORAGE_E2E_RELEASE_ID` |
+| E2E stateful deploy | **Smoke green** 2026-05-23; full deploy slice optional via `STORAGE_E2E_RELEASE_ID` |
 
 ## Commercial wrap (GTM / legal)
 
@@ -81,7 +81,8 @@
 |--------|--------|
 | PR #266 merged (`REMAINING_OPS_GA`, sdk-ts billing, structured errors) | Done |
 | Argo `enclii-infrastructure` at `848c8968` | Synced / Healthy |
-| `gh workflow run commercial-ga-staging-proof` | Dispatched (needs repo secrets) |
+| `gh workflow run commercial-ga-staging-proof` | **Green** — [run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) (A/B/C passed) |
+| Migration 030 `rollout_blocked_reason` | Verified in `enclii` Postgres |
 | Execution roadmap published | [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md) |
 
 ## Next merge train

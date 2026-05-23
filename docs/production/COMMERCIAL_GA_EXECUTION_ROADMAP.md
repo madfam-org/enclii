@@ -13,9 +13,9 @@ This is the **time-ordered execution roadmap** from current state (~50% Commerci
 
 | Track | Completion | Notes |
 |-------|------------|--------|
-| Engineering (bets A+B+C on `main`) | **~85%** | Code merged; staging proofs open |
-| Phase 0 ops | **~25%** | `enclii-infrastructure` Argo **Synced** at `main` (`848c8968`); security checklist + cluster P0 queue open |
-| Staging proof (Gate 2) | **0%** | Workflow on `main`; needs GH secrets |
+| Engineering (bets A+B+C on `main`) | **~90%** | Code merged; staging proofs **green** (2026-05-23) |
+| Phase 0 ops | **~55%** | O-1/O-2/O-7 done; O-3 security sign-off + O-5–O-6 cluster P0 open |
+| Staging proof (Gate 2) | **100%** | [Actions run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) |
 | SLO window (Gate 4) | **0%** | **30 calendar days** — starts after Phase 0 sign-off |
 | GTM / legal (Gate 5) | **~15%** | Drafts only |
 
@@ -116,8 +116,9 @@ Local fallback: `tests/e2e-ecosystem` Playwright projects per [COMMERCIAL_GA_STA
 
 | Milestone | Cumulative program % |
 |-----------|----------------------|
-| Wave 0 complete | ~60% Stability · ~55% Commercial |
-| Wave 1 + 2 complete | ~70% Commercial (proof + monetization QA) |
+| Wave 0 complete | ~65% Stability · ~60% Commercial |
+| Wave 1 complete (2026-05-23) | ~62% Stability · **~68% Commercial** |
+| Wave 2 complete | ~75% Commercial (monetization QA) |
 | Wave 3 complete (30d) | **100% Stability GA** · ~85% Commercial |
 | Wave 4 complete | **100% scoped Commercial GA** |
 
