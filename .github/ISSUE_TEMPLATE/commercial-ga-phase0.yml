@@ -1,0 +1,51 @@
+name: Commercial GA — Phase 0 ops gate
+description: Track Phase 0 deploy, security checklist, and cluster P0 for Stability GA
+title: "[GA Phase 0] "
+labels:
+  - commercial-ga
+  - ops
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use [PHASE0_OPS_RUNBOOK.md](https://github.com/madfam-org/enclii/blob/main/docs/production/PHASE0_OPS_RUNBOOK.md) and [GA_READINESS_SCORECARD.md](https://github.com/madfam-org/enclii/blob/main/docs/production/GA_READINESS_SCORECARD.md).
+
+        Do not close until Gate 1 sign-offs are complete.
+
+  - type: checkboxes
+    id: deploy
+    attributes:
+      label: Step 1 — Application deploy
+      options:
+        - label: Switchyard API + UI deployed from `main` (record SHA)
+        - label: Migration 030 (`rollout_blocked_reason`) applied in prod
+        - label: SECURITY_RELEASE_PR.md checklist complete
+
+  - type: checkboxes
+    id: cluster
+    attributes:
+      label: Step 2 — Cluster P0
+      options:
+        - label: PostHog cleanup + orphaned Longhorn volumes
+        - label: Longhorn helm upgrade (committed values)
+        - label: Disk prune (target &lt;40%)
+        - label: ArgoCD sync sweep
+        - label: Restore drill — evidence linked below
+
+  - type: input
+    id: deploy_sha
+    attributes:
+      label: Deployed git SHA
+      placeholder: e.g. f037d18b
+
+  - type: input
+    id: evidence
+    attributes:
+      label: Links to drill logs / evidence
+      placeholder: URL or path in internal-devops
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / blockers
+      description: Adapter gaps, break-glass usage, follow-ups

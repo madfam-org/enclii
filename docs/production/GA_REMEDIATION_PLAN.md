@@ -81,12 +81,14 @@ Commercial GA adds:
 |------|----------------|
 | Security deploy checklist | **P0** — ops |
 | Cluster P0/P1 (`REMAINING_ITEMS`) | **P0** — ops |
+| Staging lifecycle proofs (bets A/B/C) | **P0** — ops ([STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md)) |
+| 30-day SLO window | **P0** — starts after Phase 0 deploy |
 | AuthZ proof tests + handler audit | **Done** — PR #250 on `main` |
-| Reconciler queue metrics + alerting | **P1** — eng/ops |
-| Structured API errors (50+ handlers) | **P1** — eng |
-| sdk-ts / OpenAPI sync in UI | **P1** — eng |
-| Product table stakes (pick 3) | **P1** — product/eng |
-| Commercial wrap (SLA, billing) | **P1** — GTM/legal |
+| Product bets A/B/C code | **Done** on `main` — proof pending |
+| Reconciler queue metrics + alerting | **P1** — eng/ops (metrics done; alerting tune) |
+| Structured API errors (50+ handlers) | **P1** — eng (post-GA acceptable) |
+| sdk-ts / OpenAPI sync in UI | **P1** — eng (incremental; previews/volumes shipped) |
+| Commercial wrap publish (SLA, support, changelog) | **P1** — GTM/legal after SLO window |
 
 ---
 

@@ -7,7 +7,9 @@
 > access as platform bootstrap or documented break-glass only, and record any
 > missing Enclii adapter gap.
 
-**Status:** 95% Production Ready | **Date:** January 2026 (Updated)
+**Status:** Release candidate → GA program (May 2026) | **Date:** Updated 2026-05-22
+
+> **GA program:** See [COMMERCIAL_GA_TRACKER.md](../production/COMMERCIAL_GA_TRACKER.md) and [GA_READINESS_SCORECARD.md](../production/GA_READINESS_SCORECARD.md). PVC generation, preview API, and domain API are implemented on `main`; staging lifecycle proof is pending.
 
 > ⚠️ **Note:** This matrix was originally created Nov 2025. Current infrastructure: single Hetzner dedicated server, self-hosted PostgreSQL/Redis. Core services live at enclii.dev. See internal-devops for cost breakdown.
 
@@ -292,9 +294,9 @@ Enclii is a **open source DevOps platform** running on cost-optimized infrastruc
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Persistent Volume Claims** | ⚠️ Partial | PVC support in spec; dynamic provisioning not tested |
-| **Storage Classes** | ⚠️ Partial | Hetzner SSD class defined; no other classes yet |
-| **Volume Sizing** | ⚠️ Partial | Service spec supports size; no resize/expansion logic |
+| **Persistent Volume Claims** | ✅ Implemented (GA bet C) | Reconciler `generatePVCs`, API persist, UI editor, `enclii volumes`; staging deploy proof pending |
+| **Storage Classes** | ✅ Implemented | Longhorn default in prod; configurable per volume |
+| **Volume Sizing** | ⚠️ Partial | Spec + API; resize/expansion automation not GA |
 | **Multi-Mount Volumes** | ⚠️ Partial | Multiple volume spec supported; single-attach only |
 | **Volume Backups** | ⚠️ Designed | Snapshot strategy exists; automation not built |
 | **Snapshot Scheduling** | ⚠️ Not Started | No snapshot CronJob logic |
@@ -302,9 +304,8 @@ Enclii is a **open source DevOps platform** running on cost-optimized infrastruc
 | **Network Volumes (NFS)** | ⚠️ Not Planned | Not in v1; planned for v2 |
 
 **Details:**
-- Volumes table: mountPath, size, storageClassName, accessMode
-- PVC manifests generated from service spec
-- Missing: Dynamic provisioning, snapshot automation, encryption
+- Volumes: mountPath, size, storageClassName, accessMode — persisted on service; reconciler creates PVCs on deploy
+- Missing for post-GA: snapshot automation, online resize, encryption enforcement
 
 ---
 

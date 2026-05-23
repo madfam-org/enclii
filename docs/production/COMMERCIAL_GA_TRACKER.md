@@ -1,6 +1,7 @@
 # Commercial GA tracker
 
 > **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md)  
+> **Scorecard:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
 > **Last updated:** 2026-05-22
 
