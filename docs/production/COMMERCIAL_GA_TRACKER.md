@@ -18,7 +18,7 @@
 | `SECURITY_RELEASE_PR.md` production checklist | Ops | Open |
 | `REMAINING_ITEMS.md` cluster P0/P1 | Ops | Open |
 | Migration `030` (`rollout_blocked_reason`) in prod | Ops | Open — see [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) |
-| Staging lifecycle proofs (bets A/B/C) | Ops | Runbook: [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) |
+| Staging lifecycle proofs (bets A/B/C) | Ops | [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) · [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) |
 | Phase 0 execution order | Ops | [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) |
 
 ## Phase 1 — Engineering (code on `main`)
@@ -69,7 +69,7 @@
 | SLA (99.95%) | Draft — [SLA_DRAFT.md](./SLA_DRAFT.md) (legal review) |
 | Support tiers + status page | Draft — [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
 | GA changelog; retire “95% ready” externally | Draft — [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
-| Pricing + self-serve signup tested | Open |
+| Pricing + self-serve signup tested | Checklist — [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md); signup API smoke in CI |
 
 ## Next merge train
 

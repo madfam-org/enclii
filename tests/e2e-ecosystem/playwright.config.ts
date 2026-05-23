@@ -51,5 +51,10 @@ export default defineConfig({
       testMatch: /enclii-storage-smoke\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'signup-smoke',
+      testMatch: /enclii-signup-smoke\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });
