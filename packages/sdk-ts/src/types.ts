@@ -413,6 +413,81 @@ export interface SetEnvVarRequest {
 }
 
 // -----------------------------------------------------------------------------
+// Preview environments
+// -----------------------------------------------------------------------------
+
+export type PreviewEnvironmentStatus =
+  | 'pending'
+  | 'building'
+  | 'deploying'
+  | 'active'
+  | 'sleeping'
+  | 'failed'
+  | 'closed';
+
+export interface PreviewEnvironment {
+  id: UUID;
+  project_id: UUID;
+  service_id: UUID;
+  pr_number: number;
+  pr_title?: string;
+  pr_url?: string;
+  pr_author?: string;
+  pr_author_avatar_url?: string;
+  pr_branch: string;
+  pr_base_branch: string;
+  commit_sha: string;
+  commit_url?: string;
+  repository_url?: string;
+  preview_subdomain: string;
+  preview_url: string;
+  status: PreviewEnvironmentStatus;
+  status_message?: string;
+  auto_sleep_after: number;
+  last_accessed_at?: ISODateTime;
+  sleeping_since?: ISODateTime;
+  deployment_id?: UUID;
+  build_logs_url?: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+  closed_at?: ISODateTime;
+}
+
+export interface PreviewEnvironmentListResponse {
+  previews: PreviewEnvironment[];
+  count?: number;
+}
+
+export interface CreatePreviewRequest {
+  service_id: UUID;
+  pr_number: number;
+  pr_title?: string;
+  pr_url?: string;
+  pr_author?: string;
+  pr_branch: string;
+  pr_base_branch?: string;
+  commit_sha: string;
+}
+
+export interface PreviewComment {
+  id: UUID;
+  preview_id: UUID;
+  user_id?: UUID;
+  user_email: string;
+  user_name?: string;
+  content: string;
+  path?: string;
+  resolved: boolean;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface PreviewCommentListResponse {
+  comments: PreviewComment[];
+  count?: number;
+}
+
+// -----------------------------------------------------------------------------
 // Jobs / Timetable
 // -----------------------------------------------------------------------------
 

@@ -36,5 +36,10 @@ export default defineConfig({
       testMatch: /enclii-paywall\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'preview-lifecycle',
+      testMatch: /enclii-preview-lifecycle\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });

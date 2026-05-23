@@ -500,6 +500,7 @@ jobs:
         run: |
           pnpm --filter @enclii/shared-lib build
           pnpm --filter @enclii/ui-components build
+          pnpm --filter @madfam/enclii-sdk build
 
       - name: Build UI
         working-directory: apps/switchyard-ui

@@ -50,12 +50,14 @@ COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/switchyard-ui/node_modules ./apps/switchyard-ui/node_modules
 COPY --from=deps /repo/packages/shared-lib/node_modules ./packages/shared-lib/node_modules
 COPY --from=deps /repo/packages/ui-components/node_modules ./packages/ui-components/node_modules
+COPY --from=deps /repo/packages/sdk-ts/node_modules ./packages/sdk-ts/node_modules
 
 # Bring in source after deps so dep-only changes hit the layer cache
 COPY apps/switchyard-ui ./apps/switchyard-ui
 COPY packages/shared-lib ./packages/shared-lib
 COPY packages/ui-components ./packages/ui-components
 COPY packages/config ./packages/config
+COPY packages/sdk-ts ./packages/sdk-ts
 
 # Build arguments for public env vars (production defaults)
 ARG NEXT_PUBLIC_API_URL=https://api.enclii.dev
@@ -69,6 +71,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Build workspace packages bottom-up (leaf → consumer → app)
 RUN pnpm --filter @enclii/shared-lib run build
 RUN pnpm --filter @enclii/ui-components run build
+RUN pnpm --filter @madfam/enclii-sdk run build
 
 # Build the Next.js app
 WORKDIR /repo/apps/switchyard-ui
