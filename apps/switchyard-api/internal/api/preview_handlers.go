@@ -167,24 +167,14 @@ func (h *Handler) GetPreview(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-
 	previewUUID, err := uuid.Parse(previewID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid preview_id format"})
 		return
 	}
 
-	preview, err := h.repos.PreviewEnvironments.GetByID(ctx, previewUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "preview environment not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get preview environment",
-			logging.String("preview_id", previewID),
-			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get preview"})
+	preview, ok := h.loadPreviewWithAccess(c, previewUUID)
+	if !ok {
 		return
 	}
 
@@ -319,15 +309,8 @@ func (h *Handler) ClosePreview(c *gin.Context) {
 		return
 	}
 
-	// Verify preview exists
-	preview, err := h.repos.PreviewEnvironments.GetByID(ctx, previewUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "preview environment not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get preview", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get preview"})
+	preview, ok := h.loadPreviewWithAccess(c, previewUUID)
+	if !ok {
 		return
 	}
 
@@ -369,15 +352,8 @@ func (h *Handler) WakePreview(c *gin.Context) {
 		return
 	}
 
-	// Verify preview exists and is sleeping
-	preview, err := h.repos.PreviewEnvironments.GetByID(ctx, previewUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "preview environment not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get preview", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get preview"})
+	preview, ok := h.loadPreviewWithAccess(c, previewUUID)
+	if !ok {
 		return
 	}
 
@@ -446,17 +422,8 @@ func (h *Handler) DeletePreview(c *gin.Context) {
 		return
 	}
 
-	// Get preview first to get namespace info before deletion
-	preview, err := h.repos.PreviewEnvironments.GetByID(ctx, previewUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "preview environment not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get preview for deletion",
-			logging.String("preview_id", previewID),
-			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get preview"})
+	preview, ok := h.loadPreviewWithAccess(c, previewUUID)
+	if !ok {
 		return
 	}
 
@@ -494,6 +461,10 @@ func (h *Handler) ListPreviewComments(c *gin.Context) {
 	previewUUID, err := uuid.Parse(previewID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid preview_id format"})
+		return
+	}
+
+	if _, ok := h.loadPreviewWithAccess(c, previewUUID); !ok {
 		return
 	}
 
@@ -535,15 +506,7 @@ func (h *Handler) CreatePreviewComment(c *gin.Context) {
 		return
 	}
 
-	// Verify preview exists
-	_, err = h.repos.PreviewEnvironments.GetByID(ctx, previewUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "preview environment not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get preview", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get preview"})
+	if _, ok := h.loadPreviewWithAccess(c, previewUUID); !ok {
 		return
 	}
 
@@ -636,6 +599,9 @@ func (h *Handler) RecordPreviewAccess(c *gin.Context) {
 	previewUUID, err := uuid.Parse(previewID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid preview_id format"})
+		return
+	}
+	if _, ok := h.loadPreviewWithAccess(c, previewUUID); !ok {
 		return
 	}
 

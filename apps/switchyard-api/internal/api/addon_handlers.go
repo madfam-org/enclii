@@ -256,8 +256,7 @@ func (h *Handler) GetAddon(c *gin.Context) {
 		return
 	}
 
-	// XC-2 Round 5: 404 cross-tenant detail reads when acting-as.
-	if !h.enforceActingTeamForProject(c, addon.ProjectID) {
+	if !h.enforceUserProjectAccess(c, addon.ProjectID) {
 		return
 	}
 
@@ -274,6 +273,20 @@ func (h *Handler) GetAddonCredentials(c *gin.Context) {
 	addonUUID, err := uuid.Parse(addonID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid addon_id format"})
+		return
+	}
+
+	addon, err := h.addonService.GetAddonWithBindings(ctx, addonUUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get addon for credentials", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get addon"})
+		return
+	}
+	if !h.enforceUserProjectAccess(c, addon.ProjectID) {
 		return
 	}
 
@@ -302,6 +315,20 @@ func (h *Handler) RefreshAddonStatus(c *gin.Context) {
 		return
 	}
 
+	addonMeta, err := h.addonService.GetAddonWithBindings(ctx, addonUUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get addon for refresh", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get addon"})
+		return
+	}
+	if !h.enforceUserProjectAccess(c, addonMeta.ProjectID) {
+		return
+	}
+
 	addon, err := h.addonService.RefreshStatus(ctx, addonUUID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to refresh addon status",
@@ -324,6 +351,20 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 	addonUUID, err := uuid.Parse(addonID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid addon_id format"})
+		return
+	}
+
+	addonMeta, err := h.addonService.GetAddonWithBindings(ctx, addonUUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get addon for delete", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get addon"})
+		return
+	}
+	if !h.enforceUserProjectAccess(c, addonMeta.ProjectID) {
 		return
 	}
 

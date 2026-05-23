@@ -242,6 +242,9 @@ func (h *Handler) GetCanary(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.enforceServiceAccess(c, ro.ServiceID) {
+		return
+	}
 	actualPct := 0.0
 	if ro.TotalReplicas > 0 {
 		actualPct = float64(ro.CanaryReplicas) * 100.0 / float64(ro.TotalReplicas)

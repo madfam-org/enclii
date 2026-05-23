@@ -242,6 +242,9 @@ func (h *Handler) GetServiceStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
 	}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
+	}
 
 	// Check cache first
 	cacheKey := fmt.Sprintf("service:status:%s", serviceID.String())
@@ -308,6 +311,9 @@ func (h *Handler) GetLogs(c *gin.Context) {
 	deploymentID, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment ID"})
+		return
+	}
+	if !h.enforceDeploymentAccess(c, deploymentID) {
 		return
 	}
 

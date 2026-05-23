@@ -535,6 +535,9 @@ func (h *Handler) ListReleases(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
 	}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
+	}
 
 	releases, err := h.repos.Releases.ListByService(serviceID)
 	if err != nil {

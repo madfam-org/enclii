@@ -54,6 +54,7 @@ Ship before or with next production deploy:
 - [x] Global `ErrorHandlerMiddleware` in `SetupRoutes`
 - [x] Reconciler process duration/failure Prometheus metrics
 - [x] `AUTHZ_HANDLER_AUDIT.md` + expanded cross-tenant tests
+- [x] Resource authZ helpers + preview/function/addon/deployment/env/canary fixes
 
 ## Deferred (Phase 4, 7)
 

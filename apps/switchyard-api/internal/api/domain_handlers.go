@@ -195,7 +195,7 @@ func (h *Handler) ListCustomDomains(c *gin.Context) {
 	svcUUID, parseErr := uuid.Parse(serviceID)
 	if parseErr == nil {
 		if svc, sErr := h.repos.Services.GetByID(svcUUID); sErr == nil && svc != nil {
-			if !h.enforceActingTeamForProject(c, svc.ProjectID) {
+			if !h.enforceUserProjectAccess(c, svc.ProjectID) {
 				return
 			}
 		}
@@ -230,7 +230,7 @@ func (h *Handler) GetCustomDomain(c *gin.Context) {
 
 	// XC-2 Round 5: 404 cross-tenant detail reads when acting-as.
 	if svc, sErr := h.repos.Services.GetByID(domain.ServiceID); sErr == nil && svc != nil {
-		if !h.enforceActingTeamForProject(c, svc.ProjectID) {
+		if !h.enforceUserProjectAccess(c, svc.ProjectID) {
 			return
 		}
 	}

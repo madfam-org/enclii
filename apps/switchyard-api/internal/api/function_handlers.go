@@ -200,7 +200,6 @@ func (h *Handler) CreateFunction(c *gin.Context) {
 // GetFunction retrieves a specific function
 // GET /v1/functions/:id
 func (h *Handler) GetFunction(c *gin.Context) {
-	ctx := c.Request.Context()
 	fnID := c.Param("id")
 
 	// Parse function ID
@@ -210,14 +209,8 @@ func (h *Handler) GetFunction(c *gin.Context) {
 		return
 	}
 
-	fn, err := h.repos.Functions.GetByID(ctx, fnUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "function not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get function", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get function"})
+	fn, ok := h.loadFunctionWithAccess(c, fnUUID)
+	if !ok {
 		return
 	}
 
@@ -249,15 +242,8 @@ func (h *Handler) UpdateFunction(c *gin.Context) {
 		return
 	}
 
-	// Get existing function
-	fn, err := h.repos.Functions.GetByID(ctx, fnUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "function not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get function", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get function"})
+	fn, ok := h.loadFunctionWithAccess(c, fnUUID)
+	if !ok {
 		return
 	}
 
@@ -336,6 +322,10 @@ func (h *Handler) DeleteFunction(c *gin.Context) {
 		return
 	}
 
+	if _, ok := h.loadFunctionWithAccess(c, fnUUID); !ok {
+		return
+	}
+
 	// Soft delete the function
 	if err := h.repos.Functions.SoftDelete(ctx, fnUUID); err != nil {
 		if err == sql.ErrNoRows {
@@ -381,15 +371,8 @@ func (h *Handler) InvokeFunction(c *gin.Context) {
 		req = InvokeFunctionRequest{}
 	}
 
-	// Get function
-	fn, err := h.repos.Functions.GetByID(ctx, fnUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "function not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get function", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get function"})
+	fn, ok := h.loadFunctionWithAccess(c, fnUUID)
+	if !ok {
 		return
 	}
 
@@ -506,15 +489,8 @@ func (h *Handler) GetFunctionLogs(c *gin.Context) {
 		}
 	}
 
-	// Verify function exists
-	fn, err := h.repos.Functions.GetByID(ctx, fnUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "function not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get function", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get function"})
+	fn, ok := h.loadFunctionWithAccess(c, fnUUID)
+	if !ok {
 		return
 	}
 
@@ -582,15 +558,8 @@ func (h *Handler) GetFunctionMetrics(c *gin.Context) {
 		}
 	}
 
-	// Verify function exists
-	fn, err := h.repos.Functions.GetByID(ctx, fnUUID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "function not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get function", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get function"})
+	fn, ok := h.loadFunctionWithAccess(c, fnUUID)
+	if !ok {
 		return
 	}
 

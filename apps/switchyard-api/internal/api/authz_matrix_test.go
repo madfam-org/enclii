@@ -23,12 +23,14 @@ func setupAuthzHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 
 	h := &Handler{
 		repos: &db.Repositories{
-			Projects:      db.NewProjectRepository(database),
-			Services:      db.NewServiceRepository(database),
-			CronJobs:      db.NewCronJobRepository(database),
-			Junctions:     db.NewJunctionRepository(database),
-			Deployments:   db.NewDeploymentRepository(database),
-			ProjectAccess: db.NewProjectAccessRepository(database),
+			Projects:            db.NewProjectRepository(database),
+			Services:            db.NewServiceRepository(database),
+			CronJobs:            db.NewCronJobRepository(database),
+			Junctions:           db.NewJunctionRepository(database),
+			Deployments:         db.NewDeploymentRepository(database),
+			Functions:           db.NewFunctionRepository(database),
+			PreviewEnvironments: db.NewPreviewEnvironmentRepository(database),
+			ProjectAccess:       db.NewProjectAccessRepository(database),
 		},
 		logger: testLogger(t),
 	}

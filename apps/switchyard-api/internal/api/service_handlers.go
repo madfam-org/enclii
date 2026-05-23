@@ -233,6 +233,9 @@ func (h *Handler) GetServiceSettings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get service"})
 		return
 	}
+	if !h.enforceUserProjectAccess(c, service.ProjectID) {
+		return
+	}
 
 	// Get project name
 	project, err := h.repos.Projects.GetByID(ctx, service.ProjectID)
