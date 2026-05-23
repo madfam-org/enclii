@@ -129,6 +129,7 @@ enclii deploy --env production
 | [`secrets`](./commands/secrets.md) | Manage service secrets and environment variables |
 | [`domains`](./commands/domains.md) | Manage custom domains for services |
 | [`previews`](./commands/previews.md) | List and manage PR preview environments |
+| [`volumes`](./commands/volumes.md) | Manage persistent volumes on a service |
 | [`functions`](./commands/functions.md) | Manage serverless functions (scale-to-zero) |
 | [`jobs`](./commands/jobs.md) | Manage cron and one-off scheduled jobs |
 | [`junctions`](./commands/junctions.md) | Manage routing rules and ingress configuration |

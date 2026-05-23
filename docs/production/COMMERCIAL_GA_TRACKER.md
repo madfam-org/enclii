@@ -39,7 +39,7 @@
 |------------|--------|
 | API (`/v1/previews`, PR webhook) | Implemented — `CreatePreview` authZ + lifecycle tests |
 | Reconciler / URL lifecycle | Partial — verify E2E in staging |
-| UI + CLI docs | UI wired (Previews tab); CLI `enclii previews` + [previews.md](../cli/commands/previews.md) |
+| UI + CLI docs | UI wired (Previews tab); CLI + [preview-environments.md](../guides/preview-environments.md) |
 | E2E test (SOFTWARE_SPEC) | Smoke in CI; full lifecycle opt-in via `PREVIEW_E2E_*` env |
 
 ## Product bet B — Custom domains + TLS
@@ -49,6 +49,7 @@
 | Domain API + cert-manager path | Implemented |
 | `ToggleZeroTrust` authZ | Done (PR #250) |
 | DNS verify + Junction routing E2E | Smoke in CI; full lifecycle opt-in via `DOMAIN_E2E_*` env |
+| User guide + CLI | [custom-domains.md](../guides/custom-domains.md), `enclii domains` |
 
 ## Product bet C — Persistent volumes
 
@@ -56,6 +57,7 @@
 |------------|--------|
 | Reconciler `generatePVCs` / mount | Implemented — unit tests exist |
 | UI volume attach + lifecycle | Settings editor + API persist volumes (`ServiceVolumesEditor`) |
+| CLI + user guide | `enclii volumes` + [persistent-volumes.md](../guides/persistent-volumes.md) |
 | E2E stateful deploy | Smoke in CI; volumes opt-in via `STORAGE_E2E_*`; deploy slice needs `STORAGE_E2E_RELEASE_ID` |
 
 ## Commercial wrap (GTM / legal)
@@ -74,4 +76,5 @@
 3. **Deploy `main` + migration 030 + security checklist** (ops — critical path)
 4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
 5. ~~Preview CLI + docs (bet A)~~ → `main`
-6. GTM wrap (SLA, pricing, changelog) after Stability GA window starts
+6. ~~Volumes CLI + bet B/C guides~~ → `main`
+7. GTM wrap (SLA, pricing, changelog) after Stability GA window starts

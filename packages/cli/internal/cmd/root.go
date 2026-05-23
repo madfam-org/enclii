@@ -48,6 +48,7 @@ Learn more at https://enclii.dev`,
 	rootCmd.AddCommand(NewSecretsCommand(cfg))
 	rootCmd.AddCommand(NewDomainsCommand(cfg))
 	rootCmd.AddCommand(NewPreviewsCommand(cfg))
+	rootCmd.AddCommand(NewVolumesCommand(cfg))
 	rootCmd.AddCommand(NewReleasesCommand(cfg))
 
 	// Serverless functions (scale-to-zero)

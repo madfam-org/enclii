@@ -15,6 +15,16 @@ Pick your current platform for a 10-minute, step-by-step migration path.
 - **[From Railway →](./migrating-from-railway.md)** — services, plugins, volumes, private networking
 - **[From Heroku →](./migrating-from-heroku.md)** — Procfile, buildpacks, Review Apps, release phase
 
+## Commercial GA product features
+
+After migration, enable platform table-stakes:
+
+- [Preview environments](./preview-environments.md) — PR previews (bet A)
+- [Custom domains and TLS](./custom-domains.md) — bring your own domain (bet B)
+- [Persistent volumes](./persistent-volumes.md) — stateful workloads (bet C)
+
+Staging proof checklist: [COMMERCIAL_GA_STAGING_PROOF.md](../production/COMMERCIAL_GA_STAGING_PROOF.md).
+
 ## Deep-dive guides
 
 Once you've completed the short guide, these full references cover edge cases, incremental rollouts, and platform-specific gotchas:

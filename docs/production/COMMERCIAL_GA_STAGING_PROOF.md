@@ -100,12 +100,11 @@ Artifacts: Playwright report uploaded on completion.
 
 Record results in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) (bet rows + date). Stability GA still requires 30-day SLO window after Phase 0 deploy.
 
-| Bet | Proof | Spec |
-|-----|-------|------|
-| A Previews | create → get → close | `tests/e2e-ecosystem/tests/enclii-preview-lifecycle.spec.ts` |
-| B Domains | add → verify path → remove | `tests/e2e-ecosystem/tests/enclii-domains-lifecycle.spec.ts` |
-| C Storage | volumes round-trip | `tests/e2e-ecosystem/tests/enclii-storage-smoke.spec.ts` |
-| C Storage (deploy) | patch volumes → deploy → running | same spec, `STORAGE_E2E_RELEASE_ID` |
+| Bet | Proof | Spec | Guide |
+|-----|-------|------|-------|
+| A Previews | create → get → close | `enclii-preview-lifecycle.spec.ts` | [preview-environments.md](../guides/preview-environments.md) |
+| B Domains | add → verify path → remove | `enclii-domains-lifecycle.spec.ts` | [custom-domains.md](../guides/custom-domains.md) |
+| C Storage | volumes round-trip + deploy | `enclii-storage-smoke.spec.ts` | [persistent-volumes.md](../guides/persistent-volumes.md) |
 
 ---
 
