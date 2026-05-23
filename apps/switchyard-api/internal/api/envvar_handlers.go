@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -86,21 +85,11 @@ func (h *Handler) ListEnvVars(c *gin.Context) {
 // POST /v1/services/:id/env-vars
 func (h *Handler) CreateEnvVar(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-
-	// Parse service ID
-	svcID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	svcID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
-
-	// Verify service exists
-	_, err = h.repos.Services.GetByID(svcID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
-		return
-	}
+	serviceID := svcID.String()
 
 	var req CreateEnvVarRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -183,7 +172,6 @@ func (h *Handler) CreateEnvVar(c *gin.Context) {
 // GetEnvVar returns a single environment variable
 // GET /v1/services/:id/env-vars/:var_id
 func (h *Handler) GetEnvVar(c *gin.Context) {
-	ctx := c.Request.Context()
 	varID := c.Param("var_id")
 
 	// Parse var ID
@@ -193,19 +181,8 @@ func (h *Handler) GetEnvVar(c *gin.Context) {
 		return
 	}
 
-	svcID, ok := h.mustServiceAccess(c)
+	ev, ok := h.loadEnvVarWithAccess(c, evID)
 	if !ok {
-		return
-	}
-
-	// Get env var
-	ev, err := h.repos.EnvVars.GetByID(ctx, evID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Environment variable not found"})
-		return
-	}
-	if ev.ServiceID != svcID {
-		respondAppError(c, apperrors.ErrNotFound)
 		return
 	}
 
@@ -225,10 +202,8 @@ func (h *Handler) UpdateEnvVar(c *gin.Context) {
 		return
 	}
 
-	// Get existing env var
-	ev, err := h.repos.EnvVars.GetByID(ctx, evID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Environment variable not found"})
+	ev, ok := h.loadEnvVarWithAccess(c, evID)
+	if !ok {
 		return
 	}
 
@@ -305,10 +280,8 @@ func (h *Handler) DeleteEnvVar(c *gin.Context) {
 		return
 	}
 
-	// Get existing env var for audit log
-	ev, err := h.repos.EnvVars.GetByID(ctx, evID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Environment variable not found"})
+	ev, ok := h.loadEnvVarWithAccess(c, evID)
+	if !ok {
 		return
 	}
 
@@ -348,21 +321,11 @@ func (h *Handler) DeleteEnvVar(c *gin.Context) {
 // POST /v1/services/:id/env-vars/bulk
 func (h *Handler) BulkUpsertEnvVars(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-
-	// Parse service ID
-	svcID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	svcID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
-
-	// Verify service exists
-	_, err = h.repos.Services.GetByID(svcID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
-		return
-	}
+	serviceID := svcID.String()
 
 	var req BulkUpsertEnvVarsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -441,10 +404,8 @@ func (h *Handler) RevealEnvVar(c *gin.Context) {
 		return
 	}
 
-	// Get env var
-	ev, err := h.repos.EnvVars.GetByID(ctx, evID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Environment variable not found"})
+	ev, ok := h.loadEnvVarWithAccess(c, evID)
+	if !ok {
 		return
 	}
 
@@ -544,16 +505,11 @@ type SyncEnvVarsFromPodRequest struct {
 // POST /v1/services/:id/env-vars/sync-from-pod
 func (h *Handler) SyncEnvVarsFromPod(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
-
-	// Parse service ID
-	svcID, err := uuid.Parse(serviceID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	svcID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 
-	// Validate service exists
 	service, err := h.repos.Services.GetByID(svcID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})

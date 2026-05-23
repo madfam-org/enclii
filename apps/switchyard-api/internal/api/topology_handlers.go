@@ -30,7 +30,11 @@ func (h *Handler) GetTopology(c *gin.Context) {
 // GetServiceDependencies returns upstream and downstream dependencies for a service
 func (h *Handler) GetServiceDependencies(c *gin.Context) {
 	ctx := c.Request.Context()
-	idStr := c.Param("id")
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	idStr := serviceID.String()
 
 	h.logger.Info(ctx, "Getting service dependencies", logging.String("service_id", idStr))
 
@@ -47,7 +51,11 @@ func (h *Handler) GetServiceDependencies(c *gin.Context) {
 // GetServiceImpact returns impact analysis for a service
 func (h *Handler) GetServiceImpact(c *gin.Context) {
 	ctx := c.Request.Context()
-	idStr := c.Param("id")
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	idStr := serviceID.String()
 
 	h.logger.Info(ctx, "Analyzing service impact", logging.String("service_id", idStr))
 

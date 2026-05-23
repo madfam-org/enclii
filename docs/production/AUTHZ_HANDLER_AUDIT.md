@@ -11,6 +11,8 @@
 | `enforceDeploymentAccess(c, deploymentID)` | `/v1/deployments/:id` and deployment logs |
 | `loadPreviewWithAccess(c, previewID)` | All `/v1/previews/:id` mutations and reads |
 | `loadFunctionWithAccess(c, functionID)` | All `/v1/functions/:id` operations |
+| `loadEnvVarWithAccess(c, evID)` | `/v1/services/:id/env-vars/:var_id` mutations and reveal |
+| `loadAddonWithAccess(c, addonID)` | `/v1/addons/:id` reads and binding mutations |
 
 ## Fixed (2026-05-22)
 
@@ -23,8 +25,11 @@
 | Addons | `GetAddon`, `GetAddonCredentials`, `RefreshAddonStatus`, `DeleteAddon` | `enforceUserProjectAccess` (was acting-as only) |
 | Domains | `ListCustomDomains`, `GetCustomDomain` | `enforceUserProjectAccess` |
 | Services | `GetServiceSettings`, `ListReleases` | Service / project access |
-| Env vars | `ListEnvVars`, `GetEnvVar` | `mustServiceAccess` + service ID match |
-| Canary | `GetCanary` | `enforceServiceAccess` on rollout's service |
+| Env vars | All `/v1/services/:id/env-vars/*` | `mustServiceAccess` / `loadEnvVarWithAccess` (incl. `RevealEnvVar`, bulk, sync) |
+| Build / deploy | `BuildService`, `DeployService`, `RollbackDeployment`, `InstantRollback` | Service / deployment access |
+| Topology / metrics | `GetServiceDependencies`, `GetServiceImpact`, `GetServiceResourceMetrics` | `mustServiceAccess` |
+| Addons | `CreateAddonBinding`, `DeleteAddonBinding`, `GetServiceBindings`, `GetAddonEvents` | `loadAddonWithAccess` + service access |
+| Canary | `StartCanary`, `GetCanary`, `PromoteCanary`, `RollbackCanary`, `ListServiceCanaries` | `mustServiceAccess` / `enforceServiceAccess` |
 
 ## Verified (tests in `authz_matrix_test.go`, `access_resource_test.go`)
 

@@ -93,3 +93,47 @@ func (h *Handler) loadFunctionWithAccess(c *gin.Context, functionID uuid.UUID) (
 	}
 	return fn, true
 }
+
+// loadEnvVarWithAccess loads an env var scoped to :id on the route and enforces access.
+func (h *Handler) loadEnvVarWithAccess(c *gin.Context, evID uuid.UUID) (*types.EnvironmentVariable, bool) {
+	svcID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return nil, false
+	}
+
+	ctx := c.Request.Context()
+	ev, err := h.repos.EnvVars.GetByID(ctx, evID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondAppError(c, apperrors.ErrNotFound)
+		} else {
+			h.logger.Error(ctx, "Failed to get env var for access check", logging.Error("error", err))
+			respondAppError(c, apperrors.ErrInternal.WithError(err))
+		}
+		return nil, false
+	}
+	if ev.ServiceID != svcID {
+		respondAppError(c, apperrors.ErrNotFound)
+		return nil, false
+	}
+	return ev, true
+}
+
+// loadAddonWithAccess returns an addon after enforcing project access.
+func (h *Handler) loadAddonWithAccess(c *gin.Context, addonID uuid.UUID) (*types.DatabaseAddon, bool) {
+	ctx := c.Request.Context()
+	addon, err := h.addonService.GetAddon(ctx, addonID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondAppError(c, apperrors.ErrNotFound)
+		} else {
+			h.logger.Error(ctx, "Failed to get addon for access check", logging.Error("error", err))
+			respondAppError(c, apperrors.ErrInternal.WithError(err))
+		}
+		return nil, false
+	}
+	if !h.enforceUserProjectAccess(c, addon.ProjectID) {
+		return nil, false
+	}
+	return addon, true
+}

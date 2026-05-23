@@ -60,9 +60,8 @@ type CanaryRolloutResponse struct {
 func (h *Handler) StartCanary(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	serviceID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 
@@ -228,6 +227,9 @@ func (h *Handler) StartCanary(c *gin.Context) {
 // GetCanary returns the current state of a rollout.
 func (h *Handler) GetCanary(c *gin.Context) {
 	ctx := c.Request.Context()
+	if _, ok := h.mustServiceAccess(c); !ok {
+		return
+	}
 	rolloutID, err := uuid.Parse(c.Param("rollout_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rollout ID"})
@@ -259,9 +261,8 @@ func (h *Handler) GetCanary(c *gin.Context) {
 func (h *Handler) PromoteCanary(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	serviceID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 	rolloutID, err := uuid.Parse(c.Param("rollout_id"))
@@ -333,9 +334,8 @@ func (h *Handler) PromoteCanary(c *gin.Context) {
 func (h *Handler) RollbackCanary(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	serviceID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 	rolloutID, err := uuid.Parse(c.Param("rollout_id"))
@@ -396,9 +396,8 @@ func (h *Handler) RollbackCanary(c *gin.Context) {
 // ListServiceCanaries returns rollout history for a service.
 func (h *Handler) ListServiceCanaries(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
+	serviceID, ok := h.mustServiceAccess(c)
+	if !ok {
 		return
 	}
 	rollouts, err := h.repos.CanaryRollouts.ListByService(ctx, serviceID, 50)

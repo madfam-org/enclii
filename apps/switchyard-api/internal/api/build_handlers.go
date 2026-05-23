@@ -29,6 +29,9 @@ func (h *Handler) BuildService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
 		return
 	}
+	if !h.enforceServiceAccess(c, serviceID) {
+		return
+	}
 
 	var req struct {
 		GitSHA    string `json:"git_sha" binding:"required"`
