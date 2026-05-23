@@ -488,6 +488,18 @@ export interface PreviewCommentListResponse {
 }
 
 // -----------------------------------------------------------------------------
+// Persistent volumes (service spec)
+// -----------------------------------------------------------------------------
+
+export interface ServiceVolume {
+  name: string;
+  mount_path: string;
+  size: string;
+  storage_class_name?: string;
+  access_mode?: string;
+}
+
+// -----------------------------------------------------------------------------
 // Jobs / Timetable
 // -----------------------------------------------------------------------------
 

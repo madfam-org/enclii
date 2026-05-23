@@ -54,8 +54,8 @@
 | Capability | Status |
 |------------|--------|
 | Reconciler `generatePVCs` / mount | Implemented — unit tests exist |
-| UI volume attach + lifecycle | Open |
-| E2E stateful deploy | Open |
+| UI volume attach + lifecycle | Settings editor + API persist volumes (`ServiceVolumesEditor`) |
+| E2E stateful deploy | Smoke in CI; round-trip opt-in via `STORAGE_E2E_*` env |
 
 ## Commercial wrap (GTM / legal)
 

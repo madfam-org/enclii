@@ -9,6 +9,7 @@ import { Input } from "@enclii/ui-components/input";
 import { Label } from "@enclii/ui-components/label";
 import { apiGet, apiPatch, apiDelete } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
+import { ServiceVolumesEditor } from './ServiceVolumesEditor';
 
 interface ServiceSettings {
   id: string;
@@ -235,6 +236,8 @@ export function SettingsTab({ serviceId, serviceName }: SettingsTabProps) {
           )}
         </CardContent>
       </Card>
+
+      <ServiceVolumesEditor serviceId={serviceId} />
 
       {/* Build Configuration (read-only for now) */}
       {settings?.build_config && (
