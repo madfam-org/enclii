@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
@@ -78,6 +79,23 @@ func (h *Handler) FindDependencyPath(c *gin.Context) {
 
 	if sourceID == "" || targetID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Both source and target query parameters are required"})
+		return
+	}
+
+	sourceUUID, err := uuid.Parse(sourceID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid source service ID"})
+		return
+	}
+	targetUUID, err := uuid.Parse(targetID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid target service ID"})
+		return
+	}
+	if !h.enforceServiceAccess(c, sourceUUID) {
+		return
+	}
+	if !h.enforceServiceAccess(c, targetUUID) {
 		return
 	}
 

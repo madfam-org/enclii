@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
@@ -132,6 +133,15 @@ func (h *Handler) GetDeploymentGroup(c *gin.Context) {
 	ctx := c.Request.Context()
 	groupID := c.Param("group_id")
 
+	groupUUID, err := uuid.Parse(groupID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment group ID"})
+		return
+	}
+	if _, ok := h.loadDeploymentGroupWithSlugAccess(c, groupUUID); !ok {
+		return
+	}
+
 	group, err := h.deploymentGroupService.GetGroupDeployment(ctx, groupID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get deployment group",
@@ -163,6 +173,15 @@ func (h *Handler) GetDeploymentGroup(c *gin.Context) {
 func (h *Handler) ExecuteDeploymentGroup(c *gin.Context) {
 	ctx := c.Request.Context()
 	groupID := c.Param("group_id")
+
+	groupUUID, err := uuid.Parse(groupID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment group ID"})
+		return
+	}
+	if _, ok := h.loadDeploymentGroupWithSlugAccess(c, groupUUID); !ok {
+		return
+	}
 
 	// Get user from context
 	user, ok := c.Get("user")
@@ -213,6 +232,15 @@ func (h *Handler) ExecuteDeploymentGroup(c *gin.Context) {
 func (h *Handler) RollbackDeploymentGroup(c *gin.Context) {
 	ctx := c.Request.Context()
 	groupID := c.Param("group_id")
+
+	groupUUID, err := uuid.Parse(groupID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid deployment group ID"})
+		return
+	}
+	if _, ok := h.loadDeploymentGroupWithSlugAccess(c, groupUUID); !ok {
+		return
+	}
 
 	// Get user from context
 	user, ok := c.Get("user")
@@ -271,7 +299,11 @@ type AddServiceDependencyRequest struct {
 // POST /v1/services/:id/dependencies
 func (h *Handler) AddServiceDependency(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	serviceID := serviceUUID.String()
 
 	// Get user from context
 	user, ok := c.Get("user")
@@ -284,6 +316,15 @@ func (h *Handler) AddServiceDependency(c *gin.Context) {
 	var req AddServiceDependencyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	dependsOnUUID, err := uuid.Parse(req.DependsOnServiceID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid depends_on_service_id"})
+		return
+	}
+	if !h.enforceServiceAccess(c, dependsOnUUID) {
 		return
 	}
 
@@ -317,7 +358,11 @@ func (h *Handler) AddServiceDependency(c *gin.Context) {
 // GET /v1/services/:id/dependencies
 func (h *Handler) ListServiceDependencies(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	serviceID := serviceUUID.String()
 
 	deps, err := h.deploymentGroupService.GetServiceDependencies(ctx, serviceID)
 	if err != nil {
@@ -341,7 +386,11 @@ func (h *Handler) ListServiceDependencies(c *gin.Context) {
 // GET /v1/services/:id/dependents
 func (h *Handler) ListServiceDependents(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	serviceID := serviceUUID.String()
 
 	deps, err := h.deploymentGroupService.GetServiceDependents(ctx, serviceID)
 	if err != nil {
@@ -365,8 +414,21 @@ func (h *Handler) ListServiceDependents(c *gin.Context) {
 // DELETE /v1/services/:id/dependencies/:depends_on_id
 func (h *Handler) RemoveServiceDependency(c *gin.Context) {
 	ctx := c.Request.Context()
-	serviceID := c.Param("id")
+	serviceUUID, ok := h.mustServiceAccess(c)
+	if !ok {
+		return
+	}
+	serviceID := serviceUUID.String()
 	dependsOnID := c.Param("depends_on_id")
+
+	dependsOnUUID, err := uuid.Parse(dependsOnID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid depends_on_service_id"})
+		return
+	}
+	if !h.enforceServiceAccess(c, dependsOnUUID) {
+		return
+	}
 
 	// Get user from context
 	user, ok := c.Get("user")
@@ -376,7 +438,7 @@ func (h *Handler) RemoveServiceDependency(c *gin.Context) {
 	}
 	userObj := user.(*types.User)
 
-	err := h.deploymentGroupService.RemoveServiceDependency(ctx, serviceID, dependsOnID, userObj.Email, string(userObj.Role))
+	err = h.deploymentGroupService.RemoveServiceDependency(ctx, serviceID, dependsOnID, userObj.Email, string(userObj.Role))
 	if err != nil {
 		h.logger.Error(ctx, "Failed to remove service dependency",
 			logging.Error("error", err),

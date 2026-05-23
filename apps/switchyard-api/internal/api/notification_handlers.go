@@ -149,7 +149,6 @@ func (h *Handler) ListWebhooks(c *gin.Context) {
 // GetWebhook gets a specific webhook destination
 // GET /v1/webhooks/:id
 func (h *Handler) GetWebhook(c *gin.Context) {
-	ctx := c.Request.Context()
 	idStr := c.Param("id")
 
 	id, err := uuid.Parse(idStr)
@@ -158,14 +157,8 @@ func (h *Handler) GetWebhook(c *gin.Context) {
 		return
 	}
 
-	webhook, err := h.repos.Webhooks.GetByID(ctx, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get webhook", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get webhook"})
+	webhook, ok := h.loadWebhookWithAccess(c, id)
+	if !ok {
 		return
 	}
 
@@ -188,15 +181,8 @@ func (h *Handler) UpdateWebhook(c *gin.Context) {
 		return
 	}
 
-	// Get existing webhook
-	webhook, err := h.repos.Webhooks.GetByID(ctx, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get webhook", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get webhook"})
+	webhook, ok := h.loadWebhookWithAccess(c, id)
+	if !ok {
 		return
 	}
 
@@ -266,15 +252,7 @@ func (h *Handler) DeleteWebhook(c *gin.Context) {
 		return
 	}
 
-	// Check webhook exists
-	_, err = h.repos.Webhooks.GetByID(ctx, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get webhook", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get webhook"})
+	if _, ok := h.loadWebhookWithAccess(c, id); !ok {
 		return
 	}
 
@@ -299,15 +277,8 @@ func (h *Handler) TestWebhook(c *gin.Context) {
 		return
 	}
 
-	// Get webhook
-	webhook, err := h.repos.Webhooks.GetByID(ctx, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get webhook", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get webhook"})
+	webhook, ok := h.loadWebhookWithAccess(c, id)
+	if !ok {
 		return
 	}
 
@@ -351,15 +322,7 @@ func (h *Handler) ListWebhookDeliveries(c *gin.Context) {
 		return
 	}
 
-	// Check webhook exists
-	_, err = h.repos.Webhooks.GetByID(ctx, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get webhook", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get webhook"})
+	if _, ok := h.loadWebhookWithAccess(c, id); !ok {
 		return
 	}
 
@@ -393,15 +356,8 @@ func (h *Handler) RetryWebhookDelivery(c *gin.Context) {
 		return
 	}
 
-	// Check webhook exists
-	webhook, err := h.repos.Webhooks.GetByID(ctx, webhookID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
-			return
-		}
-		h.logger.Error(ctx, "Failed to get webhook", logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get webhook"})
+	webhook, ok := h.loadWebhookWithAccess(c, webhookID)
+	if !ok {
 		return
 	}
 

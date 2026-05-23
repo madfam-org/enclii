@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	apperrors "github.com/madfam-org/enclii/apps/switchyard-api/internal/errors"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -136,4 +137,77 @@ func (h *Handler) loadAddonWithAccess(c *gin.Context, addonID uuid.UUID) (*types
 		return nil, false
 	}
 	return addon, true
+}
+
+// loadWebhookWithAccess returns a notification webhook after project access check.
+func (h *Handler) loadWebhookWithAccess(c *gin.Context, webhookID uuid.UUID) (*types.WebhookDestination, bool) {
+	ctx := c.Request.Context()
+	webhook, err := h.repos.Webhooks.GetByID(ctx, webhookID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondAppError(c, apperrors.ErrNotFound)
+		} else {
+			h.logger.Error(ctx, "Failed to get webhook for access check", logging.Error("error", err))
+			respondAppError(c, apperrors.ErrInternal.WithError(err))
+		}
+		return nil, false
+	}
+	if !h.enforceUserProjectAccess(c, webhook.ProjectID) {
+		return nil, false
+	}
+	return webhook, true
+}
+
+// loadOutboundWebhookWithAccess returns a lifecycle webhook subscription after project access check.
+func (h *Handler) loadOutboundWebhookWithAccess(c *gin.Context, subID uuid.UUID) (*types.OutboundWebhookSubscription, bool) {
+	ctx := c.Request.Context()
+	if h.repos.OutboundWebhooks == nil {
+		respondAppError(c, apperrors.ErrInternal.WithDetails(map[string]string{"reason": "outbound webhooks not configured"}))
+		return nil, false
+	}
+	sub, err := h.repos.OutboundWebhooks.GetSubscription(ctx, subID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondAppError(c, apperrors.ErrNotFound)
+		} else {
+			h.logger.Error(ctx, "Failed to get outbound webhook for access check", logging.Error("error", err))
+			respondAppError(c, apperrors.ErrInternal.WithError(err))
+		}
+		return nil, false
+	}
+	if !h.enforceUserProjectAccess(c, sub.ProjectID) {
+		return nil, false
+	}
+	return sub, true
+}
+
+// loadDeploymentGroupWithSlugAccess loads a deployment group and ensures it belongs to :slug project.
+func (h *Handler) loadDeploymentGroupWithSlugAccess(c *gin.Context, groupID uuid.UUID) (*db.DeploymentGroup, bool) {
+	ctx := c.Request.Context()
+	if h.repos.DeploymentGroups == nil {
+		respondAppError(c, apperrors.ErrInternal.WithDetails(map[string]string{"reason": "deployment groups not configured"}))
+		return nil, false
+	}
+	group, err := h.repos.DeploymentGroups.GetByID(ctx, groupID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondAppError(c, apperrors.ErrNotFound)
+		} else {
+			h.logger.Error(ctx, "Failed to get deployment group for access check", logging.Error("error", err))
+			respondAppError(c, apperrors.ErrInternal.WithError(err))
+		}
+		return nil, false
+	}
+	if !h.enforceUserProjectAccess(c, group.ProjectID) {
+		return nil, false
+	}
+	if slug := c.Param("slug"); slug != "" {
+		if raw, ok := c.Get("project_id"); ok {
+			if projectID, ok := raw.(uuid.UUID); ok && group.ProjectID != projectID {
+				respondAppError(c, apperrors.ErrNotFound)
+				return nil, false
+			}
+		}
+	}
+	return group, true
 }
