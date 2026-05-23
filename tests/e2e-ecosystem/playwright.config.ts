@@ -46,5 +46,10 @@ export default defineConfig({
       testMatch: /enclii-domains-lifecycle\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'storage-smoke',
+      testMatch: /enclii-storage-smoke\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });

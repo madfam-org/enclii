@@ -24,6 +24,7 @@ type UpdateServiceRequest struct {
 	Region           *string            `json:"region,omitempty"`
 	BuildConfig      *types.BuildConfig `json:"build_config,omitempty"`
 	Jobs             *[]types.JobSpec   `json:"jobs,omitempty"`
+	Volumes          *[]types.Volume    `json:"volumes,omitempty"`
 }
 
 // UpdateService updates a service's settings
@@ -97,6 +98,9 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	}
 	if req.Jobs != nil {
 		service.Jobs = *req.Jobs
+	}
+	if req.Volumes != nil {
+		service.Volumes = *req.Volumes
 	}
 
 	// Update in database
@@ -256,6 +260,7 @@ func (h *Handler) GetServiceSettings(c *gin.Context) {
 		"auto_deploy_branch": service.AutoDeployBranch,
 		"auto_deploy_env":    service.AutoDeployEnv,
 		"build_config":       service.BuildConfig,
+		"volumes":            service.Volumes,
 		"created_at":         service.CreatedAt,
 		"updated_at":         service.UpdatedAt,
 	}
