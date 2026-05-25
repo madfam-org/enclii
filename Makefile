@@ -1,7 +1,7 @@
 .PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-roundhouse install-cli
 .PHONY: test test-integration test-coverage test-benchmark test-all check-drift lint
 .PHONY: run-switchyard run-ui run-roundhouse-worker run-all
-.PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check clean
+.PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check commercial-ga-proof clean
 .PHONY: precommit e2e
 
 # Variables
@@ -175,6 +175,9 @@ health-check:
 	kubectl get pods -l app=switchyard-api -n enclii-staging || true
 	@echo "Production:"
 	kubectl get pods -l app=switchyard-api -n enclii || true
+
+commercial-ga-proof:
+	@bash scripts/commercial-ga-proof.sh
 
 # Run all services locally (API + UI)
 run-all: build-api build-ui

@@ -4,15 +4,15 @@
 > **Scorecard:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Open ops queue:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
-> **Last updated:** 2026-05-23  
+> **Last updated:** 2026-05-25  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)
 
 ## Gate summary
 
 | Track | Target | Status |
 |-------|--------|--------|
-| Stability GA | Phase 0–2 exit criteria | **In progress** — deploy at `main` (2026-05-23); ops + SLO clock open |
-| Commercial GA | Phase 3 + Section 1 commercial checklist | **In progress** — blocked on staging proofs + 30d SLO |
+| Stability GA | Phase 0–2 exit criteria | **In progress** — runtime health green on 2026-05-25; restore proof, support proof, and SLO clock open |
+| Commercial GA | Phase 3 + Section 1 commercial checklist | **In progress** — blocked on paid self-serve proof, webhook replay proof, support/SLA publish, and 30-day SLO |
 
 ## Phase 0 — Ops (Enclii-first)
 
@@ -22,6 +22,9 @@
 | `REMAINING_ITEMS.md` cluster P0/P1 | Ops | In progress (PostHog ns removed) |
 | Migration `030` (`rollout_blocked_reason`) in prod | Ops | Verify column — API migrates on startup |
 | Deploy `main` (Argo `enclii-infrastructure`) | Ops | **Done** 2026-05-23 (`848c8968`) |
+| Argo aggregate and service registry health | Ops | **Done** 2026-05-25 (`bad=0`, `degraded_count=0`) |
+| Stale Blueprint Harvester service rows | Ops | **Done** 2026-05-25 (6 stale `pod_count=0` rows removed) |
+| Lifecycle delete FK migration 031 | Ops | **Done** 2026-05-25 (`deployment_lifecycle_events` refs detach on delete) |
 | Staging lifecycle proofs (bets A/B/C) | Ops | [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) · [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) |
 | Phase 0 execution order | Ops | [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) |
 
@@ -74,6 +77,7 @@
 | Support tiers + status page | Draft — [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
 | GA changelog; retire “95% ready” externally | Draft — [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
 | Pricing + self-serve signup tested | Checklist — [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md); signup API smoke in CI |
+| Commercial GA proof harness | Added 2026-05-25 — `.github/workflows/commercial-ga-proof.yml` / `make commercial-ga-proof`; strict mode requires billing token, project slug, and Dhanam checkout URL |
 
 ## Execution log (2026-05-23)
 
@@ -88,12 +92,23 @@
 | Signup in prod | **Disabled** — enable `ENCLII_SIGNUP_ENABLED` for Wave 2 (O-17) |
 | Execution roadmap published | [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md) |
 
+## Execution log (2026-05-25)
+
+| Action | Result |
+|--------|--------|
+| Argo aggregate health checked | **Green** - 63 applications, `bad=0` |
+| Switchyard service health checked | **Green** - 104 healthy services, `degraded_count=0`, `unhealthy_count=0` |
+| Stale Blueprint Harvester registry rows removed | **Done** - removed 6 legacy unprefixed rows with `pod_count=0`; live prefixed services remain healthy |
+| Lifecycle delete constraint fixed | **Done** - migration 031 added so lifecycle event references can detach when releases/services are deleted |
+| Platform backup job cleanup hardened | **Done** - CronJob TTL cleanup added for backup and restore drill jobs |
+| Public endpoints checked | **Green** - `api.enclii.dev`, `api.janua.dev`, and `auth.madfam.io` health/discovery returned HTTP 200 |
+
 ## Next merge train
 
 1. ~~AuthZ / OpenAPI / preview + domains + storage E2E~~ → `main` (2026-05-22)
 2. ~~PVC persist + settings UI (#258)~~ → `main`
-3. **Deploy `main` + migration 030 + security checklist** — [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) (ops — critical path)
+3. ~~Deploy `main` + migration 030 + security checklist~~ — runtime deploy complete; final security sign-off remains open
 4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
 5. ~~Preview CLI + docs (bet A)~~ → `main`
 6. ~~Volumes CLI + bet B/C guides~~ → `main`
-7. GTM drafts (SLA, support, changelog) — legal review + publish after SLO window
+7. Paid self-serve proof, billing webhook replay proof, restore drill, support/SLA publish, and 30-day SLO clock

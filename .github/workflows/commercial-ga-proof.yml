@@ -1,0 +1,44 @@
+name: Commercial GA Proof
+
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Fail when optional commercial proof inputs are missing'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  commercial-ga-proof:
+    name: Commercial GA proof
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run commercial GA proof harness
+        env:
+          API_URL: ${{ vars.ENCLII_API_URL || 'https://api.enclii.dev' }}
+          APP_URL: ${{ vars.ENCLII_APP_URL || 'https://app.enclii.dev' }}
+          LANDING_URL: ${{ vars.ENCLII_LANDING_URL || 'https://enclii.dev' }}
+          ENCLII_COMMERCIAL_GA_STRICT: ${{ github.event.inputs.strict || vars.ENCLII_COMMERCIAL_GA_STRICT || 'false' }}
+          ENCLII_SYNTHETICS_TOKEN: ${{ secrets.ENCLII_SYNTHETICS_BEARER_TOKEN }}
+          ENCLII_SYNTHETIC_PROJECT_SLUG: ${{ vars.ENCLII_SYNTHETIC_PROJECT_SLUG }}
+          DHANAM_CHECKOUT_URL: ${{ vars.DHANAM_ENCLII_CHECKOUT_URL }}
+        run: bash scripts/commercial-ga-proof.sh
+
+      - name: Upload commercial GA proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enclii-commercial-ga-proof-${{ github.run_number }}
+          path: enclii-commercial-ga-proof.json
+          if-no-files-found: warn
+

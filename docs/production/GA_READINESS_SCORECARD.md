@@ -2,7 +2,7 @@
 
 > Canonical dashboard and sign-off view. Do not track independent task state here; task state belongs in `REMAINING_OPS_GA.md`.
 
-> **Last updated:** 2026-05-23  
+> **Last updated:** 2026-05-25  
 > **Canonical tracker:** [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
 > **Ops execution:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md)  
@@ -16,10 +16,10 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 
 | Track | Readiness | Blocker |
 |-------|-----------|---------|
-| **Stability GA** | **~62%** | Deploy + migration 030 done; security sign-off + cluster P0 + SLO clock open |
-| **Commercial GA (scoped)** | **~68%** | Staging proofs green (2026-05-23); monetization QA + 30d SLO + GTM publish |
-| **Monetization path** | **~60–65%** | Signup/pricing live proof, published SLA |
-| **Retention / support** | **~35–40%** | Live status page, support tiers, on-call proof |
+| **Stability GA** | **~74%** | Runtime health is green; restore evidence, security sign-off, and 30-day SLO clock remain open |
+| **Commercial GA (scoped)** | **~70%** | Staging proofs green (2026-05-23); paid self-serve QA, 30-day SLO, and GTM publish remain open |
+| **Monetization path** | **~65%** | Signup/pricing live proof, billing webhook replay proof, and published SLA remain open |
+| **Retention / support** | **~40%** | Customer-visible status, support tiers, on-call proof, and incident workflow remain open |
 
 **Engineering for bets A+B+C on `main`:** ~**85%** (proof, not net-new features, is the gap).
 
@@ -30,8 +30,8 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 | Dimension | Target | Status | Evidence / next step |
 |-----------|--------|--------|----------------------|
 | **Security & tenancy** | Prod checklist + matrix green | 🟡 80% code / 40% prod | [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) in prod |
-| **Platform stability** | 99.95% API × 30 days | 🔴 ~20% | Start clock after [PHASE0_OPS_RUNBOOK](./PHASE0_OPS_RUNBOOK.md) |
-| **Cluster health** | Disk &lt;40%, Longhorn, Argo synced | 🔴 Open | [REMAINING_ITEMS.md](./REMAINING_ITEMS.md) P0 |
+| **Platform stability** | 99.95% API × 30 days | 🟡 Runtime green / clock open | 2026-05-25 Argo aggregate and service registry were clean; start clock after restore and support gates |
+| **Cluster health** | Disk &lt;40%, Longhorn, Argo synced, 0 degraded services | 🟡 Current apps green | 2026-05-25: Argo aggregate `bad=0`; Switchyard service health `degraded_count=0` |
 | **DR / backups** | Restore drill logged | 🟡 Partial | Drill in Phase 0 step 2.5 |
 | **CI quality** | Blocking on `main` | 🟢 Done | Unit, UI, ecosystem E2E smokes |
 | **Bet A — Previews** | Staging lifecycle pass | 🟢 Proven | Actions run 26328015825 (2026-05-23) |
@@ -55,6 +55,7 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 | Item | Owner | Date | Initials |
 |------|-------|------|----------|
 | Deploy `main` + migration 030 | Ops | 2026-05-23 | Argo `848c8968`; `rollout_blocked_reason` in `enclii` DB |
+| Runtime health exception cleanup | Ops | 2026-05-25 | Argo aggregate `bad=0`; stale Blueprint Harvester service rows deleted; lifecycle FK migration 031 pushed |
 | SECURITY_RELEASE_PR complete | Ops | | |
 | REMAINING_ITEMS P0 (disk, Longhorn, PostHog) | Ops | | |
 | Restore drill evidence filed | Ops | | |
