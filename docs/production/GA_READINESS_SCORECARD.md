@@ -1,5 +1,7 @@
 # Commercial & Stability GA — readiness scorecard
 
+> Canonical dashboard and sign-off view. Do not track independent task state here; task state belongs in `REMAINING_OPS_GA.md`.
+
 > **Last updated:** 2026-05-23  
 > **Canonical tracker:** [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
@@ -107,3 +109,7 @@ See [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) Phase 4.
 
 - [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md)  
 - [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md)
+
+## Runtime execution reference
+
+Use `GA_RUNTIME_EXECUTION.md` for the Enclii command surfaces and `internal-devops/runbooks/ga-ops-execution-pack.md` for private operator execution details.

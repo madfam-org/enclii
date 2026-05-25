@@ -36,6 +36,7 @@ once the server-side provider adapter supports the operation.`,
 		{name: "access", short: "Inspect or plan Access policy changes", readOnly: true},
 		{name: "r2", short: "Inspect or plan R2 bucket changes", readOnly: true},
 		{name: "hostnames", short: "Inspect custom hostname verification", readOnly: true},
+		{name: "credentials", short: "Inspect Cloudflare provider credential readiness", readOnly: true},
 	}))
 	cmd.AddCommand(newProviderCommand(cfg, "porkbun", "Porkbun domains, DNS fallback, and renewals", []providerAction{
 		{name: "domains", short: "Inspect domain inventory and registration state", readOnly: true},
@@ -118,6 +119,7 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 	var zoneDomain string
 	var recordName string
 	var nameservers string
+	var proxied string
 	cmd := &cobra.Command{
 		Use:   action + " [target]",
 		Short: short,
@@ -145,10 +147,18 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 			if nameservers != "" {
 				extra["nameservers"] = nameservers
 			}
+			if proxied != "" {
+				extra["proxied"] = proxied
+			}
 			return runOperation(cmd, cfg, providerPath(provider, action), fmt.Sprintf("providers.%s.%s", provider, action), flags, extra)
 		},
 	}
 	addOperationFlags(cmd, &flags)
+	if provider == "cloudflare" && action == "dns-apply" {
+		cmd.Flags().StringVar(&recordType, "type", "", "DNS record type (default: CNAME)")
+		cmd.Flags().StringVar(&content, "content", "", "DNS record content (default: Enclii tunnel CNAME)")
+		cmd.Flags().StringVar(&proxied, "proxied", "", "Whether Cloudflare should proxy the record: true/false (default by record type)")
+	}
 	if provider == "porkbun" && action == "dns-apply" {
 		cmd.Flags().StringVar(&recordType, "type", "", "DNS record type (default: CNAME)")
 		cmd.Flags().StringVar(&content, "content", "", "DNS record content (default: Enclii tunnel CNAME)")

@@ -59,7 +59,7 @@ If the browser didn't open, copy the printed URL manually. If the callback times
 
 ## 3. Scaffold a service (1 min)
 
-Pick any directory (or clone one of the [starter templates](./templates.md)):
+Pick any directory (or clone one of the [starter templates](./templates/templates.md)):
 
 ```bash
 mkdir my-service && cd my-service
@@ -79,7 +79,7 @@ Next: run `enclii deploy` to deploy this service.
 
 Review `service.yaml`. The defaults are safe: port auto-detected, 2 replicas, `/health` probe, rolling deploys.
 
-The `--template` flag accepts `auto`, `node`, `go`, or `python`. Named framework templates (`nextjs`, `fastapi`, `django`, …) are tracked in the [template catalog](./templates.md).
+The `--template` flag accepts `auto`, `node`, `go`, or `python`. Named framework templates (`nextjs`, `fastapi`, `django`, …) are tracked in the [template catalog](./templates/templates.md).
 
 ## 4. Deploy (2 min)
 

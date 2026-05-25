@@ -1,0 +1,12 @@
+# Platform control plane and GA docs require platform review.
+* @madfam-io
+
+/docs/ADAPTER_GAPS.md @madfam-io
+/docs/production/ @madfam-io
+/docs/infrastructure/ @madfam-io
+/docs/runbooks/ @madfam-io
+/infra/ @madfam-io
+/apps/switchyard-api/ @madfam-io
+/packages/cli/ @madfam-io
+/.github/workflows/ @madfam-io
+/scripts/ @madfam-io

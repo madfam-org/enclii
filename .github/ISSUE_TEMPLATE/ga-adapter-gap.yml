@@ -1,0 +1,32 @@
+name: GA Adapter Gap
+description: Track Enclii web/API/CLI work needed to remove a GA-blocking manual operation
+title: "adapter: <manual operation>"
+labels: ["adapter-gap", "ga"]
+body:
+  - type: input
+    id: gap_row
+    attributes:
+      label: ADAPTER_GAPS row
+      placeholder: docs/ADAPTER_GAPS.md#production-build-secrets
+    validations:
+      required: true
+  - type: input
+    id: desired_command
+    attributes:
+      label: Desired command/API/UI path
+      placeholder: enclii secrets rotate <target> --apply --reason ...
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Server-side adapter, audit behavior, dry-run behavior, and rollback semantics.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations:
+      required: true

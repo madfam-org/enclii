@@ -68,11 +68,16 @@ func Load() (*Config, error) {
 		apiEndpoint = "http://localhost:4200"
 	}
 
+	apiToken := viper.GetString("api-token")
+	if apiToken == "" {
+		apiToken = os.Getenv("ENCLII_TOKEN")
+	}
+
 	config := &Config{
 		Environment: viper.GetString("environment"),
 		LogLevel:    logLevel,
 		APIEndpoint: apiEndpoint,
-		APIToken:    viper.GetString("api-token"),
+		APIToken:    apiToken,
 		Project:     viper.GetString("project"),
 		ProjectDir:  viper.GetString("project-dir"),
 		ConfigFile:  viper.GetString("config-file"),

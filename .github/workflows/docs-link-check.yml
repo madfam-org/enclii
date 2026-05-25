@@ -1,0 +1,29 @@
+name: Docs Link Check
+
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - '**/*.mdx'
+      - '**/*.txt'
+      - 'scripts/check-doc-links.py'
+      - '.github/workflows/docs-link-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - '**/*.mdx'
+      - '**/*.txt'
+      - 'scripts/check-doc-links.py'
+      - '.github/workflows/docs-link-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report local docs link issues
+        run: python3 scripts/check-doc-links.py --warn-only

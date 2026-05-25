@@ -210,3 +210,25 @@ enclii secrets list --file ./deploy/enclii.yaml
 - [`enclii ps`](./ps.md) - Check service status
 - [`enclii onboard`](./onboard.md) - Onboard a service with initial secrets
 - [Service Spec Reference](../../reference/service-spec.md) - Service configuration format
+
+## `enclii secrets sync`
+
+Refresh an ExternalSecret through Enclii's audited operator layer instead of using routine `kubectl` annotations.
+
+```bash
+enclii secrets sync forgesight-secrets --namespace forgesight
+enclii secrets sync forgesight-secrets --namespace forgesight --apply --reason "provider path populated"
+```
+
+Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required.
+
+## `enclii secrets rotate`
+
+Plan a secret rotation through the Enclii operation contract.
+
+```bash
+enclii secrets rotate npm-madfam-token --namespace npm-registry
+enclii secrets rotate janua-jwt-signing-key --project janua --json
+```
+
+Rotation is plan-first until the Vault writer and dual-consumer cutover path are enabled server-side. Do not treat this as completed rotation execution yet.

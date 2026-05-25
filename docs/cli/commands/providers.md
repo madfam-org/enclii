@@ -71,3 +71,22 @@ enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR to
 - Porkbun `nameservers-apply` supports registrar delegation updates through the
   configured Switchyard Porkbun credentials.
 - Hetzner surfaces are declared but not yet backed by clients.
+
+## Cloudflare DNS apply
+
+Apply or dry-run Cloudflare DNS through Enclii instead of provider UI/API calls.
+
+```bash
+enclii providers cloudflare dns-apply app.example.com --type CNAME --content <TUNNEL_CNAME>
+enclii providers cloudflare dns-apply app.example.com --type CNAME --proxied true --apply --reason "route customer domain through Enclii"
+```
+
+Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required.
+
+## Cloudflare credential readiness
+
+```bash
+enclii providers cloudflare credentials --json
+```
+
+This is a contract-read surface for provider credential readiness. Treat it as advisory until the server-side endpoint returns concrete configured/missing provider keys.

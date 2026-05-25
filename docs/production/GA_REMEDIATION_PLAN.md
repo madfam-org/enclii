@@ -425,3 +425,7 @@ When a row in `ADAPTER_GAPS.md` closes, remove it and link the PR.
 | [REMAINING_ITEMS.md](./REMAINING_ITEMS.md) | Cluster ops queue |
 | [GAP_ANALYSIS.md](./GAP_ANALYSIS.md) | Competitive gaps |
 | [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | Security deploy gate |
+
+## Production-readiness ratchet rollout
+
+`production-readiness-ratchet.yml` runs in warn-only mode until the current baseline is clean. After baseline cleanup, promote the workflow to enforced mode for PRs that touch production manifests, workspace package exports, or probe configuration.

@@ -48,7 +48,59 @@ Examples:
 	cmd.AddCommand(newSecretsListCommand(cfg))
 	cmd.AddCommand(newSecretsDeleteCommand(cfg))
 	cmd.AddCommand(newSecretsGetCommand(cfg))
+	cmd.AddCommand(newSecretsSyncCommand(cfg))
+	cmd.AddCommand(newSecretsRotateCommand(cfg))
 
+	return cmd
+}
+
+func newSecretsSyncCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	cmd := &cobra.Command{
+		Use:   "sync EXTERNAL_SECRET",
+		Short: "Refresh an ExternalSecret through Enclii",
+		Long: `Refresh an ExternalSecret through Enclii's audited operator layer.
+
+This replaces routine kubectl force-sync annotation patches. Without --apply,
+the command requests a dry-run plan. With --apply, --reason is required and the
+Switchyard API patches only reconciliation annotations; secret values are never
+read or written by this command.
+
+Examples:
+  enclii secrets sync forgesight-secrets --namespace forgesight
+  enclii secrets sync forgesight-secrets --namespace forgesight --apply --reason "provider path populated"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extra := map[string]string{"target": strings.TrimSpace(args[0])}
+			return runOperation(cmd, cfg, opsPath("secrets", "sync"), "ops.secrets.sync", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
+	return cmd
+}
+
+func newSecretsRotateCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	cmd := &cobra.Command{
+		Use:   "rotate TARGET",
+		Short: "Plan a secret rotation through Enclii",
+		Long: `Plan a secret rotation through Enclii's audited operator layer.
+
+Rotation is intentionally plan-first until the Vault writer and dual-consumer
+cutover path are fully enabled server-side. Use this command to record the
+target, scope, reason, and idempotency key in the Enclii operation contract
+instead of documenting ad-hoc provider UI or kubectl steps.
+
+Examples:
+  enclii secrets rotate npm-madfam-token --namespace npm-registry
+  enclii secrets rotate janua-jwt-signing-key --project janua --json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extra := map[string]string{"target": strings.TrimSpace(args[0])}
+			return runOperation(cmd, cfg, opsPath("secrets", "rotate"), "ops.secrets.rotate", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
 	return cmd
 }
 

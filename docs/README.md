@@ -33,7 +33,7 @@ Self-host Enclii end-to-end. Bare-metal or cloud, Kubernetes-native, GitOps-driv
 
 ## Quick links
 
-- [Template catalog](./templates.md) — starter repos for Next.js, FastAPI, Go, Rails, and more
+- [Template catalog](./templates/templates.md) — starter repos for Next.js, FastAPI, Go, Rails, and more
 - [CLI reference](./cli/README.md) — every `enclii` command
 - [Service spec](./reference/service-spec.md) — `service.yaml` field-by-field
 - [Troubleshooting](./troubleshooting/) — build failures, deploy timeouts, auth issues

@@ -382,7 +382,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 
 **Getting Started:**
 - [5-minute Quickstart](./docs/quickstart.md) - Deploy your first service
-- [Template Catalog](./docs/templates.md) - Starter templates by framework
+- [Template Catalog](./docs/templates/templates.md) - Starter templates by framework
 - [Migration Index](./docs/guides/migrating.md) - From Vercel / Railway / Heroku
 - [Onboarding Guide](./docs/guides/ONBOARDING_GUIDE.md) - Zero-touch repo onboarding
 - [Platform Contributor Setup](./docs/getting-started/QUICKSTART.md) - Local dev in 10 minutes
@@ -400,8 +400,8 @@ enclii scale --min 5 --max 10 --service api --env prod
 - [External Secrets](./docs/infrastructure/EXTERNAL_SECRETS.md) - Secret synchronization
 
 **Audits & Reports:**
-- [Audit Navigation](./docs/audits/README.md) - Browse all audit reports
-- [Master Audit Report](./docs/audits/MASTER_REPORT.md) - Comprehensive overview
+- [Audit Navigation](./docs/archive/audits-nov-2025/README.md) - Browse all audit reports
+- [Master Audit Report](./docs/archive/audits-nov-2025/MASTER_REPORT.md) - Comprehensive overview
 
 **Operations:**
 - [Deployment Guide](./infra/DEPLOYMENT.md) - Production ops

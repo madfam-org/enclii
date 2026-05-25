@@ -22,7 +22,7 @@ var operatorReadActions = map[string]map[string]map[string]bool{
 	},
 	"providers": {
 		"github":     {"runs": true, "secrets": true, "packages": true, "protection": true},
-		"cloudflare": {"dns": true, "tunnels": true, "access": true, "r2": true, "hostnames": true},
+		"cloudflare": {"dns": true, "tunnels": true, "access": true, "r2": true, "hostnames": true, "credentials": true},
 		"porkbun":    {"domains": true, "dns": true, "renewals": true, "nameservers": true},
 		"hetzner":    {"nodes": true, "lb": true, "vswitch": true, "storage": true, "firewall": true},
 	},

@@ -1,0 +1,26 @@
+name: GA Doc Drift
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**/*.md'
+      - 'scripts/check-ga-doc-drift.py'
+      - '.github/workflows/ga-doc-drift.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**/*.md'
+      - 'scripts/check-ga-doc-drift.py'
+      - '.github/workflows/ga-doc-drift.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ga-doc-drift:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report possible GA tracker drift
+        run: python3 scripts/check-ga-doc-drift.py

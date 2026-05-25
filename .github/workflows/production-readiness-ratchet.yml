@@ -1,0 +1,29 @@
+name: Production Readiness Ratchet
+
+on:
+  pull_request:
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/package.json'
+      - 'scripts/check-production-readiness-ratchet.py'
+      - '.github/workflows/production-readiness-ratchet.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/package.json'
+      - 'scripts/check-production-readiness-ratchet.py'
+      - '.github/workflows/production-readiness-ratchet.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ratchet-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report production-readiness ratchet findings
+        run: python3 scripts/check-production-readiness-ratchet.py --warn-only .

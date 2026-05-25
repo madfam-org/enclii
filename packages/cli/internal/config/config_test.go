@@ -15,6 +15,7 @@ func TestLoad_Defaults(t *testing.T) {
 		"ENCLII_LOG_LEVEL",
 		"ENCLII_API_ENDPOINT",
 		"ENCLII_API_TOKEN",
+		"ENCLII_TOKEN",
 		"ENCLII_PROJECT",
 		"ENCLII_PROJECT_DIR",
 		"ENCLII_CONFIG_FILE",
@@ -108,6 +109,66 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 	}
 	if cfg.ProjectDir != "/opt/projects" {
 		t.Errorf("ProjectDir = %q, want %q", cfg.ProjectDir, "/opt/projects")
+	}
+}
+
+func TestLoad_LegacyTokenFallback(t *testing.T) {
+	envVars := map[string]string{
+		"ENCLII_API_TOKEN": "",
+		"ENCLII_TOKEN":     "legacy-token-123",
+	}
+
+	for k, v := range envVars {
+		key := k
+		prev := os.Getenv(k)
+		if v == "" {
+			os.Unsetenv(k)
+		} else {
+			os.Setenv(k, v)
+		}
+		t.Cleanup(func() {
+			if prev == "" {
+				os.Unsetenv(key)
+			} else {
+				os.Setenv(key, prev)
+			}
+		})
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.APIToken != "legacy-token-123" {
+		t.Errorf("APIToken = %q, want legacy-token-123", cfg.APIToken)
+	}
+}
+
+func TestLoad_APITokenPrecedesLegacyToken(t *testing.T) {
+	envVars := map[string]string{
+		"ENCLII_API_TOKEN": "preferred-token",
+		"ENCLII_TOKEN":     "legacy-token",
+	}
+
+	for k, v := range envVars {
+		key := k
+		prev := os.Getenv(k)
+		os.Setenv(k, v)
+		t.Cleanup(func() {
+			if prev == "" {
+				os.Unsetenv(key)
+			} else {
+				os.Setenv(key, prev)
+			}
+		})
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.APIToken != "preferred-token" {
+		t.Errorf("APIToken = %q, want preferred-token", cfg.APIToken)
 	}
 }
 

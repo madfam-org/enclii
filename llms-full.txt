@@ -1,10 +1,10 @@
-# Enclii Full LLM Context
+# Enclii LLM Context Pointer
 
 Generated: 2026-05-13
 
 ## Purpose
 
-This file gives LLM agents a stable, tool-agnostic map for working in this
+This pointer file gives LLM agents a stable, tool-agnostic map for working in this
 repository without depending on vendor-specific instruction files.
 
 ## Canonical instruction order
@@ -40,6 +40,10 @@ gap or incident link.
 - `docs/`
 - `infra/`
 - `.github/workflows/`
+
+## Boundary
+
+This is not a full repository ingest. It is a compact context pointer; task-specific work must still read the relevant source documents listed below.
 
 ## Maintenance
 

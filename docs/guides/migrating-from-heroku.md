@@ -143,7 +143,7 @@ Heroku Review Apps spin up a fresh environment per PR. Enclii preview environmen
 
 - [Full Heroku migration guide](./HEROKU_MIGRATION_GUIDE.md) — add-ons, dyno sizing, release phase details
 - [`enclii jobs`](../cli/commands/jobs.md) — replaces Heroku Scheduler
-- [Templates](../templates.md) — Rails and Django starters (coming soon)
+- [Templates](../templates/templates.md) — Rails and Django starters (coming soon)
 - [Service spec reference](../reference/service-spec.md) — all `service.yaml` fields
 
 <!-- TODO(post-first-customer): Document Heroku Redis → Enclii managed-cache addon once P3.1 lands and a customer runs it -->

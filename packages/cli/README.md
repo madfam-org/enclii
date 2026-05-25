@@ -186,7 +186,7 @@ OAuth credentials are stored at `~/.enclii/credentials.json` (mode `0600`):
 
 Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry, provided a refresh token is present (see `internal/config/config.go`).
 
-Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN`, `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`).
+Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN` (or legacy `ENCLII_TOKEN`), `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`).
 
 When `ENCLII_ENVIRONMENT=development` and `ENCLII_API_ENDPOINT` is unset, the CLI targets `http://localhost:4200` (aligned with `switchyard-ui`). See `docs/contracts/DEV_ENV_ALIGNMENT.md`.
 

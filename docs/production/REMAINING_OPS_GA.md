@@ -1,5 +1,7 @@
 # Remaining ops — Commercial & Stability GA
 
+> Canonical execution queue. Update this file for open GA ops work; use `GA_READINESS_SCORECARD.md` only as the dashboard and sign-off view. Historical plans should point here instead of carrying independent status.
+
 > **Doctrine:** Enclii web, API, or CLI first. Break-glass `kubectl`/SSH only with documented reason; record gaps in [ADAPTER_GAPS.md](../ADAPTER_GAPS.md).  
 > **Execution order:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) · **Sign-off:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Time-ordered roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
@@ -110,3 +112,11 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 | Commercial publish (O-19–O-22) | 4 |
 
 **Total open ops tasks:** 22 (many parallelizable after O-1).
+
+## 2026-05-25 adapter progress
+
+`enclii secrets sync` now covers audited ExternalSecret reconciliation refresh. `enclii secrets rotate` exists as a plan-first operation contract only; rotation apply remains blocked on safe Vault writer and dual-consumer cutover implementation.
+
+## Runtime execution reference
+
+Remaining production-state work should follow `GA_RUNTIME_EXECUTION.md` and the private `internal-devops/runbooks/ga-ops-execution-pack.md` execution pack. Keep this file as the task queue only.

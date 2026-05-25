@@ -90,8 +90,8 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "secrets",
 		Status:      "partial",
-		Description: "ExternalSecrets and Vault readiness reads plus refresh contracts",
-		Actions:     []string{"external", "vault", "refresh"},
+		Description: "ExternalSecrets and Vault readiness reads plus refresh/sync contracts and plan-first rotation",
+		Actions:     []string{"external", "vault", "refresh", "sync", "rotate"},
 		Scopes:      []string{"namespace", "project", "service", "target"},
 	},
 	{
@@ -128,8 +128,8 @@ var providerCapabilities = []operatorCapability{
 	{
 		Name:        "cloudflare",
 		Status:      "partial",
-		Description: "Tunnel/domain sync exists; DNS, Access, R2, and SaaS hostname ops are contract-first",
-		Actions:     []string{"dns", "dns-apply", "tunnels", "access", "r2", "hostnames"},
+		Description: "Tunnel/domain sync exists; DNS, Access, R2, SaaS hostname, and credential-readiness ops are contract-first",
+		Actions:     []string{"dns", "dns-apply", "tunnels", "access", "r2", "hostnames", "credentials"},
 		Scopes:      []string{"project", "service", "target"},
 	},
 	{
@@ -286,6 +286,12 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	case "secrets.refresh":
 		mutation = "patch ExternalSecret force-sync and Enclii audit annotations"
 		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
+	case "secrets.sync":
+		mutation = "patch ExternalSecret force-sync and Enclii audit annotations"
+		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
+	case "secrets.rotate":
+		mutation = "plan Vault/ESO rotation, dual-consumer cutover, verification, and old-value revocation"
+		adapterReady = false
 	default:
 		return operatorOperationResponse{}, false
 	}
@@ -354,6 +360,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "secrets" && action == "refresh" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsSecretsRefreshApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "secrets" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsSecretsRefreshApply(ctx, operation, req)
 		return resp, statusCode, true
 	}

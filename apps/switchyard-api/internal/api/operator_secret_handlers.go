@@ -24,7 +24,7 @@ func (h *Handler) handleOpsSecretsRefreshApply(ctx context.Context, operation st
 			Operation:   operation,
 			Status:      "invalid_request",
 			DryRun:      false,
-			Summary:     "secrets.refresh requires a target ExternalSecret name",
+			Summary:     fmt.Sprintf("%s requires a target ExternalSecret name", operation),
 			Warnings:    []string{"missing args.target or scope.target"},
 		}, http.StatusBadRequest
 	}
@@ -94,7 +94,7 @@ func (h *Handler) handleOpsSecretsRefreshApply(ctx context.Context, operation st
 		Operation:   operation,
 		Status:      "submitted",
 		DryRun:      false,
-		Summary:     fmt.Sprintf("requested ExternalSecret refresh for %s/%s through Enclii", namespace, target),
+		Summary:     fmt.Sprintf("requested ExternalSecret sync for %s/%s through Enclii", namespace, target),
 		Data: map[string]any{
 			"namespace":       namespace,
 			"externalSecret":  target,

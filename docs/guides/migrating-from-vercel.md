@@ -140,7 +140,7 @@ When the new domain is healthy, delete the Vercel project or point its domain aw
 ## Next steps
 
 - [Full Vercel migration guide](./VERCEL_MIGRATION_GUIDE.md) — edge cases, ISR, incremental rollouts
-- [Templates](../templates.md) — Next.js starter (coming soon)
+- [Templates](../templates/templates.md) — Next.js starter (coming soon)
 - [Onboarding guide](./ONBOARDING_GUIDE.md) — per-PR preview environments (P1.7)
 - [Custom domains](../cli/commands/domains.md) — apex domains, wildcards, multi-environment
 

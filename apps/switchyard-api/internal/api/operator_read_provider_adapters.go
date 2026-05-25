@@ -109,6 +109,8 @@ func (h *Handler) porkbunProviderClient() *porkbun.Client {
 
 func (h *Handler) handleCloudflareReadOperation(ctx context.Context, provider, action, operation string, req operatorOperationRequest) operatorOperationResponse {
 	switch action {
+	case "credentials":
+		return h.handleCloudflareCredentialsReadOperation(provider, action, operation)
 	case "dns", "hostnames":
 		if h.domainSyncService == nil || h.domainSyncService.GetCloudflareClient() == nil {
 			return operatorReadUnavailable(operation, provider, action, "cloudflare domain sync service is not configured")
@@ -149,6 +151,52 @@ func (h *Handler) handleCloudflareReadOperation(ctx context.Context, provider, a
 		return operatorReadSuccess(operation, provider, action, data)
 	default:
 		return operatorReadUnavailable(operation, provider, action, "cloudflare read adapter is not wired for this operation")
+	}
+}
+
+func (h *Handler) handleCloudflareCredentialsReadOperation(provider, action, operation string) operatorOperationResponse {
+	if h == nil || h.config == nil {
+		return operatorReadUnavailable(operation, provider, action, "switchyard-api config is not available")
+	}
+
+	required := []struct {
+		name    string
+		present bool
+	}{
+		{name: "ENCLII_CLOUDFLARE_API_TOKEN", present: strings.TrimSpace(h.config.CloudflareAPIToken) != ""},
+		{name: "ENCLII_CLOUDFLARE_ACCOUNT_ID", present: strings.TrimSpace(h.config.CloudflareAccountID) != ""},
+		{name: "ENCLII_CLOUDFLARE_ZONE_ID", present: strings.TrimSpace(h.config.CloudflareZoneID) != ""},
+		{name: "ENCLII_CLOUDFLARE_TUNNEL_ID", present: strings.TrimSpace(h.config.CloudflareTunnelID) != ""},
+	}
+	requiredStatus := gin.H{}
+	missing := make([]string, 0)
+	for _, item := range required {
+		requiredStatus[item.name] = item.present
+		if !item.present {
+			missing = append(missing, item.name)
+		}
+	}
+
+	data := gin.H{
+		"configured":             len(missing) == 0,
+		"required":               requiredStatus,
+		"secretValuesExposed":    false,
+		"domainSyncConfigured":   h.domainSyncService != nil && h.domainSyncService.GetCloudflareClient() != nil,
+		"tunnelRoutesConfigured": h.tunnelRoutesService != nil,
+	}
+	if len(missing) == 0 {
+		return operatorReadSuccess(operation, provider, action, data)
+	}
+
+	return operatorOperationResponse{
+		OperationID: fmt.Sprintf("op_%d", time.Now().UTC().UnixNano()),
+		Operation:   operation,
+		Status:      "adapter_unconfigured",
+		DryRun:      true,
+		Summary:     "cloudflare.credentials readiness is incomplete",
+		Data:        data,
+		Warnings:    []string{fmt.Sprintf("missing Cloudflare configuration keys: %s", strings.Join(missing, ", "))},
+		Next:        []string{"sync Cloudflare credentials through Enclii secrets", "restart or roll switchyard-api after credentials are present", "rerun providers.cloudflare.credentials"},
 	}
 }
 

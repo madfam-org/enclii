@@ -87,7 +87,7 @@ Enclii infrastructure is designed with:
 ### SOC 2 Remediation Highlights
 - **Session revocation fail-closed**: When Redis is unavailable, sessions are treated as revoked (deny access) to prevent unauthorized access
 - **Audit log persistence**: File-based JSONL fallback (`/var/log/enclii/audit-fallback.jsonl`) ensures audit entries survive database outages, with a 30-second recovery worker for replay
-- **Incident response**: See [`docs/operations/INCIDENT_RESPONSE_RUNBOOK.md`](docs/operations/INCIDENT_RESPONSE_RUNBOOK.md)
+- **Incident response**: See [`docs/runbooks/INCIDENT_RESPONSE.md`](docs/runbooks/INCIDENT_RESPONSE.md)
 
 ## Git History IP Exposure
 
