@@ -50,6 +50,8 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      # Keep completed drill pods from retaining the restore PVC indefinitely.
+      ttlSecondsAfterFinished: 604800  # 7 days
       activeDeadlineSeconds: 3600  # 1 hour for the whole drill
       backoffLimit: 0
       template:

@@ -104,6 +104,8 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      # Keep completed backup pods from retaining PVC references indefinitely.
+      ttlSecondsAfterFinished: 604800  # 7 days
       backoffLimit: 2
       activeDeadlineSeconds: 1800  # 30 minute timeout
       template:
