@@ -2,7 +2,7 @@
   "name": "janua",
   "repoURL": "https://github.com/madfam-org/janua.git",
   "branch": "main",
-  "manifestPath": "k8s/base/deployments",
+  "manifestPath": "k8s/overlays/production",
   "namespace": "janua",
   "partOf": "janua"
 }

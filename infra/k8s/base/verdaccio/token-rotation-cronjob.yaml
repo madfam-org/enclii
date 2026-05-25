@@ -7,7 +7,8 @@
 # 4. Propagates NPM_MADFAM_TOKEN to org repos (optional NPM_ROTATION_REPO_ALLOWLIST).
 # 5. Pushes npm_token_expiry_days metric to pushgateway for Prometheus.
 #
-# npm-token-rotation-creds must include: token, gh_token, username, password (for re-login).
+# npm-token-rotation-creds must include token and gh_token. username/password are
+# optional break-glass inputs for re-login when the provider secret includes them.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -328,4 +329,5 @@ type: Opaque
 stringData:
   # Template only — production values come from ExternalSecrets / operator.
   username: "admin@madfam.io"
-  # password: required for automated re-login when token expires or fails publish smoke
+  # password: optional; required only for automated re-login when token expires
+  # or fails publish smoke and the provider secret includes a password property
