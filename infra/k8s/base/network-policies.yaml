@@ -94,6 +94,32 @@ spec:
     - protocol: TCP
       port: 8080
 ---
+# Additive egress policy for Switchyard API -> Waybill billing API.
+# Kept separate from switchyard-api-egress because that policy is also managed
+# by service reconciliation and live patches can be overwritten.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: switchyard-api-waybill-egress
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: switchyard-api
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: waybill
+    ports:
+    - protocol: TCP
+      port: 8080
+---
 # Allow ingress traffic to Switchyard API
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
