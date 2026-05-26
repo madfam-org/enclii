@@ -70,6 +70,10 @@ type Config struct {
 	RoundhouseAPIKey string // API key for authenticating with roundhouse
 	SelfURL          string // This service's URL for callbacks (e.g., http://switchyard-api:4200)
 
+	// Billing Proxy (Switchyard -> Waybill)
+	WaybillBaseURL        string // Base URL of the Waybill service, e.g. http://waybill:8080
+	WaybillInternalAPIKey string // Optional internal API key forwarded as X-API-Key
+
 	// Provenance / PR Approval
 	GitHubToken                string // GitHub API token for PR verification
 	GitHubWebhookSecret        string // Secret for verifying GitHub webhook signatures
@@ -244,6 +248,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("roundhouse-url", "http://roundhouse")    // Roundhouse worker URL (K8s service on port 80)
 	viper.SetDefault("roundhouse-api-key", "")                 // API key for roundhouse
 	viper.SetDefault("self-url", "http://switchyard-api:4200") // This service's URL for callbacks
+	viper.SetDefault("waybill-base-url", "")                   // Empty disables the billing proxy
+	viper.SetDefault("waybill-internal-api-key", "")           // Optional Waybill internal API key
 	viper.SetDefault("github-webhook-secret", "")              // Webhook disabled until secret configured
 	viper.SetDefault("github-webhook-builds-enabled", false)   // Roundhouse push-builds are opt-in
 	viper.SetDefault("argocd-webhook-secret", "")
@@ -347,6 +353,8 @@ func Load() (*Config, error) {
 		RoundhouseURL:                     viper.GetString("roundhouse-url"),
 		RoundhouseAPIKey:                  viper.GetString("roundhouse-api-key"),
 		SelfURL:                           viper.GetString("self-url"),
+		WaybillBaseURL:                    viper.GetString("waybill-base-url"),
+		WaybillInternalAPIKey:             viper.GetString("waybill-internal-api-key"),
 		GitHubToken:                       viper.GetString("github-token"),
 		GitHubWebhookSecret:               viper.GetString("github-webhook-secret"),
 		GitHubWebhookBuildsEnabled:        viper.GetBool("github-webhook-builds-enabled"),

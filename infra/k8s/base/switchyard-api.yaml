@@ -92,6 +92,8 @@ spec:
               value: "false"
             - name: ENCLII_STATUS_CONFIG_NAMESPACE
               value: "enclii"
+            - name: ENCLII_WAYBILL_BASE_URL
+              value: "http://waybill:8080"
           ports:
             - containerPort: 4200
               name: http

@@ -493,6 +493,16 @@ func main() {
 		roundhouseClient,
 	)
 
+	if cfg.WaybillBaseURL != "" {
+		apiHandler.SetBillingProxy(&api.BillingProxyConfig{
+			WaybillBaseURL: cfg.WaybillBaseURL,
+			InternalAPIKey: cfg.WaybillInternalAPIKey,
+		})
+		logrus.WithField("waybill_base_url", cfg.WaybillBaseURL).Info("Billing proxy wired to Waybill")
+	} else {
+		logrus.Warn("Billing proxy disabled; ENCLII_WAYBILL_BASE_URL is unset")
+	}
+
 	// Wire up optional domain sync service (if Cloudflare is configured)
 	if domainSyncService != nil {
 		apiHandler.SetDomainSyncService(domainSyncService)

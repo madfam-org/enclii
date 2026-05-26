@@ -67,7 +67,7 @@ Enclii's self-hosted model provides significant savings over traditional SaaS st
 
 ## Subscription Tiers
 
-Enclii offers the following tiers via [Dhanam](https://dhanam.madfam.io) billing:
+Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing:
 
 | Tier | Price | Projects | Services | Description |
 |------|-------|----------|----------|-------------|
@@ -78,7 +78,7 @@ Enclii offers the following tiers via [Dhanam](https://dhanam.madfam.io) billing
 
 Community and Essentials have identical features — the value of Essentials is the **managed service** (hosting, uptime SLA, support, backups). Only Pro and above unlock additional feature limits.
 
-Upgrade via Dhanam checkout: `https://dhanam.madfam.io/checkout?plan=enclii_pro&product=enclii`
+Upgrade via Dhanam checkout: `https://app.dhan.am/checkout?plan=enclii_pro&product=enclii`
 
 ## Billing Details
 
@@ -88,7 +88,7 @@ Currently, Enclii infrastructure is managed directly:
 - Pay for your own Hetzner server
 - Or share resources on MADFAM infrastructure
 
-Subscription billing is handled through [Dhanam](https://dhanam.madfam.io), our billing platform.
+Subscription billing is handled through [Dhanam](https://app.dhan.am), our billing platform.
 
 ### Can I bring my own infrastructure?
 
