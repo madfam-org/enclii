@@ -65,6 +65,9 @@ func (p *SecretsProvisioner) Create(ctx context.Context, namespace, project, sec
 		for k, v := range data {
 			existing.Data[k] = v
 		}
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string)
+		}
 		existing.Labels["enclii.dev/updated-by"] = "provisioning-api"
 
 		_, err = secretClient.Update(ctx, existing, k8smetav1.UpdateOptions{})

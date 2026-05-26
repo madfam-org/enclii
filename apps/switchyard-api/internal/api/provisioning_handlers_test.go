@@ -7,6 +7,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // TestProvisioningHandlerNilServiceResponses verifies that provisioning handlers
@@ -103,5 +107,43 @@ func TestProvisioningRequestValidation(t *testing.T) {
 				t.Errorf("%s: want status %d, got %d (body: %s)", tt.name, tt.wantStatus, w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestProvisionSecretsUsesRequestedSecretName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	logger, err := logging.NewStructuredLogger(&logging.LogConfig{
+		Level:  "panic",
+		Format: "text",
+		Output: "stderr",
+	})
+	if err != nil {
+		t.Fatalf("create logger: %v", err)
+	}
+	clientset := fake.NewSimpleClientset()
+	h := &Handler{
+		logger:             logger,
+		secretsProvisioner: provisioning.NewSecretsProvisioner(clientset, logger),
+	}
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.POST("/v1/admin/provision/secrets", h.ProvisionSecrets)
+
+	body := `{"namespace":"tulana","secret_name":"tulana-secrets","secrets":[{"key":"OIDC_CLIENT_SECRET","value":"secret"}]}`
+	req, _ := http.NewRequest(http.MethodPost, "/v1/admin/provision/secrets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want status %d, got %d (body: %s)", http.StatusOK, w.Code, w.Body.String())
+	}
+	secret, err := clientset.CoreV1().Secrets("tulana").Get(req.Context(), "tulana-secrets", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get requested secret: %v", err)
+	}
+	if string(secret.Data["OIDC_CLIENT_SECRET"]) != "secret" {
+		t.Fatalf("OIDC_CLIENT_SECRET was not written to requested secret")
 	}
 }

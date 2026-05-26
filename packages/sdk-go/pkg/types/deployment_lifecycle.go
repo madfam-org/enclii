@@ -153,8 +153,9 @@ type ProvisionPostgresRequest struct {
 
 // ProvisionSecretsRequest is the standalone request for K8s secret provisioning
 type ProvisionSecretsRequest struct {
-	Namespace string        `json:"namespace" binding:"required"`
-	Secrets   []SecretEntry `json:"secrets" binding:"required"`
+	Namespace  string        `json:"namespace" binding:"required"`
+	SecretName string        `json:"secret_name,omitempty"`
+	Secrets    []SecretEntry `json:"secrets" binding:"required"`
 }
 
 // ProvisionR2Request is the standalone request for R2 bucket provisioning

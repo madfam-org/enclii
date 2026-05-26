@@ -83,14 +83,20 @@ func (h *Handler) ProvisionSecrets(c *gin.Context) {
 
 	// Derive project name from namespace (default convention)
 	project := req.Namespace
+	secretName := req.SecretName
+	if secretName == "" {
+		secretName = project + "-credentials"
+	}
 
 	h.logger.Info(ctx, "Provisioning K8s secrets",
 		logging.String("namespace", req.Namespace),
+		logging.String("secret", secretName),
 		logging.String("count", fmt.Sprintf("%d", len(req.Secrets))))
 
-	if err := h.secretsProvisioner.Create(ctx, req.Namespace, project, "", req.Secrets); err != nil {
+	if err := h.secretsProvisioner.Create(ctx, req.Namespace, project, req.SecretName, req.Secrets); err != nil {
 		h.logger.Error(ctx, "Secrets provisioning failed",
 			logging.String("namespace", req.Namespace),
+			logging.String("secret", secretName),
 			logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -99,7 +105,7 @@ func (h *Handler) ProvisionSecrets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "provisioned",
 		"namespace": req.Namespace,
-		"secret":    project + "-credentials",
+		"secret":    secretName,
 		"count":     len(req.Secrets),
 	})
 }

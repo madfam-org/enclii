@@ -130,3 +130,9 @@ func (c *APIClient) OnboardProject(ctx context.Context, req *types.OnboardingReq
 func (c *APIClient) PreflightOnboard(ctx context.Context, req *types.OnboardingRequest, result *types.PreflightResult) error {
 	return c.post(ctx, "/v1/admin/onboard/preflight", req, result)
 }
+
+// ProvisionSecrets creates or updates a Kubernetes Secret through the audited
+// Enclii provisioning API.
+func (c *APIClient) ProvisionSecrets(ctx context.Context, req *types.ProvisionSecretsRequest, result interface{}) error {
+	return c.post(ctx, "/v1/admin/provision/secrets", req, result)
+}

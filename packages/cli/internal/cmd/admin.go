@@ -43,6 +43,7 @@ Examples:
 	cmd.AddCommand(newAdminVClustersCommand(cfg))
 	cmd.AddCommand(newAdminTenantsCommand(cfg))
 	cmd.AddCommand(newAdminStatusCommand(cfg))
+	cmd.AddCommand(newAdminProvisionCommand(cfg))
 	return cmd
 }
 
