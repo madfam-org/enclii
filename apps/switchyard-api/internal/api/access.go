@@ -11,8 +11,11 @@ import (
 
 // callerIsPlatformAdmin returns true when the authenticated principal has the admin role.
 func callerIsPlatformAdmin(c *gin.Context) bool {
+	if role := c.GetString("user_role"); role == "admin" || role == "superadmin" {
+		return true
+	}
 	for _, role := range c.GetStringSlice("user_roles") {
-		if role == "admin" {
+		if role == "admin" || role == "superadmin" {
 			return true
 		}
 	}
