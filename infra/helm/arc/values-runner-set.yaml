@@ -74,13 +74,14 @@ template:
         resources:
           requests:
             # Keep scheduler requests aligned with the dedicated 8 vCPU
-            # builder. This allows the active blue pool to burst to 12 runners
-            # without creating Pending EphemeralRunner capacity starvation.
+            # builder. 2Gi is the minimum observed safe request for memory-heavy
+            # frontend builds while still keeping the active blue pool schedulable
+            # on the dedicated builder node.
             cpu: 400m
-            memory: 1Gi
+            memory: 2Gi
           limits:
             cpu: 1500m
-            memory: 2Gi
+            memory: 4Gi
 
 # Listener configuration (manages scale set communication with GitHub)
 listenerTemplate:
