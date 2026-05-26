@@ -92,6 +92,8 @@ spec:
           app: roundhouse-api
     ports:
     - protocol: TCP
+      port: 80
+    - protocol: TCP
       port: 8080
 ---
 # Additive egress policy for Switchyard API -> Waybill billing API.
