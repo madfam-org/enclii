@@ -281,6 +281,14 @@ func ignoreDifferences() []any {
 			},
 		},
 		map[string]any{
+			"group": "batch",
+			"kind":  "CronJob",
+			"jsonPointers": []any{
+				"/metadata/annotations/kyverno.io~1verify-images",
+				"/metadata/labels/app.kubernetes.io~1instance",
+			},
+		},
+		map[string]any{
 			"group": "",
 			"kind":  "Secret",
 			"jsonPointers": []any{

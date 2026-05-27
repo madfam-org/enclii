@@ -107,6 +107,11 @@ spec:
           kind: PodDisruptionBudget
           jsonPointers:
             - /metadata/labels/app.kubernetes.io~1instance
+        - group: batch
+          kind: CronJob
+          jsonPointers:
+            - /metadata/annotations/kyverno.io~1verify-images
+            - /metadata/labels/app.kubernetes.io~1instance
         - group: ""
           kind: Secret
           jsonPointers:

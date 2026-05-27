@@ -51,8 +51,11 @@ func TestBuildApplicationMirrorsApplicationSetSemantics(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("ignoreDifferences not found: found=%v err=%v", found, err)
 	}
-	if len(ignore) < 7 {
-		t.Fatalf("ignoreDifferences length = %d, want at least 7 entries", len(ignore))
+	if len(ignore) < 8 {
+		t.Fatalf("ignoreDifferences length = %d, want at least 8 entries", len(ignore))
+	}
+	if !hasIgnoreDifference(ignore, "batch", "CronJob", "/metadata/annotations/kyverno.io~1verify-images") {
+		t.Fatalf("ignoreDifferences missing CronJob Kyverno verify-images rule: %#v", ignore)
 	}
 }
 
@@ -143,6 +146,28 @@ func hasString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
 			return true
+		}
+	}
+	return false
+}
+
+func hasIgnoreDifference(ignore []any, group string, kind string, pointer string) bool {
+	for _, entry := range ignore {
+		rule, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if rule["group"] != group || rule["kind"] != kind {
+			continue
+		}
+		pointers, ok := rule["jsonPointers"].([]any)
+		if !ok {
+			continue
+		}
+		for _, candidate := range pointers {
+			if candidate == pointer {
+				return true
+			}
 		}
 	}
 	return false
