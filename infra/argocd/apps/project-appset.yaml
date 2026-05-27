@@ -110,7 +110,7 @@ spec:
         - group: batch
           kind: CronJob
           jsonPointers:
-            - /metadata/annotations/kyverno.io~1verify-images
+            - /metadata/annotations
             - /metadata/labels/app.kubernetes.io~1instance
         - group: ""
           kind: Secret

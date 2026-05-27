@@ -54,7 +54,7 @@ func TestBuildApplicationMirrorsApplicationSetSemantics(t *testing.T) {
 	if len(ignore) < 8 {
 		t.Fatalf("ignoreDifferences length = %d, want at least 8 entries", len(ignore))
 	}
-	if !hasIgnoreDifference(ignore, "batch", "CronJob", "/metadata/annotations/kyverno.io~1verify-images") {
+	if !hasIgnoreDifference(ignore, "batch", "CronJob", "/metadata/annotations") {
 		t.Fatalf("ignoreDifferences missing CronJob Kyverno verify-images rule: %#v", ignore)
 	}
 }

@@ -284,7 +284,7 @@ func ignoreDifferences() []any {
 			"group": "batch",
 			"kind":  "CronJob",
 			"jsonPointers": []any{
-				"/metadata/annotations/kyverno.io~1verify-images",
+				"/metadata/annotations",
 				"/metadata/labels/app.kubernetes.io~1instance",
 			},
 		},
