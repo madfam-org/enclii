@@ -293,6 +293,9 @@ func (h *Handler) computeServiceHealth(ctx context.Context) (ServiceHealthRespon
 
 	for i, svc := range services {
 		i, svc := i, svc
+		if serviceExcludedFromRuntimeHealth(svc) {
+			continue
+		}
 		g.Go(func() error {
 			health := ServiceHealth{
 				ServiceID:   svc.ID.String(),
@@ -623,6 +626,9 @@ func (h *Handler) GetActiveAlerts(c *gin.Context) {
 	g.SetLimit(healthFanoutConcurrency)
 	for i, svc := range services {
 		i, svc := i, svc
+		if serviceExcludedFromRuntimeHealth(svc) {
+			continue
+		}
 		// Replica mismatch + Service Unhealthy alerts need no DB; emit
 		// outside the fan-out so they're never lost on a budget exceedance.
 		if svc.DesiredReplicas > 0 && svc.ReadyReplicas < svc.DesiredReplicas {

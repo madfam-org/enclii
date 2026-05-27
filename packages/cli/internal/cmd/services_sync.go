@@ -24,8 +24,9 @@ type RawServiceSpec struct {
 	APIVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
 	Metadata   struct {
-		Name    string `yaml:"name"`
-		Project string `yaml:"project"`
+		Name        string            `yaml:"name"`
+		Project     string            `yaml:"project"`
+		Annotations map[string]string `yaml:"annotations"`
 	} `yaml:"metadata"`
 	Spec struct {
 		Build struct {
@@ -46,6 +47,10 @@ type RawServiceSpec struct {
 				} `yaml:"git"`
 			} `yaml:"source"`
 		} `yaml:"build"`
+		Runtime struct {
+			Enabled   *bool `yaml:"enabled"`
+			BuildOnly bool  `yaml:"buildOnly"`
+		} `yaml:"runtime"`
 		Jobs []RawJobSpec `yaml:"jobs"`
 	} `yaml:"spec"`
 }
@@ -260,6 +265,7 @@ func runServicesSync(cfg *config.Config, dir, projectSlug string, dryRun, ignore
 			fmt.Printf("  Git Repo: %s\n", plan.Desired.GitRepo)
 			fmt.Printf("  App Path: %s\n", plan.Desired.AppPath)
 			fmt.Printf("  Build Type: %s\n", plan.Desired.BuildConfig.Type)
+			fmt.Printf("  Build Only: %t\n", plan.Desired.BuildConfig.BuildOnly)
 			fmt.Printf("  Auto Deploy: %t\n", plan.Desired.AutoDeploy)
 			fmt.Println()
 		}
@@ -269,6 +275,7 @@ func runServicesSync(cfg *config.Config, dir, projectSlug string, dryRun, ignore
 			fmt.Printf("  Git Repo: %s\n", getGitRepoFromSpec(s))
 			fmt.Printf("  App Path: %s\n", s.Spec.Build.Source.Git.Path)
 			fmt.Printf("  Build Type: %s\n", s.Spec.Build.Type)
+			fmt.Printf("  Build Only: %t\n", serviceSpecBuildOnly(s))
 			fmt.Printf("  Auto Deploy: %t\n", s.Spec.Build.Source.Git.AutoDeploy)
 			fmt.Println()
 		}
@@ -507,9 +514,31 @@ func rawSpecToService(s *RawServiceSpec) *types.Service {
 			Buildpack:  s.Spec.Build.Buildpack,
 			BuildArgs:  serviceSpecBuildArgs(s),
 			Target:     s.Spec.Build.Target,
+			BuildOnly:  serviceSpecBuildOnly(s),
 		},
 		Jobs: rawJobSpecsToServiceJobs(s.Spec.Jobs),
 	}
+}
+
+func serviceSpecBuildOnly(s *RawServiceSpec) bool {
+	if s == nil {
+		return false
+	}
+	if s.Spec.Runtime.Enabled != nil && !*s.Spec.Runtime.Enabled {
+		return true
+	}
+	if s.Spec.Runtime.BuildOnly {
+		return true
+	}
+	for key, value := range s.Metadata.Annotations {
+		normalizedKey := strings.ToLower(strings.TrimSpace(key))
+		if normalizedKey != "enclii.dev/build-only" && normalizedKey != "enclii.dev/runtime-disabled" {
+			continue
+		}
+		normalizedValue := strings.ToLower(strings.TrimSpace(value))
+		return normalizedValue == "true" || normalizedValue == "1" || normalizedValue == "yes"
+	}
+	return false
 }
 
 func serviceSpecBuildArgs(s *RawServiceSpec) map[string]string {

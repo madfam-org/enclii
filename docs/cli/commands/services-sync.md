@@ -19,6 +19,11 @@ when the checked-in spec should repair persisted service metadata drift, such
 as an empty `git_repo`, stale `app_path`, stale auto-deploy fields, or stale
 `build_config`.
 
+Specs with `spec.runtime.enabled: false` are treated as build-only service
+records. They can receive webhook builds, but they are excluded from runtime
+health/project-card rollups and do not trigger direct auto-deploy after build
+success.
+
 ## Flags
 
 | Flag | Type | Default | Description |
@@ -61,6 +66,8 @@ Before syncing, the CLI validates:
 - Enclii service specs only; Kubernetes `kind: Service` manifests are ignored.
 - `metadata.project` alignment unless `--ignore-project-mismatch` is set.
 - Service source metadata used by Enclii builds and webhooks.
+- `spec.runtime.enabled: false` is preserved into `build_config.build_only` for
+  build-only rows.
 
 ## Relationship to deploy
 

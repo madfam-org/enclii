@@ -203,8 +203,10 @@ func (h *Handler) processBuildCallback(ctx context.Context, req *BuildCallbackRe
 				go h.commitDigestToTargetRepo(context.Background(), service, release, req.ImageURI, req.ImageDigest)
 			}
 
-			// Also trigger reconciler-based auto-deploy if configured
-			if service.AutoDeploy && service.AutoDeployEnv != "" {
+			// Also trigger reconciler-based auto-deploy if configured for a
+			// runtime service. Build-only rows publish artifacts for GitOps and
+			// must not create direct Switchyard deployments.
+			if service.AutoDeploy && service.AutoDeployEnv != "" && !service.BuildConfig.BuildOnly {
 				h.logger.Info(ctx, "Triggering auto-deploy from Roundhouse callback",
 					logging.String("service_name", service.Name),
 					logging.String("target_env", service.AutoDeployEnv))

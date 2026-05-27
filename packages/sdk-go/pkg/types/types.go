@@ -155,6 +155,10 @@ type BuildConfig struct {
 	Context    string            `json:"context,omitempty"`
 	BuildArgs  map[string]string `json:"build_args,omitempty"`
 	Target     string            `json:"target,omitempty"`
+	// BuildOnly marks a service row as a build/webhook target with no Enclii-managed
+	// runtime workload. These services can still build releases, but they must not
+	// be auto-deployed or counted in runtime health/project-card rollups.
+	BuildOnly bool `json:"build_only,omitempty" yaml:"buildOnly,omitempty"`
 }
 
 type BuildType string

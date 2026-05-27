@@ -119,6 +119,44 @@ func TestRawSpecToServiceCarriesBuildSourceMetadata(t *testing.T) {
 	}
 }
 
+func TestRawSpecToServiceMarksRuntimeDisabledServicesBuildOnly(t *testing.T) {
+	dir := t.TempDir()
+
+	writeTestFile(t, dir, "blueprint-api.yaml", `apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: api
+  project: blueprint-harvester
+spec:
+  build:
+    type: dockerfile
+    dockerfile: services/api/Dockerfile
+    source:
+      git:
+        repository: https://github.com/madfam-org/blueprint-harvester
+        branch: main
+        autoDeploy: true
+  runtime:
+    enabled: false
+`)
+
+	specs, err := readRawServiceSpecs(dir)
+	if err != nil {
+		t.Fatalf("readRawServiceSpecs returned error: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 service spec, got %d", len(specs))
+	}
+
+	service := rawSpecToService(specs[0])
+	if !service.AutoDeploy {
+		t.Fatal("expected webhook auto-build to remain enabled")
+	}
+	if !service.BuildConfig.BuildOnly {
+		t.Fatal("expected runtime.enabled=false to persist build_only=true")
+	}
+}
+
 func TestRawSpecToServiceCarriesBuildArgsAliases(t *testing.T) {
 	dir := t.TempDir()
 

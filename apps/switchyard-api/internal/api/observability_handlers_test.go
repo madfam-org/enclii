@@ -239,6 +239,41 @@ func TestComputeServiceHealth_HappyPath_NoK8s(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestComputeServiceHealthSkipsBuildOnlyServices(t *testing.T) {
+	h, mock, cleanup := setupObservabilityTestHandler(t)
+	defer cleanup()
+	resetHealthCache()
+
+	serviceID := uuid.New()
+	projectID := uuid.New()
+	now := time.Now()
+
+	mock.ExpectQuery(`SELECT id, project_id, name, git_repo,.+FROM services ORDER BY created_at DESC`).
+		WillReturnRows(sqlmock.NewRows(servicesListAllColumns).AddRow(
+			serviceID, projectID, "api", "https://github.com/madfam-org/blueprint-harvester", "",
+			[]byte(`{"type":"dockerfile","build_only":true}`),
+			true, "main", "production", nil,
+			now, now, []byte(`[]`), "web", "default",
+		))
+
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects ORDER BY created_at DESC`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}).
+			AddRow(projectID, "Blueprint Harvester", "blueprint-harvester", "shared", now, now))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, partial, err := h.computeServiceHealth(ctx)
+	require.NoError(t, err)
+	assert.False(t, partial)
+	assert.Empty(t, resp.Services)
+	assert.Equal(t, 0, resp.HealthySvcs)
+	assert.Equal(t, 0, resp.DegradedSvcs)
+	assert.Equal(t, 0, resp.UnhealthySvcs)
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestSingleflightGroup_CollapsesConcurrentCalls is a focused proof that
 // singleflight.Group with a constant key collapses N concurrent callers into
 // 1 underlying invocation. This is the same Group + key pattern

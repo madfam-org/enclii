@@ -186,7 +186,7 @@ func projectCardVisibleServices(project *types.Project, services []*types.Servic
 	}
 	hasConcreteService := false
 	for _, service := range services {
-		if service == nil || projectCardProjectRootService(project, service) {
+		if service == nil || serviceExcludedFromRuntimeHealth(service) || projectCardProjectRootService(project, service) {
 			continue
 		}
 		if service.DesiredReplicas > 0 || service.ReadyReplicas > 0 || service.K8sNamespace != nil {
@@ -197,6 +197,9 @@ func projectCardVisibleServices(project *types.Project, services []*types.Servic
 
 	visible := make([]*types.Service, 0, len(services))
 	for _, service := range services {
+		if serviceExcludedFromRuntimeHealth(service) {
+			continue
+		}
 		if projectCardPlaceholderService(project, service, hasConcreteService) {
 			continue
 		}

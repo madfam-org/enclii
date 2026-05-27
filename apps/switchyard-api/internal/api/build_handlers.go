@@ -302,8 +302,10 @@ func (h *Handler) triggerBuild(service *types.Service, release *types.Release, g
 	// Record build metrics
 	monitoring.RecordBuild("success", "git", buildResult.Duration)
 
-	// Auto-deploy if enabled for this service
-	if service.AutoDeploy && service.AutoDeployEnv != "" {
+	// Auto-deploy if enabled for this runtime service. Build-only service rows
+	// exist to receive webhook builds for GitOps-managed external workloads and
+	// must not create direct Switchyard deployments.
+	if service.AutoDeploy && service.AutoDeployEnv != "" && !service.BuildConfig.BuildOnly {
 		h.triggerAutoDeploy(ctx, service, release)
 	}
 }

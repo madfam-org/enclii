@@ -78,6 +78,30 @@ spec:
   autoDeploy: { ... }
 ```
 
+### Build-only service records
+
+Some repositories need an Enclii service row only as a webhook/build target while
+production runtime is owned by another GitOps workload. Set
+`spec.runtime.enabled: false` on those specs:
+
+```yaml
+spec:
+  build:
+    type: dockerfile
+    dockerfile: services/api/Dockerfile
+    source:
+      git:
+        repository: https://github.com/acme/app
+        branch: main
+        autoDeploy: true
+  runtime:
+    enabled: false
+```
+
+`services-sync` persists this as `build_config.build_only`. Build-only rows can
+still receive webhook builds, but Enclii skips direct auto-deploy and excludes
+them from runtime health and project-card rollups.
+
 ---
 
 ## Domains (Custom Domain Auto-Provisioning)
