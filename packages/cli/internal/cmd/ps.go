@@ -56,6 +56,18 @@ func listServices(cfg *config.Config, environment string) error {
 		return nil
 	}
 
+	// Runtime health is the same source used by `enclii observe health`.
+	// Deployment rows can lag behind Argo/K8s reality, so use observability as
+	// the preferred health/replica signal and gracefully fall back if unavailable.
+	runtimeHealthByID := map[string]client.ServiceHealth{}
+	if healthResp, err := apiClient.GetServiceHealth(ctx, ""); err == nil && healthResp != nil {
+		for _, health := range healthResp.Services {
+			if health.ServiceID != "" {
+				runtimeHealthByID[health.ServiceID] = health
+			}
+		}
+	}
+
 	// Fetch deployment status for each service
 	var serviceStatuses []ServiceStatus
 	for _, svc := range services {
@@ -66,6 +78,16 @@ func listServices(cfg *config.Config, environment string) error {
 			Replicas: "0/0",
 			Version:  "N/A",
 			Uptime:   "N/A",
+		}
+
+		if svc.Status != "" {
+			status.Status = svc.Status
+		}
+		if svc.Health != "" {
+			status.Health = string(svc.Health)
+		}
+		if svc.DesiredReplicas > 0 || svc.ReadyReplicas > 0 {
+			status.Replicas = fmt.Sprintf("%d/%d", svc.ReadyReplicas, svc.DesiredReplicas)
 		}
 
 		// Get latest deployment
@@ -89,6 +111,10 @@ func listServices(cfg *config.Config, environment string) error {
 			// Calculate uptime
 			uptime := time.Since(deployment.CreatedAt)
 			status.Uptime = formatDuration(uptime)
+		}
+
+		if runtimeHealth, ok := runtimeHealthByID[svc.ID.String()]; ok {
+			applyRuntimeHealth(&status, runtimeHealth)
 		}
 
 		serviceStatuses = append(serviceStatuses, status)
@@ -144,6 +170,26 @@ type ServiceStatus struct {
 	Replicas string
 	Version  string
 	Uptime   string
+}
+
+func applyRuntimeHealth(status *ServiceStatus, health client.ServiceHealth) {
+	if status == nil {
+		return
+	}
+	if health.Status != "" {
+		status.Health = health.Status
+		switch {
+		case status.Status == "unknown" && health.Status == "healthy":
+			status.Status = "running"
+		case status.Status == "unknown" && health.Status == "degraded":
+			status.Status = "pending"
+		case status.Status == "unknown" && health.Status == "unhealthy":
+			status.Status = "failed"
+		}
+	}
+	if health.PodCount > 0 || health.ReadyPods > 0 {
+		status.Replicas = fmt.Sprintf("%d/%d", health.ReadyPods, health.PodCount)
+	}
 }
 
 func getStatusColor(status string) string {

@@ -25,7 +25,7 @@ func TestNewAdminCommand_Subcommands(t *testing.T) {
 	cmd := newTestAdminCommand(t)
 	assert.Equal(t, "admin", cmd.Use)
 
-	expected := []string{"fleet", "topology", "clusters", "drift", "propagation", "governance", "costs", "vclusters", "tenants", "status"}
+	expected := []string{"fleet", "topology", "clusters", "drift", "propagation", "governance", "costs", "vclusters", "tenants", "status", "provision"}
 	for _, name := range expected {
 		assert.NotNil(t, findSubcommand(cmd, name), "missing top-level admin subcommand: %s", name)
 	}

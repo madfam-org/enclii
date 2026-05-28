@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/madfam-org/enclii/packages/cli/internal/client"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
 )
 
@@ -89,4 +90,47 @@ func TestGetHealthColor(t *testing.T) {
 
 	// Yellow for default/unknown
 	assert.Equal(t, "\033[33m", getHealthColor("unknown"))
+}
+
+func TestApplyRuntimeHealthOverridesUnknownDeploymentHealth(t *testing.T) {
+	status := ServiceStatus{
+		Name:     "bloom-scroll-api",
+		Status:   "running",
+		Health:   "unknown",
+		Replicas: "1/1",
+		Version:  "argocd-abc1234",
+		Uptime:   "2h",
+	}
+
+	applyRuntimeHealth(&status, client.ServiceHealth{
+		ServiceID: "svc-api",
+		Status:    "healthy",
+		PodCount:  2,
+		ReadyPods: 2,
+	})
+
+	assert.Equal(t, "running", status.Status)
+	assert.Equal(t, "healthy", status.Health)
+	assert.Equal(t, "2/2", status.Replicas)
+	assert.Equal(t, "argocd-abc1234", status.Version)
+}
+
+func TestApplyRuntimeHealthMapsStatusWhenDeploymentStatusMissing(t *testing.T) {
+	status := ServiceStatus{
+		Name:     "worker",
+		Status:   "unknown",
+		Health:   "unknown",
+		Replicas: "0/0",
+	}
+
+	applyRuntimeHealth(&status, client.ServiceHealth{
+		ServiceID: "svc-worker",
+		Status:    "degraded",
+		PodCount:  3,
+		ReadyPods: 1,
+	})
+
+	assert.Equal(t, "pending", status.Status)
+	assert.Equal(t, "degraded", status.Health)
+	assert.Equal(t, "1/3", status.Replicas)
 }

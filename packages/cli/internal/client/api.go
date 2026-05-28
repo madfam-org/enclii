@@ -372,6 +372,22 @@ func (c *APIClient) ListServiceDeployments(ctx context.Context, serviceID string
 	return response.Deployments, nil
 }
 
+func (c *APIClient) GetServiceHealth(ctx context.Context, serviceID string) (*ServiceHealthResponse, error) {
+	var response ServiceHealthResponse
+	path := "/v1/observability/health"
+	if serviceID != "" {
+		params := url.Values{}
+		params.Set("service_id", serviceID)
+		path += "?" + params.Encode()
+	}
+
+	if err := c.get(ctx, path, &response); err != nil {
+		return nil, fmt.Errorf("failed to get service health: %w", err)
+	}
+
+	return &response, nil
+}
+
 // Logs
 func (c *APIClient) GetLogs(ctx context.Context, deploymentID string, opts LogOptions) ([]LogLine, error) {
 	params := url.Values{}
@@ -553,6 +569,27 @@ type ServiceStatus struct {
 type DeploymentWithRelease struct {
 	Deployment *types.Deployment `json:"deployment"`
 	Release    *types.Release    `json:"release,omitempty"`
+}
+
+type ServiceHealth struct {
+	ServiceID    string    `json:"service_id"`
+	ServiceName  string    `json:"service_name"`
+	ProjectSlug  string    `json:"project_slug"`
+	Status       string    `json:"status"`
+	Uptime       float64   `json:"uptime"`
+	ResponseTime float64   `json:"response_time_ms"`
+	ErrorRate    float64   `json:"error_rate"`
+	LastChecked  time.Time `json:"last_checked"`
+	PodCount     int       `json:"pod_count"`
+	ReadyPods    int       `json:"ready_pods"`
+}
+
+type ServiceHealthResponse struct {
+	Services      []ServiceHealth `json:"services"`
+	HealthySvcs   int             `json:"healthy_count"`
+	DegradedSvcs  int             `json:"degraded_count"`
+	UnhealthySvcs int             `json:"unhealthy_count"`
+	Timestamp     time.Time       `json:"timestamp"`
 }
 
 type HealthResponse struct {

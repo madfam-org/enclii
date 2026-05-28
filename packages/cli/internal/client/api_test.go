@@ -143,6 +143,51 @@ func TestAPIClient_ListProjects(t *testing.T) {
 	assert.Equal(t, project2ID, result[1].ID)
 }
 
+func TestAPIClient_GetServiceHealth(t *testing.T) {
+	serviceID := uuid.New()
+	called := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/v1/observability/health", r.URL.Path)
+		assert.Equal(t, serviceID.String(), r.URL.Query().Get("service_id"))
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+
+		response := ServiceHealthResponse{
+			Services: []ServiceHealth{
+				{
+					ServiceID:   serviceID.String(),
+					ServiceName: "bloom-scroll-api",
+					ProjectSlug: "bloom-scroll",
+					Status:      "healthy",
+					PodCount:    2,
+					ReadyPods:   2,
+					LastChecked: time.Now(),
+				},
+			},
+			HealthySvcs: 1,
+			Timestamp:   time.Now(),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+
+	result, err := client.GetServiceHealth(context.Background(), serviceID.String())
+
+	require.NoError(t, err)
+	require.True(t, called)
+	require.NotNil(t, result)
+	require.Len(t, result.Services, 1)
+	assert.Equal(t, "healthy", result.Services[0].Status)
+	assert.Equal(t, 2, result.Services[0].ReadyPods)
+	assert.Equal(t, 1, result.HealthySvcs)
+}
+
 func TestAPIClient_BuildService(t *testing.T) {
 	releaseID := uuid.New()
 	serviceID := uuid.New()
