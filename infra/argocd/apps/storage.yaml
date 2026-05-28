@@ -24,7 +24,7 @@ spec:
       values: |
         defaultSettings:
           defaultReplicaCount: 2
-          storageOverProvisioningPercentage: 100
+          storageOverProvisioningPercentage: 200
           storageMinimalAvailablePercentage: 15
           backupTarget: s3://enclii-backups@auto/
           backupTargetCredentialSecret: longhorn-backup-secret

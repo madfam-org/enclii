@@ -13,6 +13,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` documented in STAGING_SECRETS_SETUP | P1 |
 | Prod DB migration verify (030) | Assume API startup `db.Migrate`; no read-back command | `enclii db schema` or migration status endpoint | P2 |
 | Detached Longhorn volume delete | `kubectl delete volumes.longhorn.io` (2026-05-23 orphan sweep) | `enclii ops storage longhorn --apply` prune detached | P2 |
+| Longhorn setting and StorageClass apply | `kubectl patch settings.longhorn.io` / `kubectl apply storageclass` when `ops.storage.repair-plan --apply` is blocked | `enclii ops storage settings apply` and StorageClass reconcile | P1 |
 | Longhorn helm CPU upgrade | `helm upgrade` via SSH/kubectl per REMAINING_ITEMS | `enclii providers` or `enclii ops storage` apply path | P1 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
