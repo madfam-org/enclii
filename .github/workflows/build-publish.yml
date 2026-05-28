@@ -31,6 +31,8 @@ name: Reusable — Build, sign, publish, pin
 #   DOCKER_USERNAME / DOCKER_TOKEN (optional — soft-fail)
 #   MADFAM_BOT_PAT (legacy only — do not place it on the hot path; stale PATs
 #                   must not override the repo-scoped GITHUB_TOKEN)
+#   GHCR_PAT (optional — registry auth override for GHCR push/pull; falls
+#             through to the repo-scoped GITHUB_TOKEN otherwise)
 #   ENCLII_API_URL / ENCLII_DEPLOY_TOKEN (optional — for callback)
 #   ENCLII_COMMIT_TOKEN (optional — PAT to push past branch protection;
 #                        falls through to GITHUB_TOKEN otherwise)
@@ -393,6 +395,9 @@ jobs:
       needs.build.result != 'skipped'
     # Digest pinning is git/kustomize/curl work; do not burn an ARC build slot.
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -412,6 +417,16 @@ jobs:
         uses: sigstore/cosign-installer@v3.7.0
         with:
           cosign-release: ${{ inputs.cosign_release }}
+
+      - name: Log in to GHCR for digest verification
+        # Private GHCR packages require registry auth for cosign verify's
+        # manifest reads. Build jobs log in before push/sign; the separate pin
+        # job needs its own login before verifying the signed digest.
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT || github.token }}
 
       - name: Download all digest artifacts
         uses: actions/download-artifact@v4
