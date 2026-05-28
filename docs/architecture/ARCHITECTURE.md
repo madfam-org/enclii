@@ -102,7 +102,7 @@ The central control plane managing all platform operations:
 - Secret management
 
 **Technology Stack:**
-- Language: Go 1.22+
+- Language: Go 1.25+
 - Framework: Gin web framework
 - Database: PostgreSQL with migration support
 - Cache: Redis with tag-based invalidation
@@ -509,7 +509,7 @@ sequenceDiagram
 ## Technology Stack Summary
 
 ### Languages & Frameworks
-- **Backend**: Go 1.22+, Gin, GORM
+- **Backend**: Go 1.25+, Gin, GORM
 - **Frontend**: TypeScript, React 18, Next.js 14
 - **Infrastructure**: Kubernetes 1.29+, Helm 3.14+
 

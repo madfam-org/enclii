@@ -12,7 +12,7 @@ This guide will help you get the Enclii MVP running locally in under 10 minutes.
 ## Prerequisites
 
 - Docker & Docker Compose
-- Go 1.22+
+- Go 1.25+
 - Node.js 20+
 - kubectl
 - kind (for local Kubernetes)
@@ -89,7 +89,7 @@ Open http://localhost:3000 to see the dashboard.
 
 - **Port conflicts:** Change ports in `.env`
 - **Database issues:** `docker-compose down -v` then `up -d`
-- **Build failures:** Ensure Go 1.22+ and run `go clean -modcache`
+- **Build failures:** Ensure Go 1.25+ and run `go clean -modcache`
 
 ## Key Files
 

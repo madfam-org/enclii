@@ -33,12 +33,17 @@ domains, secrets, provider operations, scaling, rollback, and remediation.
 
 ## Installation
 
-### macOS (Homebrew)
+### Linux/macOS release archive
 ```bash
-brew install enclii/tap/enclii
+VERSION=v1.0.0-alpha.1
+OS=linux   # use darwin for macOS
+ARCH=amd64 # use arm64 on Apple Silicon or ARM Linux
+curl -LO "https://github.com/madfam-org/enclii/releases/download/${VERSION}/enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
+tar -xzf "enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
+sudo install -m 0755 "enclii_${VERSION}_${OS}_${ARCH}/enclii" /usr/local/bin/enclii
 ```
 
-### Linux / from source (any OS with Go 1.22+)
+### Linux / from source (any OS with Go 1.25+)
 ```bash
 git clone https://github.com/madfam-org/enclii.git
 cd enclii

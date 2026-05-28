@@ -15,24 +15,14 @@ The `enclii` CLI enables developers to:
 
 ## Installation
 
-### macOS (Homebrew)
+### Verified Binary Releases
 
 ```bash
-brew install enclii/tap/enclii
-```
-
-### Linux
-
-```bash
-curl -sSL https://get.enclii.dev | bash
-```
-
-### Windows
-
-```powershell
-# Using scoop
-scoop bucket add enclii https://github.com/madfam-org/scoop-enclii
-scoop install enclii
+# Pick the archive for your platform from:
+# https://github.com/madfam-org/enclii/releases
+tar -xzf enclii_<version>_<os>_<arch>.tar.gz
+install -m 0755 enclii_<version>_<os>_<arch>/enclii /usr/local/bin/enclii
+enclii version
 ```
 
 ### From Source
@@ -219,10 +209,15 @@ The CLI prefers domain-appropriate human output (tables via `text/tabwriter`) an
 
 ## Release Process
 
-1. Update version in `version.go`
-2. Create git tag: `git tag v0.5.0`
-3. Push tag: `git push origin v0.5.0`
-4. GitHub Actions builds and releases
+1. Ensure `go test ./packages/cli/...` passes.
+2. Create a `v*` git tag, for example `git tag v1.0.0-alpha.1`.
+3. Push the tag with `git push origin v1.0.0-alpha.1`.
+4. The `CLI Release` workflow builds Linux, macOS, and Windows archives and
+   publishes checksums to the GitHub release.
+
+Homebrew, Scoop, and `get.enclii.dev` are convenience distribution targets, but
+GitHub Releases are the verified binary channel in this repository until those
+adapters are present and monitored.
 
 ## Related Components
 

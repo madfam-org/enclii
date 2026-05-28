@@ -142,7 +142,7 @@
 
 ### Switchyard API (Control Plane)
 ```
-Language: Go 1.22+
+Language: Go 1.25+
 Framework: Gin
 Database: PostgreSQL
 Cache: Redis
@@ -188,7 +188,7 @@ Pages:
 
 ### Conductor CLI
 ```
-Language: Go 1.22+
+Language: Go 1.25+
 Package: github.com/madfam-org/enclii/packages/cli
 
 Commands:
@@ -213,7 +213,7 @@ Exit Codes:
 
 ### Kubernetes Reconcilers
 ```
-Language: Go 1.22+
+Language: Go 1.25+
 Type: Kubernetes Operators
 
 Responsibilities:

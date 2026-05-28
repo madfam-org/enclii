@@ -235,7 +235,12 @@ From [PRODUCTION_CHECKLIST.md](./docs/production/PRODUCTION_CHECKLIST.md):
 If you just want to ship an app to Enclii, the fastest path is:
 
 ```bash
-brew install enclii/tap/enclii   # or: curl -sSL https://get.enclii.dev | bash
+VERSION=v1.0.0-alpha.1
+OS=linux   # use darwin for macOS
+ARCH=amd64 # use arm64 on Apple Silicon or ARM Linux
+curl -LO "https://github.com/madfam-org/enclii/releases/download/${VERSION}/enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
+tar -xzf "enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
+sudo install -m 0755 "enclii_${VERSION}_${OS}_${ARCH}/enclii" /usr/local/bin/enclii
 enclii login
 cd my-app && enclii init
 enclii deploy

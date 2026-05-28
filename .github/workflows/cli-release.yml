@@ -1,0 +1,152 @@
+name: CLI Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to publish, for example v1.0.0-alpha.1"
+        required: true
+        type: string
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: Resolve tag
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          case "$tag" in
+            v*) ;;
+            *)
+              echo "ERROR: CLI releases must use v* tags, got: $tag" >&2
+              exit 1
+              ;;
+          esac
+          prerelease=false
+          if [[ "$tag" =~ (alpha|beta|rc) ]]; then
+            prerelease=true
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.metadata.outputs.tag }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+          cache-dependency-path: packages/cli/go.sum
+
+      - name: Build archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::12}"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          archive_base="enclii_${RELEASE_TAG}_${GOOS}_${GOARCH}"
+          bin_name="enclii"
+          if [ "$GOOS" = "windows" ]; then
+            bin_name="enclii.exe"
+          fi
+          mkdir -p "dist/${archive_base}"
+          ldflags="-s -w"
+          ldflags="$ldflags -X github.com/madfam-org/enclii/packages/cli/internal/cmd.Version=${RELEASE_TAG}"
+          ldflags="$ldflags -X github.com/madfam-org/enclii/packages/cli/internal/cmd.Commit=${short_sha}"
+          ldflags="$ldflags -X github.com/madfam-org/enclii/packages/cli/internal/cmd.BuildDate=${build_date}"
+          (
+            cd packages/cli
+            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+              go build -trimpath -ldflags "$ldflags" \
+              -o "../../dist/${archive_base}/${bin_name}" ./cmd/enclii
+          )
+          cp packages/cli/README.md "dist/${archive_base}/README.md"
+          cp LICENSE "dist/${archive_base}/LICENSE"
+          tar -C dist -czf "dist/${archive_base}.tar.gz" "$archive_base"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [metadata, build]
+    permissions:
+      contents: write
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v6
+        with:
+          path: dist
+          pattern: cli-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.metadata.outputs.tag }}
+          name: Enclii CLI ${{ needs.metadata.outputs.tag }}
+          prerelease: ${{ needs.metadata.outputs.prerelease }}
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          body: |
+            Enclii CLI binary release.
+
+            Verify an archive before extracting:
+
+            ```bash
+            sha256sum -c checksums.txt --ignore-missing
+            ```
