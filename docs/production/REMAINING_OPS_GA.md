@@ -32,7 +32,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 
 | ID | Task | Est. | Done when | Reference |
 |----|------|------|-----------|-----------|
-| O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | Apps Synced/Healthy (known exceptions documented) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
+| O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | Open — `enclii ops apps sync-sweep --apply --reason "GA O-8"` | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
 | O-9 | Backup credentials + restore drill | 25m | Drill log archived | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
 | O-10 | Vault init → unseal → ESO syncing | 60m | Sealed=false; secrets path canonical | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | Policy verified per namespace | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |

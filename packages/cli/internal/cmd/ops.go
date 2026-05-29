@@ -50,6 +50,7 @@ func newOpsAppsCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{Use: "apps", Short: "Argo application workflows"}
 	cmd.AddCommand(newOpsReadCommand(cfg, "apps", "status", "List or inspect Argo application status"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "sync", "Sync an Argo application"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "sync-sweep", "Sync all drifted Argo apps except known exclusions (GA O-8)"))
 	cmd.AddCommand(newOpsReadCommand(cfg, "apps", "diff", "Inspect desired-vs-live application drift"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "retire", "Retire an Argo application without routine kubectl access"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "apps", "rollback", "Rollback an application to a known revision"))

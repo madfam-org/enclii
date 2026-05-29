@@ -25,7 +25,7 @@ func TestOpsApps_Subcommands(t *testing.T) {
 	apps := findSubcommand(NewOpsCommand(cfg), "apps")
 	require.NotNil(t, apps)
 
-	for _, want := range []string{"status", "sync", "diff", "rollback"} {
+	for _, want := range []string{"status", "sync", "sync-sweep", "diff", "rollback"} {
 		assert.NotNil(t, findSubcommand(apps, want), "expected ops apps %s", want)
 	}
 }

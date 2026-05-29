@@ -230,11 +230,13 @@ enclii admin fleet wipe host-7
 
 ```bash
 enclii admin ga-verify [--json]
+enclii admin ga-verify --stability
 ```
 
 Runs Commercial GA Wave 0 checks: public health, dashboard stats auth gate,
 DB schema/migration 030, Longhorn CPU settings dry-run, detached volume prune
-plan, and `node-maintenance` CronJob presence. Requires admin API token.
+plan, and `node-maintenance` CronJob presence. With `--stability`, adds Wave 1
+read-only checks (Argo drift, Vault readiness, policy violations). Requires admin API token.
 
 ## Tenants (master-admin acting-as)
 

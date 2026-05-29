@@ -11,6 +11,7 @@ import (
 
 func newAdminGAVerifyCommand(cfg *config.Config) *cobra.Command {
 	var jsonOut bool
+	var stability bool
 	cmd := &cobra.Command{
 		Use:   "ga-verify",
 		Short: "Commercial GA Wave 0 verification (security + schema)",
@@ -23,12 +24,15 @@ func newAdminGAVerifyCommand(cfg *config.Config) *cobra.Command {
   - Detached Longhorn orphan prune plan (admin dry-run)
   - node-maintenance CronJob presence (admin read)
 
+With --stability, also runs Wave 1 read-only checks (Argo drift, Vault readiness).
+
 Requires admin API token for schema and storage checks.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runAdminGAVerify(cmd, cfg, jsonOut)
+			return runAdminGAVerify(cmd, cfg, jsonOut, stability)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit structured JSON")
+	cmd.Flags().BoolVar(&stability, "stability", false, "Include Wave 1 stability read-only checks (O-8–O-11)")
 	return cmd
 }
 
@@ -43,7 +47,7 @@ type gaVerifyReport struct {
 	Checks  []gaVerifyCheck `json:"checks"`
 }
 
-func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut bool) error {
+func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut, stability bool) error {
 	w := cmd.OutOrStdout()
 	checks := make([]gaVerifyCheck, 0, 6)
 	healthy := true
@@ -125,6 +129,53 @@ func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut bool) erro
 		add("node maintenance cronjob", "warn", jobsRead.Summary)
 	}
 
+	if stability {
+		var argoDiff operationResponse
+		argoReq := operationRequest{
+			Operation: "ops.apps.diff",
+			DryRun:    true,
+			Scope:     map[string]string{"namespace": "argocd"},
+		}
+		if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/apps/diff", argoReq, &argoDiff); err != nil {
+			add("argo drift", "fail", err.Error())
+		} else if argoDiff.Status == "succeeded" {
+			driftedCount := intFromAny(nestedAny(argoDiff.Data, "driftedCount"))
+			if driftedCount == 0 {
+				add("argo drift", "pass", "driftedCount=0")
+			} else {
+				add("argo drift", "warn", fmt.Sprintf("driftedCount=%d — run enclii ops apps sync-sweep", driftedCount))
+			}
+		} else {
+			add("argo drift", "warn", argoDiff.Summary)
+		}
+
+		var vaultRead operationResponse
+		vaultReq := operationRequest{
+			Operation: "ops.secrets.vault",
+			DryRun:    true,
+		}
+		if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/secrets/vault", vaultReq, &vaultRead); err != nil {
+			add("vault readiness", "warn", err.Error())
+		} else if vaultRead.Status == "succeeded" {
+			add("vault readiness", "pass", vaultRead.Summary)
+		} else {
+			add("vault readiness", "warn", vaultRead.Summary)
+		}
+
+		var policyRead operationResponse
+		policyReq := operationRequest{
+			Operation: "ops.policy.violations",
+			DryRun:    true,
+		}
+		if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/policy/violations", policyReq, &policyRead); err != nil {
+			add("policy violations", "warn", err.Error())
+		} else if policyRead.Status == "succeeded" {
+			add("policy violations", "pass", "Kyverno policy report readable")
+		} else {
+			add("policy violations", "warn", policyRead.Summary)
+		}
+	}
+
 	report := gaVerifyReport{Healthy: healthy, Checks: checks}
 	if jsonOut {
 		return emitJSON(report)
@@ -139,8 +190,35 @@ func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut bool) erro
 	fmt.Fprintln(w)
 	if healthy {
 		fmt.Fprintln(w, "GA verify: PASS (admin checks). Complete SECURITY_RELEASE_PR manual items 2–3 for full sign-off.")
+		if stability {
+			fmt.Fprintln(w, "Stability checks included — review warnings for Wave 1 (O-8–O-11).")
+		}
 		return nil
 	}
 	fmt.Fprintln(w, "GA verify: FAIL — see checks above.")
 	return fmt.Errorf("ga verify failed")
+}
+
+func nestedAny(data any, key string) any {
+	if data == nil {
+		return nil
+	}
+	m, ok := data.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return m[key]
+}
+
+func intFromAny(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }

@@ -159,6 +159,9 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		}
 		return operatorOperationResponse{}, false
 	}
+	if prefix == "ops" && domain == "apps" && action == "sync-sweep" {
+		return h.handleOpsAppsSyncSweepDryRun(ctx, operation, req), true
+	}
 	if prefix == "ops" && domain == "storage" && action == "settings-apply" {
 		return h.handleOpsStorageSettingsApplyDryRun(ctx, operation, req), true
 	}
@@ -252,6 +255,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "providers" && domain == "porkbun" && action == "nameservers-apply" {
 		resp, statusCode := h.handleProviderPorkbunNameserversApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "apps" && action == "sync-sweep" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsAppsSyncSweepApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {

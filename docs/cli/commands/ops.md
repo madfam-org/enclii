@@ -25,7 +25,7 @@ encouraging direct `kubectl`.
 | Command | Purpose |
 |---------|---------|
 | `enclii ops capabilities` | List server-supported operator capabilities |
-| `enclii ops apps status|sync|diff|retire|rollback` | Argo app inspection and remediation |
+| `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis, logs, and safe restarts |
 | `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4) |
@@ -51,6 +51,9 @@ enclii ops storage prune-detached --apply --reason "Commercial GA O-4 orphan cle
 enclii ops pods diagnose switchyard-api -n enclii --json
 enclii ops pods logs forgesight-pipeline-manual-abc123 -n forgesight --tail 500 --limit-bytes 524288 --json
 enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewed manifest patch"
+enclii ops apps sync-sweep -n argocd
+enclii ops apps sync-sweep -n argocd --apply --reason "Commercial GA O-8 Argo sweep"
+./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "Commercial GA Wave 1"
 ```
 
 ## Pod Log Controls

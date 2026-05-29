@@ -58,7 +58,7 @@ Detail: [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) · [COMMERCIAL_GA_MASTE
 
 | ID | Task | Status (2026-05-29) |
 |----|------|---------------------|
-| O-8 | ArgoCD sync sweep | Open — known OutOfSync: `blueprint-harvester-services`, `ceq-services`, `npm-registry-services` |
+| O-8 | ArgoCD sync sweep | Ops | Adapter shipped — `enclii ops apps sync-sweep` |
 | O-9 | Backup credentials + restore drill | Open |
 | O-10 | Vault init → unseal → ESO sync | Open |
 | O-11 | Cosign enforce (phased) | Open |

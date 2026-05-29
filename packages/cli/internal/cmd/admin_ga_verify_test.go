@@ -17,6 +17,7 @@ func TestAdminGAVerify_SubcommandExists(t *testing.T) {
 	gaVerify := findSubcommand(NewAdminCommand(cfg), "ga-verify")
 	require.NotNil(t, gaVerify)
 	assert.NotNil(t, gaVerify.Flags().Lookup("json"))
+	assert.NotNil(t, gaVerify.Flags().Lookup("stability"))
 }
 
 func TestAdminGAVerify_PassWithMockedEndpoints(t *testing.T) {

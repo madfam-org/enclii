@@ -125,11 +125,10 @@ Break-glass (node SSH): `k3s crictl rmi --prune`, `journalctl --vacuum-size=500M
 After pushing the Session 106 commit, ArgoCD auto-syncs changed apps. Force-sync any remaining OutOfSync:
 
 ```bash
-for app in $(sudo kubectl get applications -n argocd -o json | \
-  jq -r '.items[] | select(.status.sync.status != "Synced") | .metadata.name'); do
-  sudo kubectl patch application "$app" -n argocd --type merge \
-    -p '{"operation":{"sync":{"revision":"HEAD","prune":true}}}'
-done
+enclii ops apps sync-sweep -n argocd
+enclii ops apps sync-sweep -n argocd --apply --reason "Commercial GA O-8 Argo sweep"
+# Or wave1 orchestration:
+# ./scripts/wave1-ga-ops.sh --apply --reason "Commercial GA Wave 1"
 ```
 
 **Expected permanently OutOfSync:** `network-policies` (prune:false by design).

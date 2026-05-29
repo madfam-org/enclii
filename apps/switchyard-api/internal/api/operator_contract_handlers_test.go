@@ -26,6 +26,7 @@ import (
 func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "status", opsCapabilities))
 	require.True(t, operationSupported("apps", "retire", opsCapabilities))
+	require.True(t, operationSupported("apps", "sync-sweep", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("storage", "settings-apply", opsCapabilities))
@@ -970,4 +971,69 @@ func TestHandleOpsStoragePruneDetachedApplyDeletesDetachedOnly(t *testing.T) {
 	require.True(t, k8serrors.IsNotFound(err))
 	_, err = dynClient.Resource(longhornVolumeGVR).Namespace("longhorn-system").Get(context.Background(), "live-pvc-xyz", metav1.GetOptions{})
 	require.NoError(t, err)
+}
+
+func TestHandleOpsAppsSyncSweepDryRunListsDriftedApps(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	synced := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "argoproj.io/v1alpha1",
+			"kind":       "Application",
+			"metadata":   map[string]any{"name": "enclii-infrastructure", "namespace": "argocd"},
+			"status": map[string]any{
+				"sync":   map[string]any{"status": "Synced"},
+				"health": map[string]any{"status": "Healthy"},
+			},
+		},
+	}
+	drifted := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "argoproj.io/v1alpha1",
+			"kind":       "Application",
+			"metadata":   map[string]any{"name": "monitoring", "namespace": "argocd"},
+			"status": map[string]any{
+				"sync":   map[string]any{"status": "OutOfSync", "revision": "abc123"},
+				"health": map[string]any{"status": "Healthy"},
+			},
+		},
+	}
+	excluded := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "argoproj.io/v1alpha1",
+			"kind":       "Application",
+			"metadata":   map[string]any{"name": "network-policies", "namespace": "argocd"},
+			"status": map[string]any{
+				"sync":   map[string]any{"status": "OutOfSync"},
+				"health": map[string]any{"status": "Healthy"},
+			},
+		},
+	}
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: fake.NewSimpleDynamicClient(runtime.NewScheme(), synced, drifted, excluded)}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.apps.sync-sweep",
+		DryRun:    true,
+		Scope:     map[string]string{"namespace": "argocd"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/apps/sync-sweep", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "ready_to_apply", resp.Status)
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	targets, ok := data["targets"].([]any)
+	require.True(t, ok)
+	require.Len(t, targets, 1)
+	target, ok := targets[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "monitoring", target["name"])
 }

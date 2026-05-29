@@ -37,6 +37,12 @@ Keep the Cloudflare optional-secrets gap open until the credentials read endpoin
 - `enclii admin ga-verify` — Wave 0 security + schema + Longhorn plan smoke
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 orchestration (O-4–O-6)
 
+### 2026-05-29 — Wave 1 stability adapters
+
+- `enclii ops apps sync-sweep` — batch sync drifted Argo apps with default exclusion `network-policies` (O-8)
+- `enclii admin ga-verify --stability` — Wave 1 read-only checks (Argo drift, Vault, policy)
+- `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 orchestration (O-8–O-11)
+
 ## 2026-05-25 Cloudflare credential-readiness adapter
 
 Implemented the local API handler for `providers.cloudflare.credentials` after production preflight confirmed the deployed API returns `404 unsupported operation cloudflare.credentials`.

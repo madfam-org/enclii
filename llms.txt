@@ -24,6 +24,7 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `docs/production/GA_REMEDIATION_PLAN.md` — phase 0–4 program structure
 - `ROADMAP.md` — product roadmap with GA program section
 - `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 cluster ops orchestration
+- `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 stability ops orchestration
 
 ## Audit remediation (May 2026)
 

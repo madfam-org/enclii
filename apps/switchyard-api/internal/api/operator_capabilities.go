@@ -11,7 +11,7 @@ var opsCapabilities = []operatorCapability{
 		Name:        "apps",
 		Status:      "partial",
 		Description: "Argo application status/diff reads plus audited sync, retire, and rollback workflow contracts",
-		Actions:     []string{"status", "sync", "diff", "retire", "rollback"},
+		Actions:     []string{"status", "sync", "diff", "retire", "rollback", "sync-sweep"},
 		Scopes:      []string{"namespace", "project", "service", "target"},
 	},
 	{
