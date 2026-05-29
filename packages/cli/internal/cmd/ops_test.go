@@ -45,8 +45,18 @@ func TestOpsStorage_Subcommands(t *testing.T) {
 	storage := findSubcommand(NewOpsCommand(cfg), "storage")
 	require.NotNil(t, storage)
 
-	for _, want := range []string{"volumes", "pvc", "longhorn", "repair-plan", "settings-apply", "prune-detached"} {
+	for _, want := range []string{"volumes", "pvc", "longhorn", "repair-plan", "settings-apply", "prune-detached", "storageclass-apply"} {
 		assert.NotNil(t, findSubcommand(storage, want), "expected ops storage %s", want)
+	}
+}
+
+func TestOpsPolicy_Subcommands(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	policy := findSubcommand(NewOpsCommand(cfg), "policy")
+	require.NotNil(t, policy)
+
+	for _, want := range []string{"violations", "exceptions", "waiver-plan", "cosign-enable"} {
+		assert.NotNil(t, findSubcommand(policy, want), "expected ops policy %s", want)
 	}
 }
 

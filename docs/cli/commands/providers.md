@@ -26,7 +26,7 @@ returns `adapter_unconfigured`.
 |---------|---------|
 | `enclii providers capabilities` | List server-supported provider capabilities |
 | `enclii providers github runs|rerun|cancel|secrets|packages|protection` | GitHub Actions, repo secrets, GHCR, branch protection |
-| `enclii providers cloudflare dns|dns-apply|tunnels|access|r2|hostnames` | DNS, tunnels, Access, R2, custom hostnames |
+| `enclii providers cloudflare dns|dns-apply|tunnels|tunnels-apply|access|r2|hostnames` | DNS, tunnels, Access, R2, custom hostnames |
 | `enclii providers porkbun domains|dns|dns-apply|renewals|nameservers|nameservers-apply` | Domain inventory, DNS create fallback, renewal state, registrar delegation |
 | `enclii providers hetzner nodes|lb|vswitch|storage|firewall` | Robot/Cloud nodes, DR LB, vSwitch, storage boxes, firewall |
 
@@ -39,6 +39,7 @@ enclii providers github packages madfam-org/enclii --json
 enclii providers cloudflare dns cotiza.studio
 enclii providers cloudflare dns-apply app.example.com --project example --service web --apply --reason "point app host at Enclii tunnel"
 enclii providers cloudflare tunnels --json
+enclii providers cloudflare tunnels-apply --project example --apply --reason "reconcile junction tunnel routes to correct K8s backends"
 enclii providers porkbun dns-apply crm.phynd.app --domain phynd.app --type CNAME --content c9fac286-497b-4aac-9288-f784a1ea561c.cfargotunnel.com --apply --reason "restore PhyndCRM app host through Enclii"
 enclii providers porkbun nameservers-apply phynd.app --nameservers ns1.cloudflare.com,ns2.cloudflare.com --apply --reason "delegate phynd.app to Enclii-managed Cloudflare"
 enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR token scope fix"
@@ -62,6 +63,7 @@ enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR to
   zone is visible to the configured Enclii Cloudflare account. It blocks with
   `blocked_by_dns_authority` when the apex zone still needs registrar
   delegation/import.
+- Cloudflare `tunnels-apply` reconciles junction hostnames to the correct in-cluster service URL using `resolveServiceNamespace`; use instead of `junctions add` when live tunnel routes drift.
 - Cloudflare `access` and `r2` remain contract-only.
 - Cloudflare `hostnames` currently reads DNS-shaped state; full SaaS custom
   hostname inventory is a follow-up.

@@ -174,6 +174,32 @@ func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut, stability
 		} else {
 			add("policy violations", "warn", policyRead.Summary)
 		}
+
+		var scPlan operationResponse
+		scReq := operationRequest{
+			Operation: "ops.storage.storageclass-apply",
+			DryRun:    true,
+		}
+		if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/storage/storageclass-apply", scReq, &scPlan); err != nil {
+			add("longhorn storageclass plan", "warn", err.Error())
+		} else if scPlan.Status == "succeeded" {
+			add("longhorn storageclass plan", "pass", scPlan.Summary)
+		} else {
+			add("longhorn storageclass plan", "warn", scPlan.Summary)
+		}
+
+		var cosignPlan operationResponse
+		cosignReq := operationRequest{
+			Operation: "ops.policy.cosign-enable",
+			DryRun:    true,
+		}
+		if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/policy/cosign-enable", cosignReq, &cosignPlan); err != nil {
+			add("cosign enforce plan", "warn", err.Error())
+		} else if cosignPlan.Status == "succeeded" {
+			add("cosign enforce plan", "pass", cosignPlan.Summary)
+		} else {
+			add("cosign enforce plan", "warn", cosignPlan.Summary)
+		}
 	}
 
 	report := gaVerifyReport{Healthy: healthy, Checks: checks}

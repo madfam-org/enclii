@@ -28,9 +28,9 @@ encouraging direct `kubectl`.
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis, logs, and safe restarts |
 | `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
-| `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4) |
+| `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile |
 | `enclii ops secrets external|vault|refresh` | ExternalSecrets and Vault readiness workflows |
-| `enclii ops policy violations|exceptions|waiver-plan` | Kyverno policy visibility and waiver planning |
+| `enclii ops policy violations|exceptions|waiver-plan|cosign-enable` | Kyverno policy visibility, waivers, cosign namespace enforce (O-11) |
 | `enclii ops runners arc|drain` | ARC runner-set inspection and drain planning |
 
 ## Examples
@@ -46,6 +46,10 @@ enclii ops storage settings-apply
 enclii ops storage settings-apply --apply --reason "Commercial GA O-5 Longhorn CPU"
 enclii ops storage prune-detached
 enclii ops storage prune-detached --apply --reason "Commercial GA O-4 orphan cleanup"
+enclii ops storage storageclass-apply
+enclii ops storage storageclass-apply --apply --reason "Commercial GA Longhorn StorageClass reconcile"
+enclii ops policy cosign-enable
+enclii ops policy cosign-enable --apply --reason "Commercial GA O-11 Cosign enforce"
 ./scripts/wave0-ga-ops.sh
 ./scripts/wave0-ga-ops.sh --apply --disk-prune --reason "Commercial GA Wave 0"
 enclii ops pods diagnose switchyard-api -n enclii --json

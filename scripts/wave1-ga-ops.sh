@@ -92,7 +92,19 @@ enclii ops secrets external -n enclii
 echo
 echo "--- Cosign / policy surface (O-11) ---"
 enclii ops policy violations
-echo "Cosign enforce remains namespace label ops — see docs/production/REMAINING_ITEMS.md §1G."
+if [ "$APPLY" = true ]; then
+  enclii ops policy cosign-enable --apply --reason "$REASON"
+else
+  enclii ops policy cosign-enable
+fi
+
+echo
+echo "--- Longhorn StorageClass reconcile ---"
+if [ "$APPLY" = true ]; then
+  enclii ops storage storageclass-apply --apply --reason "$REASON"
+else
+  enclii ops storage storageclass-apply
+fi
 
 echo
 echo "--- SLO clock (O-12) ---"

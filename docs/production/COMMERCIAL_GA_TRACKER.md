@@ -115,6 +115,8 @@
 | `enclii ops storage prune-detached` + `scripts/wave0-ga-ops.sh` | Shipped — O-4 orphan prune + Wave 0 orchestration |
 | `commercial-ga-staging` GH environment wired | Workflow references environment; create env + secrets per STAGING_SECRETS_SETUP |
 | `enclii ops apps sync-sweep` + `scripts/wave1-ga-ops.sh` | Shipped — O-8 + Wave 1 orchestration |
+| `enclii ops storage storageclass-apply` + `ops policy cosign-enable` | Shipped — StorageClass reconcile + O-11 namespace labels |
+| `enclii providers cloudflare tunnels-apply` | Shipped — junction tunnel route reconcile via `resolveServiceNamespace` |
 | ROADMAP.md + docs index updated | GA program section; scorecard percentages canonical |
 | Target announce date recorded | ~2026-07-14 (contingent on SLO start ~2026-06-07) |
 

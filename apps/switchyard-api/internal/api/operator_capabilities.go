@@ -32,7 +32,7 @@ var opsCapabilities = []operatorCapability{
 		Name:        "storage",
 		Status:      "partial",
 		Description: "PVC/PV/Longhorn reads plus attach-state and repair planning contracts",
-		Actions:     []string{"volumes", "pvc", "longhorn", "repair-plan", "settings-apply", "prune-detached"},
+		Actions:     []string{"volumes", "pvc", "longhorn", "repair-plan", "settings-apply", "prune-detached", "storageclass-apply"},
 		Scopes:      []string{"namespace", "target"},
 	},
 	{
@@ -46,7 +46,7 @@ var opsCapabilities = []operatorCapability{
 		Name:        "policy",
 		Status:      "partial",
 		Description: "Kyverno report and exception reads plus waiver planning contracts",
-		Actions:     []string{"violations", "exceptions", "waiver-plan"},
+		Actions:     []string{"violations", "exceptions", "waiver-plan", "cosign-enable"},
 		Scopes:      []string{"namespace", "target"},
 	},
 	{
@@ -77,7 +77,7 @@ var providerCapabilities = []operatorCapability{
 		Name:        "cloudflare",
 		Status:      "partial",
 		Description: "Tunnel/domain sync exists; DNS, Access, R2, SaaS hostname, and credential-readiness ops are contract-first",
-		Actions:     []string{"dns", "dns-apply", "tunnels", "access", "r2", "hostnames", "credentials"},
+		Actions:     []string{"dns", "dns-apply", "tunnels", "tunnels-apply", "access", "r2", "hostnames", "credentials"},
 		Scopes:      []string{"project", "service", "target"},
 	},
 	{

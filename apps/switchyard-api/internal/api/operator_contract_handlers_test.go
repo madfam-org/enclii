@@ -30,10 +30,12 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("storage", "settings-apply", opsCapabilities))
-	require.True(t, operationSupported("storage", "prune-detached", opsCapabilities))
+	require.True(t, operationSupported("storage", "storageclass-apply", opsCapabilities))
+	require.True(t, operationSupported("policy", "cosign-enable", opsCapabilities))
 	require.True(t, operationSupported("quote-flow", "verify", opsCapabilities))
 	require.True(t, operationSupported("github", "runs", providerCapabilities))
-	require.True(t, operationSupported("hetzner", "vswitch", providerCapabilities))
+	require.True(t, operationSupported("cloudflare", "dns-apply", providerCapabilities))
+	require.True(t, operationSupported("cloudflare", "tunnels-apply", providerCapabilities))
 	require.False(t, operationSupported("porkbun", "charge-card", providerCapabilities))
 }
 
@@ -628,6 +630,57 @@ func TestHandleProviderOperationApplyRequiresReason(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "reason is required")
+}
+
+func TestHandleProviderCloudflareTunnelsApplyDryRunRequiresProject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &Handler{}
+	router := gin.New()
+	router.POST("/v1/providers/:provider/:action", handler.HandleProviderOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "providers.cloudflare.tunnels-apply",
+		DryRun:    true,
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers/cloudflare/tunnels-apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "invalid_request", resp.Status)
+	assert.Equal(t, "providers.cloudflare.tunnels-apply", resp.Operation)
+}
+
+func TestHandleProviderCloudflareTunnelsApplyDryRunReportsUnconfiguredAdapter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &Handler{}
+	router := gin.New()
+	router.POST("/v1/providers/:provider/:action", handler.HandleProviderOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "providers.cloudflare.tunnels-apply",
+		DryRun:    true,
+		Scope:     map[string]string{"project": "example"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers/cloudflare/tunnels-apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "adapter_unconfigured", resp.Status)
+	assert.Equal(t, "providers.cloudflare.tunnels-apply", resp.Operation)
+	require.NotEmpty(t, resp.Warnings)
+	assert.Contains(t, resp.Warnings[0], "tunnel routes service")
 }
 
 func TestHandleProviderCloudflareDNSApplyDryRunReportsUnconfiguredAdapter(t *testing.T) {

@@ -109,12 +109,13 @@ See the [CLI Reference](../../docs/cli/README.md) for the canonical, grouped ind
 Most read subcommands accept `--json`; mutations require `--force` to skip confirmation prompts.
 The `ops` and `providers` replacement-layer commands are plan-first: mutating
 operations are dry-run by default and require `--apply --reason "..."` once the
-server-side adapter is wired. `providers cloudflare dns-apply` is wired for
-Cloudflare zones owned by the configured Enclii account: dry-runs load the live
-zone/record state, and applies create, update, or no-op DNS records through the
-Switchyard API audit path. It intentionally blocks when the apex zone is not
-visible to Enclii; registrar nameserver changes still require the Porkbun
-provider adapter or another approved Enclii-controlled domain authority path.
+server-side adapter is wired. Wired surfaces include `providers cloudflare
+dns-apply` (zone-owned DNS create/update/no-op), `providers cloudflare
+tunnels-apply --project <slug>` (junction tunnel route reconcile),
+`ops storage storageclass-apply`, and `ops policy cosign-enable`. DNS apply
+blocks when the apex zone is not visible to Enclii; registrar nameserver changes
+still require the Porkbun provider adapter or another approved Enclii-controlled
+domain authority path.
 
 ## Development
 

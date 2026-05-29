@@ -33,11 +33,24 @@ curl -fsS https://status.madfam.io/api/status
 
 ## Remediation path
 
-If a junction exists but the tunnel route is missing:
+If a junction exists but the tunnel route is missing or points at the wrong backend:
 
-1. Re-run `enclii junctions add` only if the junction row is absent.
-2. If the row exists and the route is missing, use Enclii reconciliation by cycling the affected junction with `enclii junctions delete <id> --force` followed by `enclii junctions add <domain> --service-id <service-id> --project <project>`.
-3. Confirm the tunnel route appears in `enclii providers cloudflare tunnels ...`.
-4. Confirm the status monitor no longer lists the domain.
+1. **Preferred:** reconcile tunnel ingress through Enclii without deleting the junction row:
 
-Direct Cloudflare tunnel mutation remains break-glass only.
+```bash
+enclii providers cloudflare tunnels-apply --project tulana
+enclii providers cloudflare tunnels-apply --project tulana --apply --reason "reconcile junction tunnel routes"
+```
+
+Optional single-host reconcile:
+
+```bash
+enclii providers cloudflare tunnels-apply tulana-app.madfam.io --project tulana --apply --reason "fix app hostname backend"
+```
+
+2. Re-run `enclii junctions add` only if the junction row is absent.
+3. If the row exists and reconciliation still fails, cycle the junction with `enclii junctions delete <id> --force` followed by `enclii junctions add <domain> --service-id <service-id> --project <project>`.
+4. Confirm the tunnel route appears in `enclii providers cloudflare tunnels ...`.
+5. Confirm the status monitor no longer lists the domain.
+
+Direct Cloudflare tunnel mutation remains break-glass only when `tunnels-apply` is unavailable or unconfigured.

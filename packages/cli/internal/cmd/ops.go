@@ -114,6 +114,7 @@ func newOpsStorageCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "repair-plan", "Generate or apply a storage repair plan"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "settings-apply", "Apply Longhorn CPU settings from helm values (GA O-5)"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "prune-detached", "Delete detached Longhorn orphan volumes (GA O-4)"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "storageclass-apply", "Create missing Longhorn StorageClasses (GA storage reconcile)"))
 	return cmd
 }
 
@@ -132,6 +133,7 @@ func newOpsPolicyCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsReadCommand(cfg, "policy", "violations", "List policy violations by namespace or workload"))
 	cmd.AddCommand(newOpsReadCommand(cfg, "policy", "exceptions", "List active PolicyExceptions"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "policy", "waiver-plan", "Generate or apply a time-bound policy waiver plan"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "policy", "cosign-enable", "Label namespaces for Kyverno cosign enforce (GA O-11)"))
 	return cmd
 }
 

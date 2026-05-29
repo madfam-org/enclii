@@ -125,7 +125,7 @@ Gate 2 (O-13–O-15) is complete. Wave 1 focuses on O-8–O-11.
 | Gap | Wave | Target fix |
 |-----|------|------------|
 | `POST .../reconcile-services` has no CLI | 0–1 | **Done** — `enclii projects reconcile-services` |
-| Tunnel routes read-only in `providers cloudflare tunnels` | 0–1 | Document junctions as write path; optional `tunnels-apply` |
+| Tunnel routes read-only in `providers cloudflare tunnels` | 0–1 | **Done** — `enclii providers cloudflare tunnels-apply --project <slug>` |
 | Longhorn helm CPU upgrade | 0 | **Done** — `enclii ops storage settings-apply` |
 | Prod DB migration verify | 0 | **Done** — `enclii db schema` |
 | Staging proof secrets not in GH environment | 1 | **Workflow wired** — create `commercial-ga-staging` environment |

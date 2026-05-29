@@ -8,9 +8,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Cloudflare optional secrets | Manual kubectl when not in git | `enclii providers cloudflare` | P2 |
 | Policy-only kubectl comment | `infra/k8s/policies/enclii-default-deny.yaml` header | ArgoCD app docs only | P3 |
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
-| Cloudflare tunnel route mutation | `enclii junctions add` (updates wrong targets via `AddRoute`) | `enclii providers cloudflare tunnels-apply` or junction reconcile job | P1 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` (workflow wired) | P1 |
-| Longhorn StorageClass reconcile | `kubectl apply storageclass` when repair-plan blocked | `enclii ops storage` StorageClass apply | P1 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
@@ -42,6 +40,16 @@ Keep the Cloudflare optional-secrets gap open until the credentials read endpoin
 - `enclii ops apps sync-sweep` — batch sync drifted Argo apps with default exclusion `network-policies` (O-8)
 - `enclii admin ga-verify --stability` — Wave 1 read-only checks (Argo drift, Vault, policy)
 - `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 orchestration (O-8–O-11)
+
+### 2026-05-29 — Wave 1.5 storage + cosign adapters
+
+- `enclii ops storage storageclass-apply` — create missing Longhorn StorageClasses from GA manifest
+- `enclii ops policy cosign-enable` — label phased namespaces for Kyverno cosign enforce (O-11)
+
+### 2026-05-29 — Cloudflare tunnel route reconcile adapter
+
+- `enclii providers cloudflare tunnels-apply --project <slug>` — diff junction domains against live tunnel ingress and apply corrected K8s service backends via `resolveServiceNamespace`
+- Replaces break-glass `enclii junctions add` / manual Cloudflare tunnel edits when routes point at wrong namespaces
 
 ## 2026-05-25 Cloudflare credential-readiness adapter
 

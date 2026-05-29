@@ -151,6 +151,9 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		if domain == "cloudflare" && action == "dns-apply" {
 			return h.handleProviderCloudflareDNSApplyDryRun(ctx, operation, req), true
 		}
+		if domain == "cloudflare" && action == "tunnels-apply" {
+			return h.handleProviderCloudflareTunnelsApplyDryRun(ctx, operation, req), true
+		}
 		if domain == "porkbun" && action == "dns-apply" {
 			return h.handleProviderPorkbunDNSApplyDryRun(ctx, operation, req), true
 		}
@@ -161,6 +164,12 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync-sweep" {
 		return h.handleOpsAppsSyncSweepDryRun(ctx, operation, req), true
+	}
+	if prefix == "ops" && domain == "storage" && action == "storageclass-apply" {
+		return h.handleOpsStorageStorageClassApplyDryRun(ctx, operation, req), true
+	}
+	if prefix == "ops" && domain == "policy" && action == "cosign-enable" {
+		return h.handleOpsPolicyCosignEnableDryRun(ctx, operation, req), true
 	}
 	if prefix == "ops" && domain == "storage" && action == "settings-apply" {
 		return h.handleOpsStorageSettingsApplyDryRun(ctx, operation, req), true
@@ -199,6 +208,12 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	case "secrets.rotate":
 		mutation = "plan Vault/ESO rotation, dual-consumer cutover, verification, and old-value revocation"
 		adapterReady = false
+	case "storage.storageclass-apply":
+		mutation = "create missing Longhorn StorageClasses from git-backed GA manifest"
+		adapterReady = h != nil && h.opsKubeClient() != nil
+	case "policy.cosign-enable":
+		mutation = "label namespaces enclii.dev/verify-signatures=true for Kyverno cosign enforce"
+		adapterReady = h != nil && h.opsKubeClient() != nil
 	case "storage.settings-apply":
 		mutation = "patch Longhorn Setting CR CPU percentages to match helm values"
 		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
@@ -249,6 +264,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 		resp, statusCode := h.handleProviderCloudflareDNSApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
+	if prefix == "providers" && domain == "cloudflare" && action == "tunnels-apply" && h.tunnelRoutesService != nil {
+		resp, statusCode := h.handleProviderCloudflareTunnelsApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
 	if prefix == "providers" && domain == "porkbun" && action == "dns-apply" {
 		resp, statusCode := h.handleProviderPorkbunDNSApply(ctx, operation, req)
 		return resp, statusCode, true
@@ -279,6 +298,14 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "ops" && domain == "secrets" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsSecretsRefreshApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "storage" && action == "storageclass-apply" && h.opsKubeClient() != nil {
+		resp, statusCode := h.handleOpsStorageStorageClassApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "policy" && action == "cosign-enable" && h.opsKubeClient() != nil {
+		resp, statusCode := h.handleOpsPolicyCosignEnableApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "storage" && action == "settings-apply" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {

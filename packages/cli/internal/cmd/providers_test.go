@@ -35,7 +35,7 @@ func TestProviderCloudflare_Subcommands(t *testing.T) {
 	cloudflare := findSubcommand(NewProvidersCommand(cfg), "cloudflare")
 	require.NotNil(t, cloudflare)
 
-	for _, want := range []string{"dns", "dns-apply", "tunnels", "access", "r2", "hostnames"} {
+	for _, want := range []string{"dns", "dns-apply", "tunnels", "tunnels-apply", "access", "r2", "hostnames"} {
 		assert.NotNil(t, findSubcommand(cloudflare, want), "expected providers cloudflare %s", want)
 	}
 }

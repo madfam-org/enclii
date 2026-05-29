@@ -173,12 +173,11 @@ Steps: init → unseal (3/5 keys) → enable KV engine → configure K8s auth �
 ### 1G. Cosign Enforce Activation — P1, ~20 min
 
 ```bash
-# Phase 1 (safe — all first-party images):
-sudo kubectl label namespace enclii enclii.dev/verify-signatures=true
-# Phase 2:
-sudo kubectl label namespace status enclii.dev/verify-signatures=true
-sudo kubectl label namespace monitoring enclii.dev/verify-signatures=true
+enclii ops policy cosign-enable
+enclii ops policy cosign-enable --apply --reason "Commercial GA O-11 Cosign enforce"
 ```
+
+Phased namespaces: `enclii`, `status`, `monitoring`. Verify images are signed before enabling on additional namespaces.
 
 ### 1H. Legacy CronJob Cleanup — P2, ~2 min
 
