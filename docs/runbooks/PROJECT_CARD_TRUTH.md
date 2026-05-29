@@ -1,6 +1,9 @@
 # Project Card Truth Runbook
 
-_Last updated: 2026-05-18_
+_Last updated: 2026-05-29_
+
+Related 2026-05-29 remediation log:
+`docs/runbooks/PROJECT_CARD_HEALTH_REMEDIATION_2026-05-29.md`.
 
 ## Source of Truth
 
