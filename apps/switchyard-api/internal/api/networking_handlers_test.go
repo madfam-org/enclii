@@ -74,15 +74,11 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 	domainID := uuid.New()
 	now := time.Now().Truncate(time.Microsecond)
 
-	mock.ExpectQuery(`SELECT id, project_id, name, git_repo`).
+	mock.ExpectQuery(`SELECT id, project_id, name, git_repo, COALESCE\(app_path`).
 		WithArgs(serviceID).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "project_id", "name", "git_repo", "app_path", "build_config",
-			"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at",
-			"updated_at", "jobs", "type", "region",
-		}).AddRow(
+		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 			serviceID, projectID, "dhanam-api", "https://github.com/madfam-org/dhanam",
-			"", []byte(`{}`), false, "", "", now, now, []byte(`[]`), "api", "us",
+			"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us",
 		))
 
 	mock.ExpectQuery(`SELECT id, project_id, name, kube_namespace, created_at, updated_at FROM environments WHERE id = \$1`).

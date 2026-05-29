@@ -8,13 +8,9 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Cloudflare optional secrets | Manual kubectl when not in git | `enclii providers cloudflare` | P2 |
 | Policy-only kubectl comment | `infra/k8s/policies/enclii-default-deny.yaml` header | ArgoCD app docs only | P3 |
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
-| `POST /v1/admin/projects/:slug/reconcile-services` | Admin API curl to register GitOps Deployments as Enclii services | `enclii projects reconcile-services` | P1 |
 | Cloudflare tunnel route mutation | `enclii junctions add` (updates wrong targets via `AddRoute`) | `enclii providers cloudflare tunnels-apply` or junction reconcile job | P1 |
-| Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` documented in STAGING_SECRETS_SETUP | P1 |
-| Prod DB migration verify (030) | Assume API startup `db.Migrate`; no read-back command | `enclii db schema` or migration status endpoint | P2 |
-| Detached Longhorn volume delete | `kubectl delete volumes.longhorn.io` (2026-05-23 orphan sweep) | `enclii ops storage longhorn --apply` prune detached | P2 |
-| Longhorn setting and StorageClass apply | `kubectl patch settings.longhorn.io` / `kubectl apply storageclass` when `ops.storage.repair-plan --apply` is blocked | `enclii ops storage settings apply` and StorageClass reconcile | P1 |
-| Longhorn helm CPU upgrade | `helm upgrade` via SSH/kubectl per REMAINING_ITEMS | `enclii providers` or `enclii ops storage` apply path | P1 |
+| Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` (workflow wired) | P1 |
+| Longhorn StorageClass reconcile | `kubectl apply storageclass` when repair-plan blocked | `enclii ops storage` StorageClass apply | P1 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
@@ -31,6 +27,15 @@ When closing a gap, remove the row and link the PR that added the adapter.
 `enclii providers cloudflare dns-apply` now exposes the concrete DNS mutation flags used by the existing server-side Cloudflare adapter: `--type`, `--content`, and `--proxied`. `enclii providers cloudflare credentials` is also exposed as a contract-read surface for provider credential readiness.
 
 Keep the Cloudflare optional-secrets gap open until the credentials read endpoint reports concrete provider environment state instead of only the generic operation contract.
+
+### 2026-05-29 — GA adapter surfaces (Wave 0 engineering)
+
+- `enclii projects reconcile-services <slug>` — admin POST `/v1/admin/projects/:slug/reconcile-services`
+- `enclii db schema` + `GET /v1/admin/db/schema` — migration version, dirty flag, GA column checks (migration 030 `rollout_blocked_reason`)
+- `enclii ops storage settings-apply` — Longhorn CPU settings from helm values (O-5)
+- `enclii ops storage prune-detached` — delete detached Longhorn orphan volumes (O-4)
+- `enclii admin ga-verify` — Wave 0 security + schema + Longhorn plan smoke
+- `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 orchestration (O-4–O-6)
 
 ## 2026-05-25 Cloudflare credential-readiness adapter
 

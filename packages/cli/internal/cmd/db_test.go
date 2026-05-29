@@ -98,6 +98,12 @@ func TestNewDBCommand(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, walCmd)
 	assert.Equal(t, "wal-status", walCmd.Use)
+
+	schemaCmd, _, err := cmd.Find([]string{"schema"})
+	require.NoError(t, err)
+	require.NotNil(t, schemaCmd)
+	assert.Equal(t, "schema", schemaCmd.Use)
+	assert.NotNil(t, schemaCmd.Flags().Lookup("json"))
 }
 
 func TestHumanDuration(t *testing.T) {

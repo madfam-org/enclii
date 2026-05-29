@@ -36,7 +36,7 @@ Do not use production-critical customer services.
 | `STORAGE_E2E_RELEASE_ID` | Bet C deploy slice | Ready release UUID |
 | `STORAGE_E2E_ENVIRONMENT_NAME` | Bet C optional | e.g. `production` |
 
-Optional: create environment `commercial-ga-staging` with protection rules; add the workflow `environment:` line in `.github/workflows/commercial-ga-staging-proof.yml` if you use it.
+Create GitHub environment **`commercial-ga-staging`** (Settings → Environments) and move the secrets above into it for scoped access. The workflow `commercial-ga-staging-proof.yml` references this environment.
 
 ---
 

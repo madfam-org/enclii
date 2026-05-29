@@ -126,6 +126,73 @@ supervision. See docs/runbooks/POSTGRES_WAL_ARCHIVING.md.`,
 	}
 
 	cmd.AddCommand(newDBWalStatusCommand(cfg))
+	cmd.AddCommand(newDBSchemaCommand(cfg))
+	return cmd
+}
+
+// dbSchemaReport mirrors GET /v1/admin/db/schema.
+type dbSchemaReport struct {
+	Status struct {
+		Version uint `json:"version"`
+		Dirty   bool `json:"dirty"`
+	} `json:"status"`
+	EmbeddedLatest struct {
+		Version     uint   `json:"version"`
+		Description string `json:"description"`
+	} `json:"embedded_latest"`
+	Pending         int  `json:"pending"`
+	Healthy         bool `json:"healthy"`
+	SchemaTableSeen bool `json:"schema_migrations_seen"`
+	ColumnChecks    []struct {
+		Table      string `json:"table"`
+		Column     string `json:"column"`
+		Migration  uint   `json:"migration"`
+		Present    bool   `json:"present"`
+		RequiredGA bool   `json:"required_ga"`
+	} `json:"column_checks"`
+}
+
+func newDBSchemaCommand(cfg *config.Config) *cobra.Command {
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Report DB migration version and GA column checks (admin)",
+		Long: `Read-only Switchyard API call: reports golang-migrate version/dirty
+state and verifies GA-critical columns (e.g. services.rollout_blocked_reason
+from migration 030). Requires admin API token.
+
+Prefer this over break-glass psql for Commercial GA migration verify (O-2).`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var report dbSchemaReport
+			if err := apiRequest(cmd.Context(), cfg, "GET", "/v1/admin/db/schema", nil, &report); err != nil {
+				return fmt.Errorf("db schema: %w", err)
+			}
+			if jsonOut {
+				return emitJSON(report)
+			}
+			w := cmd.OutOrStdout()
+			fmt.Fprintf(w, "Migration version:  %d\n", report.Status.Version)
+			fmt.Fprintf(w, "Dirty:              %v\n", report.Status.Dirty)
+			fmt.Fprintf(w, "Embedded latest:    %d (%s)\n", report.EmbeddedLatest.Version, report.EmbeddedLatest.Description)
+			fmt.Fprintf(w, "Pending migrations: %d\n", report.Pending)
+			fmt.Fprintf(w, "schema_migrations:  %v\n", report.SchemaTableSeen)
+			for _, c := range report.ColumnChecks {
+				state := "missing"
+				if c.Present {
+					state = "present"
+				}
+				fmt.Fprintf(w, "Column %s.%s (migration %d): %s\n", c.Table, c.Column, c.Migration, state)
+			}
+			fmt.Fprintln(w)
+			if report.Healthy {
+				fmt.Fprintln(w, "Schema healthy for GA migration verify.")
+			} else {
+				fmt.Fprintln(w, "Schema NOT healthy — check pending migrations, dirty flag, or missing GA columns.")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit structured JSON")
 	return cmd
 }
 

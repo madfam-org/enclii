@@ -1,31 +1,77 @@
 # Enclii + Janua Product Roadmap
 
-> **Vision:** The complete self-hosted alternative to Vercel + Auth0
-> **Status:** Production-ready foundation, expanding capabilities
+> **Vision:** The complete self-hosted alternative to Vercel + Auth0  
+> **Status:** Production-running beta → **Commercial GA program active** (~70% scoped GA as of 2026-05-29)
 
 ---
 
-## Current State (January 2026)
+## Commercial GA program (May–July 2026)
 
-### Enclii (DevOps Platform) - ✅ 95% Production Ready
+**Primary objective:** Reach **100% scoped Commercial GA** by ~2026-07-14.
+
+| Track | Readiness | Blocker |
+|-------|-----------|---------|
+| Stability GA | ~74% | Security sign-off, restore drill, 30-day SLO clock |
+| Commercial GA | ~70% | Monetization QA, legal publish, SLO window |
+| Engineering (bets A+B+C) | ~90% | Staging proven; prod smoke optional |
+
+**Master plan:** [docs/production/COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md)  
+**Scorecard:** [docs/production/GA_READINESS_SCORECARD.md](docs/production/GA_READINESS_SCORECARD.md)  
+**Ops queue:** [docs/production/REMAINING_OPS_GA.md](docs/production/REMAINING_OPS_GA.md)
+
+### Execution waves
+
+| Wave | Target | Outcome |
+|------|--------|---------|
+| **0** | 1–2 days | Security release + cluster P0 (O-3, O-5, O-6) |
+| **1** | 3–5 days | DR, Vault/ESO, Cosign (O-8–O-11) |
+| **2** | 3–5 days | Signup/pricing QA, Dhanam checkout |
+| **3** | 30 calendar days | 99.95% API SLO → **Stability GA** |
+| **4** | 1–2 weeks | SLA, support, privacy/terms → **Commercial GA** |
+
+### Product bets (Commercial GA scope)
+
+| Bet | Feature | Status |
+|-----|---------|--------|
+| **A** | Preview environments | ✅ Staging proven 2026-05-23 |
+| **B** | Custom domains + TLS | ✅ Staging proven 2026-05-23 |
+| **C** | Persistent volumes | ✅ Staging proven 2026-05-23 |
+| **D** | Managed DB marketplace | Post-GA |
+| **E** | Jobs/Timetable GA polish | Post-GA (API exists) |
+
+### Post-GA (do not block Commercial GA)
+
+Multi-region/edge, managed DB marketplace, full sdk-ts UI migration, PostgreSQL HA, PagerDuty, SOC 2 Type II attestation.
+
+---
+
+## Current State (May 2026)
+
+### Enclii (DevOps Platform) — Production-running beta
+
+Platform foundation is live in production. **Commercial GA** is gated on ops proof, SLO evidence, and GTM publish — not net-new core features.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Control Plane API | ✅ Production | Switchyard API at api.enclii.dev |
 | Web Dashboard | ✅ Production | Next.js UI at app.enclii.dev |
 | CLI | ✅ Production | `enclii init/up/deploy/logs` |
-| Build Pipeline | ✅ Production | Buildpacks, Dockerfile, Kaniko |
+| Build Pipeline | ✅ Production | Buildpacks, Dockerfile, Roundhouse |
 | GitOps | ✅ Production | ArgoCD App-of-Apps with self-heal |
-| Storage | ✅ Production | Longhorn CSI (multi-node ready) |
-| Custom Domains | ✅ Production | Cloudflare for SaaS (100 free) |
+| Storage | ✅ Production | Longhorn CSI; bet C staging-proven |
+| Custom Domains | ✅ Production | Cloudflare for SaaS; bet B staging-proven |
+| Preview Environments | ✅ Production | Bet A staging-proven |
 | OIDC Authentication | ✅ Production | Janua SSO integration |
 | GitHub OAuth | ✅ Production | Repo imports, linked accounts |
-| Cost Allocation (Waybill) | ✅ Beta | Admin Console module live |
+| Cost Allocation (Waybill) | ✅ Production | Enforce on deploy/build |
+| Billing / throttles UI+CLI | ✅ Production | `/projects/:slug/billing`, `enclii billing throttles` |
+| Self-serve signup | 🟡 Staged | Disabled in prod until Wave 2 (O-17) |
+| SLA / support / legal | 🟡 Draft | Wave 4 publish |
 | Drift Detection | ✅ Production | Admin Console module live |
-| UI Resilience | ✅ Production | 100% Error/Loading coverage |
+| UI Resilience | ✅ Production | Error/Loading coverage |
 
 
-### Janua (Auth Platform) - ✅ 95% Auth0 Parity
+### Janua (Auth Platform) — Production (Auth0 parity)
 
 | Feature | Status | Auth0 Equivalent |
 |---------|--------|------------------|
@@ -201,7 +247,13 @@ spec:
 
 ## Q2 2026 (April - June)
 
-### 🌐 Enclii: "Vercel Killer" Features
+### 🎯 Enclii: Commercial GA execution (priority through July 2026)
+
+All GA work is tracked in [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md). Q2 feature work below is **post-GA or parallel non-blocking** unless explicitly pulled into scope.
+
+---
+
+### 🌐 Enclii: "Vercel Killer" Features (post-GA / parallel)
 
 #### Sovereign Serverless (Enclii Functions)
 **Priority:** P0 | **Effort:** 4-6 weeks | **See:** Architecture Study below
@@ -226,7 +278,7 @@ spec:
 ---
 
 #### Preview Environment Enhancements
-**Priority:** P1 | **Effort:** 2 weeks
+**Priority:** P1 | **Effort:** 2 weeks | **GA note:** Bet A shipped; enhancements post-GA
 
 **Scope:**
 - Automatic cleanup (TTL-based)
@@ -309,8 +361,14 @@ spec:
 | 2026-02-25 | Q1 progress update: ArgoCD remediation (17 apps stable), npm-registry operational, Longhorn single-replica, monitoring exporters deployed. Identity rebranded from "Railway-style PaaS" to "open source DevOps platform". Waybill, Timetable, Junctions, Signal, Lockbox remain planned/unimplemented |
 | 2026-05-01 | Platform Hardening Sweep: 100% error/loading boundary coverage across Switchyard and Dispatch. Waybill (Costs) and Drift modules launched in Admin Console. Multilingual (i18n) roadmap established (Spanish-first). |
 | 2026-05-14 | Quote-flow verification roadmap added for Selva -> Yantra4D -> Cotiza -> ForgeSight, including Enclii-first operational checks and emergency-only direct production access. |
-| 2026-05-22 | **Codebase audit remediation:** Phases 0–2, 5–6, and **Phase 3 UI/CLI consolidation** on branch (authZ, HTTP helpers, CLI `apiRequest` unification). **Pending PR:** [`docs/production/SECURITY_RELEASE_PR.md`](docs/production/SECURITY_RELEASE_PR.md) — deploy security changes before next prod push. **Deferred:** `sdk-ts` in UI, Janua-only fetch paths. |
+| 2026-05-22 | **Codebase audit remediation:** Phases 0–2 on `main`; security release checklist pending prod sign-off. |
+| 2026-05-29 | **Commercial GA master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md) — waves 0–4, target announce ~2026-07-14. Supersedes “95% ready” until Gate 5. Staging proofs A/B/C green 2026-05-23. |
 
+
+---
+
+*Roadmap is subject to change based on community feedback and strategic priorities.*  
+*Last updated: May 29, 2026*
 
 ---
 
@@ -329,8 +387,3 @@ Enclii is the default control plane for operating and verifying the Tablaco quot
 ### Acceptance Gate
 
 `enclii quote-flow verify --project tablaco --agent selva --require-market-verified` or the equivalent Enclii operation must produce a reproducible pass/fail report without requiring direct production container access.
-
----
-
-*Roadmap is subject to change based on community feedback and strategic priorities.*
-*Last updated: May 14, 2026*

@@ -2,7 +2,8 @@
 
 > Canonical dashboard and sign-off view. Do not track independent task state here; task state belongs in `REMAINING_OPS_GA.md`.
 
-> **Last updated:** 2026-05-25  
+> **Last updated:** 2026-05-29  
+> **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md)  
 > **Canonical tracker:** [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
 > **Ops execution:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md)  
@@ -21,7 +22,7 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 | **Monetization path** | **~65%** | Signup/pricing live proof, billing webhook replay proof, and published SLA remain open |
 | **Retention / support** | **~40%** | Customer-visible status, support tiers, on-call proof, and incident workflow remain open |
 
-**Engineering for bets A+B+C on `main`:** ~**85%** (proof, not net-new features, is the gap).
+**Target Commercial GA announce:** ~2026-07-14 (30-day SLO starting after Wave 0+1 sign-off). See [COMMERCIAL_GA_MASTER_PLAN.md §6](./COMMERCIAL_GA_MASTER_PLAN.md).
 
 ---
 
@@ -108,6 +109,7 @@ See [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) Phase 4.
 
 ## Related
 
+- [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md)  
 - [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md)  
 - [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md)
 

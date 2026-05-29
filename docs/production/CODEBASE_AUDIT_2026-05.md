@@ -64,6 +64,6 @@ Ship before or with next production deploy:
 
 ## Reference
 
-**Program plan:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) (stability + commercial GA).
+**Program plan:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) · [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) (stability + commercial GA).
 
 Prior plans: `REMEDIATION_PLAN.md`, `REMAINING_ITEMS.md`, `GAP_ANALYSIS.md`.

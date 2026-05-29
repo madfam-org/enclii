@@ -181,6 +181,9 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Production',
       items: [
+        'production/COMMERCIAL_GA_MASTER_PLAN',
+        'production/GA_READINESS_SCORECARD',
+        'production/REMAINING_OPS_GA',
         'production/PRODUCTION_DEPLOYMENT_ROADMAP',
         'production/PRODUCTION_CHECKLIST',
         'production/GAP_ANALYSIS',

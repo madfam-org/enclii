@@ -28,6 +28,8 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "retire", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
+	require.True(t, operationSupported("storage", "settings-apply", opsCapabilities))
+	require.True(t, operationSupported("storage", "prune-detached", opsCapabilities))
 	require.True(t, operationSupported("quote-flow", "verify", opsCapabilities))
 	require.True(t, operationSupported("github", "runs", providerCapabilities))
 	require.True(t, operationSupported("hetzner", "vswitch", providerCapabilities))
@@ -880,4 +882,92 @@ func assertQuoteFlowCheckStatus(t *testing.T, checks []any, name, status string)
 		}
 	}
 	t.Fatalf("quote-flow check %s not found", name)
+}
+
+func TestHandleOpsStorageSettingsApplyDryRunReportsChanges(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setting := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "longhorn.io/v1beta1",
+			"kind":       "Setting",
+			"metadata": map[string]any{
+				"name":      "guaranteed-engine-manager-cpu",
+				"namespace": "longhorn-system",
+			},
+			"value": "12",
+		},
+	}
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), setting)
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.storage.settings-apply",
+		DryRun:    true,
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/storage/settings-apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "ready_to_apply", resp.Status)
+	assert.True(t, resp.DryRun)
+}
+
+func TestHandleOpsStoragePruneDetachedApplyDeletesDetachedOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	detached := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "longhorn.io/v1beta2",
+			"kind":       "Volume",
+			"metadata": map[string]any{
+				"name":      "orphan-pvc-abc",
+				"namespace": "longhorn-system",
+			},
+			"status": map[string]any{"state": "detached"},
+		},
+	}
+	attached := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "longhorn.io/v1beta2",
+			"kind":       "Volume",
+			"metadata": map[string]any{
+				"name":      "live-pvc-xyz",
+				"namespace": "longhorn-system",
+			},
+			"status": map[string]any{"state": "attached"},
+		},
+	}
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), detached, attached)
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.storage.prune-detached",
+		DryRun:    false,
+		Reason:    "Commercial GA O-4 orphan cleanup",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/storage/prune-detached", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+
+	_, err = dynClient.Resource(longhornVolumeGVR).Namespace("longhorn-system").Get(context.Background(), "orphan-pvc-abc", metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = dynClient.Resource(longhornVolumeGVR).Namespace("longhorn-system").Get(context.Background(), "live-pvc-xyz", metav1.GetOptions{})
+	require.NoError(t, err)
 }

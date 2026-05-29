@@ -77,6 +77,9 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	admin.GET("/onboard", h.ListOnboardings)
 	admin.GET("/onboard/:owner/:repo", h.GetOnboarding)
 
+	// Database schema / migration status (GA migration verify)
+	admin.GET("/db/schema", h.GetAdminDBSchema)
+
 	// Reconcile services from K8s cluster — discovers deployments in a
 	// project's namespace and inserts missing services rows (or updates
 	// existing rows with NULL k8s_namespace). Recovery + repair path.

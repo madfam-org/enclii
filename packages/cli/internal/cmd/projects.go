@@ -41,6 +41,7 @@ Examples:
 	cmd.AddCommand(newProjectsDeleteCommand(cfg))
 	cmd.AddCommand(newProjectsEnvironmentsCommand(cfg))
 	cmd.AddCommand(newProjectsServicesCommand(cfg))
+	cmd.AddCommand(newProjectsReconcileServicesCommand(cfg))
 
 	return cmd
 }
@@ -258,6 +259,65 @@ func newProjectsServicesCommand(cfg *config.Config) *cobra.Command {
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\n",
 					s.Name, kind, s.CreatedAt.Format("2006-01-02 15:04"))
+			}
+			return tw.Flush()
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
+	return cmd
+}
+
+// ----------------------------------------------------------------------------
+// projects reconcile-services (admin)
+// ----------------------------------------------------------------------------
+
+type reconcileServicesResponse struct {
+	ProjectSlug string `json:"project_slug"`
+	Namespace   string `json:"namespace"`
+	Discovered  int    `json:"discovered"`
+	Inserted    int    `json:"inserted"`
+	Updated     int    `json:"updated"`
+	AlreadyOK   int    `json:"already_ok"`
+	Refreshed   int    `json:"refreshed"`
+	Services    []struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+		Action    string `json:"action"`
+	} `json:"services"`
+}
+
+func newProjectsReconcileServicesCommand(cfg *config.Config) *cobra.Command {
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "reconcile-services <slug>",
+		Short: "Register cluster Deployments as Enclii services (admin)",
+		Long: `Discover Deployments in a project's Kubernetes namespace and ensure
+the services table reflects them. Idempotent recovery path for GitOps-
+onboarded projects missing service rows or k8s_namespace values.
+
+Requires admin API token.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var resp reconcileServicesResponse
+			path := fmt.Sprintf("/v1/admin/projects/%s/reconcile-services", args[0])
+			if err := apiRequest(cmd.Context(), cfg, "POST", path, map[string]any{}, &resp); err != nil {
+				return fmt.Errorf("reconcile services: %w", err)
+			}
+			if jsonOut {
+				return emitJSON(resp)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Project:    %s\n", resp.ProjectSlug)
+			fmt.Fprintf(cmd.OutOrStdout(), "Namespace:  %s\n", resp.Namespace)
+			fmt.Fprintf(cmd.OutOrStdout(), "Discovered: %d  Inserted: %d  Updated: %d  Already OK: %d\n",
+				resp.Discovered, resp.Inserted, resp.Updated, resp.AlreadyOK)
+			if len(resp.Services) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No deployment changes recorded.")
+				return nil
+			}
+			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			fmt.Fprintln(tw, "SERVICE\tNAMESPACE\tACTION")
+			for _, s := range resp.Services {
+				fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Name, s.Namespace, s.Action)
 			}
 			return tw.Flush()
 		},

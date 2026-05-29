@@ -21,7 +21,7 @@ func TestProjectsCommand_HasExpectedSubcommands(t *testing.T) {
 	cfg := &config.Config{APIEndpoint: "https://api.test.dev", APIToken: "tok"}
 	cmd := NewProjectsCommand(cfg)
 
-	expected := []string{"list", "get", "create", "delete", "environments", "services"}
+	expected := []string{"list", "get", "create", "delete", "environments", "services", "reconcile-services"}
 	names := make(map[string]bool)
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true

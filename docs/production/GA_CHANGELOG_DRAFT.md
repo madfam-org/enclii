@@ -1,6 +1,7 @@
 # Enclii Commercial GA — changelog (draft)
 
 > **Status:** Internal draft — publish after Stability GA window and legal sign-off.  
+> **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) (Wave 4)  
 > **Retire externally:** “95% ready” / RC-only positioning.
 
 ---
@@ -55,8 +56,9 @@ Plus **security and tenancy** hardening, **budget enforcement** on deploy/build,
 ## Developer experience
 
 - Ecosystem E2E blocking on `main` (health, auth gates, preview/domains/storage smokes)  
-- Commercial GA staging proof workflow (manual Actions)  
-- Phase 0 ops runbook for deploy + cluster P0  
+- Commercial GA staging proof workflow (manual Actions; environment `commercial-ga-staging`)
+- Phase 0 ops runbook + `scripts/wave0-ga-ops.sh` for Enclii-first cluster P0
+- `enclii admin ga-verify`, `enclii db schema`, `enclii ops storage settings-apply|prune-detached`
 
 ## Known limitations (honest scope)
 
@@ -70,7 +72,8 @@ Plus **security and tenancy** hardening, **budget enforcement** on deploy/build,
 1. Deploy `main` per [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md)  
 2. Apply migration **030**  
 3. Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md)  
-4. Run staging proofs per [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md)  
+4. Run staging proofs per [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md)
+5. Run `./scripts/wave0-ga-ops.sh` (dry-run) then `--apply --disk-prune --reason "..."` for O-4–O-6
 
 ---
 

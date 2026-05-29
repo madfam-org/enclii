@@ -58,108 +58,6 @@ type operatorCapabilitiesResponse struct {
 	Capabilities []operatorCapability `json:"capabilities"`
 }
 
-var opsCapabilities = []operatorCapability{
-	{
-		Name:        "apps",
-		Status:      "partial",
-		Description: "Argo application status/diff reads plus audited sync, retire, and rollback workflow contracts",
-		Actions:     []string{"status", "sync", "diff", "retire", "rollback"},
-		Scopes:      []string{"namespace", "project", "service", "target"},
-	},
-	{
-		Name:        "pods",
-		Status:      "partial",
-		Description: "Pod diagnosis and logs reads plus restart workflow contracts",
-		Actions:     []string{"diagnose", "logs", "restart"},
-		Scopes:      []string{"namespace", "service", "target"},
-	},
-	{
-		Name:        "jobs",
-		Status:      "partial",
-		Description: "Kubernetes CronJob reads plus audited one-off triggers that preserve the existing CronJob template",
-		Actions:     []string{"list", "trigger"},
-		Scopes:      []string{"namespace", "project", "service", "target"},
-	},
-	{
-		Name:        "storage",
-		Status:      "partial",
-		Description: "PVC/PV/Longhorn reads plus attach-state and repair planning contracts",
-		Actions:     []string{"volumes", "pvc", "longhorn", "repair-plan"},
-		Scopes:      []string{"namespace", "target"},
-	},
-	{
-		Name:        "secrets",
-		Status:      "partial",
-		Description: "ExternalSecrets and Vault readiness reads plus refresh/sync contracts and plan-first rotation",
-		Actions:     []string{"external", "vault", "refresh", "sync", "rotate"},
-		Scopes:      []string{"namespace", "project", "service", "target"},
-	},
-	{
-		Name:        "policy",
-		Status:      "partial",
-		Description: "Kyverno report and exception reads plus waiver planning contracts",
-		Actions:     []string{"violations", "exceptions", "waiver-plan"},
-		Scopes:      []string{"namespace", "target"},
-	},
-	{
-		Name:        "runners",
-		Status:      "partial",
-		Description: "ARC runner scale-set reads plus runner drain contracts",
-		Actions:     []string{"arc", "drain"},
-		Scopes:      []string{"namespace", "target"},
-	},
-	{
-		Name:        "quote-flow",
-		Status:      "partial",
-		Description: "Enclii-first doctor for the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path",
-		Actions:     []string{"verify"},
-		Scopes:      []string{"project", "target"},
-	},
-}
-
-var providerCapabilities = []operatorCapability{
-	{
-		Name:        "github",
-		Status:      "partial",
-		Description: "GitHub App is live; Actions, secrets, GHCR, and protection ops are contract-first",
-		Actions:     []string{"runs", "rerun", "cancel", "secrets", "packages", "protection"},
-		Scopes:      []string{"project", "service", "target"},
-	},
-	{
-		Name:        "cloudflare",
-		Status:      "partial",
-		Description: "Tunnel/domain sync exists; DNS, Access, R2, SaaS hostname, and credential-readiness ops are contract-first",
-		Actions:     []string{"dns", "dns-apply", "tunnels", "access", "r2", "hostnames", "credentials"},
-		Scopes:      []string{"project", "service", "target"},
-	},
-	{
-		Name:        "porkbun",
-		Status:      "partial",
-		Description: "Domain inventory, DNS fallback create, renewals, and nameserver ops",
-		Actions:     []string{"domains", "dns", "dns-apply", "renewals", "nameservers", "nameservers-apply"},
-		Scopes:      []string{"target"},
-	},
-	{
-		Name:        "hetzner",
-		Status:      "contract",
-		Description: "Robot/Cloud nodes, load balancers, vSwitch, Storage Boxes, and firewall ops",
-		Actions:     []string{"nodes", "lb", "vswitch", "storage", "firewall"},
-		Scopes:      []string{"target"},
-	},
-}
-
-// GetOpsCapabilities returns the operator workflow contract supported by this
-// Switchyard API build. Capability status is explicit so Selva can distinguish
-// live adapters from contract-only surfaces.
-func (h *Handler) GetOpsCapabilities(c *gin.Context) {
-	c.JSON(http.StatusOK, operatorCapabilitiesResponse{Capabilities: opsCapabilities})
-}
-
-// GetProviderCapabilities returns the external-provider workflow contract.
-func (h *Handler) GetProviderCapabilities(c *gin.Context) {
-	c.JSON(http.StatusOK, operatorCapabilitiesResponse{Capabilities: providerCapabilities})
-}
-
 // HandleOpsOperation is the P0 operation contract endpoint for kubectl/Argo
 // replacement workflows. Dry-run requests return a deterministic plan; apply
 // requests return 501 until the concrete adapter is wired.
@@ -261,6 +159,12 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		}
 		return operatorOperationResponse{}, false
 	}
+	if prefix == "ops" && domain == "storage" && action == "settings-apply" {
+		return h.handleOpsStorageSettingsApplyDryRun(ctx, operation, req), true
+	}
+	if prefix == "ops" && domain == "storage" && action == "prune-detached" {
+		return h.handleOpsStoragePruneDetachedDryRun(ctx, operation, req), true
+	}
 	if prefix != "ops" {
 		return operatorOperationResponse{}, false
 	}
@@ -292,6 +196,9 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	case "secrets.rotate":
 		mutation = "plan Vault/ESO rotation, dual-consumer cutover, verification, and old-value revocation"
 		adapterReady = false
+	case "storage.settings-apply":
+		mutation = "patch Longhorn Setting CR CPU percentages to match helm values"
+		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
 	default:
 		return operatorOperationResponse{}, false
 	}
@@ -365,6 +272,14 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "ops" && domain == "secrets" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsSecretsRefreshApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "storage" && action == "settings-apply" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsStorageSettingsApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "storage" && action == "prune-detached" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsStoragePruneDetachedApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	return operatorOperationResponse{}, 0, false

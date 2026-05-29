@@ -18,7 +18,10 @@ enclii db <subcommand> [flags]
 
 ## Description
 
-The `db` subtree exposes read-only inspection of the platform Postgres instance. It is currently scoped to **WAL archive freshness** — the operator-friendly view used during P1.1 WAL archiving validation and ongoing backup-health monitoring.
+The `db` subtree exposes read-only inspection of the platform Postgres instance:
+
+- **`wal-status`** — WAL archive freshness via pgBackRest sidecar (cluster exec)
+- **`schema`** — golang-migrate version, dirty flag, and GA column checks via Switchyard API (admin)
 
 Mutating operations (`backup`, `restore`, point-in-time recovery) are intentionally **not** in this CLI. Run them through `kubectl exec` into the `pgbackrest` sidecar under operator supervision; see `docs/runbooks/POSTGRES_WAL_ARCHIVING.md` for the procedure.
 
@@ -49,6 +52,20 @@ The command does a read-only cluster call: it parses `pgbackrest info --output=j
 - R2 repo footprint (sum of backup delta sizes)
 - Replica lag (stub for P1.1; wires up in P1.2 once replication lands)
 
+### `schema`
+
+Report DB migration version and GA-critical column presence (Commercial GA migration verify).
+
+```bash
+enclii db schema [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Emit structured JSON |
+
+Calls `GET /v1/admin/db/schema`. Verifies `schema_migrations` version/dirty state and columns such as `services.rollout_blocked_reason` (migration 030). Requires **admin** API token.
+
 ## Examples
 
 ### Check WAL archive freshness for production
@@ -57,7 +74,13 @@ The command does a read-only cluster call: it parses `pgbackrest info --output=j
 enclii db wal-status
 ```
 
-### Same, in JSON for a CI health check
+### Verify migration 030 before Stability GA clock (admin)
+
+```bash
+enclii db schema
+```
+
+### Same, in JSON for CI
 
 ```bash
 enclii db wal-status --json

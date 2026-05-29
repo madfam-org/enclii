@@ -111,6 +111,8 @@ func newOpsStorageCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsReadCommand(cfg, "storage", "pvc", "Inspect PVC/PV binding and attach state"))
 	cmd.AddCommand(newOpsReadCommand(cfg, "storage", "longhorn", "Inspect Longhorn volume health and scheduling"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "repair-plan", "Generate or apply a storage repair plan"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "settings-apply", "Apply Longhorn CPU settings from helm values (GA O-5)"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "storage", "prune-detached", "Delete detached Longhorn orphan volumes (GA O-4)"))
 	return cmd
 }
 

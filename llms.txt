@@ -15,10 +15,20 @@ Routine production operations are Enclii-first. Use Enclii web, API, or CLI
 before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 `docker exec`, or direct container access is bootstrap/break-glass only.
 
+## Commercial GA program (May 2026)
+
+- `docs/production/COMMERCIAL_GA_MASTER_PLAN.md` — **master blueprint** (waves 0–4, 100% definition, timeline)
+- `docs/production/GA_READINESS_SCORECARD.md` — leadership dashboard and gate sign-off
+- `docs/production/REMAINING_OPS_GA.md` — open ops task queue (O-1–O-22)
+- `docs/production/COMMERCIAL_GA_TRACKER.md` — program status and execution log
+- `docs/production/GA_REMEDIATION_PLAN.md` — phase 0–4 program structure
+- `ROADMAP.md` — product roadmap with GA program section
+- `scripts/wave0-ga-ops.sh` — Enclii-first Wave 0 cluster ops orchestration
+
 ## Audit remediation (May 2026)
 
 - `docs/production/CODEBASE_AUDIT_2026-05.md` — findings and checklist
-- `docs/production/SECURITY_RELEASE_PR.md` — pending production deploy PR
+- `docs/production/SECURITY_RELEASE_PR.md` — pending production security sign-off
 - `docs/contracts/DEV_ENV_ALIGNMENT.md` — UI/CLI/API URL and log endpoint matrix
 - `docs/testing/GOLDEN_TESTS.md` — golden manifest regeneration
 - `docs/ADAPTER_GAPS.md` — Enclii adapter gap registry

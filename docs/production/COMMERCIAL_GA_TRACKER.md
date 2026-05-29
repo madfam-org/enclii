@@ -1,10 +1,11 @@
 # Commercial GA tracker
 
 > **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md)  
+> **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md)  
 > **Scorecard:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Open ops queue:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
-> **Last updated:** 2026-05-25  
+> **Last updated:** 2026-05-29  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)
 
 ## Gate summary
@@ -25,7 +26,7 @@
 | Argo aggregate and service registry health | Ops | **Done** 2026-05-25 (`bad=0`, `degraded_count=0`) |
 | Stale Blueprint Harvester service rows | Ops | **Done** 2026-05-25 (6 stale `pod_count=0` rows removed) |
 | Lifecycle delete FK migration 031 | Ops | **Done** 2026-05-25 (`deployment_lifecycle_events` refs detach on delete) |
-| Staging lifecycle proofs (bets A/B/C) | Ops | [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) · [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) |
+| Staging lifecycle proofs (bets A/B/C) | Ops | **Done** 2026-05-23 — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) |
 | Phase 0 execution order | Ops | [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) |
 
 ## Phase 1 — Engineering (code on `main`)
@@ -103,12 +104,25 @@
 | Platform backup job cleanup hardened | **Done** - CronJob TTL cleanup added for backup and restore drill jobs |
 | Public endpoints checked | **Green** - `api.enclii.dev`, `api.janua.dev`, and `auth.madfam.io` health/discovery returned HTTP 200 |
 
+## Execution log (2026-05-29)
+
+| Action | Result |
+|--------|--------|
+| Commercial GA master plan published | [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) |
+| `enclii projects reconcile-services` CLI | Shipped — closes reconcile-services adapter gap |
+| `enclii db schema` + `GET /v1/admin/db/schema` | Shipped — migration 030 verify |
+| `enclii ops storage settings-apply` + `enclii admin ga-verify` | Shipped — O-5 + Gate 1 automation |
+| `enclii ops storage prune-detached` + `scripts/wave0-ga-ops.sh` | Shipped — O-4 orphan prune + Wave 0 orchestration |
+| `commercial-ga-staging` GH environment wired | Workflow references environment; create env + secrets per STAGING_SECRETS_SETUP |
+| ROADMAP.md + docs index updated | GA program section; scorecard percentages canonical |
+| Target announce date recorded | ~2026-07-14 (contingent on SLO start ~2026-06-07) |
+
 ## Next merge train
 
 1. ~~AuthZ / OpenAPI / preview + domains + storage E2E~~ → `main` (2026-05-22)
 2. ~~PVC persist + settings UI (#258)~~ → `main`
-3. ~~Deploy `main` + migration 030 + security checklist~~ — runtime deploy complete; final security sign-off remains open
-4. **Staging proofs** — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) or Actions workflow `Commercial GA staging proof`
+3. ~~Deploy `main` + migration 030~~ — runtime deploy complete; **security sign-off (O-3) remains open**
+4. ~~Staging proofs (Gate 2)~~ — **Done** 2026-05-23
 5. ~~Preview CLI + docs (bet A)~~ → `main`
 6. ~~Volumes CLI + bet B/C guides~~ → `main`
-7. Paid self-serve proof, billing webhook replay proof, restore drill, support/SLA publish, and 30-day SLO clock
+7. **Wave 0 close:** O-3, O-5, O-6 → **Wave 1:** O-8–O-11 → **Wave 2:** monetization QA → **Wave 3:** 30-day SLO → **Wave 4:** legal publish

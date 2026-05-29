@@ -207,6 +207,26 @@ else
   warn_or_fail "authenticated billing endpoints" "set ENCLII_SYNTHETICS_TOKEN and ENCLII_SYNTHETIC_PROJECT_SLUG"
 fi
 
+if [ -n "$TOKEN" ]; then
+  code="$(http_json_auth "${API_URL%/}/v1/admin/db/schema")"
+  if [ "$code" = "200" ] && body_contains '"healthy"[[:space:]]*:[[:space:]]*true'; then
+    append_check pass "db schema healthy" "migration verify OK"
+  elif [ "$code" = "200" ]; then
+    warn_or_fail "db schema healthy" "HTTP 200 but healthy!=true (check pending/dirty/columns)"
+  elif [ "$code" = "403" ] || [ "$code" = "401" ]; then
+    warn_or_fail "db schema healthy" "admin token required for GET /v1/admin/db/schema"
+  else
+    append_check fail "db schema healthy" "expected HTTP 200, got ${code:-000}"
+  fi
+
+  code="$(http_json_auth "${API_URL%/}/v1/dashboard/stats")"
+  if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+    append_check pass "dashboard stats auth gate" "HTTP $code"
+  else
+    append_check fail "dashboard stats auth gate" "expected 401/403, got ${code:-000}"
+  fi
+fi
+
 write_summary
 printf "Summary written to %s\n" "$SUMMARY_PATH"
 printf "passed=%s failed=%s warnings=%s\n" "$PASS_COUNT" "$FAIL_COUNT" "$WARN_COUNT"

@@ -97,6 +97,20 @@ enclii projects services <slug> [flags]
 |------|------|---------|-------------|
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
+### `reconcile-services`
+
+Discover Deployments in a project's Kubernetes namespace and ensure the `services` table reflects them. Idempotent recovery for GitOps-onboarded projects missing service rows or `k8s_namespace` values.
+
+```bash
+enclii projects reconcile-services <slug> [flags]
+```
+
+Requires **admin** API token (`POST /v1/admin/projects/:slug/reconcile-services`).
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Emit machine-readable JSON |
+
 ## Examples
 
 ### List all projects
@@ -159,6 +173,12 @@ worker     worker   2026-01-13 11:02
 
 ```bash
 enclii projects delete legacy-app --force
+```
+
+### Reconcile services from cluster (admin)
+
+```bash
+enclii projects reconcile-services blueprint-harvester
 ```
 
 ## Notes

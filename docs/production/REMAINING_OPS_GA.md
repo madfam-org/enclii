@@ -2,6 +2,7 @@
 
 > Canonical execution queue. Update this file for open GA ops work; use `GA_READINESS_SCORECARD.md` only as the dashboard and sign-off view. Historical plans should point here instead of carrying independent status.
 
+> **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md)  
 > **Doctrine:** Enclii web, API, or CLI first. Break-glass `kubectl`/SSH only with documented reason; record gaps in [ADAPTER_GAPS.md](../ADAPTER_GAPS.md).  
 > **Execution order:** [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) · **Sign-off:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Time-ordered roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
@@ -16,11 +17,11 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 | ID | Task | Est. | Status (2026-05-23) | Reference |
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
-| O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Done** — column present in `enclii` DB (2026-05-23) | `apps/switchyard-api/internal/db/migrations/030_*` |
+| O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Verify** — `enclii db schema` (admin) or column in prod DB | `apps/switchyard-api/internal/db/migrations/030_*` |
 | O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — [SECURITY_RELEASE_VERIFICATION.md](./SECURITY_RELEASE_VERIFICATION.md); manual Roundhouse + tenant smoke | Steps 1–7 |
-| O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Mostly done** — `posthog` ns gone; 5 detached LH volumes deleted 2026-05-23 (1 detached remains) | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
-| O-5 | Longhorn helm upgrade (committed CPU values) | 10m | Open — one `instance-manager` **255m** (&gt;200m target) | [REMAINING_ITEMS §1B](./REMAINING_ITEMS.md) |
-| O-6 | Disk prune (crictl, journal, logs) | 10m | Open — no DiskPressure on nodes | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
+| O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | Open — `enclii ops storage prune-detached --apply --reason "GA O-4"` | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
+| O-5 | Longhorn CPU settings apply | 10m | Open — `enclii ops storage settings-apply --apply --reason "GA O-5"` | [REMAINING_ITEMS §0.2.2](./REMAINING_ITEMS.md) |
+| O-6 | Disk prune (crictl, journal, logs) | 10m | Open — `enclii ops jobs trigger node-maintenance -n enclii --apply --reason "GA O-6"` or `./scripts/wave0-ga-ops.sh --apply --disk-prune` | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
 | O-7 | API post-deploy smoke | 10m | **Done** — `/health/public` + `/health/ready` OK (2026-05-23) | Enclii or CI rerun on prod URL |
 
 **Track in GitHub:** use issue template **Commercial GA — Phase 0 ops gate**.
@@ -103,15 +104,15 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 ## Quick status dashboard
 
-| Gate | Open items |
-|------|------------|
-| Phase 0 (O-1–O-7) | 7 |
-| Stability P1 (O-8–O-12) | 5 |
-| Staging proof (O-13–O-15) | 3 |
-| Monetization QA (O-16–O-18) | 3 |
-| Commercial publish (O-19–O-22) | 4 |
+| Gate | Open items | Done |
+|------|------------|------|
+| Phase 0 (O-1–O-7) | 3 (O-3, O-5, O-6) | 4 |
+| Stability P1 (O-8–O-12) | 5 | 0 |
+| Staging proof (O-13–O-15) | 0 | 3 |
+| Monetization QA (O-16–O-18) | 3 | 0 |
+| Commercial publish (O-19–O-22) | 4 | 0 |
 
-**Total open ops tasks:** 22 (many parallelizable after O-1).
+**Total open ops tasks:** 15 of 22 (7 complete or mostly complete).
 
 ## 2026-05-25 adapter progress
 

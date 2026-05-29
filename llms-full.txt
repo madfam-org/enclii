@@ -1,6 +1,6 @@
 # Enclii LLM Context Pointer
 
-Generated: 2026-05-13
+Generated: 2026-05-29
 
 ## Purpose
 
@@ -36,10 +36,26 @@ gap or incident link.
 ## Repo entrypoints detected
 
 - `README.md`
+- `ROADMAP.md`
 - `ECOSYSTEM.md`
 - `docs/`
 - `infra/`
 - `.github/workflows/`
+
+## Commercial GA program (May 2026)
+
+Scoped Commercial GA target: ~100% by ~2026-07-14 (30-day SLO + legal publish).
+
+Read in order for GA work:
+
+1. `docs/production/COMMERCIAL_GA_MASTER_PLAN.md` — master blueprint
+2. `docs/production/GA_READINESS_SCORECARD.md` — gate sign-off dashboard
+3. `docs/production/REMAINING_OPS_GA.md` — ops task queue
+4. `docs/production/COMMERCIAL_GA_TRACKER.md` — program tracker
+
+Do not track independent GA task state outside these files (see `scripts/check-ga-doc-drift.py`).
+
+Wave 0 Enclii-first ops: `scripts/wave0-ga-ops.sh`, `enclii admin ga-verify`, `make commercial-ga-proof`.
 
 ## Boundary
 

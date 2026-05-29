@@ -1,6 +1,6 @@
 # Phase 0 ops runbook — Stability GA deploy gate
 
-> **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) · [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
+> **Program:** [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) · [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md)  
 > **Task checklist:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Doctrine:** Enclii web, API, or CLI for routine production work. Record adapter gaps; use break-glass only with reason.
 
@@ -23,8 +23,10 @@ This is the **single execution order** for ops before Commercial GA staging proo
 | # | Action | Done when |
 |---|--------|-----------|
 | 1.1 | Deploy Switchyard API + UI from `main` (Enclii / GitOps) | Running image matches `main` SHA |
-| 1.2 | Apply DB migration **030** (`rollout_blocked_reason`) | Column exists; reconciler persists blocked reason |
+| 1.2 | Apply DB migration **030** (`rollout_blocked_reason`) | Column exists; reconciler persists blocked reason — verify with `enclii db schema` |
 | 1.3 | Verify Roundhouse ↔ API callback auth | See [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) steps 1–4 |
+| 1.4 | Run `enclii admin ga-verify` (admin token) | Gate 1 automated evidence |
+| 1.5 | Optional: `./scripts/wave0-ga-ops.sh` (dry-run) then `--apply --reason "..."` | O-4–O-6 Enclii-first queue |
 
 **Sign-off:** Platform lead initials security checklist in SECURITY_RELEASE_PR.
 

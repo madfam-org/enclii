@@ -226,6 +226,16 @@ enclii admin fleet wipe host-7
 # Wipe initiated.
 ```
 
+### `admin ga-verify`
+
+```bash
+enclii admin ga-verify [--json]
+```
+
+Runs Commercial GA Wave 0 checks: public health, dashboard stats auth gate,
+DB schema/migration 030, Longhorn CPU settings dry-run, detached volume prune
+plan, and `node-maintenance` CronJob presence. Requires admin API token.
+
 ## Tenants (master-admin acting-as)
 
 These commands mirror the scope switcher in the web app. They let an

@@ -44,6 +44,7 @@ Examples:
 	cmd.AddCommand(newAdminTenantsCommand(cfg))
 	cmd.AddCommand(newAdminStatusCommand(cfg))
 	cmd.AddCommand(newAdminProvisionCommand(cfg))
+	cmd.AddCommand(newAdminGAVerifyCommand(cfg))
 	return cmd
 }
 

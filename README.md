@@ -474,7 +474,7 @@ enclii scale --min 5 --max 10 --service api --env prod
 - ✅ Janua running at auth.madfam.io
 - ✅ GitHub OAuth linked accounts
 
-### Phase 3: Production (Current - 95%)
+### Phase 3: Production (Current - ~95%)
 
 - ✅ Self-hosted (Enclii deploys itself)
 - ✅ Real build pipeline (Buildpacks/Dockerfile)
@@ -483,17 +483,20 @@ enclii scale --min 5 --max 10 --service api --env prod
 - ✅ ArgoCD GitOps deployment (Jan 2026)
 - ✅ Longhorn CSI storage (Jan 2026)
 - ✅ Cloudflare tunnel route automation (Jan 2026)
-- ⚠️ Load testing (1,000 RPS) - pending
-- ⚠️ Final security audit - pending
+- ✅ Product bets A/B/C staging-proven (May 2026)
+- ⚠️ Security release sign-off — [SECURITY_RELEASE_PR.md](./docs/production/SECURITY_RELEASE_PR.md)
+- ⚠️ 30-day SLO window — pending Wave 0+1
 
-### Phase 4: GA (Upcoming)
+### Phase 4: Commercial GA (In progress — ~70%)
 
-- Multi-region deployments
-- KEDA autoscaling (custom metrics)
-- Infrastructure cost showback and budget alerts
-- Policy-as-code gates (OPA)
-- Cron jobs and scheduled tasks
-- SOC 2 compliance documentation
+**Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./docs/production/COMMERCIAL_GA_MASTER_PLAN.md) · **Target announce:** ~2026-07-14
+
+- Wave 0–1: Ops closure (security, DR, Vault)
+- Wave 2: Monetization QA (signup, pricing, Dhanam)
+- Wave 3: 30-day SLO → Stability GA
+- Wave 4: SLA, support, legal publish → Commercial GA
+
+Post-GA: multi-region, managed DB marketplace, KEDA custom metrics, full SOC 2 attestation.
 
 [View production checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
 

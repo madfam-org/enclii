@@ -7,8 +7,9 @@ tags: [production, deployment, checklist, operations]
 
 # Enclii Production Deployment Checklist
 
-**Status:** Production Release Candidate v0.1.0
-**Last Updated:** March 16, 2026
+**Status:** Production Release Candidate — **Commercial GA program active** (~70% as of 2026-05-29)  
+**GA program:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) · [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
+**Last Updated:** May 29, 2026  
 **Last Audit:** Gap Remediation Sprint (Mar 16, 2026)
 
 ---

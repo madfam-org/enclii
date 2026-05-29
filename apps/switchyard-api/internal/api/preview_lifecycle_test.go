@@ -38,11 +38,8 @@ func expectServiceByID(mock sqlmock.Sqlmock, serviceID, projectID uuid.UUID, nam
 	now := time.Now()
 	mock.ExpectQuery(`FROM services WHERE id`).
 		WithArgs(serviceID).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "project_id", "name", "git_repo", "app_path", "build_config",
-			"auto_deploy", "auto_deploy_branch", "auto_deploy_env", "created_at", "updated_at", "jobs", "type", "region",
-		}).AddRow(
-			serviceID, projectID, name, gitRepo, "", []byte(`{}`),
+		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
+			serviceID, projectID, name, gitRepo, "", []byte(`{}`), []byte(`[]`),
 			true, testDefaultBranch, "production", now, now, []byte(`[]`), "web", "default",
 		))
 }

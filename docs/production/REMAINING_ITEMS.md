@@ -24,7 +24,7 @@ across the enclii platform and ecosystem. Items are organized by execution conte
 
 ```
 P0  [Cluster] PostHog cleanup — scale to 0, delete PVCs + detached volumes     ~15 min
-P0  [Cluster] Longhorn CPU fix — helm upgrade with committed values             ~10 min
+P0  [Cluster] Longhorn CPU fix — `enclii ops storage settings-apply`              ~10 min
 P0  [Cluster] Disk prune — crictl rmi + journalctl vacuum + old logs            ~10 min
 P1  [Cluster] ArgoCD sync sweep — force-sync OutOfSync apps (post git push)     ~10 min
 P1  [Cluster] Backup credentials (GitHub PAT + Cloudflare API token)            ~10 min
@@ -80,11 +80,12 @@ sudo kubectl scale statefulset --all -n posthog --replicas=0
 sudo kubectl delete pods -n posthog --all --grace-period=0 --force
 sudo kubectl delete pvc -n posthog --all
 
-# Delete detached Longhorn volumes
-sudo kubectl get volumes.longhorn.io -n longhorn-system -o json | \
-  jq -r '.items[] | select(.status.state == "detached") | .metadata.name'
-# For each volume:
-sudo kubectl delete volumes.longhorn.io -n longhorn-system <each-volume>
+# Delete detached Longhorn volumes (Enclii-first)
+enclii ops storage prune-detached
+enclii ops storage prune-detached --apply --reason "Commercial GA O-4 orphan cleanup"
+
+# Or wave0 orchestration:
+# ./scripts/wave0-ga-ops.sh --apply --reason "Commercial GA Wave 0"
 
 # Delete the namespace (after ArgoCD app is already removed in W6)
 sudo kubectl delete namespace posthog --timeout=120s
@@ -92,24 +93,32 @@ sudo kubectl delete namespace posthog --timeout=120s
 
 **Verify:** `df -h /` drops from 83% to ~33%. `kubectl get pods -n posthog` returns empty.
 
-### 1B. Longhorn CPU Fix — P0, ~10 min (Wave 1)
-
-Apply already-committed `guaranteedEngineManagerCPU: 3` / `guaranteedReplicaManagerCPU: 3`.
+### 0.2.2 Longhorn helm upgrade (committed CPU values) — Enclii-first
 
 ```bash
-sudo helm upgrade longhorn longhorn/longhorn -n longhorn-system -f infra/helm/longhorn/values.yaml
-sudo kubectl rollout status -n longhorn-system daemonset/longhorn-manager --timeout=300s
+# Plan (dry-run)
+enclii ops storage settings-apply
+
+# Apply (Commercial GA O-5)
+enclii ops storage settings-apply --apply --reason "Commercial GA O-5 Longhorn CPU"
 ```
 
-**Verify:** `kubectl top pods -n longhorn-system | grep instance-manager` shows <200m each.
+Break-glass fallback: `helm upgrade longhorn ... -f infra/helm/longhorn/values.yaml`
+
+**Verify:** `kubectl top pods -n longhorn-system | grep instance-manager` shows &lt;200m each.
 
 ### 1C. Capacity Cleanup — P0, ~10 min
 
+Enclii-first (triggers existing `node-maintenance` CronJob in `enclii` namespace):
+
 ```bash
-sudo k3s crictl rmi --prune                                    # ~10-20 GB
-sudo journalctl --vacuum-size=500M                              # ~3-4 GB
-sudo find /var/log -name "*.gz" -mtime +7 -delete              # old logs
+enclii ops jobs list node-maintenance -n enclii
+enclii ops jobs trigger node-maintenance -n enclii --apply --reason "Commercial GA O-6 disk prune"
 ```
+
+Or `./scripts/wave0-ga-ops.sh --apply --disk-prune --reason "Commercial GA O-6"`.
+
+Break-glass (node SSH): `k3s crictl rmi --prune`, `journalctl --vacuum-size=500M`, old log rotation per `infra/k8s/production/node-maintenance-cronjob.yaml`.
 
 ### 1D. ArgoCD Sync Sweep — P1, ~10 min (Wave 2)
 

@@ -183,9 +183,9 @@ func TestUpdateService_CrossTenantDenied(t *testing.T) {
 	serviceID := uuid.New()
 
 	mock.ExpectQuery(`FROM services WHERE id = \$1`).
-		WillReturnRows(sqlmock.NewRows(serviceListByGitRepoColumns).AddRow(
+		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 			serviceID, projectB, "api", "https://github.com/org/repo", "",
-			[]byte(`{"type":"dockerfile"}`),
+			[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 			true, "main", "production",
 			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))
@@ -257,9 +257,9 @@ func TestGetDeploymentByVersion_CrossTenantDenied(t *testing.T) {
 	serviceID := uuid.New()
 
 	mock.ExpectQuery(`FROM services WHERE id = \$1`).
-		WillReturnRows(sqlmock.NewRows(serviceListByGitRepoColumns).AddRow(
+		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 			serviceID, projectB, "api", "https://github.com/org/repo", "",
-			[]byte(`{"type":"dockerfile"}`),
+			[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 			true, "main", "production",
 			time.Now(), time.Now(), []byte(`[]`), "web", "default",
 		))

@@ -1,9 +1,10 @@
 # GA Remediation & Implementation Plan
 
-> **Created:** 2026-05-22  
+> **Created:** 2026-05-22 · **Last updated:** 2026-05-29  
 > **Status:** Active program plan  
 > **Audience:** Platform engineering, SRE, product, GTM  
 > **Supersedes narrative only:** “95% ready” marketing copy until gates below are met  
+> **Master blueprint:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) — waves, timeline, risks, 100% definition
 
 This document is the **single program plan** for moving Enclii from **release candidate** to **stability GA** and **commercial GA**. It consolidates:
 
@@ -64,6 +65,8 @@ Commercial GA adds:
 
 ## 2. Current state (May 2026)
 
+**Program readiness (2026-05-29):** Stability GA ~74% · Commercial GA ~70%. Engineering for bets A+B+C ~90%; critical path is ops proof, 30-day SLO, and GTM publish — not net-new features. See [COMMERCIAL_GA_MASTER_PLAN.md §2](./COMMERCIAL_GA_MASTER_PLAN.md) and [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md).
+
 ### Done in code (do not re-do)
 
 | Area | Evidence |
@@ -81,10 +84,10 @@ Commercial GA adds:
 |------|----------------|
 | Security deploy checklist | **P0** — ops |
 | Cluster P0/P1 (`REMAINING_ITEMS`) | **P0** — ops |
-| Staging lifecycle proofs (bets A/B/C) | **P0** — ops ([STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md)) |
-| 30-day SLO window | **P0** — starts after Phase 0 deploy |
+| Staging lifecycle proofs (bets A/B/C) | **Done** — Actions run 26328015825 (2026-05-23) |
+| 30-day SLO window | **P0** — starts after Wave 0+1 sign-off |
 | AuthZ proof tests + handler audit | **Done** — PR #250 on `main` |
-| Product bets A/B/C code | **Done** on `main` — proof pending |
+| Product bets A/B/C code | **Done** on `main` — staging proven |
 | Reconciler queue metrics + alerting | **P1** — eng/ops (metrics done; alerting tune) |
 | Structured API errors (50+ handlers) | **P1** — eng (post-GA acceptable) |
 | sdk-ts / OpenAPI sync in UI | **P1** — eng (incremental; previews/volumes shipped) |
@@ -384,13 +387,15 @@ When a row in `ADAPTER_GAPS.md` closes, remove it and link the PR.
 
 ---
 
-## 8. Immediate next actions (this week)
+## 8. Immediate next actions (2026-05-29)
 
-1. Run [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) checklist on production.  
-2. Execute [REMAINING_ITEMS.md](./REMAINING_ITEMS.md) P0 block (0.2.1–0.2.3).  
-3. Open GitHub milestone; file issues for `1.1.1`, `1.2.1`, `1.3.1`.  
-4. **Product:** confirm three bets (default A+B+C).  
-5. Assign owner for authZ test matrix PR (target: end of week 2).  
+See [COMMERCIAL_GA_MASTER_PLAN.md §9](./COMMERCIAL_GA_MASTER_PLAN.md) for the full wave schedule. This week:
+
+1. Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) checklist (O-3) and Gate 1 sign-off.  
+2. Execute [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md) O-5–O-6 (Longhorn CPU, disk prune).  
+3. Wave 1: restore drill (O-9), Vault/ESO (O-10), Cosign enforce (O-11).  
+4. Start legal review of [SLA_DRAFT.md](./SLA_DRAFT.md) and privacy/terms draft (parallel during SLO window).  
+5. **Product bets A+B+C:** confirmed and staging-proven; no re-scope required.  
 
 ---
 
@@ -419,7 +424,9 @@ When a row in `ADAPTER_GAPS.md` closes, remove it and link the PR.
 
 | Document | Role |
 |----------|------|
-| [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) | **This plan** |
+| [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) | **Master blueprint** — waves, timeline, 100% definition |
+| [GA_REMEDIATION_PLAN.md](./GA_REMEDIATION_PLAN.md) | **This plan** — phases, workstreams, exit criteria |
+| [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md) | Time-ordered wave summary |
 | [CODEBASE_AUDIT_2026-05.md](./CODEBASE_AUDIT_2026-05.md) | Code audit status |
 | [REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md) | Detailed infra/test phases |
 | [REMAINING_ITEMS.md](./REMAINING_ITEMS.md) | Cluster ops queue |

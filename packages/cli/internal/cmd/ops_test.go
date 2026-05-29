@@ -40,6 +40,16 @@ func TestOpsJobs_Subcommands(t *testing.T) {
 	}
 }
 
+func TestOpsStorage_Subcommands(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	storage := findSubcommand(NewOpsCommand(cfg), "storage")
+	require.NotNil(t, storage)
+
+	for _, want := range []string{"volumes", "pvc", "longhorn", "repair-plan", "settings-apply", "prune-detached"} {
+		assert.NotNil(t, findSubcommand(storage, want), "expected ops storage %s", want)
+	}
+}
+
 func TestOpsPodsLogsFlags(t *testing.T) {
 	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
 	logs := findSubcommand(findSubcommand(NewOpsCommand(cfg), "pods"), "logs")
