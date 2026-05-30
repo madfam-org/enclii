@@ -16,6 +16,9 @@ spec:
             memory: "1Gi"
             cpu: "1000m"
         env:
+        # Production fail-closed gate (IsProduction + callback auth; see callback_auth.go)
+        - name: ENCLII_ENV
+          value: "production"
         # Redis - K8s internal DNS (locked from external access)
         # Config reads ENCLII_REDIS_HOST/PORT, not URL (see config/config.go:165-167)
         - name: ENCLII_REDIS_HOST
