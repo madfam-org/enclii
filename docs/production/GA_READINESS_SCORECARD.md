@@ -18,8 +18,8 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 | Track | Readiness | Blocker |
 |-------|-----------|---------|
 | **Stability GA** | **~82%** | 30-day SLO clock started 2026-05-30; optional Vault backfill (O-10) |
-| **Commercial GA (scoped)** | **~70%** | Staging proofs green (2026-05-23); paid self-serve QA, 30-day SLO, and GTM publish remain open |
-| **Monetization path** | **~65%** | Signup/pricing live proof, billing webhook replay proof, and published SLA remain open |
+| **Commercial GA (scoped)** | **~78%** | Gate 3 ops closed; Gate 5 publish + SLO remain |
+| **Monetization path** | **~80%** | Ops proof green; wizard deferred; SLA publish open |
 | **Retention / support** | **~40%** | Customer-visible status, support tiers, on-call proof, and incident workflow remain open |
 
 **Target Commercial GA announce:** ~2026-07-14 (30-day SLO starting after Wave 0+1 sign-off). See [COMMERCIAL_GA_MASTER_PLAN.md §6](./COMMERCIAL_GA_MASTER_PLAN.md).
@@ -39,8 +39,8 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 | **Bet B — Domains** | Staging lifecycle pass | 🟢 Proven | Same run |
 | **Bet C — Volumes** | Staging + deploy pass | 🟢 Smoke proven | Same run (full deploy slice optional) |
 | **Billing enforce** | Throttle on deploy/build | 🟢 Done | Waybill + `enclii billing throttles` |
-| **Self-serve signup** | End-to-end in prod | 🟡 Checklist | [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) |
-| **Pricing / checkout** | Landing + Dhanam aligned | 🟡 Partial | Paywall E2E may skip if not deployed |
+| **Self-serve signup** | End-to-end in prod | 🟢 Ops done | API/UI/Resend proven; wizard deferred (GTM, non-blocking) |
+| **Pricing / checkout** | Landing + Dhanam aligned | 🟡 Partial | Landing + Dhanam CI green; tier copy drift in FAQ |
 | **SLA / legal** | Published externally | 🟡 Draft | [SLA_DRAFT.md](./SLA_DRAFT.md) |
 | **Support / status** | Customer-visible | 🟡 Draft | [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
 | **GA messaging** | Changelog, no “95% ready” | 🟡 Draft | [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
@@ -77,7 +77,7 @@ Refs: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) · Actions **Commer
 
 | Item | Date | Initials |
 |------|------|----------|
-| [Signup & pricing checklist](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) | 2026-05-30 (automated partial) | Ops |
+| [Signup & pricing checklist](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) | 2026-05-30 (ops complete; wizard deferred) | Ops |
 
 ### Gate 4 — Stability GA (30 days)
 

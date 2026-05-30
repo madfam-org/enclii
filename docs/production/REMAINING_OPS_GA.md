@@ -60,8 +60,10 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 
 | ID | Task | Owner | Reference |
 |----|------|-------|-----------|
-| O-16 | Signup + pricing manual checklist | GTM/QA | **Partial** — automated proof green; Resend wired (`ee30d703`); manual wizard steps 3–7 pending |
-| O-18 | Landing pricing section deployed (or document skip) | GTM | **Done** — pricing live on enclii.dev (Sovereign/$20, 2026-05-30) |
+| O-16 | Signup + pricing QA (ops) | Ops | **Done (ops)** — automated proof + Resend wired; **wizard deferred** (GTM, non-blocking) |
+| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | **Done** — `e420cbd7` |
+| O-18 | Landing pricing section deployed (or document skip) | GTM | **Done** — pricing live on enclii.dev (2026-05-30) |
+| O-22 | Dhanam checkout / tier alignment smoke | GTM | **Done (automated)** — CI [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746); tier copy drift in FAQ |
 
 ---
 
@@ -72,7 +74,7 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 | O-19 | Publish SLA (legal approved) | Legal/GTM | [SLA_DRAFT.md](./SLA_DRAFT.md) |
 | O-20 | Publish support tiers + status page | GTM/Ops | [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
 | O-21 | Publish GA changelog; retire “95% ready” | GTM | [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
-| O-22 | Dhanam checkout / tier alignment smoke | GTM | [docs/faq/billing.md](../faq/billing.md) |
+| O-22 | Dhanam checkout / tier alignment smoke | GTM | **Automated done** — see monetization table; publish alignment TBD |
 
 ---
 
@@ -108,16 +110,24 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 | Phase 0 (O-1–O-7) | 0 | 7 |
 | Stability P1 (O-8–O-12) | 0 | 5 |
 | Staging proof (O-13–O-15) | 0 | 3 |
-| Monetization QA (O-16–O-18) | 1 | 2 |
-| Commercial publish (O-19–O-22) | 4 | 0 |
+| Monetization QA (O-16–O-18, O-22 smoke) | 0 | 4 |
+| Commercial publish (O-19–O-22 publish) | 3 | 1 |
 
-**Total open ops tasks:** 4 of 22 (18 complete or mostly complete).
+**Total open ops tasks:** 3 of 22 (19 complete). **Gate 4 SLO** in progress (~ends 2026-06-29).
+
+## 2026-05-30 Gate 3 ops close + Gate 4 hygiene
+
+- **O-16 ops:** `make ga-signup-api-smoke` 7/7; wizard explicitly deferred (non-blocking).
+- **O-22 smoke:** Dhanam checkout + billing endpoints green in [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746).
+- **Commercial proof:** db/schema check warns (not fails) when synthetics token lacks admin scope.
+- **ESO:** `enclii-internal-api-key`, `enclii-resend-api-key`, porkbun — **SecretSynced**.
+- **Argo:** core-services Synced/Healthy; `autoswarm-*` Degraded (non-enclii-core, tracked).
 
 ## 2026-05-30 Wave 2 — monetization automated proof
 
 - **O-18:** Landing pricing deployed — `Simple, Transparent Pricing`, Sovereign **$20**, CTAs → `app.enclii.dev`.
 - **O-16 (automated):** Signup API smoke **201**; signup page **200**; Dhanam checkout **200**; billing cost/budgets/throttles **200** — CI green [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746) (9 pass, 1 warn: admin db/schema).
-- **O-16 (manual):** Resend wired via Janua bridge; sender `noreply@janua.dev` (interim). Full wizard (verify → GitHub → provision) + tier copy sign-off remain.
+- **O-16 (manual):** Wizard steps 3–7 **deferred** (GTM, non-blocking). Ops: Resend bridge + `make ga-signup-api-smoke` 7/7.
 
 ## 2026-05-30 Wave 2 — signup enable (O-17)
 

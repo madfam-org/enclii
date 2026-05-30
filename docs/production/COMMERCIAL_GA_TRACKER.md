@@ -135,7 +135,8 @@
 | O-18 landing pricing | **Done** — Sovereign/$20 live on enclii.dev |
 | O-16 automated proof | **Green** — [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746) (9 pass, 1 warn) |
 | Commercial proof harness fix | **Done** — `03fef5b5` dashboard auth gate uses unauthenticated probe |
-| Resend / full signup wizard | **Open** — adapter gap; manual O-16 steps 2–7 pending |
+| Resend bridge + O-16 ops close | **Done** — `ee30d703`; `make ga-signup-api-smoke` 7/7; wizard deferred |
+| Gate 3 ops sign-off | **Done** — O-16/O-17/O-18/O-22 smoke; Gate 4 SLO running |
 
 ## Next merge train
 

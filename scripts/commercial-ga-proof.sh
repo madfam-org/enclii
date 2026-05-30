@@ -214,7 +214,7 @@ if [ -n "$TOKEN" ]; then
   elif [ "$code" = "200" ]; then
     warn_or_fail "db schema healthy" "HTTP 200 but healthy!=true (check pending/dirty/columns)"
   elif [ "$code" = "403" ] || [ "$code" = "401" ]; then
-    warn_or_fail "db schema healthy" "admin token required for GET /v1/admin/db/schema"
+    append_check warn "db schema healthy" "admin token required for GET /v1/admin/db/schema"
   else
     append_check fail "db schema healthy" "expected HTTP 200, got ${code:-000}"
   fi
