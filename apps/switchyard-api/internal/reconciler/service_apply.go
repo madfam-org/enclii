@@ -109,6 +109,7 @@ func (r *ServiceReconciler) applyCronJob(ctx context.Context, cronJob *batchv1.C
 
 	// Update existing cronjob
 	cronJob.ResourceVersion = existing.ResourceVersion
+	preserveKyvernoCronJobAnnotations(cronJob, existing)
 	_, err = cjClient.Update(ctx, cronJob, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update cronjob: %w", err)

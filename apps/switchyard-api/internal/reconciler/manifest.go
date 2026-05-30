@@ -660,8 +660,6 @@ func (r *ServiceReconciler) generateInterceptorService(req *ReconcileRequest, na
 	}
 }
 
-// preserveKyvernoAnnotations copies Kyverno admission annotations from an existing
-// Deployment so updates do not violate verify-image-signatures immutability rules.
 func preserveKyvernoAnnotations(desired, existing *appsv1.Deployment) {
 	if desired.Annotations == nil {
 		desired.Annotations = make(map[string]string)
@@ -677,6 +675,33 @@ func preserveKyvernoAnnotations(desired, existing *appsv1.Deployment) {
 	for key, value := range existing.Spec.Template.Annotations {
 		if strings.HasPrefix(key, "kyverno.io/") {
 			desired.Spec.Template.Annotations[key] = value
+		}
+	}
+}
+
+func preserveKyvernoCronJobAnnotations(desired, existing *batchv1.CronJob) {
+	if desired.Annotations == nil {
+		desired.Annotations = make(map[string]string)
+	}
+	for key, value := range existing.Annotations {
+		if strings.HasPrefix(key, "kyverno.io/") {
+			desired.Annotations[key] = value
+		}
+	}
+	if desired.Spec.JobTemplate.Annotations == nil {
+		desired.Spec.JobTemplate.Annotations = make(map[string]string)
+	}
+	for key, value := range existing.Spec.JobTemplate.Annotations {
+		if strings.HasPrefix(key, "kyverno.io/") {
+			desired.Spec.JobTemplate.Annotations[key] = value
+		}
+	}
+	if desired.Spec.JobTemplate.Spec.Template.Annotations == nil {
+		desired.Spec.JobTemplate.Spec.Template.Annotations = make(map[string]string)
+	}
+	for key, value := range existing.Spec.JobTemplate.Spec.Template.Annotations {
+		if strings.HasPrefix(key, "kyverno.io/") {
+			desired.Spec.JobTemplate.Spec.Template.Annotations[key] = value
 		}
 	}
 }
