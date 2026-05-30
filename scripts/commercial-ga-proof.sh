@@ -219,11 +219,11 @@ if [ -n "$TOKEN" ]; then
     append_check fail "db schema healthy" "expected HTTP 200, got ${code:-000}"
   fi
 
-  code="$(http_json_auth "${API_URL%/}/v1/dashboard/stats")"
+  code="$(http_status "${API_URL%/}/v1/dashboard/stats")"
   if [ "$code" = "401" ] || [ "$code" = "403" ]; then
     append_check pass "dashboard stats auth gate" "HTTP $code"
   else
-    append_check fail "dashboard stats auth gate" "expected 401/403, got ${code:-000}"
+    append_check fail "dashboard stats auth gate" "expected 401/403 without auth, got ${code:-000}"
   fi
 fi
 

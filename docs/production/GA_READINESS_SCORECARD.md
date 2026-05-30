@@ -77,7 +77,7 @@ Refs: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) · Actions **Commer
 
 | Item | Date | Initials |
 |------|------|----------|
-| [Signup & pricing checklist](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) | | |
+| [Signup & pricing checklist](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) | 2026-05-30 (automated partial) | Ops |
 
 ### Gate 4 — Stability GA (30 days)
 

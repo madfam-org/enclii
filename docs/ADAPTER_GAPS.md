@@ -10,6 +10,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` — **8/8 populated** 2026-05-30 | P2 |
 | Enclii Vault `internal_api_key` backfill | Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh` | `enclii secrets` Vault writer + merge ESO auto-sync | P1 |
+| Signup verification email (Resend) | No `ENCLII_RESEND_API_KEY` in prod; emails log-only | `enclii secrets` + ESO `resend_api_key` → `environment-patch.yaml` | P1 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
