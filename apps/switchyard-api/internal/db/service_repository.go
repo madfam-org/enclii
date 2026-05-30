@@ -21,7 +21,7 @@ func NewServiceRepository(db DBTX) *ServiceRepository {
 	return &ServiceRepository{db: db}
 }
 
-func hydrateServiceJSON(service *types.Service, buildConfigJSON, jobsJSON, volumesJSON []byte) error {
+func hydrateServiceJSON(service *types.Service, buildConfigJSON, jobsJSON, volumesJSON, healthCheckJSON []byte) error {
 	if err := json.Unmarshal(buildConfigJSON, &service.BuildConfig); err != nil {
 		return fmt.Errorf("failed to unmarshal build config: %w", err)
 	}
@@ -35,7 +35,21 @@ func hydrateServiceJSON(service *types.Service, buildConfigJSON, jobsJSON, volum
 			return fmt.Errorf("failed to unmarshal volumes: %w", err)
 		}
 	}
+	if len(healthCheckJSON) > 0 && string(healthCheckJSON) != "null" {
+		var hc types.HealthCheckConfig
+		if err := json.Unmarshal(healthCheckJSON, &hc); err != nil {
+			return fmt.Errorf("failed to unmarshal health check: %w", err)
+		}
+		service.HealthCheck = &hc
+	}
 	return nil
+}
+
+func marshalHealthCheck(hc *types.HealthCheckConfig) ([]byte, error) {
+	if hc == nil {
+		return nil, nil
+	}
+	return json.Marshal(hc)
 }
 
 func marshalServiceVolumes(volumes []types.Volume) ([]byte, error) {
@@ -78,6 +92,11 @@ func (r *ServiceRepository) Create(service *types.Service) error {
 		return fmt.Errorf("failed to marshal volumes: %w", err)
 	}
 
+	healthCheckJSON, err := marshalHealthCheck(service.HealthCheck)
+	if err != nil {
+		return fmt.Errorf("failed to marshal health check: %w", err)
+	}
+
 	// k8s_namespace persisted so subsequent reads via ListAll/ListByProject
 	// can populate Service.K8sNamespace and the observability handler can
 	// probe the right namespace. Optional: NULL for services that haven't
@@ -98,12 +117,12 @@ func (r *ServiceRepository) Create(service *types.Service) error {
 
 	query := `
 		INSERT INTO services (id, project_id, name, git_repo, app_path, build_config, volumes,
-			auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at, jobs, type, region)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			auto_deploy, auto_deploy_branch, auto_deploy_env, k8s_namespace, created_at, updated_at, jobs, type, region, health_check)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	`
 	_, err = r.db.Exec(query, service.ID, service.ProjectID, service.Name, service.GitRepo,
 		service.AppPath, buildConfigJSON, volumesJSON, service.AutoDeploy, service.AutoDeployBranch,
-		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt, jobsJSON, service.Type, service.Region)
+		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt, jobsJSON, service.Type, service.Region, healthCheckJSON)
 	return err
 }
 
@@ -122,18 +141,20 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 	var buildConfigJSON []byte
 	var jobsJSON []byte
 	var volumesJSON []byte
+	var healthCheckJSON []byte
 	var appPath sql.NullString
 
 	query := `SELECT id, project_id, name, git_repo, COALESCE(app_path, '') as app_path, build_config,
 		COALESCE(volumes, '[]'::jsonb) as volumes,
-		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region
+		auto_deploy, auto_deploy_branch, auto_deploy_env, created_at, updated_at, COALESCE(jobs, '[]'::jsonb) as jobs, type, region,
+		health_check
 		FROM services WHERE id = $1`
 
 	err := r.db.QueryRow(query, id).Scan(
 		&service.ID, &service.ProjectID, &service.Name, &service.GitRepo,
 		&appPath, &buildConfigJSON, &volumesJSON, &service.AutoDeploy, &service.AutoDeployBranch,
 		&service.AutoDeployEnv, &service.CreatedAt, &service.UpdatedAt, &jobsJSON,
-		&service.Type, &service.Region,
+		&service.Type, &service.Region, &healthCheckJSON,
 	)
 	if err != nil {
 		return nil, err
@@ -143,7 +164,7 @@ func (r *ServiceRepository) GetByID(id uuid.UUID) (*types.Service, error) {
 		service.AppPath = appPath.String
 	}
 
-	if err := hydrateServiceJSON(service, buildConfigJSON, jobsJSON, volumesJSON); err != nil {
+	if err := hydrateServiceJSON(service, buildConfigJSON, jobsJSON, volumesJSON, healthCheckJSON); err != nil {
 		return nil, err
 	}
 
@@ -610,15 +631,22 @@ func (r *ServiceRepository) Update(ctx context.Context, service *types.Service) 
 		return fmt.Errorf("failed to marshal volumes: %w", err)
 	}
 
+	healthCheckJSON, err := marshalHealthCheck(service.HealthCheck)
+	if err != nil {
+		return fmt.Errorf("failed to marshal health check: %w", err)
+	}
+
 	query := `
 		UPDATE services
 		SET name = $1, git_repo = $2, app_path = $3, build_config = $4, volumes = $5,
-		    auto_deploy = $6, auto_deploy_branch = $7, auto_deploy_env = $8, updated_at = $9, jobs = $10, type = $11, region = $12
-		WHERE id = $13
+		    auto_deploy = $6, auto_deploy_branch = $7, auto_deploy_env = $8, updated_at = $9, jobs = $10, type = $11, region = $12,
+		    health_check = $13
+		WHERE id = $14
 	`
 	result, err := r.db.ExecContext(ctx, query,
 		service.Name, service.GitRepo, service.AppPath, buildConfigJSON, volumesJSON,
-		service.AutoDeploy, service.AutoDeployBranch, service.AutoDeployEnv, service.UpdatedAt, jobsJSON, service.Type, service.Region, service.ID)
+		service.AutoDeploy, service.AutoDeployBranch, service.AutoDeployEnv, service.UpdatedAt, jobsJSON, service.Type, service.Region,
+		healthCheckJSON, service.ID)
 	if err != nil {
 		return err
 	}

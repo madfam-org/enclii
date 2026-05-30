@@ -40,10 +40,12 @@ echo "api=$API_URL service=$SERVICE_ID env=$ENV_NAME dev_ns=$DEV_NS"
 
 # 1. Copy gitops project secret into dev namespace (reconciler mounts via envFrom).
 if command -v kubectl >/dev/null 2>&1; then
-  if kubectl --context "$KUBE_CONTEXT" get secret "$SECRET_NAME" -n "$PROD_NS" >/dev/null 2>&1; then
+  if kubectl --context "$KUBE_CONTEXT" get secret "$SECRET_NAME" -n "$DEV_NS" >/dev/null 2>&1; then
+    echo "Secret ${SECRET_NAME} already exists in ${DEV_NS}; skip copy"
+  elif kubectl --context "$KUBE_CONTEXT" get secret "$SECRET_NAME" -n "$PROD_NS" >/dev/null 2>&1; then
     echo "Copying ${SECRET_NAME} ${PROD_NS} → ${DEV_NS}..."
-    kubectl --context "$KUBE_CONTEXT" get secret "$SECRET_NAME" -n "$PROD_NS" -o yaml \
-      | sed "s/namespace: ${PROD_NS}/namespace: ${DEV_NS}/" \
+    DEV_NS="$DEV_NS" kubectl --context "$KUBE_CONTEXT" get secret "$SECRET_NAME" -n "$PROD_NS" -o json \
+      | python3 -c "import json,sys,os; s=json.load(sys.stdin); m=s['metadata']; m.pop('resourceVersion',None); m.pop('uid',None); m.pop('creationTimestamp',None); m['namespace']=os.environ['DEV_NS']; print(json.dumps(s))" \
       | kubectl --context "$KUBE_CONTEXT" apply -f -
   else
     echo "WARN: secret ${SECRET_NAME} not found in ${PROD_NS}; skip copy" >&2
