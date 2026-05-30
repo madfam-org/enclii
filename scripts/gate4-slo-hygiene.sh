@@ -20,6 +20,7 @@ API_URL="${API_URL:-https://api.enclii.dev}"
 APP_URL="${APP_URL:-https://app.enclii.dev}"
 STATUS_URL="${STATUS_URL:-https://status.enclii.dev}"
 KUBE_CONTEXT="${KUBE_CONTEXT:-foundry}"
+PUBLIC_ONLY="${GATE4_PUBLIC_ONLY:-false}"
 
 pass=0
 fail=0
@@ -68,22 +69,27 @@ record "$([ "$code" = "400" ] || [ "$code" = "429" ] && echo 1 || echo 0)" "sign
 code="$(http_code "${APP_URL%/}/signup")"
 record "$([ "$code" = "200" ] && echo 1 || echo 0)" "signup ui" "HTTP $code"
 
-if kubectl --context "$KUBE_CONTEXT" get application core-services -n argocd \
-  -o jsonpath='{.status.sync.status}{" "}{.status.health.status}' 2>/dev/null | grep -q 'Synced Healthy'; then
-  record 1 "argocd core-services" "Synced/Healthy"
+if [ "$PUBLIC_ONLY" = "true" ] || ! kubectl --context "$KUBE_CONTEXT" cluster-info >/dev/null 2>&1; then
+  record 1 "argocd core-services" "skipped (public-only / no cluster)"
+  record 1 "enclii ESO sync" "skipped (public-only / no cluster)"
 else
-  sync_health="$(kubectl --context "$KUBE_CONTEXT" get application core-services -n argocd \
-    -o jsonpath='sync={.status.sync.status} health={.status.health.status}' 2>/dev/null || echo unknown)"
-  record 0 "argocd core-services" "$sync_health"
-fi
+  if kubectl --context "$KUBE_CONTEXT" get application core-services -n argocd \
+    -o jsonpath='{.status.sync.status}{" "}{.status.health.status}' 2>/dev/null | grep -q 'Synced Healthy'; then
+    record 1 "argocd core-services" "Synced/Healthy"
+  else
+    sync_health="$(kubectl --context "$KUBE_CONTEXT" get application core-services -n argocd \
+      -o jsonpath='sync={.status.sync.status} health={.status.health.status}' 2>/dev/null || echo unknown)"
+    record 0 "argocd core-services" "$sync_health"
+  fi
 
-eso_lines="$(kubectl --context "$KUBE_CONTEXT" get externalsecret -n enclii \
-  -o jsonpath='{range .items[*]}{.status.conditions[0].reason}{"\n"}{end}' 2>/dev/null || true)"
-eso_bad=0
-if [ -n "$eso_lines" ]; then
-  eso_bad="$(printf '%s\n' "$eso_lines" | awk '$1!="SecretSynced"{c++} END{print c+0}')"
+  eso_lines="$(kubectl --context "$KUBE_CONTEXT" get externalsecret -n enclii \
+    -o jsonpath='{range .items[*]}{.status.conditions[0].reason}{"\n"}{end}' 2>/dev/null || true)"
+  eso_bad=0
+  if [ -n "$eso_lines" ]; then
+    eso_bad="$(printf '%s\n' "$eso_lines" | awk '$1!="SecretSynced"{c++} END{print c+0}')"
+  fi
+  record "$([ "$eso_bad" = "0" ] && echo 1 || echo 0)" "enclii ESO sync" "${eso_bad} not SecretSynced"
 fi
-record "$([ "$eso_bad" = "0" ] && echo 1 || echo 0)" "enclii ESO sync" "${eso_bad} not SecretSynced"
 
 printf "\npassed=%s failed=%s\n" "$pass" "$fail"
 

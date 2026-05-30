@@ -34,6 +34,14 @@ jobs:
           DHANAM_CHECKOUT_URL: ${{ vars.DHANAM_ENCLII_CHECKOUT_URL }}
         run: bash scripts/commercial-ga-proof.sh
 
+      - name: Gate 4 public SLO hygiene
+        env:
+          API_URL: ${{ vars.ENCLII_API_URL || 'https://api.enclii.dev' }}
+          APP_URL: ${{ vars.ENCLII_APP_URL || 'https://app.enclii.dev' }}
+          STATUS_URL: https://status.enclii.dev
+          GATE4_PUBLIC_ONLY: "true"
+        run: bash scripts/gate4-slo-hygiene.sh
+
       - name: Upload commercial GA proof
         if: always()
         uses: actions/upload-artifact@v4
