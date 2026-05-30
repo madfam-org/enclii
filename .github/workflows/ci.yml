@@ -912,7 +912,8 @@ jobs:
     if: |
       needs.docker-build.result == 'success' &&
       github.ref == 'refs/heads/main' &&
-      needs.detect-changes.outputs.has_changes == 'true'
+      needs.detect-changes.outputs.has_changes == 'true' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force_build == 'true'))
     permissions:
       contents: write
       packages: read
