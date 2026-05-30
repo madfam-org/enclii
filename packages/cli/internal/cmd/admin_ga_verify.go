@@ -66,7 +66,7 @@ func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut, stability
 		add("public health", "pass", "GET /health/public OK")
 	}
 
-	resp, err := apiRequestResponse(cmd.Context(), cfg, "GET", "/v1/dashboard/stats", nil)
+	resp, err := apiRequestResponseNoAuth(cmd.Context(), cfg, "GET", "/v1/dashboard/stats", nil)
 	if err != nil {
 		add("dashboard stats auth gate", "fail", err.Error())
 	} else {

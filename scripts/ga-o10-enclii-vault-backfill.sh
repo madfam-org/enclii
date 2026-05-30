@@ -15,12 +15,40 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BRIDGE_K8S_NAME="${ENCLII_INTERNAL_API_KEY_BRIDGE:-enclii-internal-api-key-source}"
 
-echo "=== O-10 Enclii Vault backfill ==="
-"${ROOT}/scripts/backfill-vault-path-from-k8s-secret.sh" \
-  --namespace enclii \
-  --secret enclii-secrets \
-  --vault-path secret/enclii
+bootstrap_k8s_bridge() {
+  if kubectl -n enclii get secret "$BRIDGE_K8S_NAME" >/dev/null 2>&1; then
+    echo "Bridge secret $BRIDGE_K8S_NAME already exists (kubernetes-store)"
+    return 0
+  fi
+  if ! kubectl -n enclii get secret enclii-secrets >/dev/null 2>&1; then
+    echo "enclii-secrets not found — cannot bootstrap $BRIDGE_K8S_NAME" >&2
+    return 1
+  fi
+  echo "Bootstrapping $BRIDGE_K8S_NAME from enclii-secrets (no values printed)..."
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
+  kubectl -n enclii get secret enclii-secrets -o "jsonpath={.data.internal-api-key}" | base64 -d >"$tmp"
+  prop="internal-api-key"
+  kubectl -n enclii create secret generic "$BRIDGE_K8S_NAME" \
+    --from-file="${prop}=${tmp}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+
+echo "=== O-10 Enclii secrets sync ==="
+bootstrap_k8s_bridge
+
+if [[ -n "${VAULT_TOKEN:-}" || -n "${VAULT_TOKEN_FILE:-}" ]]; then
+  echo
+  echo "Vault backfill requested..."
+  "${ROOT}/scripts/backfill-vault-path-from-k8s-secret.sh" \
+    --namespace enclii \
+    --secret enclii-secrets \
+    --vault-path secret/enclii
+else
+  echo "Skipping Vault backfill (set VAULT_TOKEN to write secret/enclii/internal_api_key)"
+fi
 
 echo
 echo "Refreshing merge ExternalSecret..."
