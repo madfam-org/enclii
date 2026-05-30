@@ -119,7 +119,16 @@ spec:
           value: "https://api.enclii.dev"
         - name: ENCLII_APP_BASE_URL
           value: "https://app.enclii.dev"
-        # RESEND: optional — without ENCLII_RESEND_API_KEY emails are log-only
+        - name: ENCLII_RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: enclii-secrets
+              key: resend-api-key
+              optional: true
+        - name: ENCLII_EMAIL_FROM_ADDRESS
+          value: "noreply@enclii.dev"
+        - name: ENCLII_EMAIL_FROM_NAME
+          value: "Enclii"
         # Session Revocation - fail closed in production (SOC 2)
         - name: ENCLII_SESSION_REVOCATION_FAIL_MODE
           value: "closed"
