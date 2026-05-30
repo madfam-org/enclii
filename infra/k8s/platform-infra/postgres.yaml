@@ -266,6 +266,8 @@ spec:
             - "wal_compression=on"
             - "-c"
             - "wal_sender_timeout=60s"
+            - "-c"
+            - "idle_session_timeout=600000"
           ports:
             - containerPort: 5432
           volumeMounts:

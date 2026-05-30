@@ -63,6 +63,31 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Same-namespace consumers (backup CronJobs, PgBouncer, restore drills).
+    # namespaceSelector alone does not admit pods whose source namespace is also
+    # `data` on k3s/flannel — without these rules pg_dumpall backups fail with
+    # connection refused while in-namespace exec paths still work.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgres-backup
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - podSelector:
+            matchLabels:
+              app: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgres-restore-drill
+      ports:
+        - protocol: TCP
+          port: 5432
 
 # Allow application namespaces -> Redis (port 6379)
 ---
