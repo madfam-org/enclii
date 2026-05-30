@@ -13,6 +13,7 @@ Append a row weekly (or after incidents) with `./scripts/gate4-slo-hygiene.sh --
 
 | Date (UTC) | Checks passed | Checks failed | Notes | Owner |
 |------------|---------------|---------------|-------|-------|
+| 2026-05-30T20:40Z | 7 | 0 | all green | Ops |
 | 2026-05-30T19:01Z | 7 | 0 | first checkpoint — all green | Ops |
 | 2026-05-30T19:06Z | 7 | 0 | post-deploy adapters 4/4; commercial proof [26692385415](https://github.com/madfam-org/enclii/actions/runs/26692385415) 9 pass | Ops |
 

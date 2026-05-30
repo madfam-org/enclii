@@ -1,11 +1,9 @@
 /**
  * Tests for app/api/domains/route.ts
  *
- * Tests the GET and POST route handlers for the domains API,
- * which delegates to cloudflare-service functions.
+ * Domains API delegates to Switchyard Cloudflare provider via switchyard-proxy.
  */
 
-// Mock Next.js server runtime for route handlers
 jest.mock('next/server', () => {
   class MockNextResponse {
     body: unknown
@@ -23,76 +21,89 @@ jest.mock('next/server', () => {
     }
 
     static json(data: unknown, init?: { status?: number }) {
-      const resp = new MockNextResponse(JSON.stringify(data), init)
-      return resp
+      return new MockNextResponse(JSON.stringify(data), init)
     }
   }
 
-  return {
-    NextResponse: MockNextResponse,
-  }
+  return { NextResponse: MockNextResponse }
 })
 
-// Mock the cloudflare-service module
-jest.mock('@/lib/cloudflare-service', () => ({
-  getDispatchDomains: jest.fn(),
-  commissionDomain: jest.fn(),
+jest.mock('@/lib/switchyard-proxy', () => ({
+  switchyardProviderCall: jest.fn(),
 }))
 
 import { GET, POST } from '@/app/api/domains/route'
-import { getDispatchDomains, commissionDomain } from '@/lib/cloudflare-service'
+import { switchyardProviderCall } from '@/lib/switchyard-proxy'
 
-const mockGetDispatchDomains = getDispatchDomains as jest.MockedFunction<typeof getDispatchDomains>
-const mockCommissionDomain = commissionDomain as jest.MockedFunction<typeof commissionDomain>
+const mockProviderCall = switchyardProviderCall as jest.MockedFunction<typeof switchyardProviderCall>
 
 beforeEach(() => {
   jest.clearAllMocks()
 })
 
-// =============================================================================
-// GET /api/domains
-// =============================================================================
-
 describe('GET /api/domains', () => {
-  it('returns domains list on success', async () => {
-    const domains = [
-      { id: 'z1', domain: 'madfam.io', tenant: 'madfam' as const, status: 'active' as const },
-    ]
-    mockGetDispatchDomains.mockResolvedValueOnce(domains as any)
+  it('returns mapped domains on success', async () => {
+    mockProviderCall.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        data: {
+          zones: [
+            {
+              id: 'z1',
+              name: 'madfam.io',
+              status: 'active',
+              name_servers: ['ns1.cf', 'ns2.cf'],
+              activated_on: '2026-01-01T00:00:00Z',
+              created_on: '2025-12-01T00:00:00Z',
+            },
+          ],
+        },
+      },
+    })
 
     const response = await GET()
     const body = await response.json()
 
+    expect(mockProviderCall).toHaveBeenCalledWith('cloudflare', 'zones', { dry_run: true })
     expect(body.success).toBe(true)
-    expect(body.data).toEqual(domains)
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: 'z1',
+        domain: 'madfam.io',
+        tenant: 'madfam',
+        status: 'active',
+        nameservers: ['ns1.cf', 'ns2.cf'],
+      }),
+    ])
   })
 
-  it('returns error with 500 status on failure', async () => {
-    mockGetDispatchDomains.mockRejectedValueOnce(new Error('Cloudflare API timeout'))
+  it('returns 502 when Switchyard provider call fails', async () => {
+    mockProviderCall.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      data: { summary: 'Cloudflare API timeout' },
+    })
 
     const response = await GET()
     const body = await response.json()
 
-    expect((response as any).status).toBe(500)
+    expect((response as { status: number }).status).toBe(502)
     expect(body.success).toBe(false)
     expect(body.error).toBe('Cloudflare API timeout')
   })
 
-  it('returns generic error message for non-Error exceptions', async () => {
-    mockGetDispatchDomains.mockRejectedValueOnce('unexpected string error')
+  it('returns 500 when proxy throws', async () => {
+    mockProviderCall.mockRejectedValueOnce(new Error('network down'))
 
     const response = await GET()
     const body = await response.json()
 
-    expect((response as any).status).toBe(500)
+    expect((response as { status: number }).status).toBe(500)
     expect(body.success).toBe(false)
-    expect(body.error).toBe('Failed to fetch domains')
+    expect(body.error).toBe('network down')
   })
 })
-
-// =============================================================================
-// POST /api/domains
-// =============================================================================
 
 describe('POST /api/domains', () => {
   function makeRequest(body: unknown): Request {
@@ -102,25 +113,42 @@ describe('POST /api/domains', () => {
   }
 
   it('commissions a valid domain and returns result', async () => {
-    const result = {
-      zone: { id: 'z-new', name: 'newsite.dev', name_servers: ['ns1.cf', 'ns2.cf'] },
-      nameservers: ['ns1.cf', 'ns2.cf'],
-      instructions: ['Step 1', 'Step 2'],
-    }
-    mockCommissionDomain.mockResolvedValueOnce(result as any)
+    mockProviderCall.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: {
+        data: {
+          zone: {
+            id: 'z-new',
+            name: 'newsite.dev',
+            status: 'pending',
+            name_servers: ['ns1.cf', 'ns2.cf'],
+          },
+          nameservers: ['ns1.cf', 'ns2.cf'],
+        },
+      },
+    })
 
     const response = await POST(makeRequest({ domain: 'newsite.dev', tenant: 'other' }))
     const body = await response.json()
 
+    expect(mockProviderCall).toHaveBeenCalledWith('cloudflare', 'zone-add-apply', {
+      dry_run: false,
+      reason: 'Commission domain newsite.dev via Dispatch',
+      args: { target: 'newsite.dev' },
+    })
     expect(body.success).toBe(true)
-    expect(body.data).toEqual(result)
+    expect(body.data.nameservers).toEqual(['ns1.cf', 'ns2.cf'])
+    expect(body.data.instructions).toEqual(
+      expect.arrayContaining([expect.stringContaining('newsite.dev')])
+    )
   })
 
   it('returns 400 when domain is missing', async () => {
     const response = await POST(makeRequest({ tenant: 'other' }))
     const body = await response.json()
 
-    expect((response as any).status).toBe(400)
+    expect((response as { status: number }).status).toBe(400)
     expect(body.success).toBe(false)
     expect(body.error).toBe('Domain is required')
   })
@@ -129,7 +157,7 @@ describe('POST /api/domains', () => {
     const response = await POST(makeRequest({ domain: '-invalid..com' }))
     const body = await response.json()
 
-    expect((response as any).status).toBe(400)
+    expect((response as { status: number }).status).toBe(400)
     expect(body.success).toBe(false)
     expect(body.error).toBe('Invalid domain format')
   })

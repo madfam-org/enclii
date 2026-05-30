@@ -72,13 +72,13 @@ Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing:
 | Tier | Price | Projects | Services | Description |
 |------|-------|----------|----------|-------------|
 | Community | Free | 1 | 3 | Self-hosted open-source users |
-| Essentials | $20/mo | 1 | 3 | Managed service with support |
+| Essentials (**Sovereign** on landing) | $20/mo | 1 | 3 | Managed service with support — public marketing name **Sovereign** |
 | Pro | $49/mo | 10 | Unlimited | Premium features, priority support |
 | MADFAM Bundle | TBD | Unlimited | Unlimited | Ecosystem bundle (coming soon) |
 
-> **Landing page note (2026-05-30):** [enclii.dev](https://enclii.dev) displays a **Sovereign** tier at $20/mo with copy that does not yet match this table (feature limits differ). Product sign-off is required before GA to either rename/reprice the landing tier or update this FAQ as canonical.
+**Sovereign = Essentials:** The [enclii.dev](https://enclii.dev) landing uses **Sovereign** at $20/mo for the same managed tier documented here as Essentials (1 project, 3 services, Dhanam checkout). Use this table as canonical for GA.
 
-Community and Essentials have identical features — the value of Essentials is the **managed service** (hosting, uptime SLA, support, backups). Only Pro and above unlock additional feature limits.
+Community and Essentials have identical feature limits — the value of Essentials/Sovereign is the **managed service** (hosting, uptime SLA, support, backups). Only Pro and above unlock additional feature limits.
 
 Upgrade via Dhanam checkout: `https://app.dhan.am/checkout?plan=enclii_pro&product=enclii`
 

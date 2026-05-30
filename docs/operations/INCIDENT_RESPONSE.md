@@ -159,6 +159,19 @@ kubectl rollout restart deploy/janua-api -n janua
 
 **Workaround:** If Janua is fully down, API key authentication remains available for CI/CD pipelines. Interactive users will be blocked until SSO is restored.
 
+**Enclii dependency (Commercial GA):**
+
+| Surface | Janua down impact | Break-glass |
+|---------|-------------------|-------------|
+| app.enclii.dev / admin.enclii.dev | Login blocked (OIDC) | None for interactive users; use API keys for automation |
+| switchyard-api | JWT validation fails for user tokens | `ENCLII_API_KEY` / project tokens for CI and ops |
+| Signup (`/v1/signup`) | Unaffected if Resend path healthy | Disable signup via `ENCLII_SIGNUP_ENABLED=false` if abuse |
+| Gate 4 SLO | Counts as platform incident if API auth error rate spikes | Page on-call; target Janua recovery <4h |
+
+**Escalation:** Page Janua on-call (same MADFAM rotation). Run Janua synthetics: `janua/scripts/hosted-auth-synthetic.sh`. Record incident in [GATE4_SLO_WINDOW_LOG.md](../production/GATE4_SLO_WINDOW_LOG.md) if during SLO window.
+
+**Key rotation:** Follow Janua repo runbooks; after rotation, verify Enclii `ENCLII_OIDC_*` and JWKS URL in `switchyard-config` ESO still match issuer.
+
 ---
 
 ### 3.5 Security Breach
