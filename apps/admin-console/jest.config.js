@@ -10,6 +10,7 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^@enclii/ecosystem-tenants$': '<rootDir>/../../packages/ecosystem-tenants/src/index.ts',
     '^@enclii/shared-lib/utils$': '<rootDir>/../../packages/shared-lib/src/utils/index.ts',
     '^@enclii/ui-components$': '<rootDir>/../../packages/ui-components/src/index.ts',
     '^@enclii/ui-components/(.*)$': '<rootDir>/../../packages/ui-components/src/components/ui/$1.tsx',
