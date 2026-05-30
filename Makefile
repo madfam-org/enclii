@@ -1,7 +1,7 @@
 .PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-roundhouse install-cli
 .PHONY: test test-integration test-coverage test-benchmark test-all check-drift lint
 .PHONY: run-switchyard run-ui run-roundhouse-worker run-all
-.PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check commercial-ga-proof post-deploy-ga-adapters setup-commercial-ga-staging-env ga-ops-runbook wave0-ga-ops wave1-ga-ops clean
+.PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check commercial-ga-proof security-release-smoke post-deploy-ga-adapters setup-commercial-ga-staging-env ga-ops-runbook wave0-ga-ops wave1-ga-ops clean
 .PHONY: precommit e2e
 
 # Variables
@@ -178,6 +178,9 @@ health-check:
 
 commercial-ga-proof:
 	@bash scripts/commercial-ga-proof.sh
+
+security-release-smoke:
+	@bash scripts/security-release-smoke.sh
 
 wave0-ga-ops:
 	@bash scripts/wave0-ga-ops.sh

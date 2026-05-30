@@ -90,6 +90,9 @@ if [ ${#missing_required[@]} -gt 0 ]; then
     echo "  - $s"
   done
   echo
+  if gh secret list -R "$REPO" --json name -q '.[].name' 2>/dev/null | grep -qx ENCLII_SYNTHETICS_BEARER_TOKEN; then
+    echo "Hint: repo secret ENCLII_SYNTHETICS_BEARER_TOKEN exists — may map to PREVIEW_E2E_TOKEN / DOMAIN_E2E_TOKEN / STORAGE_E2E_TOKEN if scoped to throwaway project."
+  fi
   echo "Set with: gh secret set NAME --env ${ENV_NAME} -R ${REPO}"
   echo "See docs/production/STAGING_SECRETS_SETUP.md"
 fi

@@ -92,6 +92,10 @@ bash scripts/setup-commercial-ga-staging-env.sh --check-only || true
   fi
 
 echo
+echo "--- Security release smoke (O-3 automatable) ---"
+bash scripts/security-release-smoke.sh || true
+
+echo
 echo "--- Wave 0 (O-2–O-6) ---"
 bash scripts/wave0-ga-ops.sh "${WAVE0_ARGS[@]}"
 

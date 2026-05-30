@@ -18,11 +18,11 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
 | O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Verify** — `enclii db schema` (admin) or column in prod DB | `apps/switchyard-api/internal/db/migrations/030_*` |
-| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — [SECURITY_RELEASE_VERIFICATION.md](./SECURITY_RELEASE_VERIFICATION.md); manual Roundhouse + tenant smoke | Steps 1–7 |
+| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Blocked** — `security-release-smoke.sh` fails on prod (callback + git_repo auth); redeploy API + verify Roundhouse key | Steps 1–7 |
 | O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | Open — `enclii ops storage prune-detached --apply --reason "GA O-4"` | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
 | O-5 | Longhorn CPU settings apply | 10m | Open — `enclii ops storage settings-apply --apply --reason "GA O-5"` | [REMAINING_ITEMS §0.2.2](./REMAINING_ITEMS.md) |
 | O-6 | Disk prune (crictl, journal, logs) | 10m | Open — `enclii ops jobs trigger node-maintenance -n enclii --apply --reason "GA O-6"` or `./scripts/wave0-ga-ops.sh --apply --disk-prune` | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
-| O-7 | API post-deploy smoke | 10m | **Done** — `/health/public` + `/health/ready` OK (2026-05-23) | Enclii or CI rerun on prod URL |
+| O-7 | API post-deploy smoke | 10m | **Done** — adapters live 2026-05-30 (`post-deploy-ga-adapters.sh --public-only` 4/4) | Enclii or CI rerun on prod URL |
 
 **Track in GitHub:** use issue template **Commercial GA — Phase 0 ops gate**.
 
@@ -106,7 +106,7 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 | Gate | Open items | Done |
 |------|------------|------|
-| Phase 0 (O-1–O-7) | 3 (O-3, O-5, O-6) | 4 |
+| Phase 0 (O-1–O-7) | 3 (O-3 manual, O-5, O-6) | 4 (+ O-7 adapter routes verified) |
 | Stability P1 (O-8–O-12) | 5 | 0 |
 | Staging proof (O-13–O-15) | 0 | 3 |
 | Monetization QA (O-16–O-18) | 3 | 0 |
