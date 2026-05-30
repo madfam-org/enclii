@@ -5,7 +5,7 @@
 > **Scorecard:** [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
 > **Open ops queue:** [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)  
 > **Default bets:** Preview environments (A) + Custom domains (B) + PVCs (C)  
-> **Last updated:** 2026-05-29  
+> **Last updated:** 2026-05-30  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)
 
 ## Gate summary
@@ -26,7 +26,7 @@
 | Argo aggregate and service registry health | Ops | **Done** 2026-05-25 (`bad=0`, `degraded_count=0`) |
 | Stale Blueprint Harvester service rows | Ops | **Done** 2026-05-25 (6 stale `pod_count=0` rows removed) |
 | Lifecycle delete FK migration 031 | Ops | **Done** 2026-05-25 (`deployment_lifecycle_events` refs detach on delete) |
-| Staging lifecycle proofs (bets A/B/C) | Ops | **Done** 2026-05-23 — [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md) |
+| Staging lifecycle proofs (bets A/B/C) | Ops | **Done** 2026-05-23 (A/B); **Bet C deploy slice** 2026-05-30 — [26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111) |
 | Phase 0 execution order | Ops | [PHASE0_OPS_RUNBOOK.md](./PHASE0_OPS_RUNBOOK.md) |
 
 ## Phase 1 — Engineering (code on `main`)
@@ -52,6 +52,8 @@
 | UI + CLI docs | UI wired (Previews tab); CLI + [preview-environments.md](../guides/preview-environments.md) |
 | E2E test (SOFTWARE_SPEC) | **Staging proof green** 2026-05-23 (Actions 26328015825) |
 
+> **Note:** Run 26328015825 passed preview/domain smokes; Bet C deploy slice was auth-only until 2026-05-30 target bootstrap (`tulana-api` + `development`).
+
 ## Product bet B — Custom domains + TLS
 
 | Capability | Status |
@@ -68,7 +70,7 @@
 | Reconciler `generatePVCs` / mount | Implemented — unit tests exist |
 | UI volume attach + lifecycle | Settings editor + API persist volumes (`ServiceVolumesEditor`) |
 | CLI + user guide | `enclii volumes` + [persistent-volumes.md](../guides/persistent-volumes.md) |
-| E2E stateful deploy | **Smoke green** 2026-05-23; full deploy slice optional via `STORAGE_E2E_RELEASE_ID` |
+| E2E stateful deploy | **Green** 2026-05-30 — 4/4 storage-smoke incl. deploy→running/healthy ([26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111)) |
 
 ## Commercial wrap (GTM / legal)
 
@@ -118,6 +120,9 @@
 | `enclii ops storage storageclass-apply` + `ops policy cosign-enable` | Shipped — StorageClass reconcile + O-11 namespace labels |
 | `enclii providers cloudflare tunnels-apply` | Shipped — junction tunnel route reconcile via `resolveServiceNamespace` |
 | `enclii ops secrets sync-sweep` + `post-deploy-ga-adapters.sh` | Shipped — ESO batch reconcile + deploy adapter smoke |
+| `scripts/bootstrap-commercial-ga-storage-e2e.sh` | Shipped — Bet C dev target bootstrap (tulana-api) |
+| Bet C storage E2E (deploy slice) | **Green** 2026-05-30 — [26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111) (4 passed) |
+| Migration 032 (`services.health_check`) | **Done** — prod `schema_migrations` @ 32 |
 | ROADMAP.md + docs index updated | GA program section; scorecard percentages canonical |
 | Target announce date recorded | ~2026-07-14 (contingent on SLO start ~2026-06-07) |
 

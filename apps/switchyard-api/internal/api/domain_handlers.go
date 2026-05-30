@@ -353,6 +353,16 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 		return
 	}
 
+	// Platform subdomains (*.enclii.dev) are auto-verified at creation time.
+	if domain.IsPlatformDomain || domain.Verified {
+		c.JSON(http.StatusOK, gin.H{
+			"verified": true,
+			"domain":   domain,
+			"message":  "domain already verified",
+		})
+		return
+	}
+
 	// Check DNS TXT record
 	expectedValue := fmt.Sprintf("enclii-verification=%s", domain.ID.String())
 	verified, err := verifyDNSTXTRecord(domain.Domain, expectedValue)
@@ -369,6 +379,7 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 
 	if !verified {
 		c.JSON(http.StatusBadRequest, gin.H{
+			"verified":           false,
 			"error":              "domain not verified",
 			"message":            fmt.Sprintf("Add a TXT record to %s with value: %s", domain.Domain, expectedValue),
 			"verification_value": expectedValue,

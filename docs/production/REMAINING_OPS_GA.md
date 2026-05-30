@@ -48,7 +48,7 @@ Requires API token + throwaway services. Configure secrets per [STAGING_SECRETS_
 |----|-----|---------------------|----------|
 | O-13 | A Previews | **Done** | Actions run [26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) — 3 passed |
 | O-14 | B Domains | **Done** | Same run — 5 passed |
-| O-15 | C Storage | **Done** | Same run — 2 passed |
+| O-15 | C Storage | **Done** | Auth smokes 2026-05-23 [26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825); **full deploy slice** 2026-05-30 [26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111) — 4 passed |
 
 **Or:** Actions → **Commercial GA staging proof** → `all`.
 

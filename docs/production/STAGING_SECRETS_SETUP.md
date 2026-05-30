@@ -75,3 +75,4 @@ Update [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) bet rows with date
 | 403 on deploy | Budget throttle or approval policy — check `enclii billing throttles --active` |
 | Domain verify fails | DNS not propagated; use `DOMAIN_E2E_DOMAIN` only when TXT/CNAME are live |
 | Storage deploy 422 | Prior failed deploy for same release+environment — test rotates ready releases; pick a service with signed images and working `/health` probes |
+| Storage deploy pending (Django/gitops app) | Bootstrap dev: `./scripts/bootstrap-commercial-ga-storage-e2e.sh` (copies `{project}-secrets`, sets `ENCLII_PORT` + `health_check`) |
