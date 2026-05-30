@@ -112,6 +112,14 @@ spec:
         # Janua API URL for GitHub token retrieval
         - name: ENCLII_JANUA_API_URL
           value: "https://auth.madfam.io"
+        # Self-serve signup (P3.2 Sprint 1 — disabled-by-default in code)
+        - name: ENCLII_SIGNUP_ENABLED
+          value: "true"
+        - name: ENCLII_SELF_SERVICE_API_BASE_URL
+          value: "https://api.enclii.dev"
+        - name: ENCLII_APP_BASE_URL
+          value: "https://app.enclii.dev"
+        # RESEND: optional — without ENCLII_RESEND_API_KEY emails are log-only
         # Session Revocation - fail closed in production (SOC 2)
         - name: ENCLII_SESSION_REVOCATION_FAIL_MODE
           value: "closed"

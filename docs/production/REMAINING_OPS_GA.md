@@ -34,7 +34,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|-----------|-----------|
 | O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
 | O-9 | Backup credentials + restore drill | 25m | **Done** — backup jobs green; restore drill logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)) | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — merge ESO **SecretSynced** (k8s bridge); Vault backfill optional | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Done** — merge ESO **SecretSynced**; Vault backfill optional (skipped) | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
 | O-12 | Start **30-day SLO clock** (99.95% API) | — | **Started 2026-05-30** — Gate 1 signed off | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 
@@ -61,7 +61,7 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 | ID | Task | Owner | Reference |
 |----|------|-------|-----------|
 | O-16 | Signup + pricing manual checklist | GTM/QA | [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) |
-| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | **Open** — not set on prod; `/v1/signup/*` returns 404 (disabled-by-default) |
+| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | **Applying** — GitOps patch in `environment-patch.yaml` (2026-05-30) | 
 | O-18 | Landing pricing section deployed (or document skip) | GTM | `enclii-paywall` E2E |
 
 ---
@@ -107,12 +107,16 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 | Gate | Open items | Done |
 |------|------------|------|
 | Phase 0 (O-1–O-7) | 0 | 7 |
-| Stability P1 (O-8–O-12) | 1 (O-10 Vault backfill optional) | 4 |
+| Stability P1 (O-8–O-12) | 0 | 5 |
 | Staging proof (O-13–O-15) | 0 | 3 |
 | Monetization QA (O-16–O-18) | 3 | 0 |
 | Commercial publish (O-19–O-22) | 4 | 0 |
 
-**Total open ops tasks:** 7 of 22 (15 complete or mostly complete).
+**Total open ops tasks:** 6 of 22 (16 complete or mostly complete).
+
+## 2026-05-30 Wave 2 — signup enable (O-17)
+
+GitOps: `ENCLII_SIGNUP_ENABLED=true`, `ENCLII_SELF_SERVICE_API_BASE_URL=https://api.enclii.dev`, `ENCLII_APP_BASE_URL=https://app.enclii.dev` in `infra/k8s/production/environment-patch.yaml`. Verification emails require `ENCLII_RESEND_API_KEY` (optional — log-only without it). Manual signup flow: [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md).
 
 ## 2026-05-30 Wave 1 apply
 
