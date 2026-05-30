@@ -166,6 +166,40 @@ func TestBuildLivenessProbe_FallbackToPath(t *testing.T) {
 		"should fall back to Path when LivenessPath is empty")
 }
 
+func TestBuildLivenessProbe_HTTPHeaders(t *testing.T) {
+	cfg := &types.HealthCheckConfig{
+		Path: "/api/v1/health/",
+		Port: 8000,
+		HTTPHeaders: map[string]string{
+			"Host":              "tulana-api.madfam.io",
+			"X-Forwarded-Proto": "https",
+		},
+	}
+	probe := buildLivenessProbe(cfg, 8000)
+
+	require.NotNil(t, probe)
+	require.Len(t, probe.HTTPGet.HTTPHeaders, 2)
+	headerMap := map[string]string{}
+	for _, h := range probe.HTTPGet.HTTPHeaders {
+		headerMap[h.Name] = h.Value
+	}
+	assert.Equal(t, "tulana-api.madfam.io", headerMap["Host"])
+	assert.Equal(t, "https", headerMap["X-Forwarded-Proto"])
+}
+
+func TestBuildReadinessProbe_HTTPHeaders(t *testing.T) {
+	cfg := &types.HealthCheckConfig{
+		Path:        "/api/v1/health/",
+		HTTPHeaders: map[string]string{"Host": "tulana-api.madfam.io"},
+	}
+	probe := buildReadinessProbe(cfg, 8000)
+
+	require.NotNil(t, probe)
+	require.Len(t, probe.HTTPGet.HTTPHeaders, 1)
+	assert.Equal(t, "Host", probe.HTTPGet.HTTPHeaders[0].Name)
+	assert.Equal(t, "tulana-api.madfam.io", probe.HTTPGet.HTTPHeaders[0].Value)
+}
+
 func TestBuildLivenessProbe_CustomPort(t *testing.T) {
 	cfg := &types.HealthCheckConfig{
 		Port: 9090,

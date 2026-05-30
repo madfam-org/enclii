@@ -109,6 +109,18 @@ func buildResourceRequirements(cfg *types.ResourceConfig) corev1.ResourceRequire
 	}
 }
 
+// probeHTTPHeaders converts HealthCheckConfig HTTPHeaders to K8s probe headers.
+func probeHTTPHeaders(cfg *types.HealthCheckConfig) []corev1.HTTPHeader {
+	if cfg == nil || len(cfg.HTTPHeaders) == 0 {
+		return nil
+	}
+	headers := make([]corev1.HTTPHeader, 0, len(cfg.HTTPHeaders))
+	for name, value := range cfg.HTTPHeaders {
+		headers = append(headers, corev1.HTTPHeader{Name: name, Value: value})
+	}
+	return headers
+}
+
 // buildLivenessProbe creates a liveness probe from config or defaults
 func buildLivenessProbe(cfg *types.HealthCheckConfig, containerPort int32) *corev1.Probe {
 	// Check if probes are disabled
@@ -150,8 +162,9 @@ func buildLivenessProbe(cfg *types.HealthCheckConfig, containerPort int32) *core
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
-				Path: path,
-				Port: intstr.FromInt32(port),
+				Path:        path,
+				Port:        intstr.FromInt32(port),
+				HTTPHeaders: probeHTTPHeaders(cfg),
 			},
 		},
 		InitialDelaySeconds: initialDelay,
@@ -203,8 +216,9 @@ func buildReadinessProbe(cfg *types.HealthCheckConfig, containerPort int32) *cor
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
-				Path: path,
-				Port: intstr.FromInt32(port),
+				Path:        path,
+				Port:        intstr.FromInt32(port),
+				HTTPHeaders: probeHTTPHeaders(cfg),
 			},
 		},
 		InitialDelaySeconds: initialDelay,
@@ -313,6 +327,23 @@ func (r *ServiceReconciler) generateManifests(req *ReconcileRequest, namespace, 
 	addonEnvVars := buildAddonEnvVars(req.AddonBindings)
 	envVars = append(envVars, addonEnvVars...)
 
+	var envFrom []corev1.EnvFromSource
+	if req.OptionalProjectSecret != "" {
+		optional := true
+		envFrom = append(envFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: req.OptionalProjectSecret,
+				},
+				Optional: &optional,
+			},
+		})
+		logrus.WithFields(logrus.Fields{
+			"service":     req.Service.Name,
+			"secret_name": req.OptionalProjectSecret,
+		}).Info("Mounting optional project secret via envFrom")
+	}
+
 	var replicasPtr *int32
 	if req.Service.Type != types.ServiceTypeFunction {
 		replicasPtr = &replicas
@@ -364,6 +395,7 @@ func (r *ServiceReconciler) generateManifests(req *ReconcileRequest, namespace, 
 								},
 							},
 							Env:            envVars,
+							EnvFrom:        envFrom,
 							Resources:      buildResourceRequirements(req.Service.Resources),
 							LivenessProbe:  buildLivenessProbe(req.Service.HealthCheck, containerPort),
 							ReadinessProbe: buildReadinessProbe(req.Service.HealthCheck, containerPort),

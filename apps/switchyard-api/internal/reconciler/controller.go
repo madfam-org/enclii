@@ -397,15 +397,30 @@ func (c *Controller) processWork(ctx context.Context, work *ReconcileWork, logge
 		}
 	}
 
+	// Mount gitops-managed project secrets when present in the target namespace.
+	var optionalProjectSecret string
+	if c.repositories.Projects != nil && c.k8sClient != nil {
+		project, projErr := c.repositories.Projects.GetByID(ctx, service.ProjectID)
+		if projErr == nil && project.Slug != "" {
+			secretName := project.Slug + "-secrets"
+			if _, secErr := c.k8sClient.Clientset.CoreV1().Secrets(environment.KubeNamespace).Get(
+				ctx, secretName, metav1.GetOptions{},
+			); secErr == nil {
+				optionalProjectSecret = secretName
+			}
+		}
+	}
+
 	// Create reconcile request
 	req := &ReconcileRequest{
-		Service:         service,
-		Release:         release,
-		Deployment:      deployment,
-		Environment:     environment,
-		EnvVars:         envVars,
-		EnvVarsWithMeta: envVarsWithMeta,
-		AddonBindings:   addonBindings,
+		Service:               service,
+		Release:               release,
+		Deployment:            deployment,
+		Environment:           environment,
+		EnvVars:               envVars,
+		EnvVarsWithMeta:       envVarsWithMeta,
+		AddonBindings:         addonBindings,
+		OptionalProjectSecret: optionalProjectSecret,
 	}
 
 	// Perform reconciliation

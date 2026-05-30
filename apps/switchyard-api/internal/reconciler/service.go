@@ -39,6 +39,9 @@ type ReconcileRequest struct {
 	EnvVars         map[string]string // User-defined environment variables (decrypted) - DEPRECATED: use EnvVarsWithMeta
 	EnvVarsWithMeta []EnvVarWithMeta  // Environment variables with IsSecret metadata for proper K8s secret creation
 	AddonBindings   []AddonBinding    // Database addon bindings for env var injection
+	// OptionalProjectSecret is a pre-existing K8s Secret name (e.g. tulana-secrets) to
+	// mount via envFrom when present in the target namespace (gitops-managed apps).
+	OptionalProjectSecret string
 }
 
 // AddonBinding represents a database addon bound to this service

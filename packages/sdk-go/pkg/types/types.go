@@ -131,6 +131,8 @@ type HealthCheckConfig struct {
 	TimeoutSeconds int `json:"timeout_seconds,omitempty" yaml:"timeoutSeconds,omitempty"`
 	// FailureThreshold before marking unhealthy (default: 3)
 	FailureThreshold int `json:"failure_threshold,omitempty" yaml:"failureThreshold,omitempty"`
+	// HTTPHeaders are sent on probe requests (e.g. Host for Django ALLOWED_HOSTS).
+	HTTPHeaders map[string]string `json:"http_headers,omitempty" yaml:"httpHeaders,omitempty"`
 	// Disabled skips health checks entirely (use with caution)
 	Disabled bool `json:"disabled,omitempty" yaml:"disabled,omitempty"`
 }

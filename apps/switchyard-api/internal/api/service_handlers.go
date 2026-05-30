@@ -15,17 +15,18 @@ import (
 
 // UpdateServiceRequest defines the request body for updating a service
 type UpdateServiceRequest struct {
-	Name             *string            `json:"name,omitempty"`
-	GitRepo          *string            `json:"git_repo,omitempty"`
-	AppPath          *string            `json:"app_path,omitempty"`
-	AutoDeploy       *bool              `json:"auto_deploy,omitempty"`
-	AutoDeployBranch *string            `json:"auto_deploy_branch,omitempty"`
-	AutoDeployEnv    *string            `json:"auto_deploy_env,omitempty"`
-	Type             *types.ServiceType `json:"type,omitempty"`
-	Region           *string            `json:"region,omitempty"`
-	BuildConfig      *types.BuildConfig `json:"build_config,omitempty"`
-	Jobs             *[]types.JobSpec   `json:"jobs,omitempty"`
-	Volumes          *[]types.Volume    `json:"volumes,omitempty"`
+	Name             *string                  `json:"name,omitempty"`
+	GitRepo          *string                  `json:"git_repo,omitempty"`
+	AppPath          *string                  `json:"app_path,omitempty"`
+	AutoDeploy       *bool                    `json:"auto_deploy,omitempty"`
+	AutoDeployBranch *string                  `json:"auto_deploy_branch,omitempty"`
+	AutoDeployEnv    *string                  `json:"auto_deploy_env,omitempty"`
+	Type             *types.ServiceType       `json:"type,omitempty"`
+	Region           *string                  `json:"region,omitempty"`
+	BuildConfig      *types.BuildConfig       `json:"build_config,omitempty"`
+	Jobs             *[]types.JobSpec         `json:"jobs,omitempty"`
+	Volumes          *[]types.Volume          `json:"volumes,omitempty"`
+	HealthCheck      *types.HealthCheckConfig `json:"health_check,omitempty"`
 }
 
 // UpdateService updates a service's settings
@@ -102,6 +103,9 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	}
 	if req.Volumes != nil {
 		service.Volumes = *req.Volumes
+	}
+	if req.HealthCheck != nil {
+		service.HealthCheck = req.HealthCheck
 	}
 
 	// Update in database
