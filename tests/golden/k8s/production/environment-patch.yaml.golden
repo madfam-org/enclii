@@ -126,7 +126,7 @@ spec:
               key: resend-api-key
               optional: true
         - name: ENCLII_EMAIL_FROM_ADDRESS
-          value: "noreply@enclii.dev"
+          value: "noreply@janua.dev"
         - name: ENCLII_EMAIL_FROM_NAME
           value: "Enclii"
         # Session Revocation - fail closed in production (SOC 2)
