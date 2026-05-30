@@ -17,11 +17,11 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 | ID | Task | Est. | Status (2026-05-23) | Reference |
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
-| O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Verify** — `enclii db schema` (admin) or column in prod DB | `apps/switchyard-api/internal/db/migrations/030_*` |
-| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Blocked** — `security-release-smoke.sh` fails on prod (callback + git_repo auth); redeploy API + verify Roundhouse key | Steps 1–7 |
-| O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | Open — `enclii ops storage prune-detached --apply --reason "GA O-4"` | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
-| O-5 | Longhorn CPU settings apply | 10m | Open — `enclii ops storage settings-apply --apply --reason "GA O-5"` | [REMAINING_ITEMS §0.2.2](./REMAINING_ITEMS.md) |
-| O-6 | Disk prune (crictl, journal, logs) | 10m | Open — `enclii ops jobs trigger node-maintenance -n enclii --apply --reason "GA O-6"` or `./scripts/wave0-ga-ops.sh --apply --disk-prune` | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
+| O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Done** — column present in prod `enclii.services` (2026-05-30) | `apps/switchyard-api/internal/db/migrations/030_*` |
+| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — automatable smokes pass (5/5 auth); manual tenant IDOR smoke (step 3) remains | Steps 1–7 |
+| O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Done** — PostHog ns gone; 8 detached orphans pruned (2026-05-30) | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
+| O-5 | Longhorn CPU settings apply | 10m | **Done** — `guaranteed-instance-manager-cpu=3` live | [REMAINING_ITEMS §0.2.2](./REMAINING_ITEMS.md) |
+| O-6 | Disk prune (crictl, journal, logs) | 10m | **Done** — `node-maintenance-ga-*` jobs ran; 9 stale images pruned | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
 | O-7 | API post-deploy smoke | 10m | **Done** — adapters live 2026-05-30 (`post-deploy-ga-adapters.sh --public-only` 4/4) | Enclii or CI rerun on prod URL |
 
 **Track in GitHub:** use issue template **Commercial GA — Phase 0 ops gate**.
@@ -32,10 +32,10 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 
 | ID | Task | Est. | Done when | Reference |
 |----|------|------|-----------|-----------|
-| O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | Open — `enclii ops apps sync-sweep --apply --reason "GA O-8"` | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
-| O-9 | Backup credentials + restore drill | 25m | Drill log archived | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | Sealed=false; secrets path canonical | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
-| O-11 | Cosign enforce (phased namespaces) | 20m | Open — `enclii ops policy cosign-enable --apply --reason "GA O-11"` | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
+| O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
+| O-9 | Backup credentials + restore drill | 25m | **Partial** — backup jobs green; restore evidence logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)); CronJob fix pending git sync | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — Vault unsealed; ESO stores valid; `enclii-secrets` ExternalSecret not deployed; `switchyard_api_key` not in Vault | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
 | O-12 | Start **30-day SLO clock** (99.95% API) | — | Start date recorded in scorecard | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 
 ---
@@ -106,13 +106,13 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 | Gate | Open items | Done |
 |------|------------|------|
-| Phase 0 (O-1–O-7) | 3 (O-3 manual, O-5, O-6) | 4 (+ O-7 adapter routes verified) |
-| Stability P1 (O-8–O-12) | 5 | 0 |
+| Phase 0 (O-1–O-7) | 1 (O-3 manual tenant smoke) | 6 |
+| Stability P1 (O-8–O-12) | 2 (O-9 partial, O-12 SLO clock) | 3 |
 | Staging proof (O-13–O-15) | 0 | 3 |
 | Monetization QA (O-16–O-18) | 3 | 0 |
 | Commercial publish (O-19–O-22) | 4 | 0 |
 
-**Total open ops tasks:** 15 of 22 (7 complete or mostly complete).
+**Total open ops tasks:** 9 of 22 (13 complete or mostly complete).
 
 ## 2026-05-25 adapter progress
 

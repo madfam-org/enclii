@@ -10,7 +10,7 @@
 
 **Owner:** Platform Team
 **Cadence:** Monthly (1st of each month, 5 AM UTC)
-**Last Updated:** 2026-03-08
+**Last Updated:** 2026-05-30
 
 ---
 
@@ -81,6 +81,7 @@ kubectl delete job postgres-restore-drill -n data
 
 | Date | Backup Source | Tables Restored | Duration | Pass/Fail | Operator | Notes |
 |------|---------------|-----------------|----------|-----------|----------|-------|
+| 2026-05-30 | R2 latest pg_dumpall (`backup-verify-ga-0529-2046`) | 1135 | ~64s | **PASS** | platform-ops | Ephemeral postgres restore; 59 projects in `enclii` DB. `postgres-restore-drill` CronJob fixed (initContainer + ephemeral cluster; prior single-DB restore incompatible with pg_dumpall). |
 | _template_ | `YYYYMMDD_HHMMSS.sql.gz` | _N_ | _Xm Ys_ | PASS/FAIL | _initials_ | _any observations_ |
 
 > **Instructions:** After each drill (automated or manual), add a row to the table above with the results from the job log output. The job prints the backup filename, table count, and timestamps.
