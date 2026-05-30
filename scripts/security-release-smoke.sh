@@ -149,6 +149,14 @@ fi
 
 append_check warn "tenant isolation manual" "non-admin cron/junction IDOR smoke still required (SECURITY_RELEASE_PR step 3)"
 
+if [ -n "${ENCLII_USER_TOKEN:-}" ]; then
+  if ./scripts/security-release-tenant-smoke.sh; then
+    append_check pass "tenant isolation smoke" "cross-tenant junction/cron denied"
+  else
+    append_check fail "tenant isolation smoke" "see security-release-tenant-smoke.sh output"
+  fi
+fi
+
 write_summary
 echo "Summary written to $SUMMARY_PATH"
 echo "passed=$PASS failed=$FAIL warnings=$WARN"

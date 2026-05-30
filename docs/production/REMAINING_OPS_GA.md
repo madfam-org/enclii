@@ -34,7 +34,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|-----------|-----------|
 | O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
 | O-9 | Backup credentials + restore drill | 25m | **Partial** — backup jobs green; restore evidence logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)); CronJob fix pending git sync | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — Vault unsealed; merge ESO manifest added; backfill `internal_api_key` to Vault (needs admin `VAULT_TOKEN`) | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — merge ESO live; run `scripts/ga-o10-enclii-vault-backfill.sh` with write `VAULT_TOKEN` | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
 | O-12 | Start **30-day SLO clock** (99.95% API) | — | Start date recorded in scorecard | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 

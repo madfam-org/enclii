@@ -21,6 +21,7 @@
 7. Run Commercial GA API smokes on deployed API (blocking CI on `main`); optional lifecycle proofs per [COMMERCIAL_GA_STAGING_PROOF.md](./COMMERCIAL_GA_STAGING_PROOF.md).
 8. Run `enclii admin ga-verify` (or `make commercial-ga-proof` with admin token) for automated Gate 1 evidence.
 9. Run `./scripts/security-release-smoke.sh` for automatable O-3 auth checks (dashboard, Roundhouse callback, git_repo lookup).
+10. Run `./scripts/security-release-tenant-smoke.sh` with a **non-admin** `ENCLII_USER_TOKEN` and `ENCLII_CROSS_TENANT_JUNCTION_ID` (default: madfam-site junction) for step 3 tenant isolation.
 
 ## Follow-up (Phase 3 — same branch, non-blocking for security deploy)
 

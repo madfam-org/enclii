@@ -95,6 +95,12 @@ echo
 echo "--- Security release smoke (O-3 automatable) ---"
 bash scripts/security-release-smoke.sh || true
 
+if [ -n "${ENCLII_USER_TOKEN:-}" ]; then
+  echo
+  echo "--- Tenant isolation smoke (O-3 step 3) ---"
+  bash scripts/security-release-tenant-smoke.sh || true
+fi
+
 echo
 echo "--- Wave 0 (O-2–O-6) ---"
 bash scripts/wave0-ga-ops.sh "${WAVE0_ARGS[@]}"
@@ -104,5 +110,5 @@ echo "--- Wave 1 (O-8–O-11) ---"
 bash scripts/wave1-ga-ops.sh "${WAVE1_ARGS[@]}"
 
 echo
-echo "Manual blockers remain: O-3 SECURITY_RELEASE_PR steps 2–3, O-9/O-10 secrets in Vault."
+echo "Manual blockers remain: O-3 tenant smoke (ENCLII_USER_TOKEN), O-10 Vault backfill (ga-o10-enclii-vault-backfill.sh), O-9 GitHub/Cloudflare backup creds if missing."
 echo "Record SLO start (O-12) in docs/production/GA_READINESS_SCORECARD.md when Wave 1 passes."

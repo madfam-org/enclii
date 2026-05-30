@@ -62,6 +62,8 @@ Keep the Cloudflare optional-secrets gap open until the credentials read endpoin
 - GitHub environment `commercial-ga-staging` created on `madfam-org/enclii`
 - `scripts/setup-commercial-ga-staging-env.sh` — idempotent env check + missing secret report
 - `scripts/ga-ops-runbook.sh` — ROI-ordered public proof → adapter smoke → Wave 0/1
+- `scripts/security-release-tenant-smoke.sh` — O-3 step 3 tenant junction/cron IDOR smoke (requires non-admin token)
+- `scripts/ga-o10-enclii-vault-backfill.sh` — O-10 Vault backfill + ESO refresh wrapper
 
 ## 2026-05-25 Cloudflare credential-readiness adapter
 
