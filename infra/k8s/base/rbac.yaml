@@ -23,10 +23,11 @@ metadata:
     app.kubernetes.io/component: control-plane
     app.kubernetes.io/part-of: enclii
 rules:
-# Namespaces: create for new projects/environments, get/list/watch for queries, delete for cleanup
+# Namespaces: create for new projects/environments, get/list/watch for queries, delete for cleanup,
+# patch for audited ops (cosign namespace labels)
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["create", "get", "list", "watch", "delete"]
+  verbs: ["create", "get", "list", "watch", "patch", "delete"]
 # Deployments: full lifecycle management for service deployments
 - apiGroups: ["apps"]
   resources: ["deployments"]
@@ -58,6 +59,10 @@ rules:
 - apiGroups: [""]
   resources: ["persistentvolumes"]
   verbs: ["get", "list", "watch"]
+# StorageClasses: Longhorn GA manifest reconcile (ops.storage.storageclass-apply)
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "create"]
 # Ingresses: custom domain and routing management
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
@@ -82,10 +87,13 @@ rules:
 - apiGroups: ["postgresql.cnpg.io"]
   resources: ["clusters"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
-# Longhorn volumes: read-only storage health diagnostics for Enclii ops
+# Longhorn: read diagnostics plus audited orphan prune and CPU settings apply
 - apiGroups: ["longhorn.io"]
   resources: ["volumes"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "delete"]
+- apiGroups: ["longhorn.io"]
+  resources: ["settings"]
+  verbs: ["get", "list", "watch", "patch"]
 # Policy reports and exceptions: read-only governance diagnostics for Enclii ops
 - apiGroups: ["wgpolicyk8s.io"]
   resources: ["policyreports"]
