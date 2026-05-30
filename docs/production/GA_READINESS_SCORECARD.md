@@ -2,7 +2,7 @@
 
 > Canonical dashboard and sign-off view. Do not track independent task state here; task state belongs in `REMAINING_OPS_GA.md`.
 
-> **Last updated:** 2026-05-29  
+> **Last updated:** 2026-05-30  
 > **Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md)  
 > **Canonical tracker:** [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
 > **Execution roadmap:** [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md)  
@@ -55,11 +55,11 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 
 | Item | Owner | Date | Initials |
 |------|-------|------|----------|
-| Deploy `main` + migration 030 | Ops | 2026-05-23 | Argo `848c8968`; `rollout_blocked_reason` in `enclii` DB |
-| Runtime health exception cleanup | Ops | 2026-05-25 | Argo aggregate `bad=0`; stale Blueprint Harvester service rows deleted; lifecycle FK migration 031 pushed |
-| SECURITY_RELEASE_PR complete | Ops | | |
-| REMAINING_ITEMS P0 (disk, Longhorn, PostHog) | Ops | | |
-| Restore drill evidence filed | Ops | | |
+| Deploy `main` + migration 030 | Ops | 2026-05-30 | `core-services` @ `98be6d41`; `rollout_blocked_reason` verified |
+| Runtime health exception cleanup | Ops | 2026-05-25 | Argo aggregate `bad=0`; 59/59 project cards healthy (2026-05-30) |
+| SECURITY_RELEASE_PR complete | Ops | | Automatable smokes pass; manual tenant IDOR (step 3) open |
+| REMAINING_ITEMS P0 (disk, Longhorn, PostHog) | Ops | 2026-05-30 | Wave 0 closed |
+| Restore drill evidence filed | Ops | 2026-05-30 | [RESTORE_DRILL_LOG.md](../runbooks/RESTORE_DRILL_LOG.md) |
 
 ### Gate 2 — Product staging proof
 

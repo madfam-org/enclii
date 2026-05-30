@@ -18,7 +18,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
 | O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Done** — column present in prod `enclii.services` (2026-05-30) | `apps/switchyard-api/internal/db/migrations/030_*` |
-| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — automatable smokes pass (5/5 auth); manual tenant IDOR smoke (step 3) remains | Steps 1–7 |
+| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — automatable smokes pass; manual tenant IDOR (step 3) remains | Steps 1–7 |
 | O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Done** — PostHog ns gone; 8 detached orphans pruned (2026-05-30) | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
 | O-5 | Longhorn CPU settings apply | 10m | **Done** — `guaranteed-instance-manager-cpu=3` live | [REMAINING_ITEMS §0.2.2](./REMAINING_ITEMS.md) |
 | O-6 | Disk prune (crictl, journal, logs) | 10m | **Done** — `node-maintenance-ga-*` jobs ran; 9 stale images pruned | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
@@ -34,7 +34,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|-----------|-----------|
 | O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
 | O-9 | Backup credentials + restore drill | 25m | **Partial** — backup jobs green; restore evidence logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)); CronJob fix pending git sync | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — Vault unsealed; ESO stores valid; `enclii-secrets` ExternalSecret not deployed; `switchyard_api_key` not in Vault | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — Vault unsealed; merge ESO manifest added; backfill `internal_api_key` to Vault (needs admin `VAULT_TOKEN`) | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
 | O-12 | Start **30-day SLO clock** (99.95% API) | — | Start date recorded in scorecard | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 

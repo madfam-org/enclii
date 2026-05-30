@@ -7,9 +7,9 @@ Automated / operator verification on **2026-05-23** (post-deploy `848c8968` / `1
 
 | # | Checklist item | Result | Evidence |
 |---|----------------|--------|----------|
-| 1 | `ENCLII_ROUNDHOUSE_API_KEY` on API + Roundhouse | **Configured** | `switchyard-api` deployment has `ENCLII_ROUNDHOUSE_API_KEY` from `switchyard-api-secrets` |
-| 2 | Roundhouse sends Bearer to Switchyard | **Not automated** | Manual: confirm Roundhouse client config in cluster |
-| 3 | Non-admin tenant isolation smoke | **Partial** | `go test -run 'CrossTenant|authz_matrix'` green; full matrix + manual cron/junction smoke still required |
+| 1 | `ENCLII_ROUNDHOUSE_API_KEY` on API + Roundhouse | **Configured** | `enclii-secrets/internal-api-key`; Roundhouse `SWITCHYARD_API_KEY` (2026-05-30) |
+| 2 | Roundhouse sends Bearer to Switchyard | **Pass** | `security-release-smoke.sh` roundhouse bearer → HTTP 200 |
+| 3 | Non-admin tenant isolation smoke | **Partial** | `go test -run CrossTenant` green on `main`; manual cron/junction prod smoke still required |
 | 4 | Dashboard stats require login | **Pass** | `GET /v1/dashboard/stats` → **401** unauthenticated |
 | 5 | `go test ./...` switchyard-api | **Partial** | AuthZ matrix subset green; run full suite in CI on `main` |
 | 6 | Migration 030 in prod | **Pass** | `rollout_blocked_reason` column in `enclii` database |
@@ -17,13 +17,14 @@ Automated / operator verification on **2026-05-23** (post-deploy `848c8968` / `1
 
 **Sign-off:** Platform lead initials still required on [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) after items 2 and 3 manual steps.
 
-### 2026-05-30 — `security-release-smoke.sh` prod probe
+### 2026-05-30 — `security-release-smoke.sh` prod probe (post `98be6d41`)
 
 | Check | Result | Notes |
 |-------|--------|-------|
 | Dashboard stats 401 | **Pass** | Unauthenticated blocked |
-| Build callback without bearer | **Fail** | HTTP 400 (auth not rejecting; verify `ENCLII_ROUNDHOUSE_API_KEY` + deploy SHA) |
-| git_repo lookup without bearer | **Fail** | HTTP 200 (internal read public; security release may not be live on prod API) |
-| Adapter routes (storageclass, sync-sweep, tunnels) | **Pass** | `post-deploy-ga-adapters.sh --public-only` 4/4 |
+| Build callback missing/invalid bearer | **Pass** | HTTP 401 |
+| git_repo lookup without bearer | **Pass** | HTTP 401 |
+| Roundhouse bearer accepted | **Pass** | HTTP 200 with shared key |
+| Adapter routes | **Pass** | `post-deploy-ga-adapters.sh --public-only` 4/4 |
 
-**Action:** Redeploy Switchyard API from current `main` and confirm Roundhouse shared secret before Wave 0 apply or SLO clock.
+**Remaining:** SECURITY_RELEASE_PR step 3 manual tenant IDOR smoke; Vault backfill for `internal_api_key` (O-10).

@@ -135,8 +135,11 @@ fi
 if [ -n "${ENCLII_API_TOKEN:-}" ] && command -v enclii >/dev/null 2>&1; then
   export ENCLII_API_ENDPOINT="${ENCLII_API_ENDPOINT:-$API_URL}"
   export ENCLII_API_TOKEN
-  if enclii db schema --json 2>/dev/null | python3 -c "import json,sys; p=json.load(sys.stdin); sys.exit(0 if p.get('healthy') else 1)"; then
+  schema_out="$(enclii db schema --json 2>&1)" || schema_out=""
+  if [ -n "$schema_out" ] && printf '%s' "$schema_out" | python3 -c "import json,sys; p=json.load(sys.stdin); sys.exit(0 if p.get('healthy') else 1)" 2>/dev/null; then
     append_check pass "db schema healthy" "migration 030 verify OK"
+  elif printf '%s' "$schema_out" | grep -qiE '401|403|unauthorized|expired'; then
+    append_check warn "db schema healthy" "ENCLII_API_TOKEN invalid or expired — refresh admin token"
   else
     append_check fail "db schema healthy" "enclii db schema unhealthy or unreachable"
   fi
