@@ -116,7 +116,11 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 ## 2026-05-30 Wave 1 apply
 
-Applied via `wave1-ga-ops.sh --apply`: Argo sync (`arc-runners`, `arc-runners-blue`), cosign labels (`monitoring`, `status`), ESO sweep green, manual backup/drill jobs triggered. Longhorn orphan prune + StorageClass apply blocked on `switchyard-api` SA RBAC — break-glass kubectl used for 2 detached volumes; gap filed in [ADAPTER_GAPS.md](../ADAPTER_GAPS.md).
+Applied via `wave1-ga-ops.sh --apply`: Argo sync (`arc-runners`, `arc-runners-blue`), cosign labels (`monitoring`, `status`), ESO sweep green, manual backup/drill jobs triggered. Longhorn orphan prune + StorageClass apply blocked on `switchyard-api` SA RBAC — **fixed** in `85ad80a3`; Enclii-first prune verified.
+
+## 2026-05-30 Staging env secrets
+
+GitHub environment `commercial-ga-staging` populated **8/8** required secrets. Re-run proof: `gh workflow run commercial-ga-staging-proof -f bets=all`. Bet B (domains) requires live DNS for `DOMAIN_E2E_DOMAIN` or skips verify failure.
 
 ## 2026-05-25 adapter progress
 
