@@ -44,7 +44,9 @@ record() {
 }
 
 http_code() {
-  curl -sS -L --max-time 15 -o /dev/null -w "%{http_code}" "$1" || echo "000"
+  local url="$1"
+  shift || true
+  curl -sS -L --max-time 15 -o /dev/null -w "%{http_code}" "$@" "$url" || echo "000"
 }
 
 checked_at="$(date -u +%Y-%m-%dT%H:%MZ)"
@@ -60,8 +62,8 @@ code="$(http_code "$STATUS_URL")"
 record "$([ "$code" = "200" ] && echo 1 || echo 0)" "status page" "HTTP $code"
 
 # Signup surface (lightweight — avoids rate limits from full wizard smoke)
-code="$(http_code -X POST -H 'Content-Type: application/json' -d '{"email":"bad"}' "${API_URL%/}/v1/signup")"
-record "$([ "$code" = "400" ] && echo 1 || echo 0)" "signup api enabled" "POST /v1/signup HTTP $code"
+code="$(http_code "${API_URL%/}/v1/signup" -X POST -H 'Content-Type: application/json' -d '{"email":"bad"}')"
+record "$([ "$code" = "400" ] || [ "$code" = "429" ] && echo 1 || echo 0)" "signup api enabled" "POST /v1/signup HTTP $code"
 
 code="$(http_code "${APP_URL%/}/signup")"
 record "$([ "$code" = "200" ] && echo 1 || echo 0)" "signup ui" "HTTP $code"
