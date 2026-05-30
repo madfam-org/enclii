@@ -92,7 +92,7 @@
 | Migration 030 `rollout_blocked_reason` | Verified in `enclii` Postgres |
 | Security release automated checks | [SECURITY_RELEASE_VERIFICATION.md](./SECURITY_RELEASE_VERIFICATION.md) (2026-05-23) |
 | Longhorn detached orphan cleanup | 5 volumes deleted (break-glass; 1 detached remains) |
-| Signup in prod | **Disabled** — enable `ENCLII_SIGNUP_ENABLED` for Wave 2 (O-17) |
+| Signup in prod | **Enabled** — O-17 @ `e420cbd7` (2026-05-30); Resend optional for email delivery |
 | Execution roadmap published | [COMMERCIAL_GA_EXECUTION_ROADMAP.md](./COMMERCIAL_GA_EXECUTION_ROADMAP.md) |
 
 ## Execution log (2026-05-25)

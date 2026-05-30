@@ -61,7 +61,7 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 | ID | Task | Owner | Reference |
 |----|------|-------|-----------|
 | O-16 | Signup + pricing manual checklist | GTM/QA | [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md) |
-| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | **Applying** — GitOps patch in `environment-patch.yaml` (2026-05-30) | 
+| O-17 | Confirm `ENCLII_SIGNUP_ENABLED` in target env | Ops | **Done** — `e420cbd7`; POST `/v1/signup` → 201 (2026-05-30) |
 | O-18 | Landing pricing section deployed (or document skip) | GTM | `enclii-paywall` E2E |
 
 ---
@@ -109,14 +109,14 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 | Phase 0 (O-1–O-7) | 0 | 7 |
 | Stability P1 (O-8–O-12) | 0 | 5 |
 | Staging proof (O-13–O-15) | 0 | 3 |
-| Monetization QA (O-16–O-18) | 3 | 0 |
+| Monetization QA (O-16–O-18) | 2 | 1 |
 | Commercial publish (O-19–O-22) | 4 | 0 |
 
-**Total open ops tasks:** 6 of 22 (16 complete or mostly complete).
+**Total open ops tasks:** 5 of 22 (17 complete or mostly complete).
 
 ## 2026-05-30 Wave 2 — signup enable (O-17)
 
-GitOps: `ENCLII_SIGNUP_ENABLED=true`, `ENCLII_SELF_SERVICE_API_BASE_URL=https://api.enclii.dev`, `ENCLII_APP_BASE_URL=https://app.enclii.dev` in `infra/k8s/production/environment-patch.yaml`. Verification emails require `ENCLII_RESEND_API_KEY` (optional — log-only without it). Manual signup flow: [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md).
+GitOps @ `e420cbd7`: `ENCLII_SIGNUP_ENABLED=true`, `ENCLII_SELF_SERVICE_API_BASE_URL=https://api.enclii.dev`, `ENCLII_APP_BASE_URL=https://app.enclii.dev`. Verified: POST `/v1/signup` invalid email → **400**, valid email → **201** + `signup_id`. Verification emails require `ENCLII_RESEND_API_KEY` (optional — log-only without it). Manual flow: [COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md](./COMMERCIAL_GA_SIGNUP_PRICING_CHECKLIST.md).
 
 ## 2026-05-30 Wave 1 apply
 
