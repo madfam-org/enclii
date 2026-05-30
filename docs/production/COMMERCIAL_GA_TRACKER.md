@@ -127,6 +127,16 @@
 | ROADMAP.md + docs index updated | GA program section; scorecard percentages canonical |
 | Target announce date recorded | ~2026-07-14 (contingent on SLO start ~2026-06-07) |
 
+## Execution log (2026-05-30 Wave 2)
+
+| Action | Result |
+|--------|--------|
+| O-17 signup enable | **Done** — `e420cbd7`; POST `/v1/signup` → 201 |
+| O-18 landing pricing | **Done** — Sovereign/$20 live on enclii.dev |
+| O-16 automated proof | **Green** — [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746) (9 pass, 1 warn) |
+| Commercial proof harness fix | **Done** — `03fef5b5` dashboard auth gate uses unauthenticated probe |
+| Resend / full signup wizard | **Open** — adapter gap; manual O-16 steps 2–7 pending |
+
 ## Next merge train
 
 1. ~~AuthZ / OpenAPI / preview + domains + storage E2E~~ → `main` (2026-05-22)

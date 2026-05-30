@@ -116,7 +116,7 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 ## 2026-05-30 Wave 2 — monetization automated proof
 
 - **O-18:** Landing pricing deployed — `Simple, Transparent Pricing`, Sovereign **$20**, CTAs → `app.enclii.dev`.
-- **O-16 (automated):** Signup API smoke **201**; signup page **200**; Dhanam checkout **200**; billing cost/budgets/throttles **200** (CI [26676709716](https://github.com/madfam-org/enclii/actions/runs/26676709716) — harness fix for dashboard auth gate pending re-run).
+- **O-16 (automated):** Signup API smoke **201**; signup page **200**; Dhanam checkout **200**; billing cost/budgets/throttles **200** — CI green [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746) (9 pass, 1 warn: admin db/schema).
 - **O-16 (manual):** Full wizard (verify email → GitHub → provision) blocked on `ENCLII_RESEND_API_KEY`; tier copy drift: landing **Sovereign** vs FAQ **Essentials** — product sign-off.
 
 ## 2026-05-30 Wave 2 — signup enable (O-17)
