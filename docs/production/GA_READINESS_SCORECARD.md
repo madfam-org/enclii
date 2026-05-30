@@ -65,11 +65,11 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 
 | Bet | Workflow / local pass | Date | Initials |
 |-----|----------------------|------|----------|
-| A Previews | 2026-05-23 | [run 26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) | |
-| B Domains | 2026-05-23 | same | |
-| C Storage | 2026-05-30 | [26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111) — 4 passed incl. stateful deploy | |
+| A Previews | 2026-05-23 / **2026-05-30** | [26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825) / **[26676409679](https://github.com/madfam-org/enclii/actions/runs/26676409679)** | |
+| B Domains | 2026-05-23 / **2026-05-30** | same / **26676409679** (6 passed) | |
+| C Storage | 2026-05-30 | [26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111) / **26676409679** (4 passed incl. stateful deploy) | |
 
-> A/B: 2026-05-23 [26328015825](https://github.com/madfam-org/enclii/actions/runs/26328015825). C deploy slice required platform fixes + bootstrap (2026-05-30); May 23 run was auth-only on that slice.
+> Full **bets=all** green 2026-05-30 [26676409679](https://github.com/madfam-org/enclii/actions/runs/26676409679) after platform-domain verify fix (`f3bcadde`).
 
 Refs: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) · Actions **Commercial GA staging proof**
 

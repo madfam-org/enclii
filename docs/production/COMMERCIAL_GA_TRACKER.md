@@ -122,6 +122,7 @@
 | `enclii ops secrets sync-sweep` + `post-deploy-ga-adapters.sh` | Shipped — ESO batch reconcile + deploy adapter smoke |
 | `scripts/bootstrap-commercial-ga-storage-e2e.sh` | Shipped — Bet C dev target bootstrap (tulana-api) |
 | Bet C storage E2E (deploy slice) | **Green** 2026-05-30 — [26676106111](https://github.com/madfam-org/enclii/actions/runs/26676106111) (4 passed) |
+| Bet B platform-domain verify fix | **Shipped** — `f3bcadde`; **bets=all green** [26676409679](https://github.com/madfam-org/enclii/actions/runs/26676409679) |
 | Migration 032 (`services.health_check`) | **Done** — prod `schema_migrations` @ 32 |
 | ROADMAP.md + docs index updated | GA program section; scorecard percentages canonical |
 | Target announce date recorded | ~2026-07-14 (contingent on SLO start ~2026-06-07) |
