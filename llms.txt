@@ -28,6 +28,7 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `enclii ops storage storageclass-apply` / `enclii ops policy cosign-enable` — Wave 1.5 Longhorn + cosign adapters
 - `enclii providers cloudflare tunnels-apply --project <slug>` — junction tunnel route reconcile
 - `enclii ops secrets sync-sweep` + `scripts/post-deploy-ga-adapters.sh` — ESO batch reconcile (O-10) + deploy smoke
+- `scripts/setup-commercial-ga-staging-env.sh` + `scripts/ga-ops-runbook.sh` — GH staging env + ROI ops orchestration
 
 ## Audit remediation (May 2026)
 

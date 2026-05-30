@@ -27,6 +27,8 @@ This is the **single execution order** for ops before Commercial GA staging proo
 | 1.3 | Verify Roundhouse ↔ API callback auth | See [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) steps 1–4 |
 | 1.4 | Run `enclii admin ga-verify` (admin token) | Gate 1 automated evidence |
 | 1.5 | Optional: `./scripts/wave0-ga-ops.sh` (dry-run) then `--apply --reason "..."` | O-4–O-6 Enclii-first queue |
+| 1.6 | `./scripts/post-deploy-ga-adapters.sh` (or `--public-only` without token) | GA adapter routes live on prod API |
+| 1.7 | `./scripts/ga-ops-runbook.sh` | Full ROI-ordered Wave 0/1 dry-run or apply |
 
 **Sign-off:** Platform lead initials security checklist in SECURITY_RELEASE_PR.
 

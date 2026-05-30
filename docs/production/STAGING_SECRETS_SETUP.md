@@ -36,7 +36,13 @@ Do not use production-critical customer services.
 | `STORAGE_E2E_RELEASE_ID` | Bet C deploy slice | Ready release UUID |
 | `STORAGE_E2E_ENVIRONMENT_NAME` | Bet C optional | e.g. `production` |
 
-Create GitHub environment **`commercial-ga-staging`** (Settings → Environments) and move the secrets above into it for scoped access. The workflow `commercial-ga-staging-proof.yml` references this environment.
+Create GitHub environment **`commercial-ga-staging`** and add secrets (environment shell can be bootstrapped with `./scripts/setup-commercial-ga-staging-env.sh`):
+
+```bash
+./scripts/setup-commercial-ga-staging-env.sh
+gh secret set PREVIEW_E2E_TOKEN --env commercial-ga-staging
+# ... see table below
+```
 
 ---
 

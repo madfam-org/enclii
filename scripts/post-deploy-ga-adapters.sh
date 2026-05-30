@@ -7,15 +7,34 @@
 # Usage:
 #   export ENCLII_API_TOKEN=...   # admin token
 #   ./scripts/post-deploy-ga-adapters.sh
+#   ./scripts/post-deploy-ga-adapters.sh --public-only
 #   API_URL=https://api.enclii.dev ./scripts/post-deploy-ga-adapters.sh
 
 set -euo pipefail
 
 API_URL="${API_URL:-https://api.enclii.dev}"
 TOKEN="${ENCLII_API_TOKEN:-${ENCLII_SYNTHETICS_TOKEN:-}}"
+PUBLIC_ONLY=false
 
-if [ -z "$TOKEN" ]; then
-  echo "ENCLII_API_TOKEN (admin) is required" >&2
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --public-only)
+      PUBLIC_ONLY=true
+      shift
+      ;;
+    -h|--help)
+      sed -n '2,12p' "$0" | sed 's/^# \?//'
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ "$PUBLIC_ONLY" = false ] && [ -z "$TOKEN" ]; then
+  echo "ENCLII_API_TOKEN (admin) is required (or pass --public-only)" >&2
   exit 2
 fi
 
@@ -85,8 +104,43 @@ dry_run_ok() {
   esac
 }
 
+route_deployed() {
+  local path="$1"
+  local payload="$2"
+  local code
+  code="$(curl -sS -o /dev/null -w "%{http_code}" \
+    -X POST "${API_URL%/}${path}" \
+    -H "Content-Type: application/json" \
+    -d "$payload")" || true
+  case "$code" in
+    401|403) return 0 ;;
+    404|501) return 1 ;;
+    200|202|400|503) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 echo "=== Post-deploy GA adapter smoke ==="
-echo "API_URL=$API_URL"
+echo "API_URL=$API_URL public_only=$PUBLIC_ONLY"
+
+if [ "$PUBLIC_ONLY" = true ]; then
+  check "route storageclass-apply deployed" \
+    route_deployed /v1/ops/storage/storageclass-apply '{"operation":"ops.storage.storageclass-apply","dry_run":true}'
+  check "route secrets sync-sweep deployed" \
+    route_deployed /v1/ops/secrets/sync-sweep '{"operation":"ops.secrets.sync-sweep","dry_run":true}'
+  check "route apps sync-sweep deployed" \
+    route_deployed /v1/ops/apps/sync-sweep '{"operation":"ops.apps.sync-sweep","dry_run":true}'
+  check "route tunnels-apply deployed" \
+    route_deployed /v1/providers/cloudflare/tunnels-apply '{"operation":"providers.cloudflare.tunnels-apply","dry_run":true}'
+  echo
+  echo "passed=$PASS failed=$FAIL"
+  if [ "$FAIL" -gt 0 ]; then
+    echo "Routes missing — sync enclii-infrastructure from main." >&2
+    exit 1
+  fi
+  echo "GA adapter routes present (auth required for full smoke)."
+  exit 0
+fi
 
 check "ops capabilities include storageclass-apply" ops_has_action storage storageclass-apply
 check "ops capabilities include cosign-enable" ops_has_action policy cosign-enable

@@ -8,7 +8,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Cloudflare optional secrets | Manual kubectl when not in git | `enclii providers cloudflare` | P2 |
 | Policy-only kubectl comment | `infra/k8s/policies/enclii-default-deny.yaml` header | ArgoCD app docs only | P3 |
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
-| Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` (workflow wired) | P1 |
+| Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` (env created; populate secrets via `setup-commercial-ga-staging-env.sh`) | P1 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
@@ -55,6 +55,12 @@ Keep the Cloudflare optional-secrets gap open until the credentials read endpoin
 
 - `enclii ops secrets sync-sweep` — batch force-sync ExternalSecrets with `Ready!=True` in GA namespaces (`enclii`, `data`, `monitoring`, `cloudflare-tunnel`)
 - `scripts/post-deploy-ga-adapters.sh` — verify Wave 0–1.5 adapter routes are live after deploy
+
+### 2026-05-30 — Staging env bootstrap + ops runbook
+
+- GitHub environment `commercial-ga-staging` created on `madfam-org/enclii`
+- `scripts/setup-commercial-ga-staging-env.sh` — idempotent env check + missing secret report
+- `scripts/ga-ops-runbook.sh` — ROI-ordered public proof → adapter smoke → Wave 0/1
 
 ## 2026-05-25 Cloudflare credential-readiness adapter
 
