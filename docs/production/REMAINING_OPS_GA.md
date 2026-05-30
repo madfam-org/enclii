@@ -34,7 +34,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|-----------|-----------|
 | O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
 | O-9 | Backup credentials + restore drill | 25m | **Done** — backup jobs green; restore drill logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)) | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — merge ESO **SecretSynced** via kubernetes-store bridge; optional Vault backfill with write `VAULT_TOKEN` | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — merge ESO **SecretSynced** (k8s bridge); Vault backfill optional | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
 | O-12 | Start **30-day SLO clock** (99.95% API) | — | **Started 2026-05-30** — Gate 1 signed off | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 
@@ -113,6 +113,10 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 | Commercial publish (O-19–O-22) | 4 | 0 |
 
 **Total open ops tasks:** 7 of 22 (15 complete or mostly complete).
+
+## 2026-05-30 Wave 1 apply
+
+Applied via `wave1-ga-ops.sh --apply`: Argo sync (`arc-runners`, `arc-runners-blue`), cosign labels (`monitoring`, `status`), ESO sweep green, manual backup/drill jobs triggered. Longhorn orphan prune + StorageClass apply blocked on `switchyard-api` SA RBAC — break-glass kubectl used for 2 detached volumes; gap filed in [ADAPTER_GAPS.md](../ADAPTER_GAPS.md).
 
 ## 2026-05-25 adapter progress
 

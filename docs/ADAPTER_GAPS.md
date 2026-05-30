@@ -10,6 +10,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` (env created; populate secrets via `setup-commercial-ga-staging-env.sh`) | P1 |
 | Enclii Vault `internal_api_key` backfill | Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh` | `enclii secrets` Vault writer + merge ESO auto-sync | P1 |
+| Switchyard-api Longhorn + StorageClass RBAC | Break-glass `kubectl delete volumes.longhorn.io` for detached orphans; ClusterRole for `storageclasses` list | Grant `switchyard-api` SA cluster RBAC for `longhorn.io/volumes` delete + `storage.k8s.io/storageclasses` list (Wave 1 apply) | P1 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
