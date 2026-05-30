@@ -171,8 +171,8 @@ export function OperationPlanDialog({
               Dry-run plan
             </Button>
           )}
-          {phase === 'planned' && (
-            <Button onClick={runApply} disabled={!reason.trim()} className="gap-2">
+          {(phase === 'planned' || phase === 'applying') && (
+            <Button onClick={runApply} disabled={phase === 'applying' || !reason.trim()} className="gap-2">
               {phase === 'applying' && <Loader2 className="size-4 animate-spin" />}
               Apply
             </Button>

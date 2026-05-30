@@ -152,6 +152,7 @@ export function ResendDomainsMatrix() {
                       onClick={() =>
                         setPendingOp({
                           title: `Verify ${row.name}`,
+                          description: 'Trigger Resend domain verification for this apex',
                           provider: 'resend',
                           action: 'domain-verify-apply',
                           body: { args: { target: row.name } },
@@ -167,6 +168,7 @@ export function ResendDomainsMatrix() {
                       onClick={() =>
                         setPendingOp({
                           title: `Send test from ${row.name}`,
+                          description: 'Send a test email from this verified sender domain',
                           provider: 'resend',
                           action: 'send-test-apply',
                           body: { args: { target: row.name, to: 'ops@madfam.io' } },

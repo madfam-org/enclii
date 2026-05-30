@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { switchyardProviderCall } from '@/lib/switchyard-proxy'
 import { tenantFromDomain } from '@enclii/ecosystem-tenants'
-import type { CommissionDomainRequest, DispatchDomain } from '@/types/cloudflare'
+import type { CommissionDomainRequest, DispatchDomain, ZoneStatus } from '@/types/cloudflare'
 
 type CfZone = {
   id: string
@@ -17,7 +17,7 @@ function mapZonesToDispatch(zones: CfZone[]): DispatchDomain[] {
     id: zone.id,
     domain: zone.name,
     tenant: tenantFromDomain(zone.name),
-    status: zone.status,
+    status: zone.status as ZoneStatus,
     sslStatus: zone.status === 'active' ? 'active' : 'pending',
     dnsStatus: zone.status === 'active' ? 'healthy' : 'warning',
     nameservers: zone.name_servers ?? [],
