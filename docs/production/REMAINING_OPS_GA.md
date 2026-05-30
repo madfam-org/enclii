@@ -18,7 +18,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|---------------------|-----------|
 | O-1 | Deploy Switchyard API + UI from `main` | 30m | **Done** — Argo `enclii-infrastructure` @ `848c8968` | [PHASE0 §1](./PHASE0_OPS_RUNBOOK.md) |
 | O-2 | Apply DB migration **030** (`rollout_blocked_reason`) | 10m | **Done** — column present in prod `enclii.services` (2026-05-30) | `apps/switchyard-api/internal/db/migrations/030_*` |
-| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Partial** — automatable smokes pass; manual tenant IDOR (step 3) remains | Steps 1–7 |
+| O-3 | Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) | 30m | **Done** — automatable + tenant IDOR smoke pass (2026-05-30, port-forward) | Steps 1–7 |
 | O-4 | PostHog cleanup + orphaned Longhorn volumes | 15m | **Done** — PostHog ns gone; 8 detached orphans pruned (2026-05-30) | [REMAINING_ITEMS §1A](./REMAINING_ITEMS.md) |
 | O-5 | Longhorn CPU settings apply | 10m | **Done** — `guaranteed-instance-manager-cpu=3` live | [REMAINING_ITEMS §0.2.2](./REMAINING_ITEMS.md) |
 | O-6 | Disk prune (crictl, journal, logs) | 10m | **Done** — `node-maintenance-ga-*` jobs ran; 9 stale images pruned | [REMAINING_ITEMS §1C](./REMAINING_ITEMS.md) |
@@ -33,10 +33,10 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 | ID | Task | Est. | Done when | Reference |
 |----|------|------|-----------|-----------|
 | O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
-| O-9 | Backup credentials + restore drill | 25m | **Partial** — backup jobs green; restore evidence logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)); CronJob fix pending git sync | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — merge ESO live; run `scripts/ga-o10-enclii-vault-backfill.sh` with write `VAULT_TOKEN` | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-9 | Backup credentials + restore drill | 25m | **Done** — backup jobs green; restore drill logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)) | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Partial** — merge ESO **SecretSynced** via kubernetes-store bridge; optional Vault backfill with write `VAULT_TOKEN` | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
-| O-12 | Start **30-day SLO clock** (99.95% API) | — | Start date recorded in scorecard | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
+| O-12 | Start **30-day SLO clock** (99.95% API) | — | **Started 2026-05-30** — Gate 1 signed off | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 
 ---
 
@@ -106,13 +106,13 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 | Gate | Open items | Done |
 |------|------------|------|
-| Phase 0 (O-1–O-7) | 1 (O-3 manual tenant smoke) | 6 |
-| Stability P1 (O-8–O-12) | 2 (O-9 partial, O-12 SLO clock) | 3 |
+| Phase 0 (O-1–O-7) | 0 | 7 |
+| Stability P1 (O-8–O-12) | 1 (O-10 Vault backfill optional) | 4 |
 | Staging proof (O-13–O-15) | 0 | 3 |
 | Monetization QA (O-16–O-18) | 3 | 0 |
 | Commercial publish (O-19–O-22) | 4 | 0 |
 
-**Total open ops tasks:** 9 of 22 (13 complete or mostly complete).
+**Total open ops tasks:** 7 of 22 (15 complete or mostly complete).
 
 ## 2026-05-25 adapter progress
 

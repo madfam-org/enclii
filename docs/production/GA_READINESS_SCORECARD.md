@@ -17,7 +17,7 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 
 | Track | Readiness | Blocker |
 |-------|-----------|---------|
-| **Stability GA** | **~74%** | Runtime health is green; restore evidence, security sign-off, and 30-day SLO clock remain open |
+| **Stability GA** | **~82%** | 30-day SLO clock started 2026-05-30; optional Vault backfill (O-10) |
 | **Commercial GA (scoped)** | **~70%** | Staging proofs green (2026-05-23); paid self-serve QA, 30-day SLO, and GTM publish remain open |
 | **Monetization path** | **~65%** | Signup/pricing live proof, billing webhook replay proof, and published SLA remain open |
 | **Retention / support** | **~40%** | Customer-visible status, support tiers, on-call proof, and incident workflow remain open |
@@ -30,8 +30,8 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 
 | Dimension | Target | Status | Evidence / next step |
 |-----------|--------|--------|----------------------|
-| **Security & tenancy** | Prod checklist + matrix green | 🟡 80% code / 40% prod | [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) in prod |
-| **Platform stability** | 99.95% API × 30 days | 🟡 Runtime green / clock open | 2026-05-25 Argo aggregate and service registry were clean; start clock after restore and support gates |
+| **Security & tenancy** | Prod checklist + matrix green | 🟢 80% code / 90% prod | [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) — automatable + tenant IDOR pass 2026-05-30 |
+| **Platform stability** | 99.95% API × 30 days | 🟡 Clock running | SLO window started **2026-05-30** (ends ~2026-06-29) |
 | **Cluster health** | Disk &lt;40%, Longhorn, Argo synced, 0 degraded services | 🟡 Current apps green | 2026-05-25: Argo aggregate `bad=0`; Switchyard service health `degraded_count=0` |
 | **DR / backups** | Restore drill logged | 🟡 Partial | Drill in Phase 0 step 2.5 |
 | **CI quality** | Blocking on `main` | 🟢 Done | Unit, UI, ecosystem E2E smokes |
@@ -57,7 +57,7 @@ Legend: 🟢 Done · 🟡 In progress / draft / unproven · 🔴 Not started / b
 |------|-------|------|----------|
 | Deploy `main` + migration 030 | Ops | 2026-05-30 | `core-services` @ `98be6d41`; `rollout_blocked_reason` verified |
 | Runtime health exception cleanup | Ops | 2026-05-25 | Argo aggregate `bad=0`; 59/59 project cards healthy (2026-05-30) |
-| SECURITY_RELEASE_PR complete | Ops | | Automatable smokes pass; manual tenant IDOR (step 3) open |
+| SECURITY_RELEASE_PR complete | Ops | 2026-05-30 | Automatable smokes + tenant IDOR pass (`security-release-tenant-smoke.sh` via port-forward) |
 | REMAINING_ITEMS P0 (disk, Longhorn, PostHog) | Ops | 2026-05-30 | Wave 0 closed |
 | Restore drill evidence filed | Ops | 2026-05-30 | [RESTORE_DRILL_LOG.md](../runbooks/RESTORE_DRILL_LOG.md) |
 
@@ -81,7 +81,7 @@ Refs: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) · Actions **Commer
 
 | Item | Start date | End date | Met? |
 |------|------------|----------|------|
-| SLO window (99.95% API) | | | |
+| SLO window (99.95% API) | 2026-05-30 | ~2026-06-29 | In progress |
 | Zero Sev-1 &gt;7 days unmitigated | | | |
 
 ### Gate 5 — Commercial GA announce

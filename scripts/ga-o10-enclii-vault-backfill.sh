@@ -36,8 +36,31 @@ bootstrap_k8s_bridge() {
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 }
 
+ensure_enclii_secrets() {
+  if kubectl -n enclii get secret enclii-secrets >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! kubectl -n enclii get secret postgres-credentials >/dev/null 2>&1; then
+    echo "enclii-secrets missing and postgres-credentials unavailable" >&2
+    return 1
+  fi
+  echo "Recreating enclii-secrets from postgres-credentials + bridge (merge ESO target)..."
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' RETURN
+  kubectl -n enclii get secret postgres-credentials -o "jsonpath={.data.database-url}" | base64 -d >"$tmpdir/database-url"
+  args=(--from-file="database-url=$tmpdir/database-url")
+  if kubectl -n enclii get secret "$BRIDGE_K8S_NAME" >/dev/null 2>&1; then
+    kubectl -n enclii get secret "$BRIDGE_K8S_NAME" -o "jsonpath={.data.internal-api-key}" | base64 -d >"$tmpdir/internal-api-key"
+    args+=(--from-file="internal-api-key=$tmpdir/internal-api-key")
+  fi
+  kubectl -n enclii create secret generic enclii-secrets "${args[@]}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+
 echo "=== O-10 Enclii secrets sync ==="
+ensure_enclii_secrets
 bootstrap_k8s_bridge
+ensure_enclii_secrets
 
 if [[ -n "${VAULT_TOKEN:-}" || -n "${VAULT_TOKEN_FILE:-}" ]]; then
   echo
