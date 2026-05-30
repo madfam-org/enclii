@@ -17,7 +17,7 @@ Use this page for leadership and program reviews. Percentages are **judgment aga
 
 | Track | Readiness | Blocker |
 |-------|-----------|---------|
-| **Stability GA** | **~82%** | 30-day SLO clock started 2026-05-30; optional Vault backfill (O-10) |
+| **Stability GA** | **~85%** | Gate 4 SLO clock running; weekly hygiene logged |
 | **Commercial GA (scoped)** | **~78%** | Gate 3 ops closed; Gate 5 publish + SLO remain |
 | **Monetization path** | **~80%** | Ops proof green; wizard deferred; SLA publish open |
 | **Retention / support** | **~40%** | Customer-visible status, support tiers, on-call proof, and incident workflow remain open |
@@ -83,7 +83,7 @@ Refs: [STAGING_SECRETS_SETUP.md](./STAGING_SECRETS_SETUP.md) · Actions **Commer
 
 | Item | Start date | End date | Met? |
 |------|------------|----------|------|
-| SLO window (99.95% API) | 2026-05-30 | ~2026-06-29 | In progress |
+| SLO window (99.95% API) | 2026-05-30 | ~2026-06-29 | In progress — [checkpoint log](./GATE4_SLO_WINDOW_LOG.md) |
 | Zero Sev-1 &gt;7 days unmitigated | | | |
 
 ### Gate 5 — Commercial GA announce

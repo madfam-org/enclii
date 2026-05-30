@@ -71,9 +71,9 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 
 | ID | Task | Owner | Reference |
 |----|------|-------|-----------|
-| O-19 | Publish SLA (legal approved) | Legal/GTM | [SLA_DRAFT.md](./SLA_DRAFT.md) |
-| O-20 | Publish support tiers + status page | GTM/Ops | [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
-| O-21 | Publish GA changelog; retire “95% ready” | GTM | [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md) |
+| O-19 | Publish SLA (legal approved) | Legal/GTM | **Draft ready** — [SLA_DRAFT.md](./SLA_DRAFT.md); blocked on 30-day SLO + legal |
+| O-20 | Publish support tiers + status page | GTM/Ops | **Draft ready** — status.enclii.dev live; [SUPPORT_TIERS_DRAFT.md](./SUPPORT_TIERS_DRAFT.md) |
+| O-21 | Publish GA changelog; retire “95% ready” | GTM | **Draft ready** — [GA_CHANGELOG_DRAFT.md](./GA_CHANGELOG_DRAFT.md); publish after Gate 4 |
 | O-22 | Dhanam checkout / tier alignment smoke | GTM | **Automated done** — see monetization table; publish alignment TBD |
 
 ---
@@ -115,7 +115,10 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 **Total open ops tasks:** 3 of 22 (19 complete). **Gate 4 SLO** in progress (~ends 2026-06-29).
 
-## 2026-05-30 Gate 3 ops close + Gate 4 hygiene
+## 2026-05-30 Gate 4 — first SLO checkpoint
+
+- **`make gate4-slo-hygiene`** — 6/6 pass; logged in [GATE4_SLO_WINDOW_LOG.md](./GATE4_SLO_WINDOW_LOG.md).
+- **Gate 5 drafts** — SLA, support tiers, changelog marked ready for legal/GTM review (publish after SLO window).
 
 - **O-16 ops:** `make ga-signup-api-smoke` 7/7; wizard explicitly deferred (non-blocking).
 - **O-22 smoke:** Dhanam checkout + billing endpoints green in [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746).

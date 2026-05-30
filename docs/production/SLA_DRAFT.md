@@ -64,9 +64,10 @@ Credits require ticket within 30 days. Maximum credit per month: 50% of fees. *L
 
 Before publishing externally:
 
-- [ ] 30 consecutive days at ≥99.95% measured availability (post Phase 0 deploy)
-- [ ] Zero unmitigated Sev-1 &gt;7 days open
-- [ ] Restore drill evidence on file
+- [x] SLO window started (2026-05-30) — [GATE4_SLO_WINDOW_LOG.md](./GATE4_SLO_WINDOW_LOG.md)
+- [ ] 30 consecutive days at ≥99.95% measured availability (in progress)
+- [x] Restore drill evidence on file (2026-05-30)
+- [ ] Zero unmitigated Sev-1 &gt;7 days open during window
 - [ ] Legal review of credit and support tables
 
 ---

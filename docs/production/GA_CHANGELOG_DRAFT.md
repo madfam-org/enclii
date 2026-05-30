@@ -53,6 +53,14 @@ Plus **security and tenancy** hardening, **budget enforcement** on deploy/build,
 - `enclii volumes` CLI  
 - E2E smoke + opt-in staging proof (`STORAGE_E2E_*`)  
 
+## Product — Self-serve signup & monetization (Wave 2)
+
+- `ENCLII_SIGNUP_ENABLED` in production; `/v1/signup` live  
+- Resend verification email via ESO bridge (interim sender `noreply@janua.dev`)  
+- Landing pricing section on [enclii.dev](https://enclii.dev)  
+- Commercial GA proof harness (public + billing + Dhanam checkout) in CI  
+- `make ga-signup-api-smoke` and `make gate4-slo-hygiene` ops smokes  
+
 ## Developer experience
 
 - Ecosystem E2E blocking on `main` (health, auth gates, preview/domains/storage smokes)  

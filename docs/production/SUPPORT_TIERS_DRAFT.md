@@ -32,7 +32,7 @@ Severity definitions match [INCIDENT_RESPONSE.md](../runbooks/INCIDENT_RESPONSE.
 
 | Item | Owner | Action |
 |------|-------|--------|
-| Public status URL | Ops/GTM | Publish component list (API, UI, builds, auth) |
+| Public status URL | Ops/GTM | **Live** — [status.enclii.dev](https://status.enclii.dev) (HTTP 200, 2026-05-30) |
 | Incident comms | On-call | Post within 15m of P1 confirm; update every 60m |
 | Maintenance | Platform | ≥72h notice on status page + email for paid tiers |
 | Historical uptime | SRE | Export from monitoring; feeds SLA evidence |
@@ -43,7 +43,7 @@ Severity definitions match [INCIDENT_RESPONSE.md](../runbooks/INCIDENT_RESPONSE.
 
 ## Customer-facing checklist (before GA)
 
-- [ ] Status page live and linked from docs/enclii.dev  
+- [x] Status page live and linked from docs/enclii.dev  
 - [ ] Support email and escalation path documented  
 - [ ] Pro/Enterprise Slack invite process defined  
 - [ ] Runbook link in status page footer (authenticated customers)  
