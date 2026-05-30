@@ -27,6 +27,7 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "status", opsCapabilities))
 	require.True(t, operationSupported("apps", "retire", opsCapabilities))
 	require.True(t, operationSupported("apps", "sync-sweep", opsCapabilities))
+	require.True(t, operationSupported("secrets", "sync-sweep", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("storage", "settings-apply", opsCapabilities))

@@ -170,6 +170,13 @@ Health probes now accept uninitialized/sealed state (Session 106 fix). Pod shoul
 
 Steps: init → unseal (3/5 keys) → enable KV engine → configure K8s auth → create ESO policy → migrate secrets → deploy ClusterSecretStore + ExternalSecrets → verify.
 
+After Vault paths are populated, batch-reconcile not-ready ExternalSecrets:
+
+```bash
+enclii ops secrets sync-sweep
+enclii ops secrets sync-sweep --apply --reason "Commercial GA O-10 ESO reconcile"
+```
+
 ### 1G. Cosign Enforce Activation — P1, ~20 min
 
 ```bash

@@ -51,6 +51,11 @@ Keep the Cloudflare optional-secrets gap open until the credentials read endpoin
 - `enclii providers cloudflare tunnels-apply --project <slug>` — diff junction domains against live tunnel ingress and apply corrected K8s service backends via `resolveServiceNamespace`
 - Replaces break-glass `enclii junctions add` / manual Cloudflare tunnel edits when routes point at wrong namespaces
 
+### 2026-05-29 — ESO sync-sweep + post-deploy adapter smoke
+
+- `enclii ops secrets sync-sweep` — batch force-sync ExternalSecrets with `Ready!=True` in GA namespaces (`enclii`, `data`, `monitoring`, `cloudflare-tunnel`)
+- `scripts/post-deploy-ga-adapters.sh` — verify Wave 0–1.5 adapter routes are live after deploy
+
 ## 2026-05-25 Cloudflare credential-readiness adapter
 
 Implemented the local API handler for `providers.cloudflare.credentials` after production preflight confirmed the deployed API returns `404 unsupported operation cloudflare.credentials`.

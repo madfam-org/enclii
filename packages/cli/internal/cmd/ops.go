@@ -124,6 +124,7 @@ func newOpsSecretsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsReadCommand(cfg, "secrets", "vault", "Inspect Vault auth, seal, and sync readiness"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "refresh", "Refresh external secret reconciliation"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync", "Alias for ExternalSecret reconciliation refresh"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync-sweep", "Batch refresh not-ready ExternalSecrets in GA namespaces (O-10)"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "rotate", "Plan a secret rotation through the audited operator layer"))
 	return cmd
 }

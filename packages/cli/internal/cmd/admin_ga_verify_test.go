@@ -77,6 +77,8 @@ func TestAdminGAVerify_StabilityWithMockedEndpoints(t *testing.T) {
 			_, _ = w.Write([]byte(`{"operation":"ops.storage.storageclass-apply","status":"succeeded","dry_run":true,"summary":"Longhorn StorageClasses already present"}`))
 		case "/v1/ops/policy/cosign-enable":
 			_, _ = w.Write([]byte(`{"operation":"ops.policy.cosign-enable","status":"succeeded","dry_run":true,"summary":"namespaces already labeled"}`))
+		case "/v1/ops/secrets/sync-sweep":
+			_, _ = w.Write([]byte(`{"operation":"ops.secrets.sync-sweep","status":"succeeded","dry_run":true,"summary":"all ExternalSecrets in sweep scope are Ready"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

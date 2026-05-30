@@ -27,6 +27,7 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `scripts/wave1-ga-ops.sh` — Enclii-first Wave 1 stability ops orchestration
 - `enclii ops storage storageclass-apply` / `enclii ops policy cosign-enable` — Wave 1.5 Longhorn + cosign adapters
 - `enclii providers cloudflare tunnels-apply --project <slug>` — junction tunnel route reconcile
+- `enclii ops secrets sync-sweep` + `scripts/post-deploy-ga-adapters.sh` — ESO batch reconcile (O-10) + deploy smoke
 
 ## Audit remediation (May 2026)
 

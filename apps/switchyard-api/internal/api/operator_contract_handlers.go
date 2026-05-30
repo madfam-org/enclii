@@ -165,6 +165,9 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	if prefix == "ops" && domain == "apps" && action == "sync-sweep" {
 		return h.handleOpsAppsSyncSweepDryRun(ctx, operation, req), true
 	}
+	if prefix == "ops" && domain == "secrets" && action == "sync-sweep" {
+		return h.handleOpsSecretsSyncSweepDryRun(ctx, operation, req), true
+	}
 	if prefix == "ops" && domain == "storage" && action == "storageclass-apply" {
 		return h.handleOpsStorageStorageClassApplyDryRun(ctx, operation, req), true
 	}
@@ -278,6 +281,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync-sweep" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsAppsSyncSweepApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "secrets" && action == "sync-sweep" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsSecretsSyncSweepApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {

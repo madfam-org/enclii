@@ -70,6 +70,16 @@ func TestOpsPodsLogsFlags(t *testing.T) {
 	}
 }
 
+func TestOpsSecrets_Subcommands(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev"}
+	secrets := findSubcommand(NewOpsCommand(cfg), "secrets")
+	require.NotNil(t, secrets)
+
+	for _, want := range []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate"} {
+		assert.NotNil(t, findSubcommand(secrets, want), "expected ops secrets %s", want)
+	}
+}
+
 func TestOpsMutationsRequireReasonWithApply(t *testing.T) {
 	err := validateOperationFlags(operationFlags{apply: true})
 	require.Error(t, err)

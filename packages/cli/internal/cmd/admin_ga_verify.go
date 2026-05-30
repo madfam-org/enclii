@@ -200,6 +200,19 @@ func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut, stability
 		} else {
 			add("cosign enforce plan", "warn", cosignPlan.Summary)
 		}
+
+		var esoPlan operationResponse
+		esoReq := operationRequest{
+			Operation: "ops.secrets.sync-sweep",
+			DryRun:    true,
+		}
+		if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/secrets/sync-sweep", esoReq, &esoPlan); err != nil {
+			add("eso sync-sweep plan", "warn", err.Error())
+		} else if esoPlan.Status == "succeeded" {
+			add("eso sync-sweep plan", "pass", esoPlan.Summary)
+		} else {
+			add("eso sync-sweep plan", "warn", esoPlan.Summary)
+		}
 	}
 
 	report := gaVerifyReport{Healthy: healthy, Checks: checks}

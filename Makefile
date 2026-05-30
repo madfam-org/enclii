@@ -1,7 +1,7 @@
 .PHONY: bootstrap install-hooks build-all build-api build-cli build-ui build-roundhouse install-cli
 .PHONY: test test-integration test-coverage test-benchmark test-all check-drift lint
 .PHONY: run-switchyard run-ui run-roundhouse-worker run-all
-.PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check commercial-ga-proof wave0-ga-ops wave1-ga-ops clean
+.PHONY: kind-up kind-down infra-dev dns-dev deploy-staging deploy-prod health-check commercial-ga-proof post-deploy-ga-adapters wave0-ga-ops wave1-ga-ops clean
 .PHONY: precommit e2e
 
 # Variables
@@ -184,6 +184,9 @@ wave0-ga-ops:
 
 wave1-ga-ops:
 	@bash scripts/wave1-ga-ops.sh
+
+post-deploy-ga-adapters:
+	@bash scripts/post-deploy-ga-adapters.sh
 
 # Run all services locally (API + UI)
 run-all: build-api build-ui

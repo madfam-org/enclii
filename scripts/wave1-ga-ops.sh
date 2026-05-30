@@ -88,6 +88,11 @@ echo
 echo "--- Vault / ESO readiness (O-10) ---"
 enclii ops secrets vault
 enclii ops secrets external -n enclii
+if [ "$APPLY" = true ]; then
+  enclii ops secrets sync-sweep --apply --reason "$REASON"
+else
+  enclii ops secrets sync-sweep
+fi
 
 echo
 echo "--- Cosign / policy surface (O-11) ---"

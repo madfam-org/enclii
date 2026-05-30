@@ -117,6 +117,7 @@
 | `enclii ops apps sync-sweep` + `scripts/wave1-ga-ops.sh` | Shipped — O-8 + Wave 1 orchestration |
 | `enclii ops storage storageclass-apply` + `ops policy cosign-enable` | Shipped — StorageClass reconcile + O-11 namespace labels |
 | `enclii providers cloudflare tunnels-apply` | Shipped — junction tunnel route reconcile via `resolveServiceNamespace` |
+| `enclii ops secrets sync-sweep` + `post-deploy-ga-adapters.sh` | Shipped — ESO batch reconcile + deploy adapter smoke |
 | ROADMAP.md + docs index updated | GA program section; scorecard percentages canonical |
 | Target announce date recorded | ~2026-07-14 (contingent on SLO start ~2026-06-07) |
 
