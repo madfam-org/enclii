@@ -25,6 +25,64 @@ function authHeaders(token: string) {
   };
 }
 
+type ReleaseRow = { id?: string; status?: string };
+
+async function listReadyReleases(
+  request: import('@playwright/test').APIRequestContext,
+  serviceId: string,
+  token: string,
+): Promise<ReleaseRow[]> {
+  const response = await request.get(`${API_BASE_URL}/v1/services/${serviceId}/releases`, {
+    headers: authHeaders(token),
+    failOnStatusCode: false,
+  });
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  const releases = (body.releases ?? []) as ReleaseRow[];
+  return releases.filter((r) => String(r.status ?? '') === 'ready' && r.id);
+}
+
+async function deployWithFreshRelease(
+  request: import('@playwright/test').APIRequestContext,
+  serviceId: string,
+  token: string,
+  preferredReleaseId: string,
+  environmentName: string,
+) {
+  const headers = authHeaders(token);
+  const candidates = await listReadyReleases(request, serviceId, token);
+  const ordered = [
+    preferredReleaseId,
+    ...candidates.map((r) => r.id as string).filter((id) => id !== preferredReleaseId),
+  ];
+
+  let lastStatus = 0;
+  let lastBody = '';
+  for (const releaseId of ordered) {
+    const deployResponse = await request.post(`${API_BASE_URL}/v1/services/${serviceId}/deploy`, {
+      headers,
+      data: {
+        release_id: releaseId,
+        environment_name: environmentName,
+      },
+      failOnStatusCode: false,
+    });
+    lastStatus = deployResponse.status();
+    lastBody = await deployResponse.text();
+    if ([200, 201].includes(lastStatus)) {
+      return { deployResponse, releaseId, deployment: JSON.parse(lastBody) };
+    }
+    // UNIQUE (release_id, environment_id) — try the next ready release.
+    if (lastStatus !== 422) {
+      break;
+    }
+  }
+
+  throw new Error(
+    `Deploy failed (last status ${lastStatus}): ${lastBody.slice(0, 500)}`,
+  );
+}
+
 async function pollDeploymentRunning(
   request: import('@playwright/test').APIRequestContext,
   deploymentId: string,
@@ -152,17 +210,13 @@ test.describe('Stateful deploy with volumes (staging opt-in)', () => {
     expect(patchResponse.status()).toBeLessThan(500);
     expect([200, 204]).toContain(patchResponse.status());
 
-    const deployResponse = await request.post(`${API_BASE_URL}/v1/services/${serviceId}/deploy`, {
-      headers,
-      data: {
-        release_id: releaseId,
-        environment_name: STORAGE_E2E_ENVIRONMENT_NAME,
-      },
-    });
-    expect(deployResponse.status()).toBeLessThan(500);
-    expect([201, 200]).toContain(deployResponse.status());
-
-    const deployment = await deployResponse.json();
+    const { deployment } = await deployWithFreshRelease(
+      request,
+      serviceId,
+      token,
+      releaseId,
+      STORAGE_E2E_ENVIRONMENT_NAME,
+    );
     const deploymentId = deployment.id as string;
     expect(deploymentId).toBeTruthy();
 

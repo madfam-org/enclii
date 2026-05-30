@@ -15,7 +15,7 @@ Configure secrets **once** before running lifecycle proofs (bets A/B/C).
 | 3 | Note **service UUIDs** and **environment UUID** for domain proof |
 | 4 | For storage deploy proof: note a **ready release UUID** on the test service |
 
-Do not use production-critical customer services.
+Do not use production-critical customer services or platform `enclii/*` services (deploy returns 403). Prefer an internal project with a **ready**, **cosign-signed** release and **`development`** environment (no PR-approval gate). Example: `blueprint-harvester/blueprint-harvester-api` with `STORAGE_E2E_ENVIRONMENT_NAME=development`. Avoid Next.js frontends whose default probe path is `/` not `/health` unless health is configured.
 
 ---
 
@@ -34,7 +34,7 @@ Do not use production-critical customer services.
 | `STORAGE_E2E_TOKEN` | Bet C | API token |
 | `STORAGE_E2E_SERVICE_ID` | Bet C | Service UUID |
 | `STORAGE_E2E_RELEASE_ID` | Bet C deploy slice | Ready release UUID |
-| `STORAGE_E2E_ENVIRONMENT_NAME` | Bet C optional | e.g. `production` |
+| `STORAGE_E2E_ENVIRONMENT_NAME` | Bet C deploy slice | **`development`** (avoids production PR-approval gate; use throwaway service on internal project) |
 
 Create GitHub environment **`commercial-ga-staging`** and add secrets (environment shell can be bootstrapped with `./scripts/setup-commercial-ga-staging-env.sh`):
 
@@ -74,3 +74,4 @@ Update [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) bet rows with date
 | All opt-in tests skipped | Secret names must match exactly (case-sensitive) |
 | 403 on deploy | Budget throttle or approval policy — check `enclii billing throttles --active` |
 | Domain verify fails | DNS not propagated; use `DOMAIN_E2E_DOMAIN` only when TXT/CNAME are live |
+| Storage deploy 422 | Prior failed deploy for same release+environment — test rotates ready releases; pick a service with signed images and working `/health` probes |
