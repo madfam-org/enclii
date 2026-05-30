@@ -18,40 +18,66 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRIDGE_K8S_NAME="${ENCLII_INTERNAL_API_KEY_BRIDGE:-enclii-internal-api-key-source}"
 
 bootstrap_k8s_bridge() {
-  if kubectl -n enclii get secret "$BRIDGE_K8S_NAME" >/dev/null 2>&1; then
-    echo "Bridge secret $BRIDGE_K8S_NAME already exists (kubernetes-store)"
+  if kubectl -n enclii get secret "$BRIDGE_K8S_NAME" >/dev/null 2>&1 \
+    && kubectl -n enclii get secret "$BRIDGE_K8S_NAME" -o "jsonpath={.data.internal-api-key}" 2>/dev/null | grep -q .; then
+    echo "Bridge secret $BRIDGE_K8S_NAME already populated (kubernetes-store)"
     return 0
   fi
-  if ! kubectl -n enclii get secret enclii-secrets >/dev/null 2>&1; then
-    echo "enclii-secrets not found — cannot bootstrap $BRIDGE_K8S_NAME" >&2
-    return 1
+  if kubectl -n enclii get secret enclii-secrets >/dev/null 2>&1 \
+    && kubectl -n enclii get secret enclii-secrets -o "jsonpath={.data.internal-api-key}" 2>/dev/null | grep -q .; then
+    echo "Bootstrapping $BRIDGE_K8S_NAME from enclii-secrets (no values printed)..."
+    tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' RETURN
+    kubectl -n enclii get secret enclii-secrets -o "jsonpath={.data.internal-api-key}" | base64 -d >"$tmp"
+    prop="internal-api-key"
+    kubectl -n enclii create secret generic "$BRIDGE_K8S_NAME" \
+      --from-file="${prop}=${tmp}" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    return 0
   fi
-  echo "Bootstrapping $BRIDGE_K8S_NAME from enclii-secrets (no values printed)..."
-  tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' RETURN
-  kubectl -n enclii get secret enclii-secrets -o "jsonpath={.data.internal-api-key}" | base64 -d >"$tmp"
-  prop="internal-api-key"
-  kubectl -n enclii create secret generic "$BRIDGE_K8S_NAME" \
-    --from-file="${prop}=${tmp}" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "Bridge source not yet seedable — run ensure_enclii_secrets first or set $BRIDGE_K8S_NAME manually" >&2
+  return 1
 }
 
 ensure_enclii_secrets() {
-  if kubectl -n enclii get secret enclii-secrets >/dev/null 2>&1; then
+  local needs_bootstrap=false
+  if ! kubectl -n enclii get secret enclii-secrets >/dev/null 2>&1; then
+    needs_bootstrap=true
+  elif ! kubectl -n enclii get secret enclii-secrets -o "jsonpath={.data.database-url}" 2>/dev/null | grep -q .; then
+    needs_bootstrap=true
+  fi
+  if [ "$needs_bootstrap" = false ]; then
     return 0
   fi
   if ! kubectl -n enclii get secret postgres-credentials >/dev/null 2>&1; then
-    echo "enclii-secrets missing and postgres-credentials unavailable" >&2
+    echo "enclii-secrets missing keys and postgres-credentials unavailable" >&2
     return 1
   fi
-  echo "Recreating enclii-secrets from postgres-credentials + bridge (merge ESO target)..."
+  echo "Seeding enclii-secrets from postgres-credentials + bridge (merge ESO target)..."
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir"' RETURN
-  kubectl -n enclii get secret postgres-credentials -o "jsonpath={.data.database-url}" | base64 -d >"$tmpdir/database-url"
+  db_url="$(kubectl -n enclii get secret postgres-credentials -o "jsonpath={.data.database-url}" 2>/dev/null | base64 -d || true)"
+  if [[ -z "$db_url" || "$db_url" == MANAGED_* ]]; then
+    api_pod="$(kubectl -n enclii get pod -l app=switchyard-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [[ -n "$api_pod" ]]; then
+      db_url="$(kubectl exec -n enclii "$api_pod" -- printenv ENCLII_DATABASE_URL 2>/dev/null || true)"
+    fi
+  fi
+  if [[ -z "$db_url" ]]; then
+    echo "could not resolve database-url for enclii-secrets" >&2
+    return 1
+  fi
+  printf '%s' "$db_url" >"$tmpdir/database-url"
   args=(--from-file="database-url=$tmpdir/database-url")
-  if kubectl -n enclii get secret "$BRIDGE_K8S_NAME" >/dev/null 2>&1; then
+  if kubectl -n enclii get secret "$BRIDGE_K8S_NAME" >/dev/null 2>&1 \
+    && kubectl -n enclii get secret "$BRIDGE_K8S_NAME" -o "jsonpath={.data.internal-api-key}" 2>/dev/null | grep -q .; then
     kubectl -n enclii get secret "$BRIDGE_K8S_NAME" -o "jsonpath={.data.internal-api-key}" | base64 -d >"$tmpdir/internal-api-key"
     args+=(--from-file="internal-api-key=$tmpdir/internal-api-key")
+  elif [[ -n "${api_pod:-}" ]]; then
+    kubectl exec -n enclii "$api_pod" -- printenv ENCLII_ROUNDHOUSE_API_KEY 2>/dev/null | tr -d '\n' >"$tmpdir/internal-api-key"
+    if [[ -s "$tmpdir/internal-api-key" ]]; then
+      args+=(--from-file="internal-api-key=$tmpdir/internal-api-key")
+    fi
   fi
   kubectl -n enclii create secret generic enclii-secrets "${args[@]}" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
