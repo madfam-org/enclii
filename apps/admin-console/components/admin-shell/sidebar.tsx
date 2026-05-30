@@ -18,10 +18,12 @@ import {
   Lock,
   GitFork,
   DollarSign,
+  Plug,
 } from 'lucide-react'
 
 
 const navItems = [
+  { href: '/providers', label: 'Providers', icon: Plug },
   { href: '/domains', label: 'Domains', icon: Globe },
   { href: '/fleet', label: 'Fleet', icon: Server },
   { href: '/clusters', label: 'Clusters', icon: Layers },

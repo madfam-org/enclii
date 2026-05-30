@@ -151,6 +151,9 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		if domain == "cloudflare" && action == "dns-apply" {
 			return h.handleProviderCloudflareDNSApplyDryRun(ctx, operation, req), true
 		}
+		if domain == "cloudflare" && action == "zone-add-apply" {
+			return h.handleProviderCloudflareZoneAddApplyDryRun(ctx, operation, req), true
+		}
 		if domain == "cloudflare" && action == "tunnels-apply" {
 			return h.handleProviderCloudflareTunnelsApplyDryRun(ctx, operation, req), true
 		}
@@ -159,6 +162,18 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		}
 		if domain == "porkbun" && action == "nameservers-apply" {
 			return h.handleProviderPorkbunNameserversApplyDryRun(ctx, operation, req), true
+		}
+		if domain == "resend" && action == "domain-add-apply" {
+			return h.handleResendDomainAddApplyDryRun(ctx, operation, req), true
+		}
+		if domain == "resend" && action == "domain-verify-apply" {
+			return h.handleResendDomainVerifyApplyDryRun(ctx, operation, req), true
+		}
+		if domain == "resend" && action == "domain-dns-apply" {
+			return h.handleResendDomainDNSApplyDryRun(ctx, operation, req), true
+		}
+		if domain == "resend" && action == "send-test-apply" {
+			return h.handleResendSendTestApplyDryRun(ctx, operation, req), true
 		}
 		return operatorOperationResponse{}, false
 	}
@@ -267,6 +282,10 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 		resp, statusCode := h.handleProviderCloudflareDNSApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
+	if prefix == "providers" && domain == "cloudflare" && action == "zone-add-apply" {
+		resp, statusCode := h.handleProviderCloudflareZoneAddApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
 	if prefix == "providers" && domain == "cloudflare" && action == "tunnels-apply" && h.tunnelRoutesService != nil {
 		resp, statusCode := h.handleProviderCloudflareTunnelsApply(ctx, operation, req)
 		return resp, statusCode, true
@@ -277,6 +296,22 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "providers" && domain == "porkbun" && action == "nameservers-apply" {
 		resp, statusCode := h.handleProviderPorkbunNameserversApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "providers" && domain == "resend" && action == "domain-add-apply" {
+		resp, statusCode := h.handleResendDomainAddApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "providers" && domain == "resend" && action == "domain-verify-apply" {
+		resp, statusCode := h.handleResendDomainVerifyApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "providers" && domain == "resend" && action == "domain-dns-apply" {
+		resp, statusCode := h.handleResendDomainDNSApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "providers" && domain == "resend" && action == "send-test-apply" {
+		resp, statusCode := h.handleResendSendTestApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "apps" && action == "sync-sweep" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {

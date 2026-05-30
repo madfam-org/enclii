@@ -77,7 +77,7 @@ var providerCapabilities = []operatorCapability{
 		Name:        "cloudflare",
 		Status:      "partial",
 		Description: "Tunnel/domain sync exists; DNS, Access, R2, SaaS hostname, and credential-readiness ops are contract-first",
-		Actions:     []string{"dns", "dns-apply", "tunnels", "tunnels-apply", "access", "r2", "hostnames", "credentials"},
+		Actions:     []string{"zones", "zone-add-apply", "dns", "dns-apply", "tunnels", "tunnels-apply", "access", "r2", "hostnames", "credentials"},
 		Scopes:      []string{"project", "service", "target"},
 	},
 	{
@@ -86,6 +86,13 @@ var providerCapabilities = []operatorCapability{
 		Description: "Domain inventory, DNS fallback create, renewals, and nameserver ops",
 		Actions:     []string{"domains", "dns", "dns-apply", "renewals", "nameservers", "nameservers-apply"},
 		Scopes:      []string{"target"},
+	},
+	{
+		Name:        "resend",
+		Status:      "partial",
+		Description: "Transactional email domains, DNS orchestration via Cloudflare, and send-test",
+		Actions:     []string{"credentials", "domains", "domain", "emails", "domain-add-apply", "domain-verify-apply", "domain-dns-apply", "send-test-apply"},
+		Scopes:      []string{"project", "service", "target", "tenant"},
 	},
 	{
 		Name:        "hetzner",

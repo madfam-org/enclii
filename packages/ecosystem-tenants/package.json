@@ -1,0 +1,24 @@
+{
+  "name": "@enclii/ecosystem-tenants",
+  "version": "0.1.0",
+  "description": "MADFAM ecosystem tenant registry (domain suffixes, senders, Resend regions)",
+  "license": "AGPL-3.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "node --test dist/index.test.js 2>/dev/null || tsc && node --test dist/index.test.js"
+  },
+  "files": ["dist", "tenants.json"],
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

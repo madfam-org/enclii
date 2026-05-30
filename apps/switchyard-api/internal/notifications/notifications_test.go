@@ -598,7 +598,7 @@ func TestEmailService_Enabled_SendsToResend(t *testing.T) {
 	assert.True(t, svc.IsEnabled())
 
 	// Override the httpClient transport to redirect to our test server
-	svc.httpClient = redirectTransport(server)
+	svc.client.SetHTTPClient(redirectTransport(server))
 
 	err := svc.SendTeamInvitation(context.Background(), TeamInvitationData{
 		InviteeEmail:    "newuser@example.com",
@@ -634,7 +634,7 @@ func TestEmailService_ResendError(t *testing.T) {
 		APIKey: "re_test_key",
 	}, testLogger())
 
-	svc.httpClient = redirectTransport(server)
+	svc.client.SetHTTPClient(redirectTransport(server))
 
 	err := svc.SendTeamInvitation(context.Background(), TeamInvitationData{
 		InviteeEmail:    "bad-email",
@@ -646,7 +646,7 @@ func TestEmailService_ResendError(t *testing.T) {
 		ExpiresAt:       time.Now().Add(time.Hour),
 	})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "email API error: status 422")
+	assert.Contains(t, err.Error(), "status 422")
 }
 
 // ---------------------------------------------------------------------------
@@ -987,7 +987,7 @@ func TestSenderTimeouts(t *testing.T) {
 
 	t.Run("email service has 30s timeout", func(t *testing.T) {
 		svc := NewEmailService(EmailConfig{APIKey: "key"}, testLogger())
-		assert.Equal(t, 30*time.Second, svc.httpClient.Timeout)
+		assert.Equal(t, 30*time.Second, svc.ResendClient().HTTPClient().Timeout)
 	})
 }
 

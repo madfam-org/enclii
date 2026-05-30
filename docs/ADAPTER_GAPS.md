@@ -6,11 +6,12 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 |-----|-------------------|----------------|----------|
 | Production build secrets | Manual `kubectl apply` per `infra/k8s/production/kustomization.yaml` comments | `enclii secrets` + ExternalSecrets sync | P1 |
 | Cloudflare optional secrets | Manual kubectl when not in git | `enclii providers cloudflare` | P2 |
+| Dispatch direct Cloudflare API | ~~`CLOUDFLARE_API_TOKEN` on Dispatch~~ | **Closed** — Dispatch uses Switchyard provider APIs (W3) | — |
 | Policy-only kubectl comment | `infra/k8s/policies/enclii-default-deny.yaml` header | ArgoCD app docs only | P3 |
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` — **8/8 populated** 2026-05-30 | P2 |
 | Enclii Vault `internal_api_key` backfill | Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh` | `enclii secrets` Vault writer + merge ESO auto-sync | P1 |
-| Signup verification email (Resend) | Bridge from Janua via `ga-resend-bridge-bootstrap.sh`; sender `noreply@janua.dev` until `enclii.dev` verified in Resend | Dedicated Enclii Resend domain + `enclii secrets` Vault writer | P2 |
+| Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `scripts/backfill-resend-vault-key.sh`; `providers.resend.*` + Dispatch Provider Hub | — |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 

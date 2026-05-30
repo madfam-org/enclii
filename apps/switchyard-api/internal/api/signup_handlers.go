@@ -31,6 +31,7 @@ func registerSignupRoutes(
 	v1.POST("/signup", initiate, h.InitiateSignup)
 	v1.GET("/signup/:id/status", status, h.GetSignupStatus)
 	v1.POST("/signup/:id/verify", strictAuthRateLimiter.Middleware(), h.VerifySignupEmail)
+	v1.POST("/signup/:id/resend", initiate, h.ResendSignupVerification)
 	v1.GET("/signup/:id/github/authorize", authRateLimiter.Middleware(), h.AuthorizeGithubForSignup)
 	v1.GET("/signup/:id/github/callback", h.GithubCallbackForSignup)
 	v1.POST("/signup/:id/provision", authRateLimiter.Middleware(), h.ProvisionSignup)
@@ -110,6 +111,36 @@ func (h *Handler) GetSignupStatus(c *gin.Context) {
 	}
 	if sr.ErrorMessage != nil {
 		resp["error_message"] = *sr.ErrorMessage
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ResendSignupVerification handles POST /v1/signup/:id/resend — re-sends verification email.
+func (h *Handler) ResendSignupVerification(c *gin.Context) {
+	if h.signupService == nil || !h.signupService.IsEnabled() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	ctx := c.Request.Context()
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid signup id"})
+		return
+	}
+
+	resp, err := h.signupService.ResendVerification(ctx, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, signup.ErrSignupNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "signup not found"})
+		case errors.Is(err, signup.ErrWrongStateForTransition):
+			c.JSON(http.StatusConflict, gin.H{"error": "signup not awaiting verification"})
+		default:
+			h.logger.Error(ctx, "signup: resend verification failed", logging.Error("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "resend failed"})
+		}
+		return
 	}
 	c.JSON(http.StatusOK, resp)
 }

@@ -300,6 +300,21 @@ func (s *Service) reissueVerification(ctx context.Context, existing *db.SignupRe
 	}, nil
 }
 
+// ResendVerification re-issues the verification email for a signup awaiting email confirmation.
+func (s *Service) ResendVerification(ctx context.Context, signupID uuid.UUID) (*InitiateResponse, error) {
+	if !s.featureFlagOn {
+		return nil, ErrSignupDisabled
+	}
+	sr, err := s.repos.Signups.GetByID(ctx, signupID)
+	if err != nil {
+		return nil, ErrSignupNotFound
+	}
+	if sr.Status != db.SignupStatusPendingVerification {
+		return nil, ErrWrongStateForTransition
+	}
+	return s.reissueVerification(ctx, sr)
+}
+
 // GetStatus is the poll endpoint. Used by the UI wizard to re-render after
 // the user clicks through the verification email.
 func (s *Service) GetStatus(ctx context.Context, signupID uuid.UUID) (*db.SignupRequest, error) {

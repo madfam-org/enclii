@@ -187,6 +187,24 @@ export default function SignupPage() {
     }
   }
 
+  async function handleResendVerification() {
+    if (!signupID) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await apiFetchResponse(`/v1/signup/${signupID}/resend`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await safeJson(res);
+        setError(body?.error ?? "Could not resend verification email.");
+        return;
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // --- Rendering --------------------------------------------------------
 
   return (
@@ -219,7 +237,9 @@ export default function SignupPage() {
             />
           )}
 
-          {step === 2 && state && <Step2VerifyEmail email={state.email} onResend={() => setSignupID(state.signup_id)} />}
+          {step === 2 && state && (
+            <Step2VerifyEmail email={state.email} onResend={handleResendVerification} />
+          )}
 
           {step === 3 && state && (
             <Step3ConnectGithub

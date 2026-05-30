@@ -1,28 +1,25 @@
 package notifications
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/resend"
 	"github.com/sirupsen/logrus"
 )
 
-// EmailService handles transactional email delivery
+// EmailService handles transactional email delivery via Resend.
 type EmailService struct {
-	logger     *logrus.Logger
-	apiKey     string // Resend API key
-	fromEmail  string // Default from email
-	fromName   string // Default from name
-	baseURL    string // App base URL for links
-	enabled    bool   // Whether email is configured
-	httpClient *http.Client
+	logger    *logrus.Logger
+	client    *resend.Client
+	fromEmail string
+	fromName  string
+	baseURL   string
+	enabled   bool
 }
 
-// EmailConfig holds email service configuration
+// EmailConfig holds email service configuration.
 type EmailConfig struct {
 	APIKey    string // RESEND_API_KEY
 	FromEmail string // EMAIL_FROM_ADDRESS (default: noreply@enclii.dev)
@@ -30,22 +27,22 @@ type EmailConfig struct {
 	BaseURL   string // APP_BASE_URL (e.g., https://app.enclii.dev)
 }
 
-// NewEmailService creates a new email service
+// NewEmailService creates a new email service.
 func NewEmailService(cfg EmailConfig, logger *logrus.Logger) *EmailService {
-	enabled := cfg.APIKey != ""
+	client := resend.NewClient(resend.Config{APIKey: cfg.APIKey})
+	enabled := client.Configured()
 
 	if !enabled {
 		logger.Warn("Email service not configured - emails will be logged only. Set RESEND_API_KEY to enable.")
 	}
 
 	return &EmailService{
-		logger:     logger,
-		apiKey:     cfg.APIKey,
-		fromEmail:  withDefault(cfg.FromEmail, "noreply@enclii.dev"),
-		fromName:   withDefault(cfg.FromName, "Enclii"),
-		baseURL:    withDefault(cfg.BaseURL, "https://app.enclii.dev"),
-		enabled:    enabled,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		logger:    logger,
+		client:    client,
+		fromEmail: withDefault(cfg.FromEmail, "noreply@enclii.dev"),
+		fromName:  withDefault(cfg.FromName, "Enclii"),
+		baseURL:   withDefault(cfg.BaseURL, "https://app.enclii.dev"),
+		enabled:   enabled,
 	}
 }
 
@@ -56,7 +53,15 @@ func withDefault(val, def string) string {
 	return val
 }
 
-// TeamInvitationData contains data for team invitation emails
+// ResendClient exposes the underlying Resend API client for provider adapters.
+func (s *EmailService) ResendClient() *resend.Client {
+	if s == nil {
+		return nil
+	}
+	return s.client
+}
+
+// TeamInvitationData contains data for team invitation emails.
 type TeamInvitationData struct {
 	InviteeEmail    string
 	TeamName        string
@@ -68,7 +73,7 @@ type TeamInvitationData struct {
 	ExpiresAt       time.Time
 }
 
-// SendTeamInvitation sends a team invitation email
+// SendTeamInvitation sends a team invitation email.
 func (s *EmailService) SendTeamInvitation(ctx context.Context, data TeamInvitationData) error {
 	inviteURL := fmt.Sprintf("%s/invitations/accept?token=%s", s.baseURL, data.InvitationToken)
 
@@ -131,7 +136,7 @@ If you weren't expecting this invitation, you can safely ignore this email.
 	return s.send(ctx, data.InviteeEmail, subject, htmlBody, textBody)
 }
 
-// resendEmail represents the Resend API email payload
+// resendEmail represents the Resend API email payload (used in tests).
 type resendEmail struct {
 	From    string   `json:"from"`
 	To      []string `json:"to"`
@@ -140,76 +145,58 @@ type resendEmail struct {
 	Text    string   `json:"text,omitempty"`
 }
 
-// send sends an email via the Resend API
 func (s *EmailService) send(ctx context.Context, to, subject, htmlBody, textBody string) error {
 	logger := s.logger.WithFields(logrus.Fields{
 		"to":      to,
 		"subject": subject,
 	})
 
-	// If email not configured, just log
 	if !s.enabled {
 		logger.Info("Email would be sent (email service not configured)")
 		logger.WithField("text_body", textBody).Debug("Email content")
 		return nil
 	}
 
-	email := resendEmail{
+	_, err := s.client.SendEmail(ctx, resend.SendEmailRequest{
 		From:    fmt.Sprintf("%s <%s>", s.fromName, s.fromEmail),
 		To:      []string{to},
 		Subject: subject,
 		HTML:    htmlBody,
 		Text:    textBody,
-	}
-
-	body, err := json.Marshal(email)
-	if err != nil {
-		return fmt.Errorf("failed to marshal email: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.resend.com/emails", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
+	})
 	if err != nil {
 		logger.WithError(err).Error("Failed to send email")
 		return fmt.Errorf("failed to send email: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		var errResp map[string]interface{}
-		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		logger.WithFields(logrus.Fields{
-			"status_code": resp.StatusCode,
-			"response":    errResp,
-		}).Error("Email API returned error")
-		return fmt.Errorf("email API error: status %d", resp.StatusCode)
 	}
 
 	logger.Info("Email sent successfully")
 	return nil
 }
 
-// IsEnabled returns whether email sending is configured
+// IsEnabled returns whether email sending is configured.
 func (s *EmailService) IsEnabled() bool {
 	return s.enabled
 }
 
-// SendGeneric sends a plain-text transactional email. It's a thin wrapper
-// around send() exposed for services that need ad-hoc notifications
-// (e.g. tenant export readiness) without embedding HTML templates here.
-// When `to` is empty, the email is routed to the default admin list
-// configured via EMAIL_TO_ADMINS (no-op if neither to nor admin list is
-// configured).
+// FromEmail returns the configured sender address.
+func (s *EmailService) FromEmail() string {
+	if s == nil {
+		return ""
+	}
+	return s.fromEmail
+}
+
+// FromName returns the configured sender display name.
+func (s *EmailService) FromName() string {
+	if s == nil {
+		return ""
+	}
+	return s.fromName
+}
+
+// SendGeneric sends a plain-text transactional email.
 func (s *EmailService) SendGeneric(ctx context.Context, to, subject, body string) error {
 	if to == "" {
-		// Dev/staging with no admin mailing list: log and return.
 		s.logger.WithField("subject", subject).
 			Info("SendGeneric: no recipient, logging only")
 		return nil

@@ -12,6 +12,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@enclii/ecosystem-tenants": "workspace:*",
     "@enclii/ui-components": "workspace:*",
     "@kubernetes/client-node": "^0.22.3",
     "@radix-ui/react-checkbox": "^1.3.3",

@@ -37,11 +37,12 @@ trap 'rm -rf "$tmpdir"' EXIT
 kubectl -n "$SOURCE_NS" get secret "$SOURCE_NAME" \
   -o "jsonpath={.data.${SOURCE_KEY}}" | base64 -d >"$tmpdir/${SOURCE_KEY}"
 
-kubectl -n "$TARGET_NS" create secret generic "$TARGET_SECRET" \
+kubectl -n "$TARGET_NS" create secret generic "$TARGET_BRIDGE" \
   --from-file="${SOURCE_KEY}=$tmpdir/${SOURCE_KEY}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
-echo "Bridge secret $TARGET_NS/$TARGET_SECRET populated from $SOURCE_NS/$SOURCE_NAME (no values printed)"
+echo "Bridge secret $TARGET_NS/$TARGET_BRIDGE populated from $SOURCE_NS/$SOURCE_NAME (no values printed)"
+echo "DEPRECATED: prefer scripts/backfill-resend-vault-key.sh for direct Vault backfill"
 
 if kubectl get externalsecret enclii-resend-api-key -n "$TARGET_NS" >/dev/null 2>&1; then
   kubectl -n "$TARGET_NS" annotate externalsecret enclii-resend-api-key \

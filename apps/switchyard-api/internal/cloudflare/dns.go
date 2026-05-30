@@ -223,6 +223,42 @@ func (c *Client) CreateDNSRecordInZone(ctx context.Context, zoneID, name, record
 	return &resp.Result, nil
 }
 
+// CreateDNSRecordInZoneWithPriority creates a DNS record, including MX priority when set (>0).
+func (c *Client) CreateDNSRecordInZoneWithPriority(ctx context.Context, zoneID, name, recordType, content string, proxied bool, priority int) (*DNSRecord, error) {
+	payload := map[string]any{
+		"type":    recordType,
+		"name":    name,
+		"content": content,
+		"proxied": proxied,
+		"ttl":     1,
+		"comment": "Managed by Enclii platform (Resend DNS)",
+	}
+	if strings.EqualFold(recordType, "MX") && priority > 0 {
+		payload["priority"] = priority
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal DNS record: %w", err)
+	}
+
+	var resp APIResponse[DNSRecord]
+	path := fmt.Sprintf("/zones/%s/dns_records", zoneID)
+
+	if err := c.post(ctx, path, bytes.NewReader(payloadBytes), &resp); err != nil {
+		return nil, fmt.Errorf("failed to create DNS record for %s: %w", name, err)
+	}
+
+	if !resp.Success {
+		if len(resp.Errors) > 0 {
+			return nil, fmt.Errorf("API error creating DNS record: %s", resp.Errors[0].Message)
+		}
+		return nil, fmt.Errorf("unknown API error creating DNS record")
+	}
+
+	return &resp.Result, nil
+}
+
 // UpdateDNSRecordInZone updates an existing DNS record in a specific zone.
 func (c *Client) UpdateDNSRecordInZone(ctx context.Context, zoneID string, record DNSRecord, content string, proxied bool) (*DNSRecord, error) {
 	if record.ID == "" {
@@ -313,17 +349,32 @@ func (c *Client) DeleteDNSRecordInZone(ctx context.Context, zoneID, recordID str
 	return nil
 }
 
-// ListZones lists all zones accessible by the API token
+// ListAccountZones lists all zones accessible by the API token (any status).
+func (c *Client) ListAccountZones(ctx context.Context) ([]Zone, error) {
+	return c.listZonesPaginated(ctx, url.Values{})
+}
+
+// ListZones lists active zones accessible by the API token.
 func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
+	query := url.Values{}
+	query.Set("status", "active")
+	return c.listZonesPaginated(ctx, query)
+}
+
+func (c *Client) listZonesPaginated(ctx context.Context, baseQuery url.Values) ([]Zone, error) {
 	var allZones []Zone
 	page := 1
 	perPage := 50
 
 	for {
 		query := url.Values{}
+		for k, v := range baseQuery {
+			for _, item := range v {
+				query.Add(k, item)
+			}
+		}
 		query.Set("page", fmt.Sprintf("%d", page))
 		query.Set("per_page", fmt.Sprintf("%d", perPage))
-		query.Set("status", "active")
 
 		var resp APIResponse[[]Zone]
 		if err := c.get(ctx, "/zones", query, &resp); err != nil {

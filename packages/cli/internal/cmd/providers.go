@@ -47,6 +47,16 @@ once the server-side provider adapter supports the operation.`,
 		{name: "nameservers", short: "Inspect or plan nameserver changes", readOnly: true},
 		{name: "nameservers-apply", short: "Apply registrar nameserver changes", readOnly: false},
 	}))
+	cmd.AddCommand(newProviderCommand(cfg, "resend", "Resend transactional email domains and send-test", []providerAction{
+		{name: "credentials", short: "Inspect Resend API key and sender readiness", readOnly: true},
+		{name: "domains", short: "List Resend domains (filter by tenant scope)", readOnly: true},
+		{name: "domain", short: "Inspect a single Resend domain and DNS records", readOnly: true},
+		{name: "emails", short: "List recent sent emails", readOnly: true},
+		{name: "domain-add-apply", short: "Register a domain in Resend", readOnly: false},
+		{name: "domain-verify-apply", short: "Trigger Resend domain verification", readOnly: false},
+		{name: "domain-dns-apply", short: "Apply Resend DNS records via Cloudflare", readOnly: false},
+		{name: "send-test-apply", short: "Send a test email via Resend", readOnly: false},
+	}))
 	cmd.AddCommand(newProviderCommand(cfg, "hetzner", "Hetzner Robot/Cloud nodes, LB, vSwitch, and storage", []providerAction{
 		{name: "nodes", short: "Inspect server inventory, labels, taints, and capacity", readOnly: true},
 		{name: "lb", short: "Inspect or plan DR load balancer fallback", readOnly: true},

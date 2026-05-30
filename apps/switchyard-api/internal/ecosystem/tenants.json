@@ -1,0 +1,52 @@
+{
+  "tenants": [
+    {
+      "id": "madfam",
+      "displayName": "MADFAM",
+      "domainSuffixes": ["madfam.io", "madfam.dev"],
+      "defaultSenderDomain": "madfam.io",
+      "defaultSenderAddress": "noreply@madfam.io",
+      "resendRegion": "us-east-1"
+    },
+    {
+      "id": "janua",
+      "displayName": "Janua",
+      "domainSuffixes": ["janua.dev"],
+      "defaultSenderDomain": "janua.dev",
+      "defaultSenderAddress": "noreply@janua.dev",
+      "resendRegion": "us-east-1"
+    },
+    {
+      "id": "enclii",
+      "displayName": "Enclii",
+      "domainSuffixes": ["enclii.dev"],
+      "defaultSenderDomain": "enclii.dev",
+      "defaultSenderAddress": "noreply@enclii.dev",
+      "resendRegion": "us-east-1"
+    },
+    {
+      "id": "suluna",
+      "displayName": "Suluna",
+      "domainSuffixes": ["suluna.mx", "suluna.app"],
+      "defaultSenderDomain": "suluna.mx",
+      "defaultSenderAddress": "noreply@suluna.mx",
+      "resendRegion": "us-east-1"
+    },
+    {
+      "id": "primavera",
+      "displayName": "Primavera",
+      "domainSuffixes": ["primavera.mx"],
+      "defaultSenderDomain": "primavera.mx",
+      "defaultSenderAddress": "noreply@primavera.mx",
+      "resendRegion": "us-east-1"
+    },
+    {
+      "id": "other",
+      "displayName": "Other",
+      "domainSuffixes": [],
+      "defaultSenderDomain": "",
+      "defaultSenderAddress": "",
+      "resendRegion": "us-east-1"
+    }
+  ]
+}

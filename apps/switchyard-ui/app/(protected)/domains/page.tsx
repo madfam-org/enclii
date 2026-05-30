@@ -37,6 +37,7 @@ import {
   decideBanners,
 } from '@/components/domains/domain-coverage-banner';
 import { useDomains } from '@/hooks/use-domains';
+import { useResendDomainStatus } from '@/hooks/use-resend-domain-status';
 import { apiPost } from '@/lib/api';
 import type { DomainHealthStatus } from '@/types/domain';
 import { deriveDomainHealth } from '@/components/domains/domain-status-badge';
@@ -64,6 +65,7 @@ export default function DomainsPage() {
     lastSyncedAt,
     refresh,
   } = useDomains();
+  const { statusByDomain, isAdmin: resendAdmin } = useResendDomainStatus();
 
   // Banners + verifier-stale decision are derived from `coverage` so the
   // logic is pure and testable in `domain-coverage-banner.test.ts`.
@@ -530,6 +532,7 @@ export default function DomainsPage() {
                 project: projectFilter,
               }}
               verifierStale={verifierStale}
+              resendStatusByDomain={resendAdmin ? statusByDomain : undefined}
             />
           )}
         </CardContent>

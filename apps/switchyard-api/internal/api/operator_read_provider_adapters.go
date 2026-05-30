@@ -22,6 +22,8 @@ func (h *Handler) handleProviderReadOperation(ctx context.Context, provider, act
 		return h.handleGitHubReadOperation(ctx, provider, action, operation, req)
 	case "porkbun":
 		return h.handlePorkbunReadOperation(ctx, provider, action, operation, req)
+	case "resend":
+		return h.handleResendReadOperation(ctx, provider, action, operation, req)
 	default:
 		return operatorReadUnavailable(operation, provider, action, fmt.Sprintf("%s provider adapter is not configured", provider))
 	}
@@ -111,12 +113,34 @@ func (h *Handler) handleCloudflareReadOperation(ctx context.Context, provider, a
 	switch action {
 	case "credentials":
 		return h.handleCloudflareCredentialsReadOperation(provider, action, operation)
+	case "zones":
+		cfClient := h.cloudflareDNSApplyClient()
+		if cfClient == nil {
+			return operatorReadUnavailable(operation, provider, action, "cloudflare API client is not configured")
+		}
+		zones, err := cfClient.ListAccountZones(ctx)
+		if err != nil {
+			return operatorReadFailed(operation, provider, action, err)
+		}
+		return operatorReadSuccess(operation, provider, action, gin.H{"zones": zones, "count": len(zones)})
 	case "dns", "hostnames":
 		if h.domainSyncService == nil || h.domainSyncService.GetCloudflareClient() == nil {
 			return operatorReadUnavailable(operation, provider, action, "cloudflare domain sync service is not configured")
 		}
 		cfClient := h.domainSyncService.GetCloudflareClient()
 		target := operationTarget(req)
+		zoneID := strings.TrimSpace(req.Args["zone_id"])
+		if zoneID != "" {
+			records, err := cfClient.ListDNSRecordsForZone(ctx, zoneID)
+			if err != nil {
+				return operatorReadFailed(operation, provider, action, err)
+			}
+			return operatorReadSuccess(operation, provider, action, gin.H{
+				"zone_id": zoneID,
+				"records": records,
+				"count":   len(records),
+			})
+		}
 		if target != "" {
 			record, err := cfClient.GetDNSRecord(ctx, target)
 			if err != nil {

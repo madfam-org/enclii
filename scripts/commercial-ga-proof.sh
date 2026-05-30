@@ -225,6 +225,21 @@ if [ -n "$TOKEN" ]; then
   else
     append_check fail "dashboard stats auth gate" "expected 401/403 without auth, got ${code:-000}"
   fi
+
+  code="$(curl -sS --max-time "$TIMEOUT" \
+    -H "Accept: application/json" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d '{"dry_run":true}' \
+    -o "$BODY_FILE" -w "%{http_code}" \
+    "${API_URL%/}/v1/providers/resend/credentials" || true)"
+  if [ "$code" = "200" ] && body_contains 'apiKeyPresent|configured'; then
+    append_check pass "resend credentials read" "HTTP 200"
+  elif [ "$code" = "403" ] || [ "$code" = "401" ]; then
+    append_check warn "resend credentials read" "admin token required for providers.resend.credentials"
+  else
+    warn_or_fail "resend credentials read" "expected HTTP 200 JSON, got ${code:-000}"
+  fi
 fi
 
 write_summary

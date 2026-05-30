@@ -90,6 +90,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const moreNav = allNav.slice(7);
 
   const secondaryNav: NavItem[] = [
+    { name: 'Integrations', href: '/integrations' },
     { name: 'Usage', href: '/usage' },
     { name: 'Settings', href: '/settings' },
   ];

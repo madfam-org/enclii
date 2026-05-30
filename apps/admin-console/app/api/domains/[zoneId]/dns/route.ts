@@ -1,17 +1,27 @@
 import { NextResponse } from 'next/server'
-import { listDNSRecords, createDNSRecord } from '@/lib/cloudflare-service'
+import { switchyardProviderCall } from '@/lib/switchyard-proxy'
 
 /**
- * GET /api/domains/[zoneId]/dns - List DNS records for a zone
+ * GET /api/domains/[zoneId]/dns - List DNS records via Switchyard
  */
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ zoneId: string }> }
 ) {
   try {
     const { zoneId } = await params
-    const records = await listDNSRecords(zoneId)
-    return NextResponse.json({ success: true, data: records.result })
+    const { ok, data, status } = await switchyardProviderCall('cloudflare', 'dns', {
+      dry_run: true,
+      args: { zone_id: zoneId },
+    })
+    if (!ok) {
+      return NextResponse.json(
+        { success: false, error: data.summary || 'Failed to fetch DNS records' },
+        { status: status >= 400 ? status : 502 }
+      )
+    }
+    const records = (data.data as { records?: unknown[] })?.records ?? []
+    return NextResponse.json({ success: true, data: records })
   } catch (error) {
     console.error('[Dispatch API] Error fetching DNS records:', error)
     return NextResponse.json(
@@ -25,7 +35,7 @@ export async function GET(
 }
 
 /**
- * POST /api/domains/[zoneId]/dns - Create a DNS record
+ * POST /api/domains/[zoneId]/dns - Create DNS record via Switchyard dns-apply
  */
 export async function POST(
   request: Request,
@@ -42,16 +52,26 @@ export async function POST(
       )
     }
 
-    const record = await createDNSRecord(zoneId, {
-      type: body.type,
-      name: body.name,
-      content: body.content,
-      ttl: body.ttl,
-      proxied: body.proxied,
-      comment: body.comment,
+    const { ok, data, status } = await switchyardProviderCall('cloudflare', 'dns-apply', {
+      dry_run: false,
+      reason: body.reason?.trim() || `Dispatch DNS create in zone ${zoneId}`,
+      args: {
+        zone_id: zoneId,
+        target: body.name,
+        type: body.type,
+        content: body.content,
+        proxied: body.proxied ? 'true' : 'false',
+      },
     })
 
-    return NextResponse.json({ success: true, data: record })
+    if (!ok) {
+      return NextResponse.json(
+        { success: false, error: data.summary || 'Failed to create DNS record' },
+        { status: status >= 400 ? status : 502 }
+      )
+    }
+
+    return NextResponse.json({ success: true, data: data.data })
   } catch (error) {
     console.error('[Dispatch API] Error creating DNS record:', error)
     return NextResponse.json(

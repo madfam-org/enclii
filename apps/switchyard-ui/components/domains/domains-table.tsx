@@ -35,6 +35,8 @@ export interface DomainsTableProps {
   filters: DomainsTableFilters;
   /** Defaults to "expiry-asc" (worst first) per spec. */
   initialSort?: SortKey;
+  /** Resend domain verification status keyed by apex domain (admin). */
+  resendStatusByDomain?: Record<string, string>;
   /**
    * When true, "Unknown" status badges render as "Stale" — the
    * verification pipeline is wedged and the displayed status is DB
@@ -254,6 +256,7 @@ export function DomainsTable({
   filters,
   initialSort = 'expiry-asc',
   verifierStale = false,
+  resendStatusByDomain,
 }: DomainsTableProps) {
   const [sort, setSort] = useState<SortKey>(initialSort);
 
@@ -293,6 +296,7 @@ export function DomainsTable({
               <TableHead>Project</TableHead>
               <TableHead>Service</TableHead>
               <TableHead>Status</TableHead>
+              {resendStatusByDomain && <TableHead>Resend</TableHead>}
               <SortableHeader
                 label="Cert expiry"
                 field="expiry"
@@ -383,6 +387,35 @@ export function DomainsTable({
                   <TableCell>
                     <DomainStatusBadge domain={d} verifierStale={verifierStale} />
                   </TableCell>
+                  {resendStatusByDomain && (
+                    <TableCell>
+                      {(() => {
+                        const apex = d.domain.split('.').slice(-2).join('.');
+                        const rs =
+                          resendStatusByDomain[d.domain.toLowerCase()] ??
+                          resendStatusByDomain[apex.toLowerCase()];
+                        if (!rs) {
+                          return (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          );
+                        }
+                        const verified = rs.toLowerCase() === 'verified';
+                        return (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-xs',
+                              verified
+                                ? 'text-status-success border-status-success'
+                                : 'text-status-warning border-status-warning',
+                            )}
+                          >
+                            {rs}
+                          </Badge>
+                        );
+                      })()}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <CertExpiryIndicator expiresAt={d.tls_expires_at} />
                   </TableCell>

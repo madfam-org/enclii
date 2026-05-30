@@ -3,6 +3,7 @@ packages:
   - "packages/ui-components"
   - "packages/config"
   - "packages/sdk-ts"
+  - "packages/ecosystem-tenants"
   - "apps/switchyard-ui"
   - "apps/admin-console"
   - "apps/status"

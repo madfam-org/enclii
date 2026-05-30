@@ -62,23 +62,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 /**
- * Extract tenant from domain name
+ * Extract tenant from domain name (shared registry).
  */
-export function extractTenant(domain: string): string {
-  const tenantMap: Record<string, string> = {
-    'madfam.io': 'madfam',
-    'madfam.dev': 'madfam',
-    'suluna.mx': 'suluna',
-    'suluna.app': 'suluna',
-    'primavera.mx': 'primavera',
-    'janua.dev': 'janua',
-    'enclii.dev': 'enclii',
-  }
-
-  for (const [suffix, tenant] of Object.entries(tenantMap)) {
-    if (domain.endsWith(suffix)) {
-      return tenant
-    }
-  }
-  return 'other'
-}
+export { tenantFromDomain as extractTenant } from '@enclii/ecosystem-tenants'
