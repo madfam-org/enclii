@@ -12,6 +12,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` — **8/8 populated** 2026-05-30 | P2 |
 | Enclii Vault `internal_api_key` backfill | Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh` | `enclii secrets` Vault writer + merge ESO auto-sync | P1 |
 | Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `scripts/backfill-resend-vault-key.sh`; `providers.resend.*` + Dispatch Provider Hub | — |
+| Agent SaaS tool plane (`madfam.ops.*` proxy) | N/A — not built | Coupler `madfam.ops.*` → Enclii `providers.*` / `ops.*` (admin JWT) | P1 — track in [COUPLER_REMEDIATION_PLAN.md](strategy/COUPLER_REMEDIATION_PLAN.md) |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
@@ -28,6 +29,10 @@ When closing a gap, remove the row and link the PR that added the adapter.
 `enclii providers cloudflare dns-apply` now exposes the concrete DNS mutation flags used by the existing server-side Cloudflare adapter: `--type`, `--content`, and `--proxied`. `enclii providers cloudflare credentials` is also exposed as a contract-read surface for provider credential readiness.
 
 Keep the Cloudflare optional-secrets gap open until the credentials read endpoint reports concrete provider environment state instead of only the generic operation contract.
+
+### 2026-05-30 — Coupler Program (Agent Tool Plane)
+
+Documented separate AGPL repo `madfam-org/coupler` for Composio-class agent tools. Enclii retains operator Provider Hub only; end-user SaaS connectors and MCP live in Coupler. See `docs/strategy/COUPLER_REMEDIATION_PLAN.md`. Open adapter gap: `madfam.ops.*` proxy (closes in Coupler P4).
 
 ### 2026-05-29 — GA adapter surfaces (Wave 0 engineering)
 

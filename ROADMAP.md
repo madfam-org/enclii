@@ -45,6 +45,27 @@ Multi-region/edge, managed DB marketplace, full sdk-ts UI migration, PostgreSQL 
 
 ---
 
+## Coupler Program — Agent Tool Plane (Jun–Oct 2026)
+
+**Objective:** Sovereign Composio-class capabilities (delegated SaaS auth, tool execute, MCP, sandbox, triggers) in **`madfam-org/coupler`** (AGPL-3.0) — **not** embedded in Enclii or Janua.
+
+| Track | Target | Blocker |
+|-------|--------|---------|
+| P0 Bootstrap | 2026-06-13 | Public repo + CI |
+| P1 Janua Keyring | 2026-07-25 | ConnectedAccount (ADR-002) |
+| P2 Coupler core | 2026-09-05 | Staging execute + 2 connectors |
+| P3 Dev surface | 2026-10-03 | MCP + SDK + Selva PoC |
+| P4 Parity | 2026-11-14 | Sandbox, triggers, 6 connectors |
+| P5 Ecosystem GA | 2026-12-12 | Synthetics, runbooks, announce |
+
+**Docs:** [AGENT_TOOL_PLANE.md](docs/strategy/AGENT_TOOL_PLANE.md) · [COUPLER_REMEDIATION_PLAN.md](docs/strategy/COUPLER_REMEDIATION_PLAN.md) · [COUPLER_EXECUTION_CHECKLIST.md](docs/strategy/COUPLER_EXECUTION_CHECKLIST.md)
+
+**Enclii role:** onboard namespace, ops proxy (`madfam.ops.*`), docs — **no** SaaS connectors in switchyard-api.
+
+**Runs parallel to** Commercial GA Gate 4 SLO window; does not reset Enclii GA clock.
+
+---
+
 ## Current State (May 2026)
 
 ### Enclii (DevOps Platform) — Production-running beta
@@ -363,12 +384,13 @@ All GA work is tracked in [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERC
 | 2026-05-14 | Quote-flow verification roadmap added for Selva -> Yantra4D -> Cotiza -> ForgeSight, including Enclii-first operational checks and emergency-only direct production access. |
 | 2026-05-22 | **Codebase audit remediation:** Phases 0–2 on `main`; security release checklist pending prod sign-off. |
 | 2026-05-29 | **Commercial GA master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md) — waves 0–4, target announce ~2026-07-14. Supersedes “95% ready” until Gate 5. Staging proofs A/B/C green 2026-05-23. |
+| 2026-05-30 | **Coupler Program:** Agent Tool Plane — separate AGPL repo, execution plan + checklist; Janua Keyring blocker documented. |
 
 
 ---
 
 *Roadmap is subject to change based on community feedback and strategic priorities.*  
-*Last updated: May 29, 2026*
+*Last updated: May 30, 2026*
 
 ---
 

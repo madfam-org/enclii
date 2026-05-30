@@ -38,3 +38,11 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `docs/contracts/DEV_ENV_ALIGNMENT.md` — UI/CLI/API URL and log endpoint matrix
 - `docs/testing/GOLDEN_TESTS.md` — golden manifest regeneration
 - `docs/ADAPTER_GAPS.md` — Enclii adapter gap registry
+
+## Coupler Program (Agent Tool Plane, Jun 2026)
+
+- `docs/strategy/AGENT_TOOL_PLANE.md` — architecture, boundaries, API sketch
+- `docs/strategy/COUPLER_REMEDIATION_PLAN.md` — full phased implementation (P0–P5)
+- `docs/strategy/COUPLER_EXECUTION_CHECKLIST.md` — day-1 bootstrap checklist
+- Janua blocker: ConnectedAccount / ADR-002 (`janua/docs/COUPLER_PROGRAM.md`)
+- Zero Composio spend; sovereign `madfam-org/coupler` (AGPL-3.0)

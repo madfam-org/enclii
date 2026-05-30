@@ -72,6 +72,7 @@ below is embedded here so this document stands alone.
 | **Janua** | `madfam-org/janua` | OIDC/OAuth 2.0 provider — RS256 JWKS at `auth.madfam.io/.well-known/jwks.json` |
 | **Dhanam** | `madfam-org/dhanam` | Billing + payment gateways (Stripe, Mercado Pago, SPEI, etc.) |
 | **Selva** | `madfam-org/autoswarm-office` | LLM inference routing + agent orchestration |
+| **Coupler** | `madfam-org/coupler` | Agent Tool Plane — delegated SaaS tools, MCP, sandbox, triggers (AGPL). Auth via Janua; deploy via Enclii; consume from Selva/apps |
 | **Karafiel** | `madfam-org/karafiel` | Operational compliance — CFDI, NOM-151, e.firma, SAT-adjacent. Owns legal-ops / contract templates |
 | **Tezca** | `madfam-org/tezca` | Mexican law oracle (informational only — feeds Karafiel) |
 | **Cotiza** | `madfam-org/digifab-quoting` | MADFAM's quoting engine (fabrication + services) |
@@ -91,6 +92,10 @@ below is embedded here so this document stands alone.
 - **Inference**: every LLM call should route through Selva
   (`autoswarm-office`) at `/v1` (OpenAI-compatible). Do not talk directly
   to OpenAI / Anthropic from service code.
+- **Agent SaaS tools**: end-user delegated tool calls (Slack, Gmail, etc.)
+  route through **Coupler** (`madfam-org/coupler`), not Enclii Provider Hub.
+  Operator infra actions stay on Enclii `providers.*` / `ops.*` (proxied as
+  `madfam.ops.*` from Coupler for admin agents only).
 - **CORS**: explicit allowlist per service. Wildcards are banned
   (audit 2026-04-23 H2/H5/H6).
 - **Images**: `@sha256:`-pinned in every manifest. Kyverno fail-closes on
