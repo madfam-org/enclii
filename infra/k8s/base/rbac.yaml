@@ -105,10 +105,10 @@ rules:
 - apiGroups: ["actions.github.com"]
   resources: ["autoscalingrunnersets"]
   verbs: ["get", "list", "watch"]
-# Batch jobs: Enclii-first CronJob inspection and audited run-once triggers
+# Batch jobs: service-managed CronJobs plus Enclii-first audited run-once triggers
 - apiGroups: ["batch"]
   resources: ["cronjobs"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["create", "get", "list", "watch", "delete"]

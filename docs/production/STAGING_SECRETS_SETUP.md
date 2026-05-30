@@ -15,7 +15,7 @@ Configure secrets **once** before running lifecycle proofs (bets A/B/C).
 | 3 | Note **service UUIDs** and **environment UUID** for domain proof |
 | 4 | For storage deploy proof: note a **ready release UUID** on the test service |
 
-Do not use production-critical customer services or platform `enclii/*` services (deploy returns 403). Prefer an internal project with a **ready**, **cosign-signed** release and **`development`** environment (no PR-approval gate). Example: `blueprint-harvester/blueprint-harvester-api` with `STORAGE_E2E_ENVIRONMENT_NAME=development`. Avoid Next.js frontends whose default probe path is `/` not `/health` unless health is configured.
+Do not use production-critical customer services or platform `enclii/*` services (deploy returns 403). Prefer an internal project with a **ready**, **cosign-signed** release and **`development`** environment (no PR-approval gate). Example: `tulana/tulana-api` with `STORAGE_E2E_ENVIRONMENT_NAME=development`. Avoid Next.js frontends whose default probe path is `/` not `/health` unless health is configured.
 
 ---
 
