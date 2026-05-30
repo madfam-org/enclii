@@ -60,7 +60,7 @@ Record pass date in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) and [
 
 | ID | Task | Owner | Reference |
 |----|------|-------|-----------|
-| O-16 | Signup + pricing manual checklist | GTM/QA | **Partial** — automated proof green (2026-05-30); manual email/GitHub/provision + Resend pending |
+| O-16 | Signup + pricing manual checklist | GTM/QA | **Partial** — automated proof green; Resend wired (`ee30d703`); manual wizard steps 3–7 pending |
 | O-18 | Landing pricing section deployed (or document skip) | GTM | **Done** — pricing live on enclii.dev (Sovereign/$20, 2026-05-30) |
 
 ---
@@ -117,7 +117,7 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 
 - **O-18:** Landing pricing deployed — `Simple, Transparent Pricing`, Sovereign **$20**, CTAs → `app.enclii.dev`.
 - **O-16 (automated):** Signup API smoke **201**; signup page **200**; Dhanam checkout **200**; billing cost/budgets/throttles **200** — CI green [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746) (9 pass, 1 warn: admin db/schema).
-- **O-16 (manual):** Full wizard (verify email → GitHub → provision) blocked on `ENCLII_RESEND_API_KEY`; tier copy drift: landing **Sovereign** vs FAQ **Essentials** — product sign-off.
+- **O-16 (manual):** Resend wired via Janua bridge; sender `noreply@janua.dev` (interim). Full wizard (verify → GitHub → provision) + tier copy sign-off remain.
 
 ## 2026-05-30 Wave 2 — signup enable (O-17)
 

@@ -35,7 +35,7 @@ Requires `ENCLII_SIGNUP_ENABLED=true` on API in target environment.
 | # | Step | Pass |
 |---|------|------|
 | 1 | `enclii signup --no-browser` — URL prints `https://app.enclii.dev/signup` | ☑ (2026-05-30) |
-| 2 | Submit email on `/signup` — receive verification email (or stub in dev) | ☐ **Blocked:** no `ENCLII_RESEND_API_KEY` in prod (log-only) |
+| 2 | Submit email on `/signup` — receive verification email (or stub in dev) | ☑ API path live — Resend via Janua bridge; verify inbox (sender `noreply@janua.dev`) |
 | 3 | Click verify link → `/signup/verify` → status advances | ☐ |
 | 4 | Connect GitHub → OAuth callback succeeds | ☐ |
 | 5 | Provision completes → redirect to project dashboard | ☐ |
