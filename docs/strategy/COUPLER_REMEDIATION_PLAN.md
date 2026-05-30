@@ -263,3 +263,4 @@ Selva already ships **268 builtin tools** and ecosystem adapters. Coupler is **n
 | Date | Change |
 |------|--------|
 | 2026-05-30 | Initial execution-ready remediation plan |
+| 2026-05-30 | Session wrap: cross-repo docs synced, commits pushed, branch prune; see `claudedocs/session-2026-05-30-summary.md` |

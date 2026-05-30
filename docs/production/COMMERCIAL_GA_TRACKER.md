@@ -138,6 +138,17 @@
 | Resend bridge + O-16 ops close | **Done** — `ee30d703`; `make ga-signup-api-smoke` 7/7; wizard deferred |
 | Gate 3 ops sign-off | **Done** — O-16/O-17/O-18/O-22 smoke; Gate 4 SLO running |
 
+## Execution log (2026-05-30 — Coupler program + hygiene)
+
+| Action | Result |
+|--------|--------|
+| Coupler program docs published | `2492ead2` — AGENT_TOOL_PLANE, REMEDIATION_PLAN, EXECUTION_CHECKLIST, ROADMAP, ECOSYSTEM |
+| Cross-repo Coupler docs | janua `COUPLER_PROGRAM` + ADR-002 accepted; selva `COUPLER_INTEGRATION` |
+| Janua PR #376 merged | `227deb62` — silent-auth + per-user entitlements |
+| Branch hygiene | enclii: 35 local + 8 remote deleted; janua: 11 local + 5 remote deleted; all repos `main`-only |
+| Session summary | [claudedocs/session-2026-05-30-summary.md](../claudedocs/session-2026-05-30-summary.md) |
+| Coupler P0 repo | **Not started** — `madfam-org/coupler` does not exist yet |
+
 ## Next merge train
 
 1. ~~AuthZ / OpenAPI / preview + domains + storage E2E~~ → `main` (2026-05-22)

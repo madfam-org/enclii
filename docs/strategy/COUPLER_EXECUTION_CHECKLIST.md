@@ -57,6 +57,14 @@ Update checkboxes in PRs; mirror status in [COUPLER_REMEDIATION_PLAN.md](./COUPL
 
 ---
 
+## Session log
+
+| Date | Summary |
+|------|---------|
+| 2026-05-30 | Planning complete; all doc cross-links checked; commits `2492ead2` (enclii), `1dc36cf1`+`227deb62` (janua), `6ada720` (selva). Branch prune on all three repos. **Next:** create `madfam-org/coupler`. Full notes: [session-2026-05-30-summary.md](../../claudedocs/session-2026-05-30-summary.md). |
+
+---
+
 ## Phase 1 — Janua Keyring (blocker for prod)
 
 - [ ] DB migrations merged
