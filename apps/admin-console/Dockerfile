@@ -22,6 +22,7 @@ RUN pnpm --dir apps/admin-console install --frozen-lockfile=false --config.dange
 RUN rm -f .npmrc
 RUN pnpm --dir packages/shared-lib run build
 RUN pnpm --dir packages/ui-components run build
+RUN pnpm --dir packages/ecosystem-tenants run build
 
 # Build arguments for public env vars (production defaults)
 ARG NEXT_PUBLIC_APP_URL=https://admin.enclii.dev
