@@ -65,6 +65,12 @@ infra/k8s/
 
 ## Deployment Instructions
 
+Routine MADFAM production operations are Enclii-first. Use Enclii web, API, or
+CLI for production provisioning, deployment, observability, domains, secrets,
+provider operations, scaling, rollback, and remediation. The raw Kubernetes
+commands in this legacy deployment guide are for local development, platform
+bootstrap, or documented break-glass cases only.
+
 ### 1. Local Development
 
 Deploy to local kind cluster:
@@ -95,23 +101,15 @@ kubectl logs -n enclii-staging deployment/switchyard-api
 
 ⚠️ **Production deployment requires additional security measures:**
 
-```bash
-# Ensure production secrets are configured
-kubectl create secret generic postgres-credentials \
-  --from-literal=database-url="postgres://user:pass@prod-db:5432/enclii" \
-  -n enclii-production
+Production secret material must come from HashiCorp Vault plus External Secrets
+Operator, not hand-written `kubectl create secret` commands. See
+[`docs/infrastructure/SECRETS_MANAGEMENT.md`](../docs/infrastructure/SECRETS_MANAGEMENT.md)
+for the current production secret path.
 
-kubectl create secret generic jwt-secrets \
-  --from-file=private-key=rsa-private.pem \
-  --from-file=public-key=rsa-public.pem \
-  -n enclii-production
-
-# Deploy to production
-kubectl apply -k infra/k8s/production
-
-# Monitor deployment
-kubectl rollout status deployment/switchyard-api -n enclii-production
-```
+Use Enclii deployment and status commands for routine production operations.
+If Enclii is unavailable or lacks a required adapter, treat raw Kubernetes
+access as break-glass and record the operator, reason, target environment,
+commands executed, result, and follow-up adapter gap.
 
 ## Configuration Management
 
@@ -193,10 +191,10 @@ Internet → Cloudflare Edge → Cloudflare Tunnel → ClusterIP Services
 **Tunnel manifest**: `infra/k8s/production/cloudflared-unified.yaml`
 
 ```bash
-# Deploy cloudflared
+# Break-glass/bootstrap only: deploy cloudflared
 kubectl apply -f infra/k8s/production/cloudflared-unified.yaml
 
-# Verify tunnel status
+# Break-glass/bootstrap only: verify tunnel status
 kubectl get pods -n cloudflare-tunnel
 kubectl logs -n cloudflare-tunnel -l app=cloudflared
 

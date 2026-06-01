@@ -159,8 +159,11 @@ deploy-staging:
 
 # Deploy to production  
 deploy-prod:
-	@echo "🚀 Deploying to production environment..."
-	@echo "⚠️  Production deployment requires manual confirmation"
+	@echo "🚀 Break-glass production deployment path..."
+	@echo "⚠️  Routine production deployment must use Enclii web/API/CLI."
+	@test "$(BREAK_GLASS)" = "yes" || (echo "Set BREAK_GLASS=yes to use raw kubectl production deployment." >&2; exit 1)
+	@test -n "$(BREAK_GLASS_REASON)" || (echo "Set BREAK_GLASS_REASON='...' and record the follow-up Enclii adapter gap or incident link." >&2; exit 1)
+	@echo "Break-glass reason: $(BREAK_GLASS_REASON)"
 	@read -p "Deploy to production? (yes/no): " confirm && [ "$$confirm" = "yes" ]
 	kubectl create namespace enclii --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k infra/k8s/production

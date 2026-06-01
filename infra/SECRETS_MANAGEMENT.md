@@ -12,15 +12,22 @@
 
 ## ⚠️ CRITICAL SECURITY NOTICE
 
+This document is retained for historical context and migration reference. Do
+not use the raw `kubectl`, `kubeseal`, or direct secret-creation examples below
+for routine production operations. Current production secret handling is
+HashiCorp Vault plus External Secrets Operator through the Enclii control-plane
+workflow documented in the canonical secrets guide.
+
 The secrets in `infra/k8s/base/secrets.dev.yaml` are **DEVELOPMENT ONLY** and must **NEVER** be used in production. Production uses `secrets.production.yaml` which contains `jwt-secrets` and `postgres-credentials` (pointing to the real database in the `data` namespace).
 
-## Production Secret Management
+## Legacy Secret Management Patterns
 
-### Recommended Solutions
+The options below are legacy patterns or background context. They are not the
+current MADFAM production operating path.
 
-#### 1. Sealed Secrets (Recommended for Kubernetes)
+#### 1. Sealed Secrets (legacy GitOps option)
 
-**Why**: GitOps-friendly, encrypted at rest, decrypted only in-cluster
+**Why it existed**: GitOps-friendly, encrypted at rest, decrypted only in-cluster
 
 **Setup**:
 ```bash
