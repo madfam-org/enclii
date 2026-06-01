@@ -409,9 +409,7 @@ metadata:
 5. **JWT keys incomplete**:
    ```yaml
    private-key: |
-     -----BEGIN RSA PRIVATE KEY-----
-     # Development only - use proper RSA keys in production
-     -----END RSA PRIVATE KEY-----
+     __DUMMY_PRIVATE_KEY_BLOCK_REMOVED_FOR_PUBLIC_REPO__
    # Placeholder, not actual keys
    ```
 

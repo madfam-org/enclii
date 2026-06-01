@@ -33,7 +33,7 @@ async def test_create_subscription_returns_signing_secret(
 ) -> None:
     response_body = {
         "subscription": sample_webhook_subscription,
-        "signing_secret": "whsec_real_plaintext_abcdef123456",
+        "signing_secret": "DUMMY_WEBHOOK_SECRET_DO_NOT_USE",
         "note": "Save this now — we won't show it again.",
     }
 

@@ -923,9 +923,7 @@ spec:
 stringData:
   jwt-secret: "dev-jwt-secret-key-change-in-production-use-rsa-keys"
   private-key: |
-    -----BEGIN RSA PRIVATE KEY-----
-    # Development only - use proper RSA keys in production
-    -----END RSA PRIVATE KEY-----
+    __DUMMY_PRIVATE_KEY_BLOCK_REMOVED_FOR_PUBLIC_REPO__
 ```
 **Impact:**
 - Placeholder indicates key is NOT secure
@@ -956,7 +954,7 @@ data:
 ```
 **Decoded:**
 ```json
-{"auths":{"ghcr.io":{"username":"github-token","password":"github_pat_token"}}}
+{"auths":{"ghcr.io":{"username":"github-token","password":"DUMMY_GITHUB_PAT_DO_NOT_USE"}}}
 ```
 **Impact:**
 - Registry access token exposed
@@ -998,7 +996,7 @@ database-url: cG9zdGdyZXM6Ly9wb3N0Z3JlczpwYXNzd29yZEBwb3N0Z3JlczozNjMzL2VuY2xpaV
 ```yaml
 data:
   tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t  # Just base64("-----BEGIN CERTIFICATE-----")
-  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t  # Just base64("-----BEGIN PRIVATE KEY-----")
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t  # Just base64("DUMMY_PRIVATE_KEY_BEGIN_REMOVED")
 ```
 **Impact:**
 - Not actual TLS certificate
