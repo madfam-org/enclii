@@ -107,7 +107,7 @@ spec:
       # Keep completed backup pods from retaining PVC references indefinitely.
       ttlSecondsAfterFinished: 604800  # 7 days
       backoffLimit: 2
-      activeDeadlineSeconds: 1800  # 30 minute timeout
+      activeDeadlineSeconds: 3600  # 60 minute timeout for larger dumps
       template:
         metadata:
           labels:
@@ -153,7 +153,7 @@ spec:
                   memory: "256Mi"
                   cpu: "100m"
                 limits:
-                  memory: "512Mi"
+                  memory: "1Gi"
                   cpu: "500m"
           # Step 2: aws-cli uploads from shared /backup volume to R2
           containers:
@@ -211,4 +211,4 @@ spec:
                 defaultMode: 0755
             - name: backup-data
               emptyDir:
-                sizeLimit: 2Gi
+                sizeLimit: 8Gi
