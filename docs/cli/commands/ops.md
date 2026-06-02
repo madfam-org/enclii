@@ -29,7 +29,7 @@ encouraging direct `kubectl`.
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis, logs, and safe restarts |
 | `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
 | `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile |
-| `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate` | ExternalSecrets and Vault readiness workflows |
+| `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
 | `enclii ops policy violations|exceptions|waiver-plan|cosign-enable` | Kyverno policy visibility, waivers, cosign namespace enforce (O-11) |
 | `enclii ops runners arc|drain` | ARC runner-set inspection and drain planning |
 
@@ -59,6 +59,7 @@ enclii ops apps sync-sweep -n argocd
 enclii ops apps sync-sweep -n argocd --apply --reason "Commercial GA O-8 Argo sweep"
 enclii ops secrets sync-sweep
 enclii ops secrets sync-sweep --apply --reason "Commercial GA O-10 ESO reconcile"
+enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "Commercial GA O-10 Vault backfill"
 ./scripts/post-deploy-ga-adapters.sh
 ./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "Commercial GA Wave 1"
 ```

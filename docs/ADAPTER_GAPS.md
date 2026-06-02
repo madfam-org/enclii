@@ -10,8 +10,8 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Policy-only kubectl comment | `infra/k8s/policies/enclii-default-deny.yaml` header | ArgoCD app docs only | P3 |
 | Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` — **8/8 populated** 2026-05-30 | P2 |
-| Enclii Vault `internal_api_key` backfill | Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh` | `enclii secrets` Vault writer + merge ESO auto-sync | P1 |
-| Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `scripts/backfill-resend-vault-key.sh`; `providers.resend.*` + Dispatch Provider Hub | — |
+| Enclii Vault `internal_api_key` backfill | ~~Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh`~~ | **Closed** — `enclii secrets vault-backfill` merges K8s Secret keys into Vault KV v2 and force-syncs merge ESO | — |
+| Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `enclii secrets vault-backfill`; `providers.resend.*` + Dispatch Provider Hub | — |
 | Agent SaaS tool plane (`madfam.ops.*` proxy) | N/A — not built | Coupler `madfam.ops.*` → Enclii `providers.*` / `ops.*` (admin JWT) | P1 — track in [COUPLER_REMEDIATION_PLAN.md](strategy/COUPLER_REMEDIATION_PLAN.md) |
 
 When closing a gap, remove the row and link the PR that added the adapter.
@@ -22,7 +22,11 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 `enclii secrets sync EXTERNAL_SECRET --namespace <ns>` now routes routine ExternalSecret reconciliation refresh through the audited Enclii ops contract (`ops.secrets.sync`, backed by the existing refresh adapter). This replaces ad-hoc `kubectl annotate externalsecret ... force-sync=...` for the common sync case.
 
-`enclii secrets rotate TARGET` now provides a plan-first audited operation contract (`ops.secrets.rotate`). Apply remains intentionally blocked until the Vault writer, dual-consumer cutover, verification, and old-value revocation flow are server-side safe. Keep the P1 production-build-secret gap open until rotation apply is implemented end-to-end.
+`enclii secrets vault-backfill SOURCE_SECRET --namespace <ns> --vault-path <path> --external-secret <name>` now replaces the manual Vault backfill script for merge ESO migration. The server reads source Kubernetes Secret values, normalizes keys to lower snake case, merges them into Vault KV v2, omits values from responses, and force-syncs the target ExternalSecret when supplied.
+
+`enclii secrets rotate TARGET` now supports audited ExternalSecret rotation cutover apply (`ops.secrets.rotate`) once the backing provider value/version has already been staged. The adapter patches rotation metadata plus `force-sync` without reading or writing secret values, then points verification back to `ops.secrets.external`.
+
+Keep the P1 production-build-secret gap open until Enclii can generate/write new provider values, verify dual-consumer rollout, and revoke old values end-to-end.
 
 ### 2026-05-25 — Cloudflare provider CLI hardening
 
@@ -74,7 +78,7 @@ Documented separate AGPL repo `madfam-org/coupler` for Composio-class agent tool
 - `scripts/setup-commercial-ga-staging-env.sh` — idempotent env check + missing secret report
 - `scripts/ga-ops-runbook.sh` — ROI-ordered public proof → adapter smoke → Wave 0/1
 - `scripts/security-release-tenant-smoke.sh` — O-3 step 3 tenant junction/cron IDOR smoke (requires non-admin token)
-- `scripts/ga-o10-enclii-vault-backfill.sh` — O-10 Vault backfill + ESO refresh wrapper
+- `enclii secrets vault-backfill` — O-10 Vault backfill + ESO refresh through Switchyard API
 
 ## 2026-05-25 Cloudflare credential-readiness adapter
 

@@ -34,7 +34,7 @@ This document lists **only open ops work** blocking Stability GA and Commercial 
 |----|------|------|-----------|-----------|
 | O-8 | ArgoCD sync sweep (OutOfSync apps) | 10m | **Done** — 0 OutOfSync apps; `core-services` @ `98be6d41` (2026-05-30) | [REMAINING_ITEMS §1D](./REMAINING_ITEMS.md) |
 | O-9 | Backup credentials + restore drill | 25m | **Done** — backup jobs green; restore drill logged 2026-05-30 ([RESTORE_DRILL_LOG](../runbooks/RESTORE_DRILL_LOG.md)) | [REMAINING_ITEMS §1E](./REMAINING_ITEMS.md) |
-| O-10 | Vault init → unseal → ESO syncing | 60m | **Done** — merge ESO **SecretSynced**; Vault backfill optional (skipped) | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
+| O-10 | Vault init → unseal → ESO syncing | 60m | **Done** — merge ESO **SecretSynced**; Vault backfill covered by `enclii secrets vault-backfill` | [REMAINING_ITEMS §1F](./REMAINING_ITEMS.md) |
 | O-11 | Cosign enforce (phased namespaces) | 20m | **Done** — `verify-image-signatures` ClusterPolicy Enforce (2026-05-30) | [REMAINING_ITEMS §1G](./REMAINING_ITEMS.md) |
 | O-12 | Start **30-day SLO clock** (99.95% API) | — | **Started 2026-05-30** — Gate 1 signed off | [GA_READINESS_SCORECARD §Gate 4](./GA_READINESS_SCORECARD.md) |
 
@@ -146,7 +146,7 @@ GitHub environment `commercial-ga-staging` populated **8/8** required secrets. R
 
 ## 2026-05-25 adapter progress
 
-`enclii secrets sync` now covers audited ExternalSecret reconciliation refresh. `enclii secrets rotate` exists as a plan-first operation contract only; rotation apply remains blocked on safe Vault writer and dual-consumer cutover implementation.
+`enclii secrets sync` now covers audited ExternalSecret reconciliation refresh. `enclii secrets vault-backfill` covers K8s Secret → Vault KV v2 merge backfill plus optional ESO refresh. `enclii secrets rotate` covers audited ExternalSecret cutover apply after the backing provider value/version has been staged. New provider value generation, dual-consumer verification, and old-value revocation remain open adapter work.
 
 ## Runtime execution reference
 

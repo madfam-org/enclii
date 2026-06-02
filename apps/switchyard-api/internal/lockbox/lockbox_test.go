@@ -224,6 +224,76 @@ func TestGetSecret_Forbidden(t *testing.T) {
 	assert.Contains(t, err.Error(), "permission denied")
 }
 
+func TestMergeSecretData_MergesExistingKVv2Path(t *testing.T) {
+	var sawGet bool
+	var sawPost bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/secret/data/enclii", r.URL.Path)
+		assert.Equal(t, "test-vault-token", r.Header.Get("X-Vault-Token"))
+		switch r.Method {
+		case http.MethodGet:
+			sawGet = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(vaultKVv2Response(map[string]interface{}{"database_url": "postgres://existing"}, 2, time.Now().UTC()))
+		case http.MethodPost:
+			sawPost = true
+			var payload map[string]map[string]interface{}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+			data := payload["data"]
+			assert.Equal(t, "postgres://existing", data["database_url"])
+			assert.Equal(t, "new-key", data["internal_api_key"])
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data":{"version":3}}`))
+		default:
+			t.Fatalf("unexpected Vault method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestVaultClient(t, server)
+	version, err := client.MergeSecretData(context.Background(), "secret/enclii", map[string]interface{}{"internal_api_key": "new-key"})
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, version)
+	assert.True(t, sawGet)
+	assert.True(t, sawPost)
+}
+
+func TestMergeSecretData_CreatesWhenPathMissing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/secret/data/new-service", r.URL.Path)
+		switch r.Method {
+		case http.MethodGet:
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPost:
+			var payload map[string]map[string]interface{}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+			assert.Equal(t, "value", payload["data"]["api_key"])
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected Vault method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestVaultClient(t, server)
+	version, err := client.MergeSecretData(context.Background(), "secret/new-service", map[string]interface{}{"api_key": "value"})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, version)
+}
+
+func TestMergeSecretData_DisabledClient(t *testing.T) {
+	client := NewVaultClient(nil)
+	version, err := client.MergeSecretData(context.Background(), "secret/enclii", map[string]interface{}{"key": "value"})
+
+	assert.Equal(t, 0, version)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disabled")
+}
+
 func TestGetSecret_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

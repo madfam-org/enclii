@@ -20,8 +20,10 @@ func TestGetAdminDBSchema(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
+	embedded, err := db.LatestEmbeddedMigration()
+	require.NoError(t, err)
 	mock.ExpectQuery(`SELECT version, dirty FROM schema_migrations`).
-		WillReturnRows(sqlmock.NewRows([]string{"version", "dirty"}).AddRow(31, false))
+		WillReturnRows(sqlmock.NewRows([]string{"version", "dirty"}).AddRow(embedded.Version, false))
 	mock.ExpectQuery(`SELECT EXISTS`).
 		WithArgs("services", "rollout_blocked_reason").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -38,7 +40,7 @@ func TestGetAdminDBSchema(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	var report db.SchemaReport
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &report))
-	assert.Equal(t, uint(31), report.Status.Version)
+	assert.Equal(t, embedded.Version, report.Status.Version)
 	assert.False(t, report.Status.Dirty)
 	assert.True(t, report.SchemaTableSeen)
 	assert.True(t, report.Healthy)

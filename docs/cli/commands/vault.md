@@ -10,7 +10,7 @@ enclii vault <subcommand> [flags]
 
 ## Description
 
-`enclii vault` is a thin wrapper for **status and health inspection** of the cluster-internal HashiCorp Vault. It does **not** read or write secrets — that path goes through RFC 0005 Selva tooling so the CLI cannot become a direct exfiltration path for secret values.
+`enclii vault` is a thin wrapper for **status and health inspection** of the cluster-internal HashiCorp Vault. It does **not** read or write secrets. Audited backfill from Kubernetes Secrets to Vault is exposed through `enclii secrets vault-backfill`, and secret values are still never printed by the CLI.
 
 For the operator procedure to initialize Vault after ArgoCD syncs the Application, see `internal-devops/runbooks/vault-bootstrap.md`.
 

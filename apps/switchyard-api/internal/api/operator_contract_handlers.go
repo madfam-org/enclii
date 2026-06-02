@@ -224,8 +224,11 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 		mutation = "patch ExternalSecret force-sync and Enclii audit annotations"
 		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
 	case "secrets.rotate":
-		mutation = "plan Vault/ESO rotation, dual-consumer cutover, verification, and old-value revocation"
-		adapterReady = false
+		mutation = "patch ExternalSecret rotation cutover annotations and force-sync after the provider value has been staged"
+		adapterReady = h != nil && h.k8sClient != nil && h.k8sClient.DynamicClient != nil
+	case "secrets.vault-backfill":
+		mutation = "merge normalized keys from a Kubernetes Secret into Vault KV v2 and optionally force-sync an ExternalSecret"
+		adapterReady = h != nil && h.opsKubeClient() != nil && h.vaultClient != nil && h.vaultClient.IsEnabled()
 	case "storage.storageclass-apply":
 		mutation = "create missing Longhorn StorageClasses from git-backed GA manifest"
 		adapterReady = h != nil && h.opsKubeClient() != nil
@@ -240,15 +243,20 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 	}
 
 	warnings := []string{}
+	requiredArgsReady := target != ""
 	if target == "" {
 		warnings = append(warnings, "missing args.target or scope.target; apply would be rejected")
+	}
+	if domain == "secrets" && action == "vault-backfill" && operationArg(req, "vault_path", "vault-path") == "" {
+		requiredArgsReady = false
+		warnings = append(warnings, "missing args.vault_path; apply would be rejected")
 	}
 	if !adapterReady {
 		warnings = append(warnings, "apply adapter client is not configured in this Switchyard API instance")
 	}
 
 	status := "planned"
-	if adapterReady && target != "" {
+	if adapterReady && requiredArgsReady {
 		status = "ready_to_apply"
 	}
 	return operatorOperationResponse{
@@ -261,7 +269,7 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 			"namespace": namespace,
 			"target":    target,
 			"mutation":  mutation,
-			"apply":     adapterReady && target != "",
+			"apply":     adapterReady && requiredArgsReady,
 		},
 		Steps: []operatorOperationStep{
 			{Name: "authorize", Status: "planned", Detail: "check caller RBAC and reason on apply"},
@@ -340,6 +348,14 @@ func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, doma
 	}
 	if prefix == "ops" && domain == "secrets" && action == "sync" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		resp, statusCode := h.handleOpsSecretsRefreshApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "secrets" && action == "rotate" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
+		resp, statusCode := h.handleOpsSecretsRotateApply(ctx, operation, req)
+		return resp, statusCode, true
+	}
+	if prefix == "ops" && domain == "secrets" && action == "vault-backfill" && h.opsKubeClient() != nil && h.vaultClient != nil && h.vaultClient.IsEnabled() {
+		resp, statusCode := h.handleOpsSecretsVaultBackfillApply(ctx, operation, req)
 		return resp, statusCode, true
 	}
 	if prefix == "ops" && domain == "storage" && action == "storageclass-apply" && h.opsKubeClient() != nil {

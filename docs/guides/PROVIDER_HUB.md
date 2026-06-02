@@ -28,7 +28,12 @@ Enclii-first management of Madfam ecosystem providers (Resend, Cloudflare, GitHu
 Vault backfill (retire Janua bridge):
 
 ```bash
-./scripts/backfill-resend-vault-key.sh
+enclii secrets vault-backfill enclii-secrets \
+  --namespace enclii \
+  --vault-path secret/enclii \
+  --external-secret enclii-resend-api-key \
+  --apply \
+  --reason "retire Janua bridge after Resend key staged in source Secret"
 ```
 
 ## Cloudflare (Dispatch consolidation)

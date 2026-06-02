@@ -29,4 +29,4 @@ Automated / operator verification on **2026-05-23** (post-deploy `848c8968` / `1
 | Cross-tenant cron IDOR | **N/A** | 0 cron jobs in prod |
 | Merge ESO `enclii-internal-api-key` | **Pass** | kubernetes-store bridge → **SecretSynced** (`c8c24ecd`) |
 
-**Optional:** Vault backfill `secret/enclii/internal_api_key` when write `VAULT_TOKEN` available (`ga-o10-enclii-vault-backfill.sh`).
+**Optional:** Vault backfill `secret/enclii/internal_api_key` through `enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "replace bridge secret with Vault source"` when the Switchyard API Vault writer is configured.

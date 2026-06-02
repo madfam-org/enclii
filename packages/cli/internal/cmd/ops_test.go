@@ -75,7 +75,7 @@ func TestOpsSecrets_Subcommands(t *testing.T) {
 	secrets := findSubcommand(NewOpsCommand(cfg), "secrets")
 	require.NotNil(t, secrets)
 
-	for _, want := range []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate"} {
+	for _, want := range []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate", "vault-backfill"} {
 		assert.NotNil(t, findSubcommand(secrets, want), "expected ops secrets %s", want)
 	}
 }

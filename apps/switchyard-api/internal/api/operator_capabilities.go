@@ -38,8 +38,8 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "secrets",
 		Status:      "partial",
-		Description: "ExternalSecrets and Vault readiness reads plus refresh/sync contracts and plan-first rotation",
-		Actions:     []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate"},
+		Description: "ExternalSecrets and Vault readiness reads plus audited sync, rotation cutover, and Vault backfill contracts",
+		Actions:     []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate", "vault-backfill"},
 		Scopes:      []string{"namespace", "project", "service", "target"},
 	},
 	{

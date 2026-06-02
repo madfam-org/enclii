@@ -54,6 +54,7 @@ type Handler struct {
 	cache              cache.CacheService
 	builder            *builder.Service
 	k8sClient          *k8s.Client
+	vaultClient        VaultSecretWriter
 	reconciler         *reconciler.Controller
 	serviceReconciler  *reconciler.ServiceReconciler
 	metrics            *monitoring.MetricsCollector

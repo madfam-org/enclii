@@ -107,7 +107,7 @@ func TestCreateCronJob_Success(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, project_id, name, git_repo, COALESCE\(app_path`).
 		WithArgs(serviceID).
 		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).
-			AddRow(serviceID, projectID, "api", "https://github.com/org/repo", "", []byte("{}"), []byte("[]"), true, "main", "production", now, now, []byte("[]"), "web", ""))
+			AddRow(serviceID, projectID, "api", "https://github.com/org/repo", "", []byte("{}"), []byte("[]"), true, "main", "production", now, now, []byte("[]"), "web", "", nil))
 
 	// Mock: CronJobs.Create (INSERT)
 	mock.ExpectExec(`INSERT INTO cron_jobs`).

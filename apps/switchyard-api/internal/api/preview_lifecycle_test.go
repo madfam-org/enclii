@@ -40,7 +40,7 @@ func expectServiceByID(mock sqlmock.Sqlmock, serviceID, projectID uuid.UUID, nam
 		WithArgs(serviceID).
 		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 			serviceID, projectID, name, gitRepo, "", []byte(`{}`), []byte(`[]`),
-			true, testDefaultBranch, "production", now, now, []byte(`[]`), "web", "default",
+			true, testDefaultBranch, "production", now, now, []byte(`[]`), "web", "default", nil,
 		))
 }
 

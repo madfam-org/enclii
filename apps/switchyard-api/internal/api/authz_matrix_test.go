@@ -187,7 +187,7 @@ func TestUpdateService_CrossTenantDenied(t *testing.T) {
 			serviceID, projectB, "api", "https://github.com/org/repo", "",
 			[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 			true, "main", "production",
-			time.Now(), time.Now(), []byte(`[]`), "web", "default",
+			time.Now(), time.Now(), []byte(`[]`), "web", "default", nil,
 		))
 
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).
@@ -261,7 +261,7 @@ func TestGetDeploymentByVersion_CrossTenantDenied(t *testing.T) {
 			serviceID, projectB, "api", "https://github.com/org/repo", "",
 			[]byte(`{"type":"dockerfile"}`), []byte("[]"),
 			true, "main", "production",
-			time.Now(), time.Now(), []byte(`[]`), "web", "default",
+			time.Now(), time.Now(), []byte(`[]`), "web", "default", nil,
 		))
 
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).

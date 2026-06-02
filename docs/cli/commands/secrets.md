@@ -224,11 +224,23 @@ Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reaso
 
 ## `enclii secrets rotate`
 
-Plan a secret rotation through the Enclii operation contract.
+Request an ExternalSecret rotation cutover through the Enclii operation contract.
 
 ```bash
 enclii secrets rotate npm-madfam-token --namespace npm-registry
+enclii secrets rotate janua-jwt-signing-key --namespace janua --apply --reason "new provider version staged" --provider-version 2026-06-02T00:00Z
 enclii secrets rotate janua-jwt-signing-key --project janua --json
 ```
 
-Rotation is plan-first until the Vault writer and dual-consumer cutover path are enabled server-side. Do not treat this as completed rotation execution yet.
+Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required. The server patches rotation metadata and `force-sync` after the backing provider value/version has already been staged; it does not write secret values or revoke old provider values.
+
+## `enclii secrets vault-backfill`
+
+Backfill a Vault KV v2 path from an existing Kubernetes Secret through Enclii's audited operator layer.
+
+```bash
+enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii
+enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "replace bridge secret with Vault source"
+```
+
+Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required. The server reads the source Kubernetes Secret, normalizes keys to lower snake case, merges them into Vault, and optionally force-syncs the named ExternalSecret. Secret values are never printed.

@@ -10,8 +10,9 @@ Private execution pack: `internal-devops/runbooks/ga-ops-execution-pack.md`
 |---|---|---|
 | Capabilities | `enclii ops capabilities`, `enclii providers capabilities` | Read-only |
 | Vault readiness | `enclii vault status`, `enclii ops secrets vault` | Read-only |
+| Vault backfill | `enclii secrets vault-backfill <source-secret> --namespace <ns> --vault-path <path>` | Apply-capable with reason when Vault writer is configured |
 | ExternalSecret sync | `enclii secrets sync <name> --namespace <ns>` | Apply-capable with reason |
-| Secret rotation | `enclii secrets rotate <target>` | Plan-first only |
+| Secret rotation cutover | `enclii secrets rotate <target>` | Apply-capable cutover after provider value/version is staged |
 | Cloudflare DNS | `enclii providers cloudflare dns-apply <domain>` | Apply-capable when provider configured |
 | Cloudflare credentials | `enclii providers cloudflare credentials` | Contract-read surface |
 | Storage | `enclii ops storage longhorn`, `enclii ops storage volumes` | Read/plan surface |

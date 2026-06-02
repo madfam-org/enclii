@@ -50,6 +50,7 @@ Examples:
 	cmd.AddCommand(newSecretsGetCommand(cfg))
 	cmd.AddCommand(newSecretsSyncCommand(cfg))
 	cmd.AddCommand(newSecretsRotateCommand(cfg))
+	cmd.AddCommand(newSecretsVaultBackfillCommand(cfg))
 
 	return cmd
 }
@@ -81,26 +82,69 @@ Examples:
 
 func newSecretsRotateCommand(cfg *config.Config) *cobra.Command {
 	var flags operationFlags
+	var providerVersion string
 	cmd := &cobra.Command{
 		Use:   "rotate TARGET",
-		Short: "Plan a secret rotation through Enclii",
-		Long: `Plan a secret rotation through Enclii's audited operator layer.
+		Short: "Request a secret rotation cutover through Enclii",
+		Long: `Request a secret rotation cutover through Enclii's audited operator layer.
 
-Rotation is intentionally plan-first until the Vault writer and dual-consumer
-cutover path are fully enabled server-side. Use this command to record the
-target, scope, reason, and idempotency key in the Enclii operation contract
-instead of documenting ad-hoc provider UI or kubectl steps.
+Without --apply, the command requests a dry-run plan. With --apply, --reason is
+required and the Switchyard API patches ExternalSecret rotation and force-sync
+annotations after the backing provider value has already been staged. This
+command does not write secret values or revoke old provider values.
 
 Examples:
   enclii secrets rotate npm-madfam-token --namespace npm-registry
+  enclii secrets rotate janua-jwt-signing-key --namespace janua --apply --reason "new provider version staged" --provider-version 2026-06-02T00:00Z
   enclii secrets rotate janua-jwt-signing-key --project janua --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			extra := map[string]string{"target": strings.TrimSpace(args[0])}
+			if strings.TrimSpace(providerVersion) != "" {
+				extra["provider_version"] = strings.TrimSpace(providerVersion)
+			}
 			return runOperation(cmd, cfg, opsPath("secrets", "rotate"), "ops.secrets.rotate", flags, extra)
 		},
 	}
 	addOperationFlags(cmd, &flags)
+	cmd.Flags().StringVar(&providerVersion, "provider-version", "", "Provider-side version or rotation marker already staged before cutover")
+	return cmd
+}
+
+func newSecretsVaultBackfillCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	var vaultPath string
+	var externalSecret string
+	cmd := &cobra.Command{
+		Use:   "vault-backfill SOURCE_SECRET",
+		Short: "Backfill Vault from a Kubernetes Secret through Enclii",
+		Long: `Backfill a Vault KV v2 path from an existing Kubernetes Secret through
+Enclii's audited operator layer.
+
+Without --apply, the command requests a dry-run plan. With --apply, --reason is
+required and the Switchyard API reads the source Kubernetes Secret, normalizes
+keys to lower snake case, merges them into Vault, and optionally force-syncs an
+ExternalSecret. Secret values are never printed.
+
+Examples:
+  enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii
+  enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "replace bridge secret with Vault source"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extra := map[string]string{
+				"target":     strings.TrimSpace(args[0]),
+				"vault_path": strings.TrimSpace(vaultPath),
+			}
+			if strings.TrimSpace(externalSecret) != "" {
+				extra["external_secret"] = strings.TrimSpace(externalSecret)
+			}
+			return runOperation(cmd, cfg, opsPath("secrets", "vault-backfill"), "ops.secrets.vault-backfill", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
+	cmd.Flags().StringVar(&vaultPath, "vault-path", "", "Vault KV v2 logical path to merge into, for example secret/enclii")
+	cmd.Flags().StringVar(&externalSecret, "external-secret", "", "ExternalSecret to force-sync after Vault merge")
+	_ = cmd.MarkFlagRequired("vault-path")
 	return cmd
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	k8sclient "github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/lockbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
@@ -28,6 +29,7 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "retire", opsCapabilities))
 	require.True(t, operationSupported("apps", "sync-sweep", opsCapabilities))
 	require.True(t, operationSupported("secrets", "sync-sweep", opsCapabilities))
+	require.True(t, operationSupported("secrets", "vault-backfill", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("storage", "settings-apply", opsCapabilities))
@@ -435,6 +437,218 @@ func TestHandleOpsSecretsRefreshApplyAnnotatesExternalSecret(t *testing.T) {
 	assert.Equal(t, "ops.secrets.refresh", annotations["enclii.dev/last-ops-operation"])
 	assert.Equal(t, "refresh-forgesight-secrets-1", annotations["enclii.dev/last-ops-idempotency-key"])
 	assert.Equal(t, "retry ExternalSecret reconciliation after provider data update", annotations["enclii.dev/last-ops-reason"])
+}
+
+func TestHandleOpsSecretsRotateDryRunReportsApplyReady(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	externalSecret := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "external-secrets.io/v1beta1",
+			"kind":       "ExternalSecret",
+			"metadata": map[string]any{
+				"name":      "janua-jwt-signing-key",
+				"namespace": "janua",
+			},
+		},
+	}
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: fake.NewSimpleDynamicClient(runtime.NewScheme(), externalSecret)}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation: "ops.secrets.rotate",
+		DryRun:    true,
+		Scope:     map[string]string{"namespace": "janua"},
+		Args:      map[string]string{"target": "janua-jwt-signing-key"},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/secrets/rotate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "ready_to_apply", resp.Status)
+	assert.Equal(t, "ops.secrets.rotate", resp.Operation)
+	assert.Empty(t, resp.Warnings)
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, data["apply"])
+	assert.Contains(t, data["mutation"], "rotation cutover annotations")
+}
+
+func TestHandleOpsSecretsRotateApplyAnnotatesExternalSecret(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	externalSecret := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "external-secrets.io/v1beta1",
+			"kind":       "ExternalSecret",
+			"metadata": map[string]any{
+				"name":      "janua-jwt-signing-key",
+				"namespace": "janua",
+			},
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
+						"type":   "Ready",
+						"status": "True",
+						"reason": "SecretSynced",
+					},
+				},
+			},
+		},
+	}
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), externalSecret)
+	handler := &Handler{k8sClient: &k8sclient.Client{DynamicClient: dynClient}}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation:      "ops.secrets.rotate",
+		DryRun:         false,
+		Reason:         "rotate jwt signing key after new provider version was staged",
+		IdempotencyKey: "rotate-janua-jwt-1",
+		Scope:          map[string]string{"namespace": "janua"},
+		Args: map[string]string{
+			"target":           "janua-jwt-signing-key",
+			"provider_version": "2026-06-02T00:00Z",
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/secrets/rotate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+	assert.Equal(t, "ops.secrets.rotate", resp.Operation)
+	assert.Contains(t, resp.Next[0], "ops.secrets.external")
+
+	updated, err := dynClient.Resource(externalSecretGVR).Namespace("janua").Get(context.Background(), "janua-jwt-signing-key", metav1.GetOptions{})
+	require.NoError(t, err)
+	annotations := updated.GetAnnotations()
+	assert.NotEmpty(t, annotations["force-sync"])
+	assert.Equal(t, "ops.secrets.rotate", annotations["enclii.dev/last-ops-operation"])
+	assert.Equal(t, "rotate-janua-jwt-1", annotations["enclii.dev/last-ops-idempotency-key"])
+	assert.Equal(t, "rotate jwt signing key after new provider version was staged", annotations["enclii.dev/last-ops-reason"])
+	assert.Equal(t, "eso-cutover", annotations["enclii.dev/rotation-mode"])
+	assert.Equal(t, "cutover-requested", annotations["enclii.dev/rotation-phase"])
+	assert.Equal(t, "2026-06-02T00:00Z", annotations["enclii.dev/rotation-provider-version"])
+	assert.Equal(t, "pending-verification", annotations["enclii.dev/rotation-old-value-revoked"])
+}
+
+func TestHandleOpsSecretsVaultBackfillApplyMergesVaultAndRefreshesExternalSecret(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sourceSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "enclii-secrets",
+			Namespace: "enclii",
+		},
+		Data: map[string][]byte{
+			"DATABASE_URL":     []byte("postgres://existing-db"),
+			"internal-api-key": []byte("new-internal-key"),
+		},
+	}
+	externalSecret := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "external-secrets.io/v1beta1",
+			"kind":       "ExternalSecret",
+			"metadata": map[string]any{
+				"name":      "enclii-internal-api-key",
+				"namespace": "enclii",
+			},
+		},
+	}
+	var sawVaultWrite bool
+	vaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/secret/data/enclii", r.URL.Path)
+		assert.Equal(t, "test-vault-token", r.Header.Get("X-Vault-Token"))
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"data":{"existing_key":"keep"},"metadata":{"version":4}}}`))
+		case http.MethodPost:
+			sawVaultWrite = true
+			var payload map[string]map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+			data := payload["data"]
+			assert.Equal(t, "keep", data["existing_key"])
+			assert.Equal(t, "postgres://existing-db", data["database_url"])
+			assert.Equal(t, "new-internal-key", data["internal_api_key"])
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"version":5}}`))
+		default:
+			t.Fatalf("unexpected Vault method %s", r.Method)
+		}
+	}))
+	defer vaultServer.Close()
+
+	dynClient := fake.NewSimpleDynamicClient(runtime.NewScheme(), externalSecret)
+	handler := &Handler{
+		k8sClient: &k8sclient.Client{
+			KubeClient:    k8sfake.NewSimpleClientset(sourceSecret),
+			DynamicClient: dynClient,
+		},
+		vaultClient: lockbox.NewVaultClient(&lockbox.VaultConfig{
+			Address: vaultServer.URL,
+			Token:   "test-vault-token",
+			Enabled: true,
+		}),
+	}
+	router := gin.New()
+	router.POST("/v1/ops/:domain/:action", handler.HandleOpsOperation)
+
+	body, err := json.Marshal(operatorOperationRequest{
+		Operation:      "ops.secrets.vault-backfill",
+		DryRun:         false,
+		Reason:         "replace bridge secret with Vault source",
+		IdempotencyKey: "vault-backfill-enclii-1",
+		Scope:          map[string]string{"namespace": "enclii"},
+		Args: map[string]string{
+			"target":          "enclii-secrets",
+			"vault_path":      "secret/enclii",
+			"external_secret": "enclii-internal-api-key",
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/secrets/vault-backfill", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "new-internal-key")
+	assert.NotContains(t, rec.Body.String(), "postgres://existing-db")
+	assert.True(t, sawVaultWrite)
+	var resp operatorOperationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "submitted", resp.Status)
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "secret/enclii", data["vaultPath"])
+	assert.Equal(t, float64(2), data["keyCount"])
+	assert.Equal(t, float64(5), data["vaultVersion"])
+	assert.Equal(t, true, data["externalSecretRefreshed"])
+
+	updated, err := dynClient.Resource(externalSecretGVR).Namespace("enclii").Get(context.Background(), "enclii-internal-api-key", metav1.GetOptions{})
+	require.NoError(t, err)
+	annotations := updated.GetAnnotations()
+	assert.NotEmpty(t, annotations["force-sync"])
+	assert.Equal(t, "ops.secrets.vault-backfill", annotations["enclii.dev/last-ops-operation"])
+	assert.Equal(t, "replace bridge secret with Vault source", annotations["enclii.dev/last-ops-reason"])
+	assert.Equal(t, "vault-backfill-enclii-1", annotations["enclii.dev/last-ops-idempotency-key"])
+	assert.Equal(t, "completed", annotations["enclii.dev/vault-backfill"])
+	assert.Equal(t, "enclii-secrets", annotations["enclii.dev/vault-backfill-source"])
 }
 
 func TestOperatorLogInt64ArgBoundsAndValidation(t *testing.T) {

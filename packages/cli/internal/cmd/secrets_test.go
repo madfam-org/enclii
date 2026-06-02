@@ -41,6 +41,9 @@ func TestNewSecretsCommand(t *testing.T) {
 	assert.Contains(t, subNames, "list")
 	assert.Contains(t, subNames, "delete")
 	assert.Contains(t, subNames, "get")
+	assert.Contains(t, subNames, "sync")
+	assert.Contains(t, subNames, "rotate")
+	assert.Contains(t, subNames, "vault-backfill")
 }
 
 func TestNewSecretsSetCommand(t *testing.T) {
@@ -147,4 +150,34 @@ func TestNewSecretsGetCommand(t *testing.T) {
 	assert.Equal(t, "false", revealFlag.DefValue)
 	// reveal has no shorthand (registered with BoolVar, not BoolVarP)
 	assert.Equal(t, "", revealFlag.Shorthand)
+}
+
+func TestNewSecretsRotateCommand(t *testing.T) {
+	cfg := &config.Config{
+		APIEndpoint: "https://api.test.dev",
+		APIToken:    "test-token",
+	}
+
+	parent := NewSecretsCommand(cfg)
+	cmd := findSubcommand(parent, "rotate")
+	require.NotNil(t, cmd, "rotate subcommand should exist")
+
+	for _, want := range []string{"apply", "reason", "idempotency-key", "namespace", "project", "service", "provider-version", "json"} {
+		assert.NotNil(t, cmd.Flags().Lookup(want), "expected --%s", want)
+	}
+}
+
+func TestNewSecretsVaultBackfillCommand(t *testing.T) {
+	cfg := &config.Config{
+		APIEndpoint: "https://api.test.dev",
+		APIToken:    "test-token",
+	}
+
+	parent := NewSecretsCommand(cfg)
+	cmd := findSubcommand(parent, "vault-backfill")
+	require.NotNil(t, cmd, "vault-backfill subcommand should exist")
+
+	for _, want := range []string{"apply", "reason", "idempotency-key", "namespace", "project", "service", "vault-path", "external-secret", "json"} {
+		assert.NotNil(t, cmd.Flags().Lookup(want), "expected --%s", want)
+	}
 }

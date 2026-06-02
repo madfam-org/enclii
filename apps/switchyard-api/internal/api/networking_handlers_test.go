@@ -78,7 +78,7 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 		WithArgs(serviceID).
 		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
 			serviceID, projectID, "dhanam-api", "https://github.com/madfam-org/dhanam",
-			"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us",
+			"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us", nil,
 		))
 
 	mock.ExpectQuery(`SELECT id, project_id, name, kube_namespace, created_at, updated_at FROM environments WHERE id = \$1`).

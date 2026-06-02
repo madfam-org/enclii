@@ -125,7 +125,8 @@ func newOpsSecretsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "refresh", "Refresh external secret reconciliation"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync", "Alias for ExternalSecret reconciliation refresh"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync-sweep", "Batch refresh not-ready ExternalSecrets in GA namespaces (O-10)"))
-	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "rotate", "Plan a secret rotation through the audited operator layer"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "rotate", "Request an ExternalSecret rotation cutover"))
+	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "vault-backfill", "Backfill Vault from a Kubernetes Secret"))
 	return cmd
 }
 

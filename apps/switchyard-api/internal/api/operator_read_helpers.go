@@ -19,6 +19,19 @@ func operationTarget(req operatorOperationRequest) string {
 	}
 	return strings.TrimSpace(req.Args["target"])
 }
+
+func operationArg(req operatorOperationRequest, names ...string) string {
+	if req.Args == nil {
+		return ""
+	}
+	for _, name := range names {
+		if value := strings.TrimSpace(req.Args[name]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func stringSliceFromAny(value any) []string {
 	values := []string{}
 	switch typed := value.(type) {

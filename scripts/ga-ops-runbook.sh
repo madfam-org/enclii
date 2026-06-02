@@ -110,5 +110,5 @@ echo "--- Wave 1 (O-8–O-11) ---"
 bash scripts/wave1-ga-ops.sh "${WAVE1_ARGS[@]}"
 
 echo
-echo "Manual blockers remain: O-3 tenant smoke (ENCLII_USER_TOKEN), O-10 Vault backfill (ga-o10-enclii-vault-backfill.sh), O-9 GitHub/Cloudflare backup creds if missing."
+echo "Manual blockers remain: O-3 tenant smoke (ENCLII_USER_TOKEN), optional O-10 Vault backfill via enclii secrets vault-backfill, O-9 GitHub/Cloudflare backup creds if missing."
 echo "Record SLO start (O-12) in docs/production/GA_READINESS_SCORECARD.md when Wave 1 passes."

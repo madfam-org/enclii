@@ -1,8 +1,10 @@
 package lockbox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -65,6 +67,24 @@ type VaultVersionInfo struct {
 	Destroyed   bool      `json:"destroyed"`
 }
 
+type vaultKVWriteResponse struct {
+	Data struct {
+		Version int `json:"version"`
+	} `json:"data"`
+}
+
+func vaultKVv2DataPath(path string) string {
+	path = strings.Trim(strings.TrimSpace(path), "/")
+	if path == "" || strings.Contains(path, "/data/") {
+		return path
+	}
+	mount, rest, ok := strings.Cut(path, "/")
+	if !ok || rest == "" {
+		return path
+	}
+	return mount + "/data/" + rest
+}
+
 // GetSecret retrieves a secret from Vault
 func (v *VaultClient) GetSecret(ctx context.Context, path string) (*Secret, error) {
 	if !v.enabled {
@@ -72,7 +92,7 @@ func (v *VaultClient) GetSecret(ctx context.Context, path string) (*Secret, erro
 	}
 
 	// Vault KV v2 path format: /v1/secret/data/path
-	url := fmt.Sprintf("%s/v1/%s", v.address, path)
+	url := fmt.Sprintf("%s/v1/%s", v.address, vaultKVv2DataPath(path))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -132,7 +152,7 @@ func (v *VaultClient) GetSecretMetadata(ctx context.Context, path string) (*Secr
 	}
 
 	// Remove /data/ from path and add /metadata/ for metadata endpoint
-	metadataPath := strings.Replace(path, "/data/", "/metadata/", 1)
+	metadataPath := strings.Replace(vaultKVv2DataPath(path), "/data/", "/metadata/", 1)
 	url := fmt.Sprintf("%s/v1/%s", v.address, metadataPath)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -173,6 +193,101 @@ func (v *VaultClient) GetSecretMetadata(ctx context.Context, path string) (*Secr
 	}
 
 	return secretMetadata, nil
+}
+
+// MergeSecretData merges key/value pairs into a Vault KV v2 path without
+// returning secret values. It preserves existing keys when the path already
+// exists and returns the new Vault version when Vault reports one.
+func (v *VaultClient) MergeSecretData(ctx context.Context, path string, updates map[string]interface{}) (int, error) {
+	if !v.enabled {
+		return 0, fmt.Errorf("Vault client is disabled")
+	}
+	if strings.TrimSpace(path) == "" {
+		return 0, fmt.Errorf("Vault path is required")
+	}
+	if len(updates) == 0 {
+		return 0, fmt.Errorf("at least one secret key is required")
+	}
+
+	existing, err := v.readSecretData(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	for key, value := range updates {
+		if strings.TrimSpace(key) == "" {
+			return 0, fmt.Errorf("secret key cannot be empty")
+		}
+		existing[key] = value
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{"data": existing})
+	if err != nil {
+		return 0, fmt.Errorf("failed to encode Vault write payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/v1/%s", v.address, vaultKVv2DataPath(path))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return 0, fmt.Errorf("failed to create write request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Vault-Token", v.token)
+	if v.namespace != "" {
+		req.Header.Set("X-Vault-Namespace", v.namespace)
+	}
+
+	resp, err := v.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to write secret: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("vault returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var writeResp vaultKVWriteResponse
+	if err := json.NewDecoder(resp.Body).Decode(&writeResp); err != nil {
+		if errors.Is(err, io.EOF) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to decode write response: %w", err)
+	}
+	return writeResp.Data.Version, nil
+}
+
+func (v *VaultClient) readSecretData(ctx context.Context, path string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/v1/%s", v.address, vaultKVv2DataPath(path))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create read request: %w", err)
+	}
+	req.Header.Set("X-Vault-Token", v.token)
+	if v.namespace != "" {
+		req.Header.Set("X-Vault-Namespace", v.namespace)
+	}
+
+	resp, err := v.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read existing secret: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return map[string]interface{}{}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("vault returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var secretData VaultSecretData
+	if err := json.NewDecoder(resp.Body).Decode(&secretData); err != nil {
+		return nil, fmt.Errorf("failed to decode secret response: %w", err)
+	}
+	if secretData.Data.Data == nil {
+		return map[string]interface{}{}, nil
+	}
+	return secretData.Data.Data, nil
 }
 
 // WatchSecret polls Vault for changes to a secret
