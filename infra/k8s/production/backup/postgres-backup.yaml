@@ -29,6 +29,27 @@ data:
     BACKUP_FILE="/backup/backup_${TIMESTAMP}.sql.gz"
 
     echo "[$(date)] Starting PostgreSQL backup..."
+    echo "[$(date)] Waiting for PostgreSQL to accept connections..."
+    for attempt in {1..30}; do
+      if PGPASSWORD="${POSTGRES_PASSWORD}" pg_isready \
+        -h "${POSTGRES_HOST}" \
+        -U "${POSTGRES_USER}" >/dev/null 2>&1; then
+        echo "[$(date)] PostgreSQL is ready"
+        break
+      fi
+
+      if [[ "${attempt}" -eq 30 ]]; then
+        echo "[$(date)] PostgreSQL did not become ready after ${attempt} attempts"
+        PGPASSWORD="${POSTGRES_PASSWORD}" pg_isready \
+          -h "${POSTGRES_HOST}" \
+          -U "${POSTGRES_USER}" || true
+        exit 1
+      fi
+
+      echo "[$(date)] PostgreSQL not ready yet (${attempt}/30); retrying..."
+      sleep 2
+    done
+
     echo "[$(date)] Running pg_dumpall..."
 
     PGPASSWORD="${POSTGRES_PASSWORD}" pg_dumpall \
