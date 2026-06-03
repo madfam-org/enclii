@@ -344,7 +344,7 @@ Wire up designed-but-not-implemented auto-rollback:
 | CI load-test dedup | `69768be` | Removed duplicate k6 smoke from ci.yml |
 | Resource right-sizing | `69768be` | CPU limits: api 800m, cloudflared 300m, ui 300m |
 | CI Go version | `0ea6fd6` | 1.24.13 -> 1.25.0 (workflows + modules + Dockerfiles) |
-| nexus-api /health | `90804e2` | Root health endpoint (autoswarm-office) |
+| nexus-api /health | `90804e2` | Root health endpoint (selva-office) |
 | Colyseus Node.js | `90804e2` | 20 -> 22 (TypeScript support) |
 | CMS /health | `a6c8f5a` | Root health endpoint (madfam-site) |
 | RBAC namespace fix | Pending | `default` -> `enclii` in ClusterRoleBinding |

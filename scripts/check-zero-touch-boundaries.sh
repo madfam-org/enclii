@@ -62,7 +62,7 @@ CORE_ARGO_PROJECTS=(
 
 LEGACY_ARGO_PROJECTS=(
     accionables-madlab
-    autoswarm
+    selva
     avala
     bloom-scroll
     blueprint-harvester
@@ -94,7 +94,7 @@ LEGACY_ARGO_PROJECTS=(
 
 ALLOWED_EXTERNAL_SECRET_FILES=(
     arc-runners-secrets.yaml
-    autoswarm-secrets.yaml
+    selva-secrets.yaml
     cloudflare-secrets.yaml
     data-secrets.yaml
     dhanam-secrets.yaml
@@ -290,7 +290,7 @@ ALLOWED_DEPLOY_MONITOR_REPOS=(
 )
 
 ALLOWED_DASHBOARD_FRAMEWORK_KEYS=(
-    autoswarm-office
+    selva-office
     dhanam
     enclii
     forgesight

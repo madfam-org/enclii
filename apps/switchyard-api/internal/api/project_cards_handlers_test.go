@@ -928,17 +928,17 @@ func TestMatchProjectCardArgoEvidencePrefersWorstMatchingApplication(t *testing.
 }
 
 func TestMatchProjectCardArgoEvidencePrefersNonStagingForProductionProject(t *testing.T) {
-	project := &types.Project{ID: uuid.New(), Name: "Autoswarm", Slug: "autoswarm"}
+	project := &types.Project{ID: uuid.New(), Name: "Selva", Slug: "selva"}
 	evidenceByName := map[string]projectCardArgoApplicationEvidence{
-		"autoswarm-office-staging": {
-			Name:                 "autoswarm-office-staging",
-			DestinationNamespace: "autoswarm-staging",
+		"selva-office-staging": {
+			Name:                 "selva-office-staging",
+			DestinationNamespace: "selva-staging",
 			SyncStatus:           "OutOfSync",
 			HealthStatus:         "Degraded",
 		},
-		"autoswarm-services": {
-			Name:                 "autoswarm-services",
-			DestinationNamespace: "autoswarm",
+		"selva-services": {
+			Name:                 "selva-services",
+			DestinationNamespace: "selva",
 			SyncStatus:           "Synced",
 			HealthStatus:         "Healthy",
 		},
@@ -947,7 +947,7 @@ func TestMatchProjectCardArgoEvidencePrefersNonStagingForProductionProject(t *te
 	matched := matchProjectCardArgoEvidence(project, nil, nil, evidenceByName)
 
 	require.NotNil(t, matched)
-	assert.Equal(t, "autoswarm-services", matched.Name)
+	assert.Equal(t, "selva-services", matched.Name)
 	assert.Equal(t, "Healthy", matched.HealthStatus)
 }
 

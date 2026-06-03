@@ -5,22 +5,22 @@ the aggregated `REPOS_FULL` dict and `generator.py` for render logic.
 """
 
 REPOS = {
-    'autoswarm-office': {
+    'selva-office': {
         'tagline': 'Selva — gamified multi-agent business orchestration + OpenAI-compatible LLM inference routing.',
-        'description': "Autoswarm Office (branded externally as **Selva**) is MADFAM's AI inference + agent orchestration platform. Two roles: (1) **inference proxy** — OpenAI-compatible `/v1` endpoint (`nexus-api`) that every ecosystem service routes its LLM calls through; (2) **agent platform** — LangGraph workers + Colyseus real-time state + 2D Phaser office UI for drafting agents, assigning them to departments, and approving their actions via a gamepad. Target domain: `selva.town`.",
+        'description': "Selva Office (branded externally as **Selva**) is MADFAM's AI inference + agent orchestration platform. Two roles: (1) **inference proxy** — OpenAI-compatible `/v1` endpoint (`nexus-api`) that every ecosystem service routes its LLM calls through; (2) **agent platform** — LangGraph workers + Colyseus real-time state + 2D Phaser office UI for drafting agents, assigning them to departments, and approving their actions via a gamepad. Target domain: `selva.town`.",
         'pillar': 'Intelligence / Agents + LLM routing',
         'type': 'platform',
         'status': 'production',
         'production': {
             'services': [
-                ('autoswarm-nexus-api', 'agents-api.madfam.io', 8000),
-                ('autoswarm-office-ui', 'agents.madfam.io', 3000),
-                ('autoswarm-admin', 'agents-admin.madfam.io', 3001),
-                ('autoswarm-colyseus', 'agents-ws.madfam.io', 2567),
-                ('autoswarm-gateway', '(background)', None),
-                ('autoswarm-workers', '(langgraph worker)', None),
+                ('selva-nexus-api', 'agents-api.madfam.io', 8000),
+                ('selva-office-ui', 'agents.madfam.io', 3000),
+                ('selva-admin', 'agents-admin.madfam.io', 3001),
+                ('selva-colyseus', 'agents-ws.madfam.io', 2567),
+                ('selva-gateway', '(background)', None),
+                ('selva-workers', '(langgraph worker)', None),
             ],
-            'namespace': 'autoswarm-office',
+            'namespace': 'selva-office',
         },
         'upstream_deps': [
             'LLM providers: openai, anthropic, deepinfra, groq, etc.',
@@ -42,7 +42,7 @@ REPOS = {
             'JANUA_JWKS_URI — auth',
             'ENCLII_API_URL — HITL budget gate callback',
         ],
-        'service_name_for_ops': 'autoswarm-nexus-api',
+        'service_name_for_ops': 'selva-nexus-api',
     },
     'fortuna': {
         'tagline': 'Problem intelligence + zeitgeist engine — evidence-linked discovery of real customer problems.',

@@ -281,7 +281,7 @@ Repeat for each namespace. The full list of namespaces with ExternalSecret manif
 | karafiel | `karafiel-secrets.yaml` |
 | forgesight | `forgesight-secrets.yaml` |
 | pravara-mes | `pravara-mes-secrets.yaml` |
-| autoswarm | `autoswarm-secrets.yaml` |
+| selva | `selva-secrets.yaml` |
 | status | (covered by `enclii-secrets.yaml`) |
 | kyverno | `kyverno-secrets.yaml` |
 | arc-runners | `arc-runners-secrets.yaml` |
@@ -339,7 +339,7 @@ kubectl get application vault -n argocd
 - PR #47 merged (Kyverno policy in Enforce mode)
 - All `ghcr.io/madfam-org` images in target namespaces are signed via CI (cosign keyless signing in GitHub Actions)
 - Kyverno operator running and healthy
-- PolicyExceptions exist for ecosystem namespaces with unsigned images (autoswarm, posthog, etc.)
+- PolicyExceptions exist for ecosystem namespaces with unsigned images (selva, posthog, etc.)
 
 **Risk:** Medium. Enabling on a namespace blocks all pod creation for unsigned `ghcr.io/madfam-org` images. Always verify signatures before labeling a namespace.
 
@@ -394,7 +394,7 @@ for ns in enclii-builds; do
 done
 ```
 
-**Warning:** Do NOT label ecosystem namespaces (`tezca`, `yantra4d`, `karafiel`, `forgesight`, `pravara-mes`, `autoswarm`, `dhanam`) unless their images are signed or a PolicyException is in place. These namespaces use images that may not go through the signing CI pipeline.
+**Warning:** Do NOT label ecosystem namespaces (`tezca`, `yantra4d`, `karafiel`, `forgesight`, `pravara-mes`, `selva`, `dhanam`) unless their images are signed or a PolicyException is in place. These namespaces use images that may not go through the signing CI pipeline.
 
 **Kyverno gotcha:** If a namespace has `enclii.dev/verify-signatures=true` but contains unsigned images, `kubectl rollout restart` will fail because the new pods cannot be created. You must either:
 1. Remove the label: `kubectl label ns <ns> enclii.dev/verify-signatures-`, or

@@ -59,7 +59,7 @@ REPOS = {
             'digifab-quoting / cotiza (quote + order federation)',
             'karafiel (contract document federation)',
             'pravara-mes (fab job status federation)',
-            'autoswarm-office / selva (digital-project execution updates)',
+            'selva-office / selva (digital-project execution updates)',
             'postgres (CRM-native entities)',
         ],
         'downstream_consumers': [
@@ -91,7 +91,7 @@ REPOS = {
         'upstream_deps': [
             'janua (SSO + multi-tenant)',
             'karafiel (CFDI 4.0 emission for payroll)',
-            'autoswarm-office / selva (multi-agent orchestration)',
+            'selva-office / selva (multi-agent orchestration)',
             'postgres (employees, agents, payroll runs)',
         ],
         'downstream_consumers': [

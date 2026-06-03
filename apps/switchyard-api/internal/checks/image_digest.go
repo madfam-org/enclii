@@ -39,7 +39,7 @@ type ImageDigestIssue struct {
 }
 
 // workloadKinds enumerates the K8s workload kinds whose containers we inspect.
-// Matches the set used by autoswarm-office/packages/tools's deploy_preflight.py
+// Matches the set used by selva-office/packages/tools's deploy_preflight.py
 // so the onboarding gate and the pre-submit gate agree on what's a workload.
 var workloadKinds = map[string]bool{
 	"Deployment":  true,

@@ -12,7 +12,7 @@
 #   KUBECONFIG=~/.kube/config-hetzner kubectl patch configmap argocd-cm \
 #     -n argocd --type merge -p "$(cat infra/argocd/resource-customizations.yaml)"
 #
-# This resolves the autoswarm-services "Progressing" status (issue #4 in fleet audit).
+# This resolves the selva-services "Progressing" status (issue #4 in fleet audit).
 ---
 apiVersion: v1
 kind: ConfigMap

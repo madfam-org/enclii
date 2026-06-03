@@ -21,7 +21,7 @@ import (
 //
 // Source name values match the strings nexus-api emits in its
 // UnifiedAuditEvent.source field; keep in sync with
-// autoswarm-office/apps/nexus-api/nexus_api/routers/audit_unified.py.
+// selva-office/apps/nexus-api/nexus_api/routers/audit_unified.py.
 //
 // Note: the string literals are built via “"selva_" + "..."“ concatenation
 // so the repo's pre-commit secret-scanner (which flags “secret = "..."“

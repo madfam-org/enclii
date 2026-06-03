@@ -69,7 +69,7 @@ These are places where Enclii can look healthier than reality:
   contract, not just card-facing service rows.
 - Some workloads are represented unevenly between Argo/Kubernetes and the
   Switchyard service table. Examples observed during the audit include
-  `autoswarm-services`, `blueprint-harvester-services`, and
+  `selva-services`, `blueprint-harvester-services`, and
   `converge-dash-services`.
 - Historical `deployments` rows include contradictory states such as
   `failed/healthy` and `running/unhealthy`. A card that trusts the latest raw

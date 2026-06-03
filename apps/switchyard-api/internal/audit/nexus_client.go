@@ -12,17 +12,17 @@ import (
 	"time"
 )
 
-// NexusClient fetches the four Selva RFC ledgers via autoswarm-office's
+// NexusClient fetches the four Selva RFC ledgers via selva-office's
 // “GET /api/v1/audit/unified“ endpoint. That endpoint already returns
 // the canonical AuditEvent shape (see nexus_api/routers/audit_unified.py),
 // so this client is a thin HTTP wrapper + filter bridge.
 //
 // We authenticate with the shared worker token (WORKER_API_TOKEN on
-// autoswarm-office's side; ENCLII_NEXUS_API_TOKEN on ours) — the same
+// selva-office's side; ENCLII_NEXUS_API_TOKEN on ours) — the same
 // secret already trusted by nexus-api's get_current_user to mint a
 // service role.
 type NexusClient struct {
-	baseURL    string // e.g. https://api.autoswarm.internal
+	baseURL    string // e.g. https://api.selva.internal
 	apiToken   string
 	httpClient *http.Client
 }

@@ -47,11 +47,11 @@ type Config struct {
 	// Janua's /api/v1/audit-logs endpoint (admin-only). When empty the
 	// audit aggregator skips the Janua source and the UI shows a gap.
 	JanuaAdminToken string
-	// NexusAPIURL: base URL for autoswarm-office nexus-api. Used by the
+	// NexusAPIURL: base URL for selva-office nexus-api. Used by the
 	// audit aggregator to pull the 4 Selva RFC ledgers.
 	NexusAPIURL string
 	// NexusAPIToken: shared-secret worker token for nexus-api (matches
-	// autoswarm-office's WORKER_API_TOKEN). When empty, aggregator skips nexus.
+	// selva-office's WORKER_API_TOKEN). When empty, aggregator skips nexus.
 	NexusAPIToken string
 
 	// Kubernetes

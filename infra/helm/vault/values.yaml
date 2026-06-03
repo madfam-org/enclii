@@ -143,7 +143,7 @@ server:
                 app.kubernetes.io/name: vault
 
   # ServiceAccount for Vault itself (separate from vault-selva-writer SA
-  # in the autoswarm namespace — that SA is the *client* identity).
+  # in the selva namespace — that SA is the *client* identity).
   serviceAccount:
     create: true
     name: vault

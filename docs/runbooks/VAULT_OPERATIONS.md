@@ -99,7 +99,7 @@ kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$TOKEN" \
 
 ```bash
 # Export all secret paths
-for ns in enclii janua data cloudflare-tunnel dhanam autoswarm tezca yantra4d \
+for ns in enclii janua data cloudflare-tunnel dhanam selva tezca yantra4d \
   karafiel forgesight pravara-mes monitoring arc-runners enclii-builds \
   npm-registry madfam-site posthog longhorn-system kyverno; do
   echo "--- $ns ---"

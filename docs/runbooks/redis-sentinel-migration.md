@@ -46,7 +46,7 @@ Grep-based inventory from `infra/k8s/base/external-secrets/vault-secrets/`:
 | tezca-api | `tezca` | redis-py | Yes |
 | forgesight-api | `forgesight` | ioredis (Node) | Yes |
 | yantra4d-backend | `yantra4d` | ioredis (Node) | Yes |
-| autoswarm-nexus-api | `madfam` | ioredis | Yes |
+| selva-nexus-api | `madfam` | ioredis | Yes |
 | pravara-api | `pravara-mes` | go-redis | Yes |
 
 > **Important:** `switchyard-api` uses `redis.enclii.svc.cluster.local:6379` in
@@ -63,7 +63,7 @@ touching the money path.
 1. **forgesight-api** (lowest Redis traffic — project planning cache only)
 2. **yantra4d-backend** (3D engine cache — recoverable from source of truth)
 3. **pravara-api** (MES cache — short-TTL only)
-4. **autoswarm-nexus-api** (agent orchestration queue — tolerates short outage)
+4. **selva-nexus-api** (agent orchestration queue — tolerates short outage)
 5. **tezca-api** (session cache — lose a session = user re-auths, acceptable)
 6. **janua** (SSO session store — users may re-auth on cutover)
 7. **karafiel-api** (marketplace cache)
