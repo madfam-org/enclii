@@ -45,6 +45,19 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # 2026-06-03 incident: foundry-worker-01 had a Longhorn
+                  # iSCSI frontend/logout failure that left the registry PVC
+                  # unable to attach. Keep the singleton registry on another
+                  # node until the worker storage path is remediated.
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - foundry-worker-01
 
       containers:
         - name: verdaccio

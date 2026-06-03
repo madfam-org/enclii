@@ -82,6 +82,54 @@ kubectl get volumes.longhorn.io -n longhorn-system -o custom-columns='NAME:.meta
 
 ## Recovery Procedure
 
+### Fast Path: Node-Local Attach Failure
+
+Use this path when the Longhorn volume replicas are intact but a workload is
+stuck in `ContainerCreating` with attach errors such as `volume ... is not
+ready for workloads`, `DeadlineExceeded`, or manager logs showing iSCSI
+frontend/logout failures on one node.
+
+1. Confirm the affected pod and node:
+
+```bash
+kubectl get pods -n <namespace> -o wide
+kubectl describe pod -n <namespace> <pod>
+```
+
+2. Confirm Longhorn health and the failing attachment:
+
+```bash
+kubectl get volume.longhorn.io -n longhorn-system <volume> \
+  -o custom-columns='STATE:.status.state,ROBUSTNESS:.status.robustness,NODE:.status.currentNodeID'
+kubectl get volumeattachment | grep <volume>
+```
+
+3. If the failure is node-local, pin the singleton workload away from the
+affected node and let the Deployment recreate the pod:
+
+```bash
+kubectl patch deployment -n <namespace> <deployment> --type merge -p \
+  '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"kubernetes.io/hostname","operator":"NotIn","values":["<bad-node>"]}]}]}}}}}}}'
+```
+
+4. Watch the volume and rollout:
+
+```bash
+kubectl rollout status deployment/<deployment> -n <namespace> --timeout=5m
+kubectl get volume.longhorn.io -n longhorn-system <volume> \
+  -o custom-columns='STATE:.status.state,ROBUSTNESS:.status.robustness,NODE:.status.currentNodeID'
+```
+
+For `npm-registry/verdaccio`, this path recovered `npm.madfam.io` on
+June 3, 2026 by moving the pod from `foundry-worker-01` to `foundry-cp`;
+the volume returned to `attached` / `healthy` with both replicas in RW mode.
+Record the placement override in Git before the next ArgoCD sync.
+
+### Corruption Path: Replace the PVC
+
+Use this path only after confirming filesystem corruption or irrecoverable
+volume failure. It creates a fresh PVC and may lose data since the last backup.
+
 ### Step 1: Delete the Corrupted PVC
 
 ```bash
@@ -197,3 +245,4 @@ Record each incident for pattern tracking:
 | 3 | 2026-03 | data | Redis (yantra4d) | pvc-5c623a32 → pvc-b36cb15c | stop-writes-on-bgsave-error → flask-limiter crash |
 | 4 | 2026-03 | verdaccio | Verdaccio (npm.madfam.io) | pvc-fb3f0c06 → pvc-4190cec8 | Registry 500s, had to republish packages |
 | 5 | 2026-03 | posthog | ClickHouse/PostHog | Multiple | PostHog deployment paused (unrelated chart issues) |
+| 6 | 2026-06-03 | npm-registry | Verdaccio (npm.madfam.io) | pvc-4190cec8 | foundry-worker-01 iSCSI frontend/logout failure; patched placement away from worker, volume attached healthy on foundry-cp, no PVC replacement |
