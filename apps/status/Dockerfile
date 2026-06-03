@@ -5,14 +5,15 @@
 FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 RUN corepack enable pnpm
+ENV npm_config_dangerously_allow_all_builds=true
 WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
 WORKDIR /app/status
-COPY apps/status/package.json ./
+COPY apps/status/package.json apps/status/pnpm-lock.yaml ./
 # Use pnpm fetch for better caching
-RUN pnpm install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
+RUN pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 
 # Build the application
 FROM base AS builder
@@ -41,7 +42,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the static site
 WORKDIR /app/status
-RUN pnpm --config.dangerouslyAllowAllBuilds=true run build
+RUN pnpm run build
 
 # Production image
 FROM base AS runner
