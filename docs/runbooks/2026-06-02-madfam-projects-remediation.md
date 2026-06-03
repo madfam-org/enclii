@@ -2,7 +2,7 @@
 
 Scope: `https://app.enclii.dev/projects`, MADFAM project slice.
 
-Latest refreshed snapshot: `2026-06-03T02:01:43Z`.
+Latest refreshed snapshot: `2026-06-03T02:01:43Z` (pre Selva rename/cutover).
 
 ## Live Status
 
@@ -57,21 +57,33 @@ Root causes:
 - Staging GitOps drift: `selva-office-staging` declares `nexus-api` replicas as `2` while its HPA is pinned min/max `1`, causing Argo OutOfSync/Degraded churn.
 - Service reconcile observability gap: `POST /v1/admin/projects/selva/reconcile-services` returned discovered deployments but no service rows and no failure details.
 
-Actions in progress:
+Actions completed:
 
 - Enclii card matcher now prefers non-staging Argo evidence for non-staging projects before severity tie-breaking.
 - Enclii reconcile response now includes `failed` and `errors` so silent reconcile failures are visible.
 - Selva staging overlay now sets `nexus-api` replicas to `1`, matching the staging HPA.
+- Selva source rename is pushed in `madfam-org/selva-office`:
+  - `e4f8126` normalizes repository labels, code, manifests, image names, hostnames, and package names.
+  - `77d5456` stabilizes runtime cutover by removing the active admin-auth ExternalSecret dependency until the Vault path exists and adding the required `COLYSEUS_SECRET` mapping.
+  - `6321fda` fixes Cloudflare tunnel merge behavior so existing hostname rules update stale service targets instead of only adding missing rules.
+- Enclii ApplicationSet source rename is pushed in `madfam-org/enclii` at `84af093b`; generated projects now include `selva-services` and no pre-cutover Selva project app.
+- Live runtime:
+  - `selva` and `selva-staging` namespaces are active.
+  - Production and staging each have all six deployments available: `admin`, `colyseus`, `gateway`, `nexus-api`, `office-ui`, `workers`.
+  - Pre-cutover production/staging namespaces are deleted.
+  - Public prod/staging API health endpoints return `{"status":"healthy","version":"0.1.0","service":"nexus-api"}`.
+- Labspace old-name scan returned zero content and path matches outside ignored generated/dependency directories.
 
 Remaining to green:
 
-- Push/deploy Enclii main so the project card matcher takes effect.
-- Push Selva main so Argo sees the staging replica fix.
-- Re-run/inspect Selva service reconcile after the Enclii reconcile diagnostics deploy.
+- Refresh the Enclii project card snapshot after Enclii CI/deploy completes.
+- `selva-services` is Synced and all child workloads are ready, but Argo still reports aggregate health `Progressing`; no child resource reports non-healthy status. Treat this as a remaining Argo health classification issue until the project card confirms Selva is no longer flagged.
+- Migrate Selva admin auth to Vault path `secret/selva` when a writable Vault workflow is available. The active GitOps bundle intentionally relies on the already-provisioned Kubernetes auth Secret until that path exists.
 
 ## Verification Run
 
 - Enclii: `go test ./internal/api -run 'TestMatchProjectCardArgoEvidence|TestReconcileServicesResponseRecordsFailures' -count=1`
 - Tulana: `python -m pytest apps/api/tests/integrations/test_health.py -q`
 - Selva: `kubectl kustomize infra/k8s/overlays/staging`
+- Selva: `uv run ruff check .`
 - Live cards: `/private/tmp/enclii-project-cards-after-tulana-fix.json`

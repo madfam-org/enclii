@@ -41,7 +41,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the static site
 WORKDIR /app/status
-RUN pnpm run build
+RUN pnpm --config.dangerouslyAllowAllBuilds=true run build
 
 # Production image
 FROM base AS runner
