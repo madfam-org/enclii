@@ -9,7 +9,7 @@ Latest refreshed snapshot: `2026-06-03T02:01:43Z`.
 | State | Count | Notes |
 | --- | ---: | --- |
 | healthy | 57 | Improved from 54 healthy at audit start. |
-| failing | 2 | `autoswarm`, `ceq`. |
+| failing | 2 | `selva`, `ceq`. |
 
 `ceq` is intentionally not remediated in this pass because it is owned by another active agent.
 
@@ -49,13 +49,13 @@ Initial state was transient Argo Progressing. Live Argo now reports `forgesight-
 
 ## Still Open
 
-### autoswarm
+### selva
 
 Root causes:
 
-- Dashboard truth bug: the project card matched production project `autoswarm` to staging Argo app `autoswarm-office-staging` because both matched the project prefix and the old tie-breaker preferred the worst equal-rank app.
-- Staging GitOps drift: `autoswarm-office-staging` declares `nexus-api` replicas as `2` while its HPA is pinned min/max `1`, causing Argo OutOfSync/Degraded churn.
-- Service reconcile observability gap: `POST /v1/admin/projects/autoswarm/reconcile-services` returned discovered deployments but no service rows and no failure details.
+- Dashboard truth bug: the project card matched production project `selva` to staging Argo app `selva-office-staging` because both matched the project prefix and the old tie-breaker preferred the worst equal-rank app.
+- Staging GitOps drift: `selva-office-staging` declares `nexus-api` replicas as `2` while its HPA is pinned min/max `1`, causing Argo OutOfSync/Degraded churn.
+- Service reconcile observability gap: `POST /v1/admin/projects/selva/reconcile-services` returned discovered deployments but no service rows and no failure details.
 
 Actions in progress:
 
@@ -67,7 +67,7 @@ Remaining to green:
 
 - Push/deploy Enclii main so the project card matcher takes effect.
 - Push Selva main so Argo sees the staging replica fix.
-- Re-run/inspect Autoswarm service reconcile after the Enclii reconcile diagnostics deploy.
+- Re-run/inspect Selva service reconcile after the Enclii reconcile diagnostics deploy.
 
 ## Verification Run
 

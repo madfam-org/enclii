@@ -215,7 +215,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | `longhorn-system` | Block Storage CSI (v1.7.2) | 20 | ✅ Healthy |
 | `enclii` | Platform Control Plane | 18 | ✅ Healthy |
 | `argocd` | GitOps Engine | 8 | ✅ Healthy |
-| `autoswarm` | Agent Orchestration (6 services) | 8 | ✅ Healthy |
+| `selva` | Agent Orchestration (6 services) | 8 | ✅ Healthy |
 | `kyverno` | Policy Engine (v1.11.4) | 6 | ✅ Healthy |
 | `janua` | Identity Provider | 6 | ✅ Healthy |
 | `dhanam` | Finance Services | 6 | ✅ Healthy |
@@ -277,7 +277,7 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 | admin.dhan.am | ✅ | 307 | 0.56s | Auth redirect |
 | dhan.am | ✅ | 307 | 0.55s | Redirect to app |
 
-### AutoSwarm (5 endpoints)
+### Selva (5 endpoints)
 
 | Endpoint | Status | Code | Latency | Notes |
 |----------|--------|------|---------|-------|
@@ -476,7 +476,7 @@ The `node-maintenance` CronJob (daily 2:30 AM UTC) now exports Prometheus metric
 
 | Application | Namespace | Sync | Health | Notes |
 |-------------|-----------|------|--------|-------|
-| autoswarm-services | autoswarm | ✅ Synced | Healthy | 6 services (session 81) |
+| selva-services | selva | ✅ Synced | Healthy | 6 services (session 81) |
 | dhanam-services | dhanam | ✅ Synced | Healthy | 3-way merge |
 | dispatch-services | enclii | ✅ Synced | Healthy | |
 | enclii-services | enclii | OutOfSync | Healthy | Recent git changes |
@@ -549,15 +549,15 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | dhan.am | dhanam-web.dhanam.svc:80 | 307 | |
 | www.dhan.am | dhanam-web.dhanam.svc:80 | 200 | |
 
-### AutoSwarm Routes (added session 81)
+### Selva Routes (added session 81)
 
 | Hostname | Target Service | HTTP | Notes |
 |----------|---------------|------|-------|
-| agents-api.madfam.io | nexus-api.autoswarm.svc:80 | 404 | Service running, no root route |
-| agents.madfam.io | office-ui.autoswarm.svc:80 | 307 | Auth redirect |
-| agents-admin.madfam.io | admin.autoswarm.svc:80 | 307 | Auth redirect |
-| agents-ws.madfam.io | colyseus.autoswarm.svc:80 | 200 | /health returns 200 |
-| agents-gw.madfam.io | gateway.autoswarm.svc:80 | 502 | Background worker, no HTTP |
+| agents-api.madfam.io | nexus-api.selva.svc:80 | 404 | Service running, no root route |
+| agents.madfam.io | office-ui.selva.svc:80 | 307 | Auth redirect |
+| agents-admin.madfam.io | admin.selva.svc:80 | 307 | Auth redirect |
+| agents-ws.madfam.io | colyseus.selva.svc:80 | 200 | /health returns 200 |
+| agents-gw.madfam.io | gateway.selva.svc:80 | 502 | Background worker, no HTTP |
 
 ### Tezca Routes (tezca.mx zone)
 
@@ -699,7 +699,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | roundhouse | (internal) | ⚠️ CrashLoop | 3 | ✅ |
 | waybill | (internal) | ✅ Running | 1 | ✅ |
 
-### AutoSwarm Services (added session 81)
+### Selva Services (added session 81)
 
 | Service | URL | Status | Replicas | Auto-Deploy |
 |---------|-----|--------|----------|-------------|
@@ -723,7 +723,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | madfam-site | madfam-site | site | ✅ Healthy |
 | npm-registry | npm-registry | verdaccio | ✅ Healthy |
 
-**Status:** All 15 projects managed via ArgoCD. Core services + AutoSwarm healthy. Ecosystem projects have DNS + service-level issues (see Endpoint Health section).
+**Status:** All 15 projects managed via ArgoCD. Core services + Selva healthy. Ecosystem projects have DNS + service-level issues (see Endpoint Health section).
 
 ---
 

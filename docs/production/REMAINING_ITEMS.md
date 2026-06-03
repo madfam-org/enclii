@@ -221,7 +221,7 @@ sudo kubectl logs -n enclii -l app=roundhouse --tail=5
 
 | Repo | Issue | Fix Needed |
 |------|-------|-----------|
-| autoswarm-office | agents-api 404 | Add `/health` endpoint |
+| selva-office | agents-api 404 | Add `/health` endpoint |
 | tezca | api.tezca.mx 404 | Add `/health` endpoint |
 | karafiel | kf-api 404, worker crash | Add `/health` endpoint, fix Redis connection |
 | forgesight | cms.madfam.io 404 | Add `/health` endpoint |

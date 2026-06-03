@@ -416,7 +416,7 @@ phase_vault_configure() {
   ok "Kubernetes auth configured"
 
   log "Creating per-namespace read policies..."
-  for ns in enclii janua data cloudflare-tunnel dhanam autoswarm tezca yantra4d karafiel forgesight pravara-mes monitoring arc-runners enclii-builds npm-registry madfam-site posthog longhorn-system kyverno; do
+  for ns in enclii janua data cloudflare-tunnel dhanam selva tezca yantra4d karafiel forgesight pravara-mes monitoring arc-runners enclii-builds npm-registry madfam-site posthog longhorn-system kyverno; do
     kubectl exec -n vault vault-0 -- env VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
       sh -c "vault policy write ${ns}-read - <<'POLICY'
 path \"secret/data/${ns}/*\" {

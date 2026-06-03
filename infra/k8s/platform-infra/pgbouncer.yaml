@@ -53,7 +53,7 @@ data:
     dhanam = host=postgres.data.svc.cluster.local port=5432 dbname=dhanam
     janua = host=postgres.data.svc.cluster.local port=5432 dbname=janua
     tezca = host=postgres.data.svc.cluster.local port=5432 dbname=tezca
-    autoswarm = host=postgres.data.svc.cluster.local port=5432 dbname=autoswarm
+    selva = host=postgres.data.svc.cluster.local port=5432 dbname=selva
     * = host=postgres.data.svc.cluster.local port=5432
 ---
 apiVersion: apps/v1

@@ -258,15 +258,15 @@ In the multi-source revision resolution path, concatenate `repoURL + "/" + chart
 
 ---
 
-## AutoSwarm Services "Progressing" Health Status
+## Selva Services "Progressing" Health Status
 
 **Status:** Fixed (resource customizations added)
-**Affected Apps:** `autoswarm-services`
+**Affected Apps:** `selva-services`
 **Impact:** ArgoCD shows `Progressing` or `Unknown` health. All 8 pods are Running and healthy.
 
 ### Symptom
 
-The `autoswarm-services` application shows `Progressing` health status with 29 resources at `Unknown` health. The affected resource types are:
+The `selva-services` application shows `Progressing` health status with 29 resources at `Unknown` health. The affected resource types are:
 - `ScaledObject` (KEDA) — no built-in health check
 - `ServiceMonitor` (Prometheus) — declarative resource, no status
 - `PodDisruptionBudget` — ArgoCD can't assess `currentHealthy` vs `desiredHealthy`

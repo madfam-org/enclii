@@ -71,7 +71,7 @@ below is embedded here so this document stands alone.
 | **Enclii** | `madfam-org/enclii` | PaaS control plane — all deploys go through this |
 | **Janua** | `madfam-org/janua` | OIDC/OAuth 2.0 provider — RS256 JWKS at `auth.madfam.io/.well-known/jwks.json` |
 | **Dhanam** | `madfam-org/dhanam` | Billing + payment gateways (Stripe, Mercado Pago, SPEI, etc.) |
-| **Selva** | `madfam-org/selva-office` | LLM inference routing + agent orchestration. Repo migrated from `autoswarm-office`; older docs may still reference the previous name |
+| **Selva** | `madfam-org/selva-office` | LLM inference routing + agent orchestration. Repo migrated from `selva-office`; older docs may still reference the previous name |
 | **Coupler** | `madfam-org/coupler` | Agent Tool Plane — delegated SaaS tools, MCP, sandbox, triggers (AGPL). Auth via Janua; deploy via Enclii; consume from Selva/apps |
 | **Karafiel** | `madfam-org/karafiel` | Operational compliance — CFDI, NOM-151, e.firma, SAT-adjacent. Owns legal-ops / contract templates |
 | **Tezca** | `madfam-org/tezca` | Mexican law oracle (informational only — feeds Karafiel) |
@@ -90,7 +90,7 @@ below is embedded here so this document stands alone.
 - **Billing**: credit metering + entitlements flow through Dhanam. See
   `madfam-org/dhanam` for the meter/entitlement/invoice APIs.
 - **Inference**: every LLM call should route through Selva
-  (`selva-office`, formerly `autoswarm-office`) at `/v1` (OpenAI-compatible).
+  (`selva-office`, formerly `selva-office`) at `/v1` (OpenAI-compatible).
   Do not talk directly to OpenAI / Anthropic from service code.
 - **Agent SaaS tools**: end-user delegated tool calls (Slack, Gmail, etc.)
   route through **Coupler** (`madfam-org/coupler`), not Enclii Provider Hub.

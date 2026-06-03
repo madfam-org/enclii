@@ -64,7 +64,7 @@ ALL_NAMESPACES=(
     data
     cloudflare-tunnel
     dhanam
-    autoswarm
+    selva
     tezca
     yantra4d
     karafiel

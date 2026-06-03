@@ -124,7 +124,7 @@ When an ops step has no Enclii command yet, file a row in [ADAPTER_GAPS.md](../A
 - **O-22 smoke:** Dhanam checkout + billing endpoints green in [26676748746](https://github.com/madfam-org/enclii/actions/runs/26676748746).
 - **Commercial proof:** db/schema check warns (not fails) when synthetics token lacks admin scope.
 - **ESO:** `enclii-internal-api-key`, `enclii-resend-api-key`, porkbun — **SecretSynced**.
-- **Argo:** core-services Synced/Healthy; `autoswarm-*` Degraded (non-enclii-core, tracked).
+- **Argo:** core-services Synced/Healthy; `selva-*` Degraded (non-enclii-core, tracked).
 
 ## 2026-05-30 Wave 2 — monetization automated proof
 

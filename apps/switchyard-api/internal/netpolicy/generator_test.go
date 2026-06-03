@@ -502,7 +502,7 @@ func TestGeneratePolicies_HTTPEgress(t *testing.T) {
 }
 
 func TestGeneratePolicies_PgBouncerEgress(t *testing.T) {
-	// Simulates autoswarm-nexus-api: needs DNS + HTTPS + pgbouncer (connection pooling)
+	// Simulates selva-nexus-api: needs DNS + HTTPS + pgbouncer (connection pooling)
 	spec := NetworkSpec{
 		Services: []ServiceSpec{
 			{
@@ -515,7 +515,7 @@ func TestGeneratePolicies_PgBouncerEgress(t *testing.T) {
 		},
 	}
 
-	out, err := GeneratePolicies("autoswarm", "autoswarm", spec)
+	out, err := GeneratePolicies("selva", "selva", spec)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -118,7 +118,7 @@ spec:
 | `data-secrets` | data | `secret/data` | 8 |
 | `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
 | `dhanam-secrets` | dhanam | `secret/dhanam` | 33 |
-| `autoswarm-secrets` | autoswarm | `secret/autoswarm` | 3 |
+| `selva-secrets` | selva | `secret/selva` | 3 |
 | `tezca-secrets` | tezca | `secret/tezca` | 11 |
 | `yantra4d-secrets` | yantra4d | `secret/yantra4d` | 3 |
 | `karafiel-secrets` | karafiel | `secret/karafiel` | 15 |

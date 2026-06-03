@@ -80,7 +80,7 @@ data:
   # the service side, not the status page.
   #
   # Previous: 2026-04-15 — 41 services across 15 groups (Karafiel
-  # URLs fixed to /login, AutoSwarm → Selva Office on selva.town).
+  # URLs fixed to /login, Selva → Selva Office on selva.town).
   #
   # Intentional exclusions — not a bug, do not add without thinking:
   #   - status.madfam.io + status.enclii.dev — cannot reliably monitor

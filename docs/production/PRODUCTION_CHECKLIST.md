@@ -262,12 +262,12 @@ tags: [production, deployment, checklist, operations]
 | Janua Dashboard | app.janua.dev | - | Running |
 | Janua Admin | admin.janua.dev | - | Running |
 | Status (madfam) | status.madfam.io | 4204 | Running |
-| AutoSwarm Nexus API | agents-api.madfam.io | 4300 | Running |
-| AutoSwarm Office UI | agents.madfam.io | 4301 | Running |
-| AutoSwarm Admin | agents-admin.madfam.io | 4302 | Running |
-| AutoSwarm Colyseus | agents-ws.madfam.io | 4303 | Running |
-| AutoSwarm Gateway | agents-gw.madfam.io | 4304 | Running (no HTTP) |
-| AutoSwarm Workers | - | - | Running (background) |
+| Selva Nexus API | agents-api.madfam.io | 4300 | Running |
+| Selva Office UI | agents.madfam.io | 4301 | Running |
+| Selva Admin | agents-admin.madfam.io | 4302 | Running |
+| Selva Colyseus | agents-ws.madfam.io | 4303 | Running |
+| Selva Gateway | agents-gw.madfam.io | 4304 | Running (no HTTP) |
+| Selva Workers | - | - | Running (background) |
 | MES Web | mes.madfam.io | 4501 | Running |
 | MES API | mes-api.madfam.io | 4500 | Running |
 

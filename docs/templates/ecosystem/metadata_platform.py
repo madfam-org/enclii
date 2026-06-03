@@ -202,7 +202,7 @@ REPOS = {
         ],
         'downstream_consumers': [
             'enclii (switchyard-api, dispatch) — OIDC SSO',
-            'dhanam, karafiel, forgesight, tezca, fortuna, digifab-quoting, autoswarm-office, pravara-mes, yantra4d, avala, phynd-crm, routecraft, symbiosis-hcm — all verify tokens via JWKS',
+            'dhanam, karafiel, forgesight, tezca, fortuna, digifab-quoting, selva-office, pravara-mes, yantra4d, avala, phynd-crm, routecraft, symbiosis-hcm — all verify tokens via JWKS',
         ],
         'key_env': [
             'JANUA_DATABASE_URL — Postgres connection',

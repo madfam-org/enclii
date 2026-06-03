@@ -6,7 +6,7 @@
 # Allows:
 #   - 5432 ingress from any namespace tagged enclii.dev/postgres-consumer
 #     (consumers across 9+ namespaces — dhanam, janua, enclii, karafiel,
-#      tezca, forgesight, fortuna, autoswarm, pravara-mes, ...)
+#      tezca, forgesight, fortuna, selva, pravara-mes, ...)
 #   - 5432 ingress from pgbouncer pods in the data namespace
 #   - 9187 (CNPG metrics) ingress from monitoring namespace
 #   - 5432 between cluster pods (replication)

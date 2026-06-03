@@ -227,7 +227,7 @@ Required target:
 Evidence:
 
 - `infra/k8s/base/external-secrets/vault-secrets/` contains per-app
-  ExternalSecrets such as `autoswarm`, `dhanam`, `forgesight`, `karafiel`,
+  ExternalSecrets such as `selva`, `dhanam`, `forgesight`, `karafiel`,
   `madfam-site`, `pravara-mes`, `tezca`, and `yantra4d`.
 - `infra/k8s/base/external-secrets/vault-secrets/dhanam-secrets.yaml:4`
   defines a Dhanam secret target in the Dhanam namespace.
@@ -334,7 +334,7 @@ Original evidence:
 - `apps/switchyard-ui/components/dashboard/framework-icon.tsx:186` defines
   `KNOWN_REPO_FRAMEWORKS`.
 - The map includes Janua, Pravara, Tezca, Dhanam, ForgeSight, Karafiel,
-  Yantra4D, Enclii, MADFAM Site, and Autoswarm.
+  Yantra4D, Enclii, MADFAM Site, and Selva.
 - `apps/switchyard-ui/app/(protected)/page.tsx:92` uses the hardcoded fallback
   when service framework data is absent.
 - `apps/switchyard-ui/app/(protected)/projects/page.tsx:138` does not use the
