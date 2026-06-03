@@ -69,7 +69,9 @@ images:
     assert errors == []
 
 
-def test_aggregate_image_check_honors_explicit_exemption(tmp_path: Path) -> None:
+def test_aggregate_image_check_rejects_unpinned_synthetic_probe(
+    tmp_path: Path,
+) -> None:
     write(
         tmp_path / "infra/k8s/production/synthetic-flow-probe.yaml",
         """
@@ -87,13 +89,10 @@ spec:
     )
 
     errors: list[str] = []
-    ratchet.check_images(
-        tmp_path,
-        errors,
-        exemptions={"IMAGE_PIN_EXEMPT_SYNTHETIC_FLOW_PROBE": "unpublished"},
-    )
+    ratchet.check_images(tmp_path, errors, exemptions={})
 
-    assert errors == []
+    assert len(errors) == 1
+    assert "synthetic-flow-probe:placeholder" in errors[0]
 
 
 def test_placeholder_secret_check_skips_marked_templates(tmp_path: Path) -> None:
@@ -203,28 +202,28 @@ images:
     assert failures == []
 
 
-def test_image_pinning_script_honors_explicit_exemption(tmp_path: Path) -> None:
+def test_image_pinning_script_honors_generic_explicit_exemption(tmp_path: Path) -> None:
     pytest.importorskip("yaml")
     image_pinning = load_module("check_image_pinning_exempt", IMAGE_PINNING_SCRIPT)
     write(
-        tmp_path / "production/probe.yaml",
+        tmp_path / "production/upstream.yaml",
         """
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: synthetic-flow-probe
+  name: upstream
 spec:
   template:
     spec:
       containers:
-        - name: probe
-          image: ghcr.io/madfam-org/enclii/synthetic-flow-probe:placeholder
+        - name: upstream
+          image: docker.io/library/nginx:1.27
 """.lstrip(),
     )
 
     failures = image_pinning.find_violations(
         [tmp_path],
-        exemptions={"IMAGE_PIN_EXEMPT_SYNTHETIC_FLOW_PROBE": "unpublished"},
+        exemptions={"IMAGE_PIN_EXEMPT_NGINX": "upstream chart-managed image"},
     )
 
     assert failures == []

@@ -1,8 +1,7 @@
 name: Production Readiness Ratchet
 
 # Self-contained ratchet (scripts vendored from internal-devops). F1-F5 are
-# hard gates. F1 keeps one documented synthetic-flow-probe exemption until that
-# image is published and digest-pinned.
+# hard gates.
 
 on:
   pull_request:
@@ -45,10 +44,6 @@ jobs:
 
       - name: "F1: Image pinning check"
         id: f1
-        env:
-          IMAGE_PIN_EXEMPT_SYNTHETIC_FLOW_PROBE: >-
-            Placeholder manifest until the synthetic-flow-probe image is
-            published to GHCR and replaced with its digest.
         run: python3 scripts/ratchet/check-image-pinning.py infra/k8s/
 
       - name: "F2: Probe timeout check"

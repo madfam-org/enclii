@@ -1,6 +1,6 @@
 module github.com/madfam-org/enclii/tests/integration
 
-go 1.25.0
+go 1.25.11
 
 require (
 	github.com/stretchr/testify v1.10.0

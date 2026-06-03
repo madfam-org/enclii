@@ -13,10 +13,9 @@
 #     protected page?" → catches CSP / CORS / SSO-callback / session /
 #     redirect breakage that is invisible to layer-3 probes.
 #
-# The image is built and pinned by .github/workflows/synthetic-flow-probe.yml.
-# The placeholder image tag below is rewritten by the operator after the
-# digest is published (see README.md "How to bump the image" section in the
-# cloudflared-probe README — same flow applies here).
+# The image is built, signed, and digest-pinned by
+# .github/workflows/synthetic-flow-probe.yml. Keep this image content-addressed;
+# the production readiness ratchet rejects tag-pinned probe images.
 # ----------------------------------------------------------------------------
 
 apiVersion: v1
@@ -218,11 +217,7 @@ spec:
     spec:
       containers:
         - name: probe
-          # CI rewrites this to a digest-pinned image. :placeholder is rejected
-          # by the disallow-latest-tag Kyverno policy at the image-tag check,
-          # but it isn't `:latest` so admission lets it through with a clear
-          # mismatch error if the operator forgets to pin.
-          image: ghcr.io/madfam-org/enclii/synthetic-flow-probe:placeholder
+          image: ghcr.io/madfam-org/enclii/synthetic-flow-probe@sha256:59391c9c9b64cf3e30d09bc0bbe130131fb6e1ad2ff0dba6770e456a080306bd
           imagePullPolicy: IfNotPresent
           env:
             - name: JOURNEYS_DIR

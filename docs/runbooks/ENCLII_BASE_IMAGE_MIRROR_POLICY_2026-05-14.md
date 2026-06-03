@@ -10,7 +10,7 @@ During the Phynd production activation work, Enclii Roundhouse builds reached Do
 
 ## Policy
 
-Enclii platform Dockerfiles and Roundhouse-generated function Dockerfiles must not rely on unauthenticated Docker Hub pulls for Docker Official Images.
+Enclii platform Dockerfiles and Roundhouse-generated function Dockerfiles must not rely on unauthenticated Docker Hub pulls for Docker Official Images. Language runtime builder images must use the latest patched patch release accepted by the vulnerability gate, not a floating minor tag.
 
 Use the public ECR Docker Official Image mirror path:
 
@@ -21,7 +21,7 @@ public.ecr.aws/docker/library/<image>:<tag>
 Examples:
 
 ```text
-public.ecr.aws/docker/library/golang:1.25-alpine
+public.ecr.aws/docker/library/golang:1.25.11-alpine
 public.ecr.aws/docker/library/node:22-alpine
 public.ecr.aws/docker/library/alpine:3.20
 ```

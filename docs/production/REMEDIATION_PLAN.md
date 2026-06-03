@@ -50,8 +50,8 @@ and execution order.
 ### 0B. Integration Tests Go Version — DONE
 
 **File**: `tests/integration/go.mod`
-**Bug**: `go 1.21` while rest of project is `go 1.25.0`
-**Fix**: Updated to `go 1.25.0` + `go mod tidy`
+**Bug**: `go 1.21` while rest of project is `go 1.25.11`
+**Fix**: Updated to `go 1.25.11` + `go mod tidy`
 
 ### 0C. CI passWithNoTests Removal — DONE
 
@@ -343,12 +343,12 @@ Wire up designed-but-not-implemented auto-rollback:
 | 44 new tests | `69768be` | 30 reconciler + 14 cron_job_run repo |
 | CI load-test dedup | `69768be` | Removed duplicate k6 smoke from ci.yml |
 | Resource right-sizing | `69768be` | CPU limits: api 800m, cloudflared 300m, ui 300m |
-| CI Go version | `0ea6fd6` | 1.24.13 -> 1.25.0 (workflows + modules + Dockerfiles) |
+| CI Go version | `0ea6fd6` | 1.24.13 -> 1.25.11 (workflows + modules + Dockerfiles) |
 | nexus-api /health | `90804e2` | Root health endpoint (selva-office) |
 | Colyseus Node.js | `90804e2` | 20 -> 22 (TypeScript support) |
 | CMS /health | `a6c8f5a` | Root health endpoint (madfam-site) |
 | RBAC namespace fix | Pending | `default` -> `enclii` in ClusterRoleBinding |
-| Integration go.mod | Pending | 1.21 -> 1.25.0 |
+| Integration go.mod | Pending | 1.21 -> 1.25.11 |
 | CI passWithNoTests | Pending | Removed from mandatory test suites |
 
 ---

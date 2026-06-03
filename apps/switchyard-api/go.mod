@@ -1,6 +1,6 @@
 module github.com/madfam-org/enclii/apps/switchyard-api
 
-go 1.25.0
+go 1.25.11
 
 replace github.com/madfam-org/enclii/packages/sdk-go => ../../packages/sdk-go
 

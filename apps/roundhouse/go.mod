@@ -1,6 +1,6 @@
 module github.com/madfam-org/enclii/apps/roundhouse
 
-go 1.25.0
+go 1.25.11
 
 replace github.com/madfam-org/enclii/packages/otel-go => ../../packages/otel-go
 
