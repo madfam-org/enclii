@@ -148,7 +148,14 @@ func matchProjectCardArgoEvidence(
 			continue
 		}
 		evidence := evidence
-		if matched == nil || rank > matchedRank || (rank == matchedRank && projectCardArgoEvidenceLessSevere(*matched, evidence)) {
+		switch {
+		case matched == nil || rank > matchedRank:
+			matched = &evidence
+			matchedRank = rank
+		case rank == matchedRank && projectCardArgoEvidencePreferredForProject(project, *matched, evidence):
+			matched = &evidence
+			matchedRank = rank
+		case rank == matchedRank && !projectCardArgoEvidencePreferredForProject(project, evidence, *matched) && projectCardArgoEvidenceLessSevere(*matched, evidence):
 			matched = &evidence
 			matchedRank = rank
 		}
@@ -181,6 +188,37 @@ func projectCardArgoEvidenceMatchRank(
 		return 1
 	}
 	return 0
+}
+
+func projectCardArgoEvidencePreferredForProject(project *types.Project, current, candidate projectCardArgoApplicationEvidence) bool {
+	if project == nil || projectCardProjectLooksStaging(project) {
+		return false
+	}
+
+	currentStaging := projectCardArgoEvidenceLooksStaging(current)
+	candidateStaging := projectCardArgoEvidenceLooksStaging(candidate)
+	if currentStaging == candidateStaging {
+		return false
+	}
+	return !candidateStaging
+}
+
+func projectCardProjectLooksStaging(project *types.Project) bool {
+	return projectCardNameHasToken(project.Slug, "staging") || projectCardNameHasToken(project.Name, "staging")
+}
+
+func projectCardArgoEvidenceLooksStaging(evidence projectCardArgoApplicationEvidence) bool {
+	return projectCardNameHasToken(evidence.Name, "staging") ||
+		projectCardNameHasToken(evidence.DestinationNamespace, "staging")
+}
+
+func projectCardNameHasToken(value, token string) bool {
+	for _, part := range strings.Split(projectCardSanitizeArgoName(value), "-") {
+		if part == token {
+			return true
+		}
+	}
+	return false
 }
 
 func projectCardArgoEvidenceLessSevere(current, candidate projectCardArgoApplicationEvidence) bool {

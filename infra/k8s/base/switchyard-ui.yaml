@@ -55,6 +55,7 @@ spec:
                 secretKeyRef:
                   name: enclii-secrets
                   key: posthog-key
+                  optional: true
             - name: NEXT_PUBLIC_POSTHOG_HOST
               value: "https://analytics.madfam.io"
           ports:

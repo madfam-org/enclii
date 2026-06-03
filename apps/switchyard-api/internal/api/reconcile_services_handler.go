@@ -19,13 +19,22 @@ type ReconcileServicesResponse struct {
 	Updated     int                          `json:"updated"`
 	AlreadyOK   int                          `json:"already_ok"`
 	Refreshed   int                          `json:"refreshed"`
+	Failed      int                          `json:"failed"`
 	Services    []ReconcileServicesServiceOK `json:"services"`
+	Errors      []ReconcileServicesError     `json:"errors"`
 }
 
 type ReconcileServicesServiceOK struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
 	Action    string `json:"action"` // inserted | updated_namespace | already_ok
+}
+
+type ReconcileServicesError struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Action    string `json:"action"`
+	Error     string `json:"error"`
 }
 
 type reconcileServicesDeployment struct {
@@ -108,6 +117,7 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 		Namespace:   nsUsed,
 		Discovered:  len(deployments),
 		Services:    make([]ReconcileServicesServiceOK, 0, len(deployments)),
+		Errors:      make([]ReconcileServicesError, 0),
 	}
 
 	if len(deployments) == 0 {
@@ -156,9 +166,12 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 			if err := h.repos.Services.Create(newSvc); err != nil {
 				h.logger.Error(ctx, "Create service failed",
 					logging.String("name", name), logging.Error("error", err))
+				resp.RecordError(name, ns, "inserted", err)
 				continue
 			}
-			if h.refreshReconciledServiceHealth(ctx, newSvc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas) {
+			if err := h.refreshReconciledServiceHealth(ctx, newSvc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
+				resp.RecordError(name, ns, "refreshed", err)
+			} else {
 				resp.Refreshed++
 			}
 			resp.Inserted++
@@ -170,9 +183,12 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 			if err := h.repos.Services.UpdateK8sNamespace(ctx, svc.ID, nsUsed); err != nil {
 				h.logger.Error(ctx, "UpdateK8sNamespace failed",
 					logging.String("name", name), logging.Error("error", err))
+				resp.RecordError(name, nsUsed, "updated_namespace", err)
 				continue
 			}
-			if h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas) {
+			if err := h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
+				resp.RecordError(name, nsUsed, "refreshed", err)
+			} else {
 				resp.Refreshed++
 			}
 			resp.Updated++
@@ -180,7 +196,9 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 				Name: name, Namespace: nsUsed, Action: "updated_namespace",
 			})
 		default:
-			if h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas) {
+			if err := h.refreshReconciledServiceHealth(ctx, svc.ID, name, deployment.DesiredReplicas, deployment.ReadyReplicas); err != nil {
+				resp.RecordError(name, *svc.K8sNamespace, "refreshed", err)
+			} else {
 				resp.Refreshed++
 			}
 			resp.AlreadyOK++
@@ -198,18 +216,32 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 		logging.Int("updated", resp.Updated),
 		logging.Int("already_ok", resp.AlreadyOK),
 		logging.Int("refreshed", resp.Refreshed),
+		logging.Int("failed", resp.Failed),
 	)
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *Handler) refreshReconciledServiceHealth(ctx context.Context, serviceID uuid.UUID, name string, desiredReplicas, readyReplicas int32) bool {
+func (r *ReconcileServicesResponse) RecordError(name, namespace, action string, err error) {
+	if r == nil || err == nil {
+		return
+	}
+	r.Failed++
+	r.Errors = append(r.Errors, ReconcileServicesError{
+		Name:      name,
+		Namespace: namespace,
+		Action:    action,
+		Error:     err.Error(),
+	})
+}
+
+func (h *Handler) refreshReconciledServiceHealth(ctx context.Context, serviceID uuid.UUID, name string, desiredReplicas, readyReplicas int32) error {
 	if h == nil || h.repos == nil || h.repos.Services == nil {
-		return false
+		return nil
 	}
 	if err := h.repos.Services.MarkReconciledHealthy(ctx, serviceID, desiredReplicas, readyReplicas); err != nil {
 		h.logger.Error(ctx, "MarkReconciledHealthy failed",
 			logging.String("name", name), logging.Error("error", err))
-		return false
+		return err
 	}
-	return true
+	return nil
 }

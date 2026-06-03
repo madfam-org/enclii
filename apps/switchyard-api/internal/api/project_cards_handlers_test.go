@@ -913,8 +913,8 @@ func TestMatchProjectCardArgoEvidencePrefersWorstMatchingApplication(t *testing.
 			SyncStatus:   "Synced",
 			HealthStatus: "Healthy",
 		},
-		"phynd-crm-staging": {
-			Name:         "phynd-crm-staging",
+		"phynd-crm-worker": {
+			Name:         "phynd-crm-worker",
 			SyncStatus:   "Synced",
 			HealthStatus: "Degraded",
 		},
@@ -923,8 +923,32 @@ func TestMatchProjectCardArgoEvidencePrefersWorstMatchingApplication(t *testing.
 	matched := matchProjectCardArgoEvidence(project, nil, nil, evidenceByName)
 
 	require.NotNil(t, matched)
-	assert.Equal(t, "phynd-crm-staging", matched.Name)
+	assert.Equal(t, "phynd-crm-worker", matched.Name)
 	assert.Equal(t, "Degraded", matched.HealthStatus)
+}
+
+func TestMatchProjectCardArgoEvidencePrefersNonStagingForProductionProject(t *testing.T) {
+	project := &types.Project{ID: uuid.New(), Name: "Autoswarm", Slug: "autoswarm"}
+	evidenceByName := map[string]projectCardArgoApplicationEvidence{
+		"autoswarm-office-staging": {
+			Name:                 "autoswarm-office-staging",
+			DestinationNamespace: "autoswarm-staging",
+			SyncStatus:           "OutOfSync",
+			HealthStatus:         "Degraded",
+		},
+		"autoswarm-services": {
+			Name:                 "autoswarm-services",
+			DestinationNamespace: "autoswarm",
+			SyncStatus:           "Synced",
+			HealthStatus:         "Healthy",
+		},
+	}
+
+	matched := matchProjectCardArgoEvidence(project, nil, nil, evidenceByName)
+
+	require.NotNil(t, matched)
+	assert.Equal(t, "autoswarm-services", matched.Name)
+	assert.Equal(t, "Healthy", matched.HealthStatus)
 }
 
 func TestMatchProjectCardArgoEvidencePrefersDirectCandidateOverBroadPartOf(t *testing.T) {
