@@ -197,7 +197,7 @@ See [ONBOARDING_GUIDE.md](../../docs/guides/ONBOARDING_GUIDE.md) for details.
 - **[Switchyard UI](../switchyard-ui/)** - Web dashboard
 - **[CLI](../../packages/cli/)** - Command-line interface
 - **[Roundhouse](../roundhouse/)** - Build workers
-- **[Reconcilers](../reconcilers/)** - Kubernetes controllers
+- **[Reconcilers](internal/reconciler/)** - Kubernetes controllers
 
 ## License
 

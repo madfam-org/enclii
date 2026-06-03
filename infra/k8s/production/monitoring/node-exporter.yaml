@@ -57,7 +57,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: node-exporter
-          image: docker.io/prom/node-exporter:v1.7.0
+          image: docker.io/prom/node-exporter:v1.7.0@sha256:4cb2b9019f1757be8482419002cb7afe028fdba35d47958829e4cfeaf6246d80
           args:
             - "--path.procfs=/host/proc"
             - "--path.sysfs=/host/sys"

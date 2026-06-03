@@ -108,12 +108,14 @@ server:
     enabled: true
     path: "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
     periodSeconds: 10
+    timeoutSeconds: 3
     failureThreshold: 3
   livenessProbe:
     enabled: true
     path: "/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
     initialDelaySeconds: 60
     periodSeconds: 10
+    timeoutSeconds: 3
     failureThreshold: 6
 
   # Avoid scheduling on GPU-tainted nodes or the builder VPS.

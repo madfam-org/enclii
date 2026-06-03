@@ -224,7 +224,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: fluent-bit
-          image: docker.io/fluent/fluent-bit:3.2.4
+          image: docker.io/fluent/fluent-bit:3.2.4@sha256:a185ac0516e1f35568ff0662f12c4ada0ea38c4300ed223d0fde485599dff5b5
           ports:
             - name: http-metrics
               containerPort: 2020

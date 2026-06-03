@@ -46,7 +46,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres
-          image: docker.io/pgvector/pgvector:pg15
+          image: docker.io/pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

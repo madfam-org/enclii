@@ -19,8 +19,9 @@ resources:
   - postgres-wal-config.yaml
   - pgbackrest-config.yaml
   - pgbackrest-cronjobs.yaml
-  # pgbackrest-r2-credentials.yaml.template is intentionally excluded —
-  # secret is applied out-of-band by the operator (see runbook).
+  - pgbackrest-r2-credentials.externalsecret.yaml
+  # pgbackrest-r2-credentials.yaml.template is retained only as a break-glass
+  # literal Secret reference; normal production sync is Vault-backed above.
   # Monthly DR drill — restores the latest base backup to a side-channel
   # PVC to verify the recovery path works. Emits Prometheus textfile
   # metrics; alertmanager fires on consecutive failures.

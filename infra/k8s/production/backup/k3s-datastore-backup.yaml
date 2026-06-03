@@ -106,7 +106,7 @@ spec:
           # Uses inline command (proven pattern from node-maintenance CronJob)
           initContainers:
             - name: backup
-              image: docker.io/rancher/k3s:v1.33.7-k3s3
+              image: docker.io/rancher/k3s:v1.33.7-k3s3@sha256:4ec887d176fb81c4ca64fdd6da8bd11023a3d7ea89025737df7a6da91cfdd139
               securityContext:
                 privileged: true
                 capabilities:
@@ -175,7 +175,7 @@ spec:
           # Step 1.5: Copy from host /tmp to shared volume + write timestamp
           # Separate container because nsenter changes mount namespace
             - name: copy
-              image: docker.io/rancher/k3s:v1.33.7-k3s3
+              image: docker.io/rancher/k3s:v1.33.7-k3s3@sha256:4ec887d176fb81c4ca64fdd6da8bd11023a3d7ea89025737df7a6da91cfdd139
               securityContext:
                 privileged: true
                 capabilities:
@@ -204,7 +204,7 @@ spec:
           # Step 2: Upload archive to R2
           containers:
             - name: upload
-              image: docker.io/amazon/aws-cli:2.33.16
+              image: docker.io/amazon/aws-cli:2.33.16@sha256:c0bf0abcdc0c330c605953dec26cd8b30243e9d22fce0da07867d454e40ddfcd
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false

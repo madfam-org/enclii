@@ -61,7 +61,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres
-          image: docker.io/library/postgres:16-alpine
+          image: docker.io/library/postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 999
@@ -110,7 +110,7 @@ spec:
                 - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 5
             periodSeconds: 3
-            timeoutSeconds: 2
+            timeoutSeconds: 3
             failureThreshold: 30
           livenessProbe:
             exec:

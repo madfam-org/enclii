@@ -188,7 +188,7 @@ spec:
               # bitnami/kubectl:1.33.7 was removed from Docker Hub in the
               # Bitnami 2026 image-distribution change (sha-only tags only).
               # 1.33.4 is the closest available to cluster k3s v1.33.7+k3s3.
-              image: docker.io/alpine/kubectl:1.33.4
+              image: docker.io/alpine/kubectl:1.33.4@sha256:f032392d7c23894ac391425ff5ff9658c064279d8519df8eb8c7d38dde867ce5
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -253,7 +253,7 @@ spec:
             fsGroup: 65532
           containers:
             - name: backup-full
-              image: docker.io/alpine/kubectl:1.33.4
+              image: docker.io/alpine/kubectl:1.33.4@sha256:f032392d7c23894ac391425ff5ff9658c064279d8519df8eb8c7d38dde867ce5
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -316,7 +316,7 @@ spec:
             fsGroup: 65532
           containers:
             - name: backup-diff
-              image: docker.io/alpine/kubectl:1.33.4
+              image: docker.io/alpine/kubectl:1.33.4@sha256:f032392d7c23894ac391425ff5ff9658c064279d8519df8eb8c7d38dde867ce5
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

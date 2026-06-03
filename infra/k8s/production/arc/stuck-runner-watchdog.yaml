@@ -95,7 +95,7 @@ spec:
           containers:
             - name: watchdog
               # bitnamilegacy preserves pinned debian-12 tags; bitnami/kubectl only publishes `latest` since Aug 2025.
-              image: bitnamilegacy/kubectl:1.33.4
+              image: bitnamilegacy/kubectl:1.33.4@sha256:ed0b31a0508da84ee655c5c6e01bd3897fc56ad6cf69debb27fa1893a06d2246
               imagePullPolicy: IfNotPresent
               command:
                 - /bin/bash

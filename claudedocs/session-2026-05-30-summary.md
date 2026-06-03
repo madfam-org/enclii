@@ -4,7 +4,7 @@ Cross-repo session covering **Commercial GA remediation**, **Composio benchmark 
 
 Three repos touched: **enclii**, **janua**, **selva-office**. All documented work is on `main` and pushed unless noted below.
 
-**Prior transcript:** [Coupler + GA session](691432de-8506-40df-877a-8dfbff68eb9b)
+**Prior transcript:** Coupler + GA session (`691432de-8506-40df-877a-8dfbff68eb9b`)
 
 ---
 

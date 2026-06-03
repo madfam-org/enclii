@@ -41,7 +41,7 @@ Execute in order from [REMAINING_ITEMS.md](./REMAINING_ITEMS.md) quick reference
 | # | Task | Est. |
 |---|------|------|
 | 2.1 | PostHog scale-down + orphaned Longhorn volume cleanup | 15m |
-| 2.2 | Longhorn helm upgrade (committed CPU values) | 10m |
+| 2.2 | Break-glass Longhorn helm upgrade (committed CPU values) | 10m |
 | 2.3 | Disk prune (crictl, journal, logs) | 10m |
 | 2.4 | ArgoCD sync sweep | 10m |
 | 2.5 | Backup credentials + restore drill | 25m |

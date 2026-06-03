@@ -390,7 +390,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: pushgateway
-          image: quay.io/prometheus/pushgateway:v1.11.1
+          image: quay.io/prometheus/pushgateway:v1.11.1@sha256:03738d278e082ee9821df730c741b3b465c251fc2b68a85883def301a55a6215
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

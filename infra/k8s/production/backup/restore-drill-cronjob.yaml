@@ -42,7 +42,7 @@ spec:
               type: RuntimeDefault
           initContainers:
             - name: download-backup
-              image: docker.io/amazon/aws-cli:2.33.16
+              image: docker.io/amazon/aws-cli:2.33.16@sha256:c0bf0abcdc0c330c605953dec26cd8b30243e9d22fce0da07867d454e40ddfcd
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false
@@ -100,7 +100,7 @@ spec:
                   mountPath: /shared
           containers:
             - name: restore-drill
-              image: docker.io/library/postgres:16
+              image: docker.io/library/postgres:16@sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false

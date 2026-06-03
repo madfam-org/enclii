@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres-exporter
-          image: docker.io/prometheuscommunity/postgres-exporter:v0.15.0
+          image: docker.io/prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6
           env:
             - name: DATA_SOURCE_USER
               valueFrom:
@@ -72,12 +72,14 @@ spec:
               port: 9187
             initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 3
           readinessProbe:
             httpGet:
               path: /
               port: 9187
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
 ---
 apiVersion: v1
 kind: Service

@@ -107,6 +107,6 @@ kubectl get events -n <namespace> --field-selector reason=SyncFailed
 
 ## Related Documentation
 
-- [Secrets Management Strategy](../../../docs/infrastructure/SECRETS_MANAGEMENT.md)
-- [External Secrets Operator](../../../docs/infrastructure/EXTERNAL_SECRETS.md)
-- [GitOps with ArgoCD](../../../docs/infrastructure/GITOPS.md)
+- [Secrets Management Strategy](../../../../docs/infrastructure/SECRETS_MANAGEMENT.md)
+- [External Secrets Operator](../../../../docs/infrastructure/EXTERNAL_SECRETS.md)
+- [GitOps with ArgoCD](../../../../docs/infrastructure/GITOPS.md)

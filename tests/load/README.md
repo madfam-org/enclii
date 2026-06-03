@@ -105,7 +105,6 @@ Add to GitHub Actions:
 - name: Run Load Tests
   run: |
     k6 run --env ENCLII_TOKEN=${{ secrets.ENCLII_TOKEN }} tests/load/api.js
-  continue-on-error: true  # Don't fail CI on performance regression
 ```
 
 ## Troubleshooting

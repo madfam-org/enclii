@@ -35,10 +35,12 @@ spec:
       path: /health/ready
       initialDelaySeconds: 10
       periodSeconds: 5
+      timeoutSeconds: 3
     livenessProbe:
       path: /health/live
       initialDelaySeconds: 30
       periodSeconds: 10
+      timeoutSeconds: 3
 
   env:
     - name: PORT

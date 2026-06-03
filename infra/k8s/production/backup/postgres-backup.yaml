@@ -141,7 +141,7 @@ spec:
           # Step 1: pg_dumpall writes to shared /backup volume
           initContainers:
             - name: dump
-              image: docker.io/library/postgres:16
+              image: docker.io/library/postgres:16@sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false
@@ -179,7 +179,7 @@ spec:
           # Step 2: aws-cli uploads from shared /backup volume to R2
           containers:
             - name: upload
-              image: docker.io/amazon/aws-cli:2.33.16
+              image: docker.io/amazon/aws-cli:2.33.16@sha256:c0bf0abcdc0c330c605953dec26cd8b30243e9d22fce0da07867d454e40ddfcd
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false

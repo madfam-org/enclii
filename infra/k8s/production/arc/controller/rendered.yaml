@@ -297,7 +297,7 @@ spec:
       serviceAccountName: arc-controller
       containers:
       - name: manager
-        image: "ghcr.io/actions/gha-runner-scale-set-controller:0.14.0"
+        image: "ghcr.io/actions/gha-runner-scale-set-controller:0.14.0@sha256:4e704fc6c59db122e4156c8a8247b8b1eb89b746ebbc14925fdf9d867f72e29a"
         imagePullPolicy: IfNotPresent
         args:
         - "--auto-scaling-runner-set-only"
@@ -318,7 +318,7 @@ spec:
           name: metrics
         env:
         - name: CONTROLLER_MANAGER_CONTAINER_IMAGE
-          value: "ghcr.io/actions/gha-runner-scale-set-controller:0.14.0"
+          value: "ghcr.io/actions/gha-runner-scale-set-controller:0.14.0@sha256:4e704fc6c59db122e4156c8a8247b8b1eb89b746ebbc14925fdf9d867f72e29a"
         - name: CONTROLLER_MANAGER_POD_NAMESPACE
           valueFrom:
             fieldRef:

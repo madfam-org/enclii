@@ -275,7 +275,7 @@ Assuming program execution start **2026-05-29**:
 **Day 1 (Ops — ~2h):**
 
 1. Complete [SECURITY_RELEASE_PR.md](./SECURITY_RELEASE_PR.md) steps 1–7
-2. Longhorn helm upgrade (O-5) + disk prune (O-6)
+2. Break-glass Longhorn helm upgrade (O-5) + disk prune (O-6)
 3. Initial Gate 1 initials on scorecard
 
 **Day 2 (Ops + SRE — ~2h):**

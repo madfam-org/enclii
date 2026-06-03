@@ -1,50 +1,227 @@
 version: 2
 updates:
-  # Go dependencies
+  # Go modules
   - package-ecosystem: "gomod"
-    directory: "/"
-    schedule:
+    directory: "/apps/switchyard-api"
+    schedule: &weekly_monday
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
-    groups:
+    groups: &go_groups
       go-dependencies:
         update-types:
           - "minor"
           - "patch"
-    labels:
+    labels: &go_labels
       - "dependencies"
       - "go"
 
-  # NPM dependencies (UI)
+  - package-ecosystem: "gomod"
+    directory: "/apps/roundhouse"
+    schedule: *weekly_monday
+    groups: *go_groups
+    labels: *go_labels
+
+  - package-ecosystem: "gomod"
+    directory: "/apps/waybill"
+    schedule: *weekly_monday
+    groups: *go_groups
+    labels: *go_labels
+
+  - package-ecosystem: "gomod"
+    directory: "/packages/cli"
+    schedule: *weekly_monday
+    groups: *go_groups
+    labels: *go_labels
+
+  - package-ecosystem: "gomod"
+    directory: "/packages/otel-go"
+    schedule: *weekly_monday
+    groups: *go_groups
+    labels: *go_labels
+
+  - package-ecosystem: "gomod"
+    directory: "/packages/sdk-go"
+    schedule: *weekly_monday
+    groups: *go_groups
+    labels: *go_labels
+
+  - package-ecosystem: "gomod"
+    directory: "/tests/integration"
+    schedule: *weekly_monday
+    groups: *go_groups
+    labels: *go_labels
+
+  # NPM workspaces and packages
   - package-ecosystem: "npm"
-    directory: "/ui"
-    schedule:
+    directory: "/apps/switchyard-ui"
+    schedule: &weekly_tuesday
       interval: "weekly"
-    groups:
-      ui-dependencies:
-        dependency-type: "development"
+      day: "tuesday"
+    open-pull-requests-limit: 10
+    groups: &npm_groups
+      npm-dependencies:
         update-types:
           - "minor"
           - "patch"
-    labels:
+    labels: &npm_labels
       - "dependencies"
       - "npm"
 
+  - package-ecosystem: "npm"
+    directory: "/apps/admin-console"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/apps/docs-site"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/apps/landing"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/apps/status"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/packages"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/packages/config"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/packages/ecosystem-tenants"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/packages/sdk-ts"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/packages/shared-lib"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/packages/ui-components"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/infra/k8s/base/verdaccio/plugins/verdaccio-auth-janua"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/tests/e2e-ecosystem"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  - package-ecosystem: "npm"
+    directory: "/tests/sso-audit"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
   # Docker base images
   - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
+    directory: "/apps/switchyard-api"
+    schedule: &weekly_wednesday
       interval: "weekly"
-    labels:
+      day: "wednesday"
+    labels: &docker_labels
       - "dependencies"
       - "docker"
+
+  - package-ecosystem: "docker"
+    directory: "/apps/switchyard-ui"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/apps/admin-console"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/apps/docs-site"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/apps/landing"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/apps/roundhouse"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/apps/status"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/apps/waybill"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/infra/cloudflared-probe"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/infra/deploy-pipeline-monitor"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/infra/docker/alpine-gh"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/infra/docker/arc-runner"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
+
+  - package-ecosystem: "docker"
+    directory: "/infra/synthetic-flow-probe"
+    schedule: *weekly_wednesday
+    labels: *docker_labels
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "thursday"
     labels:
       - "dependencies"
       - "ci"

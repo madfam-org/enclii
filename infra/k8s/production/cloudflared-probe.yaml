@@ -164,6 +164,7 @@ spec:
               port: 9090
             initialDelaySeconds: 15
             periodSeconds: 30
+            timeoutSeconds: 3
             failureThreshold: 3
           readinessProbe:
             httpGet:
@@ -171,6 +172,7 @@ spec:
               port: 9090
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
             failureThreshold: 2
           resources:
             requests:

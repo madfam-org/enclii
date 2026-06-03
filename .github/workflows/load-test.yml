@@ -36,7 +36,6 @@ jobs:
         run: mkdir -p results
 
       - name: Run smoke test
-        continue-on-error: true
         env:
           ENCLII_BASE_URL: https://api.enclii.dev
         run: |
@@ -70,7 +69,6 @@ jobs:
         run: mkdir -p results
 
       - name: Run load test
-        continue-on-error: true
         env:
           ENCLII_BASE_URL: https://api.enclii.dev
           ENCLII_TOKEN: ${{ secrets.ENCLII_LOAD_TEST_TOKEN }}
@@ -105,7 +103,6 @@ jobs:
         run: mkdir -p results
 
       - name: Run stress test
-        continue-on-error: true
         env:
           ENCLII_BASE_URL: https://api.enclii.dev
           ENCLII_TOKEN: ${{ secrets.ENCLII_LOAD_TEST_TOKEN }}

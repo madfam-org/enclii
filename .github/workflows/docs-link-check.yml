@@ -25,5 +25,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Report local docs link issues
-        run: python3 scripts/check-doc-links.py --warn-only
+      - name: Check local docs links
+        run: python3 scripts/check-doc-links.py

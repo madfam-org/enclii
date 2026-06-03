@@ -140,7 +140,7 @@ spec:
                     operator: DoesNotExist
       containers:
         - name: loki
-          image: docker.io/grafana/loki:3.4.2
+          image: docker.io/grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
           args:
             - -config.file=/etc/loki/loki.yaml
             - -target=all

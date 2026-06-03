@@ -100,7 +100,7 @@ spec:
           # postgres:15-bookworm base so libc + ld-linux versions match
           # exactly, and apt-install pgbackrest from Debian's package
           # repo at init time.
-          image: docker.io/postgres:15-bookworm
+          image: docker.io/postgres:15-bookworm@sha256:3436058afb51dbc169c96cdf6c91d1d235eef176b427e6bded8b0c76dda0d1c3
           # Network access is required for apt-get; this initContainer
           # is gated behind NetworkPolicy data namespace egress (DNS
           # only by default). To install successfully, ensure
@@ -199,7 +199,7 @@ spec:
           # pgvector/pgvector:pg15 is stock postgres:15 with the pgvector
           # extension pre-installed (required by bloom-scroll's bloom_cards
           # similarity search). Drop-in wire-compatible with postgres:15.
-          image: docker.io/pgvector/pgvector:pg15
+          image: docker.io/pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -354,7 +354,7 @@ spec:
         #   - Operator `kubectl exec` into the sidecar keeps pgbackrest ops
         #     off the Postgres container's attack surface.
         - name: pgbackrest
-          image: docker.io/woblerr/pgbackrest:2.55.1-alpine
+          image: docker.io/woblerr/pgbackrest:2.55.1-alpine@sha256:0cff6eecdb16c75dca1bfea8b0d071b7c22749b39612e8a30f3fa33e67dd97f5
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -454,6 +454,7 @@ spec:
                 - pgbackrest
             initialDelaySeconds: 60
             periodSeconds: 60
+            timeoutSeconds: 5
             failureThreshold: 3
       volumes:
         - name: postgres-storage

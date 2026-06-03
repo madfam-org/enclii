@@ -178,14 +178,14 @@ spec:
       initContainers:
       - name: init-dind-externals
         
-        image: ghcr.io/madfam-org/enclii/arc-runner:stable
+        image: ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:11e275f7af5db17e8351b0664ab929cb2b1d69a383a978140305ba205035077a
         command: ["cp"]
         args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
         volumeMounts:
           - name: dind-externals
             mountPath: /home/runner/tmpDir
       - name: dind
-        image: docker:dind
+        image: docker:dind@sha256:6b9cd914eb9c6b342c040a49a27a5eb3804453bae6ecc90f7ff96133595a95e8
         args:
           - dockerd
           - --host=unix:///var/run/docker.sock
@@ -204,6 +204,7 @@ spec:
           initialDelaySeconds: 0
           failureThreshold: 24
           periodSeconds: 5
+          timeoutSeconds: 3
         volumeMounts:
           - name: work
             mountPath: /home/runner/_work
@@ -217,7 +218,7 @@ spec:
         command: 
           - /home/runner/run.sh
         image: 
-          ghcr.io/madfam-org/enclii/arc-runner:stable
+          ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:11e275f7af5db17e8351b0664ab929cb2b1d69a383a978140305ba205035077a
         imagePullPolicy: 
           Always
         resources: 

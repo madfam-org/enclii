@@ -53,7 +53,7 @@
       "kustomization": "infra/k8s/production",
       "kustomize_image": "waybill",
       "dependencies": ["packages/otel-go"],
-      "scan": false,
+      "scan": true,
       "deploy_check": "waybill"
     },
     {
@@ -65,7 +65,7 @@
       "kustomization": "infra/k8s/production",
       "kustomize_image": "landing-page",
       "dependencies": [],
-      "scan": false,
+      "scan": true,
       "deploy_check": null
     },
     {
@@ -77,7 +77,7 @@
       "kustomization": "apps/admin-console/k8s",
       "kustomize_image": "ghcr.io/madfam-org/enclii/admin-console",
       "dependencies": ["packages/shared-lib", "packages/ui-components"],
-      "scan": false,
+      "scan": true,
       "deploy_check": null
     },
     {
@@ -89,7 +89,7 @@
       "kustomization": "apps/status/k8s/base",
       "kustomize_image": "ghcr.io/madfam-org/enclii/enclii-status",
       "dependencies": [],
-      "scan": false,
+      "scan": true,
       "deploy_check": null
     },
     {
@@ -101,7 +101,7 @@
       "kustomization": "infra/k8s/production",
       "kustomize_image": "docs-site",
       "dependencies": ["docs"],
-      "scan": false,
+      "scan": true,
       "deploy_check": null
     }
   ]

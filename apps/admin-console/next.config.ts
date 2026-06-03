@@ -3,7 +3,15 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  transpilePackages: ['@janua/nextjs', '@janua/ui', '@janua/react-sdk', '@janua/typescript-sdk'],
+  transpilePackages: [
+    '@enclii/ecosystem-tenants',
+    '@enclii/shared-lib',
+    '@enclii/ui-components',
+    '@janua/nextjs',
+    '@janua/react-sdk',
+    '@janua/typescript-sdk',
+    '@janua/ui',
+  ],
 
   // Environment variables for Dispatch (client-side only - NEXT_PUBLIC_ prefix)
   // Server-side env vars (CLOUDFLARE_*) are read directly from process.env at runtime

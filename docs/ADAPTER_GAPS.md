@@ -8,7 +8,7 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Cloudflare optional secrets | Manual kubectl when not in git | `enclii providers cloudflare` | P2 |
 | Dispatch direct Cloudflare API | ~~`CLOUDFLARE_API_TOKEN` on Dispatch~~ | **Closed** — Dispatch uses Switchyard provider APIs (W3) | — |
 | Policy-only kubectl comment | `infra/k8s/policies/enclii-default-deny.yaml` header | ArgoCD app docs only | P3 |
-| Makefile `deploy-prod` | Raw `kubectl apply -k` | `enclii deploy` / GitOps-only path | P2 |
+| Makefile `deploy-prod` | Break-glass raw `kubectl apply -k` only | `enclii deploy` / GitOps-only path | P2 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` — **8/8 populated** 2026-05-30 | P2 |
 | Enclii Vault `internal_api_key` backfill | ~~Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh`~~ | **Closed** — `enclii secrets vault-backfill` merges K8s Secret keys into Vault KV v2 and force-syncs merge ESO | — |
 | Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `enclii secrets vault-backfill`; `providers.resend.*` + Dispatch Provider Hub | — |

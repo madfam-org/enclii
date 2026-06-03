@@ -1066,7 +1066,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: prometheus
-          image: docker.io/prom/prometheus:v2.53.3
+          image: docker.io/prom/prometheus:v2.53.3@sha256:c62e2f333beae2fdac8c3c7a3daaa7ac81110023cbc5857b0ec541f09d997951
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false

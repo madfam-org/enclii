@@ -53,6 +53,6 @@ Need a stack that isn't listed? Open an issue at [github.com/madfam-org/enclii/i
 
 ## See also
 
-- [5-minute quickstart](./quickstart.md) — the shortest path to a live deploy
-- [Service spec reference](./reference/service-spec.md) — what `service.yaml` accepts
-- [`enclii init` command](./cli/commands/init.md) — all flags and behaviors
+- [5-minute quickstart](../quickstart.md) — the shortest path to a live deploy
+- [Service spec reference](../reference/service-spec.md) — what `service.yaml` accepts
+- [`enclii init` command](../cli/commands/init.md) — all flags and behaviors

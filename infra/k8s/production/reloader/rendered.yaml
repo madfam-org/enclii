@@ -251,7 +251,7 @@ spec:
           key: nvidia.com/gpu
           operator: Exists
       containers:
-      - image: "docker.io/stakater/reloader:v1.4.16"
+      - image: "docker.io/stakater/reloader:v1.4.16@sha256:88feafb165f089d420bba3f8aafc0fcacf83ee798f8500bf224affe1207f4f00"
         imagePullPolicy: IfNotPresent
         name: reloader-reloader
         env:

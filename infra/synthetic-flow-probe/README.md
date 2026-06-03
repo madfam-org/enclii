@@ -1,8 +1,7 @@
 # synthetic-flow-probe
 
 Layer-7 synthetic user-journey probe. Sibling of [cloudflared-probe](../cloudflared-probe/)
-(layer-3) and [synthetic-revenue-probe](../../packages/synthetic-revenue-probe/)
-(end-to-end revenue loop).
+(layer-3) for end-to-end user-flow checks.
 
 ## Why this exists
 

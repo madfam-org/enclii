@@ -45,7 +45,7 @@ spec:
 
       containers:
         - name: nvidia-device-plugin-ctr
-          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3@sha256:339be23400f58c04f09b6ba1d4d2e0e7120648f2b114880513685b22093311f1
           env:
             - name: FAIL_ON_INIT_ERROR
               value: "false"  # Don't crash if no GPU found (safe for mixed clusters)
@@ -82,7 +82,7 @@ spec:
           serviceAccountName: gpu-node-labeler
           containers:
             - name: labeler
-              image: bitnamilegacy/kubectl:1.33.4
+              image: bitnamilegacy/kubectl:1.33.4@sha256:ed0b31a0508da84ee655c5c6e01bd3897fc56ad6cf69debb27fa1893a06d2246
               command:
                 - /bin/sh
                 - -c

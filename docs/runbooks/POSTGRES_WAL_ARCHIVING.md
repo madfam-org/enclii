@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-> **Last Updated:** 2026-04-17
+> **Last Updated:** 2026-06-03
 > **Owner:** Platform oncall
 > **Scope:** In-cluster Postgres (`data/postgres`), single-node today
 > **P1.1 deliverable** — moves Postgres RPO from 24h (daily `pg_dump`) to ~1min.
@@ -56,25 +56,26 @@ These steps MUST be done in order. They are **not** automated by ArgoCD by
 design — the first one touches production DB config and requires a
 maintenance window.
 
-### Step 1 — Apply R2 credentials secret
+### Step 1 — Populate Vault-backed R2 credentials
 
 ```bash
 # Gather from Cloudflare R2 dashboard: Account ID + an API token with
 # Object Read & Write scope on the enclii-backups bucket.
-# (Optional) Generate a cipher passphrase: openssl rand -base64 48
+# Generate a cipher passphrase unless you intentionally set cipher-type=none:
+# openssl rand -base64 48
 
-kubectl create secret generic pgbackrest-r2-credentials \
-  --namespace=data \
-  --from-literal=R2_ACCOUNT_ID='<cf-account-id>' \
-  --from-literal=PGBACKREST_REPO1_S3_KEY='<r2-access-key-id>' \
-  --from-literal=PGBACKREST_REPO1_S3_KEY_SECRET='<r2-secret-access-key>' \
-  --from-literal=PGBACKREST_REPO1_CIPHER_PASS='<48-char-passphrase-or-empty>'
+vault kv put secret/data/pgbackrest-r2 \
+  r2_account_id='<cf-account-id>' \
+  r2_access_key_id='<r2-access-key-id>' \
+  r2_secret_access_key='<r2-secret-access-key>' \
+  pgbackrest_cipher_pass='<48-char-passphrase>'
 ```
 
-Template: `infra/k8s/platform-infra/pgbackrest-r2-credentials.yaml.template`
+GitOps manifest: `infra/k8s/platform-infra/pgbackrest-r2-credentials.externalsecret.yaml`
+Break-glass literal template: `infra/k8s/platform-infra/pgbackrest-r2-credentials.yaml.template`
 
 **If you choose `cipher-type=none`** (lower CPU, relies on R2 server-side
-encryption only): omit `PGBACKREST_REPO1_CIPHER_PASS` AND edit
+encryption only): omit `pgbackrest_cipher_pass` from Vault AND edit
 `infra/k8s/platform-infra/pgbackrest-config.yaml` to set
 `repo1-cipher-type=none` before ArgoCD syncs.
 

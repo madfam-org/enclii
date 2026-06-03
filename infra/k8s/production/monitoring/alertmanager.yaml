@@ -130,7 +130,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: alertmanager
-          image: docker.io/prom/alertmanager:v0.26.0
+          image: docker.io/prom/alertmanager:v0.26.0@sha256:361db356b33041437517f1cd298462055580585f26555c317df1a3caf2868552
           securityContext:
             allowPrivilegeEscalation: false
             privileged: false
@@ -181,12 +181,14 @@ spec:
               port: 9093
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /-/healthy
               port: 9093
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 3
       volumes:
         - name: config
           configMap:

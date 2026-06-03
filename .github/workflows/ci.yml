@@ -590,14 +590,19 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
+          FAILED=0
           for mod in $MODULES; do
             if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
               echo "▶ Skipping $mod (no Go files)"
               continue
             fi
             echo "▶ Vulnerability check: $mod"
-            (cd "$mod" && govulncheck ./...) || true
+            (cd "$mod" && govulncheck ./...) || FAILED=1
           done
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ govulncheck vulnerabilities detected"
+            exit 1
+          fi
 
   # =============================================================================
   # CONSERVATION LAW (ADR-001 Law 6): Differential Builds
@@ -887,14 +892,14 @@ jobs:
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
-          exit-code: '0'
+          exit-code: '1'
 
       - name: Skip scan (not configured)
         if: matrix.scan != true
         run: echo "⏭️ Trivy scan not enabled for ${{ matrix.name }}"
 
       - name: Upload Trivy SARIF results
-        if: matrix.scan == true
+        if: always() && matrix.scan == true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: .

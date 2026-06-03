@@ -88,16 +88,34 @@ def _docs_in(path: Path) -> Iterable[tuple[Path, dict]]:
         sys.stderr.write(f"warning: skipping {path} (YAML parse error: {exc})\n")
 
 
+def collect_kustomize_digest_names(roots: Iterable[Path]) -> set[str]:
+    names: set[str] = set()
+    for path, doc in walk_yaml_files(roots):
+        if doc.get("kind") != "Kustomization" and path.name != "kustomization.yaml":
+            continue
+        for img in (doc.get("images") or []):
+            if not isinstance(img, dict):
+                continue
+            if img.get("digest") and img.get("name"):
+                names.add(str(img["name"]))
+    return names
+
+
 def find_violations(
     roots: Iterable[Path], exemptions: dict[str, str]
 ) -> list[str]:
     failures: list[str] = []
+    kustomize_digest_names = collect_kustomize_digest_names(roots)
     for path, doc in walk_yaml_files(roots):
         kind = doc.get("kind")
         # Workload pod-spec image refs
         if kind in WORKLOAD_KINDS:
             for image in _iter_pod_spec_images(doc):
                 if is_pinned(image):
+                    continue
+                if image in kustomize_digest_names:
+                    continue
+                if image == "IMAGE" and "components/deployment-template" in str(path):
                     continue
                 key = exemption_key(image)
                 if key in exemptions:

@@ -159,7 +159,7 @@ Execute in order from [REMAINING_ITEMS.md](./REMAINING_ITEMS.md):
 | # | Task | Est. | Done when |
 |---|------|------|-----------|
 | 0.2.1 | PostHog scale-down, PVC + detached volume cleanup | 15m | `df` ~target; namespace empty |
-| 0.2.2 | Longhorn helm upgrade (committed CPU values) | 10m | instance-managers <200m |
+| 0.2.2 | Break-glass Longhorn helm upgrade (committed CPU values) | 10m | instance-managers <200m |
 | 0.2.3 | Disk prune (crictl, journal, logs) | 10m | disk <40% |
 | 0.2.4 | ArgoCD sync sweep | 10m | All apps Synced/Healthy (except known) |
 | 0.2.5 | Backup credentials + restore drill job | 25m | Drill log: success |

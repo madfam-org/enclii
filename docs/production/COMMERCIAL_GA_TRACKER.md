@@ -146,7 +146,7 @@
 | Cross-repo Coupler docs | janua `COUPLER_PROGRAM` + ADR-002 accepted; selva `COUPLER_INTEGRATION` |
 | Janua PR #376 merged | `227deb62` — silent-auth + per-user entitlements |
 | Branch hygiene | enclii: 35 local + 8 remote deleted; janua: 11 local + 5 remote deleted; all repos `main`-only |
-| Session summary | [claudedocs/session-2026-05-30-summary.md](../claudedocs/session-2026-05-30-summary.md) |
+| Session summary | [claudedocs/session-2026-05-30-summary.md](../../claudedocs/session-2026-05-30-summary.md) |
 | Coupler P0 repo | **Not started** — `madfam-org/coupler` does not exist yet |
 
 ## Next merge train

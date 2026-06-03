@@ -304,12 +304,14 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 5
 ---
 # Service for Roundhouse API
 apiVersion: v1

@@ -166,7 +166,7 @@ spec:
           # Step 1: Clone and bundle all org repos
           initContainers:
             - name: clone-bundle
-              image: docker.io/alpine/git:2.45.2
+              image: docker.io/alpine/git:2.45.2@sha256:16ad8e788e1d3b0c30f18da8dde5c0ace3b187445a62d8af893b003ca1e70592
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false
@@ -197,7 +197,7 @@ spec:
           # Step 2: Upload bundles to R2
           containers:
             - name: upload
-              image: docker.io/amazon/aws-cli:2.33.16
+              image: docker.io/amazon/aws-cli:2.33.16@sha256:c0bf0abcdc0c330c605953dec26cd8b30243e9d22fce0da07867d454e40ddfcd
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false

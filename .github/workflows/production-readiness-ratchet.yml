@@ -1,7 +1,8 @@
 name: Production Readiness Ratchet
 
-# Self-contained ratchet (scripts vendored from internal-devops). Runs in
-# warn-only mode while enclii burns down legacy manifest debt (F1/F2).
+# Self-contained ratchet (scripts vendored from internal-devops). F1-F5 are
+# hard gates. F1 keeps one documented synthetic-flow-probe exemption until that
+# image is published and digest-pinned.
 
 on:
   pull_request:
@@ -10,6 +11,7 @@ on:
       - '**/*.yml'
       - '**/package.json'
       - 'scripts/ratchet/**'
+      - 'tests/scripts/test_production_readiness_ratchet.py'
       - '.github/workflows/production-readiness-ratchet.yml'
   push:
     branches: [main]
@@ -18,6 +20,7 @@ on:
       - '**/*.yml'
       - '**/package.json'
       - 'scripts/ratchet/**'
+      - 'tests/scripts/test_production_readiness_ratchet.py'
       - '.github/workflows/production-readiness-ratchet.yml'
 
 permissions:
@@ -35,45 +38,31 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install --quiet pyyaml
+        run: pip install --quiet pyyaml pytest
+
+      - name: Ratchet script tests
+        run: pytest tests/scripts/test_production_readiness_ratchet.py -v
 
       - name: "F1: Image pinning check"
         id: f1
-        continue-on-error: true
+        env:
+          IMAGE_PIN_EXEMPT_SYNTHETIC_FLOW_PROBE: >-
+            Placeholder manifest until the synthetic-flow-probe image is
+            published to GHCR and replaced with its digest.
         run: python3 scripts/ratchet/check-image-pinning.py infra/k8s/
 
       - name: "F2: Probe timeout check"
         id: f2
-        continue-on-error: true
         run: python3 scripts/ratchet/check-probe-timeouts.py infra/k8s/
 
       - name: "F3: Workspace exports check"
         id: f3
-        continue-on-error: true
         run: python3 scripts/ratchet/check-workspace-exports.py
 
       - name: "F4: transpilePackages check"
         id: f4
-        continue-on-error: true
         run: python3 scripts/ratchet/check-transpile-packages.py
 
       - name: "F5: Secret coverage check"
         id: f5
-        continue-on-error: true
         run: python3 scripts/ratchet/check-secret-coverage.py infra/k8s/
-
-      - name: Ratchet gate (warn-only)
-        if: always()
-        run: |
-          FAILED=0
-          if [ "${{ steps.f1.outcome }}" = "failure" ]; then FAILED=$((FAILED+1)); fi
-          if [ "${{ steps.f2.outcome }}" = "failure" ]; then FAILED=$((FAILED+1)); fi
-          if [ "${{ steps.f3.outcome }}" = "failure" ]; then FAILED=$((FAILED+1)); fi
-          if [ "${{ steps.f4.outcome }}" = "failure" ]; then FAILED=$((FAILED+1)); fi
-          if [ "${{ steps.f5.outcome }}" = "failure" ]; then FAILED=$((FAILED+1)); fi
-
-          if [ "$FAILED" -gt "0" ]; then
-            echo "⚠️  Production Readiness Ratchet: $FAILED check(s) failed (warn-only — job still passes)."
-            exit 0
-          fi
-          echo "✅ All production readiness ratchet checks passed."

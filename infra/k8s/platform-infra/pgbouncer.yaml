@@ -94,7 +94,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: pgbouncer
-          image: docker.io/edoburu/pgbouncer:v1.25.1-p0
+          image: docker.io/edoburu/pgbouncer:v1.25.1-p0@sha256:c7bfcaa24de830e29588bb9ad1eb39cebaf07c27149e1974445899b695634bb4
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 6432
