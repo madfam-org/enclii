@@ -12,7 +12,7 @@
 > **Owner:** Platform oncall
 > **Scope:** In-cluster Postgres (`data/postgres`), single-node today
 > **P1.1 deliverable** — moves Postgres RPO from 24h (daily `pg_dump`) to ~1min.
-> Companion doc in `internal-devops`: [`runbooks/postgres-wal-archiving.md`](../../../internal-devops/runbooks/postgres-wal-archiving.md)
+> Companion doc in `internal-devops`: [`runbooks/postgres-wal-archiving.md`](https://github.com/madfam-org/internal-devops/blob/main/runbooks/postgres-wal-archiving.md)
 
 ---
 

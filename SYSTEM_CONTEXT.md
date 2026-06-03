@@ -108,8 +108,8 @@ kubectl rollout restart deployment/cloudflared -n cloudflare-tunnel
 - [CLAUDE.md](./CLAUDE.md) - Full development guide
 - [llms.txt](./llms.txt) - LLM context (compact)
 - [llms-full.txt](./llms-full.txt) - LLM context (full)
-- [Janua System Context](../janua/SYSTEM_CONTEXT.md)
-- [Dhanam System Context](../dhanam/SYSTEM_CONTEXT.md)
+- [Janua System Context](https://github.com/madfam-org/janua/blob/main/SYSTEM_CONTEXT.md)
+- [Dhanam System Context](https://github.com/madfam-org/dhanam/blob/main/SYSTEM_CONTEXT.md)
 
 ---
 

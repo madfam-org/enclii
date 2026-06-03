@@ -85,7 +85,7 @@ P5 Ecosystem GA                                   ████████
 ## 5. Phase 1 — Janua Keyring (blocker)
 
 **Target:** 2026-06-16 → 2026-07-25  
-**ADR:** [janua/docs/architecture/ADR-002_UNIVERSAL_KEYRING.md](../../../janua/docs/architecture/ADR-002_UNIVERSAL_KEYRING.md)
+**ADR:** [janua/docs/architecture/ADR-002_UNIVERSAL_KEYRING.md](https://github.com/madfam-org/janua/blob/main/docs/architecture/ADR-002_UNIVERSAL_KEYRING.md)
 
 | ID | Task | Repo | Done when |
 |----|------|------|-----------|

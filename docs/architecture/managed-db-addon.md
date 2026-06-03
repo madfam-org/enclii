@@ -1,7 +1,7 @@
 # Managed-DB Addon API — Sprint 1 (P3.1)
 
 > **Status:** Sprint 1 in flight (design + plan catalog + audit events + CLI + UI)
-> **Remediation plan item:** [P3.1](../../../internal-devops/roadmaps/2026-04-enclii-remediation-plan.md)
+> **Remediation plan item:** [P3.1](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 > **Owner:** ai
 > **Related audit:** `audits/2026-04-enclii-platform-audit.md`
 

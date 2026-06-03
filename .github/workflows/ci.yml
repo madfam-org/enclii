@@ -567,7 +567,22 @@ jobs:
           cache: true
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
+        run: |
+          set -euo pipefail
+          export GOBIN="${RUNNER_TEMP}/go-bin"
+          mkdir -p "$GOBIN"
+          echo "$GOBIN" >> "$GITHUB_PATH"
+
+          for attempt in 1 2 3; do
+            if go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4; then
+              "$GOBIN/gosec" -version
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+
+          echo "Failed to install gosec after 3 attempts" >&2
+          exit 1
 
       - name: Auto-discover and scan Go modules
         run: |

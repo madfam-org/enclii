@@ -10,7 +10,7 @@
 
 > Last Updated: 2026-04-17
 > Owner: Platform Infra
-> Related: [P1.3 in 2026-04 Enclii remediation plan](../../../internal-devops/roadmaps/2026-04-enclii-remediation-plan.md)
+> Related: [P1.3 in 2026-04 Enclii remediation plan](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 
 ## What this runbook covers
 
