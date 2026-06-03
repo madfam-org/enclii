@@ -36,12 +36,14 @@ evidence that backs every RPO/RTO claim in
 - Does not write to production R2 (only list + download).
 - Does not touch production Postgres, PVCs, or services.
 - Does not test failover, chaos, or multi-region. Those are Phase 1 items.
+- Labels `dr-test` with `enclii.dev/type=dr-drill` so platform Kyverno guards
+  treat the ephemeral namespace as an internal Enclii-managed drill surface.
 
 ## Prerequisites
 
 - kubectl configured against the Hetzner k3s cluster (`KUBECONFIG` pointing to
   `~/.kube/config-hetzner` or equivalent).
-- Production secret `enclii/r2-backup-credentials` present (it is — this is the
+- Production secret `data/r2-backup-credentials` present (it is — this is the
   same secret the daily `postgres-backup` CronJob uses).
 - Production Postgres still running (so backups are being produced — the drill
   needs at least one backup to exist).
@@ -56,7 +58,7 @@ evidence that backs every RPO/RTO claim in
 kubectl cluster-info
 
 # 2. R2 secret exists
-kubectl get secret r2-backup-credentials -n enclii
+kubectl get secret r2-backup-credentials -n data
 
 # 3. at least one backup exists
 kubectl get cronjob postgres-backup -n data
@@ -101,6 +103,21 @@ kubectl delete namespace dr-test
     --backup-key postgres/20260414_030000.sql.gz
 ```
 
+### Sanity target database
+
+The logical backup is a `pg_dumpall` shape and recreates the production
+databases inside the ephemeral Postgres pod. Sanity queries default to the
+restored `enclii` database, not the scratch bootstrap database:
+
+```bash
+RESTORE_VERIFY_DB=enclii ./scripts/dr-drill.sh --operator "$USER"
+```
+
+The R2 download path intentionally transfers backups from the temporary AWS CLI
+pod as base64 text before decoding locally. Direct binary `kubectl exec` streams
+have truncated ~30 MiB backups in production drills, and `kubectl cp` requires
+`tar`, which the AWS CLI image does not include.
+
 ## Expected duration
 
 | Phase | Expected | Alert if |
@@ -118,7 +135,7 @@ Total: expect **2-15 minutes** per run, depending on dump size.
 
 | Symptom | Root cause | Fix |
 |---|---|---|
-| `R2 credentials secret enclii/r2-backup-credentials not found` | Wrong kubeconfig, or secret rotated | `kubectl config current-context`; re-auth |
+| `R2 credentials secret data/r2-backup-credentials not found` | Wrong kubeconfig, or secret rotated | `kubectl config current-context`; re-auth |
 | `Namespace dr-test exists — deleting` then hangs | Previous drill left finalizers | `kubectl get ns dr-test -o yaml`; remove stuck finalizer with `kubectl patch` |
 | `downloaded backup is empty` | R2 list returned nothing, or `latest.sql.gz` matched by accident | re-run with `--backup-key` set to an explicit timestamped key |
 | `psql: role "..." does not exist` during restore | Using a `pg_dumpall` dump that includes role grants the ephemeral DB does not know about | Harmless — restore continues with `ON_ERROR_STOP=0`. Verify sanity counts are non-zero |

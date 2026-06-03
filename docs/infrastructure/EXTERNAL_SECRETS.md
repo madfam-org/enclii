@@ -116,7 +116,7 @@ spec:
 | `enclii-secrets` | enclii | `secret/enclii` | 23 |
 | `janua-secrets` | janua | `secret/janua` | 9 |
 | `data-secrets` | data | `secret/data` | 8 |
-| `pgbackrest-r2-credentials` | data | `secret/data/pgbackrest-r2` | 4 |
+| `pgbackrest-r2-credentials` | data | `secret/pgbackrest-r2` | 4 |
 | `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
 | `dhanam-secrets` | dhanam | `secret/dhanam` | 33 |
 | `selva-secrets` | selva | `secret/selva` | 3 |

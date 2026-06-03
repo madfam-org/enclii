@@ -56,6 +56,7 @@ spec:
     spec:
       restartPolicy: Always
       securityContext:
+        runAsNonRoot: true
         fsGroup: 999  # postgres group inside the official image
         seccompProfile:
           type: RuntimeDefault
@@ -67,6 +68,7 @@ spec:
             runAsUser: 999
             runAsGroup: 999
             runAsNonRoot: true
+            privileged: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false  # postgres needs to write to PGDATA
             capabilities:

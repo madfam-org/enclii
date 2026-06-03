@@ -55,11 +55,13 @@ DR_DB_USER="drpg"
 # Ephemeral credential, regenerated each run, scoped only to the dr-test pod
 # that tears down at the end of the script. Not a secret — that is the point.
 DR_DB_PASSWORD="drpg-ephem-$(date +%s)-$$"
+RESTORE_VERIFY_DB="${RESTORE_VERIFY_DB:-enclii}"
 
 R2_BUCKET="${R2_BUCKET:-enclii-backups}"
 R2_PREFIX="${R2_PREFIX:-postgres}"
-SOURCE_R2_SECRET_NS="${SOURCE_R2_SECRET_NS:-enclii}"
+SOURCE_R2_SECRET_NS="${SOURCE_R2_SECRET_NS:-data}"
 SOURCE_R2_SECRET_NAME="${SOURCE_R2_SECRET_NAME:-r2-backup-credentials}"
+AWS_CLI_IMAGE="${AWS_CLI_IMAGE:-docker.io/amazon/aws-cli:2.33.16}"
 
 INTERNAL_DEVOPS_ROOT="${INTERNAL_DEVOPS_ROOT:-/Users/aldoruizluna/labspace/internal-devops}"
 DR_LOG="${INTERNAL_DEVOPS_ROOT}/runbooks/dr-log.md"
@@ -116,8 +118,9 @@ Options:
 Environment overrides:
   R2_BUCKET                 Default: enclii-backups
   R2_PREFIX                 Default: postgres
-  SOURCE_R2_SECRET_NS       Namespace to copy R2 creds from (default: enclii)
+  SOURCE_R2_SECRET_NS       Namespace to copy R2 creds from (default: data)
   SOURCE_R2_SECRET_NAME     R2 secret name (default: r2-backup-credentials)
+  RESTORE_VERIFY_DB         Database to sanity-check after pg_dumpall restore (default: enclii)
   INTERNAL_DEVOPS_ROOT      Path to the internal-devops repo (default: /Users/aldoruizluna/labspace/internal-devops)
 
 Exit codes: 0 success; 10 preflight; 20 download; 30 restore; 40 query; 50 teardown; 60 WAL/PITR.
@@ -174,11 +177,126 @@ elapsed() {
 }
 
 # r2_secret_key: fetch a single key out of the copied R2 secret in DR_NAMESPACE.
-# Centralized so we can quote cleanly and swap out the source if needed.
+# Centralized so we can quote cleanly and support both legacy dashed key names
+# and current uppercase platform R2 secrets.
 r2_secret_key() {
     local key="$1"
     kubectl get secret "${SOURCE_R2_SECRET_NAME}" -n "${DR_NAMESPACE}" \
-        -o jsonpath="{.data.${key}}" | base64 -d
+        -o json | jq -r --arg key "$key" '.data[$key] // empty | @base64d'
+}
+
+r2_secret_first_key() {
+    local value key
+    for key in "$@"; do
+        value="$(r2_secret_key "$key")"
+        if [ -n "$value" ]; then
+            printf '%s' "$value"
+            return 0
+        fi
+    done
+
+    log_error "R2 credentials secret ${DR_NAMESPACE}/${SOURCE_R2_SECRET_NAME} is missing expected key(s): $*"
+    exit 10
+}
+
+r2_account_id() {
+    local account endpoint host
+    account="$(r2_secret_key account-id)"
+    if [ -z "$account" ]; then
+        account="$(r2_secret_key R2_ACCOUNT_ID)"
+    fi
+    if [ -n "$account" ]; then
+        printf '%s' "$account"
+        return 0
+    fi
+
+    endpoint="$(r2_secret_first_key endpoint-url R2_ENDPOINT_URL)"
+    host="${endpoint#https://}"
+    host="${host#http://}"
+    host="${host%%/*}"
+    account="${host%%.*}"
+    if [ -z "$account" ] || [ "$account" = "$host" ]; then
+        log_error "Cannot derive R2 account id from endpoint: ${endpoint}"
+        exit 10
+    fi
+    printf '%s' "$account"
+}
+
+run_aws_cli() {
+    local name="$1"
+    local command="$2"
+    local ak="$3"
+    local sk="$4"
+    local acc="$5"
+    local overrides
+
+    overrides="$(
+        jq -cn \
+            --arg name "$name" \
+            --arg image "$AWS_CLI_IMAGE" \
+            --arg ak "$ak" \
+            --arg sk "$sk" \
+            --arg acc "$acc" \
+            --arg bucket "$R2_BUCKET" \
+            --arg prefix "$R2_PREFIX" \
+            '{
+              apiVersion: "v1",
+              kind: "Pod",
+              metadata: {
+                name: $name,
+                labels: {
+                  "app.kubernetes.io/name": "dr-r2-client",
+                  "app.kubernetes.io/component": "dr-drill"
+                }
+              },
+              spec: {
+                restartPolicy: "Never",
+                securityContext: {
+                  runAsNonRoot: true,
+                  runAsUser: 65532,
+                  runAsGroup: 65532,
+                  seccompProfile: {type: "RuntimeDefault"}
+                },
+                containers: [{
+                  name: "aws",
+                  image: $image,
+                  imagePullPolicy: "IfNotPresent",
+                  command: ["/bin/bash", "-lc", "sleep 3600"],
+                  env: [
+                    {name: "AWS_ACCESS_KEY_ID", value: $ak},
+                    {name: "AWS_SECRET_ACCESS_KEY", value: $sk},
+                    {name: "R2_ACCOUNT_ID", value: $acc},
+                    {name: "R2_BUCKET", value: $bucket},
+                    {name: "R2_PREFIX", value: $prefix},
+                    {name: "AWS_DEFAULT_REGION", value: "auto"},
+                    {name: "AWS_EC2_METADATA_DISABLED", value: "true"},
+                    {name: "HOME", value: "/tmp"}
+                  ],
+                  securityContext: {
+                    runAsNonRoot: true,
+                    runAsUser: 65532,
+                    runAsGroup: 65532,
+                    privileged: false,
+                    allowPrivilegeEscalation: false,
+                    capabilities: {drop: ["ALL"]}
+                  },
+                  resources: {
+                    requests: {cpu: "50m", memory: "128Mi"},
+                    limits: {cpu: "500m", memory: "512Mi"}
+                  }
+                }]
+              }
+            }'
+    )"
+
+    kubectl delete pod "$name" -n "$DR_NAMESPACE" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+    printf '%s\n' "$overrides" | kubectl apply -n "$DR_NAMESPACE" -f - >/dev/null
+    kubectl wait --for=condition=Ready "pod/$name" -n "$DR_NAMESPACE" --timeout=90s >/dev/null
+
+    local status=0
+    kubectl exec -n "$DR_NAMESPACE" "$name" -c aws -- /bin/bash -lc "$command" || status=$?
+    kubectl delete pod "$name" -n "$DR_NAMESPACE" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
+    return "$status"
 }
 
 # ---------------------------------------------------------------------------
@@ -231,6 +349,7 @@ ensure_namespace() {
     fi
 
     run_cmd kubectl create namespace "${DR_NAMESPACE}"
+    run_cmd kubectl label namespace "${DR_NAMESPACE}" enclii.dev/type=dr-drill --overwrite
 
     # Replicate the R2 secret into dr-test so the downloader pod can auth.
     if [ "$DRY_RUN" = false ]; then
@@ -282,9 +401,9 @@ discover_and_download_backup() {
 
     local ak sk acc
     if [ "$DRY_RUN" = false ]; then
-        ak="$(r2_secret_key access-key-id)"
-        sk="$(r2_secret_key secret-access-key)"
-        acc="$(r2_secret_key account-id)"
+        ak="$(r2_secret_first_key access-key-id R2_ACCESS_KEY_ID ACCESS_KEY_ID)"
+        sk="$(r2_secret_first_key secret-access-key R2_SECRET_ACCESS_KEY SECRET_ACCESS_KEY)"
+        acc="$(r2_account_id)"
     fi
 
     if [ -z "${BACKUP_KEY}" ]; then
@@ -296,16 +415,7 @@ discover_and_download_backup() {
             # shellcheck disable=SC2016
             local ls_cmd='aws s3 ls "s3://${R2_BUCKET}/${R2_PREFIX}/" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" | grep -v "latest.sql.gz" | sort | tail -1 | awk "{print \$4}"'
             local discovered
-            discovered="$(kubectl run r2-ls --rm -i --quiet --restart=Never \
-                --image=docker.io/amazon/aws-cli:2.33.16 \
-                -n "${DR_NAMESPACE}" \
-                --env="AWS_ACCESS_KEY_ID=${ak}" \
-                --env="AWS_SECRET_ACCESS_KEY=${sk}" \
-                --env="R2_ACCOUNT_ID=${acc}" \
-                --env="R2_BUCKET=${R2_BUCKET}" \
-                --env="R2_PREFIX=${R2_PREFIX}" \
-                --env="AWS_DEFAULT_REGION=auto" \
-                --command -- /bin/bash -c "${ls_cmd}" | tr -d '[:space:]')"
+            discovered="$(run_aws_cli r2-ls "${ls_cmd}" "$ak" "$sk" "$acc" | tr -d '[:space:]')"
             if [ -z "${discovered}" ]; then
                 log_error "R2 listing returned no backups in s3://${R2_BUCKET}/${R2_PREFIX}/"
                 exit 20
@@ -331,18 +441,12 @@ discover_and_download_backup() {
         # Pre-create the staging dir inside the Postgres pod.
         kubectl exec -n "${DR_NAMESPACE}" "${pod}" -- /bin/sh -c 'mkdir -p /tmp/dr && chmod 700 /tmp/dr'
 
-        # postgres:16-alpine does not ship aws-cli. Spawn a short-lived aws-cli
-        # pod, stream the object to stdout, capture locally, then kubectl cp
-        # into the Postgres pod. This keeps aws creds out of the Postgres pod.
-        kubectl run r2-dl --rm -i --quiet --restart=Never \
-            --image=docker.io/amazon/aws-cli:2.33.16 \
-            -n "${DR_NAMESPACE}" \
-            --env="AWS_ACCESS_KEY_ID=${ak}" \
-            --env="AWS_SECRET_ACCESS_KEY=${sk}" \
-            --env="R2_ACCOUNT_ID=${acc}" \
-            --env="AWS_DEFAULT_REGION=auto" \
-            --command -- /bin/bash -c "aws s3 cp 's3://${R2_BUCKET}/${BACKUP_KEY}' - --endpoint-url \"https://\$R2_ACCOUNT_ID.r2.cloudflarestorage.com\"" \
-            > /tmp/dr-drill-backup.sql.gz
+        # postgres:16-alpine does not ship aws-cli. Download inside a short-lived
+        # aws-cli pod, then base64 the file over kubectl exec. Direct binary exec
+        # streams have truncated ~30MiB backups in practice, and kubectl cp needs
+        # tar, which the aws-cli image does not provide.
+        run_aws_cli r2-dl "aws s3 cp 's3://${R2_BUCKET}/${BACKUP_KEY}' /tmp/backup.sql.gz --endpoint-url \"https://\$R2_ACCOUNT_ID.r2.cloudflarestorage.com\" >/dev/null && base64 /tmp/backup.sql.gz" "$ak" "$sk" "$acc" \
+            | base64 -d > /tmp/dr-drill-backup.sql.gz
 
         if [ ! -s /tmp/dr-drill-backup.sql.gz ]; then
             log_error "downloaded backup is empty"
@@ -352,8 +456,13 @@ discover_and_download_backup() {
 
         kubectl cp /tmp/dr-drill-backup.sql.gz "${DR_NAMESPACE}/${pod}:/tmp/dr/backup.sql.gz"
         rm -f /tmp/dr-drill-backup.sql.gz
+
+        if ! kubectl exec -n "${DR_NAMESPACE}" "${pod}" -- /bin/sh -c 'gunzip -t /tmp/dr/backup.sql.gz'; then
+            log_error "downloaded backup failed gzip integrity check: ${BACKUP_KEY}"
+            exit 20
+        fi
     else
-        echo "  [dry-run] would spawn aws-cli pod, stream s3://${R2_BUCKET}/${BACKUP_KEY} to local, then kubectl cp into Postgres pod"
+        echo "  [dry-run] would spawn aws-cli pod, base64-transfer s3://${R2_BUCKET}/${BACKUP_KEY} to local, then kubectl cp into Postgres pod"
     fi
 
     PHASE_DOWNLOAD_S="$(elapsed "$dl_start")"
@@ -422,6 +531,7 @@ run_sanity_queries() {
     log_step "Phase 6: Sanity queries against restored data"
     local start pod
     start="$(now_s)"
+    log_info "sanity database: ${RESTORE_VERIFY_DB}"
 
     # 5 tables we want real counts + latest timestamps for. These come from
     # apps/switchyard-api/internal/db/migrations/001_genesis.up.sql. All tables
@@ -436,7 +546,7 @@ run_sanity_queries() {
         "SELECT 'services' AS name, count(*) AS rows, coalesce(max(created_at)::text, 'NULL') AS latest FROM public.services;"
         "SELECT 'deployments' AS name, count(*) AS rows, coalesce(max(created_at)::text, 'NULL') AS latest FROM public.deployments;"
         "SELECT 'releases' AS name, count(*) AS rows, coalesce(max(created_at)::text, 'NULL') AS latest FROM public.releases;"
-        "SELECT 'daily_usage' AS name, count(*) AS rows, coalesce(max(usage_date)::text, 'NULL') AS latest FROM public.daily_usage;"
+        "SELECT 'daily_usage' AS name, count(*) AS rows, coalesce(max(date)::text, 'NULL') AS latest FROM public.daily_usage;"
     )
 
     QUERY_OUTPUT=""
@@ -446,7 +556,7 @@ run_sanity_queries() {
             local row
             if ! row="$(kubectl exec -n "${DR_NAMESPACE}" "${pod}" -- /bin/sh -c "
                 export PGPASSWORD='${DR_DB_PASSWORD}'
-                psql -U '${DR_DB_USER}' -d '${DR_DB_NAME}' -tAF'|' -c \"${q}\"
+                psql -U '${DR_DB_USER}' -d '${RESTORE_VERIFY_DB}' -tAF'|' -c \"${q}\"
             " 2>&1)"; then
                 log_error "query failed: ${q}"
                 log_error "output: ${row}"

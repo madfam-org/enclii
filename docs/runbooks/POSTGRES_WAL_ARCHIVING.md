@@ -64,7 +64,7 @@ maintenance window.
 # Generate a cipher passphrase unless you intentionally set cipher-type=none:
 # openssl rand -base64 48
 
-vault kv put secret/data/pgbackrest-r2 \
+vault kv put secret/pgbackrest-r2 \
   r2_account_id='<cf-account-id>' \
   r2_access_key_id='<r2-access-key-id>' \
   r2_secret_access_key='<r2-secret-access-key>' \
