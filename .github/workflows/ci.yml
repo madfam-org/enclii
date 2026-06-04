@@ -888,22 +888,51 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.detect-changes.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
 
     steps:
       - uses: actions/checkout@v6
 
+      - name: Download digest artifact
+        if: matrix.scan == true
+        uses: actions/download-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: /tmp/digest-${{ matrix.name }}
+
+      - name: Resolve scan image digest
+        if: matrix.scan == true
+        id: scan-ref
+        run: |
+          DIGEST_FILE="/tmp/digest-${{ matrix.name }}/digest-${{ matrix.name }}.txt"
+          if [ ! -s "$DIGEST_FILE" ]; then
+            echo "::error::Missing digest artifact for ${{ matrix.name }}: $DIGEST_FILE"
+            exit 1
+          fi
+          IFS='|' read -r NAME IMAGE KUSTOMIZATION KUSTOMIZE_IMAGE DIGEST < "$DIGEST_FILE"
+          if [ -z "$IMAGE" ] || [ -z "$DIGEST" ]; then
+            echo "::error::Malformed digest artifact for ${{ matrix.name }}"
+            cat "$DIGEST_FILE"
+            exit 1
+          fi
+          echo "image_ref=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
       - name: Login to GitHub Container Registry
+        if: matrix.scan == true
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT || github.token }}
 
       - name: Scan ${{ matrix.name }}
         if: matrix.scan == true
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.sha }}
+          image-ref: ${{ steps.scan-ref.outputs.image_ref }}
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
