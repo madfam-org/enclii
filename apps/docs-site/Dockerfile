@@ -34,6 +34,9 @@ RUN npm run build
 # Using standard nginx on port 80 (deployed image already uses this)
 FROM docker.io/library/nginx:alpine AS runner
 
+# Keep runtime OS packages current when the nginx base tag lags Alpine fixes.
+RUN apk upgrade --no-cache libxml2
+
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
 # CSP keeps 'unsafe-inline' for Docusaurus runtime; revisit with nonces later.
