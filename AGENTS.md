@@ -43,6 +43,15 @@ redirect and should not become the source of truth again.
 - `llms-full.txt` is the durable full-context map and operating contract.
 - `AGENTS.md` is canonical for agent instructions.
 - `CLAUDE.md` redirects here for Claude compatibility.
+- `docs/PUBLIC_REPO_BOUNDARY.md` defines this repo's public documentation scope.
+
+## Repo-boundary contract
+
+- `solarpunk-foundry` is the public ecosystem contract hub.
+- `internal-devops` stores private operational details, raw topology, secrets, and sensitive runbook internals.
+- Keep `enclii` docs focused on public-safe architecture and implementation.
+- If uncertain, add minimal redacted context and a canonical pointer to private sources.
+- See [`internal-devops` rollout plan](https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-remediation-plan.md) for cross-repo execution order.
 
 ## Maintenance
 

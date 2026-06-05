@@ -506,6 +506,14 @@ Post-GA: multi-region, managed DB marketplace, KEDA custom metrics, full SOC 2 a
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide. Quick checklist:
 
+Boundary checkpoint (2026-06-04, platform owner): this public quick-start only
+links the repository boundary policy and keeps private operational topology,
+credential, cost, and incident detail in `internal-devops`. Policy:
+[docs/PUBLIC_REPO_BOUNDARY.md](./docs/PUBLIC_REPO_BOUNDARY.md) and
+[repo-boundary contract](https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md).
+
+Keep implementation guidance public-safe. If a detail is private/sensitive, place it in `internal-devops` and link from here with a sanitized summary.
+
 1. Read [CLAUDE.md](./CLAUDE.md) for project conventions
 2. Run `make precommit` before pushing
 3. Use conventional commits for changelog

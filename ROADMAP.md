@@ -19,6 +19,23 @@
 **Scorecard:** [docs/production/GA_READINESS_SCORECARD.md](docs/production/GA_READINESS_SCORECARD.md)  
 **Ops queue:** [docs/production/REMAINING_OPS_GA.md](docs/production/REMAINING_OPS_GA.md)
 
+### Repository boundary governance
+
+- [x] Public-boundary policy linked from agent/docs guidance.
+- [x] Private operational topology/secrets remain in `internal-devops`.
+- [ ] Remove any remaining public docs that still duplicate private-sensitive implementation or incident context.
+- [ ] Ensure every roadmap/status update carries a boundary checkpoint note (date + privacy-safe summary + destination for private detail).
+
+### Boundary checkpoint rule for this roadmap
+
+- Before adding or changing any production-readiness/status claim here, add a short `boundary checkpoint` line immediately above the affected section with:
+  - what changed (public-safe language),
+  - what detail moved to `internal-devops` (if applicable),
+  - the canonical policy pointer:
+    - `docs/PUBLIC_REPO_BOUNDARY.md`
+    - `https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md`
+- Public-facing status updates in this roadmap remain "headline-safe": avoid raw private topology, costs, credentials, or incident evidence.
+
 ### Execution waves
 
 | Wave | Target | Outcome |

@@ -175,7 +175,7 @@ spec:
 
       containers:
         - name: kaniko
-          image: gcr.io/kaniko-project/executor:v1.19.0
+          image: gcr.io/kaniko-project/executor@sha256:2c076de466bccb07017061887056fbd65efa3a282406ba3fc2c887b35f757e4f
           args:
             - "--dockerfile=${DOCKERFILE_PATH:-Dockerfile}"
             - "--context=git://${GIT_REPO}#refs/heads/${GIT_BRANCH}#${GIT_SHA}"

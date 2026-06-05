@@ -11,7 +11,25 @@
 > [!IMPORTANT]
 > **Ongoing Refactoring**: We are currently in the middle of a structural monorepo reorganization. Refer to [REFACTORING_STATUS.md](./REFACTORING_STATUS.md) for urgent cleanup items and current progress before starting any new tasks.
 
+## Repo boundary rule
+
+Public documentation in this repo is a public-safe operating contract only.
+Private operational sensitivity detail belongs in `internal-devops`.
+
+If a task requires that level of detail, store the private version in
+`internal-devops` and keep only a short redacted pointer here.
+
 This file provides authoritative guidance to all AI agents and LLMs working in this repository.
+
+## Boundary checkpoint requirement for Enclii docs and roadmaps
+
+Before updating `README.md`, `ROADMAP.md`, `AI_CONTEXT.md`, or any public-facing status/changelog surface:
+
+- add a boundary checkpoint block at the top of the change section (date, what changed in public-safe wording, what moved to `internal-devops`, and a reviewer/owner),
+- link the canonical policy in this same change (`./docs/PUBLIC_REPO_BOUNDARY.md` and `https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md` where relevant),
+- avoid adding provider account detail, host/IP/topology depth, raw credentials/secret patterns, or incident evidence not needed for operator safety.
+
+Use this as the hard rule for all cross-repo claims in this repo.
 
 ## Agent Directives
 1. ALWAYS run `golangci-lint run` before Go commits

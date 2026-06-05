@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: status
-        image: ghcr.io/madfam-org/enclii/enclii-status:latest
+        image: ghcr.io/madfam-org/enclii/enclii-status@sha256:756bf057601b4616d959da4de220242c10802b72f0f90bf7b383a55c857f6843
         imagePullPolicy: Always
         ports:
         - containerPort: 4204
