@@ -1,0 +1,96 @@
+name: GitOps Argo Sync
+
+# Platform break-glass: sync a single Argo CD Application using production kubeconfig.
+# Used when external repos (e.g. blueprint-harvester) lack ENCLII_API_TOKEN / KUBECONFIG secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Argo Application name (argocd namespace)
+        required: true
+        default: blueprint-harvester-services
+        type: string
+      reason:
+        description: Audit reason for sync (min 12 characters)
+        required: true
+        type: string
+      deploy_ack:
+        description: Type "production-kustomization" to acknowledge production sync
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Acknowledgement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          DEPLOY_ACK: ${{ inputs.deploy_ack }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
+            echo "deploy_ack must be production-kustomization"
+            exit 1
+          fi
+          if [ ${#REASON} -lt 12 ]; then
+            echo "reason must be at least 12 characters"
+            exit 1
+          fi
+
+  sync:
+    name: Sync ${{ inputs.app }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync Argo Application
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+          APP: ${{ inputs.app }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KUBECONFIG_B64:-}" ]; then
+            echo "::error::KUBECONFIG_PRODUCTION secret is not configured on madfam-org/enclii"
+            exit 1
+          fi
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl cluster-info --request-timeout=15s
+          NS="argocd"
+          if ! kubectl get application "$APP" -n "$NS" >/dev/null 2>&1; then
+            echo "Argo Application ${APP} not found in ${NS}" >&2
+            kubectl get applications -n "$NS" || true
+            exit 1
+          fi
+          kubectl patch application "$APP" -n "$NS" --type merge -p \
+            "{\"metadata\":{\"annotations\":{\"enclii.dev/last-ops-reason\":\"${REASON}\"}},\"operation\":{\"sync\":{\"syncStrategy\":{\"apply\":{\"force\":false}}},\"initiatedBy\":{\"username\":\"github-actions-enclii-gitops-sync\"}}}"
+          echo "Sync requested for ${APP} in ${NS}"
+
+      - name: Wait for sync completion
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          NS="argocd"
+          for i in $(seq 1 40); do
+            phase="$(kubectl get application "$APP" -n "$NS" -o jsonpath='{.status.sync.status}' 2>/dev/null || echo Unknown)"
+            health="$(kubectl get application "$APP" -n "$NS" -o jsonpath='{.status.health.status}' 2>/dev/null || echo Unknown)"
+            echo "attempt $i: sync=$phase health=$health"
+            if [ "$phase" = "Synced" ] && [ "$health" = "Healthy" ]; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::Timed out waiting for Synced+Healthy; check Argo UI"
+          kubectl get application "$APP" -n "$NS" -o yaml | tail -40
