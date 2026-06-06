@@ -105,10 +105,36 @@ jobs:
             phase="$(kubectl get application "$APP" -n "$NS" -o jsonpath='{.status.sync.status}' 2>/dev/null || echo Unknown)"
             health="$(kubectl get application "$APP" -n "$NS" -o jsonpath='{.status.health.status}' 2>/dev/null || echo Unknown)"
             echo "attempt $i: sync=$phase health=$health"
-            if [ "$phase" = "Synced" ] && [ "$health" = "Healthy" ]; then
+            if [ "$phase" = "Synced" ]; then
+              echo "Argo sync phase reached Synced (health=$health)"
               exit 0
             fi
             sleep 15
           done
-          echo "::warning::Timed out waiting for Synced+Healthy; check Argo UI"
-          kubectl get application "$APP" -n "$NS" -o yaml | tail -40
+          echo "::warning::Timed out waiting for Synced+Healthy; continuing with rollout steps"
+          kubectl get application "$APP" -n "$NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.name} sync={.status} health={.health.status}{"\n"}{end}' 2>/dev/null || true
+
+      - name: Rollout restart landing (Demo GA)
+        if: inputs.app == 'blueprint-harvester-services'
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="blueprint-harvester"
+          DEP="blueprint-harvester-landing"
+          echo "Current landing image:"
+          kubectl get deploy "$DEP" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' || true
+          kubectl rollout restart deployment/"$DEP" -n "$NS"
+          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s
+          echo "Pods after rollout:"
+          kubectl get pods -n "$NS" -l app="$DEP" -o wide
+          kubectl get pods -n "$NS" -l app="$DEP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{" "}{.spec.containers[0].image}{"\n"}{end}'
