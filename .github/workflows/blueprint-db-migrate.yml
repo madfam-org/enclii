@@ -118,6 +118,7 @@ jobs:
           cp -a db/migrations/. "${BUNDLE_DIR}/"
           cp scripts/run_prod_alembic_migrate.sh "${BUNDLE_DIR}/"
           cp scripts/normalize_migrate_database_url.py "${BUNDLE_DIR}/"
+          cp scripts/verify_tag_provenance_schema.py "${BUNDLE_DIR}/"
           tar czf /tmp/migrate.tgz -C "${BUNDLE_DIR}" .
           rm -rf "${BUNDLE_DIR}"
           kubectl create configmap "$CM" --from-file=migrate.tgz=/tmp/migrate.tgz -n "$NS"
