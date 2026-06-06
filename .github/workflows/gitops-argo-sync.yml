@@ -114,6 +114,36 @@ jobs:
           echo "::warning::Timed out waiting for Synced+Healthy; continuing with rollout steps"
           kubectl get application "$APP" -n "$NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.name} sync={.status} health={.health.status}{"\n"}{end}' 2>/dev/null || true
 
+      - name: Refresh GHCR pull secret (blueprint-harvester)
+        if: inputs.app == 'blueprint-harvester-services'
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GHCR_USERNAME: madfam-bot
+        run: |
+          set -euo pipefail
+          if [ -z "${GHCR_PAT:-}" ]; then
+            echo "::warning::GHCR_PAT not set on enclii repo; skipping pull-secret refresh"
+            exit 0
+          fi
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="blueprint-harvester"
+          kubectl create secret docker-registry ghcr-credentials \
+            --docker-server=ghcr.io \
+            --docker-username="${GHCR_USERNAME}" \
+            --docker-password="${GHCR_PAT}" \
+            --namespace="${NS}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "Refreshed ghcr-credentials in ${NS}"
+
       - name: Rollout restart landing (Demo GA)
         if: inputs.app == 'blueprint-harvester-services'
         env:
@@ -134,7 +164,12 @@ jobs:
           echo "Current landing image:"
           kubectl get deploy "$DEP" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' || true
           kubectl rollout restart deployment/"$DEP" -n "$NS"
-          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s
+          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s || {
+            echo "::error::Landing rollout failed; pod diagnostics:"
+            kubectl get pods -n "$NS" -l app="$DEP" -o wide || true
+            kubectl describe pods -n "$NS" -l app="$DEP" | tail -80 || true
+            exit 1
+          }
           echo "Pods after rollout:"
           kubectl get pods -n "$NS" -l app="$DEP" -o wide
           kubectl get pods -n "$NS" -l app="$DEP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{" "}{.spec.containers[0].image}{"\n"}{end}'
