@@ -60,16 +60,8 @@ jobs:
         run: |
           set -euo pipefail
           FILE="infra/k8s/production/kustomization.yaml"
-          DIGEST="$(python3 - <<'PY'
-          import yaml
-          from pathlib import Path
-          data = yaml.safe_load(Path("infra/k8s/production/kustomization.yaml").read_text())
-          for item in data.get("images", []):
-              if item.get("name", "").endswith("/api"):
-                  print(item["digest"])
-                  break
-          PY
-          )"
+          DIGEST="$(grep -B1 'name: ghcr.io/madfam-org/blueprint-harvester/api$' "$FILE" \
+            | grep 'digest:' | awk '{print $2}')"
           if [ -z "${DIGEST}" ]; then
             echo "Could not resolve API digest from kustomization.yaml" >&2
             exit 1
