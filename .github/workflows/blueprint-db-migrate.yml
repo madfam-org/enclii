@@ -93,11 +93,10 @@ jobs:
             cosign sign --yes "${REF}"
           fi
 
-      - name: Apply migration Job
+      - name: Run migration via API pod
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
           REASON: ${{ inputs.reason }}
-          API_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           set -euo pipefail
           mkdir -p ~/.kube
@@ -110,10 +109,6 @@ jobs:
               --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
           fi
           NS="blueprint-harvester"
-          JOB="blueprint-harvester-db-migrate"
-          IMAGE="ghcr.io/madfam-org/blueprint-harvester/api@${API_DIGEST}"
-          CM="blueprint-db-migrate-src"
-          kubectl delete configmap "$CM" -n "$NS" --ignore-not-found
           BUNDLE_DIR="$(mktemp -d)"
           cp -a db/migrations/. "${BUNDLE_DIR}/"
           cp scripts/run_prod_alembic_migrate.sh "${BUNDLE_DIR}/"
@@ -121,45 +116,26 @@ jobs:
           cp scripts/verify_tag_provenance_schema.py "${BUNDLE_DIR}/"
           tar czf /tmp/migrate.tgz -C "${BUNDLE_DIR}" .
           rm -rf "${BUNDLE_DIR}"
-          kubectl create configmap "$CM" --from-file=migrate.tgz=/tmp/migrate.tgz -n "$NS"
-          kubectl delete secret blueprint-db-migrate-env -n "$NS" --ignore-not-found
-          kubectl delete job "$JOB" -n "$NS" --ignore-not-found
-          sed "s|image: ghcr.io/madfam-org/blueprint-harvester/api|image: ${IMAGE}|" \
-            infra/k8s/production/db-migrate-job.yaml | kubectl apply -f -
-          kubectl annotate job "$JOB" -n "$NS" \
-            enclii.dev/last-ops-reason="$REASON" --overwrite
-          end=$((SECONDS + 600))
-          while [ "${SECONDS}" -lt "${end}" ]; do
-            complete="$(kubectl get job "$JOB" -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)"
-            if [ "${complete}" = "True" ]; then
-              kubectl logs "job/${JOB}" -n "$NS" --tail=100
-              exit 0
-            fi
-            failed="$(kubectl get job "$JOB" -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)"
-            if [ "${failed}" = "True" ]; then
-              echo "::error::Migration job failed"
-              kubectl describe job "$JOB" -n "$NS" || true
-              kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
-              kubectl logs -n "$NS" -l job-name="$JOB" --all-containers --tail=200 || true
-              kubectl get events -n "$NS" --sort-by=.lastTimestamp | tail -30 || true
-              exit 1
-            fi
-            POD="$(kubectl get pods -n "$NS" -l job-name="$JOB" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-            if [ -n "${POD}" ]; then
-              REASON="$(kubectl get pod "${POD}" -n "$NS" -o jsonpath='{.status.containerStatuses[0].state.terminated.reason}' 2>/dev/null || true)"
-              if [ "${REASON}" = "Error" ]; then
-                echo "::error::Migration container exited with error"
-                kubectl logs "${POD}" -n "$NS" --tail=200 || true
-                exit 1
-              fi
-            fi
-            sleep 1
-          done
-          echo "::error::Migration job did not complete within 600s"
-          kubectl describe job "$JOB" -n "$NS" || true
-          kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
-          kubectl logs -n "$NS" -l job-name="$JOB" --all-containers --tail=200 || true
-          exit 1
+          API_POD="$(kubectl get pods -n "$NS" -l app=blueprint-harvester-api \
+            -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name}{"\n"}{end}' | head -1)"
+          if [ -z "${API_POD}" ]; then
+            echo "::error::No running blueprint-harvester-api pod"
+            exit 1
+          fi
+          echo "Running Alembic in pod ${API_POD} (reason: ${REASON})"
+          kubectl cp /tmp/migrate.tgz "${NS}/${API_POD}:/tmp/migrate.tgz"
+          kubectl exec -n "$NS" "${API_POD}" -- sh -c '
+            set -eu
+            export PYTHONPATH=/app
+            BUNDLE=/tmp/migrate-bundle
+            rm -rf "${BUNDLE}"
+            mkdir -p "${BUNDLE}"
+            tar xzf /tmp/migrate.tgz -C "${BUNDLE}"
+            cd "${BUNDLE}"
+            sh run_prod_alembic_migrate.sh
+          '
+          kubectl annotate deployment blueprint-harvester-api -n "$NS" \
+            enclii.dev/last-db-migrate-reason="$REASON" --overwrite
 
       - name: Patch admin catalog token (optional)
         env:
