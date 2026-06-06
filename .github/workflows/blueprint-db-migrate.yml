@@ -1,0 +1,128 @@
+name: Blueprint DB Migrate
+
+# Run Alembic migration 002+ against production Postgres using the API image.
+# Requires blueprint-harvester GitOps API digest to include db/migrations.
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_ack:
+        description: Type "production-kustomization" to acknowledge production DB migration.
+        required: true
+        type: string
+      reason:
+        description: Audit reason (min 12 characters)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Acknowledgement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          DEPLOY_ACK: ${{ inputs.deploy_ack }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
+            echo "deploy_ack must be production-kustomization"
+            exit 1
+          fi
+          if [ ${#REASON} -lt 12 ]; then
+            echo "reason must be at least 12 characters"
+            exit 1
+          fi
+
+  migrate:
+    name: Run blueprint-harvester-db-migrate
+    needs: preflight
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: madfam-org/blueprint-harvester
+          ref: main
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v5
+        with:
+          version: v1.31.0
+
+      - name: Resolve API image digest
+        id: image
+        run: |
+          set -euo pipefail
+          FILE="infra/k8s/production/kustomization.yaml"
+          DIGEST="$(python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+          data = yaml.safe_load(Path("infra/k8s/production/kustomization.yaml").read_text())
+          for item in data.get("images", []):
+              if item.get("name", "").endswith("/api"):
+                  print(item["digest"])
+                  break
+          PY
+          )"
+          if [ -z "${DIGEST}" ]; then
+            echo "Could not resolve API digest from kustomization.yaml" >&2
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Using API image digest ${DIGEST}"
+
+      - name: Apply migration Job
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+          REASON: ${{ inputs.reason }}
+          API_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="blueprint-harvester"
+          JOB="blueprint-harvester-db-migrate"
+          IMAGE="ghcr.io/madfam-org/blueprint-harvester/api@${API_DIGEST}"
+          kubectl delete job "$JOB" -n "$NS" --ignore-not-found
+          sed "s|image: ghcr.io/madfam-org/blueprint-harvester/api|image: ${IMAGE}|" \
+            infra/k8s/production/db-migrate-job.yaml | kubectl apply -f -
+          kubectl annotate job "$JOB" -n "$NS" \
+            enclii.dev/last-ops-reason="$REASON" --overwrite
+          kubectl wait --for=condition=complete "job/${JOB}" -n "$NS" --timeout=600s
+          kubectl logs "job/${JOB}" -n "$NS" --tail=100
+
+      - name: Patch admin catalog token (optional)
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+          ADMIN_TOKEN: ${{ secrets.BLUEPRINT_ADMIN_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_TOKEN:-}" ]; then
+            echo "::warning::BLUEPRINT_ADMIN_API_TOKEN not set on enclii; skip secret patch"
+            exit 0
+          fi
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="blueprint-harvester"
+          kubectl patch secret blueprint-harvester-secrets -n "$NS" --type merge \
+            -p "{\"stringData\":{\"BLUEPRINT_ADMIN_API_TOKEN\":\"${ADMIN_TOKEN}\"}}"
+          echo "Patched BLUEPRINT_ADMIN_API_TOKEN in blueprint-harvester-secrets"

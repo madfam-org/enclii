@@ -173,3 +173,30 @@ jobs:
           echo "Pods after rollout:"
           kubectl get pods -n "$NS" -l app="$DEP" -o wide
           kubectl get pods -n "$NS" -l app="$DEP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{" "}{.spec.containers[0].image}{"\n"}{end}'
+
+      - name: Rollout restart API (tag-provenance / digest pin)
+        if: inputs.app == 'blueprint-harvester-services'
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="blueprint-harvester"
+          DEP="blueprint-harvester-api"
+          echo "Current API image:"
+          kubectl get deploy "$DEP" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' || true
+          kubectl rollout restart deployment/"$DEP" -n "$NS"
+          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s || {
+            echo "::error::API rollout failed"
+            kubectl get pods -n "$NS" -l app="$DEP" -o wide || true
+            exit 1
+          }
+          kubectl get pods -n "$NS" -l app="$DEP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{" "}{.spec.containers[0].image}{"\n"}{end}'
