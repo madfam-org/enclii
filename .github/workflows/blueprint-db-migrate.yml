@@ -130,9 +130,19 @@ jobs:
               kubectl describe job "$JOB" -n "$NS" || true
               kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
               kubectl logs -n "$NS" -l job-name="$JOB" --all-containers --tail=200 || true
+              kubectl get events -n "$NS" --sort-by=.lastTimestamp | tail -30 || true
               exit 1
             fi
-            sleep 5
+            POD="$(kubectl get pods -n "$NS" -l job-name="$JOB" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+            if [ -n "${POD}" ]; then
+              REASON="$(kubectl get pod "${POD}" -n "$NS" -o jsonpath='{.status.containerStatuses[0].state.terminated.reason}' 2>/dev/null || true)"
+              if [ "${REASON}" = "Error" ]; then
+                echo "::error::Migration container exited with error"
+                kubectl logs "${POD}" -n "$NS" --tail=200 || true
+                exit 1
+              fi
+            fi
+            sleep 1
           done
           echo "::error::Migration job did not complete within 600s"
           kubectl describe job "$JOB" -n "$NS" || true
