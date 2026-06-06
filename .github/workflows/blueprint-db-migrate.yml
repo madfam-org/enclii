@@ -117,14 +117,28 @@ jobs:
             infra/k8s/production/db-migrate-job.yaml | kubectl apply -f -
           kubectl annotate job "$JOB" -n "$NS" \
             enclii.dev/last-ops-reason="$REASON" --overwrite
-          if ! kubectl wait --for=condition=complete "job/${JOB}" -n "$NS" --timeout=600s; then
-            echo "::error::Migration job did not complete within 600s"
-            kubectl describe job "$JOB" -n "$NS" || true
-            kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
-            kubectl logs "job/${JOB}" -n "$NS" --tail=200 || true
-            exit 1
-          fi
-          kubectl logs "job/${JOB}" -n "$NS" --tail=100
+          end=$((SECONDS + 600))
+          while [ "${SECONDS}" -lt "${end}" ]; do
+            complete="$(kubectl get job "$JOB" -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)"
+            if [ "${complete}" = "True" ]; then
+              kubectl logs "job/${JOB}" -n "$NS" --tail=100
+              exit 0
+            fi
+            failed="$(kubectl get job "$JOB" -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)"
+            if [ "${failed}" = "True" ]; then
+              echo "::error::Migration job failed"
+              kubectl describe job "$JOB" -n "$NS" || true
+              kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
+              kubectl logs -n "$NS" -l job-name="$JOB" --all-containers --tail=200 || true
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::Migration job did not complete within 600s"
+          kubectl describe job "$JOB" -n "$NS" || true
+          kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
+          kubectl logs -n "$NS" -l job-name="$JOB" --all-containers --tail=200 || true
+          exit 1
 
       - name: Patch admin catalog token (optional)
         env:
