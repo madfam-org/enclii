@@ -1,0 +1,27 @@
+# Temporary cosign bypass for switchyard-api emergency deploy (health_check jsonb fix).
+# Remove after keyless signing is restored on madfam-org/enclii CI.
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: switchyard-api-signature-temporary
+  namespace: enclii
+  annotations:
+    enclii.dev/reason: "Emergency switchyard-api deploy pending cosign re-enable."
+    enclii.dev/scope: "switchyard-api Deployment only."
+spec:
+  exceptions:
+    - policyName: verify-image-signatures
+      ruleNames:
+        - check-signature
+        - autogen-check-signature
+  match:
+    any:
+      - resources:
+          kinds:
+            - Deployment
+            - Pod
+            - ReplicaSet
+          namespaces:
+            - enclii
+          names:
+            - switchyard-api*

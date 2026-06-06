@@ -9,6 +9,7 @@ resources:
 - porkbun-credentials.externalsecret.yaml
 - enclii-internal-api-key.externalsecret.yaml
 - enclii-resend-api-key.externalsecret.yaml
+- switchyard-api-signature-policyexception.yaml
 # NOTE: cloudflared.yaml removed - using existing cloudflared in cloudflare-tunnel namespace
 # The cloudflare-tunnel namespace has working cloudflared pods with proper credentials
 # - cloudflared.yaml
