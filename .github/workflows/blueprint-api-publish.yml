@@ -1,0 +1,111 @@
+name: Blueprint API Publish
+
+# Build blueprint-harvester API from madfam-org/blueprint-harvester and pin GitOps digest.
+# Uses Enclii repo GHCR_PAT (blueprint-harvester org secret is often stale for large API pushes).
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: blueprint-harvester git ref (branch, tag, or SHA)
+        required: false
+        default: main
+      deploy_ack:
+        description: Type "production-kustomization" to acknowledge production publish.
+        required: true
+        type: string
+      reason:
+        description: Audit reason (min 12 characters)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_PREFIX: ghcr.io/madfam-org/blueprint-harvester
+  HARVESTER_REPO: madfam-org/blueprint-harvester
+
+jobs:
+  preflight:
+    name: Acknowledgement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          DEPLOY_ACK: ${{ inputs.deploy_ack }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
+            echo "deploy_ack must be production-kustomization"
+            exit 1
+          fi
+          if [ ${#REASON} -lt 12 ]; then
+            echo "reason must be at least 12 characters"
+            exit 1
+          fi
+
+  build-api:
+    name: Build & pin API digest
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.HARVESTER_REPO }}
+          ref: ${{ inputs.git_ref }}
+          path: blueprint-harvester
+          token: ${{ secrets.GHCR_PAT }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -euo pipefail
+          echo "${GHCR_PAT}" | docker login ghcr.io -u madfam-bot --password-stdin
+
+      - name: Build & push API
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: blueprint-harvester
+          file: blueprint-harvester/services/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/api:main
+
+      - name: Install kustomize
+        run: |
+          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" | tar xz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Pin API digest in GitOps
+        working-directory: blueprint-harvester/infra/k8s/production
+        env:
+          API_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          kustomize edit set image "${IMAGE_PREFIX}/api=${IMAGE_PREFIX}/api@${API_DIGEST}"
+          echo "Pinned API @${API_DIGEST}"
+
+      - name: Commit & push digest pin
+        working-directory: blueprint-harvester
+        env:
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          git config user.name "madfam-ci[bot]"
+          git config user.email "ci@madfam.io"
+          if git diff --quiet infra/k8s/production/kustomization.yaml; then
+            echo "No digest changes to commit"
+            exit 0
+          fi
+          git add infra/k8s/production/kustomization.yaml
+          git commit -m "chore(gitops): pin API digest from Enclii blueprint-api-publish" \
+            -m "Reason: ${REASON}"
+          git push
