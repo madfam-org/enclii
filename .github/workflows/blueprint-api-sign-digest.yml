@@ -1,0 +1,79 @@
+name: Blueprint API Sign Digest
+
+# Keyless cosign sign for an already-pushed API digest (unblocks Kyverno without rebuild).
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: sha256 digest (with or without sha256: prefix)
+        required: true
+        type: string
+      deploy_ack:
+        description: Type "production-kustomization" to acknowledge signing.
+        required: true
+        type: string
+      reason:
+        description: Audit reason (min 12 characters)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/madfam-org/blueprint-harvester/api
+
+jobs:
+  preflight:
+    name: Acknowledgement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          DEPLOY_ACK: ${{ inputs.deploy_ack }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
+            echo "deploy_ack must be production-kustomization"
+            exit 1
+          fi
+          if [ ${#REASON} -lt 12 ]; then
+            echo "reason must be at least 12 characters"
+            exit 1
+          fi
+
+  sign:
+    name: Cosign sign API digest
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Log in to GHCR
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -euo pipefail
+          echo "${GHCR_PAT}" | docker login ghcr.io -u madfam-bot --password-stdin
+
+      - name: Sign digest
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+          DIGEST_INPUT: ${{ inputs.digest }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          DIGEST="${DIGEST_INPUT#sha256:}"
+          REF="${IMAGE}@sha256:${DIGEST}"
+          echo "Signing ${REF} (reason: ${REASON})"
+          cosign sign --yes "${REF}"
+          cosign verify \
+            --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+            "${REF}"

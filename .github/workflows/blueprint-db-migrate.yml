@@ -93,7 +93,13 @@ jobs:
             infra/k8s/production/db-migrate-job.yaml | kubectl apply -f -
           kubectl annotate job "$JOB" -n "$NS" \
             enclii.dev/last-ops-reason="$REASON" --overwrite
-          kubectl wait --for=condition=complete "job/${JOB}" -n "$NS" --timeout=600s
+          if ! kubectl wait --for=condition=complete "job/${JOB}" -n "$NS" --timeout=600s; then
+            echo "::error::Migration job did not complete within 600s"
+            kubectl describe job "$JOB" -n "$NS" || true
+            kubectl get pods -n "$NS" -l job-name="$JOB" -o wide || true
+            kubectl logs "job/${JOB}" -n "$NS" --tail=200 || true
+            exit 1
+          fi
           kubectl logs "job/${JOB}" -n "$NS" --tail=100
 
       - name: Patch admin catalog token (optional)
