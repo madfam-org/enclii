@@ -17,6 +17,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  packages: write
 
 jobs:
   preflight:
@@ -68,6 +70,28 @@ jobs:
           fi
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Using API image digest ${DIGEST}"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign API digest (Kyverno)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          API_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          echo "${GHCR_PAT}" | docker login ghcr.io -u madfam-bot --password-stdin
+          REF="ghcr.io/madfam-org/blueprint-harvester/api@${API_DIGEST}"
+          if COSIGN_EXPERIMENTAL=1 cosign verify \
+            --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+            "${REF}" 2>/dev/null; then
+            echo "Digest already signed: ${REF}"
+          else
+            echo "Signing ${REF}"
+            cosign sign --yes "${REF}"
+          fi
 
       - name: Apply migration Job
         env:
