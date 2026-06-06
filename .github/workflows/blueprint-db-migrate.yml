@@ -122,27 +122,7 @@ jobs:
           rm -rf "${BUNDLE_DIR}"
           kubectl create configmap "$CM" --from-file=migrate.tgz=/tmp/migrate.tgz -n "$NS"
           RAW_DB_URL="$(kubectl get secret blueprint-harvester-secrets -n "$NS" -o jsonpath='{.data.DATABASE_URL}' | base64 -d)"
-          MIGRATE_DB_URL="$(python3 - <<'PY' "$RAW_DB_URL"
-import sys
-from urllib.parse import urlsplit, urlunsplit
-
-url = sys.argv[1]
-if not url:
-    raise SystemExit(1)
-scheme, netloc, path, query, fragment = urlsplit(url)
-if "@" in netloc:
-    auth, hostport = netloc.rsplit("@", 1)
-else:
-    auth, hostport = "", netloc
-host, sep, port = hostport.rpartition(":")
-if not sep:
-    host, port = hostport, "5432"
-if port == "5432":
-    netloc = f"{auth}@pgbouncer.data.svc.cluster.local:6432" if auth else "pgbouncer.data.svc.cluster.local:6432"
-    url = urlunsplit((scheme, netloc, path, query, fragment))
-print(url)
-PY
-)"
+          MIGRATE_DB_URL="$(DATABASE_URL="${RAW_DB_URL}" python3 scripts/normalize_migrate_database_url.py)"
           kubectl create secret generic blueprint-db-migrate-env -n "$NS" \
             --from-literal=DATABASE_URL="${MIGRATE_DB_URL}" \
             --dry-run=client -o yaml | kubectl apply -f -
