@@ -122,11 +122,7 @@ jobs:
           tar czf /tmp/migrate.tgz -C "${BUNDLE_DIR}" .
           rm -rf "${BUNDLE_DIR}"
           kubectl create configmap "$CM" --from-file=migrate.tgz=/tmp/migrate.tgz -n "$NS"
-          RAW_DB_URL="$(kubectl get secret blueprint-harvester-secrets -n "$NS" -o jsonpath='{.data.DATABASE_URL}' | base64 -d)"
-          MIGRATE_DB_URL="$(DATABASE_URL="${RAW_DB_URL}" python3 scripts/normalize_migrate_database_url.py)"
-          kubectl create secret generic blueprint-db-migrate-env -n "$NS" \
-            --from-literal=DATABASE_URL="${MIGRATE_DB_URL}" \
-            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl delete secret blueprint-db-migrate-env -n "$NS" --ignore-not-found
           kubectl delete job "$JOB" -n "$NS" --ignore-not-found
           sed "s|image: ghcr.io/madfam-org/blueprint-harvester/api|image: ${IMAGE}|" \
             infra/k8s/production/db-migrate-job.yaml | kubectl apply -f -
