@@ -114,7 +114,11 @@ jobs:
           IMAGE="ghcr.io/madfam-org/blueprint-harvester/api@${API_DIGEST}"
           CM="blueprint-db-migrate-src"
           kubectl delete configmap "$CM" -n "$NS" --ignore-not-found
-          tar czf /tmp/migrate.tgz -C db/migrations .
+          BUNDLE_DIR="$(mktemp -d)"
+          cp -a db/migrations/. "${BUNDLE_DIR}/"
+          cp scripts/run_prod_alembic_migrate.sh "${BUNDLE_DIR}/"
+          tar czf /tmp/migrate.tgz -C "${BUNDLE_DIR}" .
+          rm -rf "${BUNDLE_DIR}"
           kubectl create configmap "$CM" --from-file=migrate.tgz=/tmp/migrate.tgz -n "$NS"
           kubectl delete job "$JOB" -n "$NS" --ignore-not-found
           sed "s|image: ghcr.io/madfam-org/blueprint-harvester/api|image: ${IMAGE}|" \
