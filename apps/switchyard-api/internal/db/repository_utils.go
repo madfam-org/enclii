@@ -24,3 +24,13 @@ func normalizeInet(s string) interface{} {
 	}
 	return s
 }
+
+// normalizeJSONB returns a driver-safe value for Postgres jsonb columns.
+// Nil or empty []byte must bind as SQL NULL — lib/pq/pgx reject "" with
+// `invalid input syntax for type json` (migration 032 health_check INSERT).
+func normalizeJSONB(data []byte) interface{} {
+	if len(data) == 0 {
+		return nil
+	}
+	return data
+}

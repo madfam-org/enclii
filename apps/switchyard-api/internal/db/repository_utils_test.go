@@ -54,3 +54,26 @@ func TestNormalizeInet(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeJSONB(t *testing.T) {
+	t.Run("nil becomes nil", func(t *testing.T) {
+		if got := normalizeJSONB(nil); got != nil {
+			t.Errorf("normalizeJSONB(nil) = %v, want nil", got)
+		}
+	})
+
+	t.Run("empty slice becomes nil", func(t *testing.T) {
+		if got := normalizeJSONB([]byte{}); got != nil {
+			t.Errorf("normalizeJSONB([]byte{}) = %v, want nil", got)
+		}
+	})
+
+	t.Run("non-empty passes through", func(t *testing.T) {
+		in := []byte(`{"path":"/health"}`)
+		got := normalizeJSONB(in)
+		b, ok := got.([]byte)
+		if !ok || string(b) != string(in) {
+			t.Errorf("normalizeJSONB(payload) = %v, want %q", got, in)
+		}
+	})
+}

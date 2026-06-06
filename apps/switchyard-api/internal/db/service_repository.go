@@ -122,7 +122,7 @@ func (r *ServiceRepository) Create(service *types.Service) error {
 	`
 	_, err = r.db.Exec(query, service.ID, service.ProjectID, service.Name, service.GitRepo,
 		service.AppPath, buildConfigJSON, volumesJSON, service.AutoDeploy, service.AutoDeployBranch,
-		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt, jobsJSON, service.Type, service.Region, healthCheckJSON)
+		service.AutoDeployEnv, k8sNs, service.CreatedAt, service.UpdatedAt, jobsJSON, service.Type, service.Region, normalizeJSONB(healthCheckJSON))
 	return err
 }
 
@@ -646,7 +646,7 @@ func (r *ServiceRepository) Update(ctx context.Context, service *types.Service) 
 	result, err := r.db.ExecContext(ctx, query,
 		service.Name, service.GitRepo, service.AppPath, buildConfigJSON, volumesJSON,
 		service.AutoDeploy, service.AutoDeployBranch, service.AutoDeployEnv, service.UpdatedAt, jobsJSON, service.Type, service.Region,
-		healthCheckJSON, service.ID)
+		normalizeJSONB(healthCheckJSON), service.ID)
 	if err != nil {
 		return err
 	}
