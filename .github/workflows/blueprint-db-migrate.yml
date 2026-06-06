@@ -117,9 +117,35 @@ jobs:
           BUNDLE_DIR="$(mktemp -d)"
           cp -a db/migrations/. "${BUNDLE_DIR}/"
           cp scripts/run_prod_alembic_migrate.sh "${BUNDLE_DIR}/"
+          cp scripts/normalize_migrate_database_url.py "${BUNDLE_DIR}/"
           tar czf /tmp/migrate.tgz -C "${BUNDLE_DIR}" .
           rm -rf "${BUNDLE_DIR}"
           kubectl create configmap "$CM" --from-file=migrate.tgz=/tmp/migrate.tgz -n "$NS"
+          RAW_DB_URL="$(kubectl get secret blueprint-harvester-secrets -n "$NS" -o jsonpath='{.data.DATABASE_URL}' | base64 -d)"
+          MIGRATE_DB_URL="$(python3 - <<'PY' "$RAW_DB_URL"
+import sys
+from urllib.parse import urlsplit, urlunsplit
+
+url = sys.argv[1]
+if not url:
+    raise SystemExit(1)
+scheme, netloc, path, query, fragment = urlsplit(url)
+if "@" in netloc:
+    auth, hostport = netloc.rsplit("@", 1)
+else:
+    auth, hostport = "", netloc
+host, sep, port = hostport.rpartition(":")
+if not sep:
+    host, port = hostport, "5432"
+if port == "5432":
+    netloc = f"{auth}@pgbouncer.data.svc.cluster.local:6432" if auth else "pgbouncer.data.svc.cluster.local:6432"
+    url = urlunsplit((scheme, netloc, path, query, fragment))
+print(url)
+PY
+)"
+          kubectl create secret generic blueprint-db-migrate-env -n "$NS" \
+            --from-literal=DATABASE_URL="${MIGRATE_DB_URL}" \
+            --dry-run=client -o yaml | kubectl apply -f -
           kubectl delete job "$JOB" -n "$NS" --ignore-not-found
           sed "s|image: ghcr.io/madfam-org/blueprint-harvester/api|image: ${IMAGE}|" \
             infra/k8s/production/db-migrate-job.yaml | kubectl apply -f -
