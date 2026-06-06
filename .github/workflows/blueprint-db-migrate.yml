@@ -48,6 +48,7 @@ jobs:
         with:
           repository: madfam-org/blueprint-harvester
           ref: main
+          token: ${{ secrets.GHCR_PAT }}
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v5
