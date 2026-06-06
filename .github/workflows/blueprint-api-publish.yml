@@ -21,6 +21,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  packages: write
 
 env:
   IMAGE_PREFIX: ghcr.io/madfam-org/blueprint-harvester
@@ -78,6 +80,16 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
             ${{ env.IMAGE_PREFIX }}/api:main
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign API image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${{ env.IMAGE_PREFIX }}/api@${{ steps.build.outputs.digest }}"
 
       - name: Install kustomize
         run: |
