@@ -162,6 +162,7 @@ func (h *Handler) ReconcileServicesFromCluster(c *gin.Context) {
 				GitRepo:      "",
 				K8sNamespace: &ns,
 				AutoDeploy:   true,
+				BuildConfig:  types.BuildConfig{Type: types.BuildTypeAuto},
 			}
 			if err := h.repos.Services.Create(newSvc); err != nil {
 				h.logger.Error(ctx, "Create service failed",
