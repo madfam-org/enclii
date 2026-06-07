@@ -7,6 +7,7 @@ resources:
   - secrets.production.yaml
   - redis.yaml
   - rbac.yaml
+  - switchyard-rbac.yaml
   - switchyard-api.yaml
   - switchyard-ui.yaml
   - landing-page.yaml

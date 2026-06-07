@@ -75,10 +75,10 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
-# Argo Applications: GitOps status/drift diagnostics plus audited sync and retire requests
+# Argo Applications: GitOps status/drift diagnostics plus audited sync, retire, and runtime onboarding
 - apiGroups: ["argoproj.io"]
   resources: ["applications"]
-  verbs: ["get", "list", "watch", "patch", "delete"]
+  verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
 # ExternalSecrets: secret reconciliation diagnostics plus audited refresh requests
 - apiGroups: ["external-secrets.io"]
   resources: ["externalsecrets"]

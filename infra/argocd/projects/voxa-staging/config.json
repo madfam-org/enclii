@@ -1,0 +1,8 @@
+{
+  "branch": "staging",
+  "manifestPath": "k8s/staging",
+  "name": "voxa-staging",
+  "namespace": "voxa-staging",
+  "partOf": "voxa",
+  "repoURL": "https://github.com/madfam-org/voxa.git"
+}
