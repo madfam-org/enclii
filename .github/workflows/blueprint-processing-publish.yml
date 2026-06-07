@@ -1,0 +1,134 @@
+name: Blueprint Processing Publish
+
+# Build blueprint-harvester processing from madfam-org/blueprint-harvester and pin GitOps digest.
+# Uses Enclii repo GHCR_PAT (blueprint-harvester org secret is often stale).
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: blueprint-harvester git ref (branch, tag, or SHA)
+        required: false
+        default: main
+      deploy_ack:
+        description: Type "production-kustomization" to acknowledge production publish.
+        required: true
+        type: string
+      enable_overlay:
+        description: Type "yes" to add processing-* manifests to active kustomization.
+        required: false
+        default: "no"
+      reason:
+        description: Audit reason (min 12 characters)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+env:
+  IMAGE_PREFIX: ghcr.io/madfam-org/blueprint-harvester
+  HARVESTER_REPO: madfam-org/blueprint-harvester
+
+jobs:
+  preflight:
+    name: Acknowledgement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          DEPLOY_ACK: ${{ inputs.deploy_ack }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ACK" != "production-kustomization" ]; then
+            echo "deploy_ack must be production-kustomization"
+            exit 1
+          fi
+          if [ ${#REASON} -lt 12 ]; then
+            echo "reason must be at least 12 characters"
+            exit 1
+          fi
+
+  build-processing:
+    name: Build & pin processing digest
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.HARVESTER_REPO }}
+          ref: ${{ inputs.git_ref }}
+          path: blueprint-harvester
+          token: ${{ secrets.GHCR_PAT }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -euo pipefail
+          echo "${GHCR_PAT}" | docker login ghcr.io -u madfam-bot --password-stdin
+
+      - name: Build & push processing
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: blueprint-harvester
+          file: blueprint-harvester/services/processing/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/processing:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/processing:main
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign processing image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${{ env.IMAGE_PREFIX }}/processing@${{ steps.build.outputs.digest }}"
+
+      - name: Install kustomize
+        run: |
+          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" | tar xz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Pin processing digest in GitOps
+        working-directory: blueprint-harvester/infra/k8s/production
+        env:
+          PROCESSING_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          kustomize edit set image "${IMAGE_PREFIX}/processing=${IMAGE_PREFIX}/processing@${PROCESSING_DIGEST}"
+          echo "Pinned processing @${PROCESSING_DIGEST}"
+
+      - name: Enable processing overlay
+        if: inputs.enable_overlay == 'yes'
+        working-directory: blueprint-harvester
+        run: |
+          set -euo pipefail
+          python3 scripts/enable_processing_prod_overlay.py --execute
+
+      - name: Commit & push GitOps changes
+        working-directory: blueprint-harvester
+        env:
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          git config user.name "madfam-ci[bot]"
+          git config user.email "ci@madfam.io"
+          git add infra/k8s/production/kustomization.yaml
+          if git diff --cached --quiet; then
+            echo "No GitOps changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(gitops): pin processing digest from Enclii blueprint-processing-publish" \
+            -m "Reason: ${REASON}"
+          git push
