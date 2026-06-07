@@ -276,6 +276,8 @@ func sharedPostgresCandidates() []discoveryCandidate {
 		{"routecraft", "routecraft"},
 		{"symbiosis_hcm", "symbiosis-hcm"},
 		{"tezca", "tezca"},
+		{"voxa", "voxa"},
+		{"voxa_staging", "voxa-staging"},
 	}
 	out := make([]discoveryCandidate, 0, len(dbs))
 	for _, d := range dbs {
