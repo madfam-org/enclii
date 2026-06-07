@@ -1,8 +1,0 @@
-{
-  "branch": "main",
-  "manifestPath": "k8s/production",
-  "name": "voxa",
-  "namespace": "voxa",
-  "partOf": "voxa",
-  "repoURL": "https://github.com/madfam-org/voxa.git"
-}
