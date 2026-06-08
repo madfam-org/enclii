@@ -1,0 +1,77 @@
+name: Blueprint NPM SDK Publish
+
+# Publish @madfam/blueprint-harvester to npm.madfam.io using org NPM_MADFAM_TOKEN.
+# Requires repo secrets: NPM_MADFAM_TOKEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_ack:
+        description: Type "npm-madfam-io" to acknowledge npm.madfam.io publish
+        required: true
+        type: string
+      git_ref:
+        description: blueprint-harvester ref (default main)
+        required: false
+        default: main
+        type: string
+      reason:
+        description: Audit reason (min 12 characters)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          DEPLOY_ACK: ${{ inputs.deploy_ack }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_ACK" != "npm-madfam-io" ]; then
+            echo "deploy_ack must be npm-madfam-io"
+            exit 1
+          fi
+          if [ ${#REASON} -lt 12 ]; then
+            echo "reason must be at least 12 characters"
+            exit 1
+          fi
+
+  publish:
+    name: Publish @madfam/blueprint-harvester
+    needs: preflight
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    env:
+      NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: madfam-org/blueprint-harvester
+          ref: ${{ inputs.git_ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Authenticate to npm.madfam.io
+        uses: madfam-org/solarpunk-foundry/.github/actions/npm-madfam-auth@main
+        with:
+          token: ${{ secrets.NPM_MADFAM_TOKEN }}
+          require-publish-capable: "true"
+
+      - name: Publish packages/sdk-js
+        working-directory: packages/sdk-js
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          VER=$(jq -r .version package.json)
+          if npm view "${PKG}@${VER}" version --registry https://npm.madfam.io 2>/dev/null; then
+            echo "${PKG}@${VER} already published"
+            exit 0
+          fi
+          npm publish --access restricted
