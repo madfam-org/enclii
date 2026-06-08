@@ -98,8 +98,10 @@ func (c *Client) RollingRestart(ctx context.Context, namespace, name string) err
 		deployment.Spec.Template.Annotations = make(map[string]string)
 	}
 
-	// Update restart annotation with current timestamp to trigger rollout
-	deployment.Spec.Template.Annotations["enclii.dev/restartedAt"] = metav1.Now().Format(time.RFC3339)
+	// Use the standard kubectl restart annotation so ArgoCD ApplicationSet
+	// ignoreDifferences (kubectl.kubernetes.io/restartedAt) allows the rollout
+	// to persist under self-heal. enclii.dev/restartedAt is reverted before pods roll.
+	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = metav1.Now().Format(time.RFC3339)
 	deployment.Spec.Template.Annotations["enclii.dev/restartReason"] = "secret-rotation"
 
 	// Update the deployment

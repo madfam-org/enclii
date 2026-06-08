@@ -1,0 +1,28 @@
+# Temporary cosign bypass for docs-site until ghcr.io/madfam-org/enclii/docs-site is public.
+# Unblocks core-services Argo sync (switchyard-rbac, Reloader annotations, etc.).
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: docs-site-signature-temporary
+  namespace: enclii
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    enclii.dev/reason: "docs-site GHCR package is private; Kyverno verify-image-signatures cannot pull manifests."
+    enclii.dev/scope: "docs-site Deployment only until GHCR visibility is public."
+spec:
+  exceptions:
+    - policyName: verify-image-signatures
+      ruleNames:
+        - check-signature
+        - autogen-check-signature
+  match:
+    any:
+      - resources:
+          kinds:
+            - Deployment
+            - Pod
+            - ReplicaSet
+          namespaces:
+            - enclii
+          names:
+            - docs-site*

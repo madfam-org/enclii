@@ -5,6 +5,10 @@ metadata:
   name: switchyard-api
 spec:
   template:
+    metadata:
+      annotations:
+        # Reload pods when platform webhook/callback secrets change (Stakater Reloader).
+        reloader.stakater.com/auto: "true"
     spec:
       containers:
       - name: switchyard-api
