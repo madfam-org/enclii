@@ -59,11 +59,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Authenticate to npm.madfam.io
-        uses: madfam-org/solarpunk-foundry/.github/actions/npm-madfam-auth@main
-        with:
-          token: ${{ secrets.NPM_MADFAM_TOKEN }}
-          require-publish-capable: "true"
+      - name: Configure npm.madfam.io auth
+        run: |
+          set -euo pipefail
+          printf '\n@madfam:registry=https://npm.madfam.io\n' >> .npmrc
+          printf '//npm.madfam.io/:_authToken=%s\n' "$NPM_MADFAM_TOKEN" >> .npmrc
+          npm whoami --registry https://npm.madfam.io/ || true
 
       - name: Publish packages/sdk-js
         working-directory: packages/sdk-js
