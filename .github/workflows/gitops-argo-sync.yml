@@ -200,3 +200,54 @@ jobs:
             exit 1
           }
           kubectl get pods -n "$NS" -l app="$DEP" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{" "}{.spec.containers[0].image}{"\n"}{end}'
+
+      - name: Rollout restart CEQ API (JWT env / JWKS validation)
+        if: inputs.app == 'ceq-services'
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="ceq"
+          DEP="ceq-api"
+          echo "JANUA env on deployment:"
+          kubectl set env deployment/"$DEP" -n "$NS" --list | grep JANUA || true
+          echo "Current API image:"
+          kubectl get deploy "$DEP" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' || true
+          kubectl rollout restart deployment/"$DEP" -n "$NS"
+          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s || {
+            echo "::error::ceq-api rollout failed"
+            kubectl get pods -n "$NS" -l app=ceq-api -o wide || true
+            kubectl logs -n "$NS" deployment/ceq-api --tail=40 || true
+            exit 1
+          }
+          echo "ceq-api pods after rollout:"
+          kubectl get pods -n "$NS" -l app=ceq-api -o wide
+
+      - name: Rollout restart CEQ Studio (auth probe / session UX)
+        if: inputs.app == 'ceq-services'
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+            CURRENT_CONTEXT="$(kubectl config current-context)"
+            CLUSTER_NAME="$(kubectl config view --raw -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.cluster}")"
+            kubectl config set-cluster "${CLUSTER_NAME}" \
+              --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}"
+          fi
+          NS="ceq"
+          DEP="ceq-studio"
+          kubectl rollout restart deployment/"$DEP" -n "$NS"
+          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s
