@@ -269,16 +269,10 @@ jobs:
           kubectl set env deployment/"$DEP" -n "$NS" --list | grep JANUA || true
           echo "Verify in-cluster JWKS from ceq-api pod"
           CEQ_POD="$(kubectl get pod -n "$NS" -l app=ceq-api -o jsonpath='{.items[0].metadata.name}')"
-          kubectl exec -n "$NS" "$CEQ_POD" -- python -c "
-import urllib.request
-try:
-    data = urllib.request.urlopen('http://janua-api.janua.svc.cluster.local/.well-known/jwks.json', timeout=5).read(120)
-    print('JWKS fetch ok:', data[:80])
-except Exception as e:
-    print('JWKS fetch failed:', e)
-    raise
-" || true
+          kubectl exec -n "$NS" "$CEQ_POD" -- python -c "import urllib.request as u; print('JWKS fetch ok:', u.urlopen('http://janua-api.janua.svc.cluster.local/.well-known/jwks.json', timeout=5).read(120))" || true
           kubectl logs -n "$NS" -l app=ceq-api --tail=30 | grep -Ei 'jwks|janua|401|invalid' || true
+          echo "ceq-api pods after rollout:"
+          kubectl get pods -n "$NS" -l app=ceq-api -o wide
 
       - name: Rollout restart CEQ Studio (auth probe / session UX)
         if: inputs.app == 'ceq-services'
