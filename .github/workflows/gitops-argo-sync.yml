@@ -218,17 +218,52 @@ jobs:
           fi
           NS="ceq"
           DEP="ceq-api"
-          echo "JANUA env on deployment:"
+          INTERNAL_JWKS="http://janua-api.janua.svc.cluster.local:4100/.well-known/jwks.json"
+
+          echo "Apply CEQ network policies from main (includes allow-janua-egress)"
+          curl -fsSL "https://raw.githubusercontent.com/madfam-org/ceq/main/infrastructure/k8s/network-policies.yaml" \
+            | kubectl apply -f -
+
+          echo "Hard-refresh Argo revision for ceq-services"
+          kubectl patch application ceq-services -n argocd --type merge -p \
+            '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}' || true
+          sleep 10
+          kubectl patch application ceq-services -n argocd --type merge -p \
+            '{"operation":{"sync":{"syncStrategy":{"apply":{"force":false}}},"initiatedBy":{"username":"github-actions-ceq-jwks"}}}' || true
+          sleep 15
+
+          echo "JANUA env on deployment (pre-patch):"
           kubectl set env deployment/"$DEP" -n "$NS" --list | grep JANUA || true
-          echo "Current API image:"
-          kubectl get deploy "$DEP" -n "$NS" -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}' || true
+          CURRENT_JWKS="$(kubectl set env deployment/"$DEP" -n "$NS" --list | awk -F= '/^JANUA_JWKS_URL=/{print $2}')"
+          if [ "$CURRENT_JWKS" != "$INTERNAL_JWKS" ]; then
+            echo "Patching JANUA_JWKS_URL -> in-cluster Janua"
+            kubectl set env deployment/"$DEP" -n "$NS" "JANUA_JWKS_URL=${INTERNAL_JWKS}"
+          fi
+
+          echo "Clear Pending ceq-api pods blocking rollout"
+          kubectl get pods -n "$NS" -l app=ceq-api --field-selector=status.phase=Pending -o name \
+            | xargs -r kubectl delete -n "$NS" --wait=false
+
+          DESIRED="$(kubectl get deploy "$DEP" -n "$NS" -o jsonpath='{.spec.replicas}')"
+          echo "Serializing rollout (desired replicas=${DESIRED})"
+          kubectl scale deployment/"$DEP" -n "$NS" --replicas=1
           kubectl rollout restart deployment/"$DEP" -n "$NS"
-          kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s || {
+          if ! kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s; then
             echo "::error::ceq-api rollout failed"
             kubectl get pods -n "$NS" -l app=ceq-api -o wide || true
+            kubectl describe pods -n "$NS" -l app=ceq-api | tail -80 || true
             kubectl logs -n "$NS" deployment/ceq-api --tail=40 || true
             exit 1
-          }
+          fi
+          if [ "${DESIRED}" != "1" ]; then
+            kubectl scale deployment/"$DEP" -n "$NS" --replicas="${DESIRED}"
+            kubectl rollout status deployment/"$DEP" -n "$NS" --timeout=300s || {
+              echo "::warning::Second ceq-api replica did not become ready; auth may still work on one pod"
+              kubectl get pods -n "$NS" -l app=ceq-api -o wide || true
+            }
+          fi
+          echo "JANUA env on deployment (post-rollout):"
+          kubectl set env deployment/"$DEP" -n "$NS" --list | grep JANUA || true
           echo "ceq-api pods after rollout:"
           kubectl get pods -n "$NS" -l app=ceq-api -o wide
 
