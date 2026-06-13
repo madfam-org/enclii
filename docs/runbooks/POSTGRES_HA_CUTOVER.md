@@ -1,5 +1,9 @@
 # Runbook: Postgres HA Cutover (single-instance → CNPG `postgres-ha`)
 
+> **Boundary checkpoint (2026-06-13, platform on-call):** Public-safe runbook — no
+> secrets or production topology. Private operational detail and sink live in
+> `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 **Last Updated:** 2026-06-13
 **Owner:** Platform / DB on-call + operator approver (RFC 0012 §8 gate)
 **Blocker:** First-Pesos roadmap blocker #1 — the shared `data/postgres`
