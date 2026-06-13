@@ -218,7 +218,8 @@ jobs:
           fi
           NS="ceq"
           DEP="ceq-api"
-          INTERNAL_JWKS="http://janua-api.janua.svc.cluster.local:4100/.well-known/jwks.json"
+          INTERNAL_JWKS="http://janua-api.janua.svc.cluster.local/.well-known/jwks.json"
+          INTERNAL_JANUA="http://janua-api.janua.svc.cluster.local"
 
           echo "Apply CEQ network policies from main (includes allow-janua-egress)"
           curl -fsSL "https://raw.githubusercontent.com/madfam-org/ceq/main/infrastructure/k8s/network-policies.yaml" \
