@@ -305,6 +305,9 @@ jobs:
     services:
       postgres:
         image: postgres:15-alpine
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: enclii
           POSTGRES_PASSWORD: enclii_test
@@ -319,6 +322,9 @@ jobs:
 
       redis:
         image: redis:7-alpine
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
