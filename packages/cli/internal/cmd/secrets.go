@@ -51,6 +51,7 @@ Examples:
 	cmd.AddCommand(newSecretsSyncCommand(cfg))
 	cmd.AddCommand(newSecretsRotateCommand(cfg))
 	cmd.AddCommand(newSecretsVaultBackfillCommand(cfg))
+	cmd.AddCommand(newSecretsIntakeCommand(cfg))
 
 	return cmd
 }

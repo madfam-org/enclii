@@ -1,0 +1,39 @@
+# Secret intake routing registry — friendly target id → Vault + ESO.
+# Values are NEVER stored here. Add entries via PR review.
+targets:
+  ceq/vast-api-key:
+    label: CEQ VAST API Key
+    description: Orchestrator worker VAST provider key
+    vault_path: secret/ceq
+    namespace: ceq
+    external_secret: ceq-orchestrator-secrets
+    keys:
+      - VAST_API_KEY
+
+  ceq/janua-client-secret:
+    label: CEQ Janua OAuth client secret
+    description: CEQ studio/API Janua confidential client
+    vault_path: secret/ceq
+    namespace: ceq
+    external_secret: ceq-janua-client-secret
+    keys:
+      - JANUA_CLIENT_SECRET
+
+  dhanam/stripe-mx-live:
+    label: Dhanam Stripe MX live keys
+    description: Production MX Stripe secret + webhook signing secret
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets
+    keys:
+      - STRIPE_SECRET_KEY
+      - STRIPE_WEBHOOK_SECRET
+
+  enclii/internal-api-key:
+    label: Enclii internal API key
+    description: Switchyard ↔ Roundhouse internal auth
+    vault_path: secret/enclii
+    namespace: enclii
+    external_secret: enclii-internal-api-key
+    keys:
+      - INTERNAL_API_KEY

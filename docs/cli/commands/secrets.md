@@ -244,3 +244,26 @@ enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path sec
 ```
 
 Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required. The server reads the source Kubernetes Secret, normalizes keys to lower snake case, merges them into Vault, and optionally force-syncs the named ExternalSecret. Secret values are never printed.
+
+## `enclii secrets intake`
+
+Chat-safe credential handoff into Vault — values never appear in agent transcripts or CLI stdout.
+
+```bash
+enclii secrets intake targets
+enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
+enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
+enclii secrets intake status int_1234567890
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `targets` | List registered intake targets (Vault path, keys, namespace) |
+| `submit TARGET` | Send secret value(s) once; masked prompt, `--value-file`, or `--stdin` |
+| `status INTAKE_ID` | Poll metadata only — safe for agents (no values returned) |
+
+`--reason` is required on submit. After submit, tell your agent the `intake_id` only — never paste the secret into chat.
+
+Requires Switchyard Vault writer enabled (`ENCLII_SECRET_ROTATION_ENABLED` + `vault-credentials` secret). Until then, submit returns `503 vault_writer_disabled`.
+
+Canonical routing: `enclii/apps/switchyard-api/internal/secretsintake/registry.yaml`. Policy: [internal-devops secret intake decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md).
