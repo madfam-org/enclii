@@ -125,11 +125,11 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 	refreshed := false
 	if target.ExternalSecret != "" && target.Namespace != "" && h.k8sClient != nil && h.k8sClient.DynamicClient != nil {
 		_, refreshErr := h.patchExternalSecretOpsAnnotations(ctx, target.Namespace, target.ExternalSecret, map[string]string{
-			"force-sync":                    fmt.Sprintf("%d", now.Unix()),
-			"enclii.dev/last-ops-operation": "ops.secrets.intake",
-			"enclii.dev/last-ops-reason":    req.Reason,
-			"enclii.dev/last-ops-requested": now.Format(time.RFC3339),
-			"enclii.dev/secret-intake-id":   intakeID,
+			"force-sync":                      fmt.Sprintf("%d", now.Unix()),
+			"enclii.dev/last-ops-operation":   "ops.secrets.intake",
+			"enclii.dev/last-ops-reason":      req.Reason,
+			"enclii.dev/last-ops-requested":   now.Format(time.RFC3339),
+			"enclii.dev/secret-intake-id":     intakeID,
 			"enclii.dev/secret-intake-target": target.ID,
 		}, "")
 		refreshed = refreshErr == nil

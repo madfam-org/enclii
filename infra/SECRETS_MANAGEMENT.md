@@ -352,6 +352,17 @@ All private image pulls across the cluster use a single `ghcr-credentials` secre
 
 ### Running the Rotation Script
 
+**GitHub Actions (preferred for single-namespace unblock):**
+
+1. Open **madfam-org/enclii** → Actions → **Rotate GHCR credentials (namespace)**
+2. `namespace`: target (e.g. `janua`, `dhanam`, `enclii`)
+3. `reason`: audit string (≥12 characters)
+
+Workflow: `.github/workflows/rotate-ghcr-namespace.yml` — uses `GHCR_PAT` and
+in-cluster kubeconfig on ARC runners when `ARC_BOOTSTRAP_COMPLETE=true`.
+
+**Local script (all namespaces):**
+
 ```bash
 # From the enclii repo root:
 GHCR_USERNAME=madfam-bot GHCR_PAT=ghp_xxx ./scripts/rotate-ghcr-credentials.sh
