@@ -108,7 +108,9 @@ spec:
   # would need a StatefulSet with volumeClaimTemplates so each peer has its own
   # volume — out of scope here. Recreate strategy ensures the old pod releases
   # the volume before the new one tries to attach.
-  replicas: 1
+  # Cutover complete: HA StatefulSet (alertmanager-statefulset.yaml) owns alerting.
+  # Keep Deployment at 0 so Argo does not fight the legacy RWO PVC attach loop.
+  replicas: 0
   strategy:
     type: Recreate
   selector:
