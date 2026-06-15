@@ -13,13 +13,13 @@ var registryYAML []byte
 
 // Target describes where an intake writes and what to sync afterward.
 type Target struct {
-	ID              string   `yaml:"-" json:"id"`
-	Label           string   `yaml:"label" json:"label"`
-	Description     string   `yaml:"description" json:"description"`
-	VaultPath       string   `yaml:"vault_path" json:"vault_path"`
-	Namespace       string   `yaml:"namespace" json:"namespace"`
-	ExternalSecret  string   `yaml:"external_secret" json:"external_secret,omitempty"`
-	Keys            []string `yaml:"keys" json:"keys"`
+	ID             string   `yaml:"-" json:"id"`
+	Label          string   `yaml:"label" json:"label"`
+	Description    string   `yaml:"description" json:"description"`
+	VaultPath      string   `yaml:"vault_path" json:"vault_path"`
+	Namespace      string   `yaml:"namespace" json:"namespace"`
+	ExternalSecret string   `yaml:"external_secret" json:"external_secret,omitempty"`
+	Keys           []string `yaml:"keys" json:"keys"`
 }
 
 type file struct {
