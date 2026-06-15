@@ -204,6 +204,7 @@ VAULT_TOKEN_FILE=/path/to/vault-admin.token \
 
 Registry targets: `apps/switchyard-api/internal/secretsintake/registry.yaml`.  
 Runbook: [Secret Intake](../runbooks/SECRET_INTAKE.md).  
+Finish-line orchestration: `scripts/finish-line-secret-intake.sh`.  
 Policy: [internal-devops decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md).
 
 Until `vault-credentials` exists, intake returns `503 vault_writer_disabled`.
