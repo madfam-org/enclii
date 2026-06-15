@@ -21,6 +21,11 @@ spec:
       ruleNames:
         - disallow-latest
         - autogen-disallow-latest
+    - policyName: verify-image-signatures
+      ruleNames:
+        - check-signature
+        - autogen-check-signature
+        - autogen-cronjob-check-signature
   match:
     any:
       - resources:
@@ -29,3 +34,12 @@ spec:
             - Deployment
           namespaces:
             - monitoring
+      - resources:
+          kinds:
+            - CronJob
+            - Job
+          namespaces:
+            - monitoring
+          names:
+            - deploy-pipeline-monitor*
+            - argo-main-parity-monitor*
