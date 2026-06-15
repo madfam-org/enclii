@@ -17,7 +17,7 @@ resources:
   - network-policies.yaml
   - monitoring-policy-exception.yaml
   - prometheus-platform-rules.yaml
-  - wal-archive-rules/
+  - wal-archive-rules/postgres-wal-archive.yaml
   - pgbackrest-health-rules.yaml
   - dashboards/
 
