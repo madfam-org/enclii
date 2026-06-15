@@ -193,6 +193,10 @@ enclii secrets list switchyard-api
 enclii secrets set MY_KEY=value --service switchyard-api --secret
 enclii secrets rm MY_KEY --service switchyard-api
 
+# Chat-safe operator intake (values never in agent chat — see docs/runbooks/SECRET_INTAKE.md)
+enclii secrets intake submit ceq/vast-api-key --reason "audit reason"
+enclii secrets intake status int_<id>
+
 # Domains, tunnel routes, DNS
 enclii domains list switchyard-api
 enclii domains add switchyard-api my.example.com       # auto-provisions tunnel route + DNS

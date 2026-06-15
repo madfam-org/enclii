@@ -39,6 +39,15 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `docs/testing/GOLDEN_TESTS.md` — golden manifest regeneration
 - `docs/ADAPTER_GAPS.md` — Enclii adapter gap registry
 
+## Secret intake + Vault bridge (Jun 2026)
+
+- `docs/runbooks/SECRET_INTAKE.md` — chat-safe operator credential handoff
+- `docs/cli/commands/secrets.md` — `enclii secrets intake` CLI reference
+- `scripts/provision-switchyard-vault-writer.sh` — Vault policy + `vault-credentials`
+- Private: `internal-devops/decisions/2026-06-15-secret-intake-protocol.md`
+- Private: `internal-devops/runbooks/2026-06-15-vault-bridge-gaps.md`
+- Private: `internal-devops/ecosystem/ecosystem-banner-footer-audit-2026-06-15.md`
+
 ## Coupler Program (Agent Tool Plane, Jun 2026)
 
 - `docs/strategy/AGENT_TOOL_PLANE.md` — architecture, boundaries, API sketch

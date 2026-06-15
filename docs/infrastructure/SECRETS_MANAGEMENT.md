@@ -1,6 +1,6 @@
 # Secrets Management Strategy
 
-**Last Updated:** March 14, 2026
+**Last Updated:** 2026-06-15
 **Current Approach:** HashiCorp Vault (self-hosted) + ESO vault-store
 **Provider:** Self-hosted HashiCorp Vault (Community Edition) at vault.madfam.io
 **Coverage:** ~160 secrets across 16 namespaces via 19 ExternalSecret resources
@@ -182,6 +182,32 @@ ESO (external-secrets namespace)
 
 See [EXTERNAL_SECRETS.md](./EXTERNAL_SECRETS.md) for the full ExternalSecret inventory.
 
+## Secret Intake (chat-safe operator handoff)
+
+When operators must supply credentials that must **never** appear in agent chat
+transcripts, use Enclii Secret Intake instead of pasting into Cursor or committing
+to git.
+
+| Surface | Role |
+|---------|------|
+| `enclii secrets intake submit <target> --reason "..."` | Masked CLI / file / stdin → Vault |
+| `enclii secrets intake status <intake_id>` | Agent-safe poll (no values) |
+| `POST /v1/secrets/intake` | Same via API (admin JWT) |
+
+**P0 prerequisite:** `vault-credentials` K8s secret in `enclii` namespace with a
+scoped Vault writer token. Bootstrap:
+
+```bash
+VAULT_TOKEN_FILE=/path/to/vault-admin.token \
+  ./scripts/provision-switchyard-vault-writer.sh
+```
+
+Registry targets: `apps/switchyard-api/internal/secretsintake/registry.yaml`.  
+Runbook: [Secret Intake](../runbooks/SECRET_INTAKE.md).  
+Policy: [internal-devops decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md).
+
+Until `vault-credentials` exists, intake returns `503 vault_writer_disabled`.
+
 ## Operations
 
 For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](../runbooks/VAULT_OPERATIONS.md).
@@ -190,3 +216,4 @@ For Vault operations (unseal, rotation, backup), see [Vault Operations Runbook](
 
 - [External Secrets Operator](./EXTERNAL_SECRETS.md)
 - [GitOps with ArgoCD](./GITOPS.md)
+- [Secret Intake Runbook](../runbooks/SECRET_INTAKE.md)
