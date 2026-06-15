@@ -1,6 +1,6 @@
 # Secrets Management Guide
 
-> **Canonical doc:** [`docs/infrastructure/SECRETS_MANAGEMENT.md`](../docs/infrastructure/SECRETS_MANAGEMENT.md) (Vault + External Secrets Operator). This file is legacy; do not treat Sealed Secrets as the current production path.
+> **Canonical doc:** [`docs/infrastructure/SECRETS_MANAGEMENT.md`](../docs/infrastructure/SECRETS_MANAGEMENT.md) (Vault + ESO + [Secret Intake](../docs/runbooks/SECRET_INTAKE.md)). This file is legacy; do not treat Sealed Secrets as the current production path.
 
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.

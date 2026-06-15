@@ -78,6 +78,69 @@ func TestSubmitSecretIntake_SuccessNoValuesInResponse(t *testing.T) {
 	assert.Equal(t, resp.IntakeID, got.IntakeID)
 }
 
+func TestSubmitSecretIntake_ValidationErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	vaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer vaultServer.Close()
+
+	h := &Handler{
+		vaultClient: lockbox.NewVaultClient(&lockbox.VaultConfig{
+			Address: vaultServer.URL,
+			Token:   "test-token",
+			Enabled: true,
+		}),
+	}
+	r := gin.New()
+	r.POST("/v1/secrets/intake", h.SubmitSecretIntake)
+
+	cases := []struct {
+		name string
+		body string
+		code int
+	}{
+		{"missing reason", `{"target":"ceq/vast-api-key","values":{"VAST_API_KEY":"x"}}`, http.StatusBadRequest},
+		{"unknown target", `{"target":"nope/key","values":{"X":"y"},"reason":"test"}`, http.StatusNotFound},
+		{"disallowed key", `{"target":"ceq/vast-api-key","values":{"NOT_ALLOWED":"x"},"reason":"test"}`, http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/secrets/intake", bytes.NewReader([]byte(tc.body)))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tc.code, w.Code)
+		})
+	}
+}
+
+func TestGetSecretIntakeStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &Handler{}
+	status := secretIntakeStatus{
+		IntakeID: "int_test123",
+		TargetID: "ceq/vast-api-key",
+		Status:   "ready",
+	}
+	require.NoError(t, h.saveIntakeStatus(t.Context(), status))
+
+	r := gin.New()
+	r.GET("/v1/secrets/intake/:id", h.GetSecretIntakeStatus)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/secrets/intake/int_test123", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "int_test123")
+	assert.NotContains(t, w.Body.String(), "super-secret")
+
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/secrets/intake/int_missing", nil)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusNotFound, w2.Code)
+}
+
 func TestListSecretIntakeTargets(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := &Handler{}
@@ -89,4 +152,5 @@ func TestListSecretIntakeTargets(t *testing.T) {
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "ceq/vast-api-key")
+	assert.Contains(t, w.Body.String(), "dhanam/stripe-mx-live")
 }

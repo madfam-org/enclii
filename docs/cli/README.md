@@ -131,7 +131,7 @@ enclii deploy --env production
 ### Configuration
 | Command | Description |
 |---------|-------------|
-| [`secrets`](./commands/secrets.md) | Manage service secrets and environment variables |
+| [`secrets`](./commands/secrets.md) | Service secrets, operator intake, sync/rotate/vault-backfill |
 | [`domains`](./commands/domains.md) | Manage custom domains for services |
 | [`previews`](./commands/previews.md) | List and manage PR preview environments |
 | [`volumes`](./commands/volumes.md) | Manage persistent volumes on a service |

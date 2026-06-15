@@ -44,6 +44,7 @@ func TestNewSecretsCommand(t *testing.T) {
 	assert.Contains(t, subNames, "sync")
 	assert.Contains(t, subNames, "rotate")
 	assert.Contains(t, subNames, "vault-backfill")
+	assert.Contains(t, subNames, "intake")
 }
 
 func TestNewSecretsSetCommand(t *testing.T) {

@@ -212,6 +212,36 @@ Vault seals on every restart. Set up auto-unseal (AWS KMS, GCP Cloud KMS, or Tra
 
 ---
 
+## Switchyard Vault writer (secret intake + vault-backfill)
+
+Switchyard-api can merge operator-supplied secrets into Vault KV v2 when
+`ENCLII_SECRET_ROTATION_ENABLED=true` and `ENCLII_VAULT_TOKEN` is set from the
+`vault-credentials` secret.
+
+**Bootstrap (operator, break-glass Vault admin token — never in chat/git):**
+
+```bash
+VAULT_TOKEN_FILE=/path/to/vault-admin.token \
+  ./scripts/provision-switchyard-vault-writer.sh
+```
+
+**Verify:**
+
+```bash
+enclii secrets intake targets
+```
+
+**Submit (human only — masked):**
+
+```bash
+enclii secrets intake submit ceq/vast-api-key --reason "audit reason here"
+```
+
+See [Secret Intake Runbook](./SECRET_INTAKE.md) and private
+`internal-devops/runbooks/2026-06-15-vault-bridge-gaps.md` for bridge status.
+
+---
+
 ## Related Documentation
 
 - [External Secrets Operator](../infrastructure/EXTERNAL_SECRETS.md)

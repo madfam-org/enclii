@@ -11,12 +11,21 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Makefile `deploy-prod` | Break-glass raw `kubectl apply -k` only | `enclii deploy` / GitOps-only path | P2 |
 | Commercial GA staging secrets | Manual `workflow_dispatch` + repo secrets | GitHub Environment `commercial-ga-staging` — **8/8 populated** 2026-05-30 | P2 |
 | Enclii Vault `internal_api_key` backfill | ~~Manual `VAULT_TOKEN` + `scripts/backfill-vault-path-from-k8s-secret.sh`~~ | **Closed** — `enclii secrets vault-backfill` merges K8s Secret keys into Vault KV v2 and force-syncs merge ESO | — |
+| Switchyard Vault writer bootstrap | Manual `vault-credentials` + `scripts/provision-switchyard-vault-writer.sh` | Automated token rotation via K8s auth (future) | **P0** — intake returns `503` until secret exists |
 | Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `enclii secrets vault-backfill`; `providers.resend.*` + Dispatch Provider Hub | — |
 | Agent SaaS tool plane (`madfam.ops.*` proxy) | N/A — not built | Coupler `madfam.ops.*` → Enclii `providers.*` / `ops.*` (admin JWT) | P1 — track in [COUPLER_REMEDIATION_PLAN.md](strategy/COUPLER_REMEDIATION_PLAN.md) |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
+
+### 2026-06-15 — Secret intake (chat-safe handoff)
+
+`enclii secrets intake targets|submit|status` routes operator credentials into Vault
+via Switchyard without values in agent transcripts. Requires `vault-credentials`
+K8s secret — run `scripts/provision-switchyard-vault-writer.sh`. See
+`docs/runbooks/SECRET_INTAKE.md`. Close P0 vault-writer bootstrap row when
+provisioned and `enclii secrets intake targets` succeeds on prod.
 
 ### 2026-05-25 — Secrets adapter surface
 

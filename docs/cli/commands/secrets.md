@@ -12,11 +12,17 @@ enclii secrets <subcommand> [flags]
 
 ## Description
 
-The `secrets` command manages secrets and environment variables for your services. Secrets are encrypted at rest and masked in API responses. Regular environment variables are visible but can be promoted to secrets with the `--secret` flag.
+The `secrets` command manages secrets and environment variables for your services, plus operator-only surfaces (`intake`, `sync`, `rotate`, `vault-backfill`) for Vault/ESO operations. Secrets are encrypted at rest and masked in API responses. Regular environment variables are visible but can be promoted to secrets with the `--secret` flag.
 
-The command reads `service.yaml` (or a custom spec file via `--file`) to resolve the target project and service. Changes to secrets and environment variables take effect on the next deployment.
+The command reads `service.yaml` (or a custom spec file via `--file`) to resolve the target project and service for per-service commands. Operator subcommands (`intake`, `sync`, `rotate`, `vault-backfill`) call Switchyard directly.
 
 ## Subcommands
+
+| Subcommand | Scope | Description |
+|------------|-------|-------------|
+| `set`, `list`, `get`, `delete` | Per-service | Service env vars via `service.yaml` |
+| `intake` | Platform | Chat-safe Vault intake ([details below](#enclii-secrets-intake)) |
+| `sync`, `rotate`, `vault-backfill` | Platform | Audited ESO/Vault ops via Switchyard |
 
 ### `set`
 

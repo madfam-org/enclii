@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -516,6 +517,50 @@ func TestAPIClient_PreflightOnboard(t *testing.T) {
 	assert.False(t, result.Pass)
 	assert.Len(t, result.Violations, 1)
 	assert.Equal(t, "deployment.yaml", result.Violations[0].File)
+}
+
+func TestAPIClient_GetRaw(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/v1/secrets/intake/targets", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"targets":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	body, err := client.GetRaw(context.Background(), "/v1/secrets/intake/targets")
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"targets":[]}`, string(body))
+}
+
+func TestAPIClient_GetRaw_Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden","message":"admin required"}`))
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	_, err := client.GetRaw(context.Background(), "/v1/secrets/intake/targets")
+	require.Error(t, err)
+	var apiErr APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+}
+
+func TestAPIClient_PostRaw(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/v1/secrets/intake", r.URL.Path)
+		_, _ = w.Write([]byte(`{"intake_id":"int_1","status":"ready"}`))
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "test-token")
+	body, err := client.PostRaw(context.Background(), "/v1/secrets/intake", bytes.NewReader([]byte(`{"target":"x"}`)))
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "int_1")
 }
 
 // Benchmark tests
