@@ -39,7 +39,15 @@ Add targets via PR to the registry — do not hardcode paths in runbooks.
 
 ## Operator flow
 
+**One-shot (recommended):**
+
 ```bash
+VAULT_TOKEN_FILE=/path/to/vault-admin.token \
+VAST_API_KEY_FILE=/path/to/vast.api.key \
+  ./scripts/finish-line-secret-intake.sh
+```
+
+Or step-by-step:
 enclii secrets intake targets
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 # masked prompt, or --value-file / --stdin (KEY=VALUE lines)
