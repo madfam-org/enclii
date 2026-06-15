@@ -646,6 +646,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// apply requests require concrete adapters and audit reasons.
 			protected.GET("/ops/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetOpsCapabilities)
 			protected.POST("/ops/:domain/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleOpsOperation)
+			// Chat-safe secret intake: write-only values path; agents poll status by intake_id.
+			protected.GET("/secrets/intake/targets", h.auth.RequireRole(string(types.RoleAdmin)), h.ListSecretIntakeTargets)
+			protected.POST("/secrets/intake", h.auth.RequireRole(string(types.RoleAdmin)), h.SubmitSecretIntake)
+			protected.GET("/secrets/intake/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.GetSecretIntakeStatus)
 			protected.GET("/providers/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetProviderCapabilities)
 			protected.POST("/providers/:provider/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleProviderOperation)
 

@@ -150,6 +150,62 @@ func (c *APIClient) handleResponse(resp *http.Response, result interface{}) erro
 	return nil
 }
 
+// GetRaw performs a GET and returns the response body on success.
+func (c *APIClient) GetRaw(ctx context.Context, path string) ([]byte, error) {
+	resp, err := c.makeRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		var apiErr struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(body, &apiErr); err == nil {
+			msg := apiErr.Error
+			if apiErr.Message != "" {
+				msg = apiErr.Message
+			}
+			return nil, APIError{StatusCode: resp.StatusCode, Message: msg}
+		}
+		return nil, APIError{StatusCode: resp.StatusCode, Message: string(body)}
+	}
+	return body, nil
+}
+
+// PostRaw performs a POST with a JSON body and returns the response body on success.
+func (c *APIClient) PostRaw(ctx context.Context, path string, body io.Reader) ([]byte, error) {
+	resp, err := c.makeRequest(ctx, http.MethodPost, path, body)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		var apiErr struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(respBody, &apiErr); err == nil {
+			msg := apiErr.Error
+			if apiErr.Message != "" {
+				msg = apiErr.Message
+			}
+			return nil, APIError{StatusCode: resp.StatusCode, Message: msg}
+		}
+		return nil, APIError{StatusCode: resp.StatusCode, Message: string(respBody)}
+	}
+	return respBody, nil
+}
+
 // Projects
 func (c *APIClient) CreateProject(ctx context.Context, name, slug string) (*types.Project, error) {
 	payload := map[string]string{

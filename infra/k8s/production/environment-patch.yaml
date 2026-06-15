@@ -207,6 +207,17 @@ spec:
               name: enclii-secrets
               key: ENCLII_POSTHOG_API_KEY
               optional: true
+        # Vault writer for audited secret intake + vault-backfill (P0)
+        - name: ENCLII_SECRET_ROTATION_ENABLED
+          value: "true"
+        - name: ENCLII_VAULT_ADDRESS
+          value: "http://vault.vault.svc.cluster.local:8200"
+        - name: ENCLII_VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vault-credentials
+              key: token
+              optional: true
         readinessProbe:
           httpGet:
             path: /health/ready
