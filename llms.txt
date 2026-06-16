@@ -44,9 +44,10 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - `docs/runbooks/SECRET_INTAKE.md` — chat-safe operator credential handoff
 - `docs/cli/commands/secrets.md` — `enclii secrets intake` CLI reference
 - `scripts/provision-switchyard-vault-writer.sh` — Vault policy + `vault-credentials`
-- Private: `internal-devops/decisions/2026-06-15-secret-intake-protocol.md`
-- Private: `internal-devops/runbooks/2026-06-15-vault-bridge-gaps.md`
-- Private: `internal-devops/ecosystem/ecosystem-banner-footer-audit-2026-06-15.md`
+- Private: `internal-devops/runbooks/2026-06-16-vault-rebootstrap-complete.md`
+- Private: `internal-devops/decisions/2026-06-16-platform-comms-and-dhanam-secret-custody.md`
+- Private: `internal-devops/runbooks/dhanam-missing-keys-remediation.md`
+- Private: `internal-devops/runbooks/2026-06-15-vault-bridge-gaps.md` (remaining gaps)
 
 ## Coupler Program (Agent Tool Plane, Jun 2026)
 

@@ -13,10 +13,14 @@ All production secrets are stored in self-hosted HashiCorp Vault (KV v2 engine) 
 
 **Architecture:**
 - Vault pod runs in the `vault` namespace (Helm chart)
-- ESO authenticates via Kubernetes ServiceAccount auth
-- 19 ExternalSecret resources cover 16 namespaces (~160 secrets)
+- ESO authenticates via scoped `eso-reader` token (`external-secrets/vault-eso-token`); Kubernetes auth repair in progress
+- 19+ ExternalSecret resources cover 16 namespaces (~160 secrets)
 - Secrets refresh every 15 minutes
-- Audit logging enabled at `/vault/audit/audit.log`
+- Audit: `/dev/stderr` + `/vault/audit/vault_audit.log`
+
+**2026-06-16 rebuild:** Lost custody → destroy PVCs → new Bitwarden break-glass → backfill from K8s. See private `internal-devops/runbooks/2026-06-16-vault-rebootstrap-complete.md`.
+
+**Custody:** Financial keys → `secret/dhanam` (Dhanam). Shared Resend → `secret/comms` (Enclii platform). See private decision `2026-06-16-platform-comms-and-dhanam-secret-custody.md`.
 
 **Migration script:** `scripts/vault-secret-migration.sh` — reads existing K8s secrets and writes to Vault KV v2.
 

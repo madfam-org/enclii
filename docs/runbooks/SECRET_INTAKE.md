@@ -1,12 +1,19 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-06-15
+**Last Updated:** 2026-06-16
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
 status only.
 
+**Post-rebuild (2026-06-16):** Vault writer live. Use `export KUBECONFIG=~/.kube/config-hetzner`.
+Public API: `https://api.enclii.dev`. Private record: [vault rebuild complete](https://github.com/madfam-org/internal-devops/blob/main/runbooks/2026-06-16-vault-rebootstrap-complete.md).
+
 Policy (private): [internal-devops secret intake decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md)
+
+Custody split (Dhanam vs Resend): [platform comms decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-16-platform-comms-and-dhanam-secret-custody.md)
+
+Full provider matrix: [ecosystem provider custody model](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-16-ecosystem-provider-custody-model.md)
 
 ## Prerequisites
 
@@ -33,6 +40,18 @@ Canonical routing: `apps/switchyard-api/internal/secretsintake/registry.yaml`
 | `ceq/vast-api-key` | `secret/ceq` | `VAST_API_KEY` |
 | `ceq/janua-client-secret` | `secret/ceq` | `JANUA_CLIENT_SECRET` |
 | `dhanam/stripe-mx-live` | `secret/dhanam` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
+| `dhanam/oidc-janua` | `secret/dhanam` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER` |
+| `dhanam/session-auth` | `secret/dhanam` | `SESSION_SECRET`, `NEXTAUTH_SECRET` |
+| `dhanam/app-infra` | `secret/dhanam` | `R2_*`, `CLOUDFLARE_API_TOKEN`, PostHog, Sentry |
+| `platform/comms-resend-api-key` | `secret/comms` | `resend-api-key` → `resend_api_key` in Vault |
+
+After `platform/comms-resend-api-key` intake, fan-out to all consumers:
+
+```bash
+./scripts/force-sync-comms-fanout.sh
+```
+
+ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-crm-secrets` (and staging) read `secret/comms.resend_api_key`.
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
 
 Add targets via PR to the registry — do not hardcode paths in runbooks.

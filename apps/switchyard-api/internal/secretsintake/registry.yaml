@@ -29,6 +29,50 @@ targets:
       - STRIPE_SECRET_KEY
       - STRIPE_WEBHOOK_SECRET
 
+  dhanam/oidc-janua:
+    label: Dhanam Janua OAuth client
+    description: Dhanam app OIDC client registered in Janua (not comms/financial)
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets
+    keys:
+      - OIDC_CLIENT_ID
+      - OIDC_CLIENT_SECRET
+      - OIDC_ISSUER
+
+  dhanam/session-auth:
+    label: Dhanam session / NextAuth secrets
+    description: App session signing — not platform comms
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets
+    keys:
+      - SESSION_SECRET
+      - NEXTAUTH_SECRET
+
+  dhanam/app-infra:
+    label: Dhanam app infra (R2, CF, observability)
+    description: Dhanam-owned storage and telemetry — not Resend/SendGrid
+    vault_path: secret/dhanam
+    namespace: dhanam
+    external_secret: dhanam-secrets
+    keys:
+      - R2_ACCESS_KEY_ID
+      - R2_SECRET_ACCESS_KEY
+      - R2_ENDPOINT
+      - CLOUDFLARE_API_TOKEN
+      - NEXT_PUBLIC_POSTHOG_KEY
+      - SENTRY_DSN
+
+  platform/comms-resend-api-key:
+    label: MADFAM shared Resend API key
+    description: Single org Resend account — canonical in secret/comms; fan-out via ESO to janua, phynd-crm, madfam-site
+    vault_path: secret/comms
+    namespace: enclii
+    external_secret: enclii-secrets
+    keys:
+      - resend-api-key
+
   enclii/internal-api-key:
     label: Enclii internal API key
     description: Switchyard ↔ Roundhouse internal auth

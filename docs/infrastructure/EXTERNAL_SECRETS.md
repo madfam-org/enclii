@@ -113,8 +113,8 @@ spec:
 
 | Resource | Namespace | Vault Path | Key Count |
 |----------|-----------|------------|-----------|
-| `enclii-secrets` | enclii | `secret/enclii` | 23 |
-| `janua-secrets` | janua | `secret/janua` | 9 |
+| `enclii-secrets` | enclii | `secret/enclii` + **`secret/comms`** (Resend fan-out) | 23 |
+| `janua-secrets` | janua | `secret/janua` + **`secret/comms`** (Resend fan-out) | 10 |
 | `data-secrets` | data | `secret/data` | 8 |
 | `pgbackrest-r2-credentials` | data | `secret/pgbackrest-r2` | 4 |
 | `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
@@ -129,7 +129,7 @@ spec:
 | `arc-runners-secrets` | arc-runners | `secret/arc-runners` | 3 |
 | `enclii-builds-secrets` | enclii-builds | `secret/enclii-builds` | 3 |
 | `npm-registry-secrets` | npm-registry | `secret/npm-registry` | 1 |
-| `madfam-site-secrets` | madfam-site | `secret/madfam-site` | 2 |
+| `madfam-site-secrets` | madfam-site | `secret/madfam-site` + **`secret/comms`** (Resend fan-out) | 3 |
 | `longhorn-secrets` | longhorn-system | `secret/longhorn-system` | 1 |
 | `kyverno-secrets` | kyverno | `secret/kyverno` | 1 |
 

@@ -62,6 +62,12 @@ path "secret/data/enclii" {
 path "secret/data/enclii/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+path "secret/data/comms" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/comms/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/data/pgbackrest-r2" {
   capabilities = ["create", "update", "patch", "read"]
 }
@@ -84,6 +90,12 @@ path "secret/metadata/enclii" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/enclii/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/comms" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/comms/*" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/pgbackrest-r2" {
