@@ -153,4 +153,6 @@ func TestListSecretIntakeTargets(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "ceq/vast-api-key")
 	assert.Contains(t, w.Body.String(), "dhanam/stripe-mx-live")
+	assert.Contains(t, w.Body.String(), "platform/comms-resend-api-key")
+	assert.Contains(t, w.Body.String(), "dhanam/oidc-janua")
 }

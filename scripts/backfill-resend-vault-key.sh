@@ -13,14 +13,14 @@
 #   SOURCE_NS           Kubernetes namespace for source secret (default: enclii)
 #   SOURCE_K8S_NAME     Kubernetes secret name (default: enclii-secrets)
 #   SOURCE_KEY          Key within secret (default: resend-api-key)
-#   VAULT_PATH          Vault KV path (default: secret/enclii/resend_api_key)
+#   VAULT_PATH          Vault KV path (default: secret/comms/resend_api_key)
 
 set -euo pipefail
 
 SOURCE_NS="${SOURCE_NS:-enclii}"
 SOURCE_K8S_NAME="${SOURCE_K8S_NAME:-enclii-secrets}"
 SOURCE_KEY="${SOURCE_KEY:-resend-api-key}"
-VAULT_PATH="${VAULT_PATH:-secret/enclii/resend_api_key}"
+VAULT_PATH="${VAULT_PATH:-secret/comms/resend_api_key}"
 
 if [[ -z "${VAULT_ADDR:-}" || -z "${VAULT_TOKEN:-}" ]]; then
   echo "VAULT_ADDR and VAULT_TOKEN are required" >&2
@@ -47,7 +47,7 @@ kubectl -n "$SOURCE_NS" get secret "$SOURCE_K8S_NAME" \
 vault kv put "$VAULT_PATH" value=@"$tmpdir/value" >/dev/null
 
 echo "Vault path $VAULT_PATH updated from $SOURCE_NS/$SOURCE_K8S_NAME (no values printed)"
-echo "Next: force-sync enclii-resend-api-key ExternalSecret and retire Janua bridge if still present"
+echo "Next: ./scripts/force-sync-comms-fanout.sh and retire enclii-resend-api-key bridge if still present"
 
 if kubectl get externalsecret enclii-resend-api-key -n "$SOURCE_NS" >/dev/null 2>&1; then
   kubectl -n "$SOURCE_NS" annotate externalsecret enclii-resend-api-key \
