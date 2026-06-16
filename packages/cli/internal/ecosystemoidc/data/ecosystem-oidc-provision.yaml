@@ -1,0 +1,79 @@
+# MADFAM ecosystem OIDC auto-provision registry
+# Consumed by: enclii secrets provision oidc
+# Last Updated: 2026-06-16
+#
+# Operator flow (single Janua SSO session as admin@madfam.io):
+#   export ENCLII_API_ENDPOINT=https://api.enclii.dev
+#   enclii login
+#   enclii secrets provision oidc --platform dhanam
+
+issuer: https://auth.madfam.io
+
+platforms:
+  dhanam:
+    intake_target: dhanam/oidc-janua
+    session_intake_target: dhanam/session-auth
+    janua_client:
+      name: Dhanam
+      client_key: dhanam
+      audience: dhanam-api
+      client_id: jnc_uE2zp9ume_Fd6jMl1elL6wqjiECM711t
+      description: Dhanam wealth platform — production OIDC confidential client
+      is_confidential: true
+      website_url: https://app.dhan.am
+      redirect_uris:
+        - https://app.dhan.am/auth/callback
+        - https://admin.dhan.am/auth/callback
+        - http://localhost:3000/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  phynd-crm:
+    intake_target: phynd-crm/oidc-janua
+    janua_client:
+      name: Phynd CRM
+      client_key: phynd-crm
+      audience: phynd-crm-api
+      description: Phynd CRM staff SSO (crm.madfam.io)
+      is_confidential: true
+      website_url: https://crm.madfam.io
+      redirect_uris:
+        - https://crm.madfam.io/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  ceq:
+    intake_target: ceq/janua-client-secret
+    intake_key_map:
+      JANUA_CLIENT_SECRET: client_secret
+    janua_client:
+      name: CEQ Studio
+      client_key: ceq
+      audience: ceq-api
+      description: CEQ creative orchestrator studio
+      is_confidential: true
+      website_url: https://ceq.madfam.io
+      redirect_uris:
+        - https://ceq.madfam.io/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token

@@ -36,12 +36,13 @@ if [[ -z "${VAULT_TOKEN:-}" ]]; then
 fi
 
 vault_exec() {
-  kubectl exec -i -n "$VAULT_NS" "$VAULT_POD" -- \
+  kubectl exec -n "$VAULT_NS" "$VAULT_POD" -- \
     env "VAULT_TOKEN=${VAULT_TOKEN}" vault "$@"
 }
 
-log "Writing Vault policy ${POLICY_NAME}..."
-vault_exec policy write "$POLICY_NAME" - <<'EOF'
+POLICY_HCL="$(mktemp)"
+trap 'rm -f "$POLICY_HCL"' EXIT
+cat >"$POLICY_HCL" <<'EOF'
 # Switchyard secret intake + vault-backfill writer (P0)
 # Merge into platform secret paths; list/read metadata for merge semantics.
 path "secret/data/ceq" {
@@ -105,6 +106,10 @@ path "secret/metadata/pgbackrest-r2/*" {
   capabilities = ["read", "list"]
 }
 EOF
+
+log "Writing Vault policy ${POLICY_NAME}..."
+kubectl cp "$POLICY_HCL" "${VAULT_NS}/${VAULT_POD}:/tmp/${POLICY_NAME}.hcl"
+vault_exec policy write "$POLICY_NAME" "/tmp/${POLICY_NAME}.hcl"
 
 log "Creating scoped token (TTL=${TTL})..."
 token_json="$(vault_exec token create \

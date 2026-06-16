@@ -10,7 +10,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 8)
+	assert.Len(t, reg, 9)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	tgt := reg["ceq/vast-api-key"]
 	assert.Equal(t, "secret/ceq", tgt.VaultPath)
@@ -30,7 +30,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 8)
+	require.Len(t, list, 9)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -46,6 +46,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/session-auth",
 		"dhanam/stripe-mx-live",
 		"enclii/internal-api-key",
+		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
 	}, ids)
 }

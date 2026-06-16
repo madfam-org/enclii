@@ -68,6 +68,31 @@ spec:
     - protocol: TCP
       port: 6443
 ---
+# Additive egress for Switchyard API -> Vault (secret intake / lockbox writer).
+# Kept separate from switchyard-api-egress (service reconciliation may overwrite it).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: switchyard-api-vault-egress
+  labels:
+    app.kubernetes.io/name: switchyard-api
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: switchyard-api
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: vault
+    ports:
+    - protocol: TCP
+      port: 8200
+---
 # Additive egress policy for Switchyard API -> Roundhouse API.
 # Kept separate from switchyard-api-egress because that policy is also managed
 # by service reconciliation and live patches can be overwritten.

@@ -22,6 +22,7 @@ The command reads `service.yaml` (or a custom spec file via `--file`) to resolve
 |------------|-------|-------------|
 | `set`, `list`, `get`, `delete` | Per-service | Service env vars via `service.yaml` |
 | `intake` | Platform | Chat-safe Vault intake ([details below](#enclii-secrets-intake)) |
+| `provision oidc` | Platform | Auto-provision Janua OIDC + Vault intake ([details below](#enclii-secrets-provision-oidc)) |
 | `sync`, `rotate`, `vault-backfill` | Platform | Audited ESO/Vault ops via Switchyard |
 
 ### `set`
@@ -273,3 +274,30 @@ enclii secrets intake status int_1234567890
 Requires Switchyard Vault writer enabled (`ENCLII_SECRET_ROTATION_ENABLED` + `vault-credentials` secret). Until then, submit returns `503 vault_writer_disabled`.
 
 Canonical routing: `enclii/apps/switchyard-api/internal/secretsintake/registry.yaml`. Policy: [internal-devops secret intake decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md).
+
+## `enclii secrets provision oidc`
+
+Auto-provision Janua OIDC clients and intake credentials into Vault from a single
+`admin@madfam.io` Janua SSO session. Registry:
+`config/ecosystem-oidc-provision.yaml` (embedded in CLI).
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+enclii login
+enclii secrets provision oidc --platform dhanam --reason "post-rebuild oidc"
+enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--platform` | Platform key from registry (`dhanam`, `phynd-crm`, `ceq`, …) |
+| `--all` | Provision every platform in the registry |
+| `--dry-run` | Print planned Janua + intake actions without writing |
+| `--reason` | Required audit reason (same as intake) |
+| `--registry` | Override registry YAML path |
+
+For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
+`NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
+Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../runbooks/SECRET_INTAKE.md).
+
+Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii ./cmd/enclii/`

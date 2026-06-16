@@ -98,6 +98,7 @@ ALLOWED_EXTERNAL_SECRET_FILES=(
     cloudflare-secrets.yaml
     data-secrets.yaml
     dhanam-secrets.yaml
+    dhanam-secrets-extended.yaml
     enclii-builds-secrets.yaml
     enclii-secrets.yaml
     forgesight-secrets.yaml

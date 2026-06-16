@@ -8,7 +8,7 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** May 2026
+**Last Updated:** 2026-06-16
 **Status:** Operational (Vault-backed)
 **Active Providers:** `vault-store` (HashiCorp Vault KV v2) + `kubernetes-store` (legacy, cross-namespace)
 
@@ -118,7 +118,8 @@ spec:
 | `data-secrets` | data | `secret/data` | 8 |
 | `pgbackrest-r2-credentials` | data | `secret/pgbackrest-r2` | 4 |
 | `cloudflare-secrets` | cloudflare-tunnel | `secret/cloudflare` | 1 |
-| `dhanam-secrets` | dhanam | `secret/dhanam` | 33 |
+| `dhanam-secrets` | dhanam | `secret/dhanam` | 11 (core) |
+| `dhanam-secrets-extended` | dhanam | `secret/dhanam` | 13 (merges into `dhanam-secrets`) |
 | `selva-secrets` | selva | `secret/selva` | 3 |
 | `tezca-secrets` | tezca | `secret/tezca` | 11 |
 | `yantra4d-secrets` | yantra4d | `secret/yantra4d` | 3 |
@@ -134,6 +135,13 @@ spec:
 | `kyverno-secrets` | kyverno | `secret/kyverno` | 1 |
 
 Files located at `infra/k8s/base/external-secrets/vault-secrets/`.
+
+**Dhanam merge model (2026-06-16):** `dhanam-secrets` (core) and
+`dhanam-secrets-extended` both target the same K8s Secret with
+`creationPolicy: Merge`, alongside platform `dhanam-ecosystem-service-auth`
+(kubernetes-store). Optional keys (R2, Cloudflare, Sentry, SendGrid) are
+intentionally omitted until intake — see
+[recovery session](https://github.com/madfam-org/internal-devops/blob/main/runbooks/2026-06-16-dhanam-secrets-recovery-session.md).
 
 ## Operations
 

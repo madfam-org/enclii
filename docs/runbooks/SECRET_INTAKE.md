@@ -6,7 +6,9 @@ Operators supply production credentials through Enclii without pasting values in
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
 status only.
 
-**Post-rebuild (2026-06-16):** Vault writer live. Use `export KUBECONFIG=~/.kube/config-hetzner`.
+**Post-rebuild (2026-06-16):** Vault writer live. Dhanam Phase 0 **MITIGATED** —
+see [recovery session](https://github.com/madfam-org/internal-devops/blob/main/runbooks/2026-06-16-dhanam-secrets-recovery-session.md).
+Use `export KUBECONFIG=~/.kube/config-hetzner`.
 Public API: `https://api.enclii.dev`. Private record: [vault rebuild complete](https://github.com/madfam-org/internal-devops/blob/main/runbooks/2026-06-16-vault-rebootstrap-complete.md).
 
 Policy (private): [internal-devops secret intake decision](https://github.com/madfam-org/internal-devops/blob/main/decisions/2026-06-15-secret-intake-protocol.md)
@@ -67,6 +69,18 @@ VAST_API_KEY_FILE=/path/to/vast.api.key \
 ```
 
 Or step-by-step:
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+enclii login   # admin@madfam.io — single Janua SSO session
+enclii secrets provision oidc --platform dhanam --reason "post-rebuild oidc"
+# Optional: auto-generates session-auth + intakes OIDC trio to Vault
+enclii secrets intake status int_<id>
+```
+
+Manual per-key intake (when a provider secret is not Janua-derived):
+
+```bash
 enclii secrets intake targets
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 # masked prompt, or --value-file / --stdin (KEY=VALUE lines)

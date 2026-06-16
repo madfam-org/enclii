@@ -52,6 +52,7 @@ Examples:
 	cmd.AddCommand(newSecretsRotateCommand(cfg))
 	cmd.AddCommand(newSecretsVaultBackfillCommand(cfg))
 	cmd.AddCommand(newSecretsIntakeCommand(cfg))
+	cmd.AddCommand(newSecretsProvisionCommand(cfg))
 
 	return cmd
 }

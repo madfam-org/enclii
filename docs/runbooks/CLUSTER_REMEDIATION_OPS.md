@@ -273,7 +273,7 @@ Repeat for each namespace. The full list of namespaces with ExternalSecret manif
 | enclii | `enclii-secrets.yaml` |
 | janua | `janua-secrets.yaml` |
 | data | `data-secrets.yaml` |
-| dhanam | `dhanam-secrets.yaml` |
+| dhanam | `dhanam-secrets.yaml`, `dhanam-secrets-extended.yaml` |
 | monitoring | `monitoring-secrets.yaml` |
 | cloudflare-tunnel | `cloudflare-secrets.yaml` |
 | tezca | `tezca-secrets.yaml` |

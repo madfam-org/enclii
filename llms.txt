@@ -42,8 +42,11 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 ## Secret intake + Vault bridge (Jun 2026)
 
 - `docs/runbooks/SECRET_INTAKE.md` — chat-safe operator credential handoff
-- `docs/cli/commands/secrets.md` — `enclii secrets intake` CLI reference
-- `scripts/provision-switchyard-vault-writer.sh` — Vault policy + `vault-credentials`
+- `docs/cli/commands/secrets.md` — `enclii secrets intake` + `provision oidc` CLI
+- `config/ecosystem-oidc-provision.yaml` — OIDC auto-provision registry
+- `scripts/provision-ecosystem-oidc.sh` — wrapper for batch OIDC provision
+- `infra/k8s/base/external-secrets/vault-secrets/dhanam-secrets*.yaml` — Dhanam ES split (core + extended)
+- Private: `internal-devops/runbooks/2026-06-16-dhanam-secrets-recovery-session.md`
 - Private: `internal-devops/runbooks/2026-06-16-vault-rebootstrap-complete.md`
 - Private: `internal-devops/decisions/2026-06-16-platform-comms-and-dhanam-secret-custody.md`
 - Private: `internal-devops/runbooks/dhanam-missing-keys-remediation.md`

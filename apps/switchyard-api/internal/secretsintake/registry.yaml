@@ -50,6 +50,17 @@ targets:
       - SESSION_SECRET
       - NEXTAUTH_SECRET
 
+  phynd-crm/oidc-janua:
+    label: Phynd CRM Janua OAuth client
+    description: Staff SSO for crm.madfam.io
+    vault_path: secret/phynd-crm
+    namespace: phynd-crm
+    external_secret: phynd-crm-secrets
+    keys:
+      - OIDC_CLIENT_ID
+      - OIDC_CLIENT_SECRET
+      - OIDC_ISSUER
+
   dhanam/app-infra:
     label: Dhanam app infra (R2, CF, observability)
     description: Dhanam-owned storage and telemetry — not Resend/SendGrid

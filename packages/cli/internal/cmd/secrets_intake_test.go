@@ -22,6 +22,11 @@ func TestNewSecretsCommand_IncludesIntake(t *testing.T) {
 	assert.Contains(t, names, "targets")
 	assert.Contains(t, names, "submit")
 	assert.Contains(t, names, "status")
+
+	provision := findSubcommand(cmd, "provision")
+	require.NotNil(t, provision)
+	oidc := findSubcommand(provision, "oidc")
+	require.NotNil(t, oidc)
 }
 
 func TestParseKeyValueLines(t *testing.T) {
