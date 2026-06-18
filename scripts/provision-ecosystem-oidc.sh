@@ -15,9 +15,14 @@ CLI="${ENCLII_BIN:-enclii}"
 export ENCLII_API_ENDPOINT="${ENCLII_API_ENDPOINT:-https://api.enclii.dev}"
 
 if [[ "${1:-}" == "--all" ]]; then
-  exec "$CLI" secrets provision oidc --all --reason "${REASON:-ecosystem oidc auto-provision}" "${@:2}"
+  exec "$CLI" secrets provision oidc --all \
+    --registry "${ROOT}/config/ecosystem-oidc-provision.yaml" \
+    --reason "${REASON:-ecosystem oidc auto-provision}" "${@:2}"
 fi
 
 PLATFORM="${1:-dhanam}"
 shift || true
-exec "$CLI" secrets provision oidc --platform "$PLATFORM" --reason "${REASON:-ecosystem oidc auto-provision}" "$@"
+REGISTRY="${ROOT}/config/ecosystem-oidc-provision.yaml"
+exec "$CLI" secrets provision oidc --platform "$PLATFORM" \
+  --registry "$REGISTRY" \
+  --reason "${REASON:-ecosystem oidc auto-provision}" "$@"
