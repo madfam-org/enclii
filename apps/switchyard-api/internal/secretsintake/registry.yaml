@@ -50,6 +50,17 @@ targets:
       - SESSION_SECRET
       - NEXTAUTH_SECRET
 
+  karafiel/web-oidc-janua:
+    label: Karafiel tenant app Janua OAuth client
+    description: Tenant SSO for app.karafiel.mx (separate from Karafiel Admin operator client)
+    vault_path: secret/karafiel
+    namespace: karafiel
+    external_secret: karafiel-web-oidc
+    keys:
+      - web_oidc_client_id
+      - web_janua_secret_key
+      - web_oidc_issuer
+
   phynd-crm/oidc-janua:
     label: Phynd CRM Janua OAuth client
     description: Staff SSO for crm.madfam.io

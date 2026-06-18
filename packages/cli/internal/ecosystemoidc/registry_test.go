@@ -21,6 +21,8 @@ func TestLoadRegistry_embedded(t *testing.T) {
 	assert.Contains(t, reg.Platforms, "dhanam")
 	assert.Equal(t, "dhanam/oidc-janua", reg.Platforms["dhanam"].IntakeTarget)
 	assert.Equal(t, "dhanam/session-auth", reg.Platforms["dhanam"].SessionIntakeTarget)
+	assert.Contains(t, reg.Platforms, "karafiel")
+	assert.Equal(t, "karafiel/web-oidc-janua", reg.Platforms["karafiel"].IntakeTarget)
 }
 
 func TestBuildIntakeValues_standard(t *testing.T) {

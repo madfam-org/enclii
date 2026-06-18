@@ -34,6 +34,32 @@ platforms:
         - authorization_code
         - refresh_token
 
+  karafiel:
+    intake_target: karafiel/web-oidc-janua
+    intake_key_map:
+      web_oidc_client_id: client_id
+      web_janua_secret_key: client_secret
+      web_oidc_issuer: issuer
+    janua_client:
+      name: Karafiel
+      client_key: karafiel-app
+      audience: karafiel-app
+      client_id: jnc_ZDQhZ7jOdqUMIOxHn_zuXvqiMMbWNE0q
+      description: Karafiel tenant self-serve app (app.karafiel.mx)
+      is_confidential: true
+      website_url: https://app.karafiel.mx
+      redirect_uris:
+        - https://app.karafiel.mx/api/auth/callback
+        - http://localhost:3050/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
   phynd-crm:
     intake_target: phynd-crm/oidc-janua
     janua_client:
