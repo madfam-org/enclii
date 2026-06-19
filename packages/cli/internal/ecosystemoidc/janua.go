@@ -56,15 +56,15 @@ type rotateSecretResponse struct {
 
 func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientSpec) (remoteOAuthClient, bool, error) {
 	body := map[string]interface{}{
-		"name":             spec.Name,
-		"description":      spec.Description,
-		"redirect_uris":    spec.RedirectURIs,
-		"allowed_scopes":   spec.AllowedScopes,
-		"grant_types":      spec.GrantTypes,
-		"audience":         spec.Audience,
-		"client_key":       spec.ClientKey,
-		"website_url":      spec.WebsiteURL,
-		"is_confidential":  spec.confidential(),
+		"name":            spec.Name,
+		"description":     spec.Description,
+		"redirect_uris":   spec.RedirectURIs,
+		"allowed_scopes":  spec.AllowedScopes,
+		"grant_types":     spec.GrantTypes,
+		"audience":        spec.Audience,
+		"client_key":      spec.ClientKey,
+		"website_url":     spec.WebsiteURL,
+		"is_confidential": spec.confidential(),
 	}
 	if spec.ClientID != "" {
 		body["client_id"] = spec.ClientID

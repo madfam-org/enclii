@@ -148,8 +148,7 @@ func SetupOTel(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	hostName, _ := os.Hostname()
 	res, err := resource.Merge(
 		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
+		resource.NewSchemaless(
 			semconv.ServiceName(cfg.ServiceName),
 			semconv.ServiceVersion(version),
 			semconv.ServiceNamespace(namespace),
