@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-06-16
+**Last Updated:** 2026-06-19
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
