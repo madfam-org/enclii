@@ -28,16 +28,16 @@ type Platform struct {
 
 // JanuaClientSpec is sent to Janua register/create APIs.
 type JanuaClientSpec struct {
-	Name            string   `yaml:"name"`
-	ClientKey       string   `yaml:"client_key"`
-	Audience        string   `yaml:"audience"`
-	ClientID        string   `yaml:"client_id,omitempty"`
-	Description     string   `yaml:"description,omitempty"`
-	IsConfidential  *bool    `yaml:"is_confidential,omitempty"`
-	WebsiteURL      string   `yaml:"website_url,omitempty"`
-	RedirectURIs    []string `yaml:"redirect_uris"`
-	AllowedScopes   []string `yaml:"allowed_scopes"`
-	GrantTypes      []string `yaml:"grant_types"`
+	Name           string   `yaml:"name"`
+	ClientKey      string   `yaml:"client_key"`
+	Audience       string   `yaml:"audience"`
+	ClientID       string   `yaml:"client_id,omitempty"`
+	Description    string   `yaml:"description,omitempty"`
+	IsConfidential *bool    `yaml:"is_confidential,omitempty"`
+	WebsiteURL     string   `yaml:"website_url,omitempty"`
+	RedirectURIs   []string `yaml:"redirect_uris"`
+	AllowedScopes  []string `yaml:"allowed_scopes"`
+	GrantTypes     []string `yaml:"grant_types"`
 }
 
 func (s JanuaClientSpec) confidential() bool {

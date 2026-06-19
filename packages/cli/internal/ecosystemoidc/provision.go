@@ -25,15 +25,15 @@ type ProvisionOptions struct {
 
 // ProvisionResult is safe to print — no secret values.
 type ProvisionResult struct {
-	PlatformID       string   `json:"platform_id"`
-	JanuaClientID    string   `json:"janua_client_id"`
-	Created          bool     `json:"created"`
-	RotatedSecret    bool     `json:"rotated_secret"`
-	IntakeTarget     string   `json:"intake_target"`
-	IntakeID         string   `json:"intake_id,omitempty"`
-	SessionIntakeID  string   `json:"session_intake_id,omitempty"`
-	KeysWritten      []string `json:"keys_written,omitempty"`
-	SessionKeys      []string `json:"session_keys_written,omitempty"`
+	PlatformID      string   `json:"platform_id"`
+	JanuaClientID   string   `json:"janua_client_id"`
+	Created         bool     `json:"created"`
+	RotatedSecret   bool     `json:"rotated_secret"`
+	IntakeTarget    string   `json:"intake_target"`
+	IntakeID        string   `json:"intake_id,omitempty"`
+	SessionIntakeID string   `json:"session_intake_id,omitempty"`
+	KeysWritten     []string `json:"keys_written,omitempty"`
+	SessionKeys     []string `json:"session_keys_written,omitempty"`
 }
 
 // ProvisionPlatform registers/reconciles Janua OAuth client and intakes OIDC material.
@@ -145,7 +145,7 @@ func generateSessionAuthValues() (map[string]string, error) {
 		return nil, err
 	}
 	return map[string]string{
-		"SESSION_SECRET":   session,
+		"SESSION_SECRET":  session,
 		"NEXTAUTH_SECRET": nextauth,
 	}, nil
 }
