@@ -258,7 +258,7 @@ Consumer apps (Opennote-class):
 
 ## 6. Public API surface (v1)
 
-Base URL: `https://api.coupler.madfam.io` (or `tools.madfam.io` — pick at onboard)
+Base URL: `https://coupler-api.madfam.io` (landing: `https://coupler.madfam.io`). Avoid 3-level subdomains (`api.coupler.*`).
 
 ### 6.1 REST (OpenAPI)
 
@@ -517,7 +517,7 @@ Regenerate cross-repo agent docs with `internal-devops/scripts/sync-agent-docs.p
 | 1 | Public name | Coupler / Trellis Tools / Junction | **Coupler** (fits Switchyard metaphor) |
 | 2 | Primary API language | Go / Rust / TypeScript | **Go** (align with switchyard-api patterns) |
 | 3 | Token delegation | Janua decrypt API vs OAuth token exchange | **Janua privileged token endpoint** with ATP service identity |
-| 4 | Public domain | `api.coupler.madfam.io` / `tools.enclii.dev` | **`tools.madfam.io`** (distinct brand) or **`coupler.madfam.io`** |
+| 4 | Public domain | `coupler-api.madfam.io` / `tools.enclii.dev` | **`coupler-api.madfam.io`** (API) + **`coupler.madfam.io`** (landing) |
 | 5 | ConnectedAccount | Janua owns 100% vs shared DB | **Janua 100%** |
 
 ---
@@ -548,7 +548,7 @@ metadata:
 spec:
   audience: coupler-api
   redirect_uris:
-    - https://api.coupler.madfam.io/oauth/callback
+    - https://coupler-api.madfam.io/oauth/callback
     - http://localhost:8787/oauth/callback
   allowed_scopes:
     - openid
