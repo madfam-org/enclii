@@ -65,6 +65,8 @@ path "secret/data/karafiel" { capabilities = ["create", "update", "patch", "read
 path "secret/data/karafiel/*" { capabilities = ["create", "update", "patch", "read"] }
 path "secret/data/phynd-crm" { capabilities = ["create", "update", "patch", "read"] }
 path "secret/data/phynd-crm/*" { capabilities = ["create", "update", "patch", "read"] }
+path "secret/data/coupler" { capabilities = ["create", "update", "patch", "read"] }
+path "secret/data/coupler/*" { capabilities = ["create", "update", "patch", "read"] }
 path "secret/metadata/ceq" { capabilities = ["read", "list"] }
 path "secret/metadata/ceq/*" { capabilities = ["read", "list"] }
 path "secret/metadata/dhanam" { capabilities = ["read", "list"] }
@@ -79,6 +81,8 @@ path "secret/metadata/karafiel" { capabilities = ["read", "list"] }
 path "secret/metadata/karafiel/*" { capabilities = ["read", "list"] }
 path "secret/metadata/phynd-crm" { capabilities = ["read", "list"] }
 path "secret/metadata/phynd-crm/*" { capabilities = ["read", "list"] }
+path "secret/metadata/coupler" { capabilities = ["read", "list"] }
+path "secret/metadata/coupler/*" { capabilities = ["read", "list"] }
 EOF
 
 log "Bootstrap complete (enable kubernetes auth via repair-vault-eso-auth.sh next)"

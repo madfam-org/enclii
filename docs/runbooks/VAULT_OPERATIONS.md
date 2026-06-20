@@ -225,6 +225,13 @@ VAULT_TOKEN_FILE=/path/to/vault-admin.token \
   ./scripts/provision-switchyard-vault-writer.sh
 ```
 
+Add paths to an existing writer policy without rotating `vault-credentials`:
+
+```bash
+POLICY_ONLY=1 VAULT_TOKEN_FILE=/path/to/vault-admin.token \
+  ./scripts/provision-switchyard-vault-writer.sh
+```
+
 **Verify:**
 
 ```bash

@@ -8,6 +8,9 @@
 #   VAULT_TOKEN_FILE=~/.config/madfam/vault-admin.token \
 #     ./scripts/provision-switchyard-vault-writer.sh
 #
+# Policy-only (add paths without rotating writer token):
+#   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
+#
 # Last Updated: 2026-06-15
 set -euo pipefail
 
@@ -87,6 +90,12 @@ path "secret/data/phynd-crm" {
 path "secret/data/phynd-crm/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+path "secret/data/coupler" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/coupler/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -129,11 +138,23 @@ path "secret/metadata/phynd-crm" {
 path "secret/metadata/phynd-crm/*" {
   capabilities = ["read", "list"]
 }
+path "secret/metadata/coupler" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/coupler/*" {
+  capabilities = ["read", "list"]
+}
 EOF
 
 log "Writing Vault policy ${POLICY_NAME}..."
 kubectl cp "$POLICY_HCL" "${VAULT_NS}/${VAULT_POD}:/tmp/${POLICY_NAME}.hcl"
 vault_exec policy write "$POLICY_NAME" "/tmp/${POLICY_NAME}.hcl"
+
+if [[ "${POLICY_ONLY:-}" == "1" ]]; then
+  log "POLICY_ONLY=1 — skipping token rotation and switchyard-api restart"
+  log "Done. Existing switchyard-secret-writer tokens inherit updated paths."
+  exit 0
+fi
 
 log "Creating scoped token (TTL=${TTL})..."
 token_json="$(vault_exec token create \

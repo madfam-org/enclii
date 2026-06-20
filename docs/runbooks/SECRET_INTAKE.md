@@ -55,6 +55,7 @@ After `platform/comms-resend-api-key` intake, fan-out to all consumers:
 
 ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-crm-secrets` (and staging) read `secret/comms.resend_api_key`.
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
+| `coupler/janua-service-token` | `secret/coupler` | `JANUA_SERVICE_TOKEN` |
 
 Add targets via PR to the registry — do not hardcode paths in runbooks.
 
