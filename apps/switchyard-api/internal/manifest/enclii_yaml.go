@@ -122,14 +122,14 @@ var supportedEncliiAPIVersions = map[string]struct{}{
 }
 
 type encliiYAMLProjectSpec struct {
-	Network  *EncliiYAMLNetwork `yaml:"network,omitempty"`
-	Status   *EncliiYAMLStatus  `yaml:"status,omitempty"`
+	Network  *EncliiYAMLNetwork         `yaml:"network,omitempty"`
+	Status   *EncliiYAMLStatus          `yaml:"status,omitempty"`
 	Services []encliiYAMLProjectService `yaml:"services,omitempty"`
 }
 
 type encliiYAMLProjectService struct {
-	Name    string                   `yaml:"name"`
-	Port    int                      `yaml:"port,omitempty"`
+	Name    string                    `yaml:"name"`
+	Port    int                       `yaml:"port,omitempty"`
 	Domains []encliiYAMLProjectDomain `yaml:"domains,omitempty"`
 }
 
