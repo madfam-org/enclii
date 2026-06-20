@@ -108,6 +108,8 @@ This command handles the complete onboarding pipeline:
 
 	_ = cmd.MarkFlagRequired("repo")
 
+	cmd.AddCommand(NewOnboardEnsureCommand(cfg))
+
 	return cmd
 }
 

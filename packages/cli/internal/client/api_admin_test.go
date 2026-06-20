@@ -486,6 +486,45 @@ func TestAPIClient_OnboardProject_Unauthorized(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
 }
 
+func TestAPIClient_EnsureOnboarding_RepairMode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/v1/admin/onboard/ensure", r.URL.Path)
+
+		var req types.OnboardingRequest
+		err := json.NewDecoder(r.Body).Decode(&req)
+		require.NoError(t, err)
+		assert.Equal(t, "madfam-org/coupler", req.RepoFullName)
+		assert.Equal(t, "coupler", req.ProjectName)
+		assert.Equal(t, "coupler", req.Namespace)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "completed",
+			"mode":      "repair",
+			"namespace": req.Namespace,
+			"step_results": []map[string]string{
+				{"name": "registry_credentials", "status": "ok"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(server.URL, "admin-token")
+	ctx := context.Background()
+
+	var result map[string]interface{}
+	err := client.EnsureOnboarding(ctx, &types.OnboardingRequest{
+		RepoFullName: "madfam-org/coupler",
+		ProjectName:  "coupler",
+		Namespace:    "coupler",
+	}, &result)
+
+	require.NoError(t, err)
+	assert.Equal(t, "repair", result["mode"])
+	assert.Equal(t, "completed", result["status"])
+}
+
 func TestAPIClient_PreflightOnboard_AllPassing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)

@@ -127,6 +127,12 @@ func (c *APIClient) OnboardProject(ctx context.Context, req *types.OnboardingReq
 	return c.post(ctx, "/v1/admin/onboard", req, result)
 }
 
+// EnsureOnboarding converges onboarding state for a repo that is already onboarded
+// (namespace, GHCR credentials, Argo registration) without returning 409.
+func (c *APIClient) EnsureOnboarding(ctx context.Context, req *types.OnboardingRequest, result interface{}) error {
+	return c.post(ctx, "/v1/admin/onboard/ensure", req, result)
+}
+
 func (c *APIClient) PreflightOnboard(ctx context.Context, req *types.OnboardingRequest, result *types.PreflightResult) error {
 	return c.post(ctx, "/v1/admin/onboard/preflight", req, result)
 }
