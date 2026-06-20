@@ -116,28 +116,115 @@ func (d *EncliiYAMLDomain) IsTLSEnabled() bool {
 	return *d.TLSEnabled
 }
 
-// ParseEncliiYAML parses an enclii.yaml file content
-func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
-	var config EncliiYAML
-	if err := yaml.Unmarshal(content, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse enclii.yaml: %w", err)
-	}
+var supportedEncliiAPIVersions = map[string]struct{}{
+	"enclii.dev/v1":       {},
+	"enclii.madfam.io/v1": {},
+}
 
-	// Validate basic structure
-	if config.APIVersion != "enclii.dev/v1" {
-		return nil, fmt.Errorf("unsupported apiVersion: %s (expected enclii.dev/v1)", config.APIVersion)
-	}
-	if config.Kind != "Service" {
-		return nil, fmt.Errorf("unsupported kind: %s (expected Service)", config.Kind)
-	}
+type encliiYAMLProjectSpec struct {
+	Network  *EncliiYAMLNetwork `yaml:"network,omitempty"`
+	Status   *EncliiYAMLStatus  `yaml:"status,omitempty"`
+	Services []encliiYAMLProjectService `yaml:"services,omitempty"`
+}
 
-	// Apply defaults
+type encliiYAMLProjectService struct {
+	Name    string                   `yaml:"name"`
+	Port    int                      `yaml:"port,omitempty"`
+	Domains []encliiYAMLProjectDomain `yaml:"domains,omitempty"`
+}
+
+type encliiYAMLProjectDomain struct {
+	Host    string `yaml:"host"`
+	Primary bool   `yaml:"primary,omitempty"`
+}
+
+func normalizeEncliiYAML(config *EncliiYAML) error {
+	if _, ok := supportedEncliiAPIVersions[config.APIVersion]; !ok {
+		return fmt.Errorf("unsupported apiVersion: %s (expected enclii.dev/v1 or enclii.madfam.io/v1)", config.APIVersion)
+	}
+	switch config.Kind {
+	case "Service", "Project":
+	default:
+		return fmt.Errorf("unsupported kind: %s (expected Service or Project)", config.Kind)
+	}
+	if config.Kind == "Project" && config.Metadata.Project == "" {
+		config.Metadata.Project = config.Metadata.Name
+	}
 	for i := range config.Spec.Domains {
 		if config.Spec.Domains[i].Environment == "" {
 			config.Spec.Domains[i].Environment = "production"
 		}
 	}
+	return nil
+}
 
+func normalizeProjectSpec(config *EncliiYAML, projectSpec encliiYAMLProjectSpec) {
+	if projectSpec.Network != nil {
+		config.Spec.Network = projectSpec.Network
+	}
+	if projectSpec.Status != nil {
+		config.Spec.Status = projectSpec.Status
+	}
+	if len(projectSpec.Services) == 0 {
+		return
+	}
+	runtimePort := 0
+	for _, svc := range projectSpec.Services {
+		for _, d := range svc.Domains {
+			if d.Host == "" {
+				continue
+			}
+			domain := EncliiYAMLDomain{
+				Name:        d.Host,
+				Environment: "production",
+				Port:        svc.Port,
+			}
+			tls := true
+			domain.TLSEnabled = &tls
+			config.Spec.Domains = append(config.Spec.Domains, domain)
+		}
+		if runtimePort == 0 && svc.Port > 0 {
+			runtimePort = svc.Port
+		}
+	}
+	if runtimePort > 0 {
+		config.Spec.Runtime.Port = runtimePort
+	}
+}
+
+// ParseEncliiYAML parses an enclii.yaml file content
+func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
+	var header struct {
+		APIVersion string         `yaml:"apiVersion"`
+		Kind       string         `yaml:"kind"`
+		Metadata   EncliiYAMLMeta `yaml:"metadata"`
+		Spec       yaml.Node      `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(content, &header); err != nil {
+		return nil, fmt.Errorf("failed to parse enclii.yaml: %w", err)
+	}
+
+	config := EncliiYAML{
+		APIVersion: header.APIVersion,
+		Kind:       header.Kind,
+		Metadata:   header.Metadata,
+	}
+	if err := normalizeEncliiYAML(&config); err != nil {
+		return nil, err
+	}
+
+	if header.Kind == "Project" {
+		var projectSpec encliiYAMLProjectSpec
+		if err := header.Spec.Decode(&projectSpec); err != nil {
+			return nil, fmt.Errorf("failed to parse Project spec: %w", err)
+		}
+		normalizeProjectSpec(&config, projectSpec)
+		return &config, nil
+	}
+
+	if err := header.Spec.Decode(&config.Spec); err != nil {
+		return nil, fmt.Errorf("failed to parse Service spec: %w", err)
+	}
 	return &config, nil
 }
 

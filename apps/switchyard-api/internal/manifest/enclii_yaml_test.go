@@ -126,6 +126,54 @@ spec: {}
 			errContains: "unsupported kind",
 		},
 		{
+			name: "valid Project manifest (enclii.madfam.io/v1)",
+			input: `
+apiVersion: enclii.madfam.io/v1
+kind: Project
+metadata:
+  name: coupler
+  org: madfam-org
+spec:
+  network:
+    services:
+      - name: coupler-landing
+        port: 8080
+        ingress: [cloudflare-tunnel]
+        egress: [dns, https]
+  services:
+    - name: coupler-landing
+      port: 8080
+      domains:
+        - host: coupler.madfam.io
+          primary: true
+    - name: coupler-gateway
+      port: 8787
+      domains:
+        - host: coupler-api.madfam.io
+`,
+			wantErr: false,
+			checkFn: func(t *testing.T, cfg *EncliiYAML) {
+				if cfg.Kind != "Project" {
+					t.Errorf("Kind = %q, want Project", cfg.Kind)
+				}
+				if cfg.Metadata.Project != "coupler" {
+					t.Errorf("Metadata.Project = %q, want coupler", cfg.Metadata.Project)
+				}
+				if cfg.Spec.Network == nil || len(cfg.Spec.Network.Services) != 1 {
+					t.Fatalf("expected network services, got %+v", cfg.Spec.Network)
+				}
+				if len(cfg.Spec.Domains) != 2 {
+					t.Fatalf("len(Domains) = %d, want 2", len(cfg.Spec.Domains))
+				}
+				if cfg.Spec.Domains[0].Name != "coupler.madfam.io" {
+					t.Errorf("Domains[0].Name = %q", cfg.Spec.Domains[0].Name)
+				}
+				if cfg.Spec.Domains[0].Port != 8080 {
+					t.Errorf("Domains[0].Port = %d, want 8080", cfg.Spec.Domains[0].Port)
+				}
+			},
+		},
+		{
 			name: "empty environment defaults to production",
 			input: `
 apiVersion: enclii.dev/v1

@@ -103,3 +103,12 @@ targets:
     external_secret: enclii-internal-api-key
     keys:
       - INTERNAL_API_KEY
+
+  coupler/janua-service-token:
+    label: Coupler Janua service token
+    description: Shared machine token for Coupler gateway delegation to Janua (must match JANUA_SERVICE_TOKEN on janua-api)
+    vault_path: secret/coupler
+    namespace: coupler
+    external_secret: coupler-gateway-secrets
+    keys:
+      - JANUA_SERVICE_TOKEN
