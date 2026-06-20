@@ -1,0 +1,28 @@
+# Temporary cosign bypass for roundhouse + waybill GitOps digest rollouts.
+# GHCR keyless verify fails for private madfam-org/enclii packages until CI cosign is green.
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: roundhouse-waybill-signature-temporary
+  namespace: enclii
+  annotations:
+    enclii.dev/reason: "Roundhouse/waybill digest reconcile pending cosign re-enable."
+    enclii.dev/scope: "roundhouse and waybill Deployments only."
+spec:
+  exceptions:
+    - policyName: verify-image-signatures
+      ruleNames:
+        - check-signature
+        - autogen-check-signature
+  match:
+    any:
+      - resources:
+          kinds:
+            - Deployment
+            - Pod
+            - ReplicaSet
+          namespaces:
+            - enclii
+          names:
+            - roundhouse*
+            - waybill*
