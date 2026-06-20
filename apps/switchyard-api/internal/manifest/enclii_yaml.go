@@ -138,7 +138,7 @@ type encliiYAMLProjectDomain struct {
 	Primary bool   `yaml:"primary,omitempty"`
 }
 
-func normalizeEncliiYAML(config *EncliiYAML) error {
+func validateEncliiYAMLHeader(config *EncliiYAML) error {
 	if _, ok := supportedEncliiAPIVersions[config.APIVersion]; !ok {
 		return fmt.Errorf("unsupported apiVersion: %s (expected enclii.dev/v1 or enclii.madfam.io/v1)", config.APIVersion)
 	}
@@ -147,6 +147,10 @@ func normalizeEncliiYAML(config *EncliiYAML) error {
 	default:
 		return fmt.Errorf("unsupported kind: %s (expected Service or Project)", config.Kind)
 	}
+	return nil
+}
+
+func applyEncliiYAMLDefaults(config *EncliiYAML) {
 	if config.Kind == "Project" && config.Metadata.Project == "" {
 		config.Metadata.Project = config.Metadata.Name
 	}
@@ -155,7 +159,6 @@ func normalizeEncliiYAML(config *EncliiYAML) error {
 			config.Spec.Domains[i].Environment = "production"
 		}
 	}
-	return nil
 }
 
 func normalizeProjectSpec(config *EncliiYAML, projectSpec encliiYAMLProjectSpec) {
@@ -209,7 +212,7 @@ func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
 		Kind:       header.Kind,
 		Metadata:   header.Metadata,
 	}
-	if err := normalizeEncliiYAML(&config); err != nil {
+	if err := validateEncliiYAMLHeader(&config); err != nil {
 		return nil, err
 	}
 
@@ -219,12 +222,14 @@ func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
 			return nil, fmt.Errorf("failed to parse Project spec: %w", err)
 		}
 		normalizeProjectSpec(&config, projectSpec)
+		applyEncliiYAMLDefaults(&config)
 		return &config, nil
 	}
 
 	if err := header.Spec.Decode(&config.Spec); err != nil {
 		return nil, fmt.Errorf("failed to parse Service spec: %w", err)
 	}
+	applyEncliiYAMLDefaults(&config)
 	return &config, nil
 }
 
