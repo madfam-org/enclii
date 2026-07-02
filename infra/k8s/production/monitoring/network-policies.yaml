@@ -216,7 +216,10 @@ spec:
     - protocol: TCP
       port: 9090
 ---
-# AlertManager ingress — from Prometheus only
+# AlertManager ingress — from Prometheus (in-cluster) and the Cloudflare
+# tunnel (external UI at alertmanager.enclii.dev). Without the tunnel rule the
+# default-deny-all policy blocks cloudflared, so the route 502s while the
+# backend is healthy — mirror grafana-ingress below.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -237,6 +240,9 @@ spec:
     - podSelector:
         matchLabels:
           app: prometheus
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cloudflare-tunnel
     ports:
     - protocol: TCP
       port: 9093
