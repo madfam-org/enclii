@@ -1,5 +1,10 @@
 # ARC Cosign Keyless Signing (sigstore) Runbook
 
+> **Boundary checkpoint (2026-07-06, platform on-call):** Public-safe runbook — no
+> secrets or production topology beyond this repo's own IaC. Private operational
+> detail and sink live in `internal-devops` (2026-07-06 tulana audit roadmap).
+> Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 Date: 2026-07-06
 Status: workflow-side fix shipped (tulana PR #24); runner-side egress ruled out in this repo — awaiting preflight evidence from the next deploy
 
