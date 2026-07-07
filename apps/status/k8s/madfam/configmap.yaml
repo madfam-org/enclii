@@ -31,6 +31,15 @@ data:
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
   #
+  # Updated: 2026-07-07 — added deep assertions to the three Tulana probes
+  # (deferred from the Tulana platform-hardening wave). Landing asserts the
+  # hero host string; App asserts anonymous root redirects to the Janua
+  # signin surface (final-URL + body, same pattern as PhyndCRM below) so a
+  # 200 from a broken auth gate cannot show green; API asserts the health
+  # JSON body ("status": "ok" from /api/v1/health/) so a 200 error page
+  # cannot pass. Strings verified against the Tulana repo (apps/web
+  # middleware + auth/signin, apps/api tulana/urls.py health).
+  #
   # Updated: 2026-05-15 — corrected PhyndCRM probes:
   # phynd.app is the public landing page; crm.madfam.io is the MADFAM
   # Janua-gated tenant slice; crm.phynd.app is the generic authenticated
@@ -590,7 +599,8 @@ data:
         "href": "https://tulana.madfam.io",
         "group": "Tulana",
         "family": "MADFAM Platform",
-        "description": "Marketing landing page (public, no auth)"
+        "description": "Marketing landing page (public, no auth)",
+        "assertContains": "tulana.madfam.io"
       },
       {
         "name": "Tulana App",
@@ -598,7 +608,9 @@ data:
         "href": "https://tulana-app.madfam.io",
         "group": "Tulana",
         "family": "MADFAM Platform",
-        "description": "Pricing intelligence + PMF measurement operator dashboard — Janua-gated (RFC 0004 + RFC 0013)"
+        "description": "Pricing intelligence + PMF measurement operator dashboard — Janua-gated; anonymous root must land on the Janua signin surface (RFC 0004 + RFC 0013)",
+        "assertFinalUrlContains": "tulana-app.madfam.io/auth/signin",
+        "assertContains": "Janua"
       },
       {
         "name": "Tulana API",
@@ -606,7 +618,8 @@ data:
         "href": "https://tulana-api.madfam.io",
         "group": "Tulana",
         "family": "MADFAM Platform",
-        "description": "/api/v1/recommendations + /api/v1/pmf endpoints for internal pricing and PMF workflows"
+        "description": "/api/v1/recommendations + /api/v1/pmf endpoints for internal pricing and PMF workflows",
+        "assertContains": "\"status\": \"ok\""
       },
       {
         "name": "Symbiosis HCM",
