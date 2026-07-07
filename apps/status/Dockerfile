@@ -4,6 +4,9 @@
 
 FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
+# Upgrade the bundled npm CLI: the npm shipped with node:22-alpine bundles
+# vulnerable picomatch/sigstore versions that fail the Trivy HIGH/CRITICAL gate.
+RUN npm install -g npm@11.18.0
 RUN corepack enable pnpm
 ENV npm_config_dangerously_allow_all_builds=true
 WORKDIR /app

@@ -7,8 +7,18 @@ RUN apk add --no-cache libc6-compat
 # Upgrade the bundled npm CLI: the npm shipped with node:22-alpine bundles
 # vulnerable picomatch/sigstore versions that fail the Trivy HIGH/CRITICAL gate.
 RUN npm install -g npm@11.18.0
-RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo
+
+# ---------------------------------------------------------------------------
+# build-base stage — base + a corepack-prepared pnpm, for build stages only.
+#
+# `corepack prepare` materialises pnpm (and its bundled glob/minimatch/tar)
+# under /root/.cache/node/corepack. pnpm 9.x carries HIGH CVEs with no 9.x
+# fix line, so it must never reach the runner image: the runner inherits
+# `base` (no pnpm payload), only deps/builder inherit `build-base`.
+# ---------------------------------------------------------------------------
+FROM base AS build-base
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # ---------------------------------------------------------------------------
 # deps stage — install workspace deps from the FULL repo root.
@@ -23,7 +33,7 @@ WORKDIR /repo
 # first (so cache invalidates only when deps change), then install once
 # at the workspace root, then bring in source.
 # ---------------------------------------------------------------------------
-FROM base AS deps
+FROM build-base AS deps
 ARG NPM_MADFAM_TOKEN
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/switchyard-ui/package.json apps/switchyard-ui/
@@ -43,7 +53,7 @@ RUN rm -f .npmrc apps/switchyard-ui/.npmrc
 # so consumers can't import them until tsc has emitted dist/. Build order:
 # shared-lib (leaf) → ui-components → switchyard-ui.
 # ---------------------------------------------------------------------------
-FROM base AS builder
+FROM build-base AS builder
 WORKDIR /repo
 
 # Carry the installed workspace forward
