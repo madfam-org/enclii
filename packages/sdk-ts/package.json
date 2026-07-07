@@ -61,7 +61,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",

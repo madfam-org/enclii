@@ -1,0 +1,17 @@
+# Trivy ignore list — every entry needs a justification and a rotation
+# condition. Remove entries as soon as the upstream fix ships.
+#
+# --- pack CLI: embedded docker/docker v28.5.2 (switchyard-api image) ------
+# pack 0.40.7 (latest release as of 2026-07-07) vendors docker/docker
+# v28.5.2. No pack release has adopted a fixed docker version yet
+# (CVE-2026-34040 is fixed in docker 29.3.1; the other two have no
+# upstream fix released). Exposure is limited: pack is a CLI the API
+# shells out to for buildpacks builds — it is not a network listener and
+# the embedded docker client code paths are not reachable from untrusted
+# input in our usage.
+# ROTATE OUT: when a pack release built on docker >= 29.3.1 ships
+# (watch https://github.com/buildpacks/pack/releases), bump PACK_VERSION
+# in apps/switchyard-api/Dockerfile and delete these three lines.
+CVE-2026-41567
+CVE-2026-42306
+CVE-2026-34040

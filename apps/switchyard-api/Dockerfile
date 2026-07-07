@@ -6,6 +6,13 @@ WORKDIR /app
 # Install git for go mod download
 RUN apk add --no-cache git
 
+# Build cosign from source with the pinned CI Go toolchain (1.26.4).
+# The official release binaries are compiled with an older Go stdlib that
+# carries HIGH CVEs, so building here keeps the runtime image free of known
+# HIGH/CRITICAL findings while pinning the cosign version.
+ENV COSIGN_VERSION=v3.1.1
+RUN CGO_ENABLED=0 GOBIN=/usr/local/bin go install "github.com/sigstore/cosign/v3/cmd/cosign@${COSIGN_VERSION}"
+
 # Copy go.work and all module files first
 COPY go.work ./
 COPY apps/switchyard-api/go.mod apps/switchyard-api/go.sum ./apps/switchyard-api/
@@ -38,7 +45,7 @@ WORKDIR /app/apps/switchyard-api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/switchyard-api ./cmd/api
 
 # Final stage - includes build tooling for CI/CD pipeline
-FROM public.ecr.aws/docker/library/alpine:3.20
+FROM public.ecr.aws/docker/library/alpine:3.24
 
 # Install required packages:
 # - ca-certificates: for HTTPS connections
@@ -50,21 +57,19 @@ RUN apk --no-cache add ca-certificates tzdata wget git curl bash
 
 # Install Docker CLI from official releases (Alpine's docker-cli is too old)
 # Required for building and pushing images via Docker socket mount
-ENV DOCKER_VERSION=27.4.1
+ENV DOCKER_VERSION=29.6.1
 RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" | tar -xz -C /tmp \
     && mv /tmp/docker/docker /usr/local/bin/ \
     && rm -rf /tmp/docker
 
 # Install Cloud Native Buildpacks pack CLI
-ENV PACK_VERSION=0.35.1
+ENV PACK_VERSION=0.40.7
 RUN curl -sSL "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux.tgz" | tar -xz -C /usr/local/bin
 
-# Install cosign so the API can verify signed image digests before committing
-# production GitOps pins from platform build callbacks.
-ENV COSIGN_VERSION=v2.4.3
-RUN curl -fsSL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
-    -o /usr/local/bin/cosign \
-    && chmod +x /usr/local/bin/cosign
+# Copy cosign (built from source in the builder stage) so the API can verify
+# signed image digests before committing production GitOps pins from platform
+# build callbacks.
+COPY --from=builder /usr/local/bin/cosign /usr/local/bin/cosign
 
 # Create non-root user for running the application
 RUN addgroup -g 65532 nonroot && \

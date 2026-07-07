@@ -4,6 +4,9 @@
 
 FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
+# Upgrade the bundled npm CLI: the npm shipped with node:22-alpine bundles
+# vulnerable picomatch/sigstore versions that fail the Trivy HIGH/CRITICAL gate.
+RUN npm install -g npm@11.18.0
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /repo
 
@@ -22,7 +25,7 @@ WORKDIR /repo
 # ---------------------------------------------------------------------------
 FROM base AS deps
 ARG NPM_MADFAM_TOKEN
-COPY pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/switchyard-ui/package.json apps/switchyard-ui/
 COPY apps/switchyard-ui/.npmrc apps/switchyard-ui/
 COPY packages/shared-lib/package.json packages/shared-lib/
@@ -44,6 +47,7 @@ FROM base AS builder
 WORKDIR /repo
 
 # Carry the installed workspace forward
+COPY --from=deps /repo/package.json ./
 COPY --from=deps /repo/pnpm-workspace.yaml ./
 COPY --from=deps /repo/pnpm-lock.yaml ./
 COPY --from=deps /repo/node_modules ./node_modules

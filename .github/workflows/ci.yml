@@ -943,6 +943,10 @@ jobs:
           output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
           exit-code: '1'
+          # Root .trivyignore: justified, rotation-noted exceptions only
+          # (currently the pack CLI's embedded docker/docker in the
+          # switchyard-api image — see the file for the rotation condition).
+          trivyignores: .trivyignore
 
       - name: Skip scan (not configured)
         if: matrix.scan != true
