@@ -2,8 +2,11 @@
 # Build context should be the enclii root directory, not apps/admin-console
 # Usage: docker build -f apps/admin-console/Dockerfile -t dispatch .
 
-FROM docker.io/library/node:22-alpine AS base
+FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
+# Upgrade the bundled npm CLI: the npm shipped with node:22-alpine bundles
+# vulnerable picomatch/sigstore versions that fail the Trivy HIGH/CRITICAL gate.
+RUN npm install -g npm@11.18.0
 RUN corepack enable pnpm
 WORKDIR /app
 
@@ -15,7 +18,7 @@ WORKDIR /app
 # depends on @enclii/ui-components via workspace:*, so an isolated
 # apps/admin-console install cannot resolve its local package graph.
 ARG NPM_MADFAM_TOKEN
-COPY pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages ./packages
 COPY apps/admin-console ./apps/admin-console
 RUN pnpm --dir apps/admin-console install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true

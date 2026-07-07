@@ -1,0 +1,17 @@
+{
+  "name": "@enclii/workspace-root",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace root manifest. Exists to carry pnpm dependency overrides for CVE remediation; not a publishable package.",
+  "pnpm": {
+    "overrides": {
+      "form-data@<2.5.6": "^2.5.6",
+      "form-data@>=4.0.0 <4.0.6": "^4.0.6",
+      "lodash@<4.18.0": "^4.18.0",
+      "picomatch@>=2.0.0 <2.3.2": "~2.3.2",
+      "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
+      "protobufjs@>=7.0.0 <7.5.6": "^7.5.6",
+      "ws@>=8.0.0 <8.21.0": "^8.21.0"
+    }
+  }
+}
