@@ -93,16 +93,16 @@ spec:
 
         resources:
           cpu:
-            # cores MUST be an integer per the chart's values schema — a prior
-            # 0.5 broke `helm template` (schema: Expected integer, given number).
-            # overprovisioned: true is the actual right-sizing lever: it renders
-            # the redpanda container with a cpu *limit* of `cores` and NO cpu
-            # *request* (best-effort), verified via `helm template`. That drops
-            # the 1000m×3 reservation to 0 while keeping the 1-core ceiling.
-            # Observed broker usage is ~50-65m; both prod nodes were 99%
-            # CPU-requested (2026-07-07 right-sizing audit).
+            # NOTE (2026-07-07): redpanda right-sizing is NOT achievable via
+            # chart values. The chart renders limits-only (no requests block),
+            # so Kubernetes defaults the CPU *request* to equal the limit
+            # (cores). Setting cores fractional violates the chart's
+            # integer-only schema. To actually lower the 1000m×3 reservation,
+            # apply a LimitRange in the `data` namespace or a kustomize
+            # post-render patch — tracked separately. Left at the original
+            # integer default here.
             cores: 1
-            overprovisioned: true
+            overprovisioned: false
           memory:
             enable_memory_locking: false
             container:
