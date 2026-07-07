@@ -43,29 +43,29 @@ configMapGenerator:
   - ENCLII_RATE_LIMIT_REQUESTS_PER_MINUTE=10000
   - ENCLII_ENABLE_PROFILING=false
   name: env-config
-images:
 # NOTE: dispatch is intentionally absent. Its GitOps source of truth is
 # apps/admin-console/k8s/kustomization.yaml (ArgoCD project `dispatch`,
 # manifestPath apps/admin-console/k8s) — that is where CI pins its digest.
 # A duplicate entry here is dead config: no resource in this kustomization
 # uses an image named `dispatch`, and a stale digest here only misleads
 # audits into thinking the pin never happened.
-- digest: sha256:03ecc63baf57fc130a055cdbc46533b9d06a251d154d1948f231274226230c63
+images:
+- digest: sha256:9172ce6386011d13d74121208a38788ffb24cd35c550f2e27b3bd2d5fcab6613
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
-- digest: sha256:ccf136d05738a94b6e61fb824f53f2ed77aa0d14fb2f4085c34feb030cc4772c
+- digest: sha256:993d152dcb577406b1043c00f25d2c07bc38d88ef301c9a45e855a8f8e93b6e8
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
 - digest: sha256:8a0c97ab3f797207b02c5cec9bbb1ef2c050195af47961e3b0b306dd02b927c7
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:0b590ac5c40a9c4a731e9e22096a1cc7206a60dd3132e7f7c4e24b9f275bc0aa
+- digest: sha256:d91082dd1cb3b3f2476af15cf3367af2d1a93e8212fde0cd6dd04462100dae9a
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:9f418cbc41b6ae7989297130ea0177d85a4a7f516ed999f9a33513320b258892
+- digest: sha256:27b48a1c82fd361221c40900657a81ce879d7ecf5284912849adb8a00c77dde5
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:1900413b436c663d5dabb3e9403f647c6ed9c7a9ab55c8e7a35d4a15842fe049
+- digest: sha256:95059b40deddfe95cdd11a016d99bae67ea0c9069dae7c509c8fbc58183b20a9
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
