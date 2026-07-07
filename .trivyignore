@@ -1,7 +1,9 @@
 # Trivy ignore list — every entry needs a justification and a rotation
 # condition. Remove entries as soon as the upstream fix ships.
 #
-# --- pack CLI: embedded docker/docker v28.5.2 (switchyard-api image) ------
+# --- pack CLI: embedded docker/docker v28.5.2 --------------------------
+# Applies to the switchyard-api AND roundhouse-worker images (both install
+# pack 0.40.7; CVE IDs are image-agnostic, so these three entries cover both).
 # pack 0.40.7 (latest release as of 2026-07-07) vendors docker/docker
 # v28.5.2. No pack release has adopted a fixed docker version yet
 # (CVE-2026-34040 is fixed in docker 29.3.1; the other two have no
@@ -11,7 +13,8 @@
 # input in our usage.
 # ROTATE OUT: when a pack release built on docker >= 29.3.1 ships
 # (watch https://github.com/buildpacks/pack/releases), bump PACK_VERSION
-# in apps/switchyard-api/Dockerfile and delete these three lines.
+# in apps/switchyard-api/Dockerfile AND apps/roundhouse/Dockerfile, then
+# delete these three lines.
 CVE-2026-41567
 CVE-2026-42306
 CVE-2026-34040

@@ -37,9 +37,23 @@
       "path": "apps/roundhouse",
       "type": "go",
       "dockerfile": "apps/roundhouse/Dockerfile",
+      "target": "api",
       "image": "roundhouse",
       "kustomization": "infra/k8s/production",
       "kustomize_image": "roundhouse",
+      "dependencies": ["packages/sdk-go", "packages/otel-go"],
+      "scan": true,
+      "deploy_check": "roundhouse-api"
+    },
+    {
+      "name": "roundhouse-worker",
+      "path": "apps/roundhouse",
+      "type": "go",
+      "dockerfile": "apps/roundhouse/Dockerfile",
+      "target": "worker",
+      "image": "roundhouse-worker",
+      "kustomization": "infra/k8s/production",
+      "kustomize_image": "roundhouse-worker",
       "dependencies": ["packages/sdk-go", "packages/otel-go"],
       "scan": true,
       "deploy_check": "roundhouse"

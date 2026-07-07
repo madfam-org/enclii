@@ -59,6 +59,15 @@ images:
 - digest: sha256:8a0c97ab3f797207b02c5cec9bbb1ef2c050195af47961e3b0b306dd02b927c7
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
+# BRIDGE PIN: roundhouse-worker intentionally points at the pre-split
+# combined `roundhouse` image digest so the worker keeps running exactly
+# what it runs today until CI's first post-split build pushes the new
+# ghcr.io/madfam-org/enclii/roundhouse-worker image and repins this entry
+# (commit-digests runs `kustomize edit set image roundhouse-worker=...`,
+# which rewrites both newName and digest). Do not hand-edit.
+- digest: sha256:8a0c97ab3f797207b02c5cec9bbb1ef2c050195af47961e3b0b306dd02b927c7
+  name: roundhouse-worker
+  newName: ghcr.io/madfam-org/enclii/roundhouse
 - digest: sha256:d91082dd1cb3b3f2476af15cf3367af2d1a93e8212fde0cd6dd04462100dae9a
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
