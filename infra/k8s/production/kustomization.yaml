@@ -44,9 +44,12 @@ configMapGenerator:
   - ENCLII_ENABLE_PROFILING=false
   name: env-config
 images:
-- digest: sha256:e7dc8e774d8a992f1864cbe75410cf8f4543acf1428d95b60bdf75f0fcdd6b7f
-  name: dispatch
-  newName: ghcr.io/madfam-org/enclii/dispatch
+# NOTE: dispatch is intentionally absent. Its GitOps source of truth is
+# apps/admin-console/k8s/kustomization.yaml (ArgoCD project `dispatch`,
+# manifestPath apps/admin-console/k8s) — that is where CI pins its digest.
+# A duplicate entry here is dead config: no resource in this kustomization
+# uses an image named `dispatch`, and a stale digest here only misleads
+# audits into thinking the pin never happened.
 - digest: sha256:03ecc63baf57fc130a055cdbc46533b9d06a251d154d1948f231274226230c63
   name: docs-site
   newName: ghcr.io/madfam-org/enclii/docs-site
