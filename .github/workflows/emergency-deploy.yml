@@ -112,6 +112,10 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          # Optional Dockerfile stage from services.json (`target` field).
+          # Empty = final stage. Matrix entries here are the raw
+          # services.json objects, so the field flows through directly.
+          target: ${{ matrix.target || '' }}
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:latest

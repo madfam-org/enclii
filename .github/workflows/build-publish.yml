@@ -77,6 +77,10 @@ on:
             - context:    (optional) build context; defaults to "."
                           Set this when the Dockerfile's COPY paths are
                           relative to a subdir, not the repo root.
+            - target:     (optional) Dockerfile stage to build
+                          (`docker build --target`). Omit to build the
+                          final stage. Lets one Dockerfile publish
+                          multiple images (one service entry per stage).
             - paths:      (optional) space-separated paths for change
                           detection on push triggers. Service is rebuilt
                           when the diff touches any of its paths.
@@ -335,6 +339,9 @@ jobs:
           # subdir) can set it per-service in the matrix JSON.
           context: ${{ matrix.service.context || '.' }}
           file: ${{ matrix.service.dockerfile }}
+          # Optional Dockerfile stage (`target` in the service entry).
+          # Empty string = final stage (the action omits --target).
+          target: ${{ matrix.service.target || '' }}
           platforms: linux/amd64
           push: true
           provenance: false

@@ -273,7 +273,18 @@ jobs:
       # the gate land without forcing an off-scope mass-rebuild from a CI PR.
       # Rotate each out as the next routine deploy of that service rebuilds.
       AGE_RATCHET_EXEMPT_LANDING_PAGE: "static marketing site, low blast radius; ETA 2026-06 with next content refresh"
-      AGE_RATCHET_EXEMPT_ROUNDHOUSE: "stable orchestrator binary, no upstream CVE pressure; ETA 2026-06 with next dispatcher feature"
+      # roundhouse: api/worker image split + base bumps (alpine 3.24,
+      # docker 29.6.1-dind, pack 0.40.7, cosign/syft built from source)
+      # landed 2026-07. The api image (`roundhouse`) scans clean and repins
+      # on the first post-split main build. The worker image
+      # (`roundhouse-worker`) still fails the HIGH/CRITICAL scan gate on
+      # unfixable upstream CVEs inside the dind engine binaries
+      # (containerd/runc: otel, grpc, x/net — no docker release with fixes
+      # yet), so its bridge pin keeps the old digest until an owner decision
+      # (see infra/k8s/production/kustomization.yaml). This exemption covers
+      # that bridge entry too (exemption key = newName leaf = ROUNDHOUSE).
+      # ROTATE OUT: once roundhouse-worker gets a passing scan + fresh pin.
+      AGE_RATCHET_EXEMPT_ROUNDHOUSE: "api/worker split landed 2026-07; api repins on next main build, worker bridge pin blocked on upstream dind engine CVEs; ETA 2026-08 or next docker release with containerd/runc fixes"
       AGE_RATCHET_EXEMPT_WAYBILL: "stable manifest serializer, no upstream CVE pressure; ETA 2026-06 alongside roundhouse"
       PYTHONUNBUFFERED: "1"
     steps:
@@ -676,6 +687,10 @@ jobs:
             PATH_PREFIX=$(echo "$line" | jq -r '.path')
             DEPS=$(echo "$line" | jq -r '.dependencies // [] | .[]')
             DOCKERFILE=$(echo "$line" | jq -r '.dockerfile')
+            # Optional Dockerfile stage to build (--target). Empty = final
+            # stage. Lets one Dockerfile publish multiple images (e.g.
+            # roundhouse api vs roundhouse-worker dind stages).
+            TARGET=$(echo "$line" | jq -r '.target // ""')
             IMAGE=$(echo "$line" | jq -r '.image')
             KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
             KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
@@ -728,12 +743,13 @@ jobs:
                 --arg name "$NAME" \
                 --arg path "$PATH_PREFIX" \
                 --arg dockerfile "$DOCKERFILE" \
+                --arg target "$TARGET" \
                 --arg image "$IMAGE" \
                 --arg kustomization "$KUSTOMIZATION" \
                 --arg kustomize_image "$KUSTOMIZE_IMAGE" \
                 --argjson scan "$SCAN" \
                 --argjson build_args "$BUILD_ARGS" \
-                '{name: $name, path: $path, dockerfile: $dockerfile, image: $image, kustomization: $kustomization, kustomize_image: $kustomize_image, scan: $scan, build_args: $build_args}')
+                '{name: $name, path: $path, dockerfile: $dockerfile, target: $target, image: $image, kustomization: $kustomization, kustomize_image: $kustomize_image, scan: $scan, build_args: $build_args}')
               MATRIX_INCLUDE=$(echo "$MATRIX_INCLUDE" | jq --argjson entry "$ENTRY" '. + [$entry]')
             fi
 
@@ -849,6 +865,9 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          # Optional Dockerfile stage from services.json (`target` field).
+          # Empty string = build the final stage (action omits --target).
+          target: ${{ matrix.target || '' }}
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/${{ matrix.image }}:${{ github.sha }}

@@ -102,7 +102,11 @@ spec:
                     operator: DoesNotExist
       containers:
         - name: roundhouse-worker
-          image: roundhouse
+          # Published from apps/roundhouse/Dockerfile --target worker
+          # (dind + pack/syft/cosign build tooling). The slim API stage is
+          # published separately as `roundhouse` for the roundhouse-api
+          # Deployment below.
+          image: roundhouse-worker
           imagePullPolicy: Always
           securityContext:
             privileged: false
@@ -249,8 +253,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: roundhouse-api
+          # Published from apps/roundhouse/Dockerfile --target api (slim
+          # alpine stage). Its entrypoint is already roundhouse-api; the
+          # explicit command is kept so the pod also runs correctly against
+          # the pre-split combined image during digest rotation.
           image: roundhouse
-          # Override the default entrypoint to run the API binary
           command: ["/usr/local/bin/roundhouse-api"]
           imagePullPolicy: Always
           securityContext:
