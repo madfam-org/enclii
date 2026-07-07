@@ -49,32 +49,32 @@ configMapGenerator:
 # A duplicate entry here is dead config: no resource in this kustomization
 # uses an image named `dispatch`, and a stale digest here only misleads
 # audits into thinking the pin never happened.
-images:
-- digest: sha256:9172ce6386011d13d74121208a38788ffb24cd35c550f2e27b3bd2d5fcab6613
-  name: docs-site
-  newName: ghcr.io/madfam-org/enclii/docs-site
-- digest: sha256:993d152dcb577406b1043c00f25d2c07bc38d88ef301c9a45e855a8f8e93b6e8
-  name: landing-page
-  newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:8a0c97ab3f797207b02c5cec9bbb1ef2c050195af47961e3b0b306dd02b927c7
-  name: roundhouse
-  newName: ghcr.io/madfam-org/enclii/roundhouse
 # BRIDGE PIN: roundhouse-worker intentionally points at the pre-split
 # combined `roundhouse` image digest so the worker keeps running exactly
 # what it runs today until CI's first post-split build pushes the new
 # ghcr.io/madfam-org/enclii/roundhouse-worker image and repins this entry
 # (commit-digests runs `kustomize edit set image roundhouse-worker=...`,
 # which rewrites both newName and digest). Do not hand-edit.
+images:
+- digest: sha256:a76600cd1d682a8bd33f4c986ad44811a1e8536a9b745e9d932c3de6c7e300a4
+  name: docs-site
+  newName: ghcr.io/madfam-org/enclii/docs-site
+- digest: sha256:a9ed7871adf8a8629849de39eb7772be2ba471c07bc07c9b01fd8f9196a6b56d
+  name: landing-page
+  newName: ghcr.io/madfam-org/enclii/landing-page
+- digest: sha256:7ea253d11dfdb9577dcdd13a8c572aa12cca85abf213d3f2d2e5b679961e5ba4
+  name: roundhouse
+  newName: ghcr.io/madfam-org/enclii/roundhouse
 - digest: sha256:8a0c97ab3f797207b02c5cec9bbb1ef2c050195af47961e3b0b306dd02b927c7
   name: roundhouse-worker
   newName: ghcr.io/madfam-org/enclii/roundhouse
-- digest: sha256:d91082dd1cb3b3f2476af15cf3367af2d1a93e8212fde0cd6dd04462100dae9a
+- digest: sha256:6798e2060b142f3342b32e53509b63302fd08e3e1fbf2d110a3c81b3df8a0df3
   name: switchyard-api
   newName: ghcr.io/madfam-org/enclii/switchyard-api
-- digest: sha256:18dd93456149e3927ed36f11dc6473a19eccf49211d5deadb91a9aac3f677f94
+- digest: sha256:2dcf15cf574730d83a9f1f049e9ff1fdd328283382639f3b52d3df0eeae568ec
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:95059b40deddfe95cdd11a016d99bae67ea0c9069dae7c509c8fbc58183b20a9
+- digest: sha256:950477a71e13feae6286da9290a177f25e7625d3419c087410ff34b44f1af016
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
