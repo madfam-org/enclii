@@ -1,0 +1,107 @@
+# ARC Sigstore Egress Check
+#
+# One-off diagnostic for cosign keyless signing failures on the
+# madfam-runners-blue ARC pool (Fulcio OIDC "invalid character 'u' looking
+# for beginning of value" — a non-JSON HTTP body reaching cosign's JSON
+# parser). Run via workflow_dispatch when a deploy workflow's sigstore
+# preflight fails, or to prove runner egress after a network change.
+#
+# What each step proves:
+#   1. sigstore endpoints  — TCP+TLS+HTTP reachability of the four hosts
+#                            cosign keyless needs, with the raw first bytes
+#                            of each response so an intercepting proxy or
+#                            error page names itself.
+#   2. TLS issuer          — certificate chain actually presented to the
+#                            runner; a corporate/mitm issuer here means TLS
+#                            interception, which keyless signing cannot
+#                            tolerate.
+#   3. OIDC token broker   — the exact ACTIONS_ID_TOKEN_REQUEST_URL exchange
+#                            cosign performs, with the raw body printed only
+#                            when it is NOT valid JSON (a non-JSON body here
+#                            reproduces the original failure verbatim).
+#
+# Companion runbook: docs/runbooks/ARC_COSIGN_KEYLESS_SIGNING.md
+
+name: ARC Sigstore Egress Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Exercises the same ambient OIDC mint path cosign keyless signing uses.
+  id-token: write
+
+jobs:
+  probe:
+    name: Probe sigstore + GitHub OIDC egress
+    runs-on: madfam-runners-blue
+    timeout-minutes: 10
+    steps:
+      - name: Probe sigstore endpoints
+        # Same host list as the tulana deploy preflight (tulana PR #24):
+        # oauth2 (OIDC), fulcio (CA), rekor (transparency log),
+        # tuf-repo-cdn (trust root).
+        run: |
+          set -uo pipefail
+          FAILED=0
+          for HOST in oauth2.sigstore.dev fulcio.sigstore.dev rekor.sigstore.dev tuf-repo-cdn.sigstore.dev; do
+            BODY="$(mktemp)"
+            if CODE=$(curl -sS --max-time 10 -o "${BODY}" -w '%{http_code}' "https://${HOST}" 2>&1); then
+              # Safe to echo: unauthenticated GET / responses only.
+              echo "ok: ${HOST} HTTP ${CODE} — first bytes: $(head -c 80 "${BODY}" | tr -d '\r\n')"
+            else
+              echo "UNREACHABLE: ${HOST} — ${CODE}" >&2
+              FAILED=1
+            fi
+            rm -f "${BODY}"
+          done
+          if [ "${FAILED}" -ne 0 ]; then
+            echo "::error::sigstore endpoints unreachable from this runner pod — see docs/runbooks/ARC_COSIGN_KEYLESS_SIGNING.md"
+            exit 1
+          fi
+
+      - name: Check TLS issuer (interception / stale CA detection)
+        # Keyless signing breaks if anything re-terminates TLS between the
+        # runner and sigstore. The issuer must be a public CA chain
+        # (Google Trust Services / Let's Encrypt), never an internal CA.
+        run: |
+          set -euo pipefail
+          for HOST in fulcio.sigstore.dev oauth2.sigstore.dev; do
+            ISSUER=$(echo | openssl s_client -connect "${HOST}:443" -servername "${HOST}" 2>/dev/null \
+              | openssl x509 -noout -issuer)
+            echo "${HOST}: ${ISSUER}"
+          done
+
+      - name: Probe GitHub OIDC token broker (raw response)
+        # cosign's ambient credential fetch GETs
+        # ${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore and JSON-parses
+        # the body. Reproduce that request and, if the body is not JSON,
+        # print it — that body is the "invalid character ..." payload.
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN unset — id-token: write missing or runner agent too old"
+            exit 1
+          fi
+          BODY="$(mktemp)"
+          CODE=$(curl -sS --max-time 10 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            -H "Accept: application/json" \
+            -o "${BODY}" -w '%{http_code}' \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore")
+          echo "token broker HTTP ${CODE}"
+          if jq -e 'has("value")' "${BODY}" >/dev/null 2>&1; then
+            # Never print the body here: .value is the OIDC JWT.
+            echo "ok: response is JSON with .value — OIDC token minted (redacted)"
+          elif jq -e . "${BODY}" >/dev/null 2>&1; then
+            echo "::error::response is JSON but missing .value — broker error, keys follow"
+            jq -r 'keys[]' "${BODY}"
+            exit 1
+          else
+            echo "::error::response is NOT JSON — this is the body cosign chokes on (first 200 bytes follow)"
+            head -c 200 "${BODY}"
+            echo
+            exit 1
+          fi
+          rm -f "${BODY}"

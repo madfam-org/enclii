@@ -298,6 +298,6 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 
 For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
-Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../runbooks/SECRET_INTAKE.md).
+Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md).
 
 Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii ./cmd/enclii/`

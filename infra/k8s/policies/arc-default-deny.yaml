@@ -4,7 +4,15 @@
 # Default-deny + explicit allow rules for arc-system and arc-runners namespaces.
 # arc-system: ARC controller (manages runner scale sets, K8s API access).
 # arc-runners: Ephemeral GitHub Actions runner pods (HTTPS to GitHub API).
-# Managed by enclii repo, applied via kubectl (no ArgoCD app for policies dir).
+# Managed by enclii repo; synced by the ArgoCD `network-policies` app
+# (infra/argocd/apps/network-policies.yaml, automated + selfHeal) — merges to
+# main roll out without a manual kubectl apply.
+#
+# NOTE (2026-07-06): `runner-egress` below intentionally allows ALL egress on
+# 443/80/22/6443 + DNS. There is no host-level allowlist here — sigstore
+# (fulcio/rekor/oauth2/tuf-repo-cdn) and GitHub OIDC endpoints are already
+# reachable. Cosign keyless failures on the runners are NOT caused by this
+# policy; see docs/runbooks/ARC_COSIGN_KEYLESS_SIGNING.md before adding rules.
 # =============================================================================
 
 # ---- arc-system namespace ----
