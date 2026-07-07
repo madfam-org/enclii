@@ -93,11 +93,15 @@ spec:
 
         resources:
           cpu:
-            # 0.5 cores (was 1): observed broker usage is ~50-65m; both prod
-            # nodes were 99% CPU-requested (2026-07-07 right-sizing audit).
-            # Fractional cores require overprovisioned: true (relaxes
-            # dedicated-core tuning; fine at this traffic level).
-            cores: 0.5
+            # cores MUST be an integer per the chart's values schema — a prior
+            # 0.5 broke `helm template` (schema: Expected integer, given number).
+            # overprovisioned: true is the actual right-sizing lever: it renders
+            # the redpanda container with a cpu *limit* of `cores` and NO cpu
+            # *request* (best-effort), verified via `helm template`. That drops
+            # the 1000m×3 reservation to 0 while keeping the 1-core ceiling.
+            # Observed broker usage is ~50-65m; both prod nodes were 99%
+            # CPU-requested (2026-07-07 right-sizing audit).
+            cores: 1
             overprovisioned: true
           memory:
             enable_memory_locking: false
