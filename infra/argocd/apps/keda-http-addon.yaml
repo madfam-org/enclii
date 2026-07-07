@@ -23,12 +23,39 @@ spec:
     helm:
       valueFiles: []
       values: |
+        # Right-sizing 2026-07-07: chart defaults request 250m per pod
+        # (interceptor + 3 scaler replicas + operator ~= 1.3 CPU reserved)
+        # while observed usage is <10m per pod. Explicit small requests;
+        # limits keep burst headroom.
         operator:
           replicas: 1
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+        scaler:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
         interceptor:
           replicas:
             min: 1
             max: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
         podSecurityContext:
           runAsNonRoot: true
           runAsUser: 1000

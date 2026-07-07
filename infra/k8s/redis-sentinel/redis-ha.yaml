@@ -206,7 +206,9 @@ spec:
           resources:
             requests:
               memory: "512Mi"
-              cpu: "200m"
+              # 100m (was 200m): observed whole-pod usage 34-48m; nodes were
+              # 99% CPU-requested (2026-07-07 right-sizing audit).
+              cpu: "100m"
             limits:
               memory: "1Gi"
               cpu: "500m"
