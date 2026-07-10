@@ -106,8 +106,12 @@ export default function ActivityPage() {
     );
   };
 
-  const getResourceIcon = (resourceType: string) => {
-    const icons: Record<string, React.ReactNode> = {
+  // Typed as ReactElement (not ReactNode): with two @types/react majors in
+  // the tree, ReactNode unions diverge (React 19 adds bigint) and the
+  // `??`-fallback union stops being assignable to the JSX runtime's children
+  // type — which broke `next build` type-checking on 2026-07-10.
+  const getResourceIcon = (resourceType: string): React.ReactElement => {
+    const icons: Record<string, React.ReactElement> = {
       project: (
         <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -129,7 +133,7 @@ export default function ActivityPage() {
         </svg>
       ),
     };
-    return icons[resourceType] || (
+    return icons[resourceType] ?? (
       <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
       </svg>
