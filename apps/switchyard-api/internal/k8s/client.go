@@ -259,6 +259,72 @@ func (c *Client) ensureDefaultDenyPolicy(ctx context.Context, namespace string) 
 	return nil
 }
 
+// EnsureDataAccessIngressPolicy creates an ingress-allow NetworkPolicy that lets
+// pods in any namespace labeled `enclii.dev/data-access: true` reach the given
+// data-store pods on `port`. Without it, the default-deny policy applied to every
+// addon namespace blocks consuming services from ever connecting — which stranded
+// the first per-addon Postgres (eido-db) behind a silent ConnectionRefused for
+// hours. This mirrors the shared `data/postgres-ingress` policy but scoped to a
+// single addon's pods.
+//
+// podSelectorLabels selects the data-store pods (e.g. {"cnpg.io/cluster": name}).
+// Idempotent: a no-op if the policy already exists.
+func (c *Client) EnsureDataAccessIngressPolicy(
+	ctx context.Context, namespace, policyName string, podSelectorLabels map[string]string, port int32,
+) error {
+	npClient := c.Clientset.NetworkingV1().NetworkPolicies(namespace)
+
+	if _, err := npClient.Get(ctx, policyName, metav1.GetOptions{}); err == nil {
+		return nil // Already exists
+	} else if !k8serrors.IsNotFound(err) {
+		return fmt.Errorf("check existing NetworkPolicy %s: %w", policyName, err)
+	}
+
+	policy := buildDataAccessIngressPolicy(namespace, policyName, podSelectorLabels, port)
+	if _, err := npClient.Create(ctx, policy, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("create data-access ingress NetworkPolicy %s in %s: %w", policyName, namespace, err)
+	}
+	return nil
+}
+
+// buildDataAccessIngressPolicy constructs the allow-ingress NetworkPolicy that
+// EnsureDataAccessIngressPolicy applies. Split out as a pure function so its
+// shape (pod selector, data-access namespace selector, port) is unit-testable
+// without a cluster or fake clientset.
+func buildDataAccessIngressPolicy(
+	namespace, policyName string, podSelectorLabels map[string]string, port int32,
+) *networkingv1.NetworkPolicy {
+	p := intstr.FromInt(int(port))
+	protocolTCP := corev1.ProtocolTCP
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policyName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"enclii.dev/managed-by": "onboarding-api",
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: podSelectorLabels},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						{
+							NamespaceSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"enclii.dev/data-access": "true"},
+							},
+						},
+					},
+					Ports: []networkingv1.NetworkPolicyPort{
+						{Port: &p, Protocol: &protocolTCP},
+					},
+				},
+			},
+		},
+	}
+}
+
 // DryRunApply validates a manifest against the cluster using server-side dry-run.
 // Returns nil if the manifest would be accepted, or an error with admission violation details.
 func (c *Client) DryRunApply(ctx context.Context, namespace string, obj map[string]interface{}) error {

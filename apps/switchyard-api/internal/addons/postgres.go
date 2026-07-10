@@ -88,6 +88,21 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
 	}
 
+	// Open the addon namespace's default-deny to consuming services. Every addon
+	// namespace gets a default-deny NetworkPolicy (EnsureNamespace); without a
+	// companion allow-rule the CNPG pods are unreachable from the services that
+	// need them (the eido-db go-live crash-looped for hours on a silent
+	// ConnectionRefused for exactly this reason). Scope the allow to this
+	// cluster's pods on 5432, from any namespace labeled data-access.
+	if npErr := p.k8sClient.EnsureDataAccessIngressPolicy(
+		ctx, req.Namespace, fmt.Sprintf("%s-data-access", resourceName),
+		map[string]string{"cnpg.io/cluster": resourceName}, 5432,
+	); npErr != nil {
+		// Non-fatal: the cluster is up; surface the gap so the operator can add
+		// the policy rather than leaving the addon silently unreachable.
+		logger.WithError(npErr).Error("Failed to create data-access ingress NetworkPolicy — consumers may be blocked by default-deny")
+	}
+
 	// Connection secret name follows CloudNativePG naming convention
 	connectionSecret := fmt.Sprintf("%s-app", resourceName)
 
