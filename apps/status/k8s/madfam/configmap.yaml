@@ -569,7 +569,16 @@ data:
         "href": "https://blueprint.tube",
         "group": "Blueprint Harvester",
         "family": "Content & Creative",
-        "description": "3D-file discovery / harvesting — spec-phase landing"
+        "description": "3D-model catalog landing (blueprint.tube)"
+      },
+      {
+        "name": "Blueprint Harvester API",
+        "url": "https://api.blueprint.tube/ready",
+        "assertContains": "\"status\":\"ready\"",
+        "href": "https://api.blueprint.tube",
+        "group": "Blueprint Harvester",
+        "family": "Content & Creative",
+        "description": "Catalog + geometry search API — DB-checked readiness (RFC 0015 deep probe; 2026-07-09 502 went undetected by the landing-only check)"
       },
       {
         "name": "Routecraft Dashboard",
