@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 
 	"gopkg.in/yaml.v3"
 )
@@ -425,4 +427,102 @@ func containsByName(entries []statusServiceEntry, name string) bool {
 		}
 	}
 	return false
+}
+
+// TestStatusHandler_MergePreservesUnownedLegacyEntries verifies regenerate
+// reconciles rather than replaces: entries in the existing configmap that no
+// generated entry owns (by Name+Group identity) survive, while identity
+// collisions resolve in favor of the generated (project-declared) entry.
+func TestStatusHandler_MergePreservesUnownedLegacyEntries(t *testing.T) {
+	existingEntries := []statusServiceEntry{
+		{Name: "Blueprint Harvester", URL: "https://blueprint.tube/health", Group: "Blueprint Harvester"},
+		{Name: "Legacy Only A", URL: "https://a.example/health", Group: "Legacy"},
+		{Name: "Legacy Only B", URL: "https://b.example/health", Group: "Legacy"},
+	}
+	existingBytes, err := generateStatusConfigmap(statusSiteMadfam, existingEntries, nil)
+	if err != nil {
+		t.Fatalf("build existing: %v", err)
+	}
+
+	generated := []statusServiceEntry{
+		// Same identity as the first existing entry but a newer URL — the
+		// generated definition must win.
+		{Name: "Blueprint Harvester", URL: "https://blueprint.tube/healthz", Group: "Blueprint Harvester"},
+		{Name: "Blueprint Harvester API", URL: "https://api.blueprint.tube/ready", Group: "Blueprint Harvester"},
+	}
+
+	merged, preserved, err := mergePreserveExistingStatusEntries(generated, existingBytes)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if preserved != 2 {
+		t.Errorf("preserved = %d, want 2", preserved)
+	}
+	if len(merged) != 4 {
+		t.Errorf("merged len = %d, want 4 (%+v)", len(merged), merged)
+	}
+	for _, e := range merged {
+		if e.Name == "Blueprint Harvester" && e.URL != "https://blueprint.tube/healthz" {
+			t.Errorf("generated entry did not win identity collision: %+v", e)
+		}
+	}
+	if !containsByName(merged, "Legacy Only A") || !containsByName(merged, "Legacy Only B") {
+		t.Errorf("unowned legacy entries dropped: %+v", merged)
+	}
+}
+
+// TestStatusHandler_MergeUnblocksFloorScenario reproduces the 2026-07-09
+// production refusal (generated 16 vs existing 68 vs floor 60) and verifies
+// the merge makes the same inputs pass both the floor and the shrink guard.
+func TestStatusHandler_MergeUnblocksFloorScenario(t *testing.T) {
+	var existingEntries []statusServiceEntry
+	for i := 0; i < 68; i++ {
+		existingEntries = append(existingEntries, statusServiceEntry{
+			Name:  fmt.Sprintf("Legacy %02d", i),
+			URL:   fmt.Sprintf("https://legacy-%02d.example/health", i),
+			Group: "Legacy",
+		})
+	}
+	existingBytes, err := generateStatusConfigmap(statusSiteMadfam, existingEntries, nil)
+	if err != nil {
+		t.Fatalf("build existing: %v", err)
+	}
+
+	var generated []statusServiceEntry
+	for i := 0; i < 16; i++ {
+		generated = append(generated, statusServiceEntry{
+			Name:  fmt.Sprintf("Generated %02d", i),
+			URL:   fmt.Sprintf("https://gen-%02d.example/health", i),
+			Group: "Generated",
+		})
+	}
+
+	// The incident: raw generated count is refused.
+	if err := validateStatusRegenerateServiceCount(statusSiteMadfam, len(generated), len(existingEntries)); err == nil {
+		t.Fatal("expected raw generated=16 vs existing=68 to be refused")
+	}
+
+	merged, preserved, err := mergePreserveExistingStatusEntries(generated, existingBytes)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if preserved != 68 {
+		t.Errorf("preserved = %d, want 68", preserved)
+	}
+	if err := validateStatusRegenerateServiceCount(statusSiteMadfam, len(merged), len(existingEntries)); err != nil {
+		t.Errorf("merged count should pass floor + shrink guard: %v", err)
+	}
+}
+
+// TestStatusHandler_MergeEmptyExisting covers the first-ever regenerate
+// (no configmap yet): nothing to preserve, generated passes through.
+func TestStatusHandler_MergeEmptyExisting(t *testing.T) {
+	generated := []statusServiceEntry{{Name: "X", URL: "https://x/health", Group: "G"}}
+	merged, preserved, err := mergePreserveExistingStatusEntries(generated, nil)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if preserved != 0 || len(merged) != 1 {
+		t.Errorf("got preserved=%d len=%d, want 0 and 1", preserved, len(merged))
+	}
 }

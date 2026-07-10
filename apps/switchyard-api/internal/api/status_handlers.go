@@ -163,6 +163,17 @@ func (h *Handler) buildServiceListForSite(ctx context.Context, site statusSiteTa
 	}
 
 	for _, reg := range regs {
+		// Live enclii.yaml wins: onboarding ConfigSnapshots are written at
+		// onboard/ensure time and go stale the moment a project merges new
+		// status entries (2026-07-09: blueprint-harvester's freshly merged
+		// API probe was invisible to regenerate). Fall back to the snapshot
+		// when the live fetch yields nothing (no token, GitHub outage).
+		if reg.RepoFullName != "" {
+			if entries := h.fetchStatusEntriesForProject(ctx, reg.RepoFullName); len(entries) > 0 {
+				services = append(services, entries...)
+				continue
+			}
+		}
 		if reg.ConfigSnapshot == nil {
 			continue
 		}
@@ -188,16 +199,20 @@ type regenerateStatusConfigResponse struct {
 
 // regenerateSiteResult is the per-site outcome of a regenerate cycle.
 type regenerateSiteResult struct {
-	ServiceCount int    `json:"service_count"`
-	Changed      bool   `json:"changed"`
-	CommitSHA    string `json:"commit_sha,omitempty"`
-	Action       string `json:"action,omitempty"`
-	ConfigMap    string `json:"configmap,omitempty"`
+	ServiceCount int `json:"service_count"`
+	// PreservedLegacy counts existing entries kept because no project's
+	// enclii.yaml (or core set) declares their Name+Group yet.
+	PreservedLegacy int    `json:"preserved_legacy,omitempty"`
+	Changed         bool   `json:"changed"`
+	CommitSHA       string `json:"commit_sha,omitempty"`
+	Action          string `json:"action,omitempty"`
+	ConfigMap       string `json:"configmap,omitempty"`
 }
 
 type regenerateSitePlan struct {
 	Site                 statusSiteTarget
 	Services             []statusServiceEntry
+	PreservedLegacy      int
 	Generated            []byte
 	Existing             []byte
 	ExistingServiceCount int
@@ -240,7 +255,6 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 
 	for _, site := range []statusSiteTarget{statusSiteEnclii, statusSiteMadfam} {
 		services := h.buildServiceListForSite(ctx, site)
-		resp.TotalCount += len(services)
 
 		// Read the existing projected configmap so we can preserve every
 		// non-services-config key (site-name, prometheus-url, thresholds,
@@ -257,6 +271,14 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to count existing %s services: %v", site, err)})
 			return
 		}
+
+		// Reconcile, don't replace: keep existing entries no project owns yet.
+		services, preservedLegacy, err := mergePreserveExistingStatusEntries(services, existingBytes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to merge existing %s services: %v", site, err)})
+			return
+		}
+		resp.TotalCount += len(services)
 
 		if err := validateStatusRegenerateServiceCount(site, len(services), existingServiceCount); err != nil {
 			c.JSON(http.StatusConflict, gin.H{
@@ -276,6 +298,7 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 		plans = append(plans, regenerateSitePlan{
 			Site:                 site,
 			Services:             services,
+			PreservedLegacy:      preservedLegacy,
 			Generated:            generated,
 			Existing:             existingBytes,
 			ExistingServiceCount: existingServiceCount,
@@ -286,18 +309,20 @@ func (h *Handler) RegenerateStatusConfig(c *gin.Context) {
 		// Idempotency guard: skip the commit if the bytes match exactly.
 		if bytes.Equal(plan.Generated, plan.Existing) {
 			resp.Targets[string(plan.Site)] = regenerateSiteResult{
-				ServiceCount: len(plan.Services),
-				Changed:      false,
-				Action:       "unchanged",
-				ConfigMap:    statusConfigMapRef(namespace, plan.Site),
+				ServiceCount:    len(plan.Services),
+				PreservedLegacy: plan.PreservedLegacy,
+				Changed:         false,
+				Action:          "unchanged",
+				ConfigMap:       statusConfigMapRef(namespace, plan.Site),
 			}
 			continue
 		}
 
 		result := regenerateSiteResult{
-			ServiceCount: len(plan.Services),
-			Changed:      true,
-			ConfigMap:    statusConfigMapRef(namespace, plan.Site),
+			ServiceCount:    len(plan.Services),
+			PreservedLegacy: plan.PreservedLegacy,
+			Changed:         true,
+			ConfigMap:       statusConfigMapRef(namespace, plan.Site),
 		}
 
 		switch mode {
@@ -362,6 +387,53 @@ func validateStatusRegenerateServiceCount(site statusSiteTarget, generatedCount,
 		return fmt.Errorf("status regenerate refused for %s: generated %d services would shrink existing configmap count %d", site, generatedCount, existingCount)
 	}
 	return nil
+}
+
+// statusEntryIdentity keys an entry for merge comparison. Name+Group (case-
+// insensitive) rather than Name alone: distinct groups may legitimately reuse
+// short names like "API".
+func statusEntryIdentity(e statusServiceEntry) string {
+	return strings.ToLower(strings.TrimSpace(e.Name)) + "\x00" + strings.ToLower(strings.TrimSpace(e.Group))
+}
+
+// mergePreserveExistingStatusEntries appends to `generated` every entry from
+// the existing configmap whose identity the generator did not produce.
+// Generated entries win identity collisions (a project that declares an entry
+// owns it); unowned legacy entries survive so a partially-onboarded ecosystem
+// never mass-deletes its status page. Before this merge, regenerate was
+// permanently refused for madfam (generated 16 vs existing 68 vs floor 60)
+// because most of the page is hand-maintained history that no project's
+// enclii.yaml declares yet. Returns the merged slice and the preserved count.
+func mergePreserveExistingStatusEntries(generated []statusServiceEntry, existing []byte) ([]statusServiceEntry, int, error) {
+	if len(existing) == 0 {
+		return generated, 0, nil
+	}
+	var cm configMap
+	if err := yaml.Unmarshal(existing, &cm); err != nil {
+		return nil, 0, fmt.Errorf("parse existing configmap: %w", err)
+	}
+	raw := strings.TrimSpace(cm.Data["services-config"])
+	if raw == "" {
+		return generated, 0, nil
+	}
+	var existingEntries []statusServiceEntry
+	if err := json.Unmarshal([]byte(raw), &existingEntries); err != nil {
+		return nil, 0, fmt.Errorf("parse existing services-config: %w", err)
+	}
+	owned := make(map[string]struct{}, len(generated))
+	for _, e := range generated {
+		owned[statusEntryIdentity(e)] = struct{}{}
+	}
+	merged := append([]statusServiceEntry{}, generated...)
+	preserved := 0
+	for _, e := range existingEntries {
+		if _, ok := owned[statusEntryIdentity(e)]; ok {
+			continue
+		}
+		merged = append(merged, e)
+		preserved++
+	}
+	return merged, preserved, nil
 }
 
 func countStatusConfigmapServices(existing []byte) (int, error) {
