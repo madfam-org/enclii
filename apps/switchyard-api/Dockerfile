@@ -53,7 +53,10 @@ FROM public.ecr.aws/docker/library/alpine:3.24
 # - wget: for health checks
 # - git: for cloning repositories
 # - curl: for downloading pack CLI and Docker CLI
-RUN apk --no-cache add ca-certificates tzdata wget git curl bash
+# apk upgrade first: pull the base image's pending 3.24.x security patches —
+# the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in base
+# packages (2026-07-10: CVE-2026-33630, c-ares via curl, fixed in 1.34.8-r0).
+RUN apk --no-cache upgrade && apk --no-cache add ca-certificates tzdata wget git curl bash
 
 # Install Docker CLI from official releases (Alpine's docker-cli is too old)
 # Required for building and pushing images via Docker socket mount
