@@ -6,7 +6,7 @@ import { setupApiMocking, setupOidcSession, waitForAppReady } from '../fixtures'
  *
  * Validates that the monetization paywall (requireTier + PricingModal) is correctly wired:
  * - Free/community users hitting service limits see the PricingModal
- * - Pro users (including legacy 'sovereign' tier name) can proceed without being blocked
+ * - Sovereign users (slug `pro`, including the legacy 'sovereign' claim) proceed without being blocked
  * - The modal checkout URL points to Dhanam with correct params (plan=enclii_pro&product=enclii)
  */
 
@@ -148,8 +148,8 @@ test.describe('Paywall — requireTier + PricingModal', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    // Find the Pro tier's CTA link
-    const proLink = dialog.locator('a').filter({ hasText: 'Upgrade to Pro' });
+    // Find the Sovereign tier's CTA link
+    const proLink = dialog.locator('a').filter({ hasText: 'Upgrade to Sovereign' });
     const href = await proLink.getAttribute('href');
 
     // Should point to Dhanam checkout with correct params

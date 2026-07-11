@@ -48,7 +48,7 @@ function normalizeTier(tier: FoundryTier): string {
 function TierCard({ tier, isCurrentTier, isRecommended, checkoutUrl }: TierCardPropsInternal) {
   const config = TIER_CONFIG[tier] ?? TIER_CONFIG['null'];
   const Icon = tier === 'madfam' ? Crown : tier === 'pro' ? Zap : Sparkles;
-  // Inside the modal, pro tier should link to Dhanam checkout
+  // Inside the modal, the Sovereign tier (slug `pro`) should link to Dhanam checkout
   const effectiveHref = (tier === 'pro' && checkoutUrl) ? checkoutUrl : config.cta.href;
 
   return (
@@ -170,8 +170,9 @@ export function PricingModal({
         </DialogHeader>
 
         <div className="grid sm:grid-cols-3 gap-4 mt-4">
+          {/* Canonical free tier — `essentials` claims share Community limits */}
           <TierCard
-            tier="essentials"
+            tier="community"
             isCurrentTier={normalizedTier === 'essentials' || normalizedTier === 'community'}
             isRecommended={false}
           />

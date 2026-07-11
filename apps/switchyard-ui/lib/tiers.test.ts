@@ -70,9 +70,10 @@ describe('TIER_CONFIG', () => {
 describe('getTierConfig', () => {
   it('returns the correct config for each tier', () => {
     expect(getTierConfig('community').name).toBe('Community');
-    expect(getTierConfig('essentials').name).toBe('Essentials');
-    expect(getTierConfig('pro').name).toBe('Pro');
-    expect(getTierConfig('madfam').name).toBe('MADFAM Bundle');
+    // essentials shares Community limits, so it displays as Community
+    expect(getTierConfig('essentials').name).toBe('Community');
+    expect(getTierConfig('pro').name).toBe('Sovereign');
+    expect(getTierConfig('madfam').name).toBe('Ecosystem');
   });
 
   it('returns guest config for null tier', () => {
@@ -82,13 +83,13 @@ describe('getTierConfig', () => {
   it('returns a config for legacy "sovereign" tier', () => {
     const config = getTierConfig('sovereign');
     expect(config).toBeDefined();
-    expect(config.name).toBe('Pro');
+    expect(config.name).toBe('Sovereign');
   });
 
   it('returns a config for legacy "ecosystem" tier', () => {
     const config = getTierConfig('ecosystem');
     expect(config).toBeDefined();
-    expect(config.name).toBe('MADFAM Bundle');
+    expect(config.name).toBe('Ecosystem');
   });
 
   it('falls back to guest config for unknown tier values', () => {
@@ -210,7 +211,7 @@ describe('getUpgradeMessage', () => {
     const msg = getUpgradeMessage('project', 'community');
     expect(msg).toContain('limit');
     expect(msg).toContain('1 project');
-    expect(msg).toContain('Upgrade to Pro');
+    expect(msg).toContain('Upgrade to Sovereign');
   });
 
   it('returns service limit message for community tier deploy', () => {
@@ -222,13 +223,13 @@ describe('getUpgradeMessage', () => {
   it('returns custom domain message', () => {
     const msg = getUpgradeMessage('custom-domain', 'community');
     expect(msg).toContain('Custom domains');
-    expect(msg).toContain('Pro');
+    expect(msg).toContain('Sovereign');
   });
 
   it('returns team management message', () => {
     const msg = getUpgradeMessage('team', 'community');
     expect(msg).toContain('Team management');
-    expect(msg).toContain('MADFAM');
+    expect(msg).toContain('Ecosystem');
   });
 
   it('returns generic upgrade message for unknown action', () => {
