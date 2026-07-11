@@ -1,16 +1,23 @@
 # Support tiers & status page (draft)
 
+> **Boundary checkpoint (2026-07-11, platform ops):** Public-safe draft —
+> proposed tier names/response targets only; no customer data or private
+> operational detail. Omitted context lives in the private `internal-devops`
+> repo (repo-boundary contract).
+
 > **Status:** Internal draft — align with [SLA_DRAFT.md](./SLA_DRAFT.md) before customer publish.
 
 ---
 
 ## Support tiers (proposed)
 
+> Tier names follow the public pricing lineup — Community / Sovereign / Ecosystem (see [docs/faq/billing.md](../faq/billing.md)); Enterprise is a contract motion.
+
 | Tier | Audience | Channels | Initial response (P1) | Hours |
 |------|----------|----------|-------------------------|-------|
 | **Community** | Self-hosted OSS | GitHub Issues, docs | Best effort | Community |
-| **Essentials** | Managed single-project | Email, docs | 4h business | Business |
-| **Pro** | Production teams | Email + Slack (shared) | 1h 24×7 for P1 | 24×7 P1 |
+| **Sovereign** | Managed hosting | Email, docs | 4h business | Business |
+| **Ecosystem** (coming soon) | Full-bundle teams | Email + Slack (shared) | 1h 24×7 for P1 | 24×7 P1 |
 | **Enterprise** | Contract | Dedicated Slack, phone escalation | 30m 24×7 | Custom |
 
 Severity definitions match [INCIDENT_RESPONSE.md](../runbooks/INCIDENT_RESPONSE.md).
@@ -19,8 +26,8 @@ Severity definitions match [INCIDENT_RESPONSE.md](../runbooks/INCIDENT_RESPONSE.
 
 ## What each tier includes
 
-| Capability | Community | Essentials | Pro | Enterprise |
-|------------|-----------|------------|-----|------------|
+| Capability | Community | Sovereign | Ecosystem | Enterprise |
+|------------|-----------|-----------|-----------|------------|
 | Platform updates | Self-serve | Managed deploy window | Managed + notice | Custom |
 | Backup/restore assist | Docs | Drill on request | Quarterly drill | Custom RPO |
 | Security advisories | Public | Email | Email + Slack | Dedicated comms |
@@ -45,7 +52,7 @@ Severity definitions match [INCIDENT_RESPONSE.md](../runbooks/INCIDENT_RESPONSE.
 
 - [x] Status page live and linked from docs/enclii.dev  
 - [ ] Support email and escalation path documented  
-- [ ] Pro/Enterprise Slack invite process defined  
+- [ ] Ecosystem/Enterprise Slack invite process defined  
 - [ ] Runbook link in status page footer (authenticated customers)  
 
 ---

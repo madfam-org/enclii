@@ -27,7 +27,7 @@ export default function Home() {
                 GitHub
               </a>
               <a
-                href="https://app.enclii.dev"
+                href="https://app.enclii.dev/signup"
                 className="inline-flex items-center gap-2 bg-solarpunk-green text-solarpunk-slate px-3 py-2 sm:px-4 rounded-lg font-medium hover:bg-solarpunk-green-dim transition-colors text-sm sm:text-base"
               >
                 Get Started
@@ -54,7 +54,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="https://app.enclii.dev"
+              href="https://app.enclii.dev/signup"
               className="inline-flex items-center justify-center gap-2 bg-solarpunk-green text-solarpunk-slate px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-green-dim transition-colors shadow-lg"
             >
               Start Deploying
@@ -151,7 +151,7 @@ export default function Home() {
                 'Priority support',
                 'Zero-downtime deploys',
               ]}
-              cta={{ label: 'Start Building', href: 'https://app.enclii.dev' }}
+              cta={{ label: 'Start Building', href: 'https://app.enclii.dev/signup' }}
               highlighted
             />
 
@@ -251,7 +251,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="https://app.enclii.dev"
+              href="https://app.enclii.dev/signup"
               className="inline-flex items-center justify-center gap-2 bg-solarpunk-green text-solarpunk-slate px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-green-dim transition-colors shadow-lg"
             >
               Start Building Free
