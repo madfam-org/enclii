@@ -4,10 +4,19 @@
  * Defines the foundry tier system for RBAC and feature gating.
  * The `foundry_tier` claim comes from Janua SSO after Dhanam purchase.
  *
- * Community/Essentials have identical feature limits — essentials value is
- * the managed hosting service, not extra features. Only pro+ is gated.
+ * Canonical customer-facing catalog (matches the landing page and
+ * docs/faq/billing.md): Community (free) / Sovereign $20/mo / Ecosystem
+ * (coming soon). Display names only — the internal claim slugs
+ * (community/essentials/pro/madfam) mirror API enforcement in
+ * apps/switchyard-api/internal/middleware/tier.go and MUST NOT change here.
+ * Sovereign is the display name for slug `pro` (entitlement `enclii_pro`);
+ * Ecosystem is the display name for slug `madfam`.
  *
- * Legacy tier names (sovereign/ecosystem) are supported for old JWTs.
+ * Community/Essentials have identical feature limits (1 project / 3
+ * services), so the `essentials` claim displays as Community.
+ *
+ * Legacy claim values (sovereign/ecosystem) are supported for old JWTs and
+ * map to pro/madfam respectively.
  */
 
 // =============================================================================
@@ -70,23 +79,26 @@ export const TIER_CONFIG: Record<string, TierConfig> = {
       href: 'https://github.com/madfam-org/enclii',
     },
   },
+  // Legacy claim with Community-equivalent limits — displays as Community.
+  // Slug kept because the API still accepts/enforces it (see tier.go).
   essentials: {
-    name: 'Essentials',
-    description: 'Managed hosting with SLA',
+    name: 'Community',
+    description: 'Managed hosting with Community plan limits',
     canCreateProject: true,
     canDeploy: true,
     canUseCustomDomains: false,
     canManageTeams: false,
     projectLimit: 1,
     serviceLimit: 3,
-    price: '$20/mo',
+    price: 'Free',
     cta: {
       label: 'Start Building',
       href: 'https://app.enclii.dev',
     },
   },
+  // Slug `pro` displays as Sovereign (canonical paid self-serve tier)
   pro: {
-    name: 'Pro',
+    name: 'Sovereign',
     description: 'Managed hosting with auto SSL & custom domains',
     canCreateProject: true,
     canDeploy: true,
@@ -94,15 +106,16 @@ export const TIER_CONFIG: Record<string, TierConfig> = {
     canManageTeams: false,
     projectLimit: 10,
     serviceLimit: -1,
-    price: '$49/mo',
+    price: '$20/mo',
     cta: {
-      label: 'Upgrade to Pro',
+      label: 'Upgrade to Sovereign',
       href: '#checkout',
     },
   },
+  // Slug `madfam` displays as Ecosystem (coming soon / waitlist)
   madfam: {
-    name: 'MADFAM Bundle',
-    description: 'Full ecosystem with team management',
+    name: 'Ecosystem',
+    description: 'Full bundle with team management',
     canCreateProject: true,
     canDeploy: true,
     canUseCustomDomains: true,
@@ -118,7 +131,7 @@ export const TIER_CONFIG: Record<string, TierConfig> = {
   },
   // Legacy compat — old JWTs during transition
   sovereign: {
-    name: 'Pro',
+    name: 'Sovereign',
     description: 'Managed hosting with auto SSL & custom domains',
     canCreateProject: true,
     canDeploy: true,
@@ -126,15 +139,15 @@ export const TIER_CONFIG: Record<string, TierConfig> = {
     canManageTeams: false,
     projectLimit: 10,
     serviceLimit: -1,
-    price: '$49/mo',
+    price: '$20/mo',
     cta: {
       label: 'Current Plan',
       href: '#',
     },
   },
   ecosystem: {
-    name: 'MADFAM Bundle',
-    description: 'Full ecosystem with team management',
+    name: 'Ecosystem',
+    description: 'Full bundle with team management',
     canCreateProject: true,
     canDeploy: true,
     canUseCustomDomains: true,
@@ -206,19 +219,19 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
       if (!config.canCreateProject) {
         return 'Sign in to create projects';
       }
-      return `You've reached your limit of ${config.projectLimit} project${config.projectLimit !== 1 ? 's' : ''}. Upgrade to Pro to create more.`;
+      return `You've reached your limit of ${config.projectLimit} project${config.projectLimit !== 1 ? 's' : ''}. Upgrade to Sovereign to create more.`;
 
     case 'deploy':
       if (!config.canDeploy) {
         return 'Sign in to deploy services';
       }
-      return `You've reached your limit of ${config.serviceLimit} service${config.serviceLimit !== 1 ? 's' : ''}. Upgrade to Pro to deploy more.`;
+      return `You've reached your limit of ${config.serviceLimit} service${config.serviceLimit !== 1 ? 's' : ''}. Upgrade to Sovereign to deploy more.`;
 
     case 'custom-domain':
-      return 'Custom domains are available on Pro tier and above.';
+      return 'Custom domains are available on the Sovereign tier and above.';
 
     case 'team':
-      return 'Team management is available on the MADFAM bundle.';
+      return 'Team management is available on the Ecosystem tier.';
 
     default:
       return 'Upgrade your plan to access this feature.';
@@ -226,7 +239,8 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
 }
 
 /**
- * Get the checkout URL for upgrading to Pro via Dhanam
+ * Get the checkout URL for upgrading to Sovereign (slug `pro`,
+ * entitlement `enclii_pro`) via Dhanam
  */
 export function getCheckoutUrl(userId?: string, returnUrl?: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL || 'https://dhanam.madfam.io/checkout';
