@@ -1,6 +1,6 @@
 # Preview environments
 
-PR-based preview deployments give each pull request a unique URL, build, and ephemeral environment. This is **Commercial GA bet A**.
+PR-based preview deployments give each pull request a unique URL, build, and ephemeral environment. This is **bet A** in the [GA launch program](../production/COMMERCIAL_GA_TRACKER.md).
 
 ## How it works
 

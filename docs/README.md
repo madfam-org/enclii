@@ -43,9 +43,9 @@ Self-host Enclii end-to-end. Bare-metal or cloud, Kubernetes-native, GitOps-driv
 
 ## Platform status
 
-**Program:** Commercial GA ~70% · Stability GA ~74% · **Live at:** [app.enclii.dev](https://app.enclii.dev)
+**Program:** commercial launch (GA) program active · **Live at:** [app.enclii.dev](https://app.enclii.dev)
 
-See [Commercial GA master plan](./production/COMMERCIAL_GA_MASTER_PLAN.md) and [readiness scorecard](./production/GA_READINESS_SCORECARD.md). External “95% ready” copy is retired at Gate 5 (target announce ~2026-07-14).
+Current program state, readiness, and dates live in [COMMERCIAL_GA_TRACKER.md](./production/COMMERCIAL_GA_TRACKER.md) and the [readiness scorecard](./production/GA_READINESS_SCORECARD.md); the plan is the [GA master plan](./production/COMMERCIAL_GA_MASTER_PLAN.md). External “95% ready” copy is retired at Gate 5.
 
 | Component | Status |
 |-----------|--------|
@@ -84,7 +84,7 @@ This documentation is organized for two audiences: **users** who deploy services
 - **[Architecture](./architecture/ARCHITECTURE.md)** — system design and decisions
 - **[Infrastructure](./infrastructure/README.md)** — GitOps, Longhorn, Cloudflare, External Secrets
 - **[Production](./production/PRODUCTION_CHECKLIST.md)** — deployment roadmap, gap analysis, anti-fragility
-- **[Commercial GA program](./production/COMMERCIAL_GA_MASTER_PLAN.md)** — master remediation plan, scorecard, ops queue
+- **[GA program](./production/COMMERCIAL_GA_MASTER_PLAN.md)** — master remediation plan, tracker, scorecard, ops queue
 - **[Runbooks](./runbooks/)** — incident response, cluster remediation, database recovery
 - **[Security](./security/)** and **[Compliance](./compliance/)** — secret rotation, SOC2 mapping
 
@@ -106,7 +106,7 @@ This documentation is organized for two audiences: **users** who deploy services
 | **Security engineer** | [Kyverno policies](./infrastructure/KYVERNO_POLICIES.md), [Secret rotation log](./security/SECRET_ROTATION_LOG.md) |
 | **Frontend developer** | [Quickstart](./quickstart.md), [TypeScript SDK](./sdk/typescript/) |
 | **Backend developer** | [Architecture](./architecture/ARCHITECTURE.md), [API docs](./architecture/API.md), [Testing guide](./guides/TESTING_GUIDE.md) |
-| **Executive / CTO** | [GA scorecard](./production/GA_READINESS_SCORECARD.md), [Commercial GA master plan](./production/COMMERCIAL_GA_MASTER_PLAN.md), [Gap analysis](./production/GAP_ANALYSIS.md) |
+| **Executive / CTO** | [GA scorecard](./production/GA_READINESS_SCORECARD.md), [GA master plan](./production/COMMERCIAL_GA_MASTER_PLAN.md), [Gap analysis](./production/GAP_ANALYSIS.md) |
 
 ---
 
@@ -133,4 +133,4 @@ Update `apps/docs-site/sidebars.ts` when adding a new top-level page.
 
 ---
 
-**Last updated:** 2026-05-29 · **Documentation version:** 4.1 (Commercial GA program)
+**Last updated:** 2026-07-11 · **Documentation version:** 4.1 (GA program)

@@ -54,7 +54,7 @@ The command does a read-only cluster call: it parses `pgbackrest info --output=j
 
 ### `schema`
 
-Report DB migration version and GA-critical column presence (Commercial GA migration verify).
+Report DB migration version and GA-critical column presence (GA migration verify).
 
 ```bash
 enclii db schema [flags]
@@ -74,7 +74,7 @@ Calls `GET /v1/admin/db/schema`. Verifies `schema_migrations` version/dirty stat
 enclii db wal-status
 ```
 
-### Verify migration 030 before Stability GA clock (admin)
+### Verify migration 030 before the GA SLO clock (admin)
 
 ```bash
 enclii db schema

@@ -1,6 +1,6 @@
 # Custom domains and TLS
 
-Attach your own domain names to a service with automatic TLS (cert-manager). This is **Commercial GA bet B**.
+Attach your own domain names to a service with automatic TLS (cert-manager). This is **bet B** in the [GA launch program](../production/COMMERCIAL_GA_TRACKER.md).
 
 ## Workflow
 
