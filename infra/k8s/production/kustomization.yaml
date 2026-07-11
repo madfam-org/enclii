@@ -62,7 +62,7 @@ images:
 - digest: sha256:a9ed7871adf8a8629849de39eb7772be2ba471c07bc07c9b01fd8f9196a6b56d
   name: landing-page
   newName: ghcr.io/madfam-org/enclii/landing-page
-- digest: sha256:3a173ec31e52e2e0edb526a4b93064019fad33505fe3beff114d90966a09b9d3
+- digest: sha256:aa7efb082f950e365ff2b2ddbe184bcaf7decb370b8ea14a3cf3534966553666
   name: roundhouse
   newName: ghcr.io/madfam-org/enclii/roundhouse
 - digest: sha256:8a0c97ab3f797207b02c5cec9bbb1ef2c050195af47961e3b0b306dd02b927c7
@@ -74,7 +74,7 @@ images:
 - digest: sha256:d00f898b81ac581d44fffcd37d6508f4d893554a9239407c15d81e6c82a4ddfd
   name: switchyard-ui
   newName: ghcr.io/madfam-org/enclii/switchyard-ui
-- digest: sha256:7bc79abedfcd14ec42e4d24d2ace567392a6ed272f43aa241bf4102489acc09a
+- digest: sha256:dd3c3240c22c34e39336871f8d4e2ba6f4e594221a457dfa479a70a0d3025970
   name: waybill
   newName: ghcr.io/madfam-org/enclii/waybill
 # Note: commonLabels removed - it adds to selectors which are immutable.
