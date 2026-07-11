@@ -1,5 +1,10 @@
 # Support tiers & status page (draft)
 
+> **Boundary checkpoint (2026-07-11, platform ops):** Public-safe draft —
+> proposed tier names/response targets only; no customer data or private
+> operational detail. Omitted context lives in the private `internal-devops`
+> repo (repo-boundary contract).
+
 > **Status:** Internal draft — align with [SLA_DRAFT.md](./SLA_DRAFT.md) before customer publish.
 
 ---

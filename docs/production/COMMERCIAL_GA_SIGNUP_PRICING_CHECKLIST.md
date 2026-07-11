@@ -1,5 +1,10 @@
 # Signup & pricing GA checklist
 
+> **Boundary checkpoint (2026-07-11, platform ops):** Public-safe checklist —
+> tier naming/copy state only; no secrets, customer data, or private pipeline
+> detail. Omitted operational context lives in the private `internal-devops`
+> repo (repo-boundary contract).
+
 > **Tracker item:** Pricing + self-serve signup tested  
 > **Owner:** GTM + QA (after Phase 0 deploy)
 
