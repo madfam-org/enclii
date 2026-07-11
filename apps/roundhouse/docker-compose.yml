@@ -24,7 +24,10 @@ services:
   worker:
     build:
       context: .
-      target: worker
+      # dev-only dind stage: the published `worker` image is slim/kaniko-only;
+      # BUILD_MODE=docker (the compose default) needs dockerd plus the
+      # docker/pack/syft/cosign tooling from worker-dev.
+      target: worker-dev
     privileged: true  # Required for Docker-in-Docker
     environment:
       - REDIS_URL=redis://redis:6379/0

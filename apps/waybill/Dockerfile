@@ -24,7 +24,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /waybill-aggregator ./cmd/aggregator
 # Aggregator runtime stage (for background jobs)
 FROM public.ecr.aws/docker/library/alpine:3.20 AS aggregator
 
-RUN apk add --no-cache ca-certificates tzdata && \
+# apk upgrade first: pull pending 3.20.x security patches — the trivy gate
+# blocks digest pins on fixable HIGH/CRITICAL CVEs in base packages (same
+# pattern as switchyard-api, PR #311).
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata && \
     addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
 
 COPY --from=builder /waybill-aggregator /usr/local/bin/waybill-aggregator
@@ -36,7 +39,10 @@ ENTRYPOINT ["/usr/local/bin/waybill-aggregator"]
 # API runtime stage (default - HTTP server with health checks)
 FROM public.ecr.aws/docker/library/alpine:3.20 AS api
 
-RUN apk add --no-cache ca-certificates tzdata && \
+# apk upgrade first: pull pending 3.20.x security patches — the trivy gate
+# blocks digest pins on fixable HIGH/CRITICAL CVEs in base packages (same
+# pattern as switchyard-api, PR #311).
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata && \
     addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
 
 COPY --from=builder /waybill-api /usr/local/bin/waybill-api

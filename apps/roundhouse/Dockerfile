@@ -1,10 +1,24 @@
 # =============================================================================
-# Roundhouse — two published images from one Dockerfile via --target:
-#   --target api    -> `roundhouse` image (slim alpine, HTTP API only)
-#   --target worker -> `roundhouse-worker` image (dind + build tooling)
+# Roundhouse — published images from one Dockerfile via --target:
+#   --target api        -> `roundhouse` image (slim alpine, HTTP API only)
+#   --target worker     -> `roundhouse-worker` image (slim alpine, kaniko-only)
+#   --target worker-dev -> dev-only image (dind + docker/pack/syft/cosign) for
+#                          BUILD_MODE=docker local runs; never published/scanned
 # CI passes the target per services.json entry (see the `target` field).
 # The worker stage stays LAST so a bare `docker build` (no --target) still
-# produces the worker image, matching pre-split behavior.
+# produces the published worker image.
+#
+# Why the published worker is slim (enclii#304): production runs
+# BUILD_MODE=kaniko (infra/k8s/base/roundhouse.yaml — privileged:false,
+# readOnlyRootFilesystem:true, no docker socket), where the worker only talks
+# to the K8s API/Redis and delegates builds to Kaniko Jobs; SBOM generation
+# and signing also run as separate Jobs (SyftImage/CosignImage in
+# internal/builder/kaniko_postbuild.go). The kaniko executor execs no local
+# binaries at all. The dind stack (dockerd/containerd/runc/ctr) plus the
+# docker/pack CLIs only serve BUILD_MODE=docker (internal/builder/executor.go
+# — dev-only per internal/worker/processor.go) and carried a rolling pile of
+# upstream-unfixable HIGH/CRITICAL trivy findings that kept tripping the
+# RFC 0017 digest-pin scan gate.
 # =============================================================================
 
 # Build stage
@@ -49,7 +63,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /roundhouse-worker ./cmd/worker
 # API runtime stage (lightweight) — published as the `roundhouse` image
 FROM public.ecr.aws/docker/library/alpine:3.24 AS api
 
-RUN apk add --no-cache ca-certificates tzdata
+# apk upgrade first: pull the base image's pending 3.24.x security patches —
+# the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in base
+# packages (same pattern as apps/switchyard-api/Dockerfile, PR #311).
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
 
 RUN addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
 
@@ -61,11 +78,15 @@ EXPOSE 8081
 
 ENTRYPOINT ["/usr/local/bin/roundhouse-api"]
 
-# Worker runtime stage — published as the `roundhouse-worker` image.
+# Dev-only worker stage — dind + full docker-mode build tooling for
+# BUILD_MODE=docker local runs (docker-compose mounts the Docker socket and
+# targets this stage). NOT published to GHCR and NOT scanned by CI: the dind
+# stack and the docker/pack CLIs embed dependency trees (grpc, otel, x/net,
+# Go stdlib) whose HIGH/CRITICAL CVEs routinely have no released upstream fix.
 # Pinned patch release per ENCLII_BASE_IMAGE_MIRROR_POLICY_2026-05-14 (no
 # floating minor tags); 29.6.1 matches the Docker CLI version already used
 # by apps/switchyard-api/Dockerfile.
-FROM public.ecr.aws/docker/library/docker:29.6.1-dind AS worker
+FROM public.ecr.aws/docker/library/docker:29.6.1-dind AS worker-dev
 
 # Drop CLI plugins the worker never invokes (it shells out to plain
 # `docker build/push/inspect/login` only — see internal/builder/executor.go).
@@ -89,9 +110,7 @@ RUN apk add --no-cache \
 COPY --from=builder /usr/local/bin/syft /usr/local/bin/syft
 COPY --from=builder /usr/local/bin/cosign /usr/local/bin/cosign
 
-# Install pack CLI for buildpacks. 0.40.7 vendors docker/docker v28.5.2 —
-# the three embedded-docker CVEs are covered by the justified entries in
-# the root .trivyignore (see the rotation condition there).
+# Install pack CLI for buildpacks (docker-mode buildpacks builds only).
 ENV PACK_VERSION=0.40.7
 RUN curl -sSfL "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux.tgz" | tar -xz -C /usr/local/bin
 
@@ -103,6 +122,37 @@ COPY --from=builder /roundhouse-worker /usr/local/bin/roundhouse-worker
 RUN mkdir -p /var/lib/roundhouse/builds
 
 ENV BUILD_WORK_DIR=/var/lib/roundhouse/builds
+
+# Default to worker mode; override with command to run API
+ENTRYPOINT ["/usr/local/bin/roundhouse-worker"]
+
+# Worker runtime stage — published as the `roundhouse-worker` image.
+# Slim alpine, mirroring the api stage: in production (BUILD_MODE=kaniko)
+# the worker creates Kaniko/Syft/Cosign Jobs via the K8s API and execs no
+# local binaries, so it needs no build tooling. Kept LAST so a bare
+# `docker build` (no --target) produces this published image.
+FROM public.ecr.aws/docker/library/alpine:3.24 AS worker
+
+# apk upgrade first: pull the base image's pending 3.24.x security patches —
+# the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in base
+# packages (2026-07-11: CVE-2026-33630 c-ares, CVE-2026-56131/56407/56408
+# libexpat; same pattern as apps/switchyard-api/Dockerfile, PR #311).
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
+
+RUN addgroup -g 65532 -S nonroot && adduser -u 65532 -S nonroot -G nonroot
+
+# Copy BOTH binaries so this image can run as either API or worker
+COPY --from=builder /roundhouse-api /usr/local/bin/roundhouse-api
+COPY --from=builder /roundhouse-worker /usr/local/bin/roundhouse-worker
+
+# Build work directory (used only by BUILD_MODE=docker, which this image
+# does not support — kept for env parity with the k8s manifest, which sets
+# BUILD_WORK_DIR; the kaniko-mode worker never writes here).
+RUN mkdir -p /var/lib/roundhouse/builds
+
+ENV BUILD_WORK_DIR=/var/lib/roundhouse/builds
+
+USER 65532:65532
 
 # Default to worker mode; override with command to run API
 ENTRYPOINT ["/usr/local/bin/roundhouse-worker"]

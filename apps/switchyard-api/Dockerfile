@@ -44,30 +44,28 @@ COPY packages/otel-go/ ./packages/otel-go/
 WORKDIR /app/apps/switchyard-api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/switchyard-api ./cmd/api
 
-# Final stage - includes build tooling for CI/CD pipeline
-FROM public.ecr.aws/docker/library/alpine:3.24
+# Runtime base — everything the API needs in production. Production build
+# execution is delegated to Roundhouse (ENCLII_BUILD_MODE=roundhouse in
+# infra/k8s/components/environment/common.env and the production patch), so
+# the published image does NOT carry the docker CLI or pack: those static
+# binaries embed dependency trees (docker/docker, Go stdlib) whose
+# HIGH/CRITICAL CVEs routinely have no released upstream fix (2026-07-11:
+# CVE-2026-39822, Go stdlib 1.26.4/1.25.11) and kept tripping the RFC 0017
+# digest-pin scan gate. The in-process build fallback (internal/builder,
+# BUILD_MODE != roundhouse) needs a Docker socket that production never
+# mounts — for local in-process builds use the `dev` target below.
+FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 
 # Install required packages:
 # - ca-certificates: for HTTPS connections
 # - tzdata: for timezone support
 # - wget: for health checks
 # - git: for cloning repositories
-# - curl: for downloading pack CLI and Docker CLI
+# - curl: for release-download tooling (dev stage) and debugging
 # apk upgrade first: pull the base image's pending 3.24.x security patches —
 # the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in base
 # packages (2026-07-10: CVE-2026-33630, c-ares via curl, fixed in 1.34.8-r0).
 RUN apk --no-cache upgrade && apk --no-cache add ca-certificates tzdata wget git curl bash
-
-# Install Docker CLI from official releases (Alpine's docker-cli is too old)
-# Required for building and pushing images via Docker socket mount
-ENV DOCKER_VERSION=29.6.1
-RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" | tar -xz -C /tmp \
-    && mv /tmp/docker/docker /usr/local/bin/ \
-    && rm -rf /tmp/docker
-
-# Install Cloud Native Buildpacks pack CLI
-ENV PACK_VERSION=0.40.7
-RUN curl -sSL "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux.tgz" | tar -xz -C /usr/local/bin
 
 # Copy cosign (built from source in the builder stage) so the API can verify
 # signed image digests before committing production GitOps pins from platform
@@ -97,3 +95,28 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD wget -q --spider http://localhost:4200/health || exit 1
 
 CMD ["./switchyard-api"]
+
+# Dev stage — adds the docker CLI + pack for in-process builds against a
+# mounted Docker socket (docker-compose's `api` service targets this stage).
+# Never published to GHCR and never scanned by CI.
+FROM runtime-base AS dev
+
+USER root
+
+# Install Docker CLI from official releases (Alpine's docker-cli is too old)
+# Required for building and pushing images via Docker socket mount
+ENV DOCKER_VERSION=29.6.1
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" | tar -xz -C /tmp \
+    && mv /tmp/docker/docker /usr/local/bin/ \
+    && rm -rf /tmp/docker
+
+# Install Cloud Native Buildpacks pack CLI
+ENV PACK_VERSION=0.40.7
+RUN curl -sSL "https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux.tgz" | tar -xz -C /usr/local/bin
+
+USER nonroot
+
+# Final stage — the published image. Kept LAST (and empty) so both a bare
+# `docker build` and CI's target-less build of this Dockerfile produce the
+# slim production runtime without the docker/pack build tooling.
+FROM runtime-base
