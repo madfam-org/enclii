@@ -6,6 +6,14 @@
 > **Supersedes narrative only:** “95% ready” marketing copy until gates below are met  
 > **Master blueprint:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) — waves, timeline, risks, 100% definition
 
+> **Boundary checkpoint (2026-07-11, platform ops):** Public-safe program plan —
+> no secrets or private production topology. Live GA status/task state lives in
+> the canonical trackers ([COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md),
+> [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md),
+> [REMAINING_OPS_GA.md](./REMAINING_OPS_GA.md)); private operational detail and
+> sink live in `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md`
+> (repo-boundary contract).
+
 This document is the **single program plan** for moving Enclii from **release candidate** to **stability GA** and **commercial GA**. It consolidates:
 
 - [CODEBASE_AUDIT_2026-05.md](./CODEBASE_AUDIT_2026-05.md) — code remediation (May 2026)
@@ -65,7 +73,7 @@ Commercial GA adds:
 
 ## 2. Current state (May 2026)
 
-**Program readiness (2026-05-29):** Stability GA ~74% · Commercial GA ~70%. Engineering for bets A+B+C ~90%; critical path is ops proof, 30-day SLO, and GTM publish — not net-new features. See [COMMERCIAL_GA_MASTER_PLAN.md §2](./COMMERCIAL_GA_MASTER_PLAN.md) and [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md).
+**Program readiness:** tracked live in [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md) and [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md) — this plan carries no point-in-time percentages. Critical path is ops proof, the 30-day SLO window, and GTM publish — not net-new features. See [COMMERCIAL_GA_MASTER_PLAN.md §2](./COMMERCIAL_GA_MASTER_PLAN.md).
 
 ### Done in code (do not re-do)
 

@@ -1,6 +1,6 @@
 # Persistent volumes
 
-Attach Longhorn (or other storage class) PVCs to your service workloads. This is **Commercial GA bet C**.
+Attach Longhorn (or other storage class) PVCs to your service workloads. This is **bet C** in the [GA launch program](../production/COMMERCIAL_GA_TRACKER.md).
 
 ## Concepts
 

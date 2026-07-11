@@ -159,7 +159,7 @@ kubectl rollout restart deploy/janua-api -n janua
 
 **Workaround:** If Janua is fully down, API key authentication remains available for CI/CD pipelines. Interactive users will be blocked until SSO is restored.
 
-**Enclii dependency (Commercial GA):**
+**Enclii dependency (GA program):**
 
 | Surface | Janua down impact | Break-glass |
 |---------|-------------------|-------------|

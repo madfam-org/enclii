@@ -15,7 +15,7 @@ Pick your current platform for a 10-minute, step-by-step migration path.
 - **[From Railway →](./migrating-from-railway.md)** — services, plugins, volumes, private networking
 - **[From Heroku →](./migrating-from-heroku.md)** — Procfile, buildpacks, Review Apps, release phase
 
-## Commercial GA product features
+## GA launch product features
 
 After migration, enable platform table-stakes:
 

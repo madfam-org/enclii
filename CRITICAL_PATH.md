@@ -389,5 +389,5 @@ These cannot be delegated to code agents.
 
 ---
 
-*This document is the single source of truth for the $0-to-revenue critical path across all MADFAM repos.*
+*This document is the canonical reference for the $0-to-revenue critical path across all MADFAM repos.*
 *Managed from the enclii repo because Enclii orchestrates all deployments.*

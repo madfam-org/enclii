@@ -44,25 +44,25 @@ enclii ops apps retire legacy-app -n argocd --apply --reason "retire reviewed le
 enclii ops jobs list -n forgesight --json
 enclii ops jobs trigger forgesight-mexico-wave-seed -n forgesight --apply --reason "populate verified market data"
 enclii ops storage settings-apply
-enclii ops storage settings-apply --apply --reason "Commercial GA O-5 Longhorn CPU"
+enclii ops storage settings-apply --apply --reason "GA O-5 Longhorn CPU"
 enclii ops storage prune-detached
-enclii ops storage prune-detached --apply --reason "Commercial GA O-4 orphan cleanup"
+enclii ops storage prune-detached --apply --reason "GA O-4 orphan cleanup"
 enclii ops storage storageclass-apply
-enclii ops storage storageclass-apply --apply --reason "Commercial GA Longhorn StorageClass reconcile"
+enclii ops storage storageclass-apply --apply --reason "GA Longhorn StorageClass reconcile"
 enclii ops policy cosign-enable
-enclii ops policy cosign-enable --apply --reason "Commercial GA O-11 Cosign enforce"
+enclii ops policy cosign-enable --apply --reason "GA O-11 Cosign enforce"
 ./scripts/wave0-ga-ops.sh
-./scripts/wave0-ga-ops.sh --apply --disk-prune --reason "Commercial GA Wave 0"
+./scripts/wave0-ga-ops.sh --apply --disk-prune --reason "GA Wave 0"
 enclii ops pods diagnose switchyard-api -n enclii --json
 enclii ops pods logs forgesight-pipeline-manual-abc123 -n forgesight --tail 500 --limit-bytes 524288 --json
 enclii ops apps sync monitoring --apply --reason "clear Argo drift after reviewed manifest patch"
 enclii ops apps sync-sweep -n argocd
-enclii ops apps sync-sweep -n argocd --apply --reason "Commercial GA O-8 Argo sweep"
+enclii ops apps sync-sweep -n argocd --apply --reason "GA O-8 Argo sweep"
 enclii ops secrets sync-sweep
-enclii ops secrets sync-sweep --apply --reason "Commercial GA O-10 ESO reconcile"
-enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "Commercial GA O-10 Vault backfill"
+enclii ops secrets sync-sweep --apply --reason "GA O-10 ESO reconcile"
+enclii secrets vault-backfill enclii-secrets --namespace enclii --vault-path secret/enclii --external-secret enclii-internal-api-key --apply --reason "GA O-10 Vault backfill"
 ./scripts/post-deploy-ga-adapters.sh
-./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "Commercial GA Wave 1"
+./scripts/wave1-ga-ops.sh --apply --backup-drill --reason "GA Wave 1"
 ```
 
 ## Pod Log Controls

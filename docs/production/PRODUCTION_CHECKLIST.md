@@ -7,10 +7,16 @@ tags: [production, deployment, checklist, operations]
 
 # Enclii Production Deployment Checklist
 
-**Status:** Production Release Candidate — **Commercial GA program active** (~70% as of 2026-05-29)  
+**Status:** Production Release Candidate — **Commercial GA program active**; current program state lives in [COMMERCIAL_GA_TRACKER.md](./COMMERCIAL_GA_TRACKER.md)  
 **GA program:** [COMMERCIAL_GA_MASTER_PLAN.md](./COMMERCIAL_GA_MASTER_PLAN.md) · [GA_READINESS_SCORECARD.md](./GA_READINESS_SCORECARD.md)  
-**Last Updated:** May 29, 2026  
+**Last Updated:** July 11, 2026  
 **Last Audit:** Gap Remediation Sprint (Mar 16, 2026)
+
+> **Boundary checkpoint (2026-07-11, platform ops):** Public-safe deployment
+> checklist — no secrets or private production topology. Live GA status/task
+> state lives in the canonical trackers above; private operational detail and
+> sink live in `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md`
+> (repo-boundary contract).
 
 ---
 

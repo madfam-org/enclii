@@ -487,16 +487,18 @@ enclii scale --min 5 --max 10 --service api --env prod
 - ⚠️ Security release sign-off — [SECURITY_RELEASE_PR.md](./docs/production/SECURITY_RELEASE_PR.md)
 - ⚠️ 30-day SLO window — pending Wave 0+1
 
-### Phase 4: Commercial GA (In progress — ~70%)
+### Phase 4: Commercial launch (in progress)
 
-**Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./docs/production/COMMERCIAL_GA_MASTER_PLAN.md) · **Target announce:** ~2026-07-14
+**Master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](./docs/production/COMMERCIAL_GA_MASTER_PLAN.md)
 
 - Wave 0–1: Ops closure (security, DR, Vault)
 - Wave 2: Monetization QA (signup, pricing, Dhanam)
-- Wave 3: 30-day SLO → Stability GA
-- Wave 4: SLA, support, legal publish → Commercial GA
+- Wave 3: 30-day SLO window → stability sign-off (Gate 4)
+- Wave 4: SLA, support, legal publish → commercial launch (Gate 5)
 
 Post-GA: multi-region, managed DB marketplace, KEDA custom metrics, full SOC 2 attestation.
+
+Wave/gate status, readiness percentages, and dates live in [COMMERCIAL_GA_TRACKER.md](./docs/production/COMMERCIAL_GA_TRACKER.md) — the canonical tracker for current program state.
 
 [View production checklist →](./docs/production/PRODUCTION_CHECKLIST.md)
 

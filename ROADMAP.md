@@ -1,20 +1,20 @@
 # Enclii + Janua Product Roadmap
 
 > **Vision:** The complete self-hosted alternative to Vercel + Auth0  
-> **Status:** Production-running beta → **Commercial GA program active** (~70% scoped GA as of 2026-05-29)
+> **Status:** Production-running beta → commercial launch (GA) program active — current program state lives in [COMMERCIAL_GA_TRACKER.md](docs/production/COMMERCIAL_GA_TRACKER.md)
 
 ---
 
-## Commercial GA program (May–July 2026)
+## Commercial launch (GA) program
 
-**Primary objective:** Reach **100% scoped Commercial GA** by ~2026-07-14.
+> Boundary checkpoint (2026-07-11, platform ops): readiness percentages and
+> target dates moved out of this public roadmap into the canonical GA trackers
+> under `docs/production/`; no private operational detail added. Policy:
+> [docs/PUBLIC_REPO_BOUNDARY.md](docs/PUBLIC_REPO_BOUNDARY.md).
 
-| Track | Readiness | Blocker |
-|-------|-----------|---------|
-| Stability GA | ~74% | Security sign-off, restore drill, 30-day SLO clock |
-| Commercial GA | ~70% | Monetization QA, legal publish, SLO window |
-| Engineering (bets A+B+C) | ~90% | Staging proven; prod smoke optional |
+**Primary objective:** Close the scoped launch gates (Gates 0–5). This roadmap intentionally carries no readiness percentages or announce dates — per-track readiness, blockers, and dates live in the tracker and scorecard below.
 
+**Tracker (current state):** [docs/production/COMMERCIAL_GA_TRACKER.md](docs/production/COMMERCIAL_GA_TRACKER.md)  
 **Master plan:** [docs/production/COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md)  
 **Scorecard:** [docs/production/GA_READINESS_SCORECARD.md](docs/production/GA_READINESS_SCORECARD.md)  
 **Ops queue:** [docs/production/REMAINING_OPS_GA.md](docs/production/REMAINING_OPS_GA.md)
@@ -43,10 +43,10 @@
 | **0** | 1–2 days | Security release + cluster P0 (O-3, O-5, O-6) |
 | **1** | 3–5 days | DR, Vault/ESO, Cosign (O-8–O-11) |
 | **2** | 3–5 days | Signup/pricing QA, Dhanam checkout |
-| **3** | 30 calendar days | 99.95% API SLO → **Stability GA** |
-| **4** | 1–2 weeks | SLA, support, privacy/terms → **Commercial GA** |
+| **3** | 30 calendar days | 99.95% API SLO → stability sign-off (Gate 4) |
+| **4** | 1–2 weeks | SLA, support, privacy/terms → commercial launch (Gate 5) |
 
-### Product bets (Commercial GA scope)
+### Product bets (launch scope)
 
 | Bet | Feature | Status |
 |-----|---------|--------|
@@ -56,7 +56,7 @@
 | **D** | Managed DB marketplace | Post-GA |
 | **E** | Jobs/Timetable GA polish | Post-GA (API exists) |
 
-### Post-GA (do not block Commercial GA)
+### Post-GA (not launch-blocking)
 
 Multi-region/edge, managed DB marketplace, full sdk-ts UI migration, PostgreSQL HA, PagerDuty, SOC 2 Type II attestation.
 
@@ -79,7 +79,7 @@ Multi-region/edge, managed DB marketplace, full sdk-ts UI migration, PostgreSQL 
 
 **Enclii role:** onboard namespace, ops proxy (`madfam.ops.*`), docs — **no** SaaS connectors in switchyard-api.
 
-**Runs parallel to** Commercial GA Gate 4 SLO window; does not reset Enclii GA clock.
+**Runs parallel to** the Enclii Gate 4 SLO window; does not reset the Enclii GA clock.
 
 ---
 
@@ -87,7 +87,7 @@ Multi-region/edge, managed DB marketplace, full sdk-ts UI migration, PostgreSQL 
 
 ### Enclii (DevOps Platform) — Production-running beta
 
-Platform foundation is live in production. **Commercial GA** is gated on ops proof, SLO evidence, and GTM publish — not net-new core features.
+Platform foundation is live in production. Commercial launch (GA) is gated on ops proof, SLO evidence, and GTM publish — not net-new core features.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -285,7 +285,7 @@ spec:
 
 ## Q2 2026 (April - June)
 
-### 🎯 Enclii: Commercial GA execution (priority through July 2026)
+### 🎯 Enclii: GA program execution (priority through July 2026)
 
 All GA work is tracked in [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md). Q2 feature work below is **post-GA or parallel non-blocking** unless explicitly pulled into scope.
 
@@ -401,7 +401,7 @@ All GA work is tracked in [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERC
 | 2026-05-09 | Stability Remediation Plan Waves 0 & 1: Created master 5-wave remediation roadmap. Fixed digifab-quoting NestJS probe paths (/health instead of /api/health) and added 5s timeout. Re-enabled Prometheus platform and WAL rules, added custom pgBackRest health alerting rules. Created the reusable Production-Readiness Ratchet reusable CI pipeline and detailed runbooks (F1, F2, F5). |
 | 2026-05-14 | Quote-flow verification roadmap added for Selva -> Yantra4D -> Cotiza -> ForgeSight, including Enclii-first operational checks and emergency-only direct production access. |
 | 2026-05-22 | **Codebase audit remediation:** Phases 0–2 on `main`; security release checklist pending prod sign-off. |
-| 2026-05-29 | **Commercial GA master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md) — waves 0–4, target announce ~2026-07-14. Supersedes “95% ready” until Gate 5. Staging proofs A/B/C green 2026-05-23. |
+| 2026-05-29 | **GA master plan:** [COMMERCIAL_GA_MASTER_PLAN.md](docs/production/COMMERCIAL_GA_MASTER_PLAN.md) — waves 0–4. Supersedes “95% ready” until Gate 5. Staging proofs A/B/C green 2026-05-23. Current program state: [COMMERCIAL_GA_TRACKER.md](docs/production/COMMERCIAL_GA_TRACKER.md). |
 | 2026-05-30 | **Coupler Program:** Agent Tool Plane — separate AGPL repo, execution plan + checklist; Janua Keyring blocker documented. |
 
 

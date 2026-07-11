@@ -233,7 +233,7 @@ enclii admin ga-verify [--json]
 enclii admin ga-verify --stability
 ```
 
-Runs Commercial GA Wave 0 checks: public health, dashboard stats auth gate,
+Runs GA Wave 0 checks: public health, dashboard stats auth gate,
 DB schema/migration 030, Longhorn CPU settings dry-run, detached volume prune
 plan, and `node-maintenance` CronJob presence. With `--stability`, adds Wave 1
 read-only checks (Argo drift, Vault readiness, policy violations). Requires admin API token.
