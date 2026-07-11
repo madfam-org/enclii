@@ -34,8 +34,11 @@ RUN npm run build
 # Using standard nginx on port 80 (deployed image already uses this)
 FROM docker.io/library/nginx:alpine AS runner
 
-# Keep runtime OS packages current when the nginx base tag lags Alpine fixes.
-RUN apk upgrade --no-cache libxml2
+# Keep ALL runtime OS packages current when the nginx base tag lags Alpine
+# fixes — the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in
+# base packages (2026-07-10: CVE-2026-33630 c-ares, CVE-2026-56131/56407/56408
+# libexpat; previously libxml2). Same pattern as switchyard-api (PR #311).
+RUN apk upgrade --no-cache
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).

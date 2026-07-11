@@ -6,6 +6,10 @@ services:
     build:
       context: .
       dockerfile: apps/switchyard-api/Dockerfile
+      # dev target: the published image is slim (no docker CLI / pack); the
+      # in-process builds enabled by the socket mount below need the dev-only
+      # tooling stage.
+      target: dev
     ports:
       - "4200:4200"
       - "9091:9091" # gRPC
@@ -57,7 +61,10 @@ services:
     build:
       context: .
       dockerfile: apps/roundhouse/Dockerfile
-      target: worker
+      # dev-only dind stage: the published `worker` image is slim/kaniko-only;
+      # BUILD_MODE=docker (the compose default) needs dockerd plus the
+      # docker/pack/syft/cosign tooling from worker-dev.
+      target: worker-dev
     environment:
       - WORKER_TYPE=build
       - DATABASE_URL=postgresql://enclii:enclii_dev@postgres:5432/enclii_dev

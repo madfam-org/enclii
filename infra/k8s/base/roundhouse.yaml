@@ -103,9 +103,10 @@ spec:
       containers:
         - name: roundhouse-worker
           # Published from apps/roundhouse/Dockerfile --target worker
-          # (dind + pack/syft/cosign build tooling). The slim API stage is
-          # published separately as `roundhouse` for the roundhouse-api
-          # Deployment below.
+          # (slim alpine, kaniko-only: builds/SBOM/signing run as separate
+          # Jobs, so the image carries no dind or build tooling — see the
+          # Dockerfile header). The slim API stage is published separately
+          # as `roundhouse` for the roundhouse-api Deployment below.
           image: roundhouse-worker
           imagePullPolicy: Always
           securityContext:

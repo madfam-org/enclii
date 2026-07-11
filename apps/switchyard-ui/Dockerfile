@@ -108,7 +108,10 @@ COPY --from=builder /repo/apps/switchyard-ui/public ./public
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/switchyard-ui/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/switchyard-ui/.next/static ./apps/switchyard-ui/.next/static
 
-RUN apk add --no-cache wget
+# apk upgrade first: pull the node:22-alpine base's pending security
+# patches — the trivy gate blocks digest pins on fixable HIGH/CRITICAL
+# CVEs in base packages (same pattern as switchyard-api, PR #311).
+RUN apk upgrade --no-cache && apk add --no-cache wget
 
 USER nextjs
 

@@ -17,6 +17,15 @@ RUN pnpm run build
 # Production stage — unprivileged nginx (runs as uid 101, no root required)
 FROM nginxinc/nginx-unprivileged:alpine
 
+# Keep runtime OS packages current when the nginx base tag lags Alpine fixes —
+# the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in base
+# packages (2026-07-10: CVE-2026-33630, c-ares, fixed in 1.34.8-r0). Same
+# pattern as switchyard-api (PR #311); apk needs root, so drop back to the
+# base image's unprivileged user (uid 101) right after.
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
 # Copy nginx config
 COPY apps/landing/nginx.conf /etc/nginx/conf.d/default.conf
 
