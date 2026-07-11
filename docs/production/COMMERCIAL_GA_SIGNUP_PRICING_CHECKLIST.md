@@ -23,8 +23,8 @@
 | # | Step | Pass |
 |---|------|------|
 | 1 | Open https://enclii.dev — pricing section visible or documented skip | ☑ (2026-05-30) |
-| 2 | CTA links to signup or app (no broken href) | ☑ → `app.enclii.dev` |
-| 3 | Tier copy matches [docs/faq/billing.md](../faq/billing.md) Essentials/Pro table | ☐ **Drift:** landing shows **Sovereign** @ $20; FAQ lists **Essentials** @ $20 / **Pro** @ $49 |
+| 2 | CTA links to signup or app (no broken href) | ☑ → `app.enclii.dev/signup` (2026-07-11: landing CTAs deep-link to the signup wizard) |
+| 3 | Tier copy matches [docs/faq/billing.md](../faq/billing.md) Community/Sovereign table | ☑ (2026-07-11) — drift resolved: landing and FAQ both say Community (free) / Sovereign $20/mo / Ecosystem (coming soon) |
 | 4 | Dhanam checkout URL works for Pro upgrade (if applicable) | ☑ HTTP 200 — `DHANAM_ENCLII_CHECKOUT_URL` |
 
 ---

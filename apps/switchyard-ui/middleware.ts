@@ -13,6 +13,8 @@ const publicPaths = [
   "/login",
   "/register",
   "/signup",          // P3.2 self-serve signup wizard (public)
+  "/terms",           // Terms of Service (public legal page, linked from signup)
+  "/privacy",         // Privacy Policy (public legal page, linked from signup)
   "/auth/callback",
   "/api/auth",
   "/api/health",  // Health check endpoint for K8s probes

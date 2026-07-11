@@ -36,9 +36,9 @@ No hidden fees. The only additional costs might be:
 
 ### Is there a free tier?
 
-Enclii is designed for organizations rather than individual hobbyists. We don't offer a free tier, but:
+Yes — the **Community** tier is free: self-host the AGPL-3.0 open-source platform on your own infrastructure (you pay only for your own servers). The hosted service has no free tier; managed hosting starts with **Sovereign** at $20/mo:
 - No minimum commitment
-- Pay only for infrastructure used
+- Cancel anytime
 - Scale up or down as needed
 
 Contact us for startup pricing if you're early-stage.
@@ -67,18 +67,17 @@ Enclii's self-hosted model provides significant savings over traditional SaaS st
 
 ## Subscription Tiers
 
-Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing:
+Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing. This table matches the [enclii.dev](https://enclii.dev) landing pricing and is canonical for GA:
 
 | Tier | Price | Projects | Services | Description |
 |------|-------|----------|----------|-------------|
-| Community | Free | 1 | 3 | Self-hosted open-source users |
-| Essentials (**Sovereign** on landing) | $20/mo | 1 | 3 | Managed service with support — public marketing name **Sovereign** |
-| Pro | $49/mo | 10 | Unlimited | Premium features, priority support |
-| MADFAM Bundle | TBD | Unlimited | Unlimited | Ecosystem bundle (coming soon) |
+| Community | Free | 1 | 3 | Self-hosted open source (AGPL-3.0), community support |
+| Sovereign | $20/mo | 10 | Unlimited | Managed hosting: custom domains, auto SSL, priority support, zero-downtime deploys |
+| Ecosystem | Coming soon | Unlimited | Unlimited | Full MADFAM bundle: team management, SSO (Janua), billing (Dhanam), SLA |
 
-**Sovereign = Essentials:** The [enclii.dev](https://enclii.dev) landing uses **Sovereign** at $20/mo for the same managed tier documented here as Essentials (1 project, 3 services, Dhanam checkout). Use this table as canonical for GA.
+**Naming note:** Sovereign is the public name for the internal tier slug `pro` (entitlement claim `enclii_pro` in Janua tokens). Earlier drafts of this FAQ listed an "Essentials" tier at $20/mo and a separate "Pro" tier at $49/mo — both are superseded by the table above.
 
-Community and Essentials have identical feature limits — the value of Essentials/Sovereign is the **managed service** (hosting, uptime SLA, support, backups). Only Pro and above unlock additional feature limits.
+The value of Sovereign over Community is the **managed service** (hosting, custom domains, auto SSL, support) plus higher limits. Ecosystem (coming soon) adds team management, SSO integration, and an SLA.
 
 Upgrade via Dhanam checkout: `https://app.dhan.am/checkout?plan=enclii_pro&product=enclii`
 
