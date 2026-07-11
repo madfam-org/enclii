@@ -25,7 +25,7 @@ on:
         default: 'all'
 
 env:
-  GO_VERSION: '1.26.4'
+  GO_VERSION: '1.26.5'
   KIND_VERSION: 'v0.20.0'
   KUBERNETES_VERSION: 'v1.28.0'
 
