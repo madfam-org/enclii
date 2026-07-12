@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       digest:
-        description: sha256 digest (with or without sha256: prefix)
+        description: "sha256 digest (with or without sha256: prefix)"
         required: true
         type: string
       deploy_ack:
