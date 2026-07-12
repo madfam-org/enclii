@@ -218,6 +218,29 @@ spec:
               name: vault-credentials
               key: token
               optional: true
+        # Dhanam billing federation — checkout relay (mirrors janua#453).
+        # POST /v1/billing/checkout resolves the caller's Dhanam customer and
+        # opens a hosted checkout for enclii_pro, returning the real Dhanam
+        # checkout URL. ENCLII_DHANAM_FEDERATION_URL is the Dhanam federation
+        # API origin; the relay calls {url}/v1/customers/resolve then
+        # /v1/customers/{id}/checkout. See checkout_handlers.go.
+        - name: ENCLII_DHANAM_FEDERATION_URL
+          value: "https://api.dhan.am"
+        # FEDERATION_API_TOKEN — ecosystem-shared bearer for Dhanam customer
+        # federation (same secret name Janua uses; NOT ENCLII_-prefixed).
+        # optional:true so the deployment rolls out before the secret exists;
+        # the relay fails closed (503) until it is provisioned.
+        # OPERATOR: create key `federation-api-token` in secret `enclii-secrets`.
+        - name: FEDERATION_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: enclii-secrets
+              key: federation-api-token
+              optional: true
+        # Tier-blocked 402 upgrade link — enclii-owned upgrade page. Must NOT
+        # point at the dead dhanam.madfam.io host (NXDOMAIN). See tier.go.
+        - name: ENCLII_TIER_UPGRADE_URL
+          value: "https://app.enclii.dev/upgrade?plan=pro"
         readinessProbe:
           httpGet:
             path: /health/ready
