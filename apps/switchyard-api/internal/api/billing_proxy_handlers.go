@@ -10,7 +10,32 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
+
+// registerBillingRoutes registers the billing surface on the authenticated
+// route group: the Waybill spend-visibility proxy (P2.2) and the Dhanam
+// checkout relay (billing federation, mirrors janua#453). Co-located with
+// their handlers to keep handlers.go's RegisterRoutes focused. Both fail
+// closed with 503 when their upstream config is unset (h.SetBillingProxy /
+// h.SetDhanamFederation at bootstrap).
+func (h *Handler) registerBillingRoutes(protected *gin.RouterGroup) {
+	// Waybill proxy — resolves :slug → project UUID under the caller's RBAC,
+	// then forwards to the waybill service.
+	protected.GET("/projects/:slug/billing/cost", h.GetProjectBillingCost)
+	protected.GET("/projects/:slug/billing/budgets", h.ListProjectBudgets)
+	protected.POST("/projects/:slug/billing/budgets", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateProjectBudget)
+	protected.PATCH("/projects/:slug/billing/budgets/:budget_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateProjectBudget)
+	protected.DELETE("/projects/:slug/billing/budgets/:budget_id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProjectBudget)
+	protected.GET("/projects/:slug/billing/budgets/alerts", h.ListProjectBudgetAlerts)
+	protected.GET("/projects/:slug/billing/throttles", h.ListProjectThrottles)
+
+	// Dhanam checkout relay — resolves the caller's Dhanam customer and opens a
+	// hosted checkout for enclii_pro, returning {checkout_url}. Fails closed 503
+	// when ENCLII_DHANAM_FEDERATION_URL / FEDERATION_API_TOKEN are unset.
+	protected.POST("/billing/checkout", h.CreateBillingCheckout)
+}
 
 // BillingProxyConfig wires the switchyard billing proxy to a Waybill instance.
 // The proxy resolves a `:slug` in the incoming URL to a project UUID, then

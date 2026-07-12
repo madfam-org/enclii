@@ -282,9 +282,10 @@ describe('getCheckoutUrl', () => {
     expect(url).not.toContain('return_url');
   });
 
-  it('uses default base URL when NEXT_PUBLIC_DHANAM_CHECKOUT_URL is not set', () => {
+  it('uses the enclii upgrade page (not the dead dhanam host) when NEXT_PUBLIC_UPGRADE_URL is not set', () => {
     const url = getCheckoutUrl();
-    expect(url).toContain('dhanam.madfam.io/checkout');
+    expect(url).toContain('app.enclii.dev/upgrade');
+    expect(url).not.toContain('dhanam.madfam.io');
   });
 
   it('encodes special characters in return_url', () => {

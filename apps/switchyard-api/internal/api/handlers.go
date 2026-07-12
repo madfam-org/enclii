@@ -111,6 +111,10 @@ type Handler struct {
 	// after resolving the slug to a UUID. When nil the routes return 503.
 	billingProxy *BillingProxyConfig
 
+	// Dhanam checkout relay (billing federation, mirrors janua#453). When nil
+	// or unconfigured, POST /v1/billing/checkout fails closed 503. checkout_handlers.go.
+	dhanamFederation *DhanamFederationConfig
+
 	// Tenant data export (P3.6). When nil, the /v1/exports and
 	// /v1/projects/:slug/exports endpoints return 503.
 	tenantExportService *export.Service
@@ -552,17 +556,10 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// cache; degrades gracefully when the user's GH token is missing.
 			protected.POST("/integrations/github/repos/metadata", h.GetRepoMetadataBatch)
 
-			// Billing + spend visibility (P2.2). Thin proxy to Waybill that
-			// resolves :slug → project UUID under the caller's RBAC, then
-			// forwards to the waybill service. Returns 503 when the proxy
-			// is not configured; exported via h.SetBillingProxy at bootstrap.
-			protected.GET("/projects/:slug/billing/cost", h.GetProjectBillingCost)
-			protected.GET("/projects/:slug/billing/budgets", h.ListProjectBudgets)
-			protected.POST("/projects/:slug/billing/budgets", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateProjectBudget)
-			protected.PATCH("/projects/:slug/billing/budgets/:budget_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.UpdateProjectBudget)
-			protected.DELETE("/projects/:slug/billing/budgets/:budget_id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProjectBudget)
-			protected.GET("/projects/:slug/billing/budgets/alerts", h.ListProjectBudgetAlerts)
-			protected.GET("/projects/:slug/billing/throttles", h.ListProjectThrottles)
+			// Billing/spend visibility (Waybill proxy) + the Dhanam checkout
+			// relay. Registered in billing_proxy_handlers.go alongside their
+			// handlers; both fail closed with 503 when unconfigured.
+			h.registerBillingRoutes(protected)
 
 			// Deployment Groups (coordinated multi-service deployments)
 			protected.POST("/projects/:slug/environments/:env_name/deployment-groups", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateDeploymentGroup)
