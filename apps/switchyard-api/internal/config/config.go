@@ -74,6 +74,10 @@ type Config struct {
 	WaybillBaseURL        string // Base URL of the Waybill service, e.g. http://waybill:8080
 	WaybillInternalAPIKey string // Optional internal API key forwarded as X-API-Key
 
+	// Dhanam Billing Federation (checkout relay — mirrors janua#453)
+	DhanamFederationURL string // ENCLII_DHANAM_FEDERATION_URL — Dhanam federation API origin (e.g. https://api.dhan.am). Empty disables the relay (fails closed 503).
+	FederationAPIToken  string // FEDERATION_API_TOKEN — ecosystem-shared bearer for Dhanam customer-federation calls. Empty disables the relay (fails closed 503).
+
 	// Provenance / PR Approval
 	GitHubToken                string // GitHub API token for PR verification
 	GitHubWebhookSecret        string // Secret for verifying GitHub webhook signatures
@@ -250,8 +254,14 @@ func Load() (*Config, error) {
 	viper.SetDefault("self-url", "http://switchyard-api:4200") // This service's URL for callbacks
 	viper.SetDefault("waybill-base-url", "")                   // Empty disables the billing proxy
 	viper.SetDefault("waybill-internal-api-key", "")           // Optional Waybill internal API key
-	viper.SetDefault("github-webhook-secret", "")              // Webhook disabled until secret configured
-	viper.SetDefault("github-webhook-builds-enabled", false)   // Roundhouse push-builds are opt-in
+	viper.SetDefault("dhanam-federation-url", "")              // Empty disables the Dhanam checkout relay (fails closed 503)
+	viper.SetDefault("federation-api-token", "")               // FEDERATION_API_TOKEN — ecosystem-shared bearer (fails closed when empty)
+	// FEDERATION_API_TOKEN is the ecosystem-shared secret name (no ENCLII_ prefix),
+	// so bind it explicitly; AutomaticEnv's prefix would otherwise look for
+	// ENCLII_FEDERATION_API_TOKEN. Both names are accepted, FEDERATION_API_TOKEN first.
+	_ = viper.BindEnv("federation-api-token", "FEDERATION_API_TOKEN", "ENCLII_FEDERATION_API_TOKEN")
+	viper.SetDefault("github-webhook-secret", "")            // Webhook disabled until secret configured
+	viper.SetDefault("github-webhook-builds-enabled", false) // Roundhouse push-builds are opt-in
 	viper.SetDefault("argocd-webhook-secret", "")
 	viper.SetDefault("argocd-registration-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-registration", false)
@@ -355,6 +365,8 @@ func Load() (*Config, error) {
 		SelfURL:                           viper.GetString("self-url"),
 		WaybillBaseURL:                    viper.GetString("waybill-base-url"),
 		WaybillInternalAPIKey:             viper.GetString("waybill-internal-api-key"),
+		DhanamFederationURL:               viper.GetString("dhanam-federation-url"),
+		FederationAPIToken:                viper.GetString("federation-api-token"),
 		GitHubToken:                       viper.GetString("github-token"),
 		GitHubWebhookSecret:               viper.GetString("github-webhook-secret"),
 		GitHubWebhookBuildsEnabled:        viper.GetBool("github-webhook-builds-enabled"),

@@ -239,11 +239,17 @@ export function getUpgradeMessage(action: BlockedAction, tier: FoundryTier): str
 }
 
 /**
- * Get the checkout URL for upgrading to Sovereign (slug `pro`,
- * entitlement `enclii_pro`) via Dhanam
+ * Get the upgrade URL for upgrading to Sovereign (slug `pro`,
+ * entitlement `enclii_pro`).
+ *
+ * Points at enclii's OWN upgrade page (app.enclii.dev/upgrade), which POSTs to
+ * /v1/billing/checkout and redirects to Dhanam's hosted checkout. It must never
+ * point at the historical dhanam.madfam.io host, which is NXDOMAIN and serves
+ * no checkout route — a tier-blocked user would otherwise dead-end. Override the
+ * base with NEXT_PUBLIC_UPGRADE_URL.
  */
 export function getCheckoutUrl(userId?: string, returnUrl?: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_DHANAM_CHECKOUT_URL || 'https://dhanam.madfam.io/checkout';
+  const baseUrl = process.env.NEXT_PUBLIC_UPGRADE_URL || 'https://app.enclii.dev/upgrade';
   const params = new URLSearchParams();
   params.set('plan', 'enclii_pro');
   params.set('product', 'enclii');

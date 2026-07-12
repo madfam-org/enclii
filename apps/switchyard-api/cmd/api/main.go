@@ -503,6 +503,7 @@ func main() {
 		logrus.Warn("Billing proxy disabled; ENCLII_WAYBILL_BASE_URL is unset")
 	}
 
+	wireDhanamCheckoutRelay(cfg, apiHandler)
 	wireVaultWriter(cfg, apiHandler)
 
 	// Wire up optional domain sync service (if Cloudflare is configured)

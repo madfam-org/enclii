@@ -34,11 +34,17 @@ var tierLimits = map[string]tierLimit{
 
 // getUpgradeURL returns the tier upgrade URL, preferring the ENCLII_TIER_UPGRADE_URL
 // environment variable over the hardcoded default.
+//
+// The default points at enclii's own upgrade page (app.enclii.dev/upgrade),
+// which POSTs to /v1/billing/checkout and redirects to Dhanam's hosted
+// checkout. It must NOT point at the historical dhanam.madfam.io host, which
+// is NXDOMAIN and serves no checkout route — a tier-blocked user would
+// otherwise dead-end. See checkout_handlers.go and apps/switchyard-ui/app/upgrade.
 func getUpgradeURL() string {
 	if url := os.Getenv("ENCLII_TIER_UPGRADE_URL"); url != "" {
 		return url
 	}
-	return "https://dhanam.madfam.io/checkout?plan=enclii_pro&product=enclii"
+	return "https://app.enclii.dev/upgrade?plan=pro"
 }
 
 var tierPaymentRequired = gin.H{
