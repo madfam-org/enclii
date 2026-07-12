@@ -14,10 +14,77 @@ Track operations that still require break-glass (`kubectl`, provider CLIs, manua
 | Switchyard Vault writer bootstrap | Manual `vault-credentials` + `scripts/provision-switchyard-vault-writer.sh` | Automated token rotation via K8s auth (future) | **P0** — intake returns `503` until secret exists |
 | Signup verification email (Resend) | ~~Janua bridge~~ | **Closed** — `enclii.dev` verified; Vault backfill via `enclii secrets vault-backfill`; `providers.resend.*` + Dispatch Provider Hub | — |
 | Agent SaaS tool plane (`madfam.ops.*` proxy) | N/A — not built | Coupler `madfam.ops.*` → Enclii `providers.*` / `ops.*` (admin JWT) | P1 — track in [COUPLER_REMEDIATION_PLAN.md](strategy/COUPLER_REMEDIATION_PLAN.md) |
+| GitOps deploy tracking has no reconcile fallback | ArgoCD Notifications push (`/v1/callbacks/argocd-sync`) is the **only** release/deployment/activity signal for externally-managed (GitOps) services; if the push channel breaks, tracking silently freezes | ArgoCD `Application` poller in switchyard-api (reads `status.sync.revision` + `status.summary.images` directly) **or** relax the K8s-poll reconciler to track image-digest changes for name/repo-matched services (not only `enclii.dev/managed-by: switchyard`) | **P1** — see progress log 2026-07-12 |
 
 When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
+
+### 2026-07-12 — GitOps deploy tracking has no reconcile fallback (tulana freeze)
+
+**Symptom.** `enclii releases tulana-api --all`, `enclii deployments list`, and
+`enclii activity list` returned state frozen at **2026-06-04** for the `tulana`
+project (service `2e0cf4c9-7afc-4cf3-9207-ec68a8b37a56`), even though tulana's
+production kept rolling — prod runs api digest `ba27878a`, pinned by
+`madfam-org/tulana@050974a` on **2026-07-11**.
+
+**Root cause — architectural, not an association bug.** enclii's only live
+tracking channel for a GitOps service is the **ArgoCD Notifications → webhook
+push** to `POST /v1/callbacks/argocd-sync`
+(`argocd-notifications-cm.yaml` triggers `on-sync-succeeded` /
+`on-sync-failed`; handled by `internal/api/argocd_callbacks.go`, which maps
+`app.status.summary.images` → service by name and creates the
+release + deployment + audit-activity records). For tulana this is the *sole*
+channel because:
+
+- **The K8s-poll reconciler cannot back it up.** `internal/reconciler/controller_sync.go`
+  (`runK8sSync` → `syncDeploymentToDatabase`) only creates release/deployment
+  records for Deployments labeled `enclii.dev/managed-by: switchyard`
+  (`isEncliiManagedDeployment`). tulana's manifests are authored in
+  `madfam-org/tulana` and carry only `app.kubernetes.io/*` labels, so the poll
+  path does health propagation by name **but never creates release/deployment
+  rows**.
+- **tulana CI never calls enclii.** `tulana/.github/workflows/deploy-api.yml`
+  only builds, cosign-signs, and writes a digest-pin commit — it emits no
+  `ci_callback` lifecycle events and there is no `github_webhook` release path
+  in play. (deploy-web.yml likewise.)
+
+So when the ArgoCD push channel goes quiet, tracking freezes with **no
+self-healing** — the failure mode this ecosystem hit. The `tulana-services`
+ArgoCD app has been **OutOfSync (Git drift, healthy pods)** since early June
+(internal-devops `audits/2026-06-04-tulana-prod-data-truth-audit.md`,
+`runbooks/2026-06-14-enclii-project-health-remediation.md`). An OutOfSync app
+whose sync operations don't cleanly reach `operationState.phase == Succeeded`
+on each new revision stops emitting the `on-sync-succeeded` notification, so no
+new callback reaches enclii — while GitHub Actions keeps pinning digests and
+the already-admitted pods keep serving. The image→service association itself is
+correct and unchanged: `ghcr.io/madfam-org/tulana-api@sha256:…` →
+`extractServiceCandidates` → `tulana-api` → `Services.GetByName`; the image name
+and callback/notification code have not changed since the tracking last worked.
+
+**Operator action (unfreezes tracking now).** Resolve the `tulana-services`
+Git drift and re-sync so the app returns to Synced and resumes emitting sync
+notifications (per `2026-06-14-enclii-project-health-remediation.md`). A hard
+re-sync produces a fresh `on-sync-succeeded` callback and re-establishes the
+current release/deployment row; the June-4→now gap is not automatically
+backfilled (records are only created on notification receipt).
+
+**Adapter that closes the gap durably (either is sufficient):**
+1. **ArgoCD `Application` poller in switchyard-api.** `internal/argocd` already
+   holds a dynamic client for the `applications` GVR (used by
+   `application_reconciler.go`). Add a read reconciler that lists Applications,
+   reads `status.sync.revision` + `status.summary.images`, and reconciles
+   release/deployment/activity rows directly — independent of the
+   notifications controller. This is the true ArgoCD-event adapter and is
+   immune to notification-channel breakage.
+2. **Relax the K8s-poll reconciler.** Let `syncDeploymentToDatabase` create a
+   new release/deployment when a *registered* service (matched by name or
+   git-repo) is running an image digest that differs from its latest tracked
+   release — not only when `enclii.dev/managed-by: switchyard` is present.
+   Gate on service registration to avoid importing unmanaged workloads.
+
+Until one ships, GitOps services depend on an unmonitored push and can silently
+stop reporting. Close this row with the PR that lands the poller/reconcile path.
 
 ### 2026-06-15 — Secret intake (chat-safe handoff)
 
