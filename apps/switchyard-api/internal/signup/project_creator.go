@@ -31,45 +31,67 @@ func NewDefaultProjectCreator(repos *db.Repositories) *DefaultProjectCreator {
 	return &DefaultProjectCreator{repos: repos}
 }
 
-// CreateDefaultProjectForSignup creates a single Project row and logs a
-// ProjectAccess row linking the Janua user as the admin. Returns the
-// project.
+// CreateDefaultProjectForSignup creates a single Project row AND a
+// ProjectAccess row granting the Janua user the admin role on that project,
+// then returns the project.
+//
+// The ProjectAccess grant is load-bearing, not cosmetic: both
+// oidc.go:loadUserProjectIDs (which populates the user's visible project list
+// on login) and middleware/tier.go (which counts a user's projects to enforce
+// the plan paywall) key off ProjectAccess.ListByUser. A project row with no
+// matching project_access row is therefore invisible to the very user we just
+// provisioned it for, and simultaneously invisible to the tier counter — so
+// the paywall never fires. Both writes (plus the user upsert they depend on)
+// share one transaction so we can never re-create that orphan-project state.
 //
 // Slug derivation: we try company -> email-local -> "project-<short-id>"
 // in that order, appending a short random suffix if that slug is taken.
 func (c *DefaultProjectCreator) CreateDefaultProjectForSignup(ctx context.Context, signupID uuid.UUID, email, companyName, januaUserSub string) (*types.Project, error) {
 	name, slug := deriveProjectNameAndSlug(email, companyName)
 
-	// Loop up to 3 times on slug collision before giving up.
 	var proj *types.Project
-	var createErr error
-	attempt := 0
-	for attempt < 3 {
-		existing, _ := c.repos.Projects.GetBySlug(slug)
-		if existing == nil {
-			proj = &types.Project{
-				Name: name,
-				Slug: slug,
-			}
-			createErr = c.repos.Projects.Create(proj)
-			if createErr == nil {
-				break
-			}
+
+	// Create project + resolve the signup user + grant admin access atomically.
+	// A partial success (e.g. project created but grant fails) is exactly the
+	// orphan-project bug above, so all three writes roll back together.
+	if err := c.repos.WithTransaction(ctx, func(tx *db.Repositories) error {
+		created, createErr := createProjectWithUniqueSlug(tx, name, slug)
+		if createErr != nil {
+			return createErr
 		}
-		// Mutate slug and retry.
-		slug = fmt.Sprintf("%s-%s", slug, shortRand())
-		attempt++
-	}
-	if proj == nil || createErr != nil {
-		if createErr == nil {
-			createErr = fmt.Errorf("slug collision after 3 attempts")
+		proj = created
+
+		// The signup flow has only the verified email + Janua sub — no local
+		// user row exists yet (the user hasn't completed an OIDC login). Upsert
+		// one now, mirroring the OIDC login path (auth/oidc.go), so the grant
+		// below references a real users.id and the SAME user resolves on first
+		// login (that path falls back to email, which is what we key on here).
+		user, userErr := resolveSignupUser(ctx, tx, email, firstNameFromEmail(email), januaUserSub)
+		if userErr != nil {
+			return userErr
 		}
-		return nil, createErr
+
+		access := &types.ProjectAccess{
+			UserID:    user.ID,
+			ProjectID: proj.ID,
+			Role:      types.RoleAdmin,
+			// Self-serve signup: the new owner is both grantee and grantor.
+			// granted_by is a NOT NULL FK to users(id), so it must point at a
+			// real row — the user themselves is the only one in scope.
+			GrantedBy: user.ID,
+		}
+		if grantErr := tx.ProjectAccess.Grant(ctx, access); grantErr != nil {
+			return fmt.Errorf("grant admin project access: %w", grantErr)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	// Best-effort: audit the creation. If the audit repo doesn't accept
 	// the write (e.g. test env with a nil logger), don't fail the signup
-	// over it — the signup_events table already has the trail.
+	// over it — the signup_events table already has the trail. Kept outside
+	// the transaction so an audit hiccup can never roll back the project.
 	_ = c.repos.AuditLogs.Log(ctx, &types.AuditLog{
 		ActorID:      nil,
 		ActorEmail:   email,
@@ -88,6 +110,62 @@ func (c *DefaultProjectCreator) CreateDefaultProjectForSignup(ctx context.Contex
 	})
 
 	return proj, nil
+}
+
+// createProjectWithUniqueSlug creates a Project, retrying up to 3 times on slug
+// collision (appending a short random suffix). The pre-check via GetBySlug means
+// the common "slug already taken" case never issues a doomed INSERT, keeping the
+// surrounding transaction usable across retries.
+func createProjectWithUniqueSlug(repos *db.Repositories, name, slug string) (*types.Project, error) {
+	var proj *types.Project
+	var createErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		existing, _ := repos.Projects.GetBySlug(slug)
+		if existing == nil {
+			proj = &types.Project{
+				Name: name,
+				Slug: slug,
+			}
+			createErr = repos.Projects.Create(proj)
+			if createErr == nil {
+				return proj, nil
+			}
+		}
+		// Mutate slug and retry.
+		slug = fmt.Sprintf("%s-%s", slug, shortRand())
+	}
+	if createErr == nil {
+		createErr = fmt.Errorf("slug collision after 3 attempts")
+	}
+	return nil, createErr
+}
+
+// resolveSignupUser finds or creates the local users row for a signup, keyed by
+// email. This mirrors the OIDC login upsert in auth/oidc.go: that path resolves
+// a returning user by (issuer, subject) first and falls back to email; because
+// signup provisioning does not yet know Janua's issuer URL, we key on email —
+// the same fallback — so both paths converge on one users.id for a given person.
+// The Janua sub is recorded on oidc_subject; oidc_issuer stays NULL until the
+// user's first real OIDC login (the partial unique index on
+// (oidc_issuer, oidc_subject) only applies when both columns are non-null).
+func resolveSignupUser(ctx context.Context, repos *db.Repositories, email, name, januaUserSub string) (*types.User, error) {
+	if existing, err := repos.Users.GetByEmail(ctx, email); err == nil && existing != nil {
+		return existing, nil
+	}
+
+	sub := januaUserSub
+	newUser := &types.User{
+		Email:        email,
+		Name:         name,
+		Role:         string(types.RoleDeveloper), // platform role; project-level admin comes from ProjectAccess
+		Active:       true,
+		OIDCSubject:  &sub,
+		PasswordHash: "",
+	}
+	if err := repos.Users.Create(ctx, newUser); err != nil {
+		return nil, fmt.Errorf("create signup user: %w", err)
+	}
+	return newUser, nil
 }
 
 // slugRE keeps project slugs to lowercase alnum + hyphens.
