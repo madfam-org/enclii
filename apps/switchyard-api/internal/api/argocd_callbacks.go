@@ -60,53 +60,53 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		logging.String("revision", req.Revision),
 		logging.Int("image_count", len(req.Images)))
 
+	deploymentsCreated := h.processArgocdSyncRequest(ctx, req, argocdSyncSourceWebhook)
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":              "processed",
+		"deployments_created": deploymentsCreated,
+	})
+}
+
+// argocdSyncSourceWebhook / argocdSyncSourcePoller identify which channel fed
+// an ArgoCD sync observation into processArgocdSyncRequest. Both channels run
+// the SAME record-creation logic; the source is stamped into audit/lifecycle
+// metadata for observability only — it never changes dedup or creation
+// semantics.
+const (
+	argocdSyncSourceWebhook = "webhook"
+	argocdSyncSourcePoller  = "poller"
+)
+
+// processArgocdSyncRequest applies one ArgoCD sync observation to the deploy
+// tracking tables (releases, deployments, audit/lifecycle activity). It is the
+// single source of truth for turning ArgoCD state into tracking records and is
+// called by BOTH the notifications webhook (ArgocdSyncCallback) and the
+// read-only Application poller (internal/api/argocd_poller.go), so the two
+// channels behave identically.
+//
+// source is either argocdSyncSourceWebhook or argocdSyncSourcePoller and is
+// recorded in audit/lifecycle metadata for observability. It returns the number
+// of deployment records created or updated.
+//
+// Idempotency: releases are deduped on (service, git revision) via
+// findOrCreateRelease, and an unchanged service whose latest deployment already
+// points at the same release is skipped (argocdSameReleaseDeploymentDecision).
+// The poller additionally pre-filters req.Images to only revisions/digests that
+// differ from the latest tracked one for a service, so repeated polls of a
+// steady-state Application perform no writes.
+func (h *Handler) processArgocdSyncRequest(ctx context.Context, req ArgocdSyncRequest, source string) int {
 	isSyncFailure := isArgocdSyncFailure(req.Trigger, req.SyncStatus)
 	callbackHealthy := argocdCallbackIsHealthy(req.SyncStatus, req.HealthStatus, isSyncFailure)
 
 	deploymentsCreated := 0
 
 	for _, imageURI := range req.Images {
-		candidateNames := extractServiceCandidates(imageURI)
-		if len(candidateNames) == 0 {
-			h.logger.Warn(ctx, "Could not extract service name from image",
-				logging.String("image", imageURI))
-			continue
-		}
-
-		// Look up service by name, trying candidates in order
-		var service *types.Service
-		var serviceName string
-		for _, candidate := range candidateNames {
-			svc, err := h.repos.Services.GetByName(candidate)
-			if err == nil {
-				service = svc
-				serviceName = candidate
-				break
-			}
-			if err != sql.ErrNoRows {
-				h.logger.Error(ctx, "Failed to look up service",
-					logging.String("service_name", candidate),
-					logging.Error("db_error", err))
-			}
-		}
-		// Fallback: derive repo URL from image and look up by git repo
-		// (handles mono-service repos where DB service name
-		// doesn't match image-derived candidates)
+		// Associate the image with a registered enclii service. Unknown
+		// images (no name/repo match) are skipped — the poller relies on this
+		// to ignore Applications that don't map to a tracked service.
+		service, serviceName := h.argocdServiceForImage(ctx, imageURI)
 		if service == nil {
-			repoName := repoFullNameFromImage(imageURI)
-			if repoName != "" {
-				repoURL := "https://github.com/" + repoName
-				services, lookupErr := h.repos.Services.ListByGitRepo(repoURL)
-				if lookupErr == nil && len(services) > 0 {
-					service = services[0]
-					serviceName = service.Name
-				}
-			}
-		}
-		if service == nil {
-			h.logger.Debug(ctx, "No matching service for image",
-				logging.String("candidates", strings.Join(candidateNames, ",")),
-				logging.String("image", imageURI))
 			continue
 		}
 
@@ -267,11 +267,12 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			ProjectID:    &service.ProjectID,
 			Outcome:      "success",
 			Context: map[string]interface{}{
-				"app_name":      req.AppName,
-				"sync_status":   req.SyncStatus,
-				"health_status": req.HealthStatus,
-				"revision":      req.Revision,
-				"image":         imageURI,
+				"app_name":        req.AppName,
+				"sync_status":     req.SyncStatus,
+				"health_status":   req.HealthStatus,
+				"revision":        req.Revision,
+				"image":           imageURI,
+				"tracking_source": source,
 			},
 		})
 
@@ -296,11 +297,12 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 			Source:       types.SourceArgocdCallback,
 			Message:      &deployMsg,
 			Metadata: map[string]interface{}{
-				"app_name":      req.AppName,
-				"sync_status":   req.SyncStatus,
-				"health_status": req.HealthStatus,
-				"image":         imageURI,
-				"service":       serviceName,
+				"app_name":        req.AppName,
+				"sync_status":     req.SyncStatus,
+				"health_status":   req.HealthStatus,
+				"image":           imageURI,
+				"service":         serviceName,
+				"tracking_source": source,
 			},
 		})
 
@@ -313,10 +315,77 @@ func (h *Handler) ArgocdSyncCallback(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":              "processed",
-		"deployments_created": deploymentsCreated,
-	})
+	return deploymentsCreated
+}
+
+// argocdServiceForImage resolves a container image URI to a registered enclii
+// service using the same association rules the ArgoCD webhook has always used:
+// image-derived candidate names (extractServiceCandidates → Services.GetByName),
+// then a git-repo fallback (repoFullNameFromImage → Services.ListByGitRepo) for
+// mono-service repos. Returns (nil, "") when the image maps to no known service
+// so callers can skip unknown Applications. Shared by the webhook loop and the
+// Application poller's idempotency pre-check so association never diverges.
+func (h *Handler) argocdServiceForImage(ctx context.Context, imageURI string) (*types.Service, string) {
+	candidateNames := extractServiceCandidates(imageURI)
+	if len(candidateNames) == 0 {
+		h.logger.Warn(ctx, "Could not extract service name from image",
+			logging.String("image", imageURI))
+		return nil, ""
+	}
+
+	// Look up service by name, trying candidates in order
+	var service *types.Service
+	var serviceName string
+	for _, candidate := range candidateNames {
+		svc, err := h.repos.Services.GetByName(candidate)
+		if err == nil {
+			service = svc
+			serviceName = candidate
+			break
+		}
+		if err != sql.ErrNoRows {
+			h.logger.Error(ctx, "Failed to look up service",
+				logging.String("service_name", candidate),
+				logging.Error("db_error", err))
+		}
+	}
+	// Fallback: derive repo URL from image and look up by git repo
+	// (handles mono-service repos where DB service name
+	// doesn't match image-derived candidates)
+	if service == nil {
+		repoName := repoFullNameFromImage(imageURI)
+		if repoName != "" {
+			repoURL := "https://github.com/" + repoName
+			services, lookupErr := h.repos.Services.ListByGitRepo(repoURL)
+			if lookupErr == nil && len(services) > 0 {
+				service = services[0]
+				serviceName = service.Name
+			}
+		}
+	}
+	if service == nil {
+		h.logger.Debug(ctx, "No matching service for image",
+			logging.String("candidates", strings.Join(candidateNames, ",")),
+			logging.String("image", imageURI))
+		return nil, ""
+	}
+	return service, serviceName
+}
+
+// argocdLatestTracked returns the service's most recent deployment and the
+// release it points at (both nil when the service has no deployment yet). Used
+// by the Application poller's idempotency pre-check to compare live ArgoCD state
+// against what enclii has already recorded for the service.
+func (h *Handler) argocdLatestTracked(ctx context.Context, serviceID string) (*types.Deployment, *types.Release) {
+	dep, err := h.repos.Deployments.GetLatestByService(ctx, serviceID)
+	if err != nil || dep == nil {
+		return nil, nil
+	}
+	rel, err := h.repos.Releases.GetByID(dep.ReleaseID)
+	if err != nil || rel == nil {
+		return dep, nil
+	}
+	return dep, rel
 }
 
 func argocdSameReleaseDeploymentDecision(latestDeployment *types.Deployment, releaseID uuid.UUID, callbackHealthy bool) (bool, *types.Deployment) {

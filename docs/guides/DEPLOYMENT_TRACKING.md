@@ -265,6 +265,54 @@ The `LifecycleEventCallback` handler creates Deployment records automatically fo
 
 **Stale deploying filter (UI):** The Active Deployments card is always visible on the deployments page. It filters out `deploying`/`pending` records older than 30 minutes — these are shown in Deployment History instead, rendered as "Timed Out" badges. Records marked `cancelled` by server-side cleanup also appear in history as "Cancelled". When no active deployments exist, the card shows a green "No active deployments" idle state.
 
+## ArgoCD Application Poller (GitOps fallback)
+
+The ArgoCD Notifications → webhook push (`POST /v1/callbacks/argocd-sync`) is the
+primary tracking signal for GitOps-managed services, but it is a *push* channel:
+notifications are suppressed once-per-revision and depend on each sync operation
+reaching `operationState.phase == Succeeded`. A service whose Application sits
+**OutOfSync but healthy** (git drift, live pods) stops emitting
+`on-sync-succeeded`, so tracking freezes with no self-heal — and the
+label-gated K8s-poll reconciler (`enclii.dev/managed-by: switchyard`) cannot back
+it up for externally-authored GitOps manifests.
+
+The **ArgoCD Application poller** closes that gap. When enabled it periodically
+LISTs ArgoCD `Application` resources (read-only) and reconciles
+release/deployment/activity records directly from `status.sync.revision` +
+`status.summary.images` + `status.health`, independent of the notifications
+webhook.
+
+- **Shared record-creation logic.** The poller and the webhook both call
+  `Handler.processArgocdSyncRequest` (`internal/api/argocd_callbacks.go`), so the
+  release/deployment records they create are identical. Image→service
+  association is the shared `argocdServiceForImage` helper (name candidates →
+  `Services.GetByName`, then a `ListByGitRepo` fallback). Records are stamped
+  with `tracking_source: webhook|poller` in audit/lifecycle metadata.
+- **Idempotent.** For each Application the poller only feeds images whose
+  `(service, git revision)` differs from the service's latest tracked deployment
+  (image digest is used as a fallback when a revision is unavailable). A
+  steady-state Application produces zero writes on repeated polls.
+- **Association-scoped.** Applications/images that don't map to a registered
+  enclii service are skipped. Multi-image and multi-source apps are handled per
+  image.
+- **Settled states only.** The poller records from terminal health states
+  (`Healthy` → running, `Degraded`/`Missing` → failed) and skips transient
+  `Progressing`/`Suspended`/`Unknown` health until the next tick.
+- **Read-only against the cluster.** The only writes are enclii DB records; no
+  cluster resources are mutated.
+
+### Configuration
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `ENCLII_ARGOCD_POLLER_ENABLED` | `false` | Master switch. Ships dark — the poller only starts when this is `true`. |
+| `ENCLII_ARGOCD_POLL_INTERVAL` | `3m` | Poll cadence as a Go duration (e.g. `2m`, `5m`). Values below `30s` are clamped up. |
+| `ENCLII_ARGOCD_NAMESPACE` | `argocd` | Namespace the Applications are listed from (shared with the webhook/registration paths). |
+
+To enable in an environment, set `ENCLII_ARGOCD_POLLER_ENABLED=true` (optionally
+tune `ENCLII_ARGOCD_POLL_INTERVAL`) and restart `switchyard-api`. Leaving it
+unset preserves the pre-existing webhook-only behavior.
+
 ### Service Name Resolution
 
 When a lifecycle event or ArgoCD callback arrives with an image URI like `ghcr.io/myorg/myapp/api`, Enclii needs to match it to a registered service. The `extractServiceCandidates` function generates candidate names:
@@ -291,6 +339,7 @@ The `metadata.service` field in CI callbacks provides an explicit service name. 
 | Deployment repository | `apps/switchyard-api/internal/db/deployment_repository.go` |
 | Callback + query handlers | `apps/switchyard-api/internal/api/lifecycle_event_handlers.go` |
 | ArgoCD callback (emits events + updates deployments) | `apps/switchyard-api/internal/api/argocd_callbacks.go` |
+| ArgoCD Application poller (GitOps fallback, reuses the callback's record logic) | `apps/switchyard-api/internal/api/argocd_poller.go` |
 | Service name extraction tests | `apps/switchyard-api/internal/api/argocd_callbacks_test.go` |
 | DB migration | `apps/switchyard-api/internal/db/migrations/005_deployment_lifecycle.up.sql` |
 | Push webhook (emits events) | `apps/switchyard-api/internal/api/webhook_push.go` |

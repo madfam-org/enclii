@@ -20,6 +20,33 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
 
+### 2026-07-12 — ArgoCD Application poller lands (ships dark)
+
+Implemented adapter option 1 from the row below: a read-only ArgoCD `Application`
+poller in switchyard-api (`internal/api/argocd_poller.go`). It lists Applications
+on an interval and reconciles release/deployment/activity records directly from
+`status.sync.revision` + `status.summary.images` + `status.health`, independent
+of the notifications webhook, so a frozen push channel (OutOfSync-but-healthy)
+no longer stops tracking.
+
+- **Shared logic, no divergence.** The webhook loop was refactored into
+  `Handler.processArgocdSyncRequest` (+ `argocdServiceForImage` for
+  image→service association); the poller calls the same function, so records are
+  identical. Source is stamped `tracking_source: webhook|poller`.
+- **Idempotent.** Dedup key is `(service, git revision)` (image-digest fallback
+  when no revision); a steady-state Application produces no writes.
+- **Ships dark.** Gated by `ENCLII_ARGOCD_POLLER_ENABLED` (default `false`);
+  cadence via `ENCLII_ARGOCD_POLL_INTERVAL` (default `3m`, floor `30s`).
+  Read-only against the cluster (list Applications only; writes are DB records).
+- Docs: `docs/guides/DEPLOYMENT_TRACKING.md` (design + env names). Unit tests
+  cover the observation extraction, `(service, revision)` dedup, the
+  reconcile decision (create-once / idempotent no-op / unknown-skip), and
+  interval parsing.
+
+**Row stays open** until the flag is enabled on prod and a poll is confirmed to
+re-establish a frozen service's tracking (e.g. `tulana-services`). Close it then,
+linking this PR.
+
 ### 2026-07-12 — GitOps deploy tracking has no reconcile fallback (tulana freeze)
 
 **Symptom.** `enclii releases tulana-api --all`, `enclii deployments list`, and
