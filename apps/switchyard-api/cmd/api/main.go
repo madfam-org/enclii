@@ -712,6 +712,7 @@ func main() {
 		logrus.Warn("⚠ Outbound lifecycle webhooks DISABLED (ENCLII_WEBHOOK_MASTER_KEY unset)")
 	}
 
+	defer wireArgocdPoller(ctx, cfg, apiHandler)() // ArgoCD poller — ships dark; see argocd_poller_wiring.go
 	api.SetupRoutes(router, apiHandler)
 
 	server := &http.Server{

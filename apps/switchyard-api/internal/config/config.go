@@ -89,6 +89,15 @@ type Config struct {
 	AllowLegacyGitOpsRegistration bool   // Explicit break-glass gate for legacy Enclii repo ArgoCD writes
 	ArgocdNamespace               string // Namespace containing ArgoCD Application CRs (default: argocd)
 
+	// ArgoCD Application poller (GitOps deploy-tracking fallback, enclii#324).
+	// Ships dark: disabled unless ArgocdPollerEnabled is set. When enabled the
+	// poller lists ArgoCD Applications every ArgocdPollInterval and reconciles
+	// release/deployment/activity records from status.sync.revision +
+	// status.summary.images, independent of the notifications webhook, so
+	// GitOps services keep reporting even when the push channel goes quiet.
+	ArgocdPollerEnabled bool   // ENCLII_ARGOCD_POLLER_ENABLED (default false)
+	ArgocdPollInterval  string // ENCLII_ARGOCD_POLL_INTERVAL — Go duration (default "3m")
+
 	// Status ConfigMap Projection
 	StatusProjectionMode              string // "runtime" (default zero-touch ConfigMap projection) or "gitops" (legacy Enclii config commit)
 	AllowLegacyGitOpsStatusProjection bool   // Explicit break-glass gate for legacy Enclii repo status commits
@@ -266,6 +275,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("argocd-registration-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-registration", false)
 	viper.SetDefault("argocd-namespace", "argocd")
+	viper.SetDefault("argocd-poller-enabled", false)      // ENCLII_ARGOCD_POLLER_ENABLED — ships dark
+	viper.SetDefault("argocd-poll-interval", "3m")        // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
 	viper.SetDefault("status-projection-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-status-projection", false)
 	viper.SetDefault("status-config-namespace", "enclii")
@@ -374,6 +385,8 @@ func Load() (*Config, error) {
 		ArgocdRegistrationMode:            viper.GetString("argocd-registration-mode"),
 		AllowLegacyGitOpsRegistration:     viper.GetBool("allow-legacy-gitops-registration"),
 		ArgocdNamespace:                   viper.GetString("argocd-namespace"),
+		ArgocdPollerEnabled:               viper.GetBool("argocd-poller-enabled"),
+		ArgocdPollInterval:                viper.GetString("argocd-poll-interval"),
 		StatusProjectionMode:              viper.GetString("status-projection-mode"),
 		AllowLegacyGitOpsStatusProjection: viper.GetBool("allow-legacy-gitops-status-projection"),
 		StatusConfigNamespace:             viper.GetString("status-config-namespace"),
