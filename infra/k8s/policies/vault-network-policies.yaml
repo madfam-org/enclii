@@ -211,3 +211,15 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    # kube-apiserver REAL endpoint: NetworkPolicy is enforced post-DNAT, so
+    # traffic to the kubernetes.default ClusterIP (10.43.0.1:443) arrives as
+    # <node-ip>:6443 and the ClusterIP rule above never matches. Without this
+    # rule Vault cannot call TokenReview → kubernetes auth logins fail 403
+    # ("dial tcp 10.43.0.1:443: connection refused"), which is what forced the
+    # expiring ESO bridge tokens. Endpoint from: kubectl get endpoints kubernetes
+    - to:
+        - ipBlock:
+            cidr: 37.27.235.104/32
+      ports:
+        - protocol: TCP
+          port: 6443
