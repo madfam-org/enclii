@@ -50,13 +50,22 @@ spec:
     spec:
       backoffLimit: 3
       template:
+        metadata:
+          labels:
+            app: vault-token-renewer
         spec:
           serviceAccountName: vault-token-renewer
           restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: renew
               image: docker.io/hashicorp/vault:1.18.3
               securityContext:
+                privileged: false
                 allowPrivilegeEscalation: false
                 runAsNonRoot: true
                 runAsUser: 100
@@ -76,7 +85,14 @@ spec:
                   set -eu
                   export VAULT_ADDR=http://vault.vault.svc.cluster.local:8200
                   export VAULT_TOKEN="$(cat /token/token)"
-                  vault token renew > /dev/null
+                  # Retry: fresh pods race the k3s netpol ipset sync — first
+                  # dials to vault can be refused for up to a few minutes.
+                  i=0
+                  until vault token renew > /dev/null 2>&1; do
+                    i=$((i+1))
+                    [ "$i" -ge 30 ] && echo "renew failed after $i attempts" && exit 1
+                    sleep 10
+                  done
                   echo "vault-eso-token renewed"
               volumeMounts:
                 - name: token
@@ -132,13 +148,22 @@ spec:
     spec:
       backoffLimit: 3
       template:
+        metadata:
+          labels:
+            app: vault-token-renewer
         spec:
           serviceAccountName: vault-token-renewer
           restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: renew
               image: docker.io/hashicorp/vault:1.18.3
               securityContext:
+                privileged: false
                 allowPrivilegeEscalation: false
                 runAsNonRoot: true
                 runAsUser: 100
@@ -158,7 +183,14 @@ spec:
                   set -eu
                   export VAULT_ADDR=http://vault.vault.svc.cluster.local:8200
                   export VAULT_TOKEN="$(cat /token/token)"
-                  vault token renew > /dev/null
+                  # Retry: fresh pods race the k3s netpol ipset sync — first
+                  # dials to vault can be refused for up to a few minutes.
+                  i=0
+                  until vault token renew > /dev/null 2>&1; do
+                    i=$((i+1))
+                    [ "$i" -ge 30 ] && echo "renew failed after $i attempts" && exit 1
+                    sleep 10
+                  done
                   echo "vault-credentials token renewed"
               volumeMounts:
                 - name: token
