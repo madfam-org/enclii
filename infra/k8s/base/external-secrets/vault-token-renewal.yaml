@@ -1,0 +1,142 @@
+# Weekly self-renewal of the two periodic Vault tokens (period=720h).
+# Periodic tokens live forever ONLY while renewed within their period; these
+# CronJobs renew weekly, leaving ~3 weeks of slack if the cluster is down.
+# One CronJob per namespace so each only needs a local Role to read its own
+# token secret, and each namespace already has a network path to Vault
+# (vault-ingress-eso / vault-ingress-enclii NetworkPolicies).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-token-renewer
+  namespace: external-secrets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-token-renewer
+  namespace: external-secrets
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["vault-eso-token"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-token-renewer
+  namespace: external-secrets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-token-renewer
+subjects:
+  - kind: ServiceAccount
+    name: vault-token-renewer
+    namespace: external-secrets
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-eso-token-renew
+  namespace: external-secrets
+spec:
+  schedule: "20 3 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          serviceAccountName: vault-token-renewer
+          restartPolicy: Never
+          containers:
+            - name: renew
+              image: hashicorp/vault:1.18.3
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  export VAULT_ADDR=http://vault.vault.svc.cluster.local:8200
+                  export VAULT_TOKEN="$(cat /token/token)"
+                  vault token renew > /dev/null
+                  echo "vault-eso-token renewed"
+              volumeMounts:
+                - name: token
+                  mountPath: /token
+                  readOnly: true
+          volumes:
+            - name: token
+              secret:
+                secretName: vault-eso-token
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-token-renewer
+  namespace: enclii
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-token-renewer
+  namespace: enclii
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["vault-credentials"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-token-renewer
+  namespace: enclii
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-token-renewer
+subjects:
+  - kind: ServiceAccount
+    name: vault-token-renewer
+    namespace: enclii
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-writer-token-renew
+  namespace: enclii
+spec:
+  schedule: "30 3 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          serviceAccountName: vault-token-renewer
+          restartPolicy: Never
+          containers:
+            - name: renew
+              image: hashicorp/vault:1.18.3
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  export VAULT_ADDR=http://vault.vault.svc.cluster.local:8200
+                  export VAULT_TOKEN="$(cat /token/token)"
+                  vault token renew > /dev/null
+                  echo "vault-credentials token renewed"
+              volumeMounts:
+                - name: token
+                  mountPath: /token
+                  readOnly: true
+          volumes:
+            - name: token
+              secret:
+                secretName: vault-credentials
