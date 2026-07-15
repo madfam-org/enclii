@@ -96,6 +96,24 @@ path "secret/data/coupler" {
 path "secret/data/coupler/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+path "secret/data/janua" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/janua/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/madfam-site" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/madfam-site/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/phynd-crm-staging" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/phynd-crm-staging/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -142,6 +160,24 @@ path "secret/metadata/coupler" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/coupler/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/janua" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/janua/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/madfam-site" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/madfam-site/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/phynd-crm-staging" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/phynd-crm-staging/*" {
   capabilities = ["read", "list"]
 }
 EOF
