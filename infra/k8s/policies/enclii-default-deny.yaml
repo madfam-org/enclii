@@ -264,3 +264,37 @@ spec:
       ports:
         - protocol: TCP
           port: 4200
+---
+# Weekly Vault token renewal CronJob (vault-writer-token-renew) — needs DNS +
+# Vault API. Without this the renewal pod is caught by default-deny-egress and
+# the switchyard writer periodic token would silently stop being renewed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-token-renewer-egress
+  namespace: enclii
+  labels:
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: vault-token-renewer
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Vault API
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
