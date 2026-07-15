@@ -55,7 +55,21 @@ spec:
           restartPolicy: Never
           containers:
             - name: renew
-              image: hashicorp/vault:1.18.3
+              image: docker.io/hashicorp/vault:1.18.3
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 100
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
               command: ["/bin/sh", "-c"]
               args:
                 - |
@@ -123,7 +137,21 @@ spec:
           restartPolicy: Never
           containers:
             - name: renew
-              image: hashicorp/vault:1.18.3
+              image: docker.io/hashicorp/vault:1.18.3
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 100
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
               command: ["/bin/sh", "-c"]
               args:
                 - |
