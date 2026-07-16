@@ -24,6 +24,6 @@ jobs:
   docs-links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check local docs links
         run: python3 scripts/check-doc-links.py

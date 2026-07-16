@@ -39,7 +39,7 @@ jobs:
           - docs/architecture
           - docs/cli
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run DocGuard (${{ matrix.doc-path }})
         uses: madfam-org/solarpunk-foundry/.github/actions/doc-guard@main

@@ -32,7 +32,7 @@ jobs:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     # Run in parallel with lint for speed
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check critical config keys
         run: |
@@ -182,7 +182,7 @@ jobs:
     # selected pods' containerPorts (silent CNI drop).
     # See scripts/check-networkpolicy-ports.py for the full rationale.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -203,7 +203,7 @@ jobs:
     # duplicates, well-formed JSON. See scripts/check-status-configmaps.sh
     # for the full invariant list and rationale.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run status configmap drift check
         run: ./scripts/check-status-configmaps.sh
@@ -215,7 +215,7 @@ jobs:
     # app-specific Argo/status/tunnel/auth/secret/monitor/UI catalog entries in
     # Enclii fail CI. Client repos must own client desired state.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -236,7 +236,7 @@ jobs:
     runs-on: ubuntu-latest
     # Run in parallel with lint for speed
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check golden config drift
         run: |
@@ -288,7 +288,7 @@ jobs:
       AGE_RATCHET_EXEMPT_WAYBILL: "stable manifest serializer, no upstream CVE pressure; ETA 2026-06 alongside roundhouse"
       PYTHONUNBUFFERED: "1"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -345,7 +345,7 @@ jobs:
           - 6379:6379
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -411,7 +411,7 @@ jobs:
     needs: unit-tests
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -457,7 +457,7 @@ jobs:
       NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -534,7 +534,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -574,7 +574,7 @@ jobs:
     needs: ui-tests
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -719,7 +719,7 @@ jobs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
       has_changes: ${{ steps.build-matrix.outputs.has_changes }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -866,7 +866,7 @@ jobs:
       built_services: ${{ steps.collect.outputs.built_services }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Wait for Docker daemon (DinD sidecar) to be ready on self-hosted runners
       - name: Wait for Docker daemon
@@ -994,7 +994,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download digest artifact
         if: matrix.scan == true
@@ -1113,7 +1113,7 @@ jobs:
       contents: write
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: main
@@ -1313,7 +1313,7 @@ jobs:
       github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup and Validate kubectl
         id: kubectl-setup
@@ -1427,7 +1427,7 @@ jobs:
       needs.commit-digests.result == 'success' &&
       github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Report build events from services.json
         run: |
@@ -1490,7 +1490,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       needs.detect-changes.outputs.has_changes == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Report build failure events
         run: |

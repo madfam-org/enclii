@@ -170,7 +170,7 @@ jobs:
       matrix: ${{ steps.filter.outputs.matrix }}
       any: ${{ steps.filter.outputs.any }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -295,7 +295,7 @@ jobs:
       matrix:
         service: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Docker Hub login BEFORE buildx, so buildx picks up creds when
       # its container starts. Conditional + soft-fail so missing creds
@@ -406,7 +406,7 @@ jobs:
       contents: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # PAT if the caller provides ENCLII_COMMIT_TOKEN (to bypass
           # branch protection); fall through to the repo-scoped GITHUB_TOKEN.

@@ -31,7 +31,7 @@ jobs:
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Resolve service matrix from services.json
         id: resolve
@@ -69,7 +69,7 @@ jobs:
       matrix: ${{ fromJSON(needs.resolve-matrix.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         if: matrix.type == 'go'
@@ -168,7 +168,7 @@ jobs:
       packages: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: main
