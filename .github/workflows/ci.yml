@@ -399,7 +399,7 @@ jobs:
           echo "All modules meet 50% coverage threshold"
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: ${{ env.COVERAGE_FILES }}
           flags: unit
