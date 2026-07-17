@@ -46,6 +46,11 @@ type Config struct {
 	// JanuaAdminToken: machine token used to pull session audit rows from
 	// Janua's /api/v1/audit-logs endpoint (admin-only). When empty the
 	// audit aggregator skips the Janua source and the UI shows a gap.
+	//
+	// Also required by self-serve signup (P3.2) when SignupEnabled is true:
+	// the GitHub-link step calls Janua's admin-authenticated on-behalf OAuth
+	// endpoints with this token. Load() fails fast if SignupEnabled=true and
+	// this is unset — see the SignupEnabled validation below.
 	JanuaAdminToken string
 	// NexusAPIURL: base URL for selva-office nexus-api. Used by the
 	// audit aggregator to pull the 4 Selva RFC ledgers.
@@ -210,7 +215,9 @@ type Config struct {
 	// Self-Serve Signup (P3.2 Sprint 1)
 	// SignupEnabled gates the entire /v1/signup surface. Default false
 	// so the feature is invisible until an operator explicitly flips it.
-	// When false, all /v1/signup endpoints return 404.
+	// When false, all /v1/signup endpoints return 404. When true, also
+	// requires ENCLII_JANUA_ADMIN_TOKEN (Load() fails fast otherwise) —
+	// see JanuaAdminToken.
 	SignupEnabled bool
 	// SelfServiceAPIBaseURL is the public-facing URL the OAuth callback
 	// bounces to (e.g. https://api.enclii.dev). Defaults to SelfURL.
@@ -248,7 +255,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("access-token-expire-minutes", 15)        // 15 minutes default (set to 480 for 8 hours)
 	viper.SetDefault("refresh-token-expire-days", 7)           // 7 days default
 	viper.SetDefault("janua-api-url", "https://api.janua.dev") // Janua API for OAuth tokens
-	viper.SetDefault("janua-admin-token", "")                  // JANUA_ADMIN_TOKEN — audit aggregator only
+	viper.SetDefault("janua-admin-token", "")                  // ENCLII_JANUA_ADMIN_TOKEN — audit aggregator; REQUIRED when signup-enabled=true
 	viper.SetDefault("nexus-api-url", "")                      // NEXUS_API_URL — audit aggregator only
 	viper.SetDefault("nexus-api-token", "")                    // NEXUS_API_TOKEN — audit aggregator only
 	viper.SetDefault("kube-config", os.Getenv("HOME")+"/.kube/config")
@@ -466,6 +473,22 @@ func Load() (*Config, error) {
 	if config.Environment == "production" && strings.Contains(config.DatabaseURL, "sslmode=disable") {
 		logrus.Warn("SEC-002: Database SSL is disabled in production. This is a security risk. " +
 			"Update DATABASE_URL to use sslmode=require or sslmode=verify-full")
+	}
+
+	// P3.2 signup: the GitHub-link step (AuthorizeGithub/LinkGithub) calls
+	// Janua's admin-authenticated on-behalf OAuth endpoints
+	// (/oauth/link/github/on-behalf, /oauth/link/github/complete). Without
+	// ENCLII_JANUA_ADMIN_TOKEN those calls go out unauthenticated and Janua
+	// rejects them — the wizard silently dead-ends at "connect_github" with
+	// no indication of why. Fail fast at startup instead, same as the other
+	// SEC-00x checks above.
+	if config.SignupEnabled && config.JanuaAdminToken == "" {
+		return nil, fmt.Errorf("ENCLII_SIGNUP_ENABLED=true requires ENCLII_JANUA_ADMIN_TOKEN.\n" +
+			"  The signup wizard's GitHub-link step calls Janua's admin-authenticated\n" +
+			"  on-behalf OAuth endpoints; without a token those calls are unauthenticated\n" +
+			"  and the wizard cannot complete the connect_github step.\n" +
+			"  Set the operator-provisioned token (Janua's JANUA_SERVICE_TOKEN):\n" +
+			"  export ENCLII_JANUA_ADMIN_TOKEN='<token>'")
 	}
 
 	return config, nil

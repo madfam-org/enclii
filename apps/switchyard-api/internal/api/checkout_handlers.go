@@ -34,6 +34,9 @@ type DhanamFederationConfig struct {
 	APIToken      string // FEDERATION_API_TOKEN shared bearer
 	SuccessURL    string // where Dhanam sends the browser after successful payment
 	CancelURL     string // where Dhanam sends the browser on cancel
+	UpgradeURL    string // enclii's own upgrade page, e.g. https://app.enclii.dev/upgrade — echoed
+	// back in 402 responses so any caller (web UI, CLI) has a human-actionable
+	// link even when it hit /v1/billing/checkout directly.
 }
 
 const (
@@ -119,6 +122,24 @@ func (h *Handler) dhanamFederationPost(ctx context.Context, path string, payload
 	return parsed, resp.StatusCode, nil
 }
 
+// respondBillingPaymentRequired forwards a 402 from Dhanam as our own 402
+// with an actionable body, instead of letting it fall into the generic
+// "billing_*_failed" 502 bucket alongside real transport/upstream failures.
+// A 402 from Dhanam means the caller's billing account genuinely needs
+// attention (e.g. an existing subscription in a payment-required state) —
+// telling them to "try again later" would be misleading since retrying
+// can't fix it. upgrade_url gives any caller (web UI or CLI hitting the API
+// directly) a concrete next step.
+func (h *Handler) respondBillingPaymentRequired(c *gin.Context, stage string, upstreamErr error) {
+	logrus.WithError(upstreamErr).WithField("stage", stage).
+		Warn("Dhanam federation returned 402; forwarding as actionable payment_required")
+	c.JSON(http.StatusPaymentRequired, gin.H{
+		"error":       "payment_required",
+		"message":     "Your billing account needs attention before checkout can continue.",
+		"upgrade_url": h.dhanamFederation.UpgradeURL,
+	})
+}
+
 // CreateBillingCheckout relays a checkout request to Dhanam's federation API
 // and returns Dhanam's actual hosted checkout URL.
 //
@@ -162,6 +183,10 @@ func (h *Handler) CreateBillingCheckout(c *gin.Context) {
 	resolvePayload := gin.H{"email": email, "januaSub": januaSub}
 	resolved, resolveStatus, err := h.dhanamFederationPost(ctx, "/v1/customers/resolve", resolvePayload)
 	if err != nil {
+		if resolveStatus == http.StatusPaymentRequired {
+			h.respondBillingPaymentRequired(c, "billing_resolve", err)
+			return
+		}
 		logrus.WithError(err).WithField("status", resolveStatus).Error("Dhanam customer resolve failed")
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error":   "billing_resolve_failed",
@@ -201,6 +226,10 @@ func (h *Handler) CreateBillingCheckout(c *gin.Context) {
 	checkoutPath := "/v1/customers/" + url.PathEscape(externalID) + "/checkout"
 	checkout, checkoutStatus, err := h.dhanamFederationPost(ctx, checkoutPath, checkoutPayload)
 	if err != nil {
+		if checkoutStatus == http.StatusPaymentRequired {
+			h.respondBillingPaymentRequired(c, "billing_checkout", err)
+			return
+		}
 		logrus.WithError(err).WithField("status", checkoutStatus).Error("Dhanam checkout creation failed")
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error":   "billing_checkout_failed",
