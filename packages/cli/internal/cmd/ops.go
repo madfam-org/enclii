@@ -126,7 +126,41 @@ func newOpsSecretsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync", "Alias for ExternalSecret reconciliation refresh"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync-sweep", "Batch refresh not-ready ExternalSecrets in GA namespaces (O-10)"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "rotate", "Request an ExternalSecret rotation cutover"))
-	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "vault-backfill", "Backfill Vault from a Kubernetes Secret"))
+	cmd.AddCommand(newOpsSecretsVaultBackfillCommand(cfg))
+	return cmd
+}
+
+func newOpsSecretsVaultBackfillCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	var vaultPath string
+	cmd := &cobra.Command{
+		Use:   "vault-backfill [target]",
+		Short: "Backfill Vault from a Kubernetes Secret",
+		Long: `Backfill a Vault KV v2 path from a live Kubernetes Secret through Enclii.
+
+The server-side adapter requires the destination Vault path; without
+--vault-path the request is dry-run-only and apply is rejected with
+"missing args.vault_path".
+
+Example:
+  enclii ops secrets vault-backfill rondelio-secrets \
+    --namespace rondelio --project rondelio \
+    --vault-path secret/rondelio \
+    --apply --reason "bootstrap Vault path before enabling ExternalSecret"`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extra := map[string]string{}
+			if len(args) == 1 {
+				extra["target"] = args[0]
+			}
+			if strings.TrimSpace(vaultPath) != "" {
+				extra["vault_path"] = strings.TrimSpace(vaultPath)
+			}
+			return runOperation(cmd, cfg, opsPath("secrets", "vault-backfill"), "ops.secrets.vault-backfill", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
+	cmd.Flags().StringVar(&vaultPath, "vault-path", "", "Destination Vault KV v2 path (e.g. secret/rondelio); required for --apply")
 	return cmd
 }
 
