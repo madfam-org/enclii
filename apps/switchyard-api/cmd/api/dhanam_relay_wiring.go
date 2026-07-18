@@ -21,6 +21,7 @@ func wireDhanamCheckoutRelay(cfg *config.Config, apiHandler *api.Handler) {
 		APIToken:      cfg.FederationAPIToken,
 		SuccessURL:    appBaseURL + "/settings?upgraded=1",
 		CancelURL:     appBaseURL + "/upgrade?canceled=1",
+		UpgradeURL:    appBaseURL + "/upgrade",
 	})
 	if cfg.DhanamFederationURL != "" && cfg.FederationAPIToken != "" {
 		logrus.WithField("dhanam_federation_url", cfg.DhanamFederationURL).Info("✓ Dhanam checkout relay wired")
