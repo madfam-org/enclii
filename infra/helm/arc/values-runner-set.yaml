@@ -81,7 +81,11 @@ template:
             memory: 2Gi
           limits:
             cpu: 1500m
-            memory: 4Gi
+            # 4Gi proved too small for monorepo CI (dhanam 2026-07-21 outage:
+            # kernel cgroup-OOM killed Node mid-job — turbo fan-out of two Next
+            # builds + jest workers — with no logs; the stuck-runner watchdog
+            # then reaped the dead worker). 6Gi + in-repo NODE_OPTIONS caps.
+            memory: 6Gi
 
 # Listener configuration (manages scale set communication with GitHub)
 listenerTemplate:
