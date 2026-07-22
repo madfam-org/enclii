@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -92,6 +94,13 @@ func parseExpiresIn(s string) (int64, error) {
 	return int64(d.Seconds()), nil
 }
 
+// expiresInDays converts a duration in seconds to whole days, rounding up so
+// that a requested lifetime is never silently extended past what the server
+// supports nor truncated to zero (the server treats 0/absent as "no expiry").
+func expiresInDays(seconds int64) int64 {
+	return (seconds + 86399) / 86400
+}
+
 // ----------------------------------------------------------------------------
 // tokens list
 // ----------------------------------------------------------------------------
@@ -103,22 +112,27 @@ func newTokensListCommand(cfg *config.Config) *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List your API tokens",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var resp struct {
-				Tokens []apiToken `json:"tokens"`
+			var raw json.RawMessage
+			if err := apiRequest(context.Background(), cfg, "GET", "/v1/user/tokens", nil, &raw); err != nil {
+				return fmt.Errorf("list tokens: %w", err)
 			}
-			if err := apiRequest(context.Background(), cfg, "GET", "/v1/user/tokens", nil, &resp); err != nil {
+			tokens, err := decodeTokenList(raw)
+			if err != nil {
 				return fmt.Errorf("list tokens: %w", err)
 			}
 			if jsonOut {
-				return emitJSON(resp.Tokens)
+				if tokens == nil {
+					tokens = []apiToken{}
+				}
+				return emitJSON(tokens)
 			}
-			if len(resp.Tokens) == 0 {
+			if len(tokens) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No tokens found. Create one with `enclii tokens create --name <name>`.")
 				return nil
 			}
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "ID\tNAME\tCREATED\tLAST USED\tEXPIRES")
-			for _, t := range resp.Tokens {
+			for _, t := range tokens {
 				lastUsed := "(never)"
 				if t.LastUsedAt != nil {
 					lastUsed = t.LastUsedAt.Format("2006-01-02 15:04")
@@ -137,6 +151,33 @@ func newTokensListCommand(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON")
 	return cmd
+}
+
+// decodeTokenList tolerates both response shapes for GET /v1/user/tokens.
+// The Switchyard API returns a bare JSON array (ListAPITokens does
+// `c.JSON(http.StatusOK, tokens)`), while the CLI historically decoded into
+// {"tokens": [...]} — the mismatch made `enclii tokens list` fail with
+// "decode response: json: cannot unmarshal array". Accept both shapes so the
+// command works across server versions.
+func decodeTokenList(raw []byte) ([]apiToken, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil, nil
+	}
+	if trimmed[0] == '[' {
+		var tokens []apiToken
+		if err := json.Unmarshal(trimmed, &tokens); err != nil {
+			return nil, fmt.Errorf("decode token list: %w", err)
+		}
+		return tokens, nil
+	}
+	var wrapped struct {
+		Tokens []apiToken `json:"tokens"`
+	}
+	if err := json.Unmarshal(trimmed, &wrapped); err != nil {
+		return nil, fmt.Errorf("decode token list: %w", err)
+	}
+	return wrapped.Tokens, nil
 }
 
 // ----------------------------------------------------------------------------
@@ -206,8 +247,14 @@ Use Go duration syntax extended with 'd' for days: 24h, 30d, 90d.`,
 			}
 
 			payload := map[string]interface{}{
-				"name":               name,
-				"expires_in_seconds": seconds,
+				"name": name,
+			}
+			if seconds > 0 {
+				// The API binds expires_in_days (CreateAPITokenRequest in
+				// switchyard-api); the old expires_in_seconds key was silently
+				// dropped, creating never-expiring tokens. Round up so
+				// sub-day durations like 24h still expire.
+				payload["expires_in_days"] = expiresInDays(seconds)
 			}
 			if scopesCSV != "" {
 				scopes := []string{}
