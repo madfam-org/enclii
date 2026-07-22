@@ -27,8 +27,13 @@ func TestNewPsCommand(t *testing.T) {
 	require.NotNil(t, envFlag)
 	assert.Equal(t, "dev", envFlag.DefValue)
 
+	projectFlag := cmd.Flags().Lookup("project")
+	require.NotNil(t, projectFlag)
+	assert.Equal(t, "", projectFlag.DefValue)
+
 	// Verify shorthand flags
 	assert.Equal(t, "e", envFlag.Shorthand)
+	assert.Equal(t, "p", projectFlag.Shorthand)
 }
 
 func TestFormatDuration(t *testing.T) {
