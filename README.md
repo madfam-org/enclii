@@ -52,6 +52,27 @@ Enclii is the required control plane for MADFAM DevOps and provisioning:
 - Raw `kubectl`, `helm`, SSH, provider CLIs/APIs, `docker exec`, and direct container access are allowed only for platform bootstrap or documented break-glass emergencies when Enclii is unavailable or lacks an implemented adapter.
 - Missing adapter gaps must be recorded and remediated in Enclii rather than normalized as routine operator procedure.
 
+### Role in the MADFAM monetization engine
+
+Enclii does not sell the products in MADFAM's commercial pipeline — it **runs** them. Demand discovery, pricing,
+checkout, invoicing, entitlement, and CRM each live in their own service, and every one of those services is
+deployed, scaled, observed, and rolled back through Enclii. That makes Enclii's reliability a direct commercial
+dependency rather than a supporting concern: degraded operations here degrade the ability to take money at all.
+
+Enclii is also **itself a commercial product**, with its own paid tiers, sold through the same pipeline it operates.
+
+Readiness against that responsibility is tracked in
+[`docs/MONETIZATION_PATH_READINESS.md`](./docs/MONETIZATION_PATH_READINESS.md).
+
+Boundary checkpoint (2026-07-26, platform owner): public-safe role statement only. What was withheld — deployment
+topology, credential and secret names, per-service operational state, cost, and incident detail; the canonical
+end-to-end description of the monetization pipeline is private and lives in `internal-devops` at
+`docs/monetization-engine.md`, referenced here by path and not reproduced. Policy:
+[docs/PUBLIC_REPO_BOUNDARY.md](./docs/PUBLIC_REPO_BOUNDARY.md) and the
+[repo-boundary contract](https://github.com/madfam-org/internal-devops/blob/main/docs/repo-boundary-contract.md).
+
+_Last Updated: 2026-07-26_
+
 ---
 
 ## Key Features
