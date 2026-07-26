@@ -59,12 +59,14 @@ checkout, invoicing, entitlement, and CRM each live in their own service, and ev
 deployed, scaled, observed, and rolled back through Enclii. That makes Enclii's reliability a direct commercial
 dependency rather than a supporting concern: degraded operations here degrade the ability to take money at all.
 
-Enclii is also **itself a commercial product**, with its own paid tiers, sold through the same pipeline it operates.
+Enclii is also **itself a commercial product**, with its own tiers, offered through the same pipeline it operates.
+Commercial licensing terms are in [`COMMERCIAL_LICENSE.md`](./COMMERCIAL_LICENSE.md).
 
 Readiness against that responsibility is tracked in
-[`docs/MONETIZATION_PATH_READINESS.md`](./docs/MONETIZATION_PATH_READINESS.md).
+[`docs/MONETIZATION_PATH_READINESS.md`](./docs/MONETIZATION_PATH_READINESS.md). This section describes Enclii's
+designed role; it is not a statement about the live state of any deployment.
 
-Boundary checkpoint (2026-07-26, platform owner): public-safe role statement only. What was withheld — deployment
+Boundary checkpoint (2026-07-26, docs change, pending maintainer review): public-safe role statement only. What was withheld — deployment
 topology, credential and secret names, per-service operational state, cost, and incident detail; the canonical
 end-to-end description of the monetization pipeline is private and lives in `internal-devops` at
 `docs/monetization-engine.md`, referenced here by path and not reproduced. Policy:
