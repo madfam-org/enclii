@@ -215,11 +215,17 @@ spec:
           value: "true"
           effect: NoSchedule
       # Pod-level security
+      # Node log collection requires root: /var/log/pods is 0750 root:root on
+      # the foundry nodes, so uid 1000 can neither traverse nor read it and
+      # fluent-bit tailed zero files from 2026-06-03 until this fix (see
+      # internal-devops runbooks/2026-07-28-loki-ingestion-blackout.md).
+      # Root + drop-ALL caps + readOnlyRootFilesystem is the upstream
+      # fluent-bit/promtail posture for node log agents. Admission is covered
+      # by the logging-stack PolicyException (require-run-as-nonroot).
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
         seccompProfile:
           type: RuntimeDefault
       containers:
