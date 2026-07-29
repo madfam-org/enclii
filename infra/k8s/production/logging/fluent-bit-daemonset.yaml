@@ -140,6 +140,14 @@ data:
         Refresh_Interval  10
         Rotate_Wait       30
         Read_from_Head    false
+        # Stat-based scanning, no inotify. Running as root (required to read
+        # 0750 root:root /var/log/pods) the process shares uid 0's node-wide
+        # fs.inotify.max_user_instances quota with kubelet/containerd/journald;
+        # inotify_init failed with EMFILE the moment the permission fix landed
+        # and the pod crashlooped. Polling costs a little CPU and up to
+        # Refresh_Interval seconds of pickup latency for NEW files; it needs no
+        # inotify instance at all. (2026-07-28 blackout follow-up.)
+        Inotify_Watcher   false
 
     # Enrich with Kubernetes metadata (namespace, pod, container, labels)
     [FILTER]
@@ -203,8 +211,11 @@ spec:
         app.kubernetes.io/component: logging
         app.kubernetes.io/part-of: enclii
       annotations:
-        # Trigger rolling restart when config changes
-        checksum/config: "fluent-bit-config"
+        # Trigger rolling restart when config changes. NOTE: these are literal
+        # strings, not real checksums — a ConfigMap edit does NOT roll pods by
+        # itself. Bump the rev suffix in the same commit as any config change
+        # (2026-07-28: rev bumped for Inotify_Watcher false).
+        checksum/config: "fluent-bit-config-r2"
         checksum/parsers: "fluent-bit-parsers"
     spec:
       serviceAccountName: fluent-bit
