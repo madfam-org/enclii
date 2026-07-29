@@ -131,7 +131,15 @@ data:
     [INPUT]
         Name              tail
         Tag               kube.*
-        Path              /var/log/pods/*/*/*.log
+        # /var/log/containers is the kubelet's flat symlink view whose file
+        # naming (<pod>_<namespace>_<container>-<id>.log) is what the
+        # kubernetes filter's default tag parser understands. Tailing
+        # /var/log/pods directly produced tags the filter rejected ("invalid
+        # pattern for given tag ...") so NO record ever got namespace/pod
+        # metadata and everything collapsed into one unlabeled stream
+        # (2026-07-28 blackout follow-up #2). The symlink targets live under
+        # /var/log/pods inside the same read-only /var/log hostPath mount.
+        Path              /var/log/containers/*.log
         Parser            cri
         DB                /var/fluent-bit/state/tail-pods.db
         DB.locking        true
@@ -156,7 +164,7 @@ data:
         Kube_URL            https://kubernetes.default.svc:443
         Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
-        Kube_Tag_Prefix     kube.var.log.pods.
+        Kube_Tag_Prefix     kube.var.log.containers.
         Merge_Log           On
         Merge_Log_Key       parsed
         Keep_Log            On
@@ -214,8 +222,8 @@ spec:
         # Trigger rolling restart when config changes. NOTE: these are literal
         # strings, not real checksums — a ConfigMap edit does NOT roll pods by
         # itself. Bump the rev suffix in the same commit as any config change
-        # (2026-07-28: rev bumped for Inotify_Watcher false).
-        checksum/config: "fluent-bit-config-r2"
+        # (2026-07-28: r2 Inotify_Watcher false; r3 containers path + tag prefix).
+        checksum/config: "fluent-bit-config-r3"
         checksum/parsers: "fluent-bit-parsers"
     spec:
       serviceAccountName: fluent-bit
