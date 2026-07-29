@@ -603,16 +603,65 @@ jobs:
 
       - name: Auto-discover and scan Go modules
         run: |
+          # Full-tree Go-file check. The previous guard used -maxdepth 1, which
+          # skips any module whose code lives entirely under cmd//internal//pkg/
+          # — i.e. the standard layout. Measured 2026-07-29: it skipped 5 of 6
+          # modules (switchyard-api's 351 Go files included) while printing a
+          # cheerful "Skipping (no Go files)". The scanned/skipped counters are
+          # the read-proof, and scanning ZERO modules is a failure, not a pass.
+          #
+          # RATCHET, not a hard zero: first full-coverage run found 40
+          # pre-existing findings in the never-scanned modules (baselines
+          # below, measured 2026-07-29 — incl. 3x G101 hardcoded-credentials
+          # and 1x G201 SQL-format, tracked for triage). Failing hard on all
+          # 40 would freeze every unrelated merge behind old debt — the
+          # permanently-red-control antipattern. A module may only come in AT
+          # OR UNDER its baseline; lower the number here as findings are
+          # fixed. New findings anywhere fail the gate immediately.
+          declare -A BASELINE=(
+            [apps/roundhouse]=1
+            [apps/switchyard-api]=16
+            [apps/waybill]=1
+            [packages/cli]=22
+            [packages/otel-go]=0
+            [packages/sdk-go]=0
+          )
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
           FAILED=0
+          SCANNED=0
+          SKIPPED=0
           for mod in $MODULES; do
-            if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
-              echo "▶ Skipping $mod (no Go files)"
+            if ! find "$mod" -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+              echo "▶ Skipping $mod (no Go files anywhere in the module)"
+              SKIPPED=$((SKIPPED+1))
               continue
             fi
             echo "▶ Security scan: $mod"
-            (cd "$mod" && gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...) || FAILED=1
+            OUT="$RUNNER_TEMP/gosec-$(echo "$mod" | tr / -).txt"
+            (cd "$mod" && gosec -exclude=G104,G115,G204,G301,G302,G306 -exclude-generated ./...) >"$OUT" 2>&1 || true
+            # gosec's own summary line ("Issues : N") is the count source — no
+            # external JSON parser needed on the runner image.
+            COUNT=$(grep -oE 'Issues[[:space:]]*:[[:space:]]*[0-9]+' "$OUT" | grep -oE '[0-9]+' | head -1)
+            if [ -z "$COUNT" ]; then
+              echo "❌ $mod: gosec emitted no summary — that is a failed read, not a pass"
+              tail -20 "$OUT"
+              FAILED=1
+              continue
+            fi
+            BASE=${BASELINE[$mod]:-0}
+            echo "  gosec: module=$mod issues=$COUNT baseline=$BASE"
+            if [ "$COUNT" -gt "$BASE" ]; then
+              echo "❌ $mod: $COUNT findings exceed the ratchet baseline of $BASE — new findings must be fixed, not accumulated"
+              cat "$OUT"
+              FAILED=1
+            fi
+            SCANNED=$((SCANNED+1))
           done
+          echo "gosec read-proof: scanned=$SCANNED skipped=$SKIPPED"
+          if [ "$SCANNED" -eq 0 ]; then
+            echo "❌ Security scan examined ZERO modules — a scan that reads nothing must not pass"
+            exit 1
+          fi
           if [ $FAILED -eq 1 ]; then
             echo "❌ Security scan failures detected"
             exit 1
@@ -621,16 +670,27 @@ jobs:
       - name: Check for vulnerabilities
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
+          # Same full-tree discovery + read-proof as the gosec step above; the
+          # old -maxdepth 1 guard silently limited govulncheck to 1 of 6 modules.
           MODULES=$(find apps/ packages/ -name go.mod -exec dirname {} \; | sort)
           FAILED=0
+          SCANNED=0
+          SKIPPED=0
           for mod in $MODULES; do
-            if ! find "$mod" -maxdepth 1 -name '*.go' -print -quit | grep -q .; then
-              echo "▶ Skipping $mod (no Go files)"
+            if ! find "$mod" -name '*.go' -not -path '*/vendor/*' -print -quit | grep -q .; then
+              echo "▶ Skipping $mod (no Go files anywhere in the module)"
+              SKIPPED=$((SKIPPED+1))
               continue
             fi
             echo "▶ Vulnerability check: $mod"
             (cd "$mod" && govulncheck ./...) || FAILED=1
+            SCANNED=$((SCANNED+1))
           done
+          echo "govulncheck read-proof: scanned=$SCANNED skipped=$SKIPPED"
+          if [ "$SCANNED" -eq 0 ]; then
+            echo "❌ Vulnerability check examined ZERO modules — a scan that reads nothing must not pass"
+            exit 1
+          fi
           if [ $FAILED -eq 1 ]; then
             echo "❌ govulncheck vulnerabilities detected"
             exit 1
