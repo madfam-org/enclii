@@ -30,7 +30,7 @@ const (
 	// NOTE: Must use auth.madfam.io (not api.janua.dev) because Janua sets
 	// session cookies with Domain=.madfam.io — api.janua.dev won't receive them.
 	authorizePath = "/api/v1/oauth/authorize"
-	tokenPath     = "/api/v1/oauth/token"
+	tokenPath     = "/api/v1/oauth/token" // #nosec G101 -- OAuth token endpoint path, not a credential
 
 	// CLI OAuth client (public client with PKCE)
 	// Registered in Janua SSO - public client for PKCE flow

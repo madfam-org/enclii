@@ -147,6 +147,10 @@ func (s *SwitchyardSource) fetchAuditLogs(ctx context.Context, q Query, limit in
 	// cast both to text and rely on sql.NullString below so a NULL surfaces
 	// as the zero AuditEvent.projectID / nil ActingTeamID rather than a
 	// scan error.
+	//
+	// #nosec G201 -- WHERE fragments above are compile-time constants with
+	// $n placeholders; every caller value is bound via args. No user input
+	// can reach the SQL text.
 	query := fmt.Sprintf(`
 		SELECT id, timestamp, COALESCE(actor_email,''), COALESCE(actor_id::text,''),
 			action, resource_type, COALESCE(resource_id,''), COALESCE(resource_name,''),
@@ -316,6 +320,9 @@ func (s *SwitchyardSource) fetchLifecycle(ctx context.Context, q Query, limit in
 	if len(conditions) > 0 {
 		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
+	// #nosec G201 -- WHERE fragments above are compile-time constants with
+	// $n placeholders; every caller value is bound via args. No user input
+	// can reach the SQL text.
 	query := fmt.Sprintf(`
 		SELECT id, created_at, event_type, source, COALESCE(message,''),
 			repo_full_name, commit_sha, branch, COALESCE(target_env,''), metadata,
