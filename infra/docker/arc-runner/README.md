@@ -17,6 +17,11 @@ image, which is intentionally lean. It does **not** include:
 - `xz-utils` — required before any per-job Node install exists because
   `actions/setup-node` unpacks upstream Node Linux archives. Without it,
   jobs can reach `pnpm` with `node: not found` even though setup-node ran.
+- `python3-venv` — the base's system Python cannot create venvs without
+  it (`ensurepip` lives in this package on Ubuntu). Workflows that run
+  `python3 -m venv` against system Python hard-fail; apt-get fallbacks
+  inside runner pods cannot sudo. Observed: rondelio's studio
+  creation-suite smoke, deploy run 31035125262 (2026-08-05).
 
 Result: every UI Tests / Playwright job across the org fails. Branch
 protection becomes meaningless because every PR has red CI.
