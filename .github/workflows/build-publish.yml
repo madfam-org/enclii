@@ -165,7 +165,7 @@ jobs:
     name: Detect changed services
     # Keep lightweight orchestration off scarce ARC builders. Only Docker
     # builds need the self-hosted runner pool.
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
     outputs:
       matrix: ${{ steps.filter.outputs.matrix }}
       any: ${{ steps.filter.outputs.any }}
@@ -401,7 +401,7 @@ jobs:
       needs.build.result != 'cancelled' &&
       needs.build.result != 'skipped'
     # Digest pinning is git/kustomize/curl work; do not burn an ARC build slot.
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.build_runner != '' && inputs.build_runner || (vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest') }}
     permissions:
       contents: write
       packages: read
