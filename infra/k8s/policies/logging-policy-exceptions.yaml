@@ -18,6 +18,13 @@ spec:
       ruleNames:
         - deny-host-ports
         - autogen-deny-host-ports
+    # fluent-bit must run as root to read the kubelet's 0750 root:root
+    # /var/log/pods tree (2026-07-28 loki ingestion blackout; caps stay
+    # dropped, rootfs stays read-only).
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - run-as-non-root
+        - autogen-run-as-non-root
   match:
     any:
       - resources:

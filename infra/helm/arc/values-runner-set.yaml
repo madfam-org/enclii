@@ -57,7 +57,8 @@ template:
         # ghcr.io/actions/actions-runner that adds the system packages our
         # CI needs (libatomic1 for pnpm; xz-utils for setup-node;
         # libasound2t64 + libnss3 + libxkbcommon0 + libgbm1 for Playwright;
-        # jq + python3-pip for misc CI scripting). Pinned to base 2.334.0.
+        # jq + python3-pip + python3-venv for misc CI scripting).
+        # Pinned to base 2.334.0.
         # Built by .github/workflows/arc-runner-image.yml.
         # Source: infra/docker/arc-runner/.
         image: ghcr.io/madfam-org/enclii/arc-runner:stable
@@ -81,7 +82,11 @@ template:
             memory: 2Gi
           limits:
             cpu: 1500m
-            memory: 4Gi
+            # 4Gi proved too small for monorepo CI (dhanam 2026-07-21 outage:
+            # kernel cgroup-OOM killed Node mid-job — turbo fan-out of two Next
+            # builds + jest workers — with no logs; the stuck-runner watchdog
+            # then reaped the dead worker). 6Gi + in-repo NODE_OPTIONS caps.
+            memory: 6Gi
 
 # Listener configuration (manages scale set communication with GitHub)
 listenerTemplate:

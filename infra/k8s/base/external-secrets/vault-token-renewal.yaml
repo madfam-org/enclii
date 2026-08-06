@@ -63,7 +63,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: renew
-              image: docker.io/hashicorp/vault:1.18.3
+              image: docker.io/hashicorp/vault:1.18.3@sha256:8f1ba670da547c6af67be55609bd285c3ee3d8b73f88021adbfc43c82ca409e8
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false
@@ -161,7 +161,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: renew
-              image: docker.io/hashicorp/vault:1.18.3
+              image: docker.io/hashicorp/vault:1.18.3@sha256:8f1ba670da547c6af67be55609bd285c3ee3d8b73f88021adbfc43c82ca409e8
               securityContext:
                 privileged: false
                 allowPrivilegeEscalation: false

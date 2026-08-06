@@ -34,7 +34,7 @@ func NewK8sSecretWriter(client *k8s.Client, namespace, secretName string) *K8sSe
 		namespace = "enclii"
 	}
 	if secretName == "" {
-		secretName = "signup-github-tokens"
+		secretName = "signup-github-tokens" // #nosec G101 -- K8s Secret object name, not a credential
 	}
 	return &K8sSecretWriter{
 		client:     client,

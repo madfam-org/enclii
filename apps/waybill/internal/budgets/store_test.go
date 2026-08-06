@@ -63,6 +63,132 @@ func TestStoreCreateAlreadyExists(t *testing.T) {
 	}
 }
 
+// budgetRows returns a rowset shaped like the SELECT in Store.Get.
+func budgetRows(id, projectID uuid.UUID, amount int64, thresholds pq.Int64Array, hard bool, now time.Time) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "project_id", "amount_cents", "currency", "period",
+		"alert_thresholds", "hard_throttle", "created_at", "updated_at",
+	}).AddRow(id, projectID, amount, "USD", "monthly", thresholds, hard, now, now)
+}
+
+func TestStoreUpdatePartialBindsNullsForUnsetFields(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := NewStore(db)
+	budgetID := uuid.New()
+	projectID := uuid.New()
+	now := time.Now().UTC()
+	amount := int64(75000)
+
+	// Only amount_cents is set — the other two parameters must bind as
+	// NULL so COALESCE leaves them unchanged. The query text is a single
+	// constant: id first, then the three optional fields.
+	mock.ExpectExec("UPDATE budgets SET").
+		WithArgs(budgetID, amount, nil, nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id, project_id, amount_cents").
+		WithArgs(budgetID).
+		WillReturnRows(budgetRows(budgetID, projectID, amount, pq.Int64Array{50, 80, 100}, true, now))
+
+	b, err := store.Update(context.Background(), budgetID, UpdateRequest{AmountCents: &amount})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if b.AmountCents != amount {
+		t.Fatalf("expected %d, got %d", amount, b.AmountCents)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet: %v", err)
+	}
+}
+
+func TestStoreUpdateNormalizesThresholds(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := NewStore(db)
+	budgetID := uuid.New()
+	projectID := uuid.New()
+	now := time.Now().UTC()
+
+	// Duplicates and unsorted input must reach the driver deduped+sorted;
+	// amount and hard_throttle stay NULL.
+	mock.ExpectExec("UPDATE budgets SET").
+		WithArgs(budgetID, nil, pq.Array([]int{50, 100}), nil).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id, project_id, amount_cents").
+		WithArgs(budgetID).
+		WillReturnRows(budgetRows(budgetID, projectID, 50000, pq.Int64Array{50, 100}, true, now))
+
+	b, err := store.Update(context.Background(), budgetID, UpdateRequest{
+		AlertThresholds: []int{100, 50, 50},
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if len(b.AlertThresholds) != 2 || b.AlertThresholds[0] != 50 || b.AlertThresholds[1] != 100 {
+		t.Fatalf("expected normalized [50 100], got %v", b.AlertThresholds)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet: %v", err)
+	}
+}
+
+func TestStoreUpdateNotFound(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := NewStore(db)
+	hard := false
+	mock.ExpectExec("UPDATE budgets SET").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	_, err = store.Update(context.Background(), uuid.New(), UpdateRequest{HardThrottle: &hard})
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestStoreUpdateNoFieldsIsReadOnly(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	store := NewStore(db)
+	budgetID := uuid.New()
+	projectID := uuid.New()
+	now := time.Now().UTC()
+
+	// All-nil request must not issue an UPDATE (updated_at untouched) —
+	// only the Get SELECT.
+	mock.ExpectQuery("SELECT id, project_id, amount_cents").
+		WithArgs(budgetID).
+		WillReturnRows(budgetRows(budgetID, projectID, 10000, pq.Int64Array{50, 80, 100}, true, now))
+
+	b, err := store.Update(context.Background(), budgetID, UpdateRequest{})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if b.AmountCents != 10000 {
+		t.Fatalf("expected passthrough Get, got %+v", b)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet: %v", err)
+	}
+}
+
 func TestStoreInsertAlertEventIdempotent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
