@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,41 +74,34 @@ func (s *Store) Create(ctx context.Context, projectID uuid.UUID, req CreateReque
 
 // Update modifies a budget. Only non-nil fields on req are applied.
 func (s *Store) Update(ctx context.Context, budgetID uuid.UUID, req UpdateRequest) (*Budget, error) {
-	sets := []string{}
-	args := []interface{}{}
-	idx := 1
-
-	if req.AmountCents != nil {
-		if *req.AmountCents <= 0 {
-			return nil, fmt.Errorf("amount_cents must be positive")
-		}
-		sets = append(sets, fmt.Sprintf("amount_cents = $%d", idx))
-		args = append(args, *req.AmountCents)
-		idx++
-	}
-	if req.AlertThresholds != nil {
-		sets = append(sets, fmt.Sprintf("alert_thresholds = $%d", idx))
-		args = append(args, pq.Array(normalizeThresholds(req.AlertThresholds)))
-		idx++
-	}
-	if req.HardThrottle != nil {
-		sets = append(sets, fmt.Sprintf("hard_throttle = $%d", idx))
-		args = append(args, *req.HardThrottle)
-		idx++
-	}
-
-	if len(sets) == 0 {
+	if req.AmountCents == nil && req.AlertThresholds == nil && req.HardThrottle == nil {
+		// Nothing to change — return the current row without touching
+		// updated_at.
 		return s.Get(ctx, budgetID)
 	}
+	if req.AmountCents != nil && *req.AmountCents <= 0 {
+		return nil, fmt.Errorf("amount_cents must be positive")
+	}
 
-	sets = append(sets, "updated_at = now()")
-	args = append(args, budgetID)
+	// A nil *int64 / *bool binds as SQL NULL, and thresholds stays NULL
+	// unless the caller supplied a slice, so COALESCE(NULL, col) keeps the
+	// current value. That preserves "nil pointer means leave unchanged"
+	// with a single constant query — no string assembly ever reaches the
+	// SQL text (previously a gosec G201 SQL-format finding).
+	var thresholds interface{}
+	if req.AlertThresholds != nil {
+		thresholds = pq.Array(normalizeThresholds(req.AlertThresholds))
+	}
 
-	query := fmt.Sprintf(
-		"UPDATE budgets SET %s WHERE id = $%d",
-		strings.Join(sets, ", "), idx,
-	)
-	res, err := s.db.ExecContext(ctx, query, args...)
+	const query = `
+		UPDATE budgets SET
+			amount_cents     = COALESCE($2, amount_cents),
+			alert_thresholds = COALESCE($3, alert_thresholds),
+			hard_throttle    = COALESCE($4, hard_throttle),
+			updated_at       = now()
+		WHERE id = $1
+	`
+	res, err := s.db.ExecContext(ctx, query, budgetID, req.AmountCents, thresholds, req.HardThrottle)
 	if err != nil {
 		return nil, fmt.Errorf("update budget: %w", err)
 	}

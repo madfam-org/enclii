@@ -66,6 +66,47 @@ func resolveOperationalService(ctx context.Context, apiClient *client.APIClient,
 	return nil, fmt.Errorf("service %q not found in project %q", serviceName, projectSlug)
 }
 
+// resolveProjectSlug determines which project slug a project-scoped command
+// (e.g. `enclii ps`) should target. Resolution order:
+//
+//  1. explicit --project flag
+//  2. ENCLII_PROJECT / config, ignoring the viper placeholder "default"
+//  3. project declared in local service.yaml / .enclii.yml
+//  4. the account's only project, resolved via the API
+//
+// The historical behavior — silently querying the literal slug "default",
+// which config.Load() injects as a viper default and which almost never
+// exists server-side — is what made `enclii ps` fail with PROJECT_NOT_FOUND.
+func resolveProjectSlug(ctx context.Context, apiClient *client.APIClient, cfg *config.Config, flagProject string) (string, error) {
+	if p := strings.TrimSpace(flagProject); p != "" {
+		return p, nil
+	}
+	if cfg != nil && cfg.Project != "" && cfg.Project != "default" {
+		return cfg.Project, nil
+	}
+	for _, svc := range readLocalServiceContexts("") {
+		if svc.Project != "" {
+			return svc.Project, nil
+		}
+	}
+	projects, err := apiClient.ListProjects(ctx)
+	if err != nil {
+		return "", fmt.Errorf("no project configured and listing projects failed: %w (pass --project <slug> or set ENCLII_PROJECT)", err)
+	}
+	switch len(projects) {
+	case 0:
+		return "", fmt.Errorf("no projects found — create one with `enclii projects create --name <name> --slug <slug>`")
+	case 1:
+		return projects[0].Slug, nil
+	default:
+		slugs := make([]string, 0, len(projects))
+		for _, p := range projects {
+			slugs = append(slugs, p.Slug)
+		}
+		return "", fmt.Errorf("multiple projects found (%s) — pass --project <slug> or set ENCLII_PROJECT", strings.Join(slugs, ", "))
+	}
+}
+
 func projectFromConfig(cfg *config.Config) string {
 	if cfg == nil || cfg.Project == "" {
 		return "default"
