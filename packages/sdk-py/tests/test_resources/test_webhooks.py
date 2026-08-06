@@ -33,7 +33,11 @@ async def test_create_subscription_returns_signing_secret(
 ) -> None:
     response_body = {
         "subscription": sample_webhook_subscription,
-        "signing_secret": "DUMMY_WEBHOOK_SECRET_DO_NOT_USE",
+        # Must keep the `whsec_` prefix: the assertion below is specifically
+        # checking that the SDK hands back the server's secret verbatim,
+        # prefix intact. Still an obvious non-secret, matching the sibling
+        # fixtures `whsec_x` and `whsec_rotated` below.
+        "signing_secret": "whsec_DUMMY_DO_NOT_USE",
         "note": "Save this now — we won't show it again.",
     }
 
