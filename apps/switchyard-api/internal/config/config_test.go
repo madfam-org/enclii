@@ -156,3 +156,52 @@ func TestLoad_SEC003_ProductionWithOriginsSucceeds(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// TestLoad_SignupEnabledRequiresJanuaAdminToken covers the fail-fast added
+// alongside the other SEC-00x checks: ENCLII_SIGNUP_ENABLED=true without
+// ENCLII_JANUA_ADMIN_TOKEN must refuse to start rather than let the signup
+// wizard's GitHub-link step dead-end on an unauthenticated Janua call.
+func TestLoad_SignupEnabledRequiresJanuaAdminToken(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+	t.Setenv("ENCLII_SIGNUP_ENABLED", "true")
+	t.Setenv("ENCLII_JANUA_ADMIN_TOKEN", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when ENCLII_SIGNUP_ENABLED=true and ENCLII_JANUA_ADMIN_TOKEN is empty")
+	}
+	if !strings.Contains(err.Error(), "ENCLII_JANUA_ADMIN_TOKEN") {
+		t.Fatalf("error should mention ENCLII_JANUA_ADMIN_TOKEN, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ENCLII_SIGNUP_ENABLED") {
+		t.Fatalf("error should mention ENCLII_SIGNUP_ENABLED for context, got: %v", err)
+	}
+}
+
+func TestLoad_SignupEnabledWithJanuaAdminTokenSucceeds(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+	t.Setenv("ENCLII_SIGNUP_ENABLED", "true")
+	t.Setenv("ENCLII_JANUA_ADMIN_TOKEN", "test-admin-token")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.SignupEnabled {
+		t.Fatal("expected SignupEnabled to be true")
+	}
+	if cfg.JanuaAdminToken != "test-admin-token" {
+		t.Fatalf("expected JanuaAdminToken to load through, got %q", cfg.JanuaAdminToken)
+	}
+}
+
+func TestLoad_SignupDisabledAllowsEmptyJanuaAdminToken(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+	t.Setenv("ENCLII_SIGNUP_ENABLED", "false")
+	t.Setenv("ENCLII_JANUA_ADMIN_TOKEN", "")
+
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error when signup is disabled: %v", err)
+	}
+}

@@ -1,6 +1,11 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,6 +58,106 @@ func TestTokensRevoke_HasForceFlag(t *testing.T) {
 	require.NotNil(t, rev)
 	assert.Equal(t, []string{"rm", "delete"}, rev.Aliases)
 	assert.NotNil(t, rev.Flags().Lookup("force"))
+}
+
+func TestDecodeTokenList_BareArray(t *testing.T) {
+	// The Switchyard API returns a bare array from GET /v1/user/tokens
+	// (c.JSON(http.StatusOK, tokens) in ListAPITokens). This shape used to
+	// crash the CLI with "cannot unmarshal array".
+	raw := []byte(`[{"id":"11111111-1111-1111-1111-111111111111","name":"ci","created_at":"2026-07-01T00:00:00Z"}]`)
+
+	tokens, err := decodeTokenList(raw)
+
+	require.NoError(t, err)
+	require.Len(t, tokens, 1)
+	assert.Equal(t, "ci", tokens[0].Name)
+}
+
+func TestDecodeTokenList_WrappedObject(t *testing.T) {
+	raw := []byte(`{"tokens":[{"id":"1","name":"a","created_at":"2026-07-01T00:00:00Z"},{"id":"2","name":"b","created_at":"2026-07-02T00:00:00Z"}]}`)
+
+	tokens, err := decodeTokenList(raw)
+
+	require.NoError(t, err)
+	require.Len(t, tokens, 2)
+	assert.Equal(t, "a", tokens[0].Name)
+	assert.Equal(t, "b", tokens[1].Name)
+}
+
+func TestDecodeTokenList_EmptyVariants(t *testing.T) {
+	for _, raw := range []string{"", "null", "[]", `{"tokens":[]}`, "  \n"} {
+		tokens, err := decodeTokenList([]byte(raw))
+		require.NoError(t, err, "input=%q", raw)
+		assert.Empty(t, tokens, "input=%q", raw)
+	}
+}
+
+func TestDecodeTokenList_InvalidJSON(t *testing.T) {
+	_, err := decodeTokenList([]byte(`{"tokens": "not-an-array"}`))
+	assert.Error(t, err)
+
+	_, err = decodeTokenList([]byte(`[{"id":`))
+	assert.Error(t, err)
+}
+
+func TestTokensList_AgainstBareArrayServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/user/tokens", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":"11111111-1111-1111-1111-111111111111","name":"ci-deploy","prefix":"enc_ab12","created_at":"2026-07-01T12:00:00Z"}]`))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{APIEndpoint: srv.URL, APIToken: "tok"}
+	cmd := NewTokensCommand(cfg)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"list"})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, out.String(), "ci-deploy")
+}
+
+func TestExpiresInDays(t *testing.T) {
+	cases := []struct {
+		seconds int64
+		want    int64
+	}{
+		{86400, 1},       // 24h
+		{3600, 1},        // 1h rounds up, never silently 0 (= no expiry)
+		{90 * 86400, 90}, // 90d
+		{86401, 2},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, expiresInDays(c.seconds), "seconds=%d", c.seconds)
+	}
+}
+
+func TestTokensCreate_SendsExpiresInDays(t *testing.T) {
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/user/tokens", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"11111111-1111-1111-1111-111111111111","name":"ci","created_at":"2026-07-01T00:00:00Z","token":"enc_secret"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{APIEndpoint: srv.URL, APIToken: "tok"}
+	cmd := NewTokensCommand(cfg)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"create", "--name", "ci", "--expires-in", "90d"})
+
+	require.NoError(t, cmd.Execute())
+	// The server binds expires_in_days; expires_in_seconds was silently
+	// dropped and produced never-expiring tokens.
+	assert.Equal(t, float64(90), gotBody["expires_in_days"])
+	_, hasLegacy := gotBody["expires_in_seconds"]
+	assert.False(t, hasLegacy)
 }
 
 func TestParseExpiresIn(t *testing.T) {

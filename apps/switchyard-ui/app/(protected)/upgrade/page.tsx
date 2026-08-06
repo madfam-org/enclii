@@ -6,6 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@enclii/ui-components/button';
 import { apiFetchResponse } from '@/lib/api';
+import { TIER_CONFIG } from '@/lib/tiers';
+
+// Sourced from TIER_CONFIG (lib/tiers.ts) — the canonical customer-facing
+// catalog that also drives PricingModal and the API's tier-limit copy.
+// Don't hardcode the tier name/price here separately; that's how this page
+// drifted out of sync before (see docs/faq/billing.md for the ratified copy).
+const proTier = TIER_CONFIG.pro;
 
 type CheckoutState = 'starting' | 'redirecting' | 'unconfigured' | 'error';
 
@@ -89,11 +96,11 @@ export default function UpgradePage() {
     <div className="mx-auto flex min-h-[60vh] max-w-lg items-center justify-center p-6">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Upgrade to Sovereign</CardTitle>
+          <CardTitle>Upgrade to {proTier.name}</CardTitle>
           <CardDescription>
             {canceled
               ? 'Your previous checkout was canceled. You can start again below.'
-              : 'Unlock higher project and service limits on the Sovereign plan.'}
+              : `Unlock higher project and service limits on the ${proTier.name} plan (${proTier.price}).`}
           </CardDescription>
         </CardHeader>
         <CardContent>

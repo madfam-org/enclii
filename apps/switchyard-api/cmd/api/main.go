@@ -179,9 +179,18 @@ func main() {
 		logrus.WithError(err).Warn("Failed to register DB stats metrics (non-fatal)")
 	}
 
-	// Configure connection pool (matches db.DefaultDatabaseConfig() settings)
-	database.SetMaxOpenConns(25)
-	database.SetMaxIdleConns(5)
+	// Configure connection pool. Budget vs the SHARED postgres.data.svc:
+	// max_connections=100 for the ENTIRE MADFAM cluster, ~90 in use at steady
+	// state, cluster-wide exhaustion incident 2026-07-22. The previous
+	// hardcoded 25 let 2 replicas claim 50 of the 100 slots; measured steady
+	// state for the whole enclii database (this service plus roundhouse-api)
+	// is ~10. Budget: 2 replicas x 10 = 20 absolute max. Raise per-env via
+	// DB_MAX_OPEN_CONNS / DB_MAX_IDLE_CONNS, not by editing code. (Same
+	// budgeting pattern as fortuna, janua#483, ceq#70, bloom-scroll#112.)
+	maxOpenConns := envInt("DB_MAX_OPEN_CONNS", 10)
+	maxIdleConns := envInt("DB_MAX_IDLE_CONNS", 4)
+	database.SetMaxOpenConns(maxOpenConns)
+	database.SetMaxIdleConns(maxIdleConns)
 	database.SetConnMaxLifetime(30 * time.Minute)
 	database.SetConnMaxIdleTime(5 * time.Minute)
 
@@ -190,8 +199,8 @@ func main() {
 		logrus.Fatal("Failed to ping database:", err)
 	}
 	logrus.WithFields(logrus.Fields{
-		"max_open_conns":    25,
-		"max_idle_conns":    5,
+		"max_open_conns":    maxOpenConns,
+		"max_idle_conns":    maxIdleConns,
 		"conn_max_lifetime": "30m",
 	}).Info("✓ Database connection pool configured")
 

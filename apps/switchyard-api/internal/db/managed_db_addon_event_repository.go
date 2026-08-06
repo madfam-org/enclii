@@ -23,7 +23,7 @@ const (
 	EventAddonDestroyed           ManagedDBAddonEventType = "addon.destroyed"
 	EventAddonBindingCreated      ManagedDBAddonEventType = "addon.binding.created"
 	EventAddonBindingDeleted      ManagedDBAddonEventType = "addon.binding.deleted"
-	EventAddonCredentialsRotated  ManagedDBAddonEventType = "addon.credentials.rotated"
+	EventAddonCredentialsRotated  ManagedDBAddonEventType = "addon.credentials.rotated" // #nosec G101 -- event name, not a credential
 	EventAddonPlanChanged         ManagedDBAddonEventType = "addon.plan.changed"
 )
 

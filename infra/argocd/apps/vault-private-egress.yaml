@@ -1,0 +1,48 @@
+# =============================================================================
+# Vault private egress overlay — ArgoCD Application
+# =============================================================================
+# Applies the PRIVATE half of the Vault egress NetworkPolicy set from
+# internal-devops: the kube-apiserver REAL-endpoint egress rule, whose
+# destination CIDR is sensitive production inventory that must not live in
+# this public repo (see the header contract in
+# infra/k8s/policies/vault-network-policies.yaml and the public-hygiene CI
+# check). NetworkPolicy allows union across policies selecting the same
+# pods, so the public vault-egress policy plus this private one reproduce
+# the original effective policy exactly.
+#
+# Same private-repo pattern as internal-devops' svix Application; ArgoCD
+# already holds credentials for the repo. This manifest carries repo URL +
+# path only — no sensitive facts.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-private-egress
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vault-private-egress
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: security
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/madfam-org/internal-devops
+    targetRevision: main
+    path: infra/k8s/production/vault-private-egress
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
