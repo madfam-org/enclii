@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,16 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrAdminTokenMissing is returned by the GitHub-link step
+// (BuildGithubAuthorizeURL / CompleteGithubOAuth) when no admin token is
+// configured. config.Load() already fails the process at startup when
+// ENCLII_SIGNUP_ENABLED=true and ENCLII_JANUA_ADMIN_TOKEN is unset (see
+// internal/config/config.go) — this is defense-in-depth for any call site
+// that constructs an HTTPJanuaClient directly with a blank token. Better to
+// fail loudly here than send Janua's admin-only on-behalf endpoint a silent
+// unauthenticated request that just 401s and dead-ends the wizard.
+var ErrAdminTokenMissing = errors.New("signup: janua admin token not configured; set ENCLII_JANUA_ADMIN_TOKEN")
 
 // HTTPJanuaClient talks to Janua's public HTTP API. It's the production
 // impl of the JanuaClient interface the signup service uses.
@@ -107,9 +118,13 @@ func (c *HTTPJanuaClient) BuildGithubAuthorizeURL(ctx context.Context, januaUser
 	// Janua's /oauth/link/{provider} is user-authenticated, but our user
 	// isn't signed in yet (they just verified email). For Sprint 1 we
 	// call the admin-authenticated variant: POST /oauth/link/github/on-behalf
-	// with the sub in the body. If that endpoint doesn't exist yet, we
-	// fall back to returning an error the handler can surface — the
-	// operator enables it via Janua's admin panel (see companion PR).
+	// with the sub in the body. Without an admin token that call is
+	// unauthenticated and Janua rejects it — fail loudly here instead of
+	// making the doomed request (see ErrAdminTokenMissing).
+	if c.adminToken == "" {
+		return "", ErrAdminTokenMissing
+	}
+
 	body, _ := json.Marshal(map[string]any{
 		"user_sub":     januaUserSub,
 		"state":        state,
@@ -121,9 +136,7 @@ func (c *HTTPJanuaClient) BuildGithubAuthorizeURL(ctx context.Context, januaUser
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.adminToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.adminToken)
-	}
+	req.Header.Set("Authorization", "Bearer "+c.adminToken)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -152,6 +165,13 @@ func (c *HTTPJanuaClient) BuildGithubAuthorizeURL(ctx context.Context, januaUser
 // access token server-side. We ask Janua to hand us (username, token)
 // for THIS user so we can write it to our K8s Secret.
 func (c *HTTPJanuaClient) CompleteGithubOAuth(ctx context.Context, januaUserSub, code string) (string, string, error) {
+	// Same admin-token requirement as BuildGithubAuthorizeURL — fail loudly
+	// rather than sending Janua's admin-only completion endpoint an
+	// unauthenticated request.
+	if c.adminToken == "" {
+		return "", "", ErrAdminTokenMissing
+	}
+
 	params := url.Values{}
 	params.Set("code", code)
 	params.Set("user_sub", januaUserSub)
@@ -161,9 +181,7 @@ func (c *HTTPJanuaClient) CompleteGithubOAuth(ctx context.Context, januaUserSub,
 	if err != nil {
 		return "", "", err
 	}
-	if c.adminToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.adminToken)
-	}
+	req.Header.Set("Authorization", "Bearer "+c.adminToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)

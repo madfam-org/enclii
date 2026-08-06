@@ -119,6 +119,18 @@ spec:
         # Self-serve signup (P3.2 Sprint 1 — disabled-by-default in code)
         - name: ENCLII_SIGNUP_ENABLED
           value: "true"
+        # Janua admin/service token for the on-behalf GitHub-link OAuth calls
+        # during signup. Required whenever ENCLII_SIGNUP_ENABLED=true (config.Load
+        # fails fast otherwise). Sourced from enclii-secrets/janua-admin-token
+        # (canonical value = janua-secrets/janua-service-token). Optional ref so a
+        # missing key can't CreateContainerConfigError; the fail-fast in code is
+        # the intended guard when signup is enabled without the token.
+        - name: ENCLII_JANUA_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: enclii-secrets
+              key: janua-admin-token
+              optional: true
         - name: ENCLII_SELF_SERVICE_API_BASE_URL
           value: "https://api.enclii.dev"
         - name: ENCLII_APP_BASE_URL

@@ -34,6 +34,12 @@ USER root
 #   libgbm1           - Playwright Chromium GPU buffer manager (headless)
 #   jq                - ubiquitous in our CI scripts (status checks, JSON munging)
 #   python3-pip       - some workflows use python tooling (uv, pre-commit hooks)
+#   python3-venv      - `python3 -m venv` (ensurepip) fails without it on the
+#                       Ubuntu base; present in github-hosted ubuntu-latest.
+#                       Concrete failure: rondelio's studio creation-suite
+#                       smoke hard-failed creating .venv-studio-smoke on
+#                       fresh blue pods (deploy run 31035125262, 2026-08-05)
+#                       and the workflow's apt-get fallback cannot sudo here.
 #   xz-utils          - actions/setup-node extracts upstream Node tar.xz payloads
 #   ca-certificates   - explicit so cert bundle is fresh post-base-image bump
 #
@@ -52,6 +58,7 @@ RUN apt-get update \
       libgbm1 \
       jq \
       python3-pip \
+      python3-venv \
       xz-utils \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/*
@@ -65,7 +72,10 @@ RUN ldconfig -p | grep -q libatomic.so.1 \
  && ldconfig -p | grep -q libgbm.so.1 \
  && command -v jq >/dev/null \
  && command -v pip3 >/dev/null \
- && command -v xz >/dev/null
+ && command -v xz >/dev/null \
+ && python3 -m venv /tmp/venv-sanity \
+ && /tmp/venv-sanity/bin/python -m pip --version >/dev/null \
+ && rm -rf /tmp/venv-sanity
 
 # Drop back to the runner user the upstream image expects.
 USER runner

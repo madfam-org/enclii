@@ -14,40 +14,42 @@ import (
 
 func NewPsCommand(cfg *config.Config) *cobra.Command {
 	var environment string
+	var project string
 
 	cmd := &cobra.Command{
 		Use:   "ps",
 		Short: "List services and their status",
 		Long:  "Show running services, their health, and resource usage",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return listServices(cfg, environment)
+			return listServices(cfg, environment, project)
 		},
 	}
 
 	cmd.Flags().StringVarP(&environment, "env", "e", "dev", "Environment to list services for")
+	cmd.Flags().StringVarP(&project, "project", "p", "",
+		"Project slug (default: ENCLII_PROJECT, local service.yaml/.enclii.yml, or your only project)")
 
 	return cmd
 }
 
-func listServices(cfg *config.Config, environment string) error {
-	fmt.Printf("📊 Services in %s environment\n", environment)
-	fmt.Println()
-
+func listServices(cfg *config.Config, environment, projectFlag string) error {
 	ctx := context.Background()
 	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
 
-	// Get project slug from config
-	projectSlug := cfg.Project
-	if projectSlug == "" {
-		projectSlug = "default"
+	projectSlug, err := resolveProjectSlug(ctx, apiClient, cfg, projectFlag)
+	if err != nil {
+		return err
 	}
+
+	fmt.Printf("📊 Services in %s environment (project: %s)\n", environment, projectSlug)
+	fmt.Println()
 
 	// Fetch services from API
 	fmt.Println("🔍 Fetching services...")
 	services, err := apiClient.ListServices(ctx, projectSlug)
 	if err != nil {
 		fmt.Printf("❌ Failed to list services: %v\n", err)
-		return err
+		return fmt.Errorf("list services in project %q: %w (run `enclii projects list` for valid slugs, or pass --project)", projectSlug, err)
 	}
 
 	if len(services) == 0 {

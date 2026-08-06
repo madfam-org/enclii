@@ -198,6 +198,68 @@ func TestCreateBillingCheckout_MissingCheckoutURLMapsToBadGateway(t *testing.T) 
 	assert.Contains(t, w.Body.String(), "billing_checkout_failed")
 }
 
+// TestCreateBillingCheckout_ResolvePaymentRequiredMapsTo402 asserts that a
+// 402 from Dhanam's resolve call is forwarded as our own 402 with an
+// actionable body (not folded into the generic 502 billing_resolve_failed
+// bucket, which would misleadingly tell the caller to "try again later").
+func TestCreateBillingCheckout_ResolvePaymentRequiredMapsTo402(t *testing.T) {
+	var checkoutHit bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/customers/resolve" {
+			w.WriteHeader(http.StatusPaymentRequired)
+			return
+		}
+		checkoutHit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	h := &Handler{}
+	h.SetDhanamFederation(&DhanamFederationConfig{
+		FederationURL: server.URL,
+		APIToken:      "test-federation-token",
+		UpgradeURL:    "https://app.enclii.dev/upgrade",
+	})
+
+	c, w := newCheckoutTestContext("janua-sub-1", "user@example.com", `{}`)
+	h.CreateBillingCheckout(c)
+
+	assert.Equal(t, http.StatusPaymentRequired, w.Code)
+	assert.False(t, checkoutHit, "checkout must not be attempted when resolve returns 402")
+	assert.Contains(t, w.Body.String(), "payment_required")
+	assert.Contains(t, w.Body.String(), "https://app.enclii.dev/upgrade")
+}
+
+// TestCreateBillingCheckout_CheckoutPaymentRequiredMapsTo402 mirrors the
+// above for a 402 returned by the checkout-session call (after resolve
+// already succeeded).
+func TestCreateBillingCheckout_CheckoutPaymentRequiredMapsTo402(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/customers/resolve":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"externalId":"dhanam-user-42"}`))
+		default:
+			w.WriteHeader(http.StatusPaymentRequired)
+		}
+	}))
+	defer server.Close()
+
+	h := &Handler{}
+	h.SetDhanamFederation(&DhanamFederationConfig{
+		FederationURL: server.URL,
+		APIToken:      "test-federation-token",
+		UpgradeURL:    "https://app.enclii.dev/upgrade",
+	})
+
+	c, w := newCheckoutTestContext("janua-sub-1", "user@example.com", `{}`)
+	h.CreateBillingCheckout(c)
+
+	assert.Equal(t, http.StatusPaymentRequired, w.Code)
+	assert.Contains(t, w.Body.String(), "payment_required")
+	assert.Contains(t, w.Body.String(), "https://app.enclii.dev/upgrade")
+}
+
 // TestDhanamFederationConfigConfigured covers the fail-closed predicate,
 // including the nil-receiver case.
 func TestDhanamFederationConfigConfigured(t *testing.T) {
