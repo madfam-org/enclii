@@ -131,7 +131,15 @@ data:
     [INPUT]
         Name              tail
         Tag               kube.*
-        Path              /var/log/pods/*/*/*.log
+        # /var/log/containers is the kubelet's flat symlink view whose file
+        # naming (<pod>_<namespace>_<container>-<id>.log) is what the
+        # kubernetes filter's default tag parser understands. Tailing
+        # /var/log/pods directly produced tags the filter rejected ("invalid
+        # pattern for given tag ...") so NO record ever got namespace/pod
+        # metadata and everything collapsed into one unlabeled stream
+        # (2026-07-28 blackout follow-up #2). The symlink targets live under
+        # /var/log/pods inside the same read-only /var/log hostPath mount.
+        Path              /var/log/containers/*.log
         Parser            cri
         DB                /var/fluent-bit/state/tail-pods.db
         DB.locking        true
@@ -140,6 +148,14 @@ data:
         Refresh_Interval  10
         Rotate_Wait       30
         Read_from_Head    false
+        # Stat-based scanning, no inotify. Running as root (required to read
+        # 0750 root:root /var/log/pods) the process shares uid 0's node-wide
+        # fs.inotify.max_user_instances quota with kubelet/containerd/journald;
+        # inotify_init failed with EMFILE the moment the permission fix landed
+        # and the pod crashlooped. Polling costs a little CPU and up to
+        # Refresh_Interval seconds of pickup latency for NEW files; it needs no
+        # inotify instance at all. (2026-07-28 blackout follow-up.)
+        Inotify_Watcher   false
 
     # Enrich with Kubernetes metadata (namespace, pod, container, labels)
     [FILTER]
@@ -148,7 +164,7 @@ data:
         Kube_URL            https://kubernetes.default.svc:443
         Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
-        Kube_Tag_Prefix     kube.var.log.pods.
+        Kube_Tag_Prefix     kube.var.log.containers.
         Merge_Log           On
         Merge_Log_Key       parsed
         Keep_Log            On
@@ -203,8 +219,11 @@ spec:
         app.kubernetes.io/component: logging
         app.kubernetes.io/part-of: enclii
       annotations:
-        # Trigger rolling restart when config changes
-        checksum/config: "fluent-bit-config"
+        # Trigger rolling restart when config changes. NOTE: these are literal
+        # strings, not real checksums — a ConfigMap edit does NOT roll pods by
+        # itself. Bump the rev suffix in the same commit as any config change
+        # (2026-07-28: r2 Inotify_Watcher false; r3 containers path + tag prefix).
+        checksum/config: "fluent-bit-config-r3"
         checksum/parsers: "fluent-bit-parsers"
     spec:
       serviceAccountName: fluent-bit
@@ -215,11 +234,17 @@ spec:
           value: "true"
           effect: NoSchedule
       # Pod-level security
+      # Node log collection requires root: /var/log/pods is 0750 root:root on
+      # the foundry nodes, so uid 1000 can neither traverse nor read it and
+      # fluent-bit tailed zero files from 2026-06-03 until this fix (see
+      # internal-devops runbooks/2026-07-28-loki-ingestion-blackout.md).
+      # Root + drop-ALL caps + readOnlyRootFilesystem is the upstream
+      # fluent-bit/promtail posture for node log agents. Admission is covered
+      # by the logging-stack PolicyException (require-run-as-nonroot).
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
         seccompProfile:
           type: RuntimeDefault
       containers:
