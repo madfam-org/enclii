@@ -45,8 +45,20 @@ data:
   # switchyard-api and dhanam-api happen to publish their container port
   # alongside 80; janua-api and karafiel-api publish only 80, so targeting a
   # container port there dials a Service port that does not exist and times
-  # out — which this probe reports as "probe_blocked", indistinguishable from
-  # a real outage. Verify with: kubectl get svc <name> -n <ns> -o jsonpath='{.spec.ports}'
+  # out — which this probe used to report as "probe_blocked", indistinguishable
+  # from a real outage.
+  #
+  # Two controls now catch that class (added 2026-08-06):
+  #   1. scripts/check-probe-targets.py (CI) — enforces that the url port, the
+  #      `port` field and the `<service>.<namespace>` host all agree. It CANNOT
+  #      see the Service's published ports: those manifests live in each
+  #      product repo, not here.
+  #   2. The probe itself reads the live Service from the Kubernetes API and
+  #      emits `cloudflared_probe_target_misconfigured` + a distinct
+  #      `probe_misconfigured` log event when the Service exists but does not
+  #      publish the dialed port. That is the control that actually catches
+  #      this fault; it needs the ClusterRole below.
+  # Verify by hand with: kubectl get svc <name> -n <ns> -o jsonpath='{.spec.ports}'
   targets.json: |
     {
       "targets": [
@@ -95,6 +107,62 @@ data:
     }
 
 ---
+# ServiceAccount + read-only Service reader for the port cross-check.
+# ----------------------------------------------------------------------------
+# The probe needs to know which ports a target Service actually publishes so a
+# timeout on an unpublished port is reported as `probe_misconfigured` instead
+# of `probe_blocked` (the 2026-08-06 wrong-diagnosis fault). Services are
+# non-sensitive cluster metadata; this grant is `get` only, on `services`
+# only, and the probe never writes.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudflared-probe
+  namespace: cloudflare-tunnel
+  labels:
+    app: cloudflared-probe
+    app.kubernetes.io/name: cloudflared-probe
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: enclii
+
+---
+# Cluster-scoped because the target list spans namespaces (enclii, janua,
+# karafiel, tezca, dhanam, …) and gains new ones whenever a target is added to
+# the ConfigMap above — a per-namespace Role would silently stop covering new
+# targets, which is the same "control that quietly stops applying" failure this
+# whole change exists to prevent.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloudflared-probe-service-reader
+  labels:
+    app.kubernetes.io/name: cloudflared-probe
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloudflared-probe-service-reader
+  labels:
+    app.kubernetes.io/name: cloudflared-probe
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: enclii
+subjects:
+  - kind: ServiceAccount
+    name: cloudflared-probe
+    namespace: cloudflare-tunnel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cloudflared-probe-service-reader
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -136,6 +204,7 @@ spec:
         # a manual rollout.
         reloader.stakater.com/match: "true"
     spec:
+      serviceAccountName: cloudflared-probe
       imagePullSecrets:
         - name: ghcr-credentials
       containers:
@@ -156,6 +225,15 @@ spec:
               value: /etc/cloudflared-probe/targets.json
             - name: LOG_LEVEL
               value: INFO
+            # Cross-check each target's dialed port against the Service's
+            # published ports. Set to "false" only where the ClusterRole above
+            # is absent; the probe then raises
+            # cloudflared_probe_service_check_unavailable rather than
+            # pretending the targets are verified.
+            - name: SERVICE_PORT_CHECK
+              value: "true"
+            - name: SERVICE_CACHE_TTL_SECONDS
+              value: "300"
           ports:
             - containerPort: 9090
               name: metrics
@@ -237,6 +315,23 @@ spec:
 # infra/k8s/production/monitoring/alertmanager.yaml. The
 # `category: platform` label keeps these alongside the other platform
 # infrastructure alerts.
+#
+# !! NOT CURRENTLY LOADED BY THE RUNNING PROMETHEUS !! (verified 2026-08-06)
+# ----------------------------------------------------------------------------
+# There is no prometheus-operator in this cluster. `monitoring/prometheus` is a
+# plain single-container Deployment started with
+# `--config.file=/etc/prometheus/prometheus.yml` and `rule_files:
+# /etc/prometheus/rules/*.yml`, which is the `prometheus-rules` ConfigMap in
+# infra/k8s/production/monitoring/prometheus.yaml. The PrometheusRule CRD is
+# installed (monitoring/prometheus-operator-crds/) and this object exists in
+# the cluster, but nothing reconciles it into a rule file — Prometheus's
+# /api/v1/rules lists 18 groups and none of them is `cloudflared-probe`.
+#
+# This object is kept so the intent stays version-controlled and so it starts
+# working the day a prometheus-operator is adopted. The rules that actually
+# fire live in the `prometheus-rules` ConfigMap, including the
+# `cloudflared-probe-misconfigured` group added on 2026-08-06. Keep the two in
+# sync; prefer the ConfigMap when they disagree.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:

@@ -42,16 +42,56 @@ pod annotation:
 | `cloudflared_probe_latency_seconds` | histogram | namespace, service, port | End-to-end probe latency |
 | `cloudflared_probe_runs_total` | counter | — | Number of probe iterations completed; staleness detector |
 | `cloudflared_probe_errors_total` | counter | namespace, service, port, error_class | Increments on every failed probe; useful for distinguishing timeout vs status_mismatch vs connection_refused |
+| `cloudflared_probe_target_misconfigured` | gauge | namespace, service, port, reason | 1 = the target's Service exists but does not publish the dialed port (`reason=port_not_published`), or the Service is missing (`reason=service_missing`) |
+| `cloudflared_probe_service_check_unavailable` | gauge | — | 1 = the Service cross-check could not run at all (no token, RBAC denied, API unreachable, or `SERVICE_PORT_CHECK=false`) |
+
+> **Label note.** The scrape overwrites `namespace` with the *probe's* own
+> namespace (`cloudflare-tunnel`). The target's namespace arrives as
+> `exported_namespace`. Verified on the live series 2026-08-06. `service` and
+> `port` survive untouched.
+
+## Misconfigured target vs. blocked traffic
+
+On 2026-08-06 the probe dialed `dhanam-api:3000` and `janua-api:8080` —
+container ports those Services do **not** publish (both publish 80). Dialing a
+Service port that does not exist times out exactly like a NetworkPolicy drop,
+so the probe logged `probe_blocked` with the hint *"check NetworkPolicy /
+CNI"*. Wrong diagnosis: it masked the real one and made a genuine outage
+indistinguishable from standing noise.
+
+The probe now reads each target's Service from the Kubernetes API (`get` on
+`services`, granted by the ClusterRole in the manifest; TTL-cached for 300s)
+and compares the published `spec.ports[].port` against the port it dials:
+
+- Service publishes the port → behaviour unchanged; a failure is a real
+  reachability fault and the `probe_blocked` hint says so explicitly.
+- Service exists but does **not** publish the port → `probe_misconfigured` log
+  event and `cloudflared_probe_target_misconfigured=1`. `probe_blocked` is
+  **not** emitted, so the wrong diagnosis is never asserted.
+- Check cannot run → `cloudflared_probe_service_check_unavailable=1` and the
+  old hint, annotated to say the cross-check did not run. An unverifiable
+  target is never reported as verified-good.
+
+Service manifests live in the product repos, so no static check in this repo
+can do this comparison. `scripts/check-probe-targets.py` covers the part that
+*is* local: url port, `port` field and `<service>.<namespace>` host must agree.
 
 ## Alerts
 
-Two PrometheusRules ship with this manifest (in
-`infra/k8s/production/cloudflared-probe.yaml`):
+Alert rules that actually fire live in the `prometheus-rules` ConfigMap
+(`infra/k8s/production/monitoring/prometheus.yaml`, key
+`secret-integrity-rules.yml`):
 
-- **`CloudflaredProbeBackendUnreachable`** — `cloudflared_probe_reachable_total == 0` for 2m.
-  Severity: critical. Routes through the existing alertmanager `severity: critical` route.
-- **`CloudflaredProbeNotRunning`** — no probe iterations recorded in 5m.
-  Severity: warning. Catches the probe itself crashlooping.
+- **`CloudflaredProbeTargetMisconfigured`** — `cloudflared_probe_target_misconfigured == 1` for 5m. Severity: warning.
+- **`CloudflaredProbeServiceCheckUnavailable`** — cross-check dark for 30m. Severity: warning.
+
+Two `PrometheusRule` objects also ship with the manifest
+(`CloudflaredProbeBackendUnreachable`, `CloudflaredProbeNotRunning`), **but
+they are not loaded**: this cluster has no prometheus-operator, and the running
+Prometheus reads rules only from `/etc/prometheus/rules/*.yml` (the
+`prometheus-rules` ConfigMap). Verified 2026-08-06 — `/api/v1/rules` lists 18
+groups, none of them `cloudflared-probe`. They are retained so the intent stays
+version-controlled and starts working if an operator is adopted.
 
 ## Adding a target
 
