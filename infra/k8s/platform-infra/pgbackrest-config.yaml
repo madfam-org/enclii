@@ -81,6 +81,27 @@ data:
     # the PGBACKREST_REPO1_CIPHER_PASS env var — pgBackRest reads env vars
     # named PGBACKREST_<OPTION_UPPER> automatically.
 
+    # ----- R2 operations-cost control (repo bundling) -----
+    # WHY: R2 bills Class A operations ($4.50/M after 1M free). Without
+    # bundling, pgBackRest stores every WAL segment + backup file as an
+    # individual object and issues a directory LIST before writes, so a repo
+    # that accumulates hundreds of thousands of small objects generates
+    # millions of ListObjects/mo. Measured 2026-08-06: enclii-backups drove
+    # ~9.24M ListObjects/mo (~200k/day) = ~$40/mo of a $42.80 Cloudflare bill,
+    # ~95% of it, on a 427k-object repo. See
+    # internal-devops/docs/finance/INFRASTRUCTURE_COGS.md §6.
+    #
+    # repo1-bundle=y combines files below repo1-bundle-limit into larger
+    # objects (default target repo1-bundle-size=1GiB). This slashes object
+    # count and the per-file LIST/PUT operations. It is SAFE to enable on an
+    # existing repo: it only changes how NEW backups are written; existing
+    # unbundled objects stay readable, and PITR/restore are unaffected. The
+    # benefit accrues as old unbundled WAL expires out of retention.
+    # Supported by both pgBackRest versions in play (sidecar 2.55, postgres
+    # container 2.58; repo-bundle since 2.29).
+    repo1-bundle=y
+    repo1-bundle-limit=20MiB
+
     # ----- archive-push tuning -----
     # Run archive-push async so Postgres never blocks on R2 latency.
     archive-async=y
