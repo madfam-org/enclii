@@ -15,8 +15,8 @@
     "write-heading-ids": "docusaurus write-heading-ids"
   },
   "dependencies": {
-    "@docusaurus/core": "3.6.3",
-    "@docusaurus/preset-classic": "3.6.3",
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.1.0",
     "prism-react-renderer": "^2.3.0",
@@ -25,9 +25,19 @@
     "redocusaurus": "^2.1.1"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "3.6.3",
-    "@docusaurus/types": "3.6.3",
+    "@docusaurus/module-type-aliases": "3.10.2",
+    "@docusaurus/types": "3.10.2",
     "typescript": "^5.3.0"
+  },
+  "//overrides": "Transitive CVE remediation. This app is a standalone npm project (not a pnpm workspace member), so the pnpm.overrides in the repo-root package.json do not reach it; npm `overrides` is the equivalent idiom. Every entry stays inside the dependency's current major. Drop an entry once the upstream dependency ships the fixed range on its own.",
+  "overrides": {
+    "brace-expansion@^2.0.0": "^2.1.2",
+    "fast-uri": "^3.1.4",
+    "fast-xml-builder": "^1.1.7",
+    "js-yaml": "^4.3.0",
+    "lodash": "^4.18.0",
+    "postcss": "^8.5.18",
+    "ws": "^7.5.11"
   },
   "engines": {
     "node": ">=18.0"

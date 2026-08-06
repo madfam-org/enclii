@@ -40,7 +40,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
-          cache-dependency-path: packages/pnpm-lock.yaml
+          # `working-directory: packages` resolves up to the workspace root
+          # (only pnpm-workspace.yaml lives there), so the root lockfile is the
+          # one that actually governs this install and the one to cache on.
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: packages
