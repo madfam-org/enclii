@@ -608,7 +608,6 @@ func updateKustomizationImage(content, imageName, serviceName, digest string) st
 	// If images section ended at EOF without finding our image
 	if inImages && !foundImage {
 		result = append(result, addImageEntry(imageIndent, imageName, serviceName, digest)...)
-		foundImage = true
 	}
 
 	// If no images section exists at all, add one

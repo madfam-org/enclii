@@ -156,10 +156,8 @@ func (h *Handler) ExecService(c *gin.Context) {
 		timeout = 1800
 	}
 
-	env := req.Env
-	if env == "" {
-		env = "production"
-	}
+	// req.Env is accepted but not currently used here: the namespace derives
+	// from project.Slug. Kept in the request type for forward compatibility.
 
 	// Resolve service -> namespace -> pod
 	svc, err := h.repos.Services.GetByID(serviceID)
@@ -400,10 +398,8 @@ func (h *Handler) MigrateService(c *gin.Context) {
 	}
 
 	// Delegate to ExecService with migration-specific context
-	env := req.Env
-	if env == "" {
-		env = "production"
-	}
+	// req.Env is accepted but not currently used here: the namespace derives
+	// from project.Slug. Kept in the request type for forward compatibility.
 
 	svc, err := h.repos.Services.GetByID(serviceID)
 	if err != nil {

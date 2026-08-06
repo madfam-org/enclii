@@ -43,7 +43,7 @@ func (h *Handler) enforceDeploymentAccess(c *gin.Context, deploymentID uuid.UUID
 		return false
 	}
 
-	serviceID := uuid.Nil
+	var serviceID uuid.UUID
 	if deployment.ServiceID != nil {
 		serviceID = *deployment.ServiceID
 	} else {

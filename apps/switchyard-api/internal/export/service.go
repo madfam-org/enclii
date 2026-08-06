@@ -446,7 +446,9 @@ func (s *Service) runPipeline(ctx context.Context, project *types.Project, expor
 		return
 	}
 
-	parts, manifest, err := builder.Build()
+	// First build: only the manifest matters — parts are rebuilt below once
+	// MANIFEST.json is injected (Build is deterministic).
+	_, manifest, err := builder.Build()
 	if err != nil {
 		failExport(fmt.Sprintf("builder: %v", err))
 		return
@@ -459,7 +461,7 @@ func (s *Service) runPipeline(ctx context.Context, project *types.Project, expor
 		failExport(fmt.Sprintf("manifest.json: %v", err))
 		return
 	}
-	parts, _, err = builder.Build()
+	parts, _, err := builder.Build()
 	if err != nil {
 		failExport(fmt.Sprintf("builder (with manifest): %v", err))
 		return
