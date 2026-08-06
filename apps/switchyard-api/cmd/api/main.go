@@ -114,8 +114,10 @@ func main() {
 	}
 	defer func() { _ = database.Close() }()
 
-	// Register DB pool metrics with OTel (optional but cheap).
-	if err := otelsql.RegisterDBStatsMetrics(database,
+	// Register DB pool metrics with OTel (optional but cheap). otelsql v0.43
+	// returns a metric.Registration for callers that want to Unregister; we
+	// keep metrics for the process lifetime, so it is deliberately discarded.
+	if _, err := otelsql.RegisterDBStatsMetrics(database,
 		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
 	); err != nil {
 		logrus.WithError(err).Warn("Failed to register DB stats metrics (non-fatal)")
