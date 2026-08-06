@@ -40,6 +40,13 @@ data:
   # To add a target: append an object below, set port + URL to a real
   # liveness/health endpoint. The probe only counts a target as reachable
   # when status_code == expected_status (default 200).
+  #
+  # The port MUST be a port the *Service* publishes, not the container port.
+  # switchyard-api and dhanam-api happen to publish their container port
+  # alongside 80; janua-api and karafiel-api publish only 80, so targeting a
+  # container port there dials a Service port that does not exist and times
+  # out — which this probe reports as "probe_blocked", indistinguishable from
+  # a real outage. Verify with: kubectl get svc <name> -n <ns> -o jsonpath='{.spec.ports}'
   targets.json: |
     {
       "targets": [
@@ -53,13 +60,14 @@ data:
         },
         {
           "name": "janua-auth",
-          "url": "http://janua-api.janua.svc.cluster.local:8080/health",
+          "url": "http://janua-api.janua.svc.cluster.local:80/health",
           "expected_status": 200,
           "namespace": "janua",
           "service": "janua-api",
-          "port": 8080
+          "port": 80
         },
         {
+          "//": "karafiel + tezca stay red until their allow-cloudflared-ingress NetworkPolicy admits this probe: both select podSelector app=cloudflared, and this pod is app.kubernetes.io/name=cloudflared-probe. Fix belongs in each product repo's netpol, not here.",
           "name": "karafiel-api",
           "url": "http://karafiel-api.karafiel.svc.cluster.local:8000/api/v1/monitoring/health/live",
           "expected_status": 200,
@@ -77,11 +85,11 @@ data:
         },
         {
           "name": "dhanam-api",
-          "url": "http://dhanam-api.dhanam.svc.cluster.local:3000/health",
+          "url": "http://dhanam-api.dhanam.svc.cluster.local:80/health",
           "expected_status": 200,
           "namespace": "dhanam",
           "service": "dhanam-api",
-          "port": 3000
+          "port": 80
         }
       ]
     }
