@@ -200,6 +200,20 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # pgbouncer in data namespace — janua's runtime pool routes through
+    # transaction pooling (pgbouncer adoption ruling, move 3); without this
+    # rule the k3s reject reads as ConnectionRefusedError on the ClusterIP,
+    # which is easy to misdiagnose as pgbouncer being down.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+          podSelector:
+            matchLabels:
+              app: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 6432
     # Redis in data namespace
     - to:
         - namespaceSelector:
