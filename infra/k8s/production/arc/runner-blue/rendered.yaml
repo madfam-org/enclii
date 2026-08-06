@@ -131,7 +131,7 @@ spec:
   githubConfigUrl: https://github.com/madfam-org
   githubConfigSecret: github-app-secret
   runnerScaleSetName: madfam-runners-blue
-  maxRunners: 12
+  maxRunners: 20
   minRunners: 1
   listenerTemplate:
     spec:
