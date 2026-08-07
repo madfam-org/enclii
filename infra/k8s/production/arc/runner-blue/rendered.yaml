@@ -238,8 +238,11 @@ spec:
             cpu: 1500m
             memory: 6Gi
             # Cap a runaway job's disk instead of letting it take the node — and
-            # with it every other runner scheduled there.
-            ephemeral-storage: 12Gi
+            # with it every other runner scheduled there. Raised 12Gi -> 16Gi
+            # alongside the request: peak measured usage was 8.11Gi with a browser
+            # download, apt packages and two service containers on one runner, and
+            # 12Gi left too little headroom above that for a heavier E2E shard.
+            ephemeral-storage: 16Gi
           requests:
             cpu: 400m
             memory: 2Gi
@@ -259,7 +262,22 @@ spec:
             # recorded not-run, and logs return BlobNotFound because the runner
             # died before uploading. It is indistinguishable from a flaky test,
             # and it was misdiagnosed as one across several repositories.
-            ephemeral-storage: 6Gi
+            #
+            # RAISED 6Gi -> 10Gi on 2026-08-07 after E2E runners kept dying while
+            # every other job type survived. Measured live on foundry-builder-01
+            # through the kubelet summary API: concurrent runners were using 8.11,
+            # 7.14, 6.81, 5.06, 2.69 and 0.90 Gi. The heavy ones EXCEED a 6Gi
+            # request, and kubelet evicts pods over their request first — so the
+            # Playwright E2E pods were structurally always the victims, which is
+            # exactly the selectivity observed (three incidents in seven hours,
+            # never Build, Lint or Security Scan).
+            #
+            # That node was at 184/225Gi used with 31.8Gi free — near the 10% hard
+            # eviction threshold — with nine runners packed on it while
+            # foundry-worker-01 sat at 31% with 62Gi free. A 10Gi request covers
+            # real peak usage AND thins packing density (~22 slots instead of 37),
+            # so the node stops being driven into its own threshold.
+            ephemeral-storage: 10Gi
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock
@@ -278,4 +296,10 @@ spec:
         emptyDir: {}
       
       - name: work
-        emptyDir: {}
+        emptyDir:
+          # Bound the workspace so a runaway checkout fails ITS OWN step with a
+          # clear disk error, instead of silently inflating the pod's ephemeral
+          # usage until kubelet evicts the whole runner mid-job — the
+          # BlobNotFound / no-step-marked-failure signature that reads as a flaky
+          # test. Deliberately below the 16Gi container limit.
+          sizeLimit: 14Gi
