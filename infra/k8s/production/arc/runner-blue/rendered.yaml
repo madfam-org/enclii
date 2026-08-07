@@ -193,6 +193,18 @@ spec:
         env:
           - name: DOCKER_GROUP_GID
             value: "123"
+        resources:
+          requests:
+            # Same defect as the runner container: kubelet's eviction message
+            # named BOTH ("Container dind was using 80Ki, request is 0"). The
+            # figure is small because the shared `work` volume holds the bulk,
+            # but a container with request 0 is always an eviction candidate.
+            # Deliberately no cpu/memory request added here — the builder nodes
+            # already sit at 94-95% CPU and changing their scheduling weight is
+            # a separate decision from stopping disk evictions.
+            ephemeral-storage: 2Gi
+          limits:
+            ephemeral-storage: 8Gi
         securityContext:
           privileged: true
         restartPolicy: Always
@@ -221,13 +233,33 @@ spec:
           ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:11e275f7af5db17e8351b0664ab929cb2b1d69a383a978140305ba205035077a
         imagePullPolicy: 
           Always
-        resources: 
+        resources:
           limits:
             cpu: 1500m
             memory: 6Gi
+            # Cap a runaway job's disk instead of letting it take the node — and
+            # with it every other runner scheduled there.
+            ephemeral-storage: 12Gi
           requests:
             cpu: 400m
             memory: 2Gi
+            # LOAD-BEARING. Without an ephemeral-storage REQUEST the scheduler
+            # scores this pod's disk usage as zero, packs runners onto a node
+            # without accounting for their checkouts, and kubelet then evicts
+            # whichever pods exceed their request once the node crosses its
+            # eviction threshold (~12Gi free). Every runner exceeds zero, so
+            # every runner is a candidate.
+            #
+            # Measured 2026-08-07: four runners evicted from foundry-builder-01
+            # inside 20 minutes, each reported by kubelet as
+            # "Container runner was using ~3073816Ki, request is 0".
+            #
+            # This is what a dying runner looks like from GitHub's side: no step
+            # is marked `failure`, the in-flight step and everything after are
+            # recorded not-run, and logs return BlobNotFound because the runner
+            # died before uploading. It is indistinguishable from a flaky test,
+            # and it was misdiagnosed as one across several repositories.
+            ephemeral-storage: 6Gi
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock
