@@ -195,6 +195,66 @@ jobs:
       - name: Run NetworkPolicy port lint
         run: python3 scripts/check-networkpolicy-ports.py infra/k8s/
 
+  externalsecret-writer-lint:
+    name: ExternalSecret multi-writer policy
+    runs-on: ubuntu-latest
+    # Prevents the 2026-06-13 / 2026-08-06 dhanam-secrets class: two or more
+    # ExternalSecrets writing one Secret where a non-Merge writer does not
+    # produce every key its co-writers do. Owner and Orphan both reconcile the
+    # target down to their own keys, so every refresh deletes the uncovered
+    # ones until the others re-reconcile — while every ExternalSecret still
+    # reports Ready=True.
+    #
+    # Fails only on writers that actually lose keys, and reports which keys.
+    # A non-Merge writer whose key set covers all co-writers (the healthy
+    # enclii-dhanam-staging shape) is WARNed, not blocked.
+    # See scripts/check-externalsecret-writers.py for the full rationale.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run ExternalSecret writer self-tests
+        run: pytest tests/scripts/test_check_externalsecret_writers.py -v
+
+      - name: Run ExternalSecret multi-writer lint
+        run: python3 scripts/check-externalsecret-writers.py infra/k8s/
+
+  probe-target-lint:
+    name: Probe target consistency
+    runs-on: ubuntu-latest
+    # Enforces that each synthetic-probe target's url port, `port` field and
+    # `<service>.<namespace>` host all agree. This does NOT prove the Service
+    # publishes the port — those manifests live in the product repos — that
+    # check runs inside the probe itself (cloudflared_probe_target_misconfigured).
+    # Also exercises the exporter embedded in the secret-key-count-exporter
+    # ConfigMap, which is executed straight out of the manifest.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run probe target lint
+        run: python3 scripts/check-probe-targets.py infra/k8s/
+
+      - name: Run probe target self-tests
+        run: pytest tests/scripts/test_check_probe_targets.py -v
+
+      - name: Run secret key-count exporter tests
+        run: pytest tests/scripts/test_secret_key_count_exporter.py -v
+
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
     runs-on: ubuntu-latest

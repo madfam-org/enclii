@@ -52,9 +52,47 @@ updates:
     groups: *go_groups
     labels: *go_labels
 
-  # NPM workspaces and packages
+  # ===========================================================================
+  # NPM
+  #
+  # ┌─────────────────────────────────────────────────────────────────────────┐
+  # │ THE PNPM WORKSPACE IS A SINGLE-LOCKFILE PROJECT.                        │
+  # │ Its members are covered by the "/" entry. Never add a per-member entry.  │
+  # └─────────────────────────────────────────────────────────────────────────┘
+  #
+  # /pnpm-lock.yaml is the only lockfile for the workspace, and it covers all
+  # nine members of pnpm-workspace.yaml: apps/{switchyard-ui,admin-console,
+  # status,landing} and packages/{shared-lib,ui-components,config,sdk-ts,
+  # ecosystem-tenants}.
+  #
+  # Dependabot treats each configured `directory` as an independent project.
+  # From a workspace member it finds that member's package.json and no lockfile
+  # beside it, so it edits the manifest and never touches /pnpm-lock.yaml. Such
+  # a PR is born unmergeable: `pnpm install --frozen-lockfile` — run five times
+  # in ci.yml plus once each in e2e-tests.yml and sdk-ts.yml — fails with
+  # ERR_PNPM_OUTDATED_LOCKFILE, and no rebase can repair it, because the config
+  # that produced the PR is incapable of producing a lockfile.
+  #
+  # Only a project that owns a lockfile beside its own manifest may keep its
+  # own entry. Those are listed separately below.
+  #
+  # KNOWN HAZARD — apps/status is DUAL-LOCKED. It is a pnpm-workspace member
+  # (so /pnpm-lock.yaml covers it and ci.yml's frozen installs validate it) and
+  # it ALSO carries apps/status/pnpm-lock.yaml, which its Dockerfile copies
+  # standalone (`COPY apps/status/package.json apps/status/pnpm-lock.yaml`)
+  # before `pnpm install --frozen-lockfile`. No Dependabot configuration can
+  # keep both lockfiles in sync: a "/apps/status" entry updates the nested lock
+  # and strands the root one (blocking every PR), while the "/" entry updates
+  # the root lock and strands the nested one (blocking the status image build).
+  # The "/" entry is chosen here because it unblocks the PR gate. When a bump
+  # touches apps/status, regenerate apps/status/pnpm-lock.yaml before the image
+  # is rebuilt. The durable fix is structural — drop the nested lockfile and
+  # build the image from the workspace context, or remove apps/status from
+  # pnpm-workspace.yaml so it is genuinely standalone — and is out of scope for
+  # a dependabot.yml change.
+  # ===========================================================================
   - package-ecosystem: "npm"
-    directory: "/apps/switchyard-ui"
+    directory: "/"
     schedule: &weekly_tuesday
       interval: "weekly"
       day: "tuesday"
@@ -68,80 +106,51 @@ updates:
       - "dependencies"
       - "npm"
 
-  - package-ecosystem: "npm"
-    directory: "/apps/admin-console"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
+  # ---------------------------------------------------------------------------
+  # Standalone npm projects. Each owns a lockfile beside its own manifest and is
+  # NOT a pnpm-workspace member, so a per-directory entry is correct here: its
+  # PRs carry the matching lockfile update and can go green.
+  # ---------------------------------------------------------------------------
 
+  # apps/docs-site — own package-lock.json; its Dockerfile runs `npm ci`.
   - package-ecosystem: "npm"
     directory: "/apps/docs-site"
     schedule: *weekly_tuesday
     groups: *npm_groups
     labels: *npm_labels
 
-  - package-ecosystem: "npm"
-    directory: "/apps/landing"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/apps/status"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/packages"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/packages/config"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/packages/ecosystem-tenants"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/packages/sdk-ts"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/packages/shared-lib"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/packages/ui-components"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
-  - package-ecosystem: "npm"
-    directory: "/infra/k8s/base/verdaccio/plugins/verdaccio-auth-janua"
-    schedule: *weekly_tuesday
-    groups: *npm_groups
-    labels: *npm_labels
-
+  # tests/e2e-ecosystem — own package-lock.json; ci.yml `ecosystem-e2e` job
+  # installs it with `npm ci`.
   - package-ecosystem: "npm"
     directory: "/tests/e2e-ecosystem"
     schedule: *weekly_tuesday
     groups: *npm_groups
     labels: *npm_labels
 
+  # tests/sso-audit — own package-lock.json.
   - package-ecosystem: "npm"
     directory: "/tests/sso-audit"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  # ---------------------------------------------------------------------------
+  # Manifests that sit outside the pnpm workspace and declare no dependencies.
+  # Nothing installs them from a lockfile, so they cannot desynchronise one.
+  # Kept so that coverage exists the day a dependency is added.
+  # ---------------------------------------------------------------------------
+
+  # packages/package.json — marker manifest ("workspace root for publishable
+  # @enclii packages"); not a pnpm-workspace member, zero dependencies.
+  - package-ecosystem: "npm"
+    directory: "/packages"
+    schedule: *weekly_tuesday
+    groups: *npm_groups
+    labels: *npm_labels
+
+  # verdaccio-auth-janua — standalone plugin, zero dependencies, no lockfile.
+  - package-ecosystem: "npm"
+    directory: "/infra/k8s/base/verdaccio/plugins/verdaccio-auth-janua"
     schedule: *weekly_tuesday
     groups: *npm_groups
     labels: *npm_labels

@@ -1015,6 +1015,149 @@ data:
             annotations:
               summary: "Quota {{ $labels.resource }} near limit in {{ $labels.namespace }}"
               description: "Usage at {{ $value | humanizePercentage }} of quota."
+
+  # =========================================================================
+  # Secret integrity + probe-target correctness (added 2026-08-06)
+  # -------------------------------------------------------------------------
+  # These rules live HERE, in the ConfigMap, and not in a PrometheusRule CR,
+  # because this cluster has no prometheus-operator: `monitoring/prometheus`
+  # is a plain Deployment started with `rule_files: /etc/prometheus/rules/
+  # *.yml`, which is this ConfigMap. Verified 2026-08-06 against the running
+  # Prometheus: /api/v1/rules lists 18 groups, every one of them from
+  # /etc/prometheus/rules/*.yml, and none from any PrometheusRule object.
+  #
+  # NOTE: adding a key here does not reload Prometheus by itself. The kubelet
+  # propagates the ConfigMap to the pod within ~60s, then Prometheus must be
+  # told to re-read: `curl -X POST http://prometheus.monitoring:9090/-/reload`
+  # (--web.enable-lifecycle is on) or restart the pod.
+  # =========================================================================
+  secret-integrity-rules.yml: |
+    groups:
+      - name: secret-key-count
+        interval: 30s
+        rules:
+          # THE 2026-06-13 / 2026-08-06 CONTROL.
+          # dhanam-secrets is written by three ExternalSecrets. While one of
+          # them used a non-Merge creationPolicy, the target Secret cycled
+          # 23 -> 2 -> 10 -> 23 keys every 15m, and any pod starting inside
+          # that window came up with no DATABASE_URL and CrashLooped.
+          #
+          # This deliberately does NOT look at
+          # ExternalSecret.status.conditions[Ready]: every writer reported
+          # Ready=True for the entire incident. It counts keys on the Secret
+          # itself, via the secret-key-count-exporter.
+          - alert: SecretKeyCountBelowExpected
+            expr: |
+              secret_key_count
+                < on(secret_namespace, secret_name)
+              secret_key_count_min_expected
+            for: 1m
+            labels:
+              severity: critical
+              category: platform
+            annotations:
+              summary: "Secret {{ $labels.secret_namespace }}/{{ $labels.secret_name }} lost keys ({{ $value }} present)"
+              description: |
+                {{ $labels.secret_namespace }}/{{ $labels.secret_name }} is
+                holding {{ $value }} keys, below the minimum this Secret is
+                expected to carry. The usual cause is a multi-writer
+                ExternalSecret target where at least one writer does NOT use
+                creationPolicy: Merge — Owner and Orphan both reconcile the
+                Secret down to just that writer's keys, wiping the others
+                until they re-reconcile.
+
+                Pods that start inside the window come up with missing env and
+                CrashLoop. The ExternalSecrets will all still say Ready=True.
+
+                Triage:
+                  kubectl get externalsecret -n {{ $labels.secret_namespace }} \
+                    -o custom-columns=NAME:.metadata.name,TARGET:.spec.target.name,POLICY:.spec.target.creationPolicy
+                Every writer of this Secret must be Merge.
+                Docs: docs/infrastructure/EXTERNAL_SECRETS.md
+
+          # "Are we still looking?" Without this, deleting the target, losing
+          # RBAC or the exporter dying reads exactly like a healthy Secret.
+          - alert: DhanamSecretsKeyCountUnmonitored
+            expr: |
+              absent(secret_key_count{secret_namespace="dhanam",secret_name="dhanam-secrets"})
+            for: 15m
+            labels:
+              severity: critical
+              category: platform
+            annotations:
+              summary: "No key-count signal for dhanam/dhanam-secrets"
+              description: |
+                secret_key_count for dhanam/dhanam-secrets has been absent for
+                15m, so the multi-writer wipe that broke production on
+                2026-06-13 and again on 2026-08-06 is currently undetectable.
+                Check the secret-key-count-exporter Deployment in the
+                monitoring namespace and its scrape target.
+
+          # A read failure must be visible as a read failure. The exporter
+          # deliberately emits NO count when it cannot read, so a lost
+          # RoleBinding would otherwise be silent.
+          - alert: SecretKeyCountCheckFailing
+            expr: |
+              secret_key_count_check_success == 0
+            for: 10m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "Cannot read {{ $labels.secret_namespace }}/{{ $labels.secret_name }} to count keys"
+              description: |
+                The secret-key-count-exporter has failed to read this Secret
+                for 10m — usually a missing/removed RoleBinding, a renamed
+                Secret, or an API problem. The key-count alert cannot fire
+                while this is true.
+
+      - name: cloudflared-probe-misconfigured
+        interval: 30s
+        rules:
+          # THE 2026-08-06 FAULT 2 CONTROL.
+          # The probe dialed dhanam-api:3000 and janua-api:8080 — ports those
+          # Services do not publish. Dialing a nonexistent Service port times
+          # out exactly like a CNI drop, so the probe blamed NetworkPolicy and
+          # a real outage became indistinguishable from standing noise.
+          - alert: CloudflaredProbeTargetMisconfigured
+            expr: |
+              cloudflared_probe_target_misconfigured == 1
+            for: 5m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "Probe target {{ $labels.service }}:{{ $labels.port }} dials a port the Service does not publish"
+              description: |
+                The synthetic probe compared its target against the live
+                Service and found reason={{ $labels.reason }}. This is a
+                CONFIGURATION fault, not a network fault: fix the entry in the
+                cloudflared-probe-targets ConfigMap (or publish the port on
+                the Service in its own repo). Until then this target's
+                reachability signal is meaningless.
+
+                Note: the target's own namespace is in the `exported_namespace`
+                label — `namespace` here is the probe's own namespace, which
+                the scrape overwrites.
+
+          # If the cross-check cannot run, "no misconfigured targets" means
+          # "never looked". Make that state visible rather than reassuring.
+          - alert: CloudflaredProbeServiceCheckUnavailable
+            expr: |
+              cloudflared_probe_service_check_unavailable == 1
+            for: 30m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "cloudflared-probe cannot verify Service ports"
+              description: |
+                The probe could not read target Services from the Kubernetes
+                API for 30m (missing ClusterRole/ServiceAccount, API
+                unreachable, or SERVICE_PORT_CHECK disabled). While this is 1,
+                a target dialing an unpublished Service port is
+                indistinguishable from a NetworkPolicy drop — the exact
+                confusion of 2026-08-06.
 ---
 # Prometheus PVC
 apiVersion: v1

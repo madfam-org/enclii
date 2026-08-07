@@ -193,6 +193,18 @@ spec:
         env:
           - name: DOCKER_GROUP_GID
             value: "123"
+        resources:
+          requests:
+            # Same defect as the runner container: kubelet's eviction message
+            # named BOTH ("Container dind was using 80Ki, request is 0"). The
+            # figure is small because the shared `work` volume holds the bulk,
+            # but a container with request 0 is always an eviction candidate.
+            # Deliberately no cpu/memory request added here — the builder nodes
+            # already sit at 94-95% CPU and changing their scheduling weight is
+            # a separate decision from stopping disk evictions.
+            ephemeral-storage: 2Gi
+          limits:
+            ephemeral-storage: 8Gi
         securityContext:
           privileged: true
         restartPolicy: Always
@@ -221,13 +233,51 @@ spec:
           ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:11e275f7af5db17e8351b0664ab929cb2b1d69a383a978140305ba205035077a
         imagePullPolicy: 
           Always
-        resources: 
+        resources:
           limits:
             cpu: 1500m
             memory: 6Gi
+            # Cap a runaway job's disk instead of letting it take the node — and
+            # with it every other runner scheduled there. Raised 12Gi -> 16Gi
+            # alongside the request: peak measured usage was 8.11Gi with a browser
+            # download, apt packages and two service containers on one runner, and
+            # 12Gi left too little headroom above that for a heavier E2E shard.
+            ephemeral-storage: 16Gi
           requests:
             cpu: 400m
             memory: 2Gi
+            # LOAD-BEARING. Without an ephemeral-storage REQUEST the scheduler
+            # scores this pod's disk usage as zero, packs runners onto a node
+            # without accounting for their checkouts, and kubelet then evicts
+            # whichever pods exceed their request once the node crosses its
+            # eviction threshold (~12Gi free). Every runner exceeds zero, so
+            # every runner is a candidate.
+            #
+            # Measured 2026-08-07: four runners evicted from foundry-builder-01
+            # inside 20 minutes, each reported by kubelet as
+            # "Container runner was using ~3073816Ki, request is 0".
+            #
+            # This is what a dying runner looks like from GitHub's side: no step
+            # is marked `failure`, the in-flight step and everything after are
+            # recorded not-run, and logs return BlobNotFound because the runner
+            # died before uploading. It is indistinguishable from a flaky test,
+            # and it was misdiagnosed as one across several repositories.
+            #
+            # RAISED 6Gi -> 10Gi on 2026-08-07 after E2E runners kept dying while
+            # every other job type survived. Measured live on foundry-builder-01
+            # through the kubelet summary API: concurrent runners were using 8.11,
+            # 7.14, 6.81, 5.06, 2.69 and 0.90 Gi. The heavy ones EXCEED a 6Gi
+            # request, and kubelet evicts pods over their request first — so the
+            # Playwright E2E pods were structurally always the victims, which is
+            # exactly the selectivity observed (three incidents in seven hours,
+            # never Build, Lint or Security Scan).
+            #
+            # That node was at 184/225Gi used with 31.8Gi free — near the 10% hard
+            # eviction threshold — with nine runners packed on it while
+            # foundry-worker-01 sat at 31% with 62Gi free. A 10Gi request covers
+            # real peak usage AND thins packing density (~22 slots instead of 37),
+            # so the node stops being driven into its own threshold.
+            ephemeral-storage: 10Gi
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock
@@ -246,4 +296,10 @@ spec:
         emptyDir: {}
       
       - name: work
-        emptyDir: {}
+        emptyDir:
+          # Bound the workspace so a runaway checkout fails ITS OWN step with a
+          # clear disk error, instead of silently inflating the pod's ephemeral
+          # usage until kubelet evicts the whole runner mid-job — the
+          # BlobNotFound / no-step-marked-failure signature that reads as a flaky
+          # test. Deliberately below the 16Gi container limit.
+          sizeLimit: 14Gi
