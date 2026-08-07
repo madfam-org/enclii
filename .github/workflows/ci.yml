@@ -195,6 +195,31 @@ jobs:
       - name: Run NetworkPolicy port lint
         run: python3 scripts/check-networkpolicy-ports.py infra/k8s/
 
+  dependabot-secret-trap-lint:
+    name: Dependabot secret-trap lint
+    runs-on: ubuntu-latest
+    # Cheap (~0.2s over ~36 workflows). Prevents the 2026-08-07 class: a
+    # `credentials:` block fed by a `secrets.` expression makes the WHOLE
+    # workflow template invalid on Dependabot runs, which get an empty secret
+    # store. The job never starts, so there is no test output and no cause to
+    # read — and no rebase, recreate or rerun can fix it. Five coforma-studio
+    # PRs and an unknown number of enclii ones sat unmergeable for weeks while
+    # main stayed green, because pushes to main DO have the secrets.
+    # See scripts/check-dependabot-secret-traps.py for the three accepted fixes.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Run Dependabot secret-trap lint
+        run: python3 scripts/check-dependabot-secret-traps.py .github/workflows/
+
   externalsecret-writer-lint:
     name: ExternalSecret multi-writer policy
     runs-on: ubuntu-latest
@@ -375,10 +400,18 @@ jobs:
 
     services:
       postgres:
+        # No `credentials:` here. Dependabot runs receive an EMPTY secret store,
+        # so `${{ secrets.DOCKERHUB_* }}` resolved to '' and GitHub rejected the
+        # entire workflow template — the job never started, producing a bare
+        # "Set up job" failure with no test output. Proven on run 31069625312
+        # (event=pull_request, actor=dependabot[bot], "Secret source: Dependabot"):
+        #   The template is not valid. ci.yml (Line: 320, Col: 21): Unexpected value ''
+        # main stayed green throughout because pushes DO have the secrets, so this
+        # read as flaky dependency PRs rather than a workflow defect, and no rebase
+        # or rerun could ever have fixed it. Safe to drop: these are public official
+        # images needing no auth, on a public repo using GitHub-hosted runners.
+        # Same fix as coforma-studio#119.
         image: postgres:15-alpine
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: enclii
           POSTGRES_PASSWORD: enclii_test
@@ -392,10 +425,18 @@ jobs:
           - 5432:5432
 
       redis:
+        # No `credentials:` here. Dependabot runs receive an EMPTY secret store,
+        # so `${{ secrets.DOCKERHUB_* }}` resolved to '' and GitHub rejected the
+        # entire workflow template — the job never started, producing a bare
+        # "Set up job" failure with no test output. Proven on run 31069625312
+        # (event=pull_request, actor=dependabot[bot], "Secret source: Dependabot"):
+        #   The template is not valid. ci.yml (Line: 320, Col: 21): Unexpected value ''
+        # main stayed green throughout because pushes DO have the secrets, so this
+        # read as flaky dependency PRs rather than a workflow defect, and no rebase
+        # or rerun could ever have fixed it. Safe to drop: these are public official
+        # images needing no auth, on a public repo using GitHub-hosted runners.
+        # Same fix as coforma-studio#119.
         image: redis:7-alpine
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -1583,7 +1624,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e]
+    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint]
     if: always()
 
     steps:
@@ -1620,6 +1661,10 @@ jobs:
           if [ "${{ needs.zero-touch-boundary.result }}" != "success" ]; then
             echo "❌ Zero-touch boundary check failed (new app-specific Enclii catalog state detected)"
             exit 1
+          fi
+          if [ "${{ needs.dependabot-secret-trap-lint.result }}" != "success" ]; then
+            echo "Dependabot secret-trap lint failed — a workflow is unrunnable by Dependabot"
+            FAILED=1
           fi
           if [ "${{ needs.networkpolicy-port-lint.result }}" != "success" ]; then
             echo "❌ NetworkPolicy port consistency check failed (prevents 2026-05-04 outage class)"
