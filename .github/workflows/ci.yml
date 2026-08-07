@@ -375,10 +375,18 @@ jobs:
 
     services:
       postgres:
+        # No `credentials:` here. Dependabot runs receive an EMPTY secret store,
+        # so `${{ secrets.DOCKERHUB_* }}` resolved to '' and GitHub rejected the
+        # entire workflow template — the job never started, producing a bare
+        # "Set up job" failure with no test output. Proven on run 31069625312
+        # (event=pull_request, actor=dependabot[bot], "Secret source: Dependabot"):
+        #   The template is not valid. ci.yml (Line: 320, Col: 21): Unexpected value ''
+        # main stayed green throughout because pushes DO have the secrets, so this
+        # read as flaky dependency PRs rather than a workflow defect, and no rebase
+        # or rerun could ever have fixed it. Safe to drop: these are public official
+        # images needing no auth, on a public repo using GitHub-hosted runners.
+        # Same fix as coforma-studio#119.
         image: postgres:15-alpine
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: enclii
           POSTGRES_PASSWORD: enclii_test
@@ -392,10 +400,18 @@ jobs:
           - 5432:5432
 
       redis:
+        # No `credentials:` here. Dependabot runs receive an EMPTY secret store,
+        # so `${{ secrets.DOCKERHUB_* }}` resolved to '' and GitHub rejected the
+        # entire workflow template — the job never started, producing a bare
+        # "Set up job" failure with no test output. Proven on run 31069625312
+        # (event=pull_request, actor=dependabot[bot], "Secret source: Dependabot"):
+        #   The template is not valid. ci.yml (Line: 320, Col: 21): Unexpected value ''
+        # main stayed green throughout because pushes DO have the secrets, so this
+        # read as flaky dependency PRs rather than a workflow defect, and no rebase
+        # or rerun could ever have fixed it. Safe to drop: these are public official
+        # images needing no auth, on a public repo using GitHub-hosted runners.
+        # Same fix as coforma-studio#119.
         image: redis:7-alpine
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
