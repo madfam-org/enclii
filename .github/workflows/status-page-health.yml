@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Checkout enclii
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0  # need full history for `git log -- apps/status/`
 

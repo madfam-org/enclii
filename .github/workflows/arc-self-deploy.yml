@@ -68,7 +68,7 @@ jobs:
       changes_detected: ${{ steps.changes.outputs.any_changed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -160,7 +160,7 @@ jobs:
 
       - name: Checkout
         if: steps.check-secret.outputs.skip != 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install kubectl
         if: steps.check-secret.outputs.skip != 'true'
@@ -285,7 +285,7 @@ jobs:
     runs-on: ${{ needs.deploy.outputs.runner_label || 'madfam-runners-blue' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v5
@@ -344,7 +344,7 @@ jobs:
     runs-on: madfam-runners-blue
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v5

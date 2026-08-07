@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ env.HARVESTER_REPO }}
           ref: ${{ inputs.git_ref }}

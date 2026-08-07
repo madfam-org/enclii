@@ -46,7 +46,7 @@ jobs:
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: madfam-org/blueprint-harvester
           ref: main
