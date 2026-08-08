@@ -517,6 +517,33 @@ func TestZonePathClearsCustomHostnameStateOnlyAfterRelease(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed custom-hostname pass keeps the id so teardown can still release it", func(t *testing.T) {
+		record := &types.CustomDomain{
+			Domain:                  "app.client.com",
+			TLSProvider:             types.TLSProviderCloudflareForSaaS,
+			Status:                  types.DomainStatusActive,
+			Verified:                true,
+			CustomHostnameID:        "ch-live",
+			CustomHostnameStatus:    "active",
+			CustomHostnameSSLStatus: "active",
+		}
+
+		result := domainProvisioningResult{Domain: "app.client.com", Mechanism: mechanismCustomHostname}
+		result.setErr(errors.New("failed to provision custom hostname: cloudflare: HTTP error 500"))
+		applyProvisioningResult(record, result, now)
+
+		if record.CustomHostnameID != "ch-live" {
+			t.Errorf("CustomHostnameID = %q, want it kept: a failed pass learned nothing about the registration",
+				record.CustomHostnameID)
+		}
+		if record.Status != types.DomainStatusError || record.Verified {
+			t.Errorf("Status/Verified = (%q, %v), want (error, false)", record.Status, record.Verified)
+		}
+		if record.ProvisioningError == "" {
+			t.Error("ProvisioningError is empty; the failure must stay legible")
+		}
+	})
+
 	t.Run("release not confirmed keeps the id so teardown can retry", func(t *testing.T) {
 		record := &types.CustomDomain{
 			Domain:           "app.example.com",

@@ -520,17 +520,26 @@ func applyProvisioningResult(record *types.CustomDomain, result domainProvisioni
 	}
 
 	record.TLSProvider = types.TLSProviderCloudflareForSaaS
+	record.ProvisioningError = result.ErrorMessage
+	record.ProvisioningCheckedAt = &now
+
+	if result.Err != nil {
+		// The pass failed, so it learned nothing about the hostname itself.
+		// Its identifier and last-known Cloudflare state are left alone:
+		// blanking the stored hostname id here would strand the registration
+		// at Cloudflare with nothing left to release it by. Only the outcome
+		// of THIS pass is recorded.
+		record.Status = types.DomainStatusError
+		record.Verified = false
+		return
+	}
+
 	record.CustomHostnameID = result.CustomHostnameID
 	record.CustomHostnameStatus = result.HostnameStatus
 	record.CustomHostnameSSLStatus = result.SSLStatus
 	record.PendingDNSRecords = result.PendingDNSRecords
-	record.ProvisioningError = result.ErrorMessage
-	record.ProvisioningCheckedAt = &now
 
 	switch {
-	case result.Err != nil:
-		record.Status = types.DomainStatusError
-		record.Verified = false
 	case result.HostnameStatus == string(cloudflare.CustomHostnameStatusActive) &&
 		result.SSLStatus == string(cloudflare.CustomHostnameSSLActive):
 		record.Status = types.DomainStatusActive
