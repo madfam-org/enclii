@@ -226,17 +226,19 @@ spec:
         storageClassName: longhorn
         resources:
           requests:
-            # Raised 5Gi -> 20Gi on 2026-08-07 after the volume filled and Loki
-            # deadlocked at startup (see limits_config above).
+            # STAYS 5Gi. An earlier draft of this PR raised it to 20Gi; that was
+            # wrong. The volume was never too small -- it held 10.9 Gi of
+            # SNAPSHOTS on 5 Gi of nominal space (actualSize 218%), because the
+            # `default` recurring-job group retains 7 daily snapshots and Loki
+            # rewrites its TSDB index constantly, so each one approached a full
+            # copy. A 20 Gi volume would simply have grown 20 Gi of snapshots and
+            # failed identically a few weeks later.
             #
-            # OPERATOR NOTE, because this line alone fixes nothing: a
-            # StatefulSet's volumeClaimTemplates is IMMUTABLE. Changing it here
-            # does NOT resize the existing data-loki-0 PVC; it applies only to a
-            # PVC created fresh. Recovering the running instance needs the PVC
-            # expanded in place (Longhorn supports online expansion) or deleted
-            # for recreation. Expanding is preferred -- deleting discards the
-            # only stored record of the incidents found while it was down.
-            storage: 20Gi
+            # The real fixes are the retention above (48h, 2 MB/s ingest cap) and
+            # the `high-churn` recurring-job group in
+            # infra/helm/longhorn/recurring-jobs.yaml, which retains 2 local
+            # snapshots instead of 7. With both, 5 Gi is comfortable.
+            storage: 5Gi
 ---
 # ServiceAccount for Loki (minimal — no cluster-wide access needed)
 apiVersion: v1

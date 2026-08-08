@@ -1,5 +1,37 @@
 ---
 # Longhorn Recurring Jobs
+#
+# GROUPS ARE SEGMENTED BY WRITE CHURN, NOT BY IMPORTANCE. This is the fix for the
+# 2026-08-07 Loki outage, where a 5 Gi volume was carrying 10.9 Gi of SNAPSHOTS:
+#
+#   daily-sn-98cb7b19  4.95 Gi   <- one daily snapshot, larger than the volume
+#   daily-sn-e758dde5  1.49 Gi
+#   daily-sn-257f700e  1.44 Gi
+#   weekly-s-59de9ee7  1.39 Gi
+#   daily-sn-e57ca992  0.91 Gi     ... 9 total, actualSize 218% of nominal
+#
+# Longhorn snapshots are copy-on-write deltas stored ON THE VOLUME ITSELF. On a
+# low-churn volume a daily snapshot is small. On a HIGH-CHURN one -- Loki
+# rewriting its TSDB index, Postgres WAL, redpanda segments, Elasticsearch
+# merges -- each daily snapshot approaches a FULL COPY. Seven retained is then
+# 5-10x nominal, and the volume fills with its own history.
+#
+# That is also why cluster StorageScheduled read 818 Gi against 463 Gi of
+# physical disk: not workload size, but every volume silently carrying up to
+# seven copies of itself.
+#
+# ENLARGING THE VOLUME DOES NOT FIX THIS -- a 20 Gi volume grows 20 Gi snapshots.
+# Retention has to match churn, which is what the two groups below encode.
+#
+# Membership is by volume label:
+#   recurring-job-group.longhorn.io/default    = enabled   (low churn, retain 7)
+#   recurring-job-group.longhorn.io/high-churn = enabled   (retain 2)
+#
+# Put a volume in high-churn when it rewrites rather than appends. Today that is
+# at least: loki, redpanda, tezca-es, prometheus, and every postgres data volume.
+# Offsite BACKUPS are unchanged for both groups -- backups live in R2, not on the
+# volume, so they carry no local space cost. Only local SNAPSHOT retention drops.
+#
 # Applied to all volumes in the "default" group.
 # 1. Daily local snapshots (retain 7) — fast rollback without R2 download
 # 2. Daily R2 backup (retain 7) — offsite disaster recovery
@@ -77,3 +109,57 @@ spec:
   labels:
     backup-type: scheduled
     retention: weekly
+---
+# High-churn local snapshots — 02:30 UTC, retain 2
+#
+# Same task as daily-snapshot, deliberately a SEPARATE job so the retention can
+# differ. Two is enough for "roll back this morning's bad deploy"; seven is what
+# filled Loki's volume with 10.9 Gi of its own deltas. Volumes opt in with
+#   recurring-job-group.longhorn.io/high-churn: enabled
+# and must NOT also carry the default group, or both jobs run and the point is
+# lost.
+apiVersion: longhorn.io/v1beta1
+kind: RecurringJob
+metadata:
+  name: high-churn-snapshot
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/name: longhorn
+    app.kubernetes.io/part-of: enclii
+spec:
+  task: snapshot
+  cron: "30 2 * * *"
+  retain: 2
+  concurrency: 1
+  groups:
+    - high-churn
+  labels:
+    backup-type: snapshot
+    retention: high-churn
+---
+# High-churn offsite backup — 03:30 UTC, retain 7
+#
+# Retention here matches the default group on purpose: backups live in R2, not on
+# the volume, so keeping seven costs no local space. Durability is NOT what we are
+# trading away -- only the local snapshot count is.
+apiVersion: longhorn.io/v1beta1
+kind: RecurringJob
+metadata:
+  name: high-churn-s3-backup
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/name: longhorn
+    app.kubernetes.io/part-of: enclii
+    backup.enclii.dev/type: disaster-recovery
+spec:
+  task: backup
+  cron: "30 3 * * *"
+  retain: 7
+  concurrency: 1
+  groups:
+    - high-churn
+  labels:
+    backup-type: scheduled
+    retention: high-churn
