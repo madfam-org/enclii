@@ -521,10 +521,21 @@ jobs:
       - name: Enforce coverage floors
         if: always()
         run: |
+          # Floors are set from what THIS job measured, not from a local run.
+          # The first values here came from `go test ./...` on a workstation and
+          # two of them were unreachable in CI: roundhouse measured 27.0 locally
+          # and 25.4 here, waybill 39.8 and 35.5. CI runs with -race, which
+          # changes which paths execute, so the enforcing environment is the only
+          # honest source for its own floor.
+          #
+          # These are a ratchet, not a target. Raise one when a module genuinely
+          # improves; never lower one to make a red build green -- that converts
+          # a real regression into a silent allowance, which is the whole failure
+          # mode this gate exists to prevent.
           declare -A FLOOR=(
-            ["apps/roundhouse"]=26
+            ["apps/roundhouse"]=25
             ["apps/switchyard-api"]=33
-            ["apps/waybill"]=38
+            ["apps/waybill"]=35
             ["packages/cli"]=38
             ["packages/otel-go"]=90
             ["packages/sdk-go"]=69
