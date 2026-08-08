@@ -8,14 +8,30 @@
 > missing Enclii adapter gap.
 
 
-**Last Updated:** February 7, 2026
-**Status:** Operational (single unified tunnel, 28+ domains, 2 replicas, HTTPS enforced on all zones)
+**Last Updated:** August 7, 2026
+**Status:** Tunnel + zone/CNAME provisioning operational (single unified tunnel, 28+ domains, 2 replicas, HTTPS enforced on all zones). Cloudflare for SaaS custom hostnames implemented in code; **not yet exercised against a live client domain** and inert until `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID` / `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME` are set.
+
+> [!WARNING]
+> Earlier revisions of this document described Cloudflare for SaaS as shipped
+> while no code called `/custom_hostnames`. The API client and provisioning
+> path now exist; what remains is operator configuration (fallback origin) and
+> a first real client domain. Do not read "implemented" as "verified in
+> production".
 
 ---
 
 ## Overview
 
-Enclii uses Cloudflare for zero-trust ingress via Cloudflare Tunnel, DNS management, and multi-tenant SSL via Cloudflare for SaaS. This provides enterprise-grade security without exposing cluster nodes to the public internet.
+Enclii uses Cloudflare for zero-trust ingress via Cloudflare Tunnel, DNS management, and multi-tenant SSL via Cloudflare for SaaS custom hostnames. This provides enterprise-grade security without exposing cluster nodes to the public internet.
+
+Two domain provisioning mechanisms exist, chosen per domain:
+
+| | Zone + CNAME | Cloudflare for SaaS custom hostname |
+|---|---|---|
+| Applies to | Domains whose nameservers are delegated to our Cloudflare account | Client-owned domains that keep their own registrar/nameservers |
+| Certificate | Cloudflare Universal SSL (apex + one subdomain level) | Per-hostname DV certificate (any depth) |
+| We create the DNS record | Yes | No — the client does |
+| Ready when | The CNAME exists | Cloudflare reports hostname + certificate active |
 
 ## Architecture
 
@@ -73,13 +89,84 @@ Routes are managed via Cloudflare API, not ConfigMap.
 - Service: `apps/switchyard-api/internal/services/tunnel_routes_cloudflare.go`
 - Types: `apps/switchyard-api/internal/cloudflare/types.go`
 
-### 3. Cloudflare for SaaS
+### 3. Cloudflare for SaaS (client-owned domains)
 
-Multi-tenant SSL for custom domains.
+Cloudflare custom hostnames let a client keep their own registrar and
+nameservers and still be served by us. This is the provisioning path for any
+domain whose apex is **not** a zone in our Cloudflare account.
 
-- First 100 custom domains: **FREE**
-- Additional: $0.10/domain/month
-- Automatic SSL provisioning (~30 seconds)
+**Source Code:**
+- Client: `apps/switchyard-api/internal/cloudflare/custom_hostnames.go`
+- Provisioning: `apps/switchyard-api/internal/api/domain_provisioner_custom_hostname.go`
+- Mechanism dispatch: `apps/switchyard-api/internal/api/domain_provisioner.go`
+  (`ensureDomainRouting`)
+
+**Plan limits:** first 100 custom hostnames free, then $0.10/hostname/month.
+
+#### What is implemented
+
+- `POST/GET/LIST/DELETE /zones/{zone}/custom_hostnames` against the
+  fallback-origin zone, with `ssl: {type: "dv", method: "txt",
+  settings: {min_tls_version: "1.2"}}`.
+- Idempotent `EnsureCustomHostname` (safe to re-run on every deploy).
+- Per-domain mechanism selection during provisioning: a domain whose apex is
+  already a zone we control keeps the zone+CNAME path; anything else becomes a
+  custom hostname. `external: true` / `external: false` on an `enclii.yaml`
+  domain forces the choice.
+- The Cloudflare-reported hostname status, certificate status and the DNS
+  records the client still owes are persisted on the `custom_domains` row
+  (migration `033`) and returned on the domain read path and in the junction
+  create response.
+- `POST /v1/services/:id/domains/:domain_id/verify` re-reads the real state
+  from Cloudflare for custom-hostname domains. A domain is marked verified
+  **only** when Cloudflare reports the hostname active *and* its certificate
+  active — never because an API call returned 200.
+
+#### What still requires the client to act
+
+Provisioning cannot finish without the domain owner, because we do not control
+their DNS. After the domain is declared, the API reports the exact records:
+
+| Purpose | Type | Name | Value |
+|---------|------|------|-------|
+| routing | CNAME | `<their hostname>` | the configured fallback-origin hostname |
+| ownership | TXT | `_cf-custom-hostname.<their hostname>` | value returned by Cloudflare |
+| ssl validation | TXT | `_acme-challenge.<their hostname>` | value returned by Cloudflare |
+
+Until those exist the domain stays `status = pending` with a populated
+`pending_dns_records`, which reads as "waiting on the client", not "broken".
+
+#### Configuration
+
+Both variables are required to enable the path. When either is empty the
+custom-hostname path is disabled and domain provisioning behaves exactly as it
+did before (zone + CNAME only).
+
+| Variable | Meaning |
+|----------|---------|
+| `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID` | Zone id of a zone we own that has a Cloudflare for SaaS fallback origin configured |
+| `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME` | Hostname clients CNAME to (e.g. `proxy.enclii.dev`); must resolve inside that zone |
+
+#### enclii.yaml
+
+```yaml
+spec:
+  domains:
+    - name: api.madfam.io        # absent → auto-detect (zone exists → zone path)
+      environment: production
+    - name: cto.creatumundo.mx   # client-owned: custom hostname
+      environment: production
+      external: true
+    - name: legacy.example.com   # pin the zone+CNAME path explicitly
+      environment: production
+      external: false
+```
+
+> [!NOTE]
+> Cloudflare Universal SSL on the zone path covers the apex and **one**
+> subdomain level. A nested host (`a.b.example.com`) is rejected at
+> declaration time unless it is declared `external: true`, because Cloudflare
+> for SaaS issues a certificate for the exact hostname and can serve it.
 
 ## Credentials
 
@@ -91,6 +178,8 @@ Stored in Kubernetes secret: `enclii-cloudflare-credentials`
 | `account-id` | Cloudflare account identifier |
 | `zone-id` | Zone identifier for enclii.dev |
 | `tunnel-id` | Tunnel identifier (required for auto-provisioning) |
+| `fallback-origin-zone-id` | Zone id of the Cloudflare for SaaS fallback-origin zone (optional; empty disables custom hostnames) |
+| `fallback-origin-hostname` | Hostname clients CNAME to, e.g. `proxy.enclii.dev` (optional; empty disables custom hostnames) |
 
 ### Environment Variables
 
@@ -116,6 +205,19 @@ env:
       secretKeyRef:
         name: enclii-cloudflare-credentials
         key: tunnel-id
+  # Optional — both required together to enable Cloudflare for SaaS.
+  - name: ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID
+    valueFrom:
+      secretKeyRef:
+        name: enclii-cloudflare-credentials
+        key: fallback-origin-zone-id
+        optional: true
+  - name: ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME
+    valueFrom:
+      secretKeyRef:
+        name: enclii-cloudflare-credentials
+        key: fallback-origin-hostname
+        optional: true
 ```
 
 ## Route Automation
@@ -130,7 +232,11 @@ Domains declared in `enclii.yaml` are automatically provisioned on each push to 
 3. For each declared domain (`domain_provisioner.go`):
    - Create `CustomDomain` record in database (if not exists)
    - Add Cloudflare tunnel route via `TunnelRoutesManager.AddRoute()`
-   - Create DNS CNAME record in Cloudflare via `Client.EnsureDNSRecord()`
+   - Provision edge routing via `ensureDomainRouting()`, which picks the
+     mechanism per domain:
+     - zone we control → `Client.EnsureDNSRecord()` (proxied CNAME)
+     - client-owned domain → `Client.EnsureCustomHostname()` on the
+       fallback-origin zone, then store the records the client must add
 4. DNS records point to `tunnel.enclii.dev` (the tunnel endpoint)
 
 **Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
@@ -292,16 +398,33 @@ kubectl exec -n cloudflare-tunnel <cloudflared-pod> -- \
 
 ### SSL Certificate Issues
 
-For Cloudflare for SaaS custom domains:
+For Cloudflare for SaaS custom domains, ask Enclii first — it stores the
+Cloudflare-reported state and the outstanding client action:
 
 ```bash
-# Check custom hostname status
-curl -s "https://api.cloudflare.com/client/v4/zones/{zone_id}/custom_hostnames?hostname=<hostname>" \
-  -H "Authorization: Bearer $CF_TOKEN" | jq '.result[0].ssl.status'
-
-# Expected: "active"
-# If "pending_validation", customer needs to add CNAME record
+# Re-reads the live state from Cloudflare and updates the record.
+enclii api POST "/v1/services/<service-id>/domains/<domain-id>/verify"
+# 200 => Cloudflare reports hostname + certificate active
+# 400 => not yet: response carries `pending_dns_records` for the client
+# 502 => we could not reach Cloudflare (this is our problem, not the client's)
 ```
+
+Break-glass, when the API is unavailable (raw provider access — see the banner
+at the top of this file):
+
+```bash
+curl -s "https://api.cloudflare.com/client/v4/zones/{fallback_origin_zone_id}/custom_hostnames?hostname=<hostname>" \
+  -H "Authorization: Bearer $CF_TOKEN" | jq '.result[0] | {status, ssl: .ssl.status, ownership_verification}'
+```
+
+| Reported state | Meaning | Who acts |
+|---|---|---|
+| `status: pending`, `ssl: pending_validation` | Ownership TXT and/or DCV TXT missing | Client |
+| `status: pending`, `ssl: active` | Certificate issued, CNAME not cut over yet | Client |
+| `status: active`, `ssl: pending_issuance` | Cloudflare is issuing; wait | Nobody |
+| `status: active`, `ssl: active` | Serving | Nobody |
+| `status: moved` | The client's CNAME stopped pointing at the fallback origin | Client |
+| `status: blocked` | Cloudflare refused the hostname | Operator (contact Cloudflare) |
 
 ## DNS Configuration
 
@@ -315,13 +438,20 @@ curl -s "https://api.cloudflare.com/client/v4/zones/{zone_id}/custom_hostnames?h
 
 ### Customer Custom Domains
 
-Customers add CNAME record pointing to fallback origin:
+For a client-owned domain, Enclii registers a Cloudflare custom hostname on the
+fallback-origin zone and then hands the client the records to create on their
+own nameservers:
 
 ```
-customer-app.customer-domain.com → proxy.enclii.dev
+customer-app.customer-domain.com                CNAME → proxy.enclii.dev
+_cf-custom-hostname.customer-app.customer-domain.com  TXT → <ownership value>
+_acme-challenge.customer-app.customer-domain.com      TXT → <dcv value>
 ```
 
-SSL auto-provisions via Cloudflare for SaaS.
+The certificate is issued by Cloudflare once those records resolve. Enclii
+reports the domain as active only after Cloudflare reports both the hostname
+and its certificate active. See
+[Cloudflare for SaaS (client-owned domains)](#3-cloudflare-for-saas-client-owned-domains).
 
 ## Security
 
@@ -339,12 +469,19 @@ The "Enclii Platform Token" (All accounts, All zones) has these scopes:
 | Permission | Scope | Purpose |
 |------------|-------|---------|
 | Account: Cloudflare Tunnel: Edit | All accounts | Tunnel config management |
-| Zone: Zone: Edit | All zones | Zone creation, custom hostnames |
+| Zone: Zone: Edit | All zones | Zone creation |
 | Zone: DNS: Edit | All zones | DNS record management |
 | Zone: Zone Settings: Edit | All zones | `always_use_https`, `min_tls_version`, etc. |
-| Zone: SSL and Certificates: Edit | All zones | SSL mode, certificate management |
+| Zone: SSL and Certificates: Edit | All zones | SSL mode, certificate management, **custom hostnames** |
 
 > **Note:** Must be **account-level** (not zone-scoped) to support auto zone creation.
+
+> **Custom hostnames:** the `/zones/{zone}/custom_hostnames` endpoints are
+> covered by **Zone: SSL and Certificates: Edit**, which the platform token
+> already carries. That permission only has to hold on the fallback-origin
+> zone; nothing extra is needed on the client's side, since the client's zone
+> is not in our account at all. `Zone: Zone: Edit` is **not** sufficient on its
+> own for custom hostnames.
 
 ### Zone Settings Management
 

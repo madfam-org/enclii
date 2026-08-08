@@ -49,8 +49,8 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 	}
 
 	// Validate domain
-	if !isValidDomain(req.Domain) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain format"})
+	if err := validateDomain(req.Domain, false); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -272,6 +272,15 @@ func (h *Handler) DeleteJunction(c *gin.Context) {
 				logging.String("domain", junction.Domain),
 				logging.Error("error", rmErr))
 		}
+	}
+
+	// Release the Cloudflare for SaaS custom hostname, if the domain was
+	// provisioned that way (non-blocking). Junctions store no hostname id, so
+	// this looks it up by hostname on the fallback-origin zone.
+	if delErr := h.deleteCustomHostnameByDomain(ctx, junction.Domain); delErr != nil {
+		h.logger.Warn(ctx, "Failed to delete custom hostname during junction deletion",
+			logging.String("domain", junction.Domain),
+			logging.Error("error", delErr))
 	}
 
 	// Remove DNS record (non-blocking)

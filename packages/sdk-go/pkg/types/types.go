@@ -452,6 +452,33 @@ type CustomDomain struct {
 	TLSProvider        string     `json:"tls_provider" db:"tls_provider"` // "cert-manager", "cloudflare-for-saas"
 	Status             string     `json:"status" db:"status"`             // "pending", "verifying", "active", "error"
 	DNSCNAME           string     `json:"dns_cname,omitempty" db:"dns_cname"`
+
+	// Cloudflare for SaaS state. Populated only for domains provisioned via
+	// the custom-hostname path (client-owned domains that do not delegate
+	// their nameservers to us).
+	//
+	// CustomHostnameStatus / CustomHostnameSSLStatus mirror what Cloudflare
+	// reported on the last read — they are never inferred from a successful
+	// API call. PendingDNSRecords is what the domain owner still has to
+	// create; while it is non-empty the domain is waiting on the client, not
+	// on us. ProvisioningError carries the last provisioning failure so a
+	// deploy-path failure stays visible instead of being logged and lost.
+	CustomHostnameID        string             `json:"custom_hostname_id,omitempty" db:"custom_hostname_id"`
+	CustomHostnameStatus    string             `json:"custom_hostname_status,omitempty" db:"custom_hostname_status"`
+	CustomHostnameSSLStatus string             `json:"custom_hostname_ssl_status,omitempty" db:"custom_hostname_ssl_status"`
+	PendingDNSRecords       []PendingDNSRecord `json:"pending_dns_records,omitempty" db:"pending_dns_records"`
+	ProvisioningError       string             `json:"provisioning_error,omitempty" db:"provisioning_error"`
+	ProvisioningCheckedAt   *time.Time         `json:"provisioning_checked_at,omitempty" db:"provisioning_checked_at"`
+}
+
+// PendingDNSRecord is a DNS record the domain owner must create on their own
+// nameservers before a Cloudflare for SaaS custom hostname can serve traffic.
+// We cannot create these ourselves — we do not control the zone.
+type PendingDNSRecord struct {
+	Purpose string `json:"purpose"` // "routing", "ownership", "ssl_validation"
+	Type    string `json:"type"`    // "CNAME", "TXT"
+	Name    string `json:"name"`
+	Value   string `json:"value"`
 }
 
 // Route represents an HTTP route configuration for a service

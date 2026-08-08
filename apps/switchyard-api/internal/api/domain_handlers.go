@@ -60,8 +60,8 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 	}
 
 	// Validate domain format
-	if !isValidDomain(req.Domain) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain format"})
+	if err := validateDomain(req.Domain, false); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -319,6 +319,23 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 		}
 	}
 
+	// Release the Cloudflare for SaaS custom hostname, if any. Leaving it
+	// behind would keep Cloudflare serving the client's domain and keep
+	// consuming a custom hostname slot.
+	customHostnameRemoved := false
+	if domain.CustomHostnameID != "" {
+		if err := h.deleteCustomHostname(ctx, domain.Domain, domain.CustomHostnameID); err != nil {
+			h.logger.Warn(ctx, "Failed to delete custom hostname (continuing with domain deletion)",
+				logging.String("domain", domain.Domain),
+				logging.String("custom_hostname_id", domain.CustomHostnameID),
+				logging.Error("error", err))
+		} else {
+			customHostnameRemoved = true
+			h.logger.Info(ctx, "Custom hostname removed from Cloudflare",
+				logging.String("domain", domain.Domain))
+		}
+	}
+
 	// Delete domain
 	if err := h.repos.CustomDomains.Delete(ctx, domainID); err != nil {
 		h.logger.Error(ctx, "Failed to delete custom domain", logging.Error("error", err))
@@ -329,10 +346,14 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 	// Trigger reconciliation to remove Ingress
 	go h.triggerDomainReconciliation(ctx, domain.ServiceID, domain.EnvironmentID)
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"message":              "custom domain deleted",
 		"tunnel_route_removed": tunnelRouteRemoved,
-	})
+	}
+	if domain.CustomHostnameID != "" {
+		response["custom_hostname_removed"] = customHostnameRemoved
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // VerifyCustomDomain verifies domain ownership via DNS TXT record
@@ -359,6 +380,51 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 			"verified": true,
 			"domain":   domain,
 			"message":  "domain already verified",
+		})
+		return
+	}
+
+	// Cloudflare for SaaS domains are verified by Cloudflare, not by us: the
+	// client proves ownership to Cloudflare with the records we handed them.
+	// Re-read the real state instead of looking for an Enclii TXT record the
+	// client was never asked to create.
+	if domain.CustomHostnameID != "" {
+		result := h.refreshCustomHostnameState(ctx, domain.Domain, domain.CustomHostnameID)
+		applyProvisioningResult(domain, result, time.Now())
+
+		if updateErr := h.repos.CustomDomains.UpdateCustomHostnameState(ctx, domain); updateErr != nil {
+			h.logger.Error(ctx, "Failed to persist custom hostname verification state",
+				logging.String("domain", domain.Domain),
+				logging.Error("error", updateErr))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update domain"})
+			return
+		}
+
+		if result.Err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{
+				"verified": false,
+				"domain":   domain,
+				"error":    "failed to read custom hostname state from Cloudflare",
+				"details":  result.ErrorMessage,
+			})
+			return
+		}
+
+		if !domain.Verified {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"verified":            false,
+				"domain":              domain,
+				"error":               "domain not verified",
+				"message":             describePendingClientAction(result),
+				"pending_dns_records": result.PendingDNSRecords,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"verified": true,
+			"domain":   domain,
+			"message":  "Cloudflare reports the custom hostname and its certificate as active",
 		})
 		return
 	}
@@ -474,37 +540,106 @@ func (h *Handler) triggerDomainReconciliation(ctx context.Context, serviceID, en
 	}
 }
 
-// isValidDomain checks if a domain name is valid
-func isValidDomain(domain string) bool {
-	// Basic validation
-	if len(domain) == 0 || len(domain) > 253 {
+// multiLabelPublicSuffixes are the two-label public suffixes we actually
+// serve. They exist so "app.example.com.mx" is read as one level under the
+// registrable domain "example.com.mx" rather than as a nested subdomain.
+//
+// This is deliberately a short list, not the full Public Suffix List: pulling
+// in a PSL dependency to reject a misconfiguration is not worth it, and an
+// unknown two-label suffix simply falls back to the last-two-labels rule.
+var multiLabelPublicSuffixes = map[string]struct{}{
+	"com.mx": {}, "org.mx": {}, "net.mx": {}, "edu.mx": {}, "gob.mx": {},
+	"co.uk": {}, "org.uk": {}, "me.uk": {}, "gov.uk": {}, "ac.uk": {},
+	"com.ar": {}, "com.br": {}, "com.co": {}, "com.au": {}, "net.au": {},
+	"org.au": {}, "co.jp": {}, "co.nz": {}, "co.za": {}, "com.es": {},
+}
+
+// registrableDomain returns the apex (eTLD+1) of a hostname using the small
+// suffix table above.
+func registrableDomain(domain string) string {
+	labels := strings.Split(strings.ToLower(domain), ".")
+	if len(labels) < 2 {
+		return strings.ToLower(domain)
+	}
+
+	if len(labels) >= 3 {
+		twoLabelSuffix := labels[len(labels)-2] + "." + labels[len(labels)-1]
+		if _, ok := multiLabelPublicSuffixes[twoLabelSuffix]; ok {
+			return strings.Join(labels[len(labels)-3:], ".")
+		}
+	}
+
+	return strings.Join(labels[len(labels)-2:], ".")
+}
+
+// isNestedSubdomain reports whether a hostname sits more than one label below
+// its registrable domain (e.g. "a.b.madfam.io" under "madfam.io").
+func isNestedSubdomain(domain string) bool {
+	apex := registrableDomain(domain)
+	lower := strings.ToLower(domain)
+	if lower == apex {
+		return false
+	}
+	if !strings.HasSuffix(lower, "."+apex) {
 		return false
 	}
 
-	// Must not start or end with dot
+	prefix := strings.TrimSuffix(lower, "."+apex)
+	return strings.Contains(prefix, ".")
+}
+
+// validateDomain validates a domain name for declaration, returning a specific
+// reason on failure.
+//
+// allowNested permits hostnames more than one label below the apex. Those are
+// only servable on the Cloudflare for SaaS path, which issues a certificate
+// for the exact hostname; Cloudflare Universal SSL on the zone path covers a
+// single level, so a nested host there would fail the TLS handshake at the
+// edge after appearing to provision cleanly.
+func validateDomain(domain string, allowNested bool) error {
+	if len(domain) == 0 {
+		return fmt.Errorf("domain is required")
+	}
+	if len(domain) > 253 {
+		return fmt.Errorf("domain is longer than the 253 character maximum")
+	}
+
 	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
-		return false
+		return fmt.Errorf("domain must not start or end with a dot")
 	}
 
-	// Must contain at least one dot
 	if !strings.Contains(domain, ".") {
-		return false
+		return fmt.Errorf("domain must contain at least one dot")
 	}
 
-	// Each label must be valid
-	labels := strings.Split(domain, ".")
-	for _, label := range labels {
-		if len(label) == 0 || len(label) > 63 {
-			return false
+	for _, label := range strings.Split(domain, ".") {
+		if len(label) == 0 {
+			return fmt.Errorf("domain must not contain an empty label")
 		}
-
-		// Must start and end with alphanumeric
+		if len(label) > 63 {
+			return fmt.Errorf("domain label %q is longer than the 63 character maximum", label)
+		}
 		if !isAlphanumeric(label[0]) || !isAlphanumeric(label[len(label)-1]) {
-			return false
+			return fmt.Errorf("domain label %q must start and end with a letter or digit", label)
 		}
 	}
 
-	return true
+	if !allowNested && isNestedSubdomain(domain) {
+		return fmt.Errorf(
+			"domain %q is more than one level below %q: Cloudflare Universal SSL covers a single subdomain level, "+
+				"so this host would fail TLS at the edge. Use a single-level host, or declare the domain with "+
+				"`external: true` in enclii.yaml to provision it as a Cloudflare for SaaS custom hostname",
+			domain, registrableDomain(domain))
+	}
+
+	return nil
+}
+
+// isValidDomain checks if a domain name is valid.
+// Retained for callers that only need a boolean; validateDomain carries the
+// reason.
+func isValidDomain(domain string) bool {
+	return validateDomain(domain, false) == nil
 }
 
 // isAlphanumeric checks if a byte is alphanumeric

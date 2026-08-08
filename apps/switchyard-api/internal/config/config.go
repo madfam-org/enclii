@@ -140,6 +140,19 @@ type Config struct {
 	CloudflareAccountID string
 	CloudflareZoneID    string
 	CloudflareTunnelID  string
+
+	// Cloudflare for SaaS (client-owned domains that do NOT delegate their
+	// nameservers to us). Both must be set to enable the custom-hostname
+	// provisioning path; when empty, domain provisioning keeps using the
+	// zone+CNAME path exactly as before.
+	//
+	// CloudflareFallbackOriginZoneID is the zone id of a zone we own that is
+	// configured with a Cloudflare for SaaS fallback origin.
+	// CloudflareFallbackOriginHostname is the hostname clients CNAME to
+	// (e.g. "proxy.enclii.dev"); it must resolve inside that zone.
+	CloudflareFallbackOriginZoneID   string
+	CloudflareFallbackOriginHostname string
+
 	PorkbunAPIKey       string
 	PorkbunSecretAPIKey string
 	PorkbunAPIBaseURL   string
@@ -301,6 +314,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("cloudflare-account-id", "")
 	viper.SetDefault("cloudflare-zone-id", "")
 	viper.SetDefault("cloudflare-tunnel-id", "")
+	// ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID / _HOSTNAME — Cloudflare for
+	// SaaS. Empty disables the custom-hostname path cleanly.
+	viper.SetDefault("cloudflare-fallback-origin-zone-id", "")
+	viper.SetDefault("cloudflare-fallback-origin-hostname", "")
 	viper.SetDefault("porkbun-api-key", "")
 	viper.SetDefault("porkbun-secret-api-key", "")
 	viper.SetDefault("porkbun-api-base-url", "https://api.porkbun.com/api/json/v3")
@@ -416,6 +433,8 @@ func Load() (*Config, error) {
 		CloudflareAccountID:               viper.GetString("cloudflare-account-id"),
 		CloudflareZoneID:                  viper.GetString("cloudflare-zone-id"),
 		CloudflareTunnelID:                viper.GetString("cloudflare-tunnel-id"),
+		CloudflareFallbackOriginZoneID:    viper.GetString("cloudflare-fallback-origin-zone-id"),
+		CloudflareFallbackOriginHostname:  viper.GetString("cloudflare-fallback-origin-hostname"),
 		PorkbunAPIKey:                     viper.GetString("porkbun-api-key"),
 		PorkbunSecretAPIKey:               viper.GetString("porkbun-secret-api-key"),
 		PorkbunAPIBaseURL:                 viper.GetString("porkbun-api-base-url"),

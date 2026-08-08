@@ -197,6 +197,22 @@ spec:
               name: enclii-cloudflare-credentials
               key: tunnel-id
               optional: true
+        # Cloudflare for SaaS (client-owned domains that keep their own
+        # nameservers). Both keys must be present to enable the
+        # custom-hostname provisioning path; while either is absent, domain
+        # provisioning uses the zone+CNAME path exactly as before.
+        - name: ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID
+          valueFrom:
+            secretKeyRef:
+              name: enclii-cloudflare-credentials
+              key: fallback-origin-zone-id
+              optional: true
+        - name: ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME
+          valueFrom:
+            secretKeyRef:
+              name: enclii-cloudflare-credentials
+              key: fallback-origin-hostname
+              optional: true
         # Porkbun Integration (registrar fallback for zones not yet in Cloudflare)
         - name: ENCLII_PORKBUN_API_KEY
           valueFrom:

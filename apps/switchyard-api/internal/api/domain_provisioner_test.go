@@ -70,9 +70,8 @@ func TestIsValidDomain(t *testing.T) {
 		want   bool
 	}{
 		{"api.example.com", true},
-		{"sub.domain.co.uk", true},
+		{"sub.domain.co.uk", true}, // one level under the co.uk registrable domain
 		{"example.com", true},
-		{"a.b.c.d.example.com", true},
 		{"x123.example.com", true},
 		{"", false},
 		{"no-tld", false},
@@ -81,6 +80,10 @@ func TestIsValidDomain(t *testing.T) {
 		{"..", false},
 		{"-starts-with-hyphen.com", false},
 		{"a", false}, // no dot
+		// Nested subdomains are rejected at declaration time: Cloudflare
+		// Universal SSL covers one level, so these fail TLS at the edge.
+		// See TestValidateDomainNestedSubdomains.
+		{"a.b.c.d.example.com", false},
 	}
 
 	for _, tt := range tests {
@@ -135,14 +138,17 @@ func TestEnsureTunnelRoute_NilService(t *testing.T) {
 	}, "production", 80)
 }
 
-func TestEnsureDNSRecord_NilDomainSyncService(t *testing.T) {
+func TestEnsureDomainRouting_NilDomainSyncService(t *testing.T) {
 	h := &Handler{
 		domainSyncService: nil,
 		logger:            newNopLogger(),
 	}
 
 	// nil domainSyncService should return immediately without panic
-	h.ensureDNSRecord(context.Background(), "example.com")
+	result := h.ensureDomainRouting(context.Background(), "example.com", nil)
+	if result.Mechanism != mechanismZoneCNAME {
+		t.Fatalf("mechanism = %q, want %q", result.Mechanism, mechanismZoneCNAME)
+	}
 }
 
 func TestCleanupDomainsForService_NilGuards(t *testing.T) {
@@ -159,8 +165,8 @@ func TestCleanupDomainsForService_NilGuards(t *testing.T) {
 		Name: "svc",
 	}, "production", 80)
 
-	// ensureDNSRecord with nil domainSyncService returns immediately
-	h.ensureDNSRecord(context.Background(), "test.com")
+	// ensureDomainRouting with nil domainSyncService returns immediately
+	h.ensureDomainRouting(context.Background(), "test.com", nil)
 }
 
 func TestProvisionSingleDomain_InvalidDomain(t *testing.T) {

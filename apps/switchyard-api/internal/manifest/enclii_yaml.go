@@ -89,6 +89,18 @@ type EncliiYAMLDomain struct {
 	Environment string `yaml:"environment"`    // e.g., "production" (defaults to "production")
 	TLSEnabled  *bool  `yaml:"tlsEnabled"`     // defaults to true
 	Port        int    `yaml:"port,omitempty"` // per-domain port override (defaults to runtime port or 80)
+
+	// External opts the domain into the Cloudflare for SaaS custom-hostname
+	// path: the domain owner keeps their registrar and nameservers and only
+	// adds a CNAME plus a verification TXT record.
+	//
+	//   external: true   → always custom hostname (client-owned domain)
+	//   external: false  → always zone + CNAME (we control the nameservers)
+	//   absent           → auto-detect: zone+CNAME when the apex already has a
+	//                      zone in our Cloudflare account, custom hostname
+	//                      otherwise (and zone+CNAME as before when the
+	//                      fallback origin is not configured)
+	External *bool `yaml:"external,omitempty"`
 }
 
 // GetPort returns the effective service port for this domain.
@@ -114,6 +126,16 @@ func (d *EncliiYAMLDomain) IsTLSEnabled() bool {
 		return true
 	}
 	return *d.TLSEnabled
+}
+
+// ExternalOverride returns the explicit `external` setting and whether the
+// field was declared at all. Absent (nil) means "auto-detect", which is the
+// pre-existing behaviour for every manifest written before this field existed.
+func (d *EncliiYAMLDomain) ExternalOverride() (value bool, declared bool) {
+	if d == nil || d.External == nil {
+		return false, false
+	}
+	return *d.External, true
 }
 
 var supportedEncliiAPIVersions = map[string]struct{}{

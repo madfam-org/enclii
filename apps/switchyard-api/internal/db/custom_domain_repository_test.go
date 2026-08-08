@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"testing"
 	"time"
@@ -29,7 +30,13 @@ var customDomainColumns = []string{
 	"tls_enabled", "tls_issuer", "created_at", "updated_at", "verified_at",
 	"cloudflare_tunnel_id", "is_platform_domain", "zero_trust_enabled",
 	"access_policy_id", "tls_provider", "status", "dns_cname",
+	"custom_hostname_id", "custom_hostname_status", "custom_hostname_ssl_status",
+	"pending_dns_records", "provisioning_error", "provisioning_checked_at",
 }
+
+// emptyCloudflareForSaaSColumns are the Cloudflare for SaaS columns for a
+// domain provisioned via the zone+CNAME path (all NULL).
+var emptyCloudflareForSaaSColumns = []driver.Value{nil, nil, nil, nil, nil, nil}
 
 // --- Create ---
 
@@ -119,6 +126,9 @@ func TestCustomDomainRepository_GetByID(t *testing.T) {
 					"letsencrypt-prod", now, now, &now, tunnelID.String(), true, true,
 					"policy_123", "cloudflare-for-saas", "active",
 					"api.example.com.cdn.cloudflare.net",
+					"ch-123", "active", "active",
+					[]byte(`[{"purpose":"routing","type":"CNAME","name":"api.example.com","value":"proxy.enclii.dev"}]`),
+					nil, now,
 				))
 
 		result, err := repo.GetByID(context.Background(), id.String())
@@ -134,6 +144,15 @@ func TestCustomDomainRepository_GetByID(t *testing.T) {
 		assert.Equal(t, "cloudflare-for-saas", result.TLSProvider)
 		assert.Equal(t, "active", result.Status)
 		assert.Equal(t, "api.example.com.cdn.cloudflare.net", result.DNSCNAME)
+		assert.Equal(t, "ch-123", result.CustomHostnameID)
+		assert.Equal(t, "active", result.CustomHostnameStatus)
+		assert.Equal(t, "active", result.CustomHostnameSSLStatus)
+		require.Len(t, result.PendingDNSRecords, 1)
+		assert.Equal(t, "routing", result.PendingDNSRecords[0].Purpose)
+		assert.Equal(t, "CNAME", result.PendingDNSRecords[0].Type)
+		assert.Equal(t, "proxy.enclii.dev", result.PendingDNSRecords[0].Value)
+		assert.Empty(t, result.ProvisioningError)
+		require.NotNil(t, result.ProvisioningCheckedAt)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -181,8 +200,8 @@ func TestCustomDomainRepository_GetByServiceID(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 
 		rows := sqlmock.NewRows(customDomainColumns).
-			AddRow(uuid.New(), svcID, uuid.New(), "api.example.com", true, true, "letsencrypt-prod", now, now, &now, nil, false, false, nil, "cert-manager", "active", nil).
-			AddRow(uuid.New(), svcID, uuid.New(), "www.example.com", false, false, "", now, now, nil, nil, false, false, nil, "cert-manager", "pending", nil)
+			AddRow(append([]driver.Value{uuid.New(), svcID, uuid.New(), "api.example.com", true, true, "letsencrypt-prod", now, now, &now, nil, false, false, nil, "cert-manager", "active", nil}, emptyCloudflareForSaaSColumns...)...).
+			AddRow(append([]driver.Value{uuid.New(), svcID, uuid.New(), "www.example.com", false, false, "", now, now, nil, nil, false, false, nil, "cert-manager", "pending", nil}, emptyCloudflareForSaaSColumns...)...)
 
 		mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer`).
 			WithArgs(svcID.String()).
@@ -423,9 +442,11 @@ func TestCustomDomainRepository_ListAllByTeam(t *testing.T) {
 		mock.ExpectQuery(`(?s)FROM custom_domains cd\s+JOIN services s ON cd\.service_id = s\.id\s+JOIN projects p ON p\.id = s\.project_id\s+LEFT JOIN environments e ON cd\.environment_id = e\.id\s+WHERE p\.team_id = \$1`).
 			WithArgs(teamID, 50, 0).
 			WillReturnRows(sqlmock.NewRows(listAllByTeamColumns).AddRow(
-				domID, svcID, envID, "api.tenant.com", true, true, "letsencrypt-prod",
-				now, now, nil, nil, false, true, "access_123", "cert-manager",
-				"active", "api.tenant.com.cdn.cloudflare.net", "api", "production",
+				append([]driver.Value{
+					domID, svcID, envID, "api.tenant.com", true, true, "letsencrypt-prod",
+					now, now, nil, nil, false, true, "access_123", "cert-manager",
+					"active", "api.tenant.com.cdn.cloudflare.net",
+				}, append(append([]driver.Value{}, emptyCloudflareForSaaSColumns...), "api", "production")...)...,
 			))
 
 		out, total, err := repo.ListAllByTeam(context.Background(), teamID, map[string]interface{}{}, 50, 0)

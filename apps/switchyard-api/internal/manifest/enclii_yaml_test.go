@@ -441,6 +441,93 @@ func TestIsTLSEnabled(t *testing.T) {
 	}
 }
 
+func TestExternalOverride(t *testing.T) {
+	tests := []struct {
+		name         string
+		external     *bool
+		wantValue    bool
+		wantDeclared bool
+	}{
+		{
+			// Backward compatibility: every manifest written before the
+			// field existed must keep auto-detection.
+			name:         "absent means auto-detect",
+			external:     nil,
+			wantValue:    false,
+			wantDeclared: false,
+		},
+		{
+			name:         "explicit true opts into the custom hostname path",
+			external:     boolPtr(true),
+			wantValue:    true,
+			wantDeclared: true,
+		},
+		{
+			name:         "explicit false pins the zone path",
+			external:     boolPtr(false),
+			wantValue:    false,
+			wantDeclared: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &EncliiYAMLDomain{Name: "example.com", External: tt.external}
+			value, declared := d.ExternalOverride()
+			if value != tt.wantValue || declared != tt.wantDeclared {
+				t.Errorf("ExternalOverride() = (%v, %v), want (%v, %v)", value, declared, tt.wantValue, tt.wantDeclared)
+			}
+		})
+	}
+
+	t.Run("nil receiver", func(t *testing.T) {
+		var d *EncliiYAMLDomain
+		if value, declared := d.ExternalOverride(); value || declared {
+			t.Errorf("ExternalOverride() = (%v, %v), want (false, false)", value, declared)
+		}
+	})
+}
+
+func TestParseEncliiYAMLExternalDomains(t *testing.T) {
+	content := []byte(`
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: my-api
+  project: acme
+spec:
+  domains:
+    - name: api.example.com
+      environment: production
+    - name: cto.creatumundo.mx
+      environment: production
+      external: true
+    - name: legacy.example.com
+      environment: production
+      external: false
+`)
+
+	cfg, err := ParseEncliiYAML(content)
+	if err != nil {
+		t.Fatalf("ParseEncliiYAML() error = %v", err)
+	}
+	if len(cfg.Spec.Domains) != 3 {
+		t.Fatalf("len(Domains) = %d, want 3", len(cfg.Spec.Domains))
+	}
+
+	// Absent field stays nil so the provisioner auto-detects, exactly as
+	// before this field existed.
+	if cfg.Spec.Domains[0].External != nil {
+		t.Errorf("Domains[0].External = %v, want nil", *cfg.Spec.Domains[0].External)
+	}
+	if value, declared := cfg.Spec.Domains[1].ExternalOverride(); !value || !declared {
+		t.Errorf("Domains[1].ExternalOverride() = (%v, %v), want (true, true)", value, declared)
+	}
+	if value, declared := cfg.Spec.Domains[2].ExternalOverride(); value || !declared {
+		t.Errorf("Domains[2].ExternalOverride() = (%v, %v), want (false, true)", value, declared)
+	}
+}
+
 func TestFetchGitHubRawFile(t *testing.T) {
 	tests := []struct {
 		name         string

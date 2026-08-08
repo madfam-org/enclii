@@ -1,6 +1,9 @@
 package cloudflare
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Config holds Cloudflare API client configuration
 type Config struct {
@@ -23,6 +26,13 @@ type APIResponse[T any] struct {
 type APIError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+// Error implements error so callers can errors.As() a failed request back to
+// the Cloudflare error code instead of matching on message text. The rendered
+// string is unchanged from the previous fmt.Errorf formatting.
+func (e *APIError) Error() string {
+	return fmt.Sprintf("cloudflare: API error %d: %s", e.Code, e.Message)
 }
 
 // APIMessage represents a Cloudflare API message

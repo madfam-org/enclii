@@ -138,9 +138,12 @@ func (c *Client) handleResponse(resp *http.Response, result interface{}) error {
 	if resp.StatusCode >= 400 {
 		var apiResp APIResponse[interface{}]
 		if err := json.Unmarshal(body, &apiResp); err == nil && len(apiResp.Errors) > 0 {
-			return fmt.Errorf("cloudflare: API error %d: %s",
-				apiResp.Errors[0].Code,
-				apiResp.Errors[0].Message)
+			// Typed so callers can errors.As() the Cloudflare error code.
+			// Renders identically to the previous fmt.Errorf.
+			return &APIError{
+				Code:    apiResp.Errors[0].Code,
+				Message: apiResp.Errors[0].Message,
+			}
 		}
 		return fmt.Errorf("cloudflare: HTTP error %d: %s", resp.StatusCode, string(body))
 	}
