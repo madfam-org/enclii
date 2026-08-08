@@ -34,6 +34,7 @@ pass() { echo -e "${GREEN}✓ $*${NC}"; }
 info() { echo -e "${YELLOW}→ $*${NC}"; }
 
 cleanup() {
+    rm -f "${KUBECONFIG_STUB:-}"
     if [[ -n "${API_PID:-}" ]] && kill -0 "$API_PID" 2>/dev/null; then
         kill "$API_PID" 2>/dev/null || true
         wait "$API_PID" 2>/dev/null || true
@@ -64,6 +65,43 @@ export ENCLII_AUTH_MODE="local"
 export ENCLII_LOG_LEVEL="info"
 export ENCLII_OTEL_DISABLED="1"
 export ENCLII_REDIS_URL="${SMOKE_REDIS_URL:-redis://localhost:6379/0}"
+
+# ENCLII_KUBE_CONFIG is NOT optional here, for two separate reasons.
+#
+# 1. Without it the binary fatals at boot on a runner:
+#      level=fatal msg="Failed to initialize Kubernetes client: failed to load
+#      kubeconfig: stat /home/runner/.kube/config: no such file or directory"
+#    which is what turned this job red the first time it ran in CI.
+#
+# 2. Far worse on a workstation: with it unset the binary falls back to
+#    ~/.kube/config, and on an operator's machine that is the LIVE PRODUCTION
+#    cluster. A verification run did exactly that and logged real ArgoCD drift
+#    for a dozen production apps before it was killed. It was read-only that
+#    time. Nothing guarantees the next one is.
+#
+# So the script writes its own unreachable kubeconfig and points the binary at
+# it. The API server address is deliberately a reserved TEST-NET-1 address that
+# routes nowhere; a typo here should fail to connect, never connect to something.
+KUBECONFIG_STUB="$(mktemp -t smoke-kubeconfig.XXXXXX)"
+cat > "$KUBECONFIG_STUB" <<'KUBECFG'
+apiVersion: v1
+kind: Config
+clusters:
+  - name: smoke-nowhere
+    cluster:
+      server: https://192.0.2.1:6443
+contexts:
+  - name: smoke-nowhere
+    context:
+      cluster: smoke-nowhere
+      user: smoke-nowhere
+current-context: smoke-nowhere
+users:
+  - name: smoke-nowhere
+    user:
+      token: smoke-token-not-a-real-credential
+KUBECFG
+export ENCLII_KUBE_CONFIG="$KUBECONFIG_STUB"
 
 "$BINARY" > "$LOG" 2>&1 &
 API_PID=$!
