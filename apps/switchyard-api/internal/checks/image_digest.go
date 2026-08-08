@@ -17,114 +17,144 @@
 // The two halves are intentional: we could rely on Kyverno alone, but
 // by the time Kyverno speaks up, the status page already has a broken
 // target on its timeline. Catching it at onboarding is cheaper.
+//
+// The digest rule is applied to the EFFECTIVE image — the value after the
+// kustomization `images:` transformer has run (see kustomize_images.go),
+// because that is what Kyverno will see at admission. The rule itself is
+// unchanged: unresolved, :latest, mutable tag, no tag, or a placeholder
+// digest all still fail.
 package checks
 
 import (
 	"fmt"
-	"io"
 	"strings"
-
-	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 // ImageDigestIssue describes a single workload that would deploy with a
 // non-digest-pinned image.
 type ImageDigestIssue struct {
-	File     string `json:"file"`
-	Kind     string `json:"kind"`
-	Name     string `json:"name"`
-	Image    string `json:"image"`
-	Message  string `json:"message"`
-	Severity string `json:"severity"` // "blocker" always — keeps shape symmetric with preflight
+	File      string `json:"file"`
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Container string `json:"container,omitempty"`
+	// Image is the EFFECTIVE reference — post-kustomization — which is the
+	// value that was judged.
+	Image string `json:"image"`
+	// ManifestImage is the reference as written in the workload YAML. When it
+	// differs from Image, a kustomization override produced the judged value.
+	ManifestImage string `json:"manifest_image,omitempty"`
+	// Source is "manifest" or "kustomization": where the judged value came
+	// from, so an operator is not left diffing two files by hand.
+	Source string `json:"source,omitempty"`
+	// KustomizeEntry is the images[] entry name that matched, when any did.
+	KustomizeEntry string `json:"kustomize_entry,omitempty"`
+	// KustomizationFile is the kustomization present in the manifest set,
+	// whether or not it matched this image.
+	KustomizationFile string `json:"kustomization_file,omitempty"`
+	Message           string `json:"message"`
+	Severity          string `json:"severity"` // "blocker" always — keeps shape symmetric with preflight
 }
 
-// workloadKinds enumerates the K8s workload kinds whose containers we inspect.
-// Matches the set used by selva-office/packages/tools's deploy_preflight.py
-// so the onboarding gate and the pre-submit gate agree on what's a workload.
-var workloadKinds = map[string]bool{
-	"Deployment":  true,
-	"StatefulSet": true,
-	"DaemonSet":   true,
-	"Job":         true,
-	"CronJob":     true,
-	"ReplicaSet":  true,
-}
-
-// CheckImageDigestPinned scans a batch of rendered manifest YAML documents
-// (one file's worth of content per entry, each potentially multi-doc) and
-// returns any workloads whose container images are NOT digest-pinned.
+// CheckImageDigestPinned scans a batch of manifest YAML documents (one file's
+// worth of content per entry, each potentially multi-doc) and returns any
+// workloads whose container images are NOT digest-pinned once the directory's
+// kustomization `images:` transformer has been applied.
 //
-// "Digest-pinned" means the image reference contains "@sha256:". Everything
-// else — :latest, :v1.2.3, :main, no tag at all — is a blocker. Kyverno's
-// require-image-digest policy uses the same rule in prod; we mirror it
-// here so the onboarding gate matches admission.
+// "Digest-pinned" means the effective image reference contains "@sha256:"
+// followed by a digest that could identify a real image. Everything else —
+// :latest, :v1.2.3, :main, no tag at all, the all-zero placeholder digest —
+// is a blocker. Kyverno's require-image-digest policy uses the same rule in
+// prod against the rendered output; we mirror it here so the onboarding gate
+// matches admission.
 //
 // Returns an empty slice when all containers are pinned. Callers treat a
-// non-empty result as "reject onboarding with 400".
+// non-empty result as "reject onboarding with 400". An unreadable manifest or
+// kustomization is returned as an error, which callers treat as its own
+// blocker class — never as a pass.
 func CheckImageDigestPinned(manifests []ManifestFile) ([]ImageDigestIssue, error) {
-	var issues []ImageDigestIssue
-	for _, mf := range manifests {
-		decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(mf.Content), 4096)
-		for {
-			var obj map[string]interface{}
-			if err := decoder.Decode(&obj); err != nil {
-				if err == io.EOF {
-					break
-				}
-				// Surface the parse error against the originating file so
-				// the operator can find it, but don't abort the whole batch
-				// — other files may still be clean and the caller can
-				// treat a parse error as its own blocker class.
-				return issues, fmt.Errorf("parse %s: %w", mf.Path, err)
-			}
-			if obj == nil {
-				continue
-			}
-			kind, _ := obj["kind"].(string)
-			if !workloadKinds[kind] {
-				continue
-			}
-			name := "unknown"
-			if md, ok := obj["metadata"].(map[string]interface{}); ok {
-				if n, ok := md["name"].(string); ok {
-					name = n
-				}
-			}
-			for _, container := range iterContainers(kind, obj) {
-				image, _ := container["image"].(string)
-				if image == "" {
-					continue
-				}
-				if !imageIsDigestPinned(image) {
-					issues = append(issues, ImageDigestIssue{
-						File:     mf.Path,
-						Kind:     kind,
-						Name:     name,
-						Image:    image,
-						Message:  digestIssueMessage(image),
-						Severity: "blocker",
-					})
-				}
-			}
-		}
+	images, _, err := CollectWorkloadImages(manifests)
+	if err != nil {
+		return nil, err
 	}
-	return issues, nil
+	return CheckImageDigestPinnedImages(images), nil
 }
 
-// ManifestFile is a single rendered-manifest document to inspect.
-// The caller is responsible for resolving kustomize — this package does
-// NOT run kustomize, because the onboarding handler already reads the
-// target repo via the GitHub Contents API and we don't want to shell out
-// from inside the API pod.
+// CheckImageDigestPinnedImages applies the digest rule to images already
+// resolved by CollectWorkloadImages. Callers that also run the GHCR existence
+// gate use this form so both gates judge one shared, already-resolved list.
+func CheckImageDigestPinnedImages(images []WorkloadImage) []ImageDigestIssue {
+	var issues []ImageDigestIssue
+	for _, img := range images {
+		message := digestRuleViolation(img.Image)
+		if message == "" {
+			continue
+		}
+		issues = append(issues, ImageDigestIssue{
+			File:              img.File,
+			Kind:              img.Kind,
+			Name:              img.Name,
+			Container:         img.Container,
+			Image:             img.Image,
+			ManifestImage:     img.ManifestImage,
+			Source:            img.Source,
+			KustomizeEntry:    img.KustomizeEntry,
+			KustomizationFile: img.KustomizationFile,
+			Message:           message + imageOriginSuffix(img),
+			Severity:          "blocker",
+		})
+	}
+	return issues
+}
+
+// ManifestFile is a single manifest document to inspect, as fetched from the
+// repo. The caller fetches; this package resolves the kustomization `images:`
+// transformer itself (kustomize_images.go) rather than shelling out to
+// `kustomize`, which the API pod has no checkout for.
 type ManifestFile struct {
 	Path    string
 	Content string
+}
+
+// digestRuleViolation returns why an effective image reference fails the
+// digest rule, or "" when it passes.
+func digestRuleViolation(image string) string {
+	if !imageIsDigestPinned(image) {
+		return digestIssueMessage(image)
+	}
+	return placeholderDigestMessage(image)
 }
 
 // imageIsDigestPinned reports whether an image reference is pinned by sha256
 // digest (e.g. "ghcr.io/foo/bar@sha256:abc...").
 func imageIsDigestPinned(image string) bool {
 	return strings.Contains(image, "@sha256:")
+}
+
+// placeholderDigestMessage rejects digests that are syntactically pinned but
+// cannot identify a real image. The all-zero digest is the house convention
+// for "CI has not pinned this yet" — onboarding a project whose image was
+// never built is exactly the failure this gate exists to catch, so it must
+// not pass merely because it parses.
+func placeholderDigestMessage(image string) string {
+	const marker = "@sha256:"
+	idx := strings.Index(image, marker)
+	if idx < 0 {
+		return ""
+	}
+	hex := image[idx+len(marker):]
+	if hex == "" {
+		return fmt.Sprintf(
+			"image %q has an empty @sha256: digest — it identifies no image; let CI commit a real digest",
+			image,
+		)
+	}
+	if strings.Trim(hex, "0") != "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		"image %q is pinned to the all-zero placeholder digest — CI has not pushed a real image yet; run the build workflow and let it commit the digest",
+		image,
+	)
 }
 
 // digestIssueMessage renders a human-readable explanation.
@@ -146,40 +176,21 @@ func digestIssueMessage(image string) string {
 	)
 }
 
-// iterContainers returns the pod-spec containers for a workload manifest.
-// Handles the CronJob-wraps-jobTemplate nesting quirk.
-func iterContainers(kind string, obj map[string]interface{}) []map[string]interface{} {
-	spec, _ := obj["spec"].(map[string]interface{})
-	if spec == nil {
-		return nil
+// imageOriginSuffix explains where the judged value came from, so a failing
+// gate does not leave the operator comparing a Deployment against a
+// kustomization by hand.
+func imageOriginSuffix(img WorkloadImage) string {
+	if img.Source == ImageSourceKustomization {
+		return fmt.Sprintf(
+			" (resolved from manifest image %q via %s images[] entry %q)",
+			img.ManifestImage, img.KustomizationFile, img.KustomizeEntry,
+		)
 	}
-	var template map[string]interface{}
-	if kind == "CronJob" {
-		jt, _ := spec["jobTemplate"].(map[string]interface{})
-		if jt == nil {
-			return nil
-		}
-		jtSpec, _ := jt["spec"].(map[string]interface{})
-		if jtSpec == nil {
-			return nil
-		}
-		template, _ = jtSpec["template"].(map[string]interface{})
-	} else {
-		template, _ = spec["template"].(map[string]interface{})
+	if img.KustomizationFile != "" {
+		return fmt.Sprintf(
+			" (%s did not rewrite it: no images[] entry matched %q — entry names must match the image name exactly as written in the manifest)",
+			img.KustomizationFile, img.ManifestImage,
+		)
 	}
-	if template == nil {
-		return nil
-	}
-	podSpec, _ := template["spec"].(map[string]interface{})
-	if podSpec == nil {
-		return nil
-	}
-	raw, _ := podSpec["containers"].([]interface{})
-	out := make([]map[string]interface{}, 0, len(raw))
-	for _, c := range raw {
-		if cm, ok := c.(map[string]interface{}); ok {
-			out = append(out, cm)
-		}
-	}
-	return out
+	return ""
 }
