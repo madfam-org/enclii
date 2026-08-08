@@ -194,21 +194,32 @@ This fetches YAML manifests from the repo, runs server-side dry-run against the 
 
 Every call to `POST /v1/admin/onboard` runs two additional gates BEFORE ArgoCD Application creation. Either one returning a blocker aborts onboarding with HTTP 400 — there is no bypass flag. Both gates are also available side-effect-free via `GET /v1/admin/preflight?repo=owner/name`.
 
+**The kustomize `images:` transformer is honoured before either gate runs.** Both gates judge the *effective* image — the value `kustomize build` would render — not the raw string in the Deployment. That is required by the house convention documented in Step 4A below: deployment YAML carries a bare image name and CI writes the digest into `kustomization.yaml` with `kustomize edit set image`, so the digest stays a reviewable one-line diff. See "Kustomize image resolution" below for exactly what is resolved.
+
 **1. Image digest pinning** (`gate: image-digest-pinned`)
 
-Rejects onboarding if any workload manifest in `manifest_path` references a container image that is not pinned by `@sha256:` digest. Blocks `:latest`, mutable tags like `:v1.2.3` / `:main`, and images with no tag at all. This mirrors the cluster-side Kyverno `require-image-digest` policy, but catches the problem at onboarding instead of at first admission. Response shape:
+Rejects onboarding if any workload manifest in `manifest_path` would deploy a container image that is not pinned by `@sha256:` digest. Blocks `:latest`, mutable tags like `:v1.2.3` / `:main`, images with no tag at all, and the all-zero placeholder digest (`@sha256:0000…`, the house convention for "CI has not pinned this yet"). This mirrors the cluster-side Kyverno `require-image-digest` policy, but catches the problem at onboarding instead of at first admission. Response shape:
 
 ```json
 {
   "error": "image must be digest-pinned (@sha256:...)",
   "gate": "image-digest-pinned",
-  "result": { "digest_issues": [{"file": "deployment.yaml", "kind": "Deployment",
-    "name": "foo", "image": "ghcr.io/madfam-org/foo:latest",
-    "message": "image ... is not digest-pinned ...", "severity": "blocker"}] }
+  "result": { "digest_issues": [{"file": "web-deployment.yaml", "kind": "Deployment",
+    "name": "web", "container": "web", "image": "ghcr.io/madfam-org/foo/web:v1.2.3",
+    "manifest_image": "web", "source": "kustomization",
+    "kustomize_entry": "web", "kustomization_file": "kustomization.yaml",
+    "message": "image ... uses a mutable tag ... (resolved from manifest image \"web\" via kustomization.yaml images[] entry \"web\")",
+    "severity": "blocker"}],
+    "resolution": {"ran": true, "manifests_scanned": 4, "kustomization_found": true,
+      "kustomization_file": "kustomization.yaml", "kustomize_entries": 2,
+      "workload_images": 3, "resolved_by_kustomize": 3,
+      "summary": "scanned 4 manifest file(s); kustomization.yaml with 2 images[] entries; 3 workload image(s), 3 resolved through a kustomization override"} }
 }
 ```
 
-Fix: change the manifest to reference `@sha256:<digest>`. If this is a greenfield repo, run your CI build once to produce a first digest, then commit it. The `kustomize edit set image name=image@sha256:…` pattern works here.
+`image` is always the value that was judged; `manifest_image` + `source` + `kustomize_entry` tell you where it came from, so you never have to diff the Deployment against the kustomization by hand.
+
+Fix: pin the digest. The supported way is the CI pin step in Step 4A — `kustomize edit set image name=image@sha256:…` writing into `kustomization.yaml`. Hardcoding a digest into the Deployment also passes, but do not do it: the CI pin step then has nothing to update and the deployed digest silently stops tracking `main`. If this is a greenfield repo, run your CI build once so it commits the first real digest.
 
 **2. GHCR image existence** (`gate: image-exists`)
 
@@ -224,6 +235,25 @@ Rejects onboarding if any `ghcr.io/<org>/<package>` image referenced by the mani
 ```
 
 Fix: trigger CI on the repo's `main` branch to build and push the image to GHCR, confirm the package appears in https://github.com/orgs/madfam-org/packages, then re-run onboarding.
+
+**3. Kustomize images transformer** (`gate: kustomize-images`)
+
+Not a policy gate — a fail-closed guard. If the directory's kustomization cannot be interpreted, the gates cannot know what would deploy, so onboarding is rejected rather than passed. Triggers: unparseable YAML; an `images[]` entry with no `name`; an entry setting both `digest` and `newTag` (kustomize treats them as mutually exclusive); a `digest` carrying its own `@`; a `newName` that embeds a tag or digest; two entries with the same `name`; two kustomization files in one directory. The message names the file and the offending `images[<i>]` index.
+
+#### Kustomize image resolution
+
+The API has no checkout and does not shell out to `kustomize`. It implements the `images:` transformer — and only that transformer — directly:
+
+| Field | Effect |
+| --- | --- |
+| `name` | Matches a workload image whose reference is `name`, `name:<tag>` or `name@<digest>`. Prefix match, so `web` does **not** match `web-api` or `ghcr.io/org/web`. |
+| `newName` | Replaces the name; any existing tag or digest is preserved. |
+| `newTag` | Replaces the tag. Still fails gate 1 — a tag is not a digest. |
+| `digest` | Replaces the tag with `@<digest>`. This is what the CI pin step writes. |
+
+Recognised file names: `kustomization.yaml`, `kustomization.yml`, `Kustomization`. Out of scope: everything else in a kustomization (`resources`, `patches`, generators, name prefixes) and **parent overlays** — the gate only sees the single directory named by `manifest_path`, so a digest supplied by a `resources: [../base]` parent is not resolved and its image is reported as unpinned. Point `manifest_path` at the overlay that carries the `images:` block (the one your CI pin step edits).
+
+**Read-proof**: every gate run reports a `resolution` block — on pass as well as failure — and logs the same counts server-side (`Image gates resolved manifest images`). `kustomization_found: false` means no kustomization was present; `kustomization_found: true` with `kustomize_entries: 0` means one was present but declared no image overrides. Those two states used to be indistinguishable from a clean pass. A preflight that reports `manifests_scanned: 0` checked nothing — treat it as a failure of the check, not a pass of the repo.
 
 **Transient failures**: If the gate cannot reach GitHub or GHCR, onboarding returns HTTP 503 with `"detail"` populated — we do not silently pass because "we couldn't check". Retry when upstream is healthy.
 
@@ -333,6 +363,7 @@ resources:
 images:
   - name: my-service          # Short name used in deployment
     newName: ghcr.io/madfam-org/my-project/my-service
+    digest: sha256:…          # written by the CI pin step (Step 4A)
 ```
 
 **Deployment manifests** should use short image names (not full GHCR paths):
@@ -341,6 +372,8 @@ containers:
   - name: my-service
     image: my-service    # Kustomize transforms this
 ```
+
+The onboarding digest gate resolves this transformer, so the bare `image: my-service` above is fine — it judges `ghcr.io/madfam-org/my-project/my-service@sha256:…`. Until CI has run once there is no `digest:` line and the gate correctly rejects onboarding: an untagged, unpinned image is a service that cannot start. Run the build first.
 
 ## Step 6: Verify
 

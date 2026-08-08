@@ -140,7 +140,7 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	//   (a) the manifests reference a `:latest` / mutable / unpinned image, or
 	//   (b) the image has never been pushed to GHCR yet.
 	// See onboarding_image_gates.go for rationale and scope.
-	if gateResult, gateErr := h.runImageGates(ctx, parts[0], parts[1], manifestPath, branch); gateErr != nil {
+	if gateResult, _, gateErr := h.runImageGates(ctx, parts[0], parts[1], manifestPath, branch); gateErr != nil {
 		h.logger.Warn(ctx, "Image gate transient failure (treating as soft block)",
 			logging.String("repo", req.RepoFullName),
 			logging.Error("error", gateErr))

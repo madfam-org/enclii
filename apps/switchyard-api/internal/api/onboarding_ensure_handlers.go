@@ -119,7 +119,9 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 		}
 	}
 
-	if gateResult, gateErr := h.runImageGates(ctx, parts[0], parts[1], manifestPath, branch); gateErr != nil {
+	// The resolution record is dropped here on purpose: runImageGates logs it,
+	// and a failing gate carries it in gateResult.Resolution.
+	if gateResult, _, gateErr := h.runImageGates(ctx, parts[0], parts[1], manifestPath, branch); gateErr != nil {
 		h.logger.Warn(ctx, "Image gate transient failure during onboarding ensure",
 			logging.String("repo", req.RepoFullName),
 			logging.Error("error", gateErr))
