@@ -103,7 +103,7 @@ func TestJunctionRepository_ProjectIDsByDomain(t *testing.T) {
 }
 
 func TestCustomDomainRepository_DomainLookupsAreCaseInsensitive(t *testing.T) {
-	t.Run("GetByDomain", func(t *testing.T) {
+	t.Run("ListByDomain", func(t *testing.T) {
 		repo, mock, cleanup := newCustomDomainMockDB(t)
 		defer cleanup()
 
@@ -118,10 +118,10 @@ func TestCustomDomainRepository_DomainLookupsAreCaseInsensitive(t *testing.T) {
 				}, "ch-victim", "active", "active", nil, "", now)...,
 			))
 
-		record, err := repo.GetByDomain(context.Background(), "App.Victim.com")
+		records, err := repo.ListByDomain(context.Background(), "App.Victim.com")
 		require.NoError(t, err)
-		require.NotNil(t, record, "the victim's row must be found through a case variant")
-		assert.Equal(t, "app.victim.com", record.Domain)
+		require.Len(t, records, 1, "the victim's row must be found through a case variant")
+		assert.Equal(t, "app.victim.com", records[0].Domain)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

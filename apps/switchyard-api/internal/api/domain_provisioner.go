@@ -2,18 +2,12 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
-
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
-
-	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/cloudflare"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
-	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -161,9 +155,17 @@ func (h *Handler) provisionSingleDomain(
 		TLSIssuer:     tlsIssuer,
 	}
 
-	if err := h.repos.CustomDomains.Create(ctx, domain); err != nil {
+	// Checked and claimed in one transaction, under the cross-project hostname
+	// lock. This path reached Create with NO ownership check at all: a manifest
+	// is a claim a project makes about a hostname, not proof of one, so a
+	// declaration naming another project's live hostname minted a competing row
+	// on every build. The claim fails closed, which on the deploy path means
+	// the domain is simply not created this pass and is retried on the next —
+	// the same shape as the existence check above.
+	if err := h.claimHostname(ctx, domain, ownerFromService(service)); err != nil {
 		h.logger.Warn(ctx, "Failed to create custom domain from enclii.yaml",
 			logging.String("domain", domainName),
+			logging.String("service", service.Name),
 			logging.Error("error", err))
 		return
 	}
@@ -247,151 +249,17 @@ func (h *Handler) provisionDomainEdge(
 			logging.Error("error", err))
 		result := domainProvisioningResult{Domain: domain, Mechanism: plan.mechanism}
 		result.setErr(err)
-		h.persistDomainProvisioningResult(ctx, result)
+		// Recorded against the REFUSED project's own row, never the holder's.
+		// This branch has just established that somebody else holds the
+		// hostname; writing the refusal to the row found by hostname marked the
+		// victim's live domain `error` and stamped the attacker's project id
+		// into the victim's operator-facing provisioning_error.
+		h.persistDomainProvisioningResult(ctx, result, owner)
 		return result
 	}
 
 	h.ensureTunnelRoute(ctx, domain, service, envName, servicePort)
 	return h.applyDomainRouting(ctx, plan, owner)
-}
-
-// ensureTunnelRoute adds a Cloudflare tunnel route for a domain
-func (h *Handler) ensureTunnelRoute(ctx context.Context, domain string, service *types.Service, envName string, servicePort int) {
-	if h.tunnelRoutesService == nil {
-		return
-	}
-	if service == nil {
-		h.logger.Warn(ctx, "Skipping tunnel route for nil service",
-			logging.String("domain", domain))
-		return
-	}
-
-	// Determine namespace from the service's project record
-	namespace := h.resolveServiceNamespace(ctx, service, envName)
-
-	// Connect/keepAlive timeouts intentionally omitted: Cloudflare's
-	// Configuration API rejects them as quoted strings (`Bad Configuration:
-	// strconv.ParseInt: parsing "30s": invalid syntax`). Cloudflare's
-	// per-rule defaults (30s connect, 90s keepalive) match what we want,
-	// so dropping the explicit fields is functionally equivalent and
-	// avoids the API rejection. Re-introduce when our cloudflare client
-	// switches to numeric serialization.
-	routeSpec := &services.RouteSpec{
-		Hostname:         domain,
-		ServiceName:      service.Name,
-		ServiceNamespace: namespace,
-		ServicePort:      servicePort,
-	}
-
-	if h.tunnelRouteMatches(ctx, routeSpec) {
-		h.logger.Debug(ctx, "Tunnel route already targets desired service",
-			logging.String("domain", domain),
-			logging.String("namespace", namespace))
-		return
-	}
-
-	if err := h.tunnelRoutesService.AddRoute(ctx, routeSpec); err != nil {
-		h.logger.Warn(ctx, "Failed to add tunnel route for domain",
-			logging.String("domain", domain),
-			logging.Error("error", err))
-	} else {
-		h.logger.Info(ctx, "Tunnel route added for domain",
-			logging.String("domain", domain),
-			logging.String("service", service.Name),
-			logging.String("namespace", namespace),
-			logging.Int("port", servicePort))
-	}
-}
-
-func (h *Handler) tunnelRouteMatches(ctx context.Context, spec *services.RouteSpec) bool {
-	if h == nil || h.tunnelRoutesService == nil || spec == nil {
-		return false
-	}
-
-	routes, err := h.tunnelRoutesService.ListRoutes(ctx)
-	if err != nil {
-		h.logger.Warn(ctx, "Failed to list tunnel routes before reconciliation",
-			logging.String("domain", spec.Hostname),
-			logging.Error("error", err))
-		return false
-	}
-
-	want := tunnelRouteServiceURL(spec)
-	for _, route := range routes {
-		if route.Hostname != spec.Hostname {
-			continue
-		}
-		return route.Service == want
-	}
-	return false
-}
-
-func tunnelRouteServiceURL(spec *services.RouteSpec) string {
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
-		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
-}
-
-// serviceNameOf is a nil-safe service name for log fields.
-func serviceNameOf(service *types.Service) string {
-	if service == nil {
-		return ""
-	}
-	return service.Name
-}
-
-// resolveServiceNamespace determines the Kubernetes namespace for a service.
-// It prefers the explicit service namespace because imported/adopted workloads
-// can live outside their Enclii project namespace. Non-production routes prefer
-// the environment namespace first so staging custom domains do not point at
-// production workloads when the service row was adopted from a live namespace.
-func (h *Handler) resolveServiceNamespace(ctx context.Context, service *types.Service, envName string) string {
-	if service == nil {
-		return ""
-	}
-	if !isProductionEnvironmentName(envName) {
-		if namespace := h.environmentNamespace(service, envName); namespace != "" {
-			return namespace
-		}
-	}
-	if service.K8sNamespace != nil && *service.K8sNamespace != "" {
-		return *service.K8sNamespace
-	}
-
-	if namespace := h.environmentNamespace(service, envName); namespace != "" {
-		return namespace
-	}
-
-	// Fall back to project slug
-	project, err := h.repos.Projects.GetByID(ctx, service.ProjectID)
-	if err == nil && project.Slug != "" {
-		return project.Slug
-	}
-
-	// Last resort: use project name or service name prefix
-	h.logger.Warn(ctx, "Could not resolve namespace from project, using service name prefix",
-		logging.String("service", service.Name))
-	return service.Name
-}
-
-func (h *Handler) environmentNamespace(service *types.Service, envName string) string {
-	if h == nil || h.repos == nil || h.repos.Environments == nil || service == nil || strings.TrimSpace(envName) == "" {
-		return ""
-	}
-
-	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
-	if err == nil && env != nil && env.KubeNamespace != "" {
-		return env.KubeNamespace
-	}
-	return ""
-}
-
-func isProductionEnvironmentName(envName string) bool {
-	switch strings.ToLower(strings.TrimSpace(envName)) {
-	case "", "production", "prod":
-		return true
-	default:
-		return false
-	}
 }
 
 // domainRoutingPlan is a decided-but-not-yet-applied provisioning of one
@@ -489,7 +357,7 @@ func (h *Handler) applyDomainRouting(ctx context.Context, plan domainRoutingPlan
 			logging.String("pending_client_dns_record_names", describePendingClientRecordNames(result)))
 	}
 
-	h.persistDomainProvisioningResult(ctx, result)
+	h.persistDomainProvisioningResult(ctx, result, owner)
 	return result
 }
 
@@ -639,90 +507,4 @@ func (h *Handler) scheduleJunctionTunnelRouteReconcile(project *types.Project) {
 				logging.Int("ready", summary.Ready))
 		}
 	}(*project)
-}
-
-// cleanupDomainsForService removes tunnel routes and DNS records for all domains of a service.
-// Called during service deletion.
-func (h *Handler) cleanupDomainsForService(ctx context.Context, serviceID uuid.UUID) {
-	// Get all domains for this service (across all environments)
-	domains, err := h.repos.CustomDomains.GetByServiceID(ctx, serviceID.String())
-	if err != nil {
-		h.logger.Warn(ctx, "Failed to get domains for cleanup",
-			logging.String("service_id", serviceID.String()),
-			logging.Error("error", err))
-		return
-	}
-
-	for _, domain := range domains {
-		// Remove tunnel route
-		if h.tunnelRoutesService != nil {
-			if err := h.tunnelRoutesService.RemoveRoute(ctx, domain.Domain); err != nil {
-				h.logger.Warn(ctx, "Failed to remove tunnel route during cleanup",
-					logging.String("domain", domain.Domain),
-					logging.Error("error", err))
-			} else {
-				h.logger.Info(ctx, "Tunnel route removed during cleanup",
-					logging.String("domain", domain.Domain))
-			}
-		}
-
-		// Remove the Cloudflare for SaaS custom hostname, if this domain was
-		// provisioned that way. For a genuinely client-owned domain there is
-		// no DNS record of ours to delete — the records live on the client's
-		// nameservers — but a domain that was ever on the zone path can hold
-		// BOTH a hostname id and a proxied CNAME in our zone, so the zone
-		// cleanup below still has to run. Skipping it is how a dangling CNAME
-		// to the tunnel survives service deletion for whoever claims the
-		// hostname next.
-		if domain.CustomHostnameID != "" {
-			if err := h.deleteCustomHostname(ctx, domain.Domain, domain.CustomHostnameID); err != nil {
-				h.logger.Warn(ctx, "Failed to delete custom hostname during cleanup",
-					logging.String("domain", domain.Domain),
-					logging.String("custom_hostname_id", domain.CustomHostnameID),
-					logging.Error("error", err))
-			} else {
-				h.logger.Info(ctx, "Custom hostname deleted during cleanup",
-					logging.String("domain", domain.Domain))
-			}
-		}
-
-		// Remove DNS record (zone-aware: finds correct zone for each domain)
-		if h.domainSyncService != nil {
-			cfClient := h.domainSyncService.GetCloudflareClient()
-			if cfClient != nil {
-				zone, zoneErr := cfClient.FindZoneForDomain(ctx, domain.Domain)
-				if zoneErr != nil {
-					// A client-owned domain has no zone of ours by
-					// definition, so "not found" is the expected answer and
-					// not a cleanup failure.
-					if errors.Is(zoneErr, cloudflare.ErrZoneNotFound) {
-						h.logger.Debug(ctx, "No Cloudflare zone of ours for domain during cleanup, nothing to delete",
-							logging.String("domain", domain.Domain))
-					} else {
-						h.logger.Warn(ctx, "Failed to find zone for domain during cleanup",
-							logging.String("domain", domain.Domain),
-							logging.Error("error", zoneErr))
-					}
-					continue
-				}
-				record, err := cfClient.GetDNSRecord(ctx, domain.Domain)
-				if err != nil {
-					h.logger.Warn(ctx, "Failed to look up DNS record during cleanup",
-						logging.String("domain", domain.Domain),
-						logging.Error("error", err))
-					continue
-				}
-				if record != nil {
-					if err := cfClient.DeleteDNSRecordInZone(ctx, zone.ID, record.ID); err != nil {
-						h.logger.Warn(ctx, "Failed to delete DNS record during cleanup",
-							logging.String("domain", domain.Domain),
-							logging.Error("error", err))
-					} else {
-						h.logger.Info(ctx, "DNS record deleted during cleanup",
-							logging.String("domain", domain.Domain))
-					}
-				}
-			}
-		}
-	}
 }

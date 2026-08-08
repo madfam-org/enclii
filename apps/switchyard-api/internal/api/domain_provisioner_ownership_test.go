@@ -77,6 +77,37 @@ func expectHostnameUnclaimed(mock sqlmock.Sqlmock, domain string) {
 	expectJunctionOwners(mock, domain)
 }
 
+// expectOwnRowLookup stages the SERVICE-SCOPED reload that
+// persistDomainProvisioningResult performs before it writes anything.
+//
+// The two arguments are the point of the helper. The persist step used to
+// resolve its row by hostname alone, which is how an attacker's provisioning
+// outcome ended up written to a victim's record; it now asks only for rows
+// belonging to the service being provisioned, so the service id is part of the
+// query and a test that omits it no longer matches.
+func expectOwnRowLookup(mock sqlmock.Sqlmock, domain string, serviceID uuid.UUID, rows *sqlmock.Rows) {
+	mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
+		WithArgs(domain, serviceID).
+		WillReturnRows(rows)
+}
+
+// noCustomDomainRows is an empty result for the columns custom_domains scans.
+func noCustomDomainRows() *sqlmock.Rows {
+	return sqlmock.NewRows(customDomainTestColumns)
+}
+
+// expectClaimTransaction stages the transaction and the cross-project advisory
+// lock that wrap every check-and-claim. The lock class is unexported in the db
+// package, so it is matched loosely; the hostname key is asserted exactly
+// because taking the lock on a non-canonical key would silently serialise
+// nothing.
+func expectClaimTransaction(mock sqlmock.Sqlmock, domain string) {
+	mock.ExpectBegin()
+	mock.ExpectExec(`pg_advisory_xact_lock`).
+		WithArgs(sqlmock.AnyArg(), domain).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+}
+
 // expectJunctionOwners stages the junction half of the ownership lookup.
 // Junction-provisioned hostnames have no custom_domains row, so this is the
 // only record that can name their owner.
@@ -395,15 +426,22 @@ func TestProvisionDomainEdgeWithholdsTheRouteUntilOwnershipIsProven(t *testing.T
 		h.tunnelRoutesService = tunnelRoutes
 
 		ownerProject := uuid.New()
+		attackerService := uuid.New()
 		expectHostnameOwnedBy(mock, "app.client.com", uuid.New(), ownerProject, "ch-owned")
-		// persistDomainProvisioningResult reloads the row to record the failure.
-		expectHostnameOwnedBy(mock, "app.client.com", uuid.New(), ownerProject, "ch-owned")
-		mock.ExpectQuery(`UPDATE custom_domains`).WillReturnRows(
-			sqlmock.NewRows([]string{"updated_at"}).AddRow(time.Now()))
+		// The refusal is recorded against the ATTACKER's own rows, of which
+		// there are none — so no UPDATE follows at all.
+		//
+		// This used to stage a second by-hostname reload and an UPDATE, because
+		// that is what the code did: it refused to route the hostname and then
+		// wrote the refusal onto the victim's record, marking a live domain
+		// `error` and stamping the attacker's project id into the victim's
+		// operator-facing provisioning_error. Refusing to act has to mean
+		// writing nothing.
+		expectOwnRowLookup(mock, "app.client.com", attackerService, noCustomDomainRows())
 
 		attackerNamespace := "attacker"
 		result := h.provisionDomainEdge(context.Background(), "app.client.com", &types.Service{
-			ID:           uuid.New(),
+			ID:           attackerService,
 			ProjectID:    uuid.New(),
 			Name:         "attacker-web",
 			K8sNamespace: &attackerNamespace,
@@ -419,6 +457,11 @@ func TestProvisionDomainEdgeWithholdsTheRouteUntilOwnershipIsProven(t *testing.T
 		if spec.ServiceName != "victim-web" || spec.ServiceNamespace != existingNamespace {
 			t.Errorf("ingress rule was overwritten to %s/%s; it must be untouched",
 				spec.ServiceNamespace, spec.ServiceName)
+		}
+		// Load-bearing: without this the stale expectations above went unmet
+		// and the test passed while asserting nothing.
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("unmet sql expectations: %v", err)
 		}
 	})
 

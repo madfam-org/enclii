@@ -271,26 +271,81 @@ func (r *CustomDomainRepository) GetByID(ctx context.Context, id string) (*types
 	return domain, nil
 }
 
-// GetByDomain retrieves a custom domain by its hostname.
-// Returns (nil, nil) when the hostname is not registered.
+// ListByDomain returns EVERY custom_domains row for a hostname.
 //
-// Matched case-insensitively: this is the ownership gate for the Cloudflare for
-// SaaS path, and Cloudflare compares hostnames case-insensitively. A
-// case-sensitive `domain = $1` answered "nobody holds app.victim.com" for a row
-// stored as "App.Victim.com", which is a cross-tenant claim, not a miss. See
-// the note in junction_repository.go.
-func (r *CustomDomainRepository) GetByDomain(ctx context.Context, domainName string) (*types.CustomDomain, error) {
-	query := "SELECT " + customDomainSelectColumns + " FROM custom_domains WHERE lower(domain) = lower($1)"
+// There is deliberately no single-row "get the domain named X" accessor. The
+// schema's only uniqueness on this column is
+// custom_domains_service_id_environment_id_domain_key, which is scoped to one
+// service — so `WHERE lower(domain) = lower($1)` is a MULTI-ROW predicate
+// across services and therefore across projects. Resolving it with
+// QueryRowContext, as this used to, returns whichever tuple the heap happens to
+// yield first and silently discards the rest. That is not a tie-break, it is a
+// cross-tenant answer: an attacker row inserted after a victim's, or simply
+// re-written later by an UPDATE, sorts first and becomes "the owner" for every
+// caller that asks who holds the hostname.
+//
+// Callers that ask "who owns this hostname?" must see all of them
+// (see api.hostnameOwners). Callers that want to WRITE must scope the lookup to
+// the project they are acting for (see ListByDomainForService); a hostname
+// string carries no ownership on a shared fallback-origin zone.
+//
+// Matched case-insensitively: Cloudflare compares hostnames that way, so a row
+// stored as "App.Victim.com" names the same registration at the edge as
+// "app.victim.com". A case-sensitive match answered "nobody holds it", which is
+// a cross-tenant claim, not a miss. See the note in junction_repository.go.
+//
+// Ordered oldest-first so the result is stable across the UPDATE-rewrites that
+// move a tuple to the tail of the heap; an empty slice means nobody holds it.
+func (r *CustomDomainRepository) ListByDomain(ctx context.Context, domainName string) ([]types.CustomDomain, error) {
+	query := "SELECT " + customDomainSelectColumns +
+		" FROM custom_domains WHERE lower(domain) = lower($1) ORDER BY created_at ASC, id ASC"
 
-	domain, err := scanCustomDomain(r.db.QueryRowContext(ctx, query, domainName))
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	return r.queryCustomDomains(ctx, "failed to list custom domains by hostname", query, domainName)
+}
+
+// ListByDomainForService returns the rows for a hostname that belong to one
+// service.
+//
+// This is the write-path lookup. A provisioning outcome describes what happened
+// to ONE project's registration, so it may only ever be written to that
+// project's own row — resolving the row by hostname alone let an attacker's
+// deploy rewrite the victim's live domain record, including on the branches
+// that had already refused to route the hostname.
+//
+// A service may hold the same hostname in more than one environment (the unique
+// constraint is service+environment+domain), so this is still a list.
+func (r *CustomDomainRepository) ListByDomainForService(
+	ctx context.Context, domainName string, serviceID uuid.UUID,
+) ([]types.CustomDomain, error) {
+	query := "SELECT " + customDomainSelectColumns +
+		" FROM custom_domains WHERE lower(domain) = lower($1) AND service_id = $2 ORDER BY created_at ASC, id ASC"
+
+	return r.queryCustomDomains(ctx,
+		"failed to list custom domains by hostname for service", query, domainName, serviceID)
+}
+
+func (r *CustomDomainRepository) queryCustomDomains(
+	ctx context.Context, failureContext, query string, args ...interface{},
+) ([]types.CustomDomain, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get custom domain by hostname: %w", err)
+		return nil, fmt.Errorf("%s: %w", failureContext, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var domains []types.CustomDomain
+	for rows.Next() {
+		domain, scanErr := scanCustomDomain(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("%s: %w", failureContext, scanErr)
+		}
+		domains = append(domains, *domain)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", failureContext, err)
 	}
 
-	return domain, nil
+	return domains, nil
 }
 
 // GetByServiceID retrieves all custom domains for a service

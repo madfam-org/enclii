@@ -65,6 +65,64 @@ linters:
           - errcheck
         text: "Decode"
 
+      # ---------------------------------------------------------------------
+      # TODO(platform): pre-existing findings, owned by branch
+      # `fix/lint-gate-honesty`. Remove these entries as that branch fixes them.
+      #
+      # CI never actually linted this module: the discovery guard in ci.yml
+      # skipped any module with no *.go file at its ROOT, and switchyard-api
+      # keeps none, so `golangci-lint` had never run here in a green build. Only
+      # packages/otel-go was ever linted. Fixing that guard surfaced these 14
+      # findings all at once.
+      #
+      # They are listed individually, by symbol, rather than by disabling the
+      # linters. That is deliberate: a blanket `unused: off` would make the gate
+      # vacuous again the moment it started running, which is the exact failure
+      # being repaired. Every NEW finding — including a new unused symbol —
+      # still fails the job.
+      #
+      # Most of them exist because `run.tests: false` hides the test files that
+      # are the only users of these symbols, so "unused" here often means "used
+      # only by tests". That diagnosis belongs to the lint-honesty branch, not
+      # to this one.
+      - linters:
+          - staticcheck
+        path: "cmd/api/main.go"
+        text: "ST1019"
+      - linters:
+          - unused
+        text: "applyDefaultConfig"
+      - linters:
+          - unused
+        text: "buildProjectCardAggregate"
+      - linters:
+          - unused
+        text: "compactProjectProcessesForActiveSummary"
+      - linters:
+          - unused
+        text: "clearSentryCacheForTest"
+      - linters:
+          - unused
+        text: "generateStatusConfigmap"
+      - linters:
+          - unused
+        text: "fixedTeamResolver"
+      - linters:
+          - unused
+        text: "sqlErrNoRows"
+      - linters:
+          - unused
+        text: "marshalTLS"
+      - linters:
+          - unused
+        text: "presignKeyRegex"
+      - linters:
+          - unused
+        text: "redactQuerySignatures"
+      - linters:
+          - unused
+        text: "resendEmail"
+
 formatters:
   enable:
     - gofmt

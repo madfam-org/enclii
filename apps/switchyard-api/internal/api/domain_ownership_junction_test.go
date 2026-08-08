@@ -107,20 +107,21 @@ func TestProvisionDomainEdgeWithholdsTheRouteFromAJunctionServedHostname(t *test
 	h.tunnelRoutesService = tunnelRoutes
 
 	victimProject := uuid.New()
+	attackerService := uuid.New()
 	// ensureCustomHostname's pre-check.
 	mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
 		WithArgs("app.client.com").
 		WillReturnRows(sqlmock.NewRows(customDomainTestColumns))
 	expectJunctionOwners(mock, "app.client.com", victimProject)
-	// persistDomainProvisioningResult reloads the row; there is none, so it is
-	// a no-op and no UPDATE follows.
-	mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
-		WithArgs("app.client.com").
-		WillReturnRows(sqlmock.NewRows(customDomainTestColumns))
+	// persistDomainProvisioningResult reloads only the ATTACKER's own rows for
+	// this hostname. There are none, so it is a no-op and no UPDATE follows —
+	// and, critically, the victim's junction-served hostname is never even
+	// selected for.
+	expectOwnRowLookup(mock, "app.client.com", attackerService, noCustomDomainRows())
 
 	attackerNamespace := "attacker"
 	result := h.provisionDomainEdge(context.Background(), "app.client.com", &types.Service{
-		ID:           uuid.New(),
+		ID:           attackerService,
 		ProjectID:    uuid.New(),
 		Name:         "attacker-web",
 		K8sNamespace: &attackerNamespace,
@@ -159,14 +160,14 @@ func TestProvisionDomainEdgeMutatesNothingWhenTheMechanismIsUndetermined(t *test
 	tunnelRoutes.routes["app.client.com"] = routeSpecFor("victim-web", "victim")
 	h.tunnelRoutesService = tunnelRoutes
 
-	// Only the persistence reload runs; no ownership rewrite, no UPDATE.
-	mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
-		WithArgs("app.client.com").
-		WillReturnRows(sqlmock.NewRows(customDomainTestColumns))
+	// Only the persistence reload runs, scoped to the attacker's own service;
+	// no ownership rewrite, no UPDATE.
+	attackerService := uuid.New()
+	expectOwnRowLookup(mock, "app.client.com", attackerService, noCustomDomainRows())
 
 	attackerNamespace := "attacker"
 	result := h.provisionDomainEdge(context.Background(), "app.client.com", &types.Service{
-		ID:           uuid.New(),
+		ID:           attackerService,
 		ProjectID:    uuid.New(),
 		Name:         "attacker-web",
 		K8sNamespace: &attackerNamespace,
@@ -325,9 +326,14 @@ func TestAddCustomDomain_RefusesAJunctionServedHostname(t *testing.T) {
 	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE lower\(domain\) = lower\(\$1\)\)`).
 		WithArgs("app.victim.com").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	// The check and the claim now run in one transaction under the
+	// cross-project hostname lock, so the ownership lookup is staged INSIDE it.
+	expectClaimTransaction(mock, "app.victim.com")
 	expectHostnameUnclaimedExceptJunction(mock, "app.victim.com", victimProject)
 
-	// Nothing may follow: no INSERT.
+	// Nothing may follow: no INSERT, and the transaction rolls back.
+	mock.ExpectRollback()
 
 	w := httptest.NewRecorder()
 	_, engine := gin.CreateTestContext(w)

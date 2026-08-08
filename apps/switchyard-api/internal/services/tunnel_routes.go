@@ -115,21 +115,21 @@ func (s *TunnelRoutesService) AddRoute(ctx context.Context, spec *RouteSpec) err
 		return fmt.Errorf("failed to get cloudflared config: %w", err)
 	}
 
-	// Check if route already exists
-	for _, rule := range config.Ingress {
-		if rule.Hostname == spec.Hostname {
-			s.logger.WithField("hostname", spec.Hostname).Warn("Route already exists, updating")
-			return s.updateExistingRoute(ctx, config, spec)
-		}
+	// Check if route already exists. Case-insensitive: a rule stored in another
+	// case names the same host, and treating it as absent appends a duplicate
+	// rule for one hostname.
+	if indexOfHostname(config.Ingress, spec.Hostname) >= 0 {
+		s.logger.WithField("hostname", spec.Hostname).Warn("Route already exists, updating")
+		return s.updateExistingRoute(ctx, config, spec)
 	}
 
 	// Build service URL
 	serviceURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
 		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
 
-	// Create new rule
+	// Create new rule, stored canonically so the config converges on one form.
 	newRule := IngressRule{
-		Hostname: spec.Hostname,
+		Hostname: CanonicalHostname(spec.Hostname),
 		Service:  serviceURL,
 	}
 
@@ -172,16 +172,10 @@ func (s *TunnelRoutesService) RemoveRoute(ctx context.Context, hostname string) 
 		return fmt.Errorf("failed to get cloudflared config: %w", err)
 	}
 
-	// Find and remove the route
-	found := false
-	newIngress := make([]IngressRule, 0, len(config.Ingress)-1)
-	for _, rule := range config.Ingress {
-		if rule.Hostname == hostname {
-			found = true
-			continue
-		}
-		newIngress = append(newIngress, rule)
-	}
+	// Find and remove the route. Case-insensitive: a byte-exact match left a
+	// mixed-case rule in place while reporting the route removed, so the
+	// hostname kept resolving to a service that had been torn down.
+	newIngress, found := filterOutHostname(config.Ingress, hostname)
 
 	if !found {
 		s.logger.WithField("hostname", hostname).Warn("Route not found, nothing to remove")
@@ -229,13 +223,7 @@ func (s *TunnelRoutesService) RouteExists(ctx context.Context, hostname string) 
 		return false, fmt.Errorf("failed to get cloudflared config: %w", err)
 	}
 
-	for _, rule := range config.Ingress {
-		if rule.Hostname == hostname {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return indexOfHostname(config.Ingress, hostname) >= 0, nil
 }
 
 // getConfig retrieves and parses the cloudflared ConfigMap
@@ -299,7 +287,11 @@ func (s *TunnelRoutesService) updateExistingRoute(ctx context.Context, config *C
 		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
 
 	for i, rule := range config.Ingress {
-		if rule.Hostname == spec.Hostname {
+		if sameHostname(rule.Hostname, spec.Hostname) {
+			// Canonicalise on the way past: this is the reconciliation that
+			// converts a pre-existing mixed-case rule, which is why the tunnel
+			// config needs no migration of its own.
+			config.Ingress[i].Hostname = CanonicalHostname(rule.Hostname)
 			config.Ingress[i].Service = serviceURL
 			if spec.ConnectTimeout != "" || spec.KeepAliveTimeout != "" {
 				config.Ingress[i].OriginRequest = &OriginRequest{
@@ -329,6 +321,35 @@ func (s *TunnelRoutesService) restartCloudflared(ctx context.Context) error {
 }
 
 // insertBeforeCatchAll inserts a rule before the catch-all rule
+// indexOfHostname returns the index of the rule serving hostname, or -1.
+//
+// Case-insensitive, and that is the whole point: the ingress config is the one
+// hostname-keyed store no migration can rewrite, so the comparison has to
+// absorb a mixed-case rule rather than expecting the data to be clean.
+func indexOfHostname(rules []IngressRule, hostname string) int {
+	for i, rule := range rules {
+		if sameHostname(rule.Hostname, hostname) {
+			return i
+		}
+	}
+	return -1
+}
+
+// filterOutHostname returns rules with every rule serving hostname removed,
+// and whether any were.
+func filterOutHostname(rules []IngressRule, hostname string) ([]IngressRule, bool) {
+	kept := make([]IngressRule, 0, len(rules))
+	found := false
+	for _, rule := range rules {
+		if sameHostname(rule.Hostname, hostname) {
+			found = true
+			continue
+		}
+		kept = append(kept, rule)
+	}
+	return kept, found
+}
+
 func insertBeforeCatchAll(rules []IngressRule, newRule IngressRule) []IngressRule {
 	// Find catch-all rule (rule without hostname)
 	catchAllIndex := -1

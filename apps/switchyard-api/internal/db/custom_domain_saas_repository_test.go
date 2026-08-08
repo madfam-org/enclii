@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCustomDomainRepository_GetByDomain(t *testing.T) {
+func TestCustomDomainRepository_ListByDomain(t *testing.T) {
 	t.Run("found", func(t *testing.T) {
 		repo, mock, cleanup := newCustomDomainMockDB(t)
 		defer cleanup()
@@ -35,14 +35,14 @@ func TestCustomDomainRepository_GetByDomain(t *testing.T) {
 					"", now)...,
 			))
 
-		result, err := repo.GetByDomain(context.Background(), "cto.creatumundo.mx")
+		result, err := repo.ListByDomain(context.Background(), "cto.creatumundo.mx")
 		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.Equal(t, "ch-1", result.CustomHostnameID)
-		assert.Equal(t, "pending", result.CustomHostnameStatus)
-		assert.Equal(t, "pending_validation", result.CustomHostnameSSLStatus)
-		require.Len(t, result.PendingDNSRecords, 1)
-		assert.Equal(t, "ownership", result.PendingDNSRecords[0].Purpose)
+		require.Len(t, result, 1)
+		assert.Equal(t, "ch-1", result[0].CustomHostnameID)
+		assert.Equal(t, "pending", result[0].CustomHostnameStatus)
+		assert.Equal(t, "pending_validation", result[0].CustomHostnameSSLStatus)
+		require.Len(t, result[0].PendingDNSRecords, 1)
+		assert.Equal(t, "ownership", result[0].PendingDNSRecords[0].Purpose)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -54,9 +54,9 @@ func TestCustomDomainRepository_GetByDomain(t *testing.T) {
 			WithArgs("unknown.example.com").
 			WillReturnRows(sqlmock.NewRows(customDomainColumns))
 
-		result, err := repo.GetByDomain(context.Background(), "unknown.example.com")
+		result, err := repo.ListByDomain(context.Background(), "unknown.example.com")
 		require.NoError(t, err)
-		assert.Nil(t, result)
+		assert.Empty(t, result)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -68,7 +68,7 @@ func TestCustomDomainRepository_GetByDomain(t *testing.T) {
 			WithArgs("cto.creatumundo.mx").
 			WillReturnError(fmt.Errorf("connection reset"))
 
-		result, err := repo.GetByDomain(context.Background(), "cto.creatumundo.mx")
+		result, err := repo.ListByDomain(context.Background(), "cto.creatumundo.mx")
 		assert.Error(t, err)
 		assert.Nil(t, result)
 	})

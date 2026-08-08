@@ -276,16 +276,26 @@ every header the manifest declares.
 > visibly at the TLS handshake, which is cheaper than refusing to deploy a
 > correct domain.
 >
-> **The size of that trade, measured.** Over 112 unique declared hostnames (70
-> from 46 `enclii.yaml` files, plus the hostnames tabulated in
-> `internal-devops/ecosystem/domain-map.md`), **21** had an undeterminable apex
-> because their TLD was missing from the table — every `.tube` (7), `.town` (7),
-> `.solar` (3), `.lol`, `.one`, `.design` and `.pro` host in the estate. The
-> check was simply inert for `blueprint.tube`, `almanac.solar`, `selva.town`,
-> `ceq.lol`, `forj.design`, `nuit.one` and `primavera3d.pro`. Those TLDs are now
-> listed (with `.academy` and `.onl`, and with `.pro`'s professional
-> second-level suffixes so `firm.cpa.pro` derives a three-label apex), and the
-> figure is **0 of 112**.
+> **The size of that trade, measured.** Re-counted through
+> `manifest.ParseEncliiYAML` itself, with worktree checkouts excluded: **68**
+> manifest files, of which **61** parse. The parser sees **68** unique
+> hostnames.
+>
+> A further **23 declared hostnames are invisible to it**, and that is a defect,
+> not a rounding difference. Shipped `.enclii.yml` files write
+> `spec.domains[].domain`, while `EncliiYAMLDomain` reads `yaml:"name"`
+> (`internal/manifest/enclii_yaml.go`), so those entries parse to an empty Name
+> and are silently dropped — including `api.enclii.dev`, `npm.madfam.io`,
+> `forj.design`, `routecraft.app` and `rondel.io`. They are never provisioned
+> from the manifest at all. Tracked separately; not fixed here.
+>
+> Counting those back in gives **91 distinct declared hostnames** across **12**
+> TLDs, **0** of them carrying an uppercase character. Every one of those TLDs
+> is present in `knownPublicSuffixes`, so the suffix-table residual — hostnames
+> whose apex cannot be determined — is **0 of 91**.
+>
+> (Earlier revisions of this note quoted 157/33 and then 112/46. Both predate
+> measuring the corpus through the parser; use the figures above.)
 >
 > **Residual, stated plainly:** the table is curated, not the Public Suffix
 > List. The next TLD the estate registers on will be absent from it, and the

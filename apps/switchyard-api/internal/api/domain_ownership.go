@@ -18,12 +18,38 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 )
+
+// hostnameHeldError marks a refusal caused by another project POSITIVELY
+// holding the hostname, as distinct from a refusal caused by not being able to
+// tell who holds it.
+//
+// The two must not be answered alike. "Another project has it" is a settled
+// fact the caller can act on — 409, and the message names the holder. "The
+// lookup failed" is our problem, not theirs, and reporting it as a conflict
+// tells a rightful owner their own hostname belongs to someone else. Since the
+// claim now also carries the insert, an ordinary write failure would otherwise
+// have been rendered as a conflict too, with the raw database error in the body.
+type hostnameHeldError struct{ msg string }
+
+func (e *hostnameHeldError) Error() string { return e.msg }
+
+// heldByAnotherProject builds a refusal that isHostnameHeld recognises.
+func heldByAnotherProject(format string, args ...interface{}) error {
+	return &hostnameHeldError{msg: fmt.Sprintf(format, args...)}
+}
+
+// isHostnameHeld reports whether err is a positive ownership conflict.
+func isHostnameHeld(err error) bool {
+	var held *hostnameHeldError
+	return errors.As(err, &held)
+}
 
 // hostnameOwners resolves every project that holds a record entitling it to be
 // served on a hostname.
@@ -49,11 +75,17 @@ func (h *Handler) hostnameOwners(ctx context.Context, domain string) ([]uuid.UUI
 
 	var owners []uuid.UUID
 
-	record, err := h.repos.CustomDomains.GetByDomain(ctx, domain)
+	// EVERY custom_domains row for the hostname, not the first one the heap
+	// yields. The uniqueness on custom_domains.domain is scoped to one service,
+	// so two projects can hold rows for the same hostname — and when they do,
+	// reading only one of them reports the other as unowned. That is the answer
+	// that lets a caller claim, and then delete, a hostname it does not hold.
+	records, err := h.repos.CustomDomains.ListByDomain(ctx, domain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up the owner of %s: %w", domain, err)
 	}
-	if record != nil {
+	for i := range records {
+		record := &records[i]
 		service, svcErr := h.repos.Services.GetByID(record.ServiceID)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to resolve the project that owns %s: %w", domain, svcErr)
@@ -61,6 +93,9 @@ func (h *Handler) hostnameOwners(ctx context.Context, domain string) ([]uuid.UUI
 		if service == nil {
 			return nil, fmt.Errorf(
 				"custom domain %s references service %s, which no longer exists", domain, record.ServiceID)
+		}
+		if service.ProjectID == uuid.Nil || containsProjectID(owners, service.ProjectID) {
+			continue
 		}
 		owners = append(owners, service.ProjectID)
 	}
@@ -117,7 +152,7 @@ func (h *Handler) assertHostnameClaimableBy(ctx context.Context, domain string, 
 		return err
 	}
 	if foreign, ok := firstForeignOwner(owners, owner.ProjectID); ok {
-		return fmt.Errorf(
+		return heldByAnotherProject(
 			"refusing to claim custom hostname %s for project %s: it is already registered to project %s",
 			domain, owner.ProjectID, foreign)
 	}
@@ -146,7 +181,7 @@ func (h *Handler) assertHostnameNotHeldByAnotherProject(ctx context.Context, dom
 		return err
 	}
 	if foreign, ok := firstForeignOwner(owners, owner.ProjectID); ok {
-		return fmt.Errorf(
+		return heldByAnotherProject(
 			"refusing to register %s for project %s: it is already registered to project %s",
 			domain, owner.ProjectID, foreign)
 	}
@@ -176,7 +211,7 @@ func (h *Handler) zonePathHostnameConflict(ctx context.Context, domain string, o
 		return nil
 	}
 	if foreign, ok := firstForeignOwner(owners, owner.ProjectID); ok {
-		return fmt.Errorf(
+		return heldByAnotherProject(
 			"refusing to route %s to project %s: it is already registered to project %s",
 			domain, owner.ProjectID, foreign)
 	}

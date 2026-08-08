@@ -316,20 +316,6 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		return
 	}
 
-	// The Exists check above only sees custom_domains; a junction-served
-	// hostname has no row there. See AddCustomDomain for why this gate fails
-	// closed rather than assuming an unresolvable lookup means "free".
-	if err := h.assertHostnameNotHeldByAnotherProject(ctx, domainName, &domainOwner{
-		ProjectID: service.ProjectID,
-		ServiceID: serviceUUID,
-	}); err != nil {
-		h.logger.Warn(ctx, "Refusing a service domain for a hostname another project holds",
-			logging.String("domain", domainName),
-			logging.Error("error", err))
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		return
-	}
-
 	// Set defaults
 	tlsProvider := req.TLSProvider
 	if tlsProvider == "" {
@@ -372,7 +358,23 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		DNSCNAME:         dnsCNAME,
 	}
 
-	if err := h.repos.CustomDomains.Create(ctx, domain); err != nil {
+	// Checked and claimed in one transaction, under the cross-project hostname
+	// lock. The Exists check above only sees custom_domains; a junction-served
+	// hostname has no row there, and a concurrent claim for another project can
+	// land between that check and this insert. See AddCustomDomain for why the
+	// gate inside also fails closed rather than reading an unresolvable lookup
+	// as "free".
+	if err := h.claimHostname(ctx, domain, &domainOwner{
+		ProjectID: service.ProjectID,
+		ServiceID: serviceUUID,
+	}); err != nil {
+		if isHostnameHeld(err) {
+			h.logger.Warn(ctx, "Refusing a service domain for a hostname another project holds",
+				logging.String("domain", domainName),
+				logging.Error("error", err))
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		h.logger.Error(ctx, "Failed to create custom domain", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create custom domain"})
 		return

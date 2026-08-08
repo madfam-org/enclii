@@ -24,6 +24,20 @@ linters:
           - errcheck
         text: "\\.Close"
 
+      # TODO(platform): pre-existing finding, owned by branch
+      # `fix/lint-gate-honesty`. CI's module discovery skipped this module
+      # entirely (no *.go at the module root), so lint had never run on it.
+      # Listed by symbol so every NEW finding still fails the job.
+      #
+      # Both linters see the same dead store — ineffassign as "ineffectual
+      # assignment", staticcheck as SA4006 — so silencing only one just hands
+      # the report to the other.
+      - linters:
+          - ineffassign
+          - staticcheck
+        path: "internal/budgets/cost.go"
+        text: "gbMonths"
+
 formatters:
   enable:
     - gofmt

@@ -114,21 +114,6 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		return
 	}
 
-	// The Exists check above only sees custom_domains. A hostname served
-	// through a junction has no row there, so without this it could be claimed
-	// here — which both overwrites the junction's routing and leaves the
-	// hostname permanently contested for its rightful owner.
-	if err := h.assertHostnameNotHeldByAnotherProject(ctx, req.Domain, &domainOwner{
-		ProjectID: service.ProjectID,
-		ServiceID: serviceUUID,
-	}); err != nil {
-		h.logger.Warn(ctx, "Refusing a custom domain for a hostname another project holds",
-			logging.String("domain", req.Domain),
-			logging.Error("error", err))
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		return
-	}
-
 	// Default TLS issuer
 	tlsIssuer := req.TLSIssuer
 	if tlsIssuer == "" {
@@ -149,7 +134,24 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		TLSIssuer:     tlsIssuer,
 	}
 
-	if err := h.repos.CustomDomains.Create(ctx, domain); err != nil {
+	// Checked and claimed in one transaction, under the cross-project hostname
+	// lock. The Exists check above only sees custom_domains and only saw it a
+	// few statements ago: a hostname served through a junction has no row
+	// there at all, and a concurrent request for another project can create one
+	// in between. Both of those end with two projects holding one hostname,
+	// which overwrites the other's routing and leaves the hostname permanently
+	// contested for whichever of them is the rightful owner.
+	if err := h.claimHostname(ctx, domain, &domainOwner{
+		ProjectID: service.ProjectID,
+		ServiceID: serviceUUID,
+	}); err != nil {
+		if isHostnameHeld(err) {
+			h.logger.Warn(ctx, "Refusing a custom domain for a hostname another project holds",
+				logging.String("domain", req.Domain),
+				logging.Error("error", err))
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		h.logger.Error(ctx, "Failed to create custom domain", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create custom domain"})
 		return

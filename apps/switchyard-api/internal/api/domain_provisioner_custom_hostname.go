@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -188,18 +187,26 @@ func (h *Handler) ensureCustomHostname(ctx context.Context, domain string, owner
 		Mechanism: mechanismCustomHostname,
 	}
 
+	// Ownership FIRST, before every other guard in this function.
+	//
+	// This check used to sit below the customHostnameZone() guard, so on the
+	// day-one configuration — fallback-origin vars absent, the state this PR
+	// described as "inert" — the function returned before ownership was ever
+	// established. The caller then persisted the resulting error, and the
+	// persist step resolved its row by hostname, so an attacker's enclii.yaml
+	// naming a victim's hostname with `external: true` rewrote the victim's
+	// live domain record on every build. "Not configured" must not be a path
+	// that skips the ownership check; it is a reason to do less, never a reason
+	// to check less.
+	if err := h.assertHostnameClaimableBy(ctx, domain, owner); err != nil {
+		result.setErr(err)
+		return result
+	}
+
 	zoneID, fallbackOrigin, ok := h.customHostnameZone()
 	if !ok {
 		result.setErr(fmt.Errorf(
 			"cloudflare for saas is not configured: set ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID and ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME to provision client-owned domain %s", domain))
-		return result
-	}
-
-	// Ownership before reachability: whether another project already holds
-	// this hostname is the answer regardless of whether Cloudflare is up, and
-	// it is the cheaper question.
-	if err := h.assertHostnameClaimableBy(ctx, domain, owner); err != nil {
-		result.setErr(err)
 		return result
 	}
 
@@ -396,167 +403,6 @@ func toPendingDNSRecords(records []cloudflare.ClientDNSRecord) []types.PendingDN
 		})
 	}
 	return out
-}
-
-// persistDomainProvisioningResult writes the provisioning outcome onto the
-// CustomDomain row so a failure or an outstanding client action is visible on
-// the domain read path instead of only in the logs.
-//
-// Domains with no CustomDomain row (junctions provision by hostname alone) are
-// a no-op here; their result is returned to the caller instead.
-func (h *Handler) persistDomainProvisioningResult(ctx context.Context, result domainProvisioningResult) {
-	if h == nil || h.repos == nil || h.repos.CustomDomains == nil || result.Domain == "" {
-		return
-	}
-
-	record, err := h.repos.CustomDomains.GetByDomain(ctx, result.Domain)
-	if err != nil {
-		h.logger.Warn(ctx, "Failed to load custom domain for provisioning state update",
-			logging.String("domain", result.Domain),
-			logging.Error("error", err))
-		return
-	}
-	if record == nil {
-		return
-	}
-
-	// A domain that flipped from `external: true` back to the zone path keeps
-	// its custom hostname registered at Cloudflare until we release it. The
-	// stored id is only cleared once Cloudflare confirmed the delete, so a
-	// failure here leaves the id in place for teardown to retry rather than
-	// orphaning the registration.
-	if result.Mechanism == mechanismZoneCNAME && record.CustomHostnameID != "" {
-		if delErr := h.deleteCustomHostname(ctx, record.Domain, record.CustomHostnameID); delErr != nil {
-			h.logger.Warn(ctx, "Failed to release the custom hostname of a domain that moved back to the zone path",
-				logging.String("domain", record.Domain),
-				logging.String("custom_hostname_id", record.CustomHostnameID),
-				logging.Error("error", delErr))
-		} else {
-			result.CustomHostnameReleased = true
-			h.logger.Info(ctx, "Released the custom hostname of a domain that moved back to the zone path",
-				logging.String("domain", record.Domain),
-				logging.String("custom_hostname_id", record.CustomHostnameID))
-		}
-	}
-
-	applyProvisioningResult(record, result, time.Now())
-
-	if err := h.repos.CustomDomains.UpdateCustomHostnameState(ctx, record); err != nil {
-		h.logger.Warn(ctx, "Failed to persist domain provisioning state",
-			logging.String("domain", result.Domain),
-			logging.Error("error", err))
-	}
-}
-
-// applyProvisioningResult maps a provisioning outcome onto a domain record.
-//
-// Verified is only ever set from a Cloudflare-reported active hostname AND an
-// active certificate. It is never inferred from a successful API call, and it
-// is cleared again if Cloudflare later reports the hostname as no longer
-// active (e.g. the client moved their CNAME away).
-func applyProvisioningResult(record *types.CustomDomain, result domainProvisioningResult, now time.Time) {
-	if record == nil {
-		return
-	}
-
-	switch result.Mechanism {
-	case mechanismUndetermined:
-		// We could not work out how this domain reaches the edge, so we change
-		// nothing about how it currently does. Only the diagnosis is written:
-		// status, verification, TLS provider and every custom-hostname field
-		// keep the values the last conclusive pass left. Rewriting them here
-		// is how a transient Cloudflare error turns a live domain into a
-		// pending one.
-		record.ProvisioningError = result.ErrorMessage
-		record.ProvisioningCheckedAt = &now
-		return
-	case mechanismZoneCNAME:
-		applyZoneProvisioningResult(record, result, now)
-		return
-	}
-
-	record.TLSProvider = types.TLSProviderCloudflareForSaaS
-	record.ProvisioningError = result.ErrorMessage
-	record.ProvisioningCheckedAt = &now
-
-	if result.Err != nil {
-		// The pass failed, so it learned nothing about the hostname itself.
-		// Its identifier and last-known Cloudflare state are left alone:
-		// blanking the stored hostname id here would strand the registration
-		// at Cloudflare with nothing left to release it by. Only the outcome
-		// of THIS pass is recorded.
-		record.Status = types.DomainStatusError
-		record.Verified = false
-		return
-	}
-
-	record.CustomHostnameID = result.CustomHostnameID
-	record.CustomHostnameStatus = result.HostnameStatus
-	record.CustomHostnameSSLStatus = result.SSLStatus
-	record.PendingDNSRecords = result.PendingDNSRecords
-
-	switch {
-	case result.HostnameStatus == string(cloudflare.CustomHostnameStatusActive) &&
-		result.SSLStatus == string(cloudflare.CustomHostnameSSLActive):
-		record.Status = types.DomainStatusActive
-		record.Verified = true
-		if record.VerifiedAt == nil {
-			verifiedAt := now
-			record.VerifiedAt = &verifiedAt
-		}
-	case result.HostnameStatus == string(cloudflare.CustomHostnameStatusMoved),
-		result.HostnameStatus == string(cloudflare.CustomHostnameStatusDeleted),
-		result.HostnameStatus == string(cloudflare.CustomHostnameStatusBlocked):
-		record.Status = types.DomainStatusError
-		record.Verified = false
-	default:
-		// pending / pending_validation / certificate not issued yet:
-		// we are waiting on the domain owner, not on ourselves.
-		record.Status = types.DomainStatusPending
-		record.Verified = false
-	}
-}
-
-// applyZoneProvisioningResult records the outcome of the zone + CNAME path.
-//
-// This path writes to the record, which the pre-Cloudflare-for-SaaS code did
-// not do. That is deliberate — a deploy-path DNS failure used to exist only in
-// a log line — but it obliges the write to be idempotent in BOTH directions:
-// a pass that succeeds has to be able to undo the error a previous pass wrote,
-// otherwise one bad minute leaves `status = error` forever.
-func applyZoneProvisioningResult(record *types.CustomDomain, result domainProvisioningResult, now time.Time) {
-	record.ProvisioningError = result.ErrorMessage
-	record.ProvisioningCheckedAt = &now
-
-	if result.Err != nil {
-		record.Status = types.DomainStatusError
-		return
-	}
-
-	// Only an error (or an unset) status is rewritten. An active, pending or
-	// verifying domain keeps the status its own lifecycle put there — the zone
-	// path proves the DNS record exists, not that the domain is serving.
-	if record.Status == types.DomainStatusError || record.Status == "" {
-		if record.Verified {
-			record.Status = types.DomainStatusActive
-		} else {
-			record.Status = types.DomainStatusPending
-		}
-	}
-
-	// A domain that used to be provisioned as a custom hostname and is now on
-	// the zone path must stop pointing at a hostname registration — otherwise
-	// teardown branches on a stale id and never deletes the zone DNS record.
-	// Cleared only when Cloudflare confirmed the registration was released.
-	if result.CustomHostnameReleased {
-		record.CustomHostnameID = ""
-		record.CustomHostnameStatus = ""
-		record.CustomHostnameSSLStatus = ""
-		record.PendingDNSRecords = nil
-		if record.TLSProvider == types.TLSProviderCloudflareForSaaS {
-			record.TLSProvider = types.TLSProviderCertManager
-		}
-	}
 }
 
 // describePendingClientAction renders the outstanding client action as a

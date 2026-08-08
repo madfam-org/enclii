@@ -1,0 +1,45 @@
+version: "2"
+
+# Matches the configuration the other Go modules use. Added because CI's module
+# discovery guard skipped this module (it keeps no *.go at the module root), so
+# `golangci-lint` had never run on it and it had no configuration of its own.
+
+run:
+  timeout: 5m
+  go: "1.26"
+  tests: false # Skip linting test files (many false positives)
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - unused
+    - errcheck
+    - staticcheck
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: "^QF"
+      - linters:
+          - errcheck
+        text: "\\.Close"
+
+      # TODO(platform): pre-existing finding, owned by branch
+      # `fix/lint-gate-honesty`. Listed by symbol so every NEW finding still
+      # fails the job.
+      - linters:
+          - unused
+        path: "pkg/client/client.go"
+        text: "put"
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 20
+  max-same-issues: 5

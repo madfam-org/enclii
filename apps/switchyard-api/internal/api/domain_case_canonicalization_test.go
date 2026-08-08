@@ -179,16 +179,16 @@ func TestProvisionDomainEdgeTakesTheZonePathForACaseVariant(t *testing.T) {
 
 			h.tunnelRoutesService = newMockTunnelRoutesManager()
 			projectID := uuid.New()
+			serviceID := uuid.New()
 
 			// The zone-path ownership guard reads the hostname's owners.
 			expectHostnameUnclaimed(mock, canonicalDomain(declared))
-			// persistDomainProvisioningResult reloads the row; there is none.
-			mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
-				WithArgs(canonicalDomain(declared)).
-				WillReturnRows(sqlmock.NewRows(customDomainTestColumns))
+			// persistDomainProvisioningResult reloads this service's own rows;
+			// there are none.
+			expectOwnRowLookup(mock, canonicalDomain(declared), serviceID, noCustomDomainRows())
 
 			result := h.provisionDomainEdge(context.Background(), canonicalDomain(declared), &types.Service{
-				ID:        uuid.New(),
+				ID:        serviceID,
 				ProjectID: projectID,
 				Name:      "madfam-web",
 			}, "production", 80, nil)
