@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -127,10 +126,6 @@ func isUniqueViolation(err error) bool {
 		strings.Contains(msg, "service_id") &&
 		strings.Contains(msg, "version_number")
 }
-
-// sqlErrNoRows re-exported for external consumers that want to branch on
-// the "not found" sentinel without importing database/sql directly.
-var sqlErrNoRows = sql.ErrNoRows
 
 func (r *DeploymentRepository) UpdateStatus(id uuid.UUID, status types.DeploymentStatus, health types.HealthStatus) error {
 	query := `UPDATE deployments SET status = $1, health = $2, error_message = NULL, updated_at = NOW() WHERE id = $3`

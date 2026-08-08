@@ -89,11 +89,10 @@ func newAddonCreateCommand(cfg *config.Config) *cobra.Command {
 				"type": engine,
 				"plan": plan,
 			}
-			if serviceID != "" {
-				// The create endpoint doesn't itself take service_id today;
-				// we create the addon first, then create a binding in a
-				// second call. This mirrors how the HTTP API composes.
-			}
+			// serviceID is deliberately absent from this payload: the create
+			// endpoint doesn't take service_id today. The addon is created
+			// first and bound in a second call below, mirroring how the HTTP
+			// API composes.
 			if envID != "" {
 				payload["environment_id"] = envID
 			}

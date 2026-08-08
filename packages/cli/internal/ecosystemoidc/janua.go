@@ -79,7 +79,7 @@ func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientS
 		return out, status == http.StatusCreated, nil
 	}
 	if c.AdminToken == "" {
-		return remoteOAuthClient{}, false, fmt.Errorf("Janua auth required: run `enclii login` as admin@madfam.io or set JANUA_INTERNAL_API_KEY")
+		return remoteOAuthClient{}, false, fmt.Errorf("auth required for Janua: run `enclii login` as admin@madfam.io or set JANUA_INTERNAL_API_KEY")
 	}
 
 	existing, err := c.findExisting(ctx, spec)
@@ -194,7 +194,7 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 		if msg == "" {
 			msg = resp.Status
 		}
-		return resp.StatusCode, fmt.Errorf("Janua %s %s: %s", method, path, msg)
+		return resp.StatusCode, fmt.Errorf("request to Janua failed: %s %s: %s", method, path, msg)
 	}
 	if out != nil && len(data) > 0 {
 		if err := json.Unmarshal(data, out); err != nil {

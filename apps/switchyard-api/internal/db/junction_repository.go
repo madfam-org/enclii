@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -291,12 +290,4 @@ func (r *JunctionRepository) scanJunctions(rows *sql.Rows) ([]*types.Junction, e
 	}
 
 	return junctions, nil
-}
-
-// marshalTLS is a helper to serialize TLS config to JSON (for potential JSONB storage)
-func marshalTLS(tls *types.TLSConfig) ([]byte, error) {
-	if tls == nil {
-		return nil, nil
-	}
-	return json.Marshal(tls)
 }

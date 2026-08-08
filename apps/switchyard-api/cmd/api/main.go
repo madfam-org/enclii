@@ -27,7 +27,6 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
-	telemetry "github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	logstream "github.com/madfam-org/enclii/apps/switchyard-api/internal/logstream"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/middleware"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/monitoring"
@@ -88,7 +87,7 @@ func main() {
 	// never received an OTLP endpoint at boot and so silently dropped
 	// every span.
 	// -------------------------------------------------------------------
-	otelShutdown := telemetry.Setup(context.Background(), cfg.Environment)
+	otelShutdown := logging.Setup(context.Background(), cfg.Environment)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

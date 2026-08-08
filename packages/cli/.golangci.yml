@@ -3,7 +3,14 @@ version: "2"
 run:
   timeout: 5m
   go: "1.26"
-  tests: false  # Skip linting test files (many false positives)
+  # tests MUST stay true. With tests:false the linter cannot see test files at
+  # all, so `unused` reported resolveServiceName (logs.go) as dead when
+  # logs_test.go calls it twice -- acting on that report would have deleted a
+  # function the tests depend on. The "many false positives" that motivated
+  # tests:false were errcheck complaints about unchecked errors in test helpers;
+  # those are excluded by path below, which suppresses the noise without
+  # blinding every other linter to test code.
+  tests: true
 
 linters:
   default: none
@@ -23,6 +30,12 @@ linters:
       - linters:
           - errcheck
         text: "\\.Close"
+      # Test helpers routinely ignore errors from json.Encode/w.Write/os.WriteFile
+      # on fixtures that cannot fail meaningfully. Scoped to _test.go so errcheck
+      # still applies in full to production code.
+      - path: '_test\.go'
+        linters:
+          - errcheck
 
       # TODO(platform): pre-existing findings, owned by branch
       # `fix/lint-gate-honesty`. CI's module discovery skipped this module

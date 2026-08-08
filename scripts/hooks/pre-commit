@@ -218,7 +218,22 @@ if [ -n "$GO_FILES" ]; then
                 echo -e "${YELLOW}    → Linting $module...${NC}"
                 cd "$module"
                 if command -v golangci-lint &> /dev/null; then
-                    if ! golangci-lint run --timeout=2m ./... 2>&1 | head -20; then
+                    # The exit status MUST come from golangci-lint, not the pipeline.
+                    # `if ! golangci-lint ... | head -20` takes head's status, which is
+                    # 0 essentially always -- and this hook sets only `set -e`, no
+                    # `pipefail` (scripts/validate.sh does set pipefail, which is why
+                    # IT reports lint failures correctly and this hook never did).
+                    # Net effect: lint errors printed and the commit sailed through.
+                    # `set +e` around the capture matters: this hook runs under
+                    # `set -e`, where a failing command substitution aborts the
+                    # shell immediately -- the commit would still be blocked, but
+                    # silently, without the message below or the `cd ../..`.
+                    set +e
+                    LINT_OUT="$(golangci-lint run --timeout=2m ./... 2>&1)"
+                    LINT_RC=$?
+                    set -e
+                    if [ $LINT_RC -ne 0 ]; then
+                        echo "$LINT_OUT" | head -20
                         echo -e "${RED}❌ golangci-lint errors in $module${NC}"
                         cd ../..
                         exit 1

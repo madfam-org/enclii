@@ -3,7 +3,14 @@ version: "2"
 run:
   timeout: 5m
   go: "1.26"
-  tests: false  # Skip linting test files (many false positives)
+  # tests MUST stay true. With tests:false the linter cannot see test files, so
+  # `unused` reported 8 production symbols as dead that tests actually call --
+  # generateStatusConfigmap alone has 16 test references, and one is literally
+  # named clearSentryCacheForTest. Deleting on that report would have broken the
+  # suite. The "false positives" that motivated tests:false were errcheck and
+  # unused-mock complaints inside test files; both are excluded by path below,
+  # which silences the noise without blinding every linter to test code.
+  tests: true
 
 linters:
   default: none
@@ -17,6 +24,16 @@ linters:
     presets:
       - std-error-handling
     rules:
+      # Test files: mocks and fakes are routinely declared ahead of the test that
+      # will use them, and helpers ignore errors on fixtures that cannot fail.
+      # Scoped to _test.go so both linters still apply in full to production code
+      # -- the point of tests:true is that `unused` can SEE these files, not that
+      # it must report on them.
+      - path: '_test\.go'
+        linters:
+          - errcheck
+          - unused
+          - staticcheck
       # staticcheck style suggestions
       - linters:
           - staticcheck
@@ -128,8 +145,11 @@ formatters:
     - gofmt
 
 issues:
-  max-issues-per-linter: 20
-  max-same-issues: 5
+  # Uncapped on purpose. At 20/5 the report was TRUNCATED: switchyard-api showed
+  # exactly 20 issues while 90 existed, so "the list" was never the list. A gate
+  # that silently drops findings reads as cleaner than it is.
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 linters-settings:
   errcheck:
