@@ -27,6 +27,48 @@
 #   recurring-job-group.longhorn.io/default    = enabled   (low churn, retain 7)
 #   recurring-job-group.longhorn.io/high-churn = enabled   (retain 2)
 #
+# ---------------------------------------------------------------------------
+# CHANGING A VOLUME'S GROUP DOES NOT MIGRATE ITS EXISTING SNAPSHOTS. IT STRANDS
+# THEM. Relabelling is only half the operation; the other half is below.
+#
+# A recurring job prunes ONLY snapshots carrying its own `RecurringJob` label --
+# never every snapshot on the volume. Proof, visible on any default-group volume:
+#
+#   {daily-snapshot: 7, daily-s3-backup: 1, weekly-s3-backup: 1}  = 9 snapshots
+#
+# while daily-snapshot's retain is 7. Per-volume pruning would have trimmed it to
+# 7. It does not, because each job only counts its own.
+#
+# So when a volume moves default -> high-churn, the snapshots daily-snapshot made
+# are left with NO owner: daily-snapshot no longer targets the volume, and
+# high-churn-snapshot will only ever prune snapshots it created itself. A chain
+# that was bounded and rotating at 7 becomes frozen and permanent.
+#
+# On 2026-08-08 this stranded 128 snapshots / 117 Gi across 14 volumes -- caused
+# by the remediation for the 2026-08-07 outage, not by the outage. prometheus-data
+# alone held 10 of them (53 Gi, 2.72x its nominal size).
+#
+# AFTER RELABELLING ANY VOLUME, delete the previous owner's snapshots explicitly:
+#
+#   1. Find the volume's backup anchor -- the `snapshotName` of its most recent
+#      Completed backup. KEEP it; deleting it forces the next R2 backup to be a
+#      full upload instead of an incremental.
+#   2. `kubectl -n longhorn-system delete snapshots.longhorn.io <name>` for the
+#      rest. This never touches live data: a snapshot is a past restore point,
+#      not current state, and the R2 backups are independent of it.
+#   3. Wait for every engine `purgeStatus` to leave `in_progress` BEFORE
+#      re-measuring. `actualSize` RISES during the purge -- coalescing writes the
+#      merged blocks before freeing the originals, and the surviving anchor
+#      absorbs them. Measured yield on prometheus-data: 54.52 -> 20.21 Gi, i.e.
+#      64% of the nominal snapshot total, not 100%.
+#
+# The gate `storage.no-orphaned-snapshots` (internal-devops) reports this
+# condition continuously. Note that the obvious success criterion for the
+# migration -- "no volume is in both groups" -- is EXACTLY the condition that
+# strands the snapshots. It is correct for steady state and blind to the
+# transition, which is why nothing reported it.
+# ---------------------------------------------------------------------------
+#
 # Put a volume in high-churn when it rewrites rather than appends. Today that is
 # at least: loki, redpanda, tezca-es, prometheus, and every postgres data volume.
 # Offsite BACKUPS are unchanged for both groups -- backups live in R2, not on the
@@ -117,7 +159,8 @@ spec:
 # filled Loki's volume with 10.9 Gi of its own deltas. Volumes opt in with
 #   recurring-job-group.longhorn.io/high-churn: enabled
 # and must NOT also carry the default group, or both jobs run and the point is
-# lost.
+# lost. Dropping the default label is what strands the snapshots daily-snapshot
+# already made -- see the migration procedure in the header before relabelling.
 apiVersion: longhorn.io/v1beta1
 kind: RecurringJob
 metadata:
