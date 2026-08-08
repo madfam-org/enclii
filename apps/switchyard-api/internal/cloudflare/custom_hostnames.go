@@ -175,6 +175,15 @@ type CreateCustomHostnameOptions struct {
 	// CustomOriginServer overrides the zone's fallback origin for this
 	// hostname only. Leave empty to use the zone fallback origin.
 	CustomOriginServer string
+	// AdoptGuard is consulted by EnsureCustomHostname before an already
+	// registered custom hostname is returned as this caller's own. The zone
+	// is shared by every tenant, so a hostname match alone proves nothing
+	// about who owns it; returning an error here refuses the adoption and the
+	// error is surfaced to the caller unchanged.
+	//
+	// nil means "adopt any existing registration", which is only safe for
+	// callers that have already established ownership themselves.
+	AdoptGuard func(existing *CustomHostname) error
 }
 
 func (o *CreateCustomHostnameOptions) sslMethod() string {
@@ -196,6 +205,15 @@ func (o *CreateCustomHostnameOptions) customOriginServer() string {
 		return ""
 	}
 	return o.CustomOriginServer
+}
+
+// guardAdoption runs the caller's ownership check against an existing
+// registration. No guard means no objection.
+func (o *CreateCustomHostnameOptions) guardAdoption(existing *CustomHostname) error {
+	if o == nil || o.AdoptGuard == nil {
+		return nil
+	}
+	return o.AdoptGuard(existing)
 }
 
 // ListCustomHostnamesFilter narrows a custom hostname listing.
@@ -441,12 +459,21 @@ func (c *Client) FindCustomHostname(ctx context.Context, zoneID, hostname string
 //
 // Provisioning runs on every deploy, so this must never duplicate a hostname
 // and must never report a fresh "pending" for one Cloudflare already serves.
+//
+// The fallback-origin zone is shared by every tenant, so an existing
+// registration for this hostname is NOT evidence that it belongs to the
+// caller. opts.AdoptGuard is the caller's ownership check and is run before
+// any existing registration is handed back; when it refuses, its error is
+// returned unchanged and nothing is created.
 func (c *Client) EnsureCustomHostname(ctx context.Context, zoneID, hostname string, opts *CreateCustomHostnameOptions) (*CustomHostname, bool, error) {
 	existing, err := c.FindCustomHostname(ctx, zoneID, hostname)
 	if err != nil {
 		return nil, false, err
 	}
 	if existing != nil {
+		if guardErr := opts.guardAdoption(existing); guardErr != nil {
+			return nil, false, guardErr
+		}
 		return existing, false, nil
 	}
 
@@ -458,13 +485,18 @@ func (c *Client) EnsureCustomHostname(ctx context.Context, zoneID, hostname stri
 	// A concurrent provisioning pass (or a hostname registered on this zone
 	// outside the window our list filter covered) can lose the create race.
 	// Re-read before surfacing the failure so we do not report an error for
-	// a hostname that is in fact registered.
-	if existing, lookupErr := c.FindCustomHostname(ctx, zoneID, hostname); lookupErr == nil && existing != nil {
+	// a hostname that is in fact registered. The ownership guard applies to
+	// this adoption too — losing a race to another tenant is exactly the case
+	// it exists for.
+	if raced, lookupErr := c.FindCustomHostname(ctx, zoneID, hostname); lookupErr == nil && raced != nil {
+		if guardErr := opts.guardAdoption(raced); guardErr != nil {
+			return nil, false, guardErr
+		}
 		logrus.WithFields(logrus.Fields{
 			"zone_id":  zoneID,
 			"hostname": hostname,
 		}).Debug("Custom hostname create lost a race, using the existing registration")
-		return existing, false, nil
+		return raced, false, nil
 	}
 
 	return nil, false, createErr
@@ -480,13 +512,18 @@ func (c *Client) DeleteCustomHostname(ctx context.Context, zoneID, customHostnam
 		return fmt.Errorf("custom hostname: custom hostname ID is required")
 	}
 
-	// Cloudflare's custom hostname delete does not consistently wrap its
-	// result in the standard {success, errors, result} envelope, so we accept
-	// any 2xx that does not carry an explicit failure instead of requiring
-	// success == true (which would report a false failure on a real delete).
+	// Cloudflare's custom hostname delete does not wrap its result in the
+	// standard {success, errors, result} envelope: it answers with a bare
+	// {"id": "<deleted id>"}. We accept that documented shape and a proper
+	// success envelope, and nothing else — a 2xx carrying `{}` or `null`
+	// confirms no deletion and must not be reported as one.
 	var resp struct {
 		Success *bool      `json:"success"`
 		Errors  []APIError `json:"errors"`
+		ID      string     `json:"id"`
+		Result  *struct {
+			ID string `json:"id"`
+		} `json:"result"`
 	}
 
 	path := fmt.Sprintf("/zones/%s/custom_hostnames/%s", zoneID, customHostnameID)
@@ -499,6 +536,15 @@ func (c *Client) DeleteCustomHostname(ctx context.Context, zoneID, customHostnam
 	}
 	if resp.Success != nil && !*resp.Success {
 		return fmt.Errorf("unknown API error deleting custom hostname %s", customHostnameID)
+	}
+
+	deleteConfirmed := resp.ID != "" ||
+		(resp.Result != nil && resp.Result.ID != "") ||
+		(resp.Success != nil && *resp.Success)
+	if !deleteConfirmed {
+		return fmt.Errorf(
+			"custom hostname %s: Cloudflare returned no confirmation of the delete; treating it as still registered",
+			customHostnameID)
 	}
 
 	logrus.WithFields(logrus.Fields{

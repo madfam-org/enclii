@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -39,11 +40,16 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, fmt.Errorf("cloudflare: zone ID is required")
 	}
 
+	baseURL := strings.TrimSuffix(strings.TrimSpace(cfg.BaseURL), "/")
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+
 	client := &Client{
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
-		baseURL:   defaultBaseURL,
+		baseURL:   baseURL,
 		apiToken:  cfg.APIToken,
 		accountID: cfg.AccountID,
 		zoneID:    cfg.ZoneID,

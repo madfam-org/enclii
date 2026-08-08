@@ -168,6 +168,24 @@ func (r *JunctionRepository) ExistsByDomainPath(ctx context.Context, domain, pat
 	return exists, nil
 }
 
+// CountOtherByDomain counts junctions serving a hostname other than the given
+// one, across every project.
+//
+// The (domain, path) uniqueness index is not project-scoped, so one hostname
+// can legitimately be served by several junctions on different paths, and
+// those junctions can belong to different projects. Edge teardown for a
+// hostname must not run while any of them remain.
+func (r *JunctionRepository) CountOtherByDomain(ctx context.Context, domain string, excludeID uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM junctions WHERE domain = $1 AND id <> $2`
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, query, domain, excludeID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to count junctions for domain: %w", err)
+	}
+
+	return count, nil
+}
+
 // Delete permanently removes a junction
 func (r *JunctionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM junctions WHERE id = $1`

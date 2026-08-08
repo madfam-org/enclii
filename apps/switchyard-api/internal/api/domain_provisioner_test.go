@@ -8,6 +8,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
@@ -142,12 +143,21 @@ func TestEnsureDomainRouting_NilDomainSyncService(t *testing.T) {
 	h := &Handler{
 		domainSyncService: nil,
 		logger:            newNopLogger(),
+		config:            &config.Config{},
 	}
 
 	// nil domainSyncService should return immediately without panic
-	result := h.ensureDomainRouting(context.Background(), "example.com", nil)
+	plan := h.planDomainRouting(context.Background(), "example.com", nil)
+	if !plan.skip {
+		t.Fatalf("plan.skip = false; a domain with no Cloudflare client and no external declaration has nothing to do")
+	}
+
+	result := h.applyDomainRouting(context.Background(), plan, nil)
 	if result.Mechanism != mechanismZoneCNAME {
 		t.Fatalf("mechanism = %q, want %q", result.Mechanism, mechanismZoneCNAME)
+	}
+	if result.Err != nil {
+		t.Fatalf("unexpected error: %v", result.Err)
 	}
 }
 
@@ -165,8 +175,9 @@ func TestCleanupDomainsForService_NilGuards(t *testing.T) {
 		Name: "svc",
 	}, "production", 80)
 
-	// ensureDomainRouting with nil domainSyncService returns immediately
-	h.ensureDomainRouting(context.Background(), "test.com", nil)
+	// Edge provisioning with nil domainSyncService returns immediately
+	h.applyDomainRouting(context.Background(),
+		h.planDomainRouting(context.Background(), "test.com", nil), nil)
 }
 
 func TestProvisionSingleDomain_InvalidDomain(t *testing.T) {

@@ -1,33 +1,68 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/manifest"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 func TestRegistrableDomain(t *testing.T) {
 	tests := []struct {
 		domain string
 		want   string
+		wantOK bool
 	}{
-		{"madfam.io", "madfam.io"},
-		{"api.madfam.io", "madfam.io"},
-		{"a.b.madfam.io", "madfam.io"},
-		{"API.MadFam.IO", "madfam.io"},
+		{domain: "madfam.io", want: "madfam.io", wantOK: true},
+		{domain: "api.madfam.io", want: "madfam.io", wantOK: true},
+		{domain: "a.b.madfam.io", want: "madfam.io", wantOK: true},
+		{domain: "API.MadFam.IO", want: "madfam.io", wantOK: true},
 		// Two-label public suffixes must not be mistaken for a subdomain.
-		{"example.com.mx", "example.com.mx"},
-		{"app.example.com.mx", "example.com.mx"},
-		{"a.b.example.com.mx", "example.com.mx"},
-		{"domain.co.uk", "domain.co.uk"},
-		{"sub.domain.co.uk", "domain.co.uk"},
-		// Unknown two-label suffixes fall back to the last two labels.
-		{"sub.example.xyz", "example.xyz"},
-		{"single", "single"},
+		{domain: "example.com.mx", want: "example.com.mx", wantOK: true},
+		{domain: "app.example.com.mx", want: "example.com.mx", wantOK: true},
+		{domain: "a.b.example.com.mx", want: "example.com.mx", wantOK: true},
+		{domain: "domain.co.uk", want: "domain.co.uk", wantOK: true},
+		{domain: "sub.domain.co.uk", want: "domain.co.uk", wantOK: true},
+		{domain: "sub.example.xyz", want: "example.xyz", wantOK: true},
+
+		// MEDIUM-3: two-label suffixes the old hand-rolled table did not
+		// carry. Guessing "the last two labels" derived "com.pe" as the apex
+		// of "example.com.pe", which made every host under it read as nested
+		// and rejected valid client domains at declaration time.
+		{domain: "example.com.pe", want: "example.com.pe", wantOK: true},
+		{domain: "app.example.com.pe", want: "example.com.pe", wantOK: true},
+		{domain: "app.example.co.in", want: "example.co.in", wantOK: true},
+		{domain: "app.example.com.tr", want: "example.com.tr", wantOK: true},
+		{domain: "app.example.co.il", want: "example.co.il", wantOK: true},
+		{domain: "app.example.com.hk", want: "example.com.hk", wantOK: true},
+		{domain: "app.example.or.jp", want: "example.or.jp", wantOK: true},
+		{domain: "app.example.edu.au", want: "example.edu.au", wantOK: true},
+		{domain: "app.example.sch.uk", want: "example.sch.uk", wantOK: true},
+
+		// Three-label suffixes: adding "edu.au" alone would have mis-derived
+		// these in the other direction.
+		{domain: "school.vic.edu.au", want: "school.vic.edu.au", wantOK: true},
+		{domain: "www.school.vic.edu.au", want: "school.vic.edu.au", wantOK: true},
+
+		// An unrecognised suffix is "cannot determine", never a guess.
+		{domain: "sub.example.madeuptld", wantOK: false},
+		{domain: "single", want: "single", wantOK: false},
+		// A hostname that is itself a public suffix has no registrable domain.
+		{domain: "com.mx", wantOK: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.domain, func(t *testing.T) {
-			if got := registrableDomain(tt.domain); got != tt.want {
+			got, ok := registrableDomain(tt.domain)
+			if ok != tt.wantOK {
+				t.Fatalf("registrableDomain(%q) ok = %v, want %v (apex %q)", tt.domain, ok, tt.wantOK, got)
+			}
+			if ok && got != tt.want {
 				t.Errorf("registrableDomain(%q) = %q, want %q", tt.domain, got, tt.want)
 			}
 		})
@@ -48,6 +83,23 @@ func TestIsNestedSubdomain(t *testing.T) {
 		{"a.b.example.com.mx", true},
 		{"sub.domain.co.uk", false},
 		{"a.sub.domain.co.uk", true},
+
+		// MEDIUM-3: these were all reported as nested, which rejected them.
+		{"app.example.com.pe", false},
+		{"app.example.co.in", false},
+		{"app.example.com.tr", false},
+		{"app.example.co.il", false},
+		{"app.example.com.hk", false},
+		{"app.example.or.jp", false},
+		{"app.example.edu.au", false},
+		{"app.example.sch.uk", false},
+		{"www.school.vic.edu.au", false},
+		{"a.b.school.vic.edu.au", true},
+
+		// Unknown suffix: cannot determine, so not claimed as nested. A
+		// genuinely nested host still fails visibly at the TLS handshake,
+		// which is cheaper than refusing to deploy a correct domain.
+		{"a.b.example.madeuptld", false},
 	}
 
 	for _, tt := range tests {
@@ -172,6 +224,79 @@ func TestValidateDomainNestedSubdomains(t *testing.T) {
 				t.Fatalf("validateDomain(%q, true) = %v, want nil", domain, err)
 			}
 		})
+	}
+}
+
+// MEDIUM-2: the stricter validator rejects two hostnames that are already
+// declared in a shipped manifest (pravara-mes/enclii.yaml). Rejecting them at
+// DECLARATION time is right — a human sees the error and can act on it —
+// but the DEPLOY path must keep reconciling them, because silently dropping a
+// live domain from reconciliation is a worse outcome than a certificate that
+// was already broken.
+func TestShippedNestedProductionHostnames(t *testing.T) {
+	shipped := []string{"api.pravara.madfam.io", "app.pravara.madfam.io"}
+
+	for _, domain := range shipped {
+		t.Run(domain, func(t *testing.T) {
+			if !isNestedSubdomain(domain) {
+				t.Fatalf("%q should still be recognised as nested", domain)
+			}
+			// Declaration-time entry points reject it, with a remedy.
+			if err := validateDomain(domain, false); err == nil {
+				t.Errorf("validateDomain(%q, false) = nil; declaration must still reject it", domain)
+			}
+			// The deploy path validates with allowNested=true, so the domain
+			// is never skipped there.
+			if err := validateDomain(domain, true); err != nil {
+				t.Errorf("validateDomain(%q, true) = %v; the deploy path must keep reconciling it", domain, err)
+			}
+		})
+	}
+}
+
+// The deploy path itself must not skip a nested host: provisionSingleDomain
+// reaching the existence check proves the domain was not dropped by
+// validation.
+func TestProvisionSingleDomainDoesNotSkipShippedNestedHost(t *testing.T) {
+	h, mock, cleanup := newSQLMockHandler(t)
+	defer cleanup()
+
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE domain = \$1\)`).
+		WithArgs("api.pravara.madfam.io").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	h.provisionSingleDomain(context.Background(), &types.Service{
+		ID:        uuid.New(),
+		ProjectID: uuid.New(),
+		Name:      "pravara-mes-api",
+	}, manifest.EncliiYAMLDomain{
+		Name:        "api.pravara.madfam.io",
+		Environment: "production",
+	}, 80)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the nested domain was skipped before the existence check: %v", err)
+	}
+}
+
+// A domain whose `external:` value could not be read is the one thing the
+// deploy path does skip, by name.
+func TestProvisionSingleDomainSkipsUnreadableExternalValue(t *testing.T) {
+	h, mock, cleanup := newSQLMockHandler(t)
+	defer cleanup()
+
+	h.provisionSingleDomain(context.Background(), &types.Service{
+		ID:        uuid.New(),
+		ProjectID: uuid.New(),
+		Name:      "svc",
+	}, manifest.EncliiYAMLDomain{
+		Name:        "app.client.com",
+		Environment: "production",
+		External:    &manifest.ExternalFlag{Invalid: "perhaps"},
+	}, 80)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unexpected database activity for a skipped domain: %v", err)
 	}
 }
 

@@ -89,6 +89,12 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 			VerificationTXT:  verificationTXT,
 			DNSCNAME:         domain.DNSCNAME,
 			CreatedAt:        domain.CreatedAt,
+
+			// Surface the provisioning diagnosis: a domain that cannot be
+			// provisioned at all must not read as merely "pending".
+			ProvisioningError:     domain.ProvisioningError,
+			ProvisioningCheckedAt: domain.ProvisioningCheckedAt,
+			PendingDNSRecords:     domain.PendingDNSRecords,
 		}
 
 		// For unverified custom domains, always include verification info

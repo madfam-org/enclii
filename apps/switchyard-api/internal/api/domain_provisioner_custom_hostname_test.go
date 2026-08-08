@@ -3,8 +3,11 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/cloudflare"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
@@ -14,7 +17,11 @@ import (
 // stubZoneResolver answers the one question the mechanism decision asks.
 type stubZoneResolver struct {
 	zonesWeControl map[string]bool
-	calls          int
+	// failure, when set, is returned for every domain not in zonesWeControl.
+	// It stands in for a transport/HTTP/pagination failure — the case that
+	// must never be read as "this domain is client-owned".
+	failure error
+	calls   int
 }
 
 func (s *stubZoneResolver) FindZoneForDomain(ctx context.Context, domain string) (*cloudflare.Zone, error) {
@@ -22,7 +29,10 @@ func (s *stubZoneResolver) FindZoneForDomain(ctx context.Context, domain string)
 	if s.zonesWeControl[domain] {
 		return &cloudflare.Zone{ID: "zone-" + domain, Name: domain}, nil
 	}
-	return nil, errors.New("no Cloudflare zone found for domain " + domain)
+	if s.failure != nil {
+		return nil, s.failure
+	}
+	return nil, fmt.Errorf("%w: %s", cloudflare.ErrZoneNotFound, domain)
 }
 
 func saasConfiguredHandler() *Handler {
@@ -43,6 +53,7 @@ func TestResolveDomainMechanism(t *testing.T) {
 		domain     string
 		external   *bool
 		want       domainProvisioningMechanism
+		wantErr    bool
 		wantLookup bool
 	}{
 		{
@@ -104,13 +115,60 @@ func TestResolveDomainMechanism(t *testing.T) {
 			domain:  "cto.creatumundo.mx",
 			want:    mechanismZoneCNAME,
 		},
+		{
+			// HIGH-1: the case that reroutes a MADFAM domain. A 500/429/
+			// timeout/token blip is not "no zone", and must not be read as
+			// one.
+			name:    "a transport failure is undetermined, never client-owned",
+			handler: saasConfiguredHandler(),
+			zones: &stubZoneResolver{
+				zonesWeControl: map[string]bool{"app.dhan.am": true},
+				failure:        errors.New("cloudflare: HTTP error 500: internal server error"),
+			},
+			domain:     "app.dhan.am.example",
+			want:       mechanismUndetermined,
+			wantErr:    true,
+			wantLookup: true,
+		},
+		{
+			name:    "a rate-limited lookup is undetermined",
+			handler: saasConfiguredHandler(),
+			zones: &stubZoneResolver{
+				failure: &cloudflare.APIError{Code: 10000, Message: "rate limited"},
+			},
+			domain:     "app.dhan.am",
+			want:       mechanismUndetermined,
+			wantErr:    true,
+			wantLookup: true,
+		},
+		{
+			// A zone we hold but Cloudflare is not serving is still ours, so
+			// the domain must not be moved onto the custom-hostname path.
+			name:    "a zone that exists but is not active is undetermined",
+			handler: saasConfiguredHandler(),
+			zones: &stubZoneResolver{
+				failure: &cloudflare.ZoneNotActiveError{
+					Domain: "app.dhan.am", ZoneName: "dhan.am", Status: "pending",
+				},
+			},
+			domain:     "app.dhan.am",
+			want:       mechanismUndetermined,
+			wantErr:    true,
+			wantLookup: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.handler.resolveDomainMechanism(context.Background(), tt.zones, tt.domain, tt.external)
+			got, err := tt.handler.resolveDomainMechanism(context.Background(), tt.zones, tt.domain, tt.external)
 			if got != tt.want {
 				t.Errorf("mechanism = %q, want %q", got, tt.want)
+			}
+			if tt.wantErr && err == nil {
+				t.Error("expected an error for an undecidable lookup, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 			if stub, ok := tt.zones.(*stubZoneResolver); ok && stub != nil {
 				if tt.wantLookup && stub.calls == 0 {
@@ -121,6 +179,57 @@ func TestResolveDomainMechanism(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestApplyProvisioningResultUndeterminedLeavesRecordUntouched is the second
+// half of the HIGH-1 regression: even once the undecidable lookup is
+// classified, the live record must survive it. Before the fix a transient
+// Cloudflare error rewrote a serving domain to
+// tls_provider=cloudflare-for-saas / verified=false / status=pending.
+func TestApplyProvisioningResultUndeterminedLeavesRecordUntouched(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+	verifiedAt := now.Add(-72 * time.Hour)
+
+	record := &types.CustomDomain{
+		Domain:      "app.dhan.am",
+		TLSProvider: types.TLSProviderCertManager,
+		Status:      types.DomainStatusActive,
+		Verified:    true,
+		VerifiedAt:  &verifiedAt,
+		DNSCNAME:    "tunnel.enclii.dev",
+	}
+
+	result := domainProvisioningResult{Domain: "app.dhan.am", Mechanism: mechanismUndetermined}
+	result.setErr(errors.New("cloudflare: HTTP error 500: internal server error"))
+
+	applyProvisioningResult(record, result, now)
+
+	if record.TLSProvider != types.TLSProviderCertManager {
+		t.Errorf("TLSProvider = %q, want it untouched (%q)", record.TLSProvider, types.TLSProviderCertManager)
+	}
+	if record.Status != types.DomainStatusActive {
+		t.Errorf("Status = %q, want it untouched (%q)", record.Status, types.DomainStatusActive)
+	}
+	if !record.Verified {
+		t.Error("Verified = false; an undecidable lookup must not un-verify a live domain")
+	}
+	if record.VerifiedAt == nil || !record.VerifiedAt.Equal(verifiedAt) {
+		t.Errorf("VerifiedAt = %v, want it untouched (%v)", record.VerifiedAt, verifiedAt)
+	}
+	if record.CustomHostnameID != "" {
+		t.Errorf("CustomHostnameID = %q, want empty", record.CustomHostnameID)
+	}
+	if record.DNSCNAME != "tunnel.enclii.dev" {
+		t.Errorf("DNSCNAME = %q, want it untouched", record.DNSCNAME)
+	}
+
+	// The diagnosis is still recorded, so the failure is not silent.
+	if record.ProvisioningError == "" {
+		t.Error("ProvisioningError is empty; the undecidable lookup must stay legible")
+	}
+	if record.ProvisioningCheckedAt == nil || !record.ProvisioningCheckedAt.Equal(now) {
+		t.Errorf("ProvisioningCheckedAt = %v, want %v", record.ProvisioningCheckedAt, now)
 	}
 }
 
@@ -166,7 +275,7 @@ func TestCustomHostnameZone(t *testing.T) {
 func TestEnsureCustomHostnameFailsClosedWhenUnconfigured(t *testing.T) {
 	h := &Handler{logger: newNopLogger(), config: &config.Config{}}
 
-	result := h.ensureCustomHostname(context.Background(), "cto.creatumundo.mx")
+	result := h.ensureCustomHostname(context.Background(), "cto.creatumundo.mx", &domainOwner{ProjectID: uuid.New()})
 	if result.Err == nil {
 		t.Fatal("expected a typed provisioning error, got nil")
 	}
@@ -200,14 +309,16 @@ func TestDeleteCustomHostnameGuards(t *testing.T) {
 		// Nothing could have been provisioned, so there is nothing to delete
 		// and nothing to complain about.
 		h := &Handler{logger: newNopLogger(), config: &config.Config{}}
-		if err := h.deleteCustomHostnameByDomain(context.Background(), "cto.creatumundo.mx"); err != nil {
+		owner := &domainOwner{ProjectID: uuid.New()}
+		if err := h.releaseCustomHostnameForProject(context.Background(), "cto.creatumundo.mx", owner); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("by-domain teardown is a no-op without a cloudflare client", func(t *testing.T) {
 		h := saasConfiguredHandler()
-		if err := h.deleteCustomHostnameByDomain(context.Background(), "cto.creatumundo.mx"); err != nil {
+		owner := &domainOwner{ProjectID: uuid.New()}
+		if err := h.releaseCustomHostnameForProject(context.Background(), "cto.creatumundo.mx", owner); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -331,6 +442,39 @@ func TestApplyProvisioningResult(t *testing.T) {
 			result:       domainProvisioningResult{Domain: "api.madfam.io", Mechanism: mechanismZoneCNAME},
 			wantStatus:   types.DomainStatusActive,
 			wantVerified: true,
+			wantProvider: types.TLSProviderCertManager,
+		},
+		{
+			// MEDIUM-1: the zone path writes to the record, so its writes have
+			// to be reversible. A success after a failure must clear both the
+			// error text and the error status, or one bad minute pins the
+			// domain to status=error forever.
+			name: "a successful zone pass clears the error a previous pass wrote",
+			record: &types.CustomDomain{
+				Domain:            "api.madfam.io",
+				TLSProvider:       types.TLSProviderCertManager,
+				Status:            types.DomainStatusError,
+				Verified:          true,
+				VerifiedAt:        &now,
+				ProvisioningError: "failed to create DNS record for api.madfam.io: cloudflare: HTTP error 500",
+			},
+			result:       domainProvisioningResult{Domain: "api.madfam.io", Mechanism: mechanismZoneCNAME},
+			wantStatus:   types.DomainStatusActive,
+			wantVerified: true,
+			wantProvider: types.TLSProviderCertManager,
+		},
+		{
+			name: "a successful zone pass on an unverified domain returns it to pending, not error",
+			record: &types.CustomDomain{
+				Domain:            "api.madfam.io",
+				TLSProvider:       types.TLSProviderCertManager,
+				Status:            types.DomainStatusError,
+				Verified:          false,
+				ProvisioningError: "failed to create DNS record",
+			},
+			result:       domainProvisioningResult{Domain: "api.madfam.io", Mechanism: mechanismZoneCNAME},
+			wantStatus:   types.DomainStatusPending,
+			wantVerified: false,
 			wantProvider: types.TLSProviderCertManager,
 		},
 	}

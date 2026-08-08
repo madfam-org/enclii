@@ -444,7 +444,7 @@ func TestIsTLSEnabled(t *testing.T) {
 func TestExternalOverride(t *testing.T) {
 	tests := []struct {
 		name         string
-		external     *bool
+		external     *ExternalFlag
 		wantValue    bool
 		wantDeclared bool
 	}{
@@ -458,15 +458,23 @@ func TestExternalOverride(t *testing.T) {
 		},
 		{
 			name:         "explicit true opts into the custom hostname path",
-			external:     boolPtr(true),
+			external:     &ExternalFlag{Value: boolPtr(true)},
 			wantValue:    true,
 			wantDeclared: true,
 		},
 		{
 			name:         "explicit false pins the zone path",
-			external:     boolPtr(false),
+			external:     &ExternalFlag{Value: boolPtr(false)},
 			wantValue:    false,
 			wantDeclared: true,
+		},
+		{
+			// An unreadable value must never be reported as a declared
+			// mechanism; the caller has to consult ExternalParseFailure.
+			name:         "unreadable value is not a declared override",
+			external:     &ExternalFlag{Invalid: "maybe"},
+			wantValue:    false,
+			wantDeclared: false,
 		},
 	}
 
@@ -518,13 +526,134 @@ spec:
 	// Absent field stays nil so the provisioner auto-detects, exactly as
 	// before this field existed.
 	if cfg.Spec.Domains[0].External != nil {
-		t.Errorf("Domains[0].External = %v, want nil", *cfg.Spec.Domains[0].External)
+		t.Errorf("Domains[0].External = %+v, want nil", cfg.Spec.Domains[0].External)
 	}
 	if value, declared := cfg.Spec.Domains[1].ExternalOverride(); !value || !declared {
 		t.Errorf("Domains[1].ExternalOverride() = (%v, %v), want (true, true)", value, declared)
 	}
 	if value, declared := cfg.Spec.Domains[2].ExternalOverride(); value || !declared {
 		t.Errorf("Domains[2].ExternalOverride() = (%v, %v), want (false, true)", value, declared)
+	}
+}
+
+// LOW-1 regression: a bad `external:` value used to be a decode error, and a
+// decode error anywhere aborts ParseEncliiYAML — discarding every domain AND
+// every header in the file behind a single log line. The quoted spelling is
+// now honoured, and a genuinely unreadable value costs only its own domain.
+func TestParseEncliiYAMLMalformedExternalKeepsTheRestOfTheManifest(t *testing.T) {
+	content := []byte(`
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: my-api
+  project: acme
+spec:
+  domains:
+    - name: api.example.com
+      environment: production
+    - name: quoted.example.com
+      environment: production
+      external: "true"
+    - name: broken.example.com
+      environment: production
+      external: perhaps
+    - name: last.example.com
+      environment: production
+  headers:
+    X-Frame-Options: DENY
+`)
+
+	cfg, err := ParseEncliiYAML(content)
+	if err != nil {
+		t.Fatalf("ParseEncliiYAML() error = %v; a bad `external` value must not discard the manifest", err)
+	}
+	if len(cfg.Spec.Domains) != 4 {
+		t.Fatalf("len(Domains) = %d, want 4 — every domain must survive", len(cfg.Spec.Domains))
+	}
+	if len(cfg.Spec.Headers) != 1 {
+		t.Fatalf("len(Headers) = %d, want 1 — headers must survive too", len(cfg.Spec.Headers))
+	}
+
+	if _, malformed := cfg.Spec.Domains[0].ExternalParseFailure(); malformed {
+		t.Error("Domains[0] has no `external` field and must not report a parse failure")
+	}
+
+	// The quoted spelling is what the author meant.
+	if value, declared := cfg.Spec.Domains[1].ExternalOverride(); !value || !declared {
+		t.Errorf(`Domains[1] (external: "true") ExternalOverride() = (%v, %v), want (true, true)`, value, declared)
+	}
+
+	raw, malformed := cfg.Spec.Domains[2].ExternalParseFailure()
+	if !malformed {
+		t.Error("Domains[2] (external: perhaps) must report a parse failure")
+	}
+	if raw != "perhaps" {
+		t.Errorf("ExternalParseFailure() raw = %q, want %q", raw, "perhaps")
+	}
+	// And it must not be mistaken for a declared mechanism.
+	if _, declared := cfg.Spec.Domains[2].ExternalOverride(); declared {
+		t.Error("an unreadable `external` value must not read as a declared override")
+	}
+
+	if cfg.Spec.Domains[3].Name != "last.example.com" {
+		t.Errorf("Domains[3].Name = %q, want last.example.com", cfg.Spec.Domains[3].Name)
+	}
+}
+
+func TestExternalFlagScalarForms(t *testing.T) {
+	tests := []struct {
+		literal      string
+		wantValue    bool
+		wantDeclared bool
+		wantInvalid  string
+	}{
+		{literal: "true", wantValue: true, wantDeclared: true},
+		{literal: "false", wantDeclared: true},
+		{literal: `"true"`, wantValue: true, wantDeclared: true},
+		{literal: `'false'`, wantDeclared: true},
+		{literal: "True", wantValue: true, wantDeclared: true},
+		{literal: "yes", wantValue: true, wantDeclared: true},
+		{literal: "off", wantDeclared: true},
+		{literal: "1", wantValue: true, wantDeclared: true},
+		{literal: "0", wantDeclared: true},
+		{literal: "null", wantDeclared: false},
+		{literal: "perhaps", wantInvalid: "perhaps"},
+		{literal: "[1]", wantInvalid: "<non-scalar value>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.literal, func(t *testing.T) {
+			content := []byte(`
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: my-api
+  project: acme
+spec:
+  domains:
+    - name: api.example.com
+      environment: production
+      external: ` + tt.literal + "\n")
+
+			cfg, err := ParseEncliiYAML(content)
+			if err != nil {
+				t.Fatalf("ParseEncliiYAML() error = %v", err)
+			}
+
+			domain := cfg.Spec.Domains[0]
+			value, declared := domain.ExternalOverride()
+			if value != tt.wantValue || declared != tt.wantDeclared {
+				t.Errorf("ExternalOverride() = (%v, %v), want (%v, %v)", value, declared, tt.wantValue, tt.wantDeclared)
+			}
+
+			raw, malformed := domain.ExternalParseFailure()
+			if (tt.wantInvalid != "") != malformed {
+				t.Errorf("ExternalParseFailure() malformed = %v, want %v", malformed, tt.wantInvalid != "")
+			}
+			if malformed && raw != tt.wantInvalid {
+				t.Errorf("ExternalParseFailure() raw = %q, want %q", raw, tt.wantInvalid)
+			}
+		})
 	}
 }
 

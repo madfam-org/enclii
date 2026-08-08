@@ -18,6 +18,15 @@
 > a first real client domain. Do not read "implemented" as "verified in
 > production".
 
+> [!NOTE]
+> The zone + CNAME path is **not** byte-identical to its pre-Cloudflare-for-SaaS
+> behaviour, and an earlier revision of this document and of the pull request
+> that introduced it claimed otherwise. It now records `provisioning_error`,
+> `provisioning_checked_at` and — on failure — `status = error` on the
+> `custom_domains` row. That is a deliberate improvement (a deploy-path DNS
+> failure used to exist only in a log line) and it is idempotent in both
+> directions: see [What the zone + CNAME path writes](#what-the-zone--cname-path-writes).
+
 ---
 
 ## Overview
@@ -99,7 +108,7 @@ domain whose apex is **not** a zone in our Cloudflare account.
 - Client: `apps/switchyard-api/internal/cloudflare/custom_hostnames.go`
 - Provisioning: `apps/switchyard-api/internal/api/domain_provisioner_custom_hostname.go`
 - Mechanism dispatch: `apps/switchyard-api/internal/api/domain_provisioner.go`
-  (`ensureDomainRouting`)
+  (`planDomainRouting` / `applyDomainRouting` / `provisionDomainEdge`)
 
 **Plan limits:** first 100 custom hostnames free, then $0.10/hostname/month.
 
@@ -110,9 +119,9 @@ domain whose apex is **not** a zone in our Cloudflare account.
   settings: {min_tls_version: "1.2"}}`.
 - Idempotent `EnsureCustomHostname` (safe to re-run on every deploy).
 - Per-domain mechanism selection during provisioning: a domain whose apex is
-  already a zone we control keeps the zone+CNAME path; anything else becomes a
-  custom hostname. `external: true` / `external: false` on an `enclii.yaml`
-  domain forces the choice.
+  already a zone we control keeps the zone+CNAME path; a domain Cloudflare
+  confirms we hold no zone for becomes a custom hostname. `external: true` /
+  `external: false` on an `enclii.yaml` domain forces the choice.
 - The Cloudflare-reported hostname status, certificate status and the DNS
   records the client still owes are persisted on the `custom_domains` row
   (migration `033`) and returned on the domain read path and in the junction
@@ -121,6 +130,55 @@ domain whose apex is **not** a zone in our Cloudflare account.
   from Cloudflare for custom-hostname domains. A domain is marked verified
   **only** when Cloudflare reports the hostname active *and* its certificate
   active — never because an API call returned 200.
+
+#### Tenancy: the fallback-origin zone is shared
+
+Every client-owned hostname is registered on the SAME zone. A hostname string
+is therefore never evidence of who owns it, and three rules follow:
+
+- **Claiming.** Before a custom hostname is created — or an existing
+  registration adopted — the claiming project must be the one holding the
+  `custom_domains` record for that hostname. Another project's hostname is
+  refused with an error naming the owner. The check runs twice: once before
+  the Cloudflare call, and again through `CreateCustomHostnameOptions.AdoptGuard`
+  at the moment an existing registration would be adopted (including the
+  registration that wins a create race).
+- **Routing order.** For a custom-hostname domain the Cloudflare step runs
+  BEFORE the tunnel ingress rule, because `AddRoute` overwrites any existing
+  rule for the same hostname. A refused claim leaves the existing rule alone.
+  Every other domain keeps the historical order (route first, then DNS).
+- **Teardown.** Releasing a custom hostname is scoped to the owning project,
+  and — on the junction path — only happens once no other junction still
+  serves that hostname. The `(domain, path)` uniqueness index on `junctions`
+  is not project-scoped, so two projects can hold junctions for one hostname
+  on different paths.
+
+#### Failing closed on an undecidable zone lookup
+
+`FindZoneForDomain` distinguishes three outcomes, and the mechanism decision
+depends on it:
+
+| Outcome | Error | Mechanism |
+|---------|-------|-----------|
+| Account holds an active zone | none | zone + CNAME |
+| Account holds no zone | `cloudflare.ErrZoneNotFound` | custom hostname |
+| Zone exists but is not active | `*cloudflare.ZoneNotActiveError` | **undetermined** |
+| Lookup failed (5xx, 429, timeout, bad token, pagination) | returned verbatim | **undetermined** |
+
+`ListZones` filters `status=active`, so a zone that is pending activation or
+has moved is absent from the normal listing. The lookup re-queries without the
+filter before concluding the account does not hold the zone.
+
+An **undetermined** result aborts that domain's provisioning. The domain
+record's status, verification, TLS provider and custom-hostname fields are left
+exactly as the last conclusive pass wrote them; only `provisioning_error` and
+`provisioning_checked_at` are updated so the failure is visible. Reading an
+undecidable lookup as "client-owned" is how a transient Cloudflare error would
+rewrite a live MADFAM domain to `tls_provider = cloudflare-for-saas`,
+`verified = false`, `status = pending`.
+
+The same sentinel gates zone auto-creation: `EnsureZoneForDomain` creates a
+zone only on a confirmed `ErrZoneNotFound`, never on a failed lookup.
 
 #### What still requires the client to act
 
@@ -138,14 +196,36 @@ Until those exist the domain stays `status = pending` with a populated
 
 #### Configuration
 
-Both variables are required to enable the path. When either is empty the
-custom-hostname path is disabled and domain provisioning behaves exactly as it
-did before (zone + CNAME only).
+Both variables are required to enable the path. When either is empty, the
+custom-hostname path is not attempted for auto-detected domains and every
+domain takes the zone + CNAME path, as before.
 
 | Variable | Meaning |
 |----------|---------|
 | `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID` | Zone id of a zone we own that has a Cloudflare for SaaS fallback origin configured |
 | `ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME` | Hostname clients CNAME to (e.g. `proxy.enclii.dev`); must resolve inside that zone |
+
+> [!WARNING]
+> A domain declared `external: true` does **not** fall back to the zone path
+> when the fallback origin is unset, and it does not fall back when the
+> Cloudflare client is unavailable. Falling back would point a client-owned
+> domain at DNS we do not control. The domain is left unprovisioned with an
+> explanatory `provisioning_error` on its record, which the service networking
+> read path (`GET /v1/services/:id/networking`) returns as
+> `domains[].provisioning_error`. Until the fallback origin is configured, such
+> a domain has no DNS record of any kind — that is the intended, visible
+> outcome, not a silent one.
+
+#### What the zone + CNAME path writes
+
+The zone path now records its outcome on the `custom_domains` row
+(`provisioning_error`, `provisioning_checked_at`, and `status` when it fails),
+which the pre-Cloudflare-for-SaaS code did not do. The change is deliberate — a
+deploy-path DNS failure used to exist only in a log line — and it is
+**idempotent in both directions**: a pass that succeeds clears the error text
+and returns an `error` status to `active` (verified domains) or `pending`
+(unverified ones). A pass that succeeds never rewrites a status the domain's
+own lifecycle set.
 
 #### enclii.yaml
 
@@ -162,11 +242,32 @@ spec:
       external: false
 ```
 
+`external:` accepts a YAML boolean and the quoted spellings a human is likely
+to write (`"true"`, `yes`, `on`, `1`, and their negatives). A value that cannot
+be read as a boolean fails **that one domain**, by name, in the deploy log — it
+does not abort parsing, because an aborted parse discards every domain and
+every header the manifest declares.
+
 > [!NOTE]
 > Cloudflare Universal SSL on the zone path covers the apex and **one**
 > subdomain level. A nested host (`a.b.example.com`) is rejected at
-> declaration time unless it is declared `external: true`, because Cloudflare
-> for SaaS issues a certificate for the exact hostname and can serve it.
+> *declaration* time — `POST /v1/services/:id/domains` and
+> `POST /v1/projects/:slug/junctions` — unless it is declared `external: true`,
+> because Cloudflare for SaaS issues a certificate for the exact hostname and
+> can serve it.
+>
+> On the **deploy** path a nested host is a loud warning and provisioning
+> continues. Hosts like `api.pravara.madfam.io` are already declared in shipped
+> manifests; dropping them from reconciliation on a validation rule would take
+> a working deploy away to fix a certificate that was already broken.
+>
+> "Nested" is only claimed when the public suffix is one the validator
+> recognises (`knownPublicSuffixes` in `domain_handlers.go`, which carries
+> one-, two- and three-label entries). An unrecognised suffix means "cannot
+> determine the apex", never "assume the last two labels" — guessing derived
+> `com.pe` as the apex of `example.com.pe` and rejected valid client domains.
+> A genuinely nested host that slips through still fails visibly at the TLS
+> handshake, which is cheaper than refusing to deploy a correct domain.
 
 ## Credentials
 
@@ -231,19 +332,22 @@ Domains declared in `enclii.yaml` are automatically provisioned on each push to 
 2. `enclii.yaml` fetched and parsed from the repo (`enclii_yaml.go`)
 3. For each declared domain (`domain_provisioner.go`):
    - Create `CustomDomain` record in database (if not exists)
-   - Add Cloudflare tunnel route via `TunnelRoutesManager.AddRoute()`
-   - Provision edge routing via `ensureDomainRouting()`, which picks the
-     mechanism per domain:
-     - zone we control → `Client.EnsureDNSRecord()` (proxied CNAME)
+   - `provisionDomainEdge()` picks the mechanism (`planDomainRouting()`) and
+     runs the two steps in the order it demands:
+     - zone we control → tunnel route via `TunnelRoutesManager.AddRoute()`,
+       then `Client.EnsureDNSRecord()` (proxied CNAME)
      - client-owned domain → `Client.EnsureCustomHostname()` on the
-       fallback-origin zone, then store the records the client must add
+       fallback-origin zone FIRST (which carries the ownership check), then
+       the tunnel route, then store the records the client must add
+     - undetermined → tunnel route as before; the edge step is aborted and
+       the reason recorded on the domain
 4. DNS records point to `tunnel.enclii.dev` (the tunnel endpoint)
 
 **Multi-Zone Support:** `FindZoneForDomain()` uses longest-suffix matching — `api.qubic.quest` matches zone `qubic.quest` rather than `quest`.
 
-**Auto Zone Creation:** If the domain's zone doesn't exist in Cloudflare (e.g., onboarding `tezca.mx` when only `madfam.io` is configured), the provisioner automatically creates the zone via `EnsureZoneForDomain()`. This requires the API token to have account-level Zone:Edit permissions (not zone-scoped). New zones start in `pending` status until nameserver delegation is verified by Cloudflare.
+**Auto Zone Creation:** If Cloudflare confirms the account holds no zone for the domain (`cloudflare.ErrZoneNotFound`, e.g. onboarding `tezca.mx` when only `madfam.io` is configured), the provisioner automatically creates the zone via `EnsureZoneForDomain()`. This requires the API token to have account-level Zone:Edit permissions (not zone-scoped). New zones start in `pending` status until nameserver delegation is verified by Cloudflare — and a `pending` zone is reported as `*cloudflare.ZoneNotActiveError`, not as absent, so it is never re-created and never reclassified as client-owned. A zone lookup that merely *fails* creates nothing.
 
-**Cleanup:** When a service is deleted, `cleanupDomainsForService()` removes tunnel routes and DNS records for all associated domains.
+**Cleanup:** When a service is deleted, `cleanupDomainsForService()` removes tunnel routes, any Cloudflare for SaaS custom hostname, **and** the zone DNS record. All three run: a domain that was ever on the zone path can hold both a custom hostname id and a proxied CNAME, and skipping the zone step on the strength of a stored hostname id left a dangling CNAME to the tunnel for whoever claimed the hostname next.
 
 **Source Code:**
 - Parser: `apps/switchyard-api/internal/api/enclii_yaml.go`
@@ -407,6 +511,15 @@ enclii api POST "/v1/services/<service-id>/domains/<domain-id>/verify"
 # 200 => Cloudflare reports hostname + certificate active
 # 400 => not yet: response carries `pending_dns_records` for the client
 # 502 => we could not reach Cloudflare (this is our problem, not the client's)
+```
+
+When a domain never reaches Cloudflare at all — an unconfigured fallback
+origin, an ownership conflict with another project, an undecidable zone
+lookup — the reason is on the record, not just in the logs:
+
+```bash
+enclii api GET "/v1/services/<service-id>/networking" \
+  | jq '.domains[] | {domain, status, provisioning_error, provisioning_checked_at}'
 ```
 
 Break-glass, when the API is unavailable (raw provider access — see the banner

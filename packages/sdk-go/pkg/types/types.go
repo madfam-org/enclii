@@ -564,6 +564,15 @@ type DomainInfo struct {
 	VerificationTXT  string     `json:"verification_txt,omitempty"`
 	DNSCNAME         string     `json:"dns_cname,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
+
+	// Provisioning diagnosis. A domain can be declared, stored and shown as
+	// "pending" while nothing will ever provision it — a client-owned domain
+	// declared before the operator configured the fallback origin, for
+	// instance. Without these two fields that failure lives only in a log
+	// line, and the read path shows a domain that simply never comes up.
+	ProvisioningError     string             `json:"provisioning_error,omitempty"`
+	ProvisioningCheckedAt *time.Time         `json:"provisioning_checked_at,omitempty"`
+	PendingDNSRecords     []PendingDNSRecord `json:"pending_dns_records,omitempty"`
 }
 
 // TunnelStatusInfo represents tunnel health information

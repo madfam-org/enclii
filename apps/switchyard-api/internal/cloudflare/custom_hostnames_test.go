@@ -500,6 +500,39 @@ func TestDeleteCustomHostname(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			// LOW-3: an empty object confirms nothing. Reporting it as a
+			// successful delete would let teardown clear the stored hostname
+			// id while the registration is still live at the edge.
+			name: "empty object confirms nothing",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(t, w, http.StatusOK, map[string]interface{}{})
+			},
+			wantErr: true,
+		},
+		{
+			name: "null body confirms nothing",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte("null"))
+			},
+			wantErr: true,
+		},
+		{
+			name: "success envelope with an empty result confirms nothing",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(t, w, http.StatusOK, map[string]interface{}{
+					"errors": []map[string]interface{}{},
+				})
+			},
+			wantErr: true,
+		},
+		{
+			name: "explicit success is a proper confirmation",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(t, w, http.StatusOK, map[string]interface{}{"success": true})
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -399,19 +400,74 @@ func (c *Client) listZonesPaginated(ctx context.Context, baseQuery url.Values) (
 	return allZones, nil
 }
 
+// ErrZoneNotFound is returned by FindZoneForDomain when the account genuinely
+// holds no zone for the domain. It is deliberately the ONLY signal for that
+// case: every transport, HTTP, authentication or pagination failure is
+// returned as-is so callers can tell "the zone is not ours" apart from "we
+// could not find out". Callers that branch on the answer — the domain
+// provisioning mechanism decision, zone auto-creation — must fail closed on
+// anything that is not this sentinel.
+var ErrZoneNotFound = errors.New("cloudflare: no zone found for domain")
+
+// ZoneNotActiveError reports that the account does hold a zone for the domain
+// but Cloudflare is not serving it (status "pending", "moved", "initializing",
+// ...). ListZones filters status=active, so such a zone is absent from the
+// normal listing; treating that absence as ErrZoneNotFound would silently move
+// an existing domain onto a different provisioning mechanism.
+type ZoneNotActiveError struct {
+	Domain   string
+	ZoneName string
+	Status   string
+}
+
+func (e *ZoneNotActiveError) Error() string {
+	return fmt.Sprintf("cloudflare: zone %s for domain %s is not active (status %q)",
+		e.ZoneName, e.Domain, e.Status)
+}
+
 // FindZoneForDomain finds the Cloudflare zone that manages a given domain
 // For example, "api.qubic.quest" would match zone "qubic.quest"
+//
+// Errors are three distinguishable kinds:
+//   - ErrZoneNotFound     — the account holds no zone for this domain
+//   - *ZoneNotActiveError — a zone exists but Cloudflare is not serving it
+//   - anything else       — the lookup failed and the answer is unknown
 func (c *Client) FindZoneForDomain(ctx context.Context, domain string) (*Zone, error) {
 	zones, err := c.ListZones(ctx)
 	if err != nil {
+		// Transport / HTTP / auth / pagination failure. Returned verbatim so
+		// it is never mistaken for "not found".
 		return nil, err
 	}
 
-	// Find the most specific matching zone (longest suffix match)
+	if match := bestZoneMatch(zones, domain); match != nil {
+		return match, nil
+	}
+
+	// ListZones filters status=active. A zone that is pending activation or
+	// has moved therefore reads as absent, so ask again without the filter
+	// before concluding the account does not hold it.
+	allZones, allErr := c.ListAccountZones(ctx)
+	if allErr != nil {
+		return nil, fmt.Errorf("no active Cloudflare zone matched %s and the unfiltered zone listing failed: %w", domain, allErr)
+	}
+	if match := bestZoneMatch(allZones, domain); match != nil {
+		return nil, &ZoneNotActiveError{Domain: domain, ZoneName: match.Name, Status: match.Status}
+	}
+
+	return nil, fmt.Errorf("%w: %s", ErrZoneNotFound, domain)
+}
+
+// bestZoneMatch returns the most specific zone covering domain (longest suffix
+// match), or nil when none does.
+func bestZoneMatch(zones []Zone, domain string) *Zone {
 	var bestMatch *Zone
 	bestLen := 0
 
 	for i, zone := range zones {
+		if zone.Name == "" {
+			continue
+		}
 		if domain == zone.Name || strings.HasSuffix(domain, "."+zone.Name) {
 			if len(zone.Name) > bestLen {
 				bestMatch = &zones[i]
@@ -420,11 +476,7 @@ func (c *Client) FindZoneForDomain(ctx context.Context, domain string) (*Zone, e
 		}
 	}
 
-	if bestMatch == nil {
-		return nil, fmt.Errorf("no Cloudflare zone found for domain %s", domain)
-	}
-
-	return bestMatch, nil
+	return bestMatch
 }
 
 // CreateZone creates a new Cloudflare zone for a domain.
@@ -471,10 +523,18 @@ func (c *Client) CreateZone(ctx context.Context, name string) (*Zone, error) {
 
 // EnsureZoneForDomain finds the Cloudflare zone for a domain, creating it if missing.
 // Extracts the apex domain (last 2 segments) from the FQDN for zone creation.
+//
+// A zone is created ONLY when Cloudflare confirmed the account does not hold
+// one (ErrZoneNotFound). A failed lookup, or a zone that exists but is not
+// active, is returned as-is: creating a zone because a listing timed out would
+// take over a domain we were never asked to take over.
 func (c *Client) EnsureZoneForDomain(ctx context.Context, domain string) (*Zone, error) {
 	zone, err := c.FindZoneForDomain(ctx, domain)
 	if err == nil {
 		return zone, nil
+	}
+	if !errors.Is(err, ErrZoneNotFound) {
+		return nil, err
 	}
 
 	// Extract apex domain: "api.tezca.mx" → "tezca.mx"

@@ -11,6 +11,10 @@ type Config struct {
 	AccountID string // Cloudflare account ID
 	ZoneID    string // Primary zone ID (e.g., enclii.dev zone)
 	TunnelID  string // Production tunnel ID
+	// BaseURL overrides the Cloudflare API endpoint. Empty uses the real API.
+	// It exists so callers outside this package can exercise the client
+	// against a stub instead of the live API.
+	BaseURL string
 }
 
 // APIResponse wraps all Cloudflare API responses

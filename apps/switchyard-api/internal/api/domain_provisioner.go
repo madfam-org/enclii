@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -73,15 +74,39 @@ func (h *Handler) provisionSingleDomain(
 	servicePort := domainCfg.GetPort(runtimePort)
 	external, externalDeclared := domainCfg.ExternalOverride()
 
+	// A malformed `external:` value fails this one domain rather than the
+	// whole manifest — the parser deliberately keeps the rest of the file.
+	if raw, malformed := domainCfg.ExternalParseFailure(); malformed {
+		h.logger.Error(ctx, "Skipping domain with an unreadable `external` value in enclii.yaml",
+			logging.String("domain", domainName),
+			logging.String("service", service.Name),
+			logging.String("field", "spec.domains[].external"),
+			logging.String("value", raw),
+			logging.String("expected", "true or false"))
+		return
+	}
+
 	// Validate domain format. Nested subdomains are allowed only on the
 	// Cloudflare for SaaS path, which issues a certificate for the exact
 	// hostname; Universal SSL on the zone path covers one level only.
-	if err := validateDomain(domainName, externalDeclared && external); err != nil {
+	//
+	// On the DEPLOY path a nested host is a loud warning, not a skip: hosts
+	// like api.pravara.madfam.io are already declared in shipped manifests and
+	// already reconciled, and silently dropping them here would stop
+	// reconciling a live domain. Declaration-time entry points (AddCustomDomain,
+	// CreateJunction) still reject them, where a human sees the error.
+	if err := validateDomain(domainName, true); err != nil {
 		h.logger.Warn(ctx, "Skipping invalid domain from enclii.yaml",
 			logging.String("domain", domainName),
 			logging.String("service", service.Name),
 			logging.Error("error", err))
 		return
+	}
+	if !(externalDeclared && external) && isNestedSubdomain(domainName) {
+		h.logger.Warn(ctx, "Declared domain is nested more than one level below its apex; Cloudflare Universal SSL covers a single level, so TLS will fail at the edge unless the domain is declared `external: true`. Continuing to reconcile it because it is already declared.",
+			logging.String("domain", domainName),
+			logging.String("service", service.Name),
+			logging.String("remedy", "declare `external: true` in enclii.yaml, or use a single-level host"))
 	}
 
 	var externalOverride *bool
@@ -102,8 +127,7 @@ func (h *Handler) provisionSingleDomain(
 		h.logger.Debug(ctx, "Domain already registered, skipping creation",
 			logging.String("domain", domainName))
 		// Even if already registered, ensure tunnel route + DNS exist
-		h.ensureTunnelRoute(ctx, domainName, service, envName, servicePort)
-		h.ensureDomainRouting(ctx, domainName, externalOverride)
+		h.provisionDomainEdge(ctx, domainName, service, envName, servicePort, externalOverride)
 		return
 	}
 
@@ -145,12 +169,50 @@ func (h *Handler) provisionSingleDomain(
 		logging.String("service", service.Name),
 		logging.String("environment", envName))
 
-	// Add tunnel route
-	h.ensureTunnelRoute(ctx, domainName, service, envName, servicePort)
+	// Provision edge routing (zone + CNAME for domains whose nameservers we
+	// control, Cloudflare for SaaS custom hostname for client-owned domains)
+	// and the tunnel route, in whichever order the mechanism demands.
+	h.provisionDomainEdge(ctx, domainName, service, envName, servicePort, externalOverride)
+}
 
-	// Provision edge routing: zone + CNAME for domains whose nameservers we
-	// control, Cloudflare for SaaS custom hostname for client-owned domains.
-	h.ensureDomainRouting(ctx, domainName, externalOverride)
+// provisionDomainEdge establishes both halves of a domain's routing — the
+// Cloudflare edge and the tunnel ingress rule — in the order the mechanism
+// demands.
+//
+// For a client-owned (custom hostname) domain the edge step runs FIRST,
+// because it carries the ownership check and because AddRoute OVERWRITES any
+// existing ingress rule for the same hostname. Establishing the rule before we
+// know the hostname is ours would hand another project's traffic to this
+// service, and would do so even when the custom hostname is then refused.
+//
+// Every other domain keeps the pre-existing order: tunnel route first, then
+// the zone CNAME.
+func (h *Handler) provisionDomainEdge(
+	ctx context.Context,
+	domain string,
+	service *types.Service,
+	envName string,
+	servicePort int,
+	external *bool,
+) domainProvisioningResult {
+	owner := ownerFromService(service)
+	plan := h.planDomainRouting(ctx, domain, external)
+
+	if plan.mechanism == mechanismCustomHostname {
+		result := h.applyDomainRouting(ctx, plan, owner)
+		if result.Err != nil {
+			h.logger.Warn(ctx, "Leaving the tunnel ingress rule untouched: this hostname is not confirmed to belong to this project",
+				logging.String("domain", domain),
+				logging.String("service", serviceNameOf(service)),
+				logging.Error("error", result.Err))
+			return result
+		}
+		h.ensureTunnelRoute(ctx, domain, service, envName, servicePort)
+		return result
+	}
+
+	h.ensureTunnelRoute(ctx, domain, service, envName, servicePort)
+	return h.applyDomainRouting(ctx, plan, owner)
 }
 
 // ensureTunnelRoute adds a Cloudflare tunnel route for a domain
@@ -229,6 +291,14 @@ func tunnelRouteServiceURL(spec *services.RouteSpec) string {
 		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
 }
 
+// serviceNameOf is a nil-safe service name for log fields.
+func serviceNameOf(service *types.Service) string {
+	if service == nil {
+		return ""
+	}
+	return service.Name
+}
+
 // resolveServiceNamespace determines the Kubernetes namespace for a service.
 // It prefers the explicit service namespace because imported/adopted workloads
 // can live outside their Enclii project namespace. Non-production routes prefer
@@ -284,8 +354,23 @@ func isProductionEnvironmentName(envName string) bool {
 	}
 }
 
-// ensureDomainRouting provisions edge routing for a domain and persists the
-// typed outcome on the domain record.
+// domainRoutingPlan is a decided-but-not-yet-applied provisioning of one
+// domain. The decision is separated from the application so a caller can order
+// the tunnel ingress rule against it (see provisionDomainEdge) without paying
+// for a second zone listing.
+type domainRoutingPlan struct {
+	domain    string
+	mechanism domainProvisioningMechanism
+	client    *cloudflare.Client
+	// err is set when the mechanism could not be decided, or when a mechanism
+	// the manifest demanded cannot be run at all.
+	err error
+	// skip means Cloudflare is not wired up and the domain did not ask for
+	// anything we now cannot deliver: nothing to do, nothing to record.
+	skip bool
+}
+
+// planDomainRouting picks the provisioning mechanism for a domain.
 //
 // Two mechanisms exist and the choice is per-domain:
 //   - zone + CNAME  — for domains whose nameservers point at our Cloudflare
@@ -294,41 +379,74 @@ func isProductionEnvironmentName(envName string) bool {
 //     keep their own registrar and nameservers.
 //
 // external forces the mechanism when non-nil (enclii.yaml `external:`);
-// nil means auto-detect. Failures are logged and do NOT abort the deploy —
-// that is deliberate — but they are also written to the domain record so the
-// failure stays legible on the read path.
-func (h *Handler) ensureDomainRouting(ctx context.Context, domain string, external *bool) domainProvisioningResult {
-	if h.domainSyncService == nil {
-		return domainProvisioningResult{Domain: domain, Mechanism: mechanismZoneCNAME}
+// nil means auto-detect.
+func (h *Handler) planDomainRouting(ctx context.Context, domain string, external *bool) domainRoutingPlan {
+	plan := domainRoutingPlan{domain: domain, mechanism: mechanismZoneCNAME}
+
+	var cfClient *cloudflare.Client
+	if h.domainSyncService != nil {
+		cfClient = h.domainSyncService.GetCloudflareClient()
 	}
 
-	// Get the Cloudflare client from the domain sync service
-	cfClient := h.domainSyncService.GetCloudflareClient()
 	if cfClient == nil {
-		h.logger.Warn(ctx, "Cloudflare client not available for domain provisioning",
-			logging.String("domain", domain))
-		return domainProvisioningResult{Domain: domain, Mechanism: mechanismZoneCNAME}
+		// A domain declared `external: true` asked for a mechanism we cannot
+		// run. Falling back to the zone path would point a client-owned domain
+		// at DNS we do not control, so the manifest's request is refused
+		// loudly and recorded on the domain instead.
+		if external != nil && *external {
+			plan.mechanism = mechanismCustomHostname
+			plan.err = fmt.Errorf(
+				"cannot provision client-owned domain %s: the Cloudflare client is unavailable, so no custom hostname can be registered and no DNS record will be created for it", domain)
+			return plan
+		}
+		if h.domainSyncService != nil {
+			h.logger.Warn(ctx, "Cloudflare client not available for domain provisioning",
+				logging.String("domain", domain))
+		}
+		plan.skip = true
+		return plan
 	}
 
-	mechanism := h.resolveDomainMechanism(ctx, cfClient, domain, external)
+	plan.client = cfClient
+	plan.mechanism, plan.err = h.resolveDomainMechanism(ctx, cfClient, domain, external)
+	return plan
+}
+
+// applyDomainRouting executes a plan and persists the typed outcome on the
+// domain record.
+//
+// Failures are logged and do NOT abort the deploy — that is deliberate — but
+// they are also written to the domain record so the failure stays legible on
+// the read path.
+func (h *Handler) applyDomainRouting(ctx context.Context, plan domainRoutingPlan, owner *domainOwner) domainProvisioningResult {
+	if plan.skip {
+		return domainProvisioningResult{Domain: plan.domain, Mechanism: mechanismZoneCNAME}
+	}
 
 	var result domainProvisioningResult
-	if mechanism == mechanismCustomHostname {
-		result = h.ensureCustomHostname(ctx, domain)
-	} else {
-		result = h.ensureZoneDNSRecord(ctx, cfClient, domain)
+	switch {
+	case plan.err != nil:
+		result = domainProvisioningResult{Domain: plan.domain, Mechanism: plan.mechanism}
+		result.setErr(plan.err)
+	case plan.mechanism == mechanismCustomHostname:
+		result = h.ensureCustomHostname(ctx, plan.domain, owner)
+	default:
+		result = h.ensureZoneDNSRecord(ctx, plan.client, plan.domain)
 	}
 
 	if result.Err != nil {
 		h.logger.Warn(ctx, "Domain provisioning failed",
-			logging.String("domain", domain),
+			logging.String("domain", plan.domain),
 			logging.String("mechanism", string(result.Mechanism)),
 			logging.Error("error", result.Err))
 	} else if result.WaitingOnClient() {
+		// Names only: describePendingClientAction renders the ownership token
+		// and the DCV challenge value, which must not reach a log.
 		h.logger.Info(ctx, "Domain provisioning is waiting on the domain owner",
-			logging.String("domain", domain),
+			logging.String("domain", plan.domain),
 			logging.String("mechanism", string(result.Mechanism)),
-			logging.String("action", describePendingClientAction(result)))
+			logging.Int("pending_client_dns_records", len(result.PendingDNSRecords)),
+			logging.String("pending_client_dns_record_names", describePendingClientRecordNames(result)))
 	}
 
 	h.persistDomainProvisioningResult(ctx, result)
@@ -385,7 +503,7 @@ func (h *Handler) ensureJunctionInfrastructure(ctx context.Context, domain strin
 		return summary
 	}
 
-	h.ensureTunnelRoute(ctx, domain, service, defaultProductionEnvironmentName, 80)
+	result := h.provisionDomainEdge(ctx, domain, service, defaultProductionEnvironmentName, 80, nil)
 	if h.tunnelRoutesService != nil {
 		ready, err := h.tunnelRoutesService.RouteExists(ctx, domain)
 		if err != nil {
@@ -394,7 +512,6 @@ func (h *Handler) ensureJunctionInfrastructure(ctx context.Context, domain strin
 		summary.TunnelRouteReady = ready
 	}
 
-	result := h.ensureDomainRouting(ctx, domain, nil)
 	summary.Mechanism = string(result.Mechanism)
 	summary.PendingClientDNSRecord = result.PendingDNSRecords
 	if action := describePendingClientAction(result); action != "" {
@@ -442,8 +559,7 @@ func (h *Handler) reconcileJunctionTunnelRoutesForProject(ctx context.Context, p
 			continue
 		}
 
-		h.ensureTunnelRoute(ctx, junction.Domain, service, defaultProductionEnvironmentName, 80)
-		h.ensureDomainRouting(ctx, junction.Domain, nil)
+		h.provisionDomainEdge(ctx, junction.Domain, service, defaultProductionEnvironmentName, 80, nil)
 
 		if h.tunnelRoutesService == nil {
 			continue
@@ -511,8 +627,13 @@ func (h *Handler) cleanupDomainsForService(ctx context.Context, serviceID uuid.U
 		}
 
 		// Remove the Cloudflare for SaaS custom hostname, if this domain was
-		// provisioned that way. There is no DNS record of ours to delete in
-		// that case — the records live on the client's nameservers.
+		// provisioned that way. For a genuinely client-owned domain there is
+		// no DNS record of ours to delete — the records live on the client's
+		// nameservers — but a domain that was ever on the zone path can hold
+		// BOTH a hostname id and a proxied CNAME in our zone, so the zone
+		// cleanup below still has to run. Skipping it is how a dangling CNAME
+		// to the tunnel survives service deletion for whoever claims the
+		// hostname next.
 		if domain.CustomHostnameID != "" {
 			if err := h.deleteCustomHostname(ctx, domain.Domain, domain.CustomHostnameID); err != nil {
 				h.logger.Warn(ctx, "Failed to delete custom hostname during cleanup",
@@ -523,7 +644,6 @@ func (h *Handler) cleanupDomainsForService(ctx context.Context, serviceID uuid.U
 				h.logger.Info(ctx, "Custom hostname deleted during cleanup",
 					logging.String("domain", domain.Domain))
 			}
-			continue
 		}
 
 		// Remove DNS record (zone-aware: finds correct zone for each domain)
@@ -532,9 +652,17 @@ func (h *Handler) cleanupDomainsForService(ctx context.Context, serviceID uuid.U
 			if cfClient != nil {
 				zone, zoneErr := cfClient.FindZoneForDomain(ctx, domain.Domain)
 				if zoneErr != nil {
-					h.logger.Warn(ctx, "Failed to find zone for domain during cleanup",
-						logging.String("domain", domain.Domain),
-						logging.Error("error", zoneErr))
+					// A client-owned domain has no zone of ours by
+					// definition, so "not found" is the expected answer and
+					// not a cleanup failure.
+					if errors.Is(zoneErr, cloudflare.ErrZoneNotFound) {
+						h.logger.Debug(ctx, "No Cloudflare zone of ours for domain during cleanup, nothing to delete",
+							logging.String("domain", domain.Domain))
+					} else {
+						h.logger.Warn(ctx, "Failed to find zone for domain during cleanup",
+							logging.String("domain", domain.Domain),
+							logging.Error("error", zoneErr))
+					}
 					continue
 				}
 				record, err := cfClient.GetDNSRecord(ctx, domain.Domain)
