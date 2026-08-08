@@ -109,9 +109,30 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Create transaction-scoped repositories
-	txRepos := &Repositories{
-		db:                        r.db, // Keep original db for nested transaction prevention
+	txRepos := newTxRepositories(r.db, tx)
+
+	// Execute the function with transaction repositories
+	if err := fn(txRepos); err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return fmt.Errorf("tx failed: %v, rollback failed: %w", err, rbErr)
+		}
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// newTxRepositories binds every repository to one transaction.
+//
+// db stays the original pool so nested-transaction prevention still sees it;
+// only the repositories are tx-scoped.
+func newTxRepositories(db *sql.DB, tx *sql.Tx) *Repositories {
+	return &Repositories{
+		db:                        db, // Keep original db for nested transaction prevention
 		Projects:                  &ProjectRepository{db: tx},
 		Environments:              &EnvironmentRepository{db: tx},
 		Services:                  &ServiceRepository{db: tx},
@@ -176,20 +197,6 @@ func (r *Repositories) WithTransaction(ctx context.Context, fn func(txRepos *Rep
 		// XC-2 master-admin acting sessions
 		AdminActingSessions: NewAdminActingSessionRepository(tx),
 	}
-
-	// Execute the function with transaction repositories
-	if err := fn(txRepos); err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return fmt.Errorf("tx failed: %v, rollback failed: %w", err, rbErr)
-		}
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
 }
 
 // NewRepositories creates a new Repositories instance with all repositories initialized

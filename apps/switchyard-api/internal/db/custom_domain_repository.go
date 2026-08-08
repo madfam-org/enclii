@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -26,13 +27,17 @@ func NewCustomDomainRepositoryWithTx(tx DBTX) *CustomDomainRepository {
 const customDomainSelectColumns = `
 	id, service_id, environment_id, domain, verified, tls_enabled, tls_issuer,
 	created_at, updated_at, verified_at, cloudflare_tunnel_id, is_platform_domain,
-	zero_trust_enabled, access_policy_id, tls_provider, status, dns_cname
+	zero_trust_enabled, access_policy_id, tls_provider, status, dns_cname,
+	custom_hostname_id, custom_hostname_status, custom_hostname_ssl_status,
+	pending_dns_records, provisioning_error, provisioning_checked_at
 `
 
 const customDomainAliasedColumns = `
 	cd.id, cd.service_id, cd.environment_id, cd.domain, cd.verified, cd.tls_enabled, cd.tls_issuer,
 	cd.created_at, cd.updated_at, cd.verified_at, cd.cloudflare_tunnel_id, cd.is_platform_domain,
-	cd.zero_trust_enabled, cd.access_policy_id, cd.tls_provider, cd.status, cd.dns_cname
+	cd.zero_trust_enabled, cd.access_policy_id, cd.tls_provider, cd.status, cd.dns_cname,
+	cd.custom_hostname_id, cd.custom_hostname_status, cd.custom_hostname_ssl_status,
+	cd.pending_dns_records, cd.provisioning_error, cd.provisioning_checked_at
 `
 
 type customDomainScanner interface {
@@ -55,6 +60,12 @@ func scanCustomDomain(row customDomainScanner, extraDest ...interface{}) (*types
 	var accessPolicyID sql.NullString
 	var tlsProvider sql.NullString
 	var dnsCNAME sql.NullString
+	var customHostnameID sql.NullString
+	var customHostnameStatus sql.NullString
+	var customHostnameSSLStatus sql.NullString
+	var pendingDNSRecords []byte
+	var provisioningError sql.NullString
+	var provisioningCheckedAt sql.NullTime
 
 	dest := []interface{}{
 		&domain.ID,
@@ -74,6 +85,12 @@ func scanCustomDomain(row customDomainScanner, extraDest ...interface{}) (*types
 		&tlsProvider,
 		&domain.Status,
 		&dnsCNAME,
+		&customHostnameID,
+		&customHostnameStatus,
+		&customHostnameSSLStatus,
+		&pendingDNSRecords,
+		&provisioningError,
+		&provisioningCheckedAt,
 	}
 	dest = append(dest, extraDest...)
 
@@ -100,8 +117,101 @@ func scanCustomDomain(row customDomainScanner, extraDest ...interface{}) (*types
 	if dnsCNAME.Valid {
 		domain.DNSCNAME = dnsCNAME.String
 	}
+	if customHostnameID.Valid {
+		domain.CustomHostnameID = customHostnameID.String
+	}
+	if customHostnameStatus.Valid {
+		domain.CustomHostnameStatus = customHostnameStatus.String
+	}
+	if customHostnameSSLStatus.Valid {
+		domain.CustomHostnameSSLStatus = customHostnameSSLStatus.String
+	}
+	if len(pendingDNSRecords) > 0 && string(pendingDNSRecords) != "null" {
+		if err := json.Unmarshal(pendingDNSRecords, &domain.PendingDNSRecords); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal pending DNS records: %w", err)
+		}
+	}
+	if provisioningError.Valid {
+		domain.ProvisioningError = provisioningError.String
+	}
+	if provisioningCheckedAt.Valid {
+		checkedAt := provisioningCheckedAt.Time
+		domain.ProvisioningCheckedAt = &checkedAt
+	}
 
 	return &domain, nil
+}
+
+// marshalPendingDNSRecords renders the outstanding client DNS records for
+// storage. A nil slice is stored as SQL NULL rather than "null" so the column
+// reads back cleanly as "nothing outstanding".
+func marshalPendingDNSRecords(records []types.PendingDNSRecord) (interface{}, error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(records)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal pending DNS records: %w", err)
+	}
+	return encoded, nil
+}
+
+// UpdateCustomHostnameState persists the Cloudflare for SaaS provisioning
+// state of a domain: the custom hostname id, the status Cloudflare reported,
+// the records the client still owes us, and the last provisioning error.
+//
+// It is deliberately separate from Update: Update is called by handlers that
+// know nothing about custom hostnames and must not clobber this state (and
+// vice versa).
+func (r *CustomDomainRepository) UpdateCustomHostnameState(ctx context.Context, domain *types.CustomDomain) error {
+	if domain == nil {
+		return fmt.Errorf("custom domain is required")
+	}
+	normalizeCustomDomainDefaults(domain)
+
+	pendingRecords, err := marshalPendingDNSRecords(domain.PendingDNSRecords)
+	if err != nil {
+		return err
+	}
+
+	query := `
+		UPDATE custom_domains
+		SET custom_hostname_id = $1,
+		    custom_hostname_status = $2,
+		    custom_hostname_ssl_status = $3,
+		    pending_dns_records = $4,
+		    provisioning_error = $5,
+		    provisioning_checked_at = $6,
+		    tls_provider = $7,
+		    status = $8,
+		    verified = $9,
+		    verified_at = $10,
+		    updated_at = NOW()
+		WHERE id = $11
+		RETURNING updated_at
+	`
+
+	err = r.db.QueryRowContext(
+		ctx,
+		query,
+		nullableString(domain.CustomHostnameID),
+		nullableString(domain.CustomHostnameStatus),
+		nullableString(domain.CustomHostnameSSLStatus),
+		pendingRecords,
+		nullableString(domain.ProvisioningError),
+		domain.ProvisioningCheckedAt,
+		domain.TLSProvider,
+		domain.Status,
+		domain.Verified,
+		domain.VerifiedAt,
+		domain.ID,
+	).Scan(&domain.UpdatedAt)
+
+	if err != nil {
+		return fmt.Errorf("failed to update custom hostname state: %w", err)
+	}
+
+	return nil
 }
 
 // Create adds a new custom domain
@@ -159,6 +269,83 @@ func (r *CustomDomainRepository) GetByID(ctx context.Context, id string) (*types
 	}
 
 	return domain, nil
+}
+
+// ListByDomain returns EVERY custom_domains row for a hostname.
+//
+// There is deliberately no single-row "get the domain named X" accessor. The
+// schema's only uniqueness on this column is
+// custom_domains_service_id_environment_id_domain_key, which is scoped to one
+// service — so `WHERE lower(domain) = lower($1)` is a MULTI-ROW predicate
+// across services and therefore across projects. Resolving it with
+// QueryRowContext, as this used to, returns whichever tuple the heap happens to
+// yield first and silently discards the rest. That is not a tie-break, it is a
+// cross-tenant answer: an attacker row inserted after a victim's, or simply
+// re-written later by an UPDATE, sorts first and becomes "the owner" for every
+// caller that asks who holds the hostname.
+//
+// Callers that ask "who owns this hostname?" must see all of them
+// (see api.hostnameOwners). Callers that want to WRITE must scope the lookup to
+// the project they are acting for (see ListByDomainForService); a hostname
+// string carries no ownership on a shared fallback-origin zone.
+//
+// Matched case-insensitively: Cloudflare compares hostnames that way, so a row
+// stored as "App.Victim.com" names the same registration at the edge as
+// "app.victim.com". A case-sensitive match answered "nobody holds it", which is
+// a cross-tenant claim, not a miss. See the note in junction_repository.go.
+//
+// Ordered oldest-first so the result is stable across the UPDATE-rewrites that
+// move a tuple to the tail of the heap; an empty slice means nobody holds it.
+func (r *CustomDomainRepository) ListByDomain(ctx context.Context, domainName string) ([]types.CustomDomain, error) {
+	query := "SELECT " + customDomainSelectColumns +
+		" FROM custom_domains WHERE lower(domain) = lower($1) ORDER BY created_at ASC, id ASC"
+
+	return r.queryCustomDomains(ctx, "failed to list custom domains by hostname", query, domainName)
+}
+
+// ListByDomainForService returns the rows for a hostname that belong to one
+// service.
+//
+// This is the write-path lookup. A provisioning outcome describes what happened
+// to ONE project's registration, so it may only ever be written to that
+// project's own row — resolving the row by hostname alone let an attacker's
+// deploy rewrite the victim's live domain record, including on the branches
+// that had already refused to route the hostname.
+//
+// A service may hold the same hostname in more than one environment (the unique
+// constraint is service+environment+domain), so this is still a list.
+func (r *CustomDomainRepository) ListByDomainForService(
+	ctx context.Context, domainName string, serviceID uuid.UUID,
+) ([]types.CustomDomain, error) {
+	query := "SELECT " + customDomainSelectColumns +
+		" FROM custom_domains WHERE lower(domain) = lower($1) AND service_id = $2 ORDER BY created_at ASC, id ASC"
+
+	return r.queryCustomDomains(ctx,
+		"failed to list custom domains by hostname for service", query, domainName, serviceID)
+}
+
+func (r *CustomDomainRepository) queryCustomDomains(
+	ctx context.Context, failureContext, query string, args ...interface{},
+) ([]types.CustomDomain, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", failureContext, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var domains []types.CustomDomain
+	for rows.Next() {
+		domain, scanErr := scanCustomDomain(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("%s: %w", failureContext, scanErr)
+		}
+		domains = append(domains, *domain)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", failureContext, err)
+	}
+
+	return domains, nil
 }
 
 // GetByServiceID retrieves all custom domains for a service
@@ -255,9 +442,10 @@ func (r *CustomDomainRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Exists checks if a domain is already registered
+// Exists checks if a domain is already registered.
+// Case-insensitive: a case variant is the same hostname, not a free one.
 func (r *CustomDomainRepository) Exists(ctx context.Context, domain string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM custom_domains WHERE domain = $1)`
+	query := `SELECT EXISTS(SELECT 1 FROM custom_domains WHERE lower(domain) = lower($1))`
 
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, domain).Scan(&exists)

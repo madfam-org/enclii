@@ -59,6 +59,8 @@ var networkingCustomDomainColumns = []string{
 	"tls_enabled", "tls_issuer", "created_at", "updated_at", "verified_at",
 	"cloudflare_tunnel_id", "is_platform_domain", "zero_trust_enabled",
 	"access_policy_id", "tls_provider", "status", "dns_cname",
+	"custom_hostname_id", "custom_hostname_status", "custom_hostname_ssl_status",
+	"pending_dns_records", "provisioning_error", "provisioning_checked_at",
 }
 
 func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
@@ -87,7 +89,7 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 			"id", "project_id", "name", "kube_namespace", "created_at", "updated_at",
 		}).AddRow(envID, projectID, "staging", "enclii-dhanam-staging", now, now))
 
-	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE domain = \$1\)`).
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE lower\(domain\) = lower\(\$1\)\)`).
 		WithArgs("staging-api.dhan.am").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
@@ -96,7 +98,9 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows(networkingCustomDomainColumns).
 			AddRow(domainID, serviceID, envID, "staging-api.dhan.am", true, true,
 				"letsencrypt-staging", now, now, &now, nil, false, false, nil,
-				"cert-manager", "active", "tunnel.enclii.dev"))
+				"cert-manager", "active", "tunnel.enclii.dev",
+				// Cloudflare for SaaS columns: NULL for a zone+CNAME domain.
+				nil, nil, nil, nil, nil, nil))
 
 	mock.ExpectQuery(`SELECT id, project_id, name, kube_namespace, created_at, updated_at FROM environments WHERE project_id = \$1 AND name = \$2`).
 		WithArgs(projectID, "staging").

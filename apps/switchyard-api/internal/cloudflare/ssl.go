@@ -105,24 +105,36 @@ func (c *Client) VerifyTLS(ctx context.Context, domain string) (bool, error) {
 	return status.HasCertificate && status.CertificateStatus == "active", nil
 }
 
-// matchesDomain checks if a certificate host matches a domain
-// Handles wildcards (*.example.com) and exact matches
+// matchesDomain checks if a certificate host matches a domain.
+// Handles wildcards (*.example.com) and exact matches.
+//
+// A wildcard covers EXACTLY ONE label, per RFC 6125 and per what Cloudflare
+// Universal SSL actually serves: "*.madfam.io" matches "a.madfam.io" but NOT
+// "a.b.madfam.io". Reporting a match for a nested host would claim a valid
+// certificate for a name whose TLS handshake fails at the edge.
 func matchesDomain(certHost, domain string) bool {
 	// Exact match
 	if strings.EqualFold(certHost, domain) {
 		return true
 	}
 
-	// Wildcard match (*.example.com matches sub.example.com)
+	// Wildcard match (*.example.com matches sub.example.com, one level only)
 	if strings.HasPrefix(certHost, "*.") {
-		baseDomain := certHost[2:] // Remove "*."
-		if strings.HasSuffix(domain, baseDomain) {
-			// Ensure it's a subdomain, not a partial match
-			prefix := strings.TrimSuffix(domain, baseDomain)
-			if strings.HasSuffix(prefix, ".") || prefix == "" {
-				return true
-			}
+		baseDomain := strings.ToLower(certHost[2:]) // Remove "*."
+		if baseDomain == "" {
+			return false
 		}
+
+		lowerDomain := strings.ToLower(domain)
+		suffix := "." + baseDomain
+		if !strings.HasSuffix(lowerDomain, suffix) {
+			return false
+		}
+
+		// The wildcard consumes a single label: what is left must be one
+		// non-empty label with no further dots.
+		label := lowerDomain[:len(lowerDomain)-len(suffix)]
+		return label != "" && !strings.Contains(label, ".")
 	}
 
 	return false

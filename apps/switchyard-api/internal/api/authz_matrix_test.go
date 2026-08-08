@@ -247,6 +247,49 @@ func TestGetJunction_CrossTenantDenied(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// HIGH-2(b): DeleteJunction never called enforceUserProjectAccess, so any
+// authenticated caller holding a junction id could delete another project's
+// junction — and with it the tunnel route, the DNS record and (before the
+// ownership scoping) the Cloudflare custom hostname serving that domain. The
+// domain+path uniqueness index is not project-scoped, which is how one project
+// ends up naming another's hostname in the first place.
+func TestDeleteJunction_CrossTenantDenied(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, mock, cleanup := setupAuthzHandler(t)
+	defer cleanup()
+
+	userA := uuid.New()
+	projectB := uuid.New()
+	junctionID := uuid.New()
+	now := time.Now()
+
+	mock.ExpectQuery(`FROM junctions WHERE id`).
+		WillReturnRows(sqlmock.NewRows(junctionSelectColumns).AddRow(
+			junctionID, projectB, uuid.New(), "app.client.com", "/", "https",
+			true, "letsencrypt", nil, nil, true,
+			now, now,
+		))
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).
+		WithArgs(userA, projectB).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	// Nothing else may run: no DELETE, no infrastructure teardown. sqlmock is
+	// ordered and strict, so any further query fails the test.
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.Use(withUserContext(userA, "developer"))
+	engine.DELETE("/v1/junctions/:id", h.DeleteJunction)
+
+	req, _ := http.NewRequest(http.MethodDelete, "/v1/junctions/"+junctionID.String(), nil)
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assertErrorCode(t, w, "NOT_FOUND")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestGetDeploymentByVersion_CrossTenantDenied(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h, mock, cleanup := setupAuthzHandler(t)

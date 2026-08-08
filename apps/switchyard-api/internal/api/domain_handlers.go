@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -37,6 +36,10 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		return
 	}
 
+	// Canonicalise before validating, so the value that is validated is the one
+	// that is stored, looked up and compared against Cloudflare's zone names.
+	req.Domain = canonicalDomain(req.Domain)
+
 	ctx := c.Request.Context()
 
 	// Validate service exists
@@ -60,8 +63,8 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 	}
 
 	// Validate domain format
-	if !isValidDomain(req.Domain) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain format"})
+	if err := validateDomain(req.Domain, false); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -131,7 +134,24 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		TLSIssuer:     tlsIssuer,
 	}
 
-	if err := h.repos.CustomDomains.Create(ctx, domain); err != nil {
+	// Checked and claimed in one transaction, under the cross-project hostname
+	// lock. The Exists check above only sees custom_domains and only saw it a
+	// few statements ago: a hostname served through a junction has no row
+	// there at all, and a concurrent request for another project can create one
+	// in between. Both of those end with two projects holding one hostname,
+	// which overwrites the other's routing and leaves the hostname permanently
+	// contested for whichever of them is the rightful owner.
+	if err := h.claimHostname(ctx, domain, &domainOwner{
+		ProjectID: service.ProjectID,
+		ServiceID: serviceUUID,
+	}); err != nil {
+		if isHostnameHeld(err) {
+			h.logger.Warn(ctx, "Refusing a custom domain for a hostname another project holds",
+				logging.String("domain", req.Domain),
+				logging.Error("error", err))
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		h.logger.Error(ctx, "Failed to create custom domain", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create custom domain"})
 		return
@@ -319,6 +339,23 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 		}
 	}
 
+	// Release the Cloudflare for SaaS custom hostname, if any. Leaving it
+	// behind would keep Cloudflare serving the client's domain and keep
+	// consuming a custom hostname slot.
+	customHostnameRemoved := false
+	if domain.CustomHostnameID != "" {
+		if err := h.deleteCustomHostname(ctx, domain.Domain, domain.CustomHostnameID); err != nil {
+			h.logger.Warn(ctx, "Failed to delete custom hostname (continuing with domain deletion)",
+				logging.String("domain", domain.Domain),
+				logging.String("custom_hostname_id", domain.CustomHostnameID),
+				logging.Error("error", err))
+		} else {
+			customHostnameRemoved = true
+			h.logger.Info(ctx, "Custom hostname removed from Cloudflare",
+				logging.String("domain", domain.Domain))
+		}
+	}
+
 	// Delete domain
 	if err := h.repos.CustomDomains.Delete(ctx, domainID); err != nil {
 		h.logger.Error(ctx, "Failed to delete custom domain", logging.Error("error", err))
@@ -329,10 +366,14 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 	// Trigger reconciliation to remove Ingress
 	go h.triggerDomainReconciliation(ctx, domain.ServiceID, domain.EnvironmentID)
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"message":              "custom domain deleted",
 		"tunnel_route_removed": tunnelRouteRemoved,
-	})
+	}
+	if domain.CustomHostnameID != "" {
+		response["custom_hostname_removed"] = customHostnameRemoved
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // VerifyCustomDomain verifies domain ownership via DNS TXT record
@@ -359,6 +400,51 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 			"verified": true,
 			"domain":   domain,
 			"message":  "domain already verified",
+		})
+		return
+	}
+
+	// Cloudflare for SaaS domains are verified by Cloudflare, not by us: the
+	// client proves ownership to Cloudflare with the records we handed them.
+	// Re-read the real state instead of looking for an Enclii TXT record the
+	// client was never asked to create.
+	if domain.CustomHostnameID != "" {
+		result := h.refreshCustomHostnameState(ctx, domain.Domain, domain.CustomHostnameID)
+		applyProvisioningResult(domain, result, time.Now())
+
+		if updateErr := h.repos.CustomDomains.UpdateCustomHostnameState(ctx, domain); updateErr != nil {
+			h.logger.Error(ctx, "Failed to persist custom hostname verification state",
+				logging.String("domain", domain.Domain),
+				logging.Error("error", updateErr))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update domain"})
+			return
+		}
+
+		if result.Err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{
+				"verified": false,
+				"domain":   domain,
+				"error":    "failed to read custom hostname state from Cloudflare",
+				"details":  result.ErrorMessage,
+			})
+			return
+		}
+
+		if !domain.Verified {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"verified":            false,
+				"domain":              domain,
+				"error":               "domain not verified",
+				"message":             describePendingClientAction(result),
+				"pending_dns_records": result.PendingDNSRecords,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"verified": true,
+			"domain":   domain,
+			"message":  "Cloudflare reports the custom hostname and its certificate as active",
 		})
 		return
 	}
@@ -472,68 +558,6 @@ func (h *Handler) triggerDomainReconciliation(ctx context.Context, serviceID, en
 		h.logger.Info(ctx, "Successfully reconciled service with custom domains",
 			logging.String("service", service.Name))
 	}
-}
-
-// isValidDomain checks if a domain name is valid
-func isValidDomain(domain string) bool {
-	// Basic validation
-	if len(domain) == 0 || len(domain) > 253 {
-		return false
-	}
-
-	// Must not start or end with dot
-	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
-		return false
-	}
-
-	// Must contain at least one dot
-	if !strings.Contains(domain, ".") {
-		return false
-	}
-
-	// Each label must be valid
-	labels := strings.Split(domain, ".")
-	for _, label := range labels {
-		if len(label) == 0 || len(label) > 63 {
-			return false
-		}
-
-		// Must start and end with alphanumeric
-		if !isAlphanumeric(label[0]) || !isAlphanumeric(label[len(label)-1]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// isAlphanumeric checks if a byte is alphanumeric
-func isAlphanumeric(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
-}
-
-// verifyDNSTXTRecord checks if a DNS TXT record exists with the expected value
-func verifyDNSTXTRecord(domain, expectedValue string) (bool, error) {
-	// Query TXT records for the domain
-	txtRecords, err := net.LookupTXT(domain)
-	if err != nil {
-		// Domain may not have TXT records yet
-		if dnsErr, ok := err.(*net.DNSError); ok {
-			if dnsErr.IsNotFound || dnsErr.IsTemporary {
-				return false, nil
-			}
-		}
-		return false, fmt.Errorf("DNS lookup failed: %w", err)
-	}
-
-	// Check if any TXT record matches the expected value
-	for _, record := range txtRecords {
-		if record == expectedValue {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // Note: triggerDomainReconciliation uses the existing reconciler.Controller

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -48,9 +50,15 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 		return
 	}
 
+	// Canonicalise before validating, so the value that is validated is the one
+	// that is stored and that every ownership lookup keys off. A case variant
+	// used to be a different hostname to Postgres and the same hostname to
+	// Cloudflare, which is the whole cross-tenant hazard.
+	req.Domain = canonicalDomain(req.Domain)
+
 	// Validate domain
-	if !isValidDomain(req.Domain) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain format"})
+	if err := validateDomain(req.Domain, false); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -120,6 +128,23 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 	}
 	if exists {
 		c.JSON(http.StatusConflict, gin.H{"error": "junction for this domain+path already exists"})
+		return
+	}
+
+	// Ownership before anything is created. The domain+path index is not
+	// project-scoped, so declaring another project's hostname on a different
+	// path was accepted — and creating the junction is what gives the caller a
+	// record to provision, and later release, that hostname's edge
+	// infrastructure with. Refuse at declaration, where a human reads the error.
+	if err := h.assertHostnameNotHeldByAnotherProject(ctx, req.Domain, &domainOwner{
+		ProjectID: project.ID,
+		ServiceID: serviceID,
+	}); err != nil {
+		h.logger.Warn(ctx, "Refusing a junction for a hostname another project holds",
+			logging.String("domain", req.Domain),
+			logging.String("project", slug),
+			logging.Error("error", err))
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -265,6 +290,15 @@ func (h *Handler) DeleteJunction(c *gin.Context) {
 		return
 	}
 
+	// Junction ids are not secrets and the domain+path uniqueness index is not
+	// project-scoped, so without this check any authenticated caller could
+	// delete any project's junction — and, since deletion tears down edge
+	// infrastructure, take its domain offline. GetJunction has always enforced
+	// this; DeleteJunction never did.
+	if !h.enforceUserProjectAccess(c, junction.ProjectID) {
+		return
+	}
+
 	// Remove tunnel route (non-blocking)
 	if h.tunnelRoutesService != nil {
 		if rmErr := h.tunnelRoutesService.RemoveRoute(ctx, junction.Domain); rmErr != nil {
@@ -272,6 +306,18 @@ func (h *Handler) DeleteJunction(c *gin.Context) {
 				logging.String("domain", junction.Domain),
 				logging.Error("error", rmErr))
 		}
+	}
+
+	// Release the Cloudflare for SaaS custom hostname, if the domain was
+	// provisioned that way (non-blocking). Junctions store no hostname id, so
+	// the release is scoped by the project that owns the custom_domains record
+	// for this hostname; a hostname held by another project is refused rather
+	// than deleted out from under it.
+	if delErr := h.releaseCustomHostnameForJunction(ctx, junction); delErr != nil {
+		h.logger.Warn(ctx, "Failed to delete custom hostname during junction deletion",
+			logging.String("domain", junction.Domain),
+			logging.String("project_id", junction.ProjectID.String()),
+			logging.Error("error", delErr))
 	}
 
 	// Remove DNS record (non-blocking)
@@ -304,4 +350,38 @@ func (h *Handler) DeleteJunction(c *gin.Context) {
 		logging.String("id", id.String()))
 
 	c.JSON(http.StatusOK, gin.H{"message": "junction deleted"})
+}
+
+// releaseCustomHostnameForJunction releases the Cloudflare for SaaS custom
+// hostname serving a junction's domain.
+//
+// Two conditions must hold, and both fail closed:
+//   - the junction being deleted is the last one pointing at that hostname
+//     (another project can hold a junction for the same domain on a different
+//     path, because the uniqueness index covers domain+path only), and
+//   - the project deleting it is the one that owns the hostname.
+func (h *Handler) releaseCustomHostnameForJunction(ctx context.Context, junction *types.Junction) error {
+	if junction == nil || junction.Domain == "" {
+		return nil
+	}
+	if h.repos == nil || h.repos.Junctions == nil {
+		return fmt.Errorf(
+			"junction repository unavailable, cannot establish whether %s is still in use", junction.Domain)
+	}
+
+	remaining, err := h.repos.Junctions.CountOtherByDomain(ctx, junction.Domain, junction.ID)
+	if err != nil {
+		return err
+	}
+	if remaining > 0 {
+		h.logger.Info(ctx, "Keeping the custom hostname: other junctions still serve this domain",
+			logging.String("domain", junction.Domain),
+			logging.Int("remaining_junctions", remaining))
+		return nil
+	}
+
+	return h.releaseCustomHostnameForProject(ctx, junction.Domain, &domainOwner{
+		ProjectID: junction.ProjectID,
+		ServiceID: junction.ServiceID,
+	})
 }

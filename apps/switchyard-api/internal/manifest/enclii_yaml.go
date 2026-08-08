@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,83 @@ type EncliiYAMLDomain struct {
 	Environment string `yaml:"environment"`    // e.g., "production" (defaults to "production")
 	TLSEnabled  *bool  `yaml:"tlsEnabled"`     // defaults to true
 	Port        int    `yaml:"port,omitempty"` // per-domain port override (defaults to runtime port or 80)
+
+	// External opts the domain into the Cloudflare for SaaS custom-hostname
+	// path: the domain owner keeps their registrar and nameservers and only
+	// adds a CNAME plus a verification TXT record.
+	//
+	//   external: true   → always custom hostname (client-owned domain)
+	//   external: false  → always zone + CNAME (we control the nameservers)
+	//   absent           → auto-detect: zone+CNAME when the apex already has a
+	//                      zone in our Cloudflare account, custom hostname
+	//                      otherwise (and zone+CNAME as before when the
+	//                      fallback origin is not configured)
+	External *ExternalFlag `yaml:"external,omitempty"`
+}
+
+// ExternalFlag is the parsed `external:` field of a domain.
+//
+// It exists so a bad value costs one domain instead of the whole file. A plain
+// `*bool` makes `external: "true"` a decode error, and a decode error on any
+// field aborts ParseEncliiYAML — which drops every domain AND every header in
+// the manifest on a log line. The quoted form is accepted (it is what a human
+// meant), and anything genuinely unreadable is carried as Invalid so the
+// caller can reject that one domain by name.
+type ExternalFlag struct {
+	// Value is the parsed boolean, or nil when the declared scalar could not
+	// be read as one.
+	Value *bool
+	// Invalid is the literal we could not read. Empty when Value is set.
+	Invalid string
+}
+
+// UnmarshalYAML accepts a YAML boolean or any scalar strconv.ParseBool
+// understands ("true", "True", "TRUE", "1", "t", and their false
+// counterparts), plus the YAML 1.1 spellings yes/no/on/off. Never returns an
+// error: an unreadable value is recorded, not raised, so the rest of the
+// document still parses.
+func (f *ExternalFlag) UnmarshalYAML(node *yaml.Node) error {
+	if node == nil || node.Kind != yaml.ScalarNode {
+		if node != nil {
+			f.Invalid = node.Value
+		}
+		if f.Invalid == "" {
+			f.Invalid = "<non-scalar value>"
+		}
+		return nil
+	}
+
+	if node.Tag == "!!null" {
+		return nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(node.Value)) {
+	case "yes", "on":
+		value := true
+		f.Value = &value
+		return nil
+	case "no", "off":
+		value := false
+		f.Value = &value
+		return nil
+	}
+
+	parsed, err := strconv.ParseBool(strings.TrimSpace(node.Value))
+	if err != nil {
+		f.Invalid = node.Value
+		return nil
+	}
+	f.Value = &parsed
+	return nil
+}
+
+// MarshalYAML renders the flag back as a plain boolean so a round-trip does
+// not leak the wrapper struct into a rendered manifest.
+func (f ExternalFlag) MarshalYAML() (interface{}, error) {
+	if f.Value == nil {
+		return nil, nil
+	}
+	return *f.Value, nil
 }
 
 // GetPort returns the effective service port for this domain.
@@ -114,6 +192,29 @@ func (d *EncliiYAMLDomain) IsTLSEnabled() bool {
 		return true
 	}
 	return *d.TLSEnabled
+}
+
+// ExternalOverride returns the explicit `external` setting and whether the
+// field was declared at all. Absent (nil) means "auto-detect", which is the
+// pre-existing behaviour for every manifest written before this field existed.
+//
+// A declared-but-unreadable value reports declared=false; callers that care
+// must consult ExternalParseFailure first, because guessing a mechanism from a
+// value we could not read is exactly the failure this field must not have.
+func (d *EncliiYAMLDomain) ExternalOverride() (value bool, declared bool) {
+	if d == nil || d.External == nil || d.External.Value == nil {
+		return false, false
+	}
+	return *d.External.Value, true
+}
+
+// ExternalParseFailure reports a declared `external:` value that could not be
+// read as a boolean, along with the offending literal.
+func (d *EncliiYAMLDomain) ExternalParseFailure() (raw string, malformed bool) {
+	if d == nil || d.External == nil || d.External.Invalid == "" {
+		return "", false
+	}
+	return d.External.Invalid, true
 }
 
 var supportedEncliiAPIVersions = map[string]struct{}{
@@ -150,11 +251,28 @@ func validateEncliiYAMLHeader(config *EncliiYAML) error {
 	return nil
 }
 
+// CanonicalHostname renders a declared hostname in the single form the rest of
+// the platform stores and compares.
+//
+// DNS is case-insensitive; Enclii's storage and lookups are not. A manifest
+// that spells a host `api.Madfam.io` used to produce a second row, a second
+// `WHERE domain = $1` identity and — because Cloudflare returns zone names
+// lowercased — a case-exact zone match that missed, reclassifying a MADFAM
+// domain as client-owned. Canonicalising at the parse boundary means every
+// consumer of Spec.Domains sees one spelling.
+//
+// The counterpart for HTTP request bodies is canonicalDomain in
+// internal/api/domain_validation.go; both are deliberately the same rule.
+func CanonicalHostname(host string) string {
+	return strings.ToLower(strings.TrimSpace(host))
+}
+
 func applyEncliiYAMLDefaults(config *EncliiYAML) {
 	if config.Kind == "Project" && config.Metadata.Project == "" {
 		config.Metadata.Project = config.Metadata.Name
 	}
 	for i := range config.Spec.Domains {
+		config.Spec.Domains[i].Name = CanonicalHostname(config.Spec.Domains[i].Name)
 		if config.Spec.Domains[i].Environment == "" {
 			config.Spec.Domains[i].Environment = "production"
 		}
@@ -259,8 +377,12 @@ func FetchAndParse(ctx context.Context, logger logging.Logger, githubToken, repo
 
 	config, err := ParseEncliiYAML(content)
 	if err != nil {
-		logger.Warn(ctx, "Failed to parse enclii.yaml",
+		// Error, not Warn: this discards every domain and every header the
+		// manifest declared, which is a deploy-affecting outcome and not a
+		// diagnostic curiosity.
+		logger.Error(ctx, "Failed to parse enclii.yaml; every domain and header it declares is being ignored for this deploy",
 			logging.String("repo", repoFullName),
+			logging.String("git_sha", gitSHA),
 			logging.Error("error", err))
 		return nil
 	}

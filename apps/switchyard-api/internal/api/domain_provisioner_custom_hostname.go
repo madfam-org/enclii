@@ -1,0 +1,451 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/cloudflare"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
+)
+
+// Cloudflare for SaaS provisioning for client-owned domains.
+//
+// The zone+CNAME path in domain_provisioner.go requires MADFAM to control the
+// domain's nameservers. A client who keeps their own registrar cannot use it.
+// For those domains we register a Cloudflare custom hostname on our
+// fallback-origin zone; the client then adds a CNAME plus a verification TXT
+// record on their own DNS and Cloudflare issues a per-hostname certificate.
+//
+// Nothing in here declares success on our own authority: the stored status is
+// whatever Cloudflare last reported, and the domain is only marked verified
+// when Cloudflare says both the hostname and its certificate are active.
+//
+// Two properties are load-bearing and easy to lose:
+//
+//  1. The fallback-origin zone is SHARED by every tenant. A hostname string is
+//     therefore never evidence of ownership; every operation on a custom
+//     hostname carries the project claiming it and refuses when another
+//     project already holds that hostname.
+//  2. The mechanism decision fails closed. "We could not reach Cloudflare" is
+//     not "this domain is client-owned", so an undecidable lookup aborts that
+//     domain's provisioning instead of moving it onto another mechanism.
+
+// domainProvisioningMechanism identifies how a domain reaches our edge.
+type domainProvisioningMechanism string
+
+const (
+	// mechanismZoneCNAME is the pre-existing path: a Cloudflare zone we
+	// control plus a proxied CNAME to the tunnel.
+	mechanismZoneCNAME domainProvisioningMechanism = "zone-cname"
+	// mechanismCustomHostname is the Cloudflare for SaaS path for
+	// client-owned domains.
+	mechanismCustomHostname domainProvisioningMechanism = "custom-hostname"
+	// mechanismUndetermined means the decision could not be made — typically
+	// a Cloudflare zone lookup that failed for a reason other than "no such
+	// zone". Provisioning aborts for that domain and the existing record is
+	// left as it is; nothing is switched on a guess.
+	mechanismUndetermined domainProvisioningMechanism = "undetermined"
+)
+
+// domainProvisioningResult is the typed outcome of provisioning one domain.
+// Deploy-path provisioning does not abort a deploy on failure (that is by
+// design), so Err is carried here and persisted on the domain record instead
+// of being swallowed by a log line.
+type domainProvisioningResult struct {
+	Domain            string                      `json:"domain"`
+	Mechanism         domainProvisioningMechanism `json:"mechanism"`
+	CustomHostnameID  string                      `json:"custom_hostname_id,omitempty"`
+	HostnameStatus    string                      `json:"custom_hostname_status,omitempty"`
+	SSLStatus         string                      `json:"custom_hostname_ssl_status,omitempty"`
+	PendingDNSRecords []types.PendingDNSRecord    `json:"pending_dns_records,omitempty"`
+	Err               error                       `json:"-"`
+	ErrorMessage      string                      `json:"error,omitempty"`
+
+	// CustomHostnameReleased reports that a stale custom hostname was
+	// successfully deleted at Cloudflare during this pass, which is the only
+	// condition under which the stored hostname id may be cleared.
+	CustomHostnameReleased bool `json:"-"`
+}
+
+// WaitingOnClient reports whether the domain owner still has records to add.
+func (r *domainProvisioningResult) WaitingOnClient() bool {
+	return r != nil && len(r.PendingDNSRecords) > 0
+}
+
+// setErr records a failure on the result in both typed and rendered form.
+func (r *domainProvisioningResult) setErr(err error) {
+	if err == nil {
+		return
+	}
+	r.Err = err
+	r.ErrorMessage = err.Error()
+}
+
+// domainOwner identifies the project (and service) claiming a hostname.
+// Every custom-hostname operation carries one.
+type domainOwner struct {
+	ProjectID uuid.UUID
+	ServiceID uuid.UUID
+}
+
+// ownerFromService derives the claiming project from the service being
+// provisioned. Returns nil for a nil service, which every ownership check
+// treats as "ownership unknown" and refuses.
+func ownerFromService(service *types.Service) *domainOwner {
+	if service == nil {
+		return nil
+	}
+	return &domainOwner{ProjectID: service.ProjectID, ServiceID: service.ID}
+}
+
+// customHostnameZone returns the configured fallback-origin zone id and the
+// hostname clients CNAME to. ok is false when Cloudflare for SaaS is not
+// configured, in which case the custom-hostname path must not be attempted.
+func (h *Handler) customHostnameZone() (zoneID, fallbackOrigin string, ok bool) {
+	if h == nil || h.config == nil {
+		return "", "", false
+	}
+	zoneID = strings.TrimSpace(h.config.CloudflareFallbackOriginZoneID)
+	fallbackOrigin = strings.TrimSpace(h.config.CloudflareFallbackOriginHostname)
+	return zoneID, fallbackOrigin, zoneID != "" && fallbackOrigin != ""
+}
+
+// zoneResolver is the slice of the Cloudflare client the mechanism decision
+// needs: "is this domain's apex a zone we already control?". Declared as an
+// interface so the decision is testable without a live Cloudflare API.
+type zoneResolver interface {
+	FindZoneForDomain(ctx context.Context, domain string) (*cloudflare.Zone, error)
+}
+
+// resolveDomainMechanism decides which provisioning path a domain takes.
+//
+//   - external declared true  → custom hostname, always
+//   - external declared false → zone + CNAME, always (unchanged behaviour)
+//   - external absent         → zone + CNAME when the apex already has a zone
+//     in our Cloudflare account, custom hostname when Cloudflare confirmed it
+//     does not. If Cloudflare for SaaS is not configured, absent falls back to
+//     the pre-existing zone path so that an unconfigured platform behaves
+//     exactly as it does today.
+//
+// A zone lookup that fails for any reason other than "no such zone" — a 5xx,
+// a 429, a timeout, an expired token, a truncated pagination — yields
+// mechanismUndetermined and an error. That case must NOT be read as "the
+// domain is client-owned": doing so would move a live MADFAM domain onto the
+// custom-hostname path and rewrite its record on the strength of a blip.
+func (h *Handler) resolveDomainMechanism(
+	ctx context.Context,
+	zones zoneResolver,
+	domain string,
+	external *bool,
+) (domainProvisioningMechanism, error) {
+	if external != nil {
+		if *external {
+			return mechanismCustomHostname, nil
+		}
+		return mechanismZoneCNAME, nil
+	}
+
+	if _, _, saasConfigured := h.customHostnameZone(); !saasConfigured {
+		return mechanismZoneCNAME, nil
+	}
+
+	if zones == nil {
+		return mechanismZoneCNAME, nil
+	}
+
+	_, err := zones.FindZoneForDomain(ctx, domain)
+	switch {
+	case err == nil:
+		// A zone we already control keeps the zone+CNAME path so no existing
+		// MADFAM-owned domain changes mechanism.
+		return mechanismZoneCNAME, nil
+	case errors.Is(err, cloudflare.ErrZoneNotFound):
+		// Cloudflare positively reported that the account holds no zone for
+		// this domain, so it is client-owned.
+		return mechanismCustomHostname, nil
+	default:
+		return mechanismUndetermined, fmt.Errorf(
+			"cannot decide how to provision %s: the Cloudflare zone lookup neither found a zone nor reported one absent, "+
+				"so whether we control this domain's nameservers is unknown: %w", domain, err)
+	}
+}
+
+// ensureCustomHostname registers (idempotently) a Cloudflare for SaaS custom
+// hostname for a client-owned domain and reports what the client still owes.
+//
+// owner is the project claiming the hostname. It is checked before Cloudflare
+// is called and again, through the client's adoption guard, before an existing
+// registration is handed back as ours.
+func (h *Handler) ensureCustomHostname(ctx context.Context, domain string, owner *domainOwner) domainProvisioningResult {
+	result := domainProvisioningResult{
+		Domain:    domain,
+		Mechanism: mechanismCustomHostname,
+	}
+
+	// Ownership FIRST, before every other guard in this function.
+	//
+	// This check used to sit below the customHostnameZone() guard, so on the
+	// day-one configuration — fallback-origin vars absent, the state this PR
+	// described as "inert" — the function returned before ownership was ever
+	// established. The caller then persisted the resulting error, and the
+	// persist step resolved its row by hostname, so an attacker's enclii.yaml
+	// naming a victim's hostname with `external: true` rewrote the victim's
+	// live domain record on every build. "Not configured" must not be a path
+	// that skips the ownership check; it is a reason to do less, never a reason
+	// to check less.
+	if err := h.assertHostnameClaimableBy(ctx, domain, owner); err != nil {
+		result.setErr(err)
+		return result
+	}
+
+	zoneID, fallbackOrigin, ok := h.customHostnameZone()
+	if !ok {
+		result.setErr(fmt.Errorf(
+			"cloudflare for saas is not configured: set ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_ZONE_ID and ENCLII_CLOUDFLARE_FALLBACK_ORIGIN_HOSTNAME to provision client-owned domain %s", domain))
+		return result
+	}
+
+	if h.domainSyncService == nil {
+		result.setErr(fmt.Errorf("domain sync service unavailable, cannot provision custom hostname for %s", domain))
+		return result
+	}
+
+	cfClient := h.domainSyncService.GetCloudflareClient()
+	if cfClient == nil {
+		result.setErr(fmt.Errorf("cloudflare client unavailable, cannot provision custom hostname for %s", domain))
+		return result
+	}
+
+	// TXT validation works before the client cuts their CNAME over, so a live
+	// domain can be migrated without a certificate gap. HTTP validation would
+	// require the traffic to already point at us.
+	hostname, created, err := cfClient.EnsureCustomHostname(ctx, zoneID, domain, &cloudflare.CreateCustomHostnameOptions{
+		SSLMethod: cloudflare.SSLMethodTXT,
+		// Re-checked at the moment of adoption: the pre-check above and the
+		// Cloudflare read are not one transaction, and adopting a hostname is
+		// exactly the operation that would otherwise inherit another
+		// project's verified certificate.
+		AdoptGuard: func(*cloudflare.CustomHostname) error {
+			return h.assertHostnameClaimableBy(ctx, domain, owner)
+		},
+	})
+	if err != nil {
+		result.setErr(fmt.Errorf("failed to provision custom hostname for %s: %w", domain, err))
+		return result
+	}
+
+	result.CustomHostnameID = hostname.ID
+	result.HostnameStatus = string(hostname.Status)
+	result.SSLStatus = string(hostname.SSL.Status)
+	result.PendingDNSRecords = toPendingDNSRecords(hostname.PendingClientDNSRecords(fallbackOrigin))
+
+	fields := []logging.Field{
+		logging.String("domain", domain),
+		logging.String("custom_hostname_id", hostname.ID),
+		logging.String("status", string(hostname.Status)),
+		logging.String("ssl_status", string(hostname.SSL.Status)),
+		logging.Int("pending_client_dns_records", len(result.PendingDNSRecords)),
+	}
+	if created {
+		h.logger.Info(ctx, "Cloudflare custom hostname registered for client-owned domain", fields...)
+	} else {
+		h.logger.Debug(ctx, "Cloudflare custom hostname already registered", fields...)
+	}
+
+	return result
+}
+
+// refreshCustomHostnameState re-reads a known custom hostname from Cloudflare.
+// Used by the verify path, where the caller is asking "is it live yet?" and
+// only Cloudflare can answer.
+func (h *Handler) refreshCustomHostnameState(ctx context.Context, domain, customHostnameID string) domainProvisioningResult {
+	result := domainProvisioningResult{
+		Domain:           domain,
+		Mechanism:        mechanismCustomHostname,
+		CustomHostnameID: customHostnameID,
+	}
+
+	zoneID, fallbackOrigin, ok := h.customHostnameZone()
+	if !ok {
+		result.setErr(fmt.Errorf("cloudflare for saas is not configured, cannot read custom hostname state for %s", domain))
+		return result
+	}
+
+	if h.domainSyncService == nil {
+		result.setErr(fmt.Errorf("domain sync service unavailable, cannot read custom hostname state for %s", domain))
+		return result
+	}
+
+	cfClient := h.domainSyncService.GetCloudflareClient()
+	if cfClient == nil {
+		result.setErr(fmt.Errorf("cloudflare client unavailable, cannot read custom hostname state for %s", domain))
+		return result
+	}
+
+	hostname, err := cfClient.GetCustomHostname(ctx, zoneID, customHostnameID)
+	if err != nil {
+		result.setErr(fmt.Errorf("failed to read custom hostname state for %s: %w", domain, err))
+		return result
+	}
+
+	result.HostnameStatus = string(hostname.Status)
+	result.SSLStatus = string(hostname.SSL.Status)
+	result.PendingDNSRecords = toPendingDNSRecords(hostname.PendingClientDNSRecords(fallbackOrigin))
+	return result
+}
+
+// releaseCustomHostnameForProject removes the custom hostname serving domain,
+// but only after proving the caller's project is the one entitled to remove
+// it. Junctions store no hostname id, so the hostname is resolved by name on
+// the shared fallback-origin zone — which means the name alone must never be
+// what authorises the delete.
+//
+// It fails closed twice over:
+//
+//   - another project holding a record for the hostname refuses, and
+//   - NO project holding a record refuses as well. "Nobody owns it" is not
+//     permission; on a zone shared by every tenant it is the state of a
+//     hostname whose owning record this caller simply cannot see, and acting on
+//     it is how a caller with no claim at all deletes a live registration.
+//
+// Deleting a custom hostname takes the client's domain offline at the edge.
+// Leaving a registration behind for an operator to reap is the cheaper mistake.
+func (h *Handler) releaseCustomHostnameForProject(ctx context.Context, domain string, owner *domainOwner) error {
+	zoneID, _, ok := h.customHostnameZone()
+	if !ok {
+		// Nothing could have been provisioned this way, so there is nothing
+		// to delete and nothing to complain about.
+		return nil
+	}
+	if h.domainSyncService == nil {
+		return nil
+	}
+	cfClient := h.domainSyncService.GetCloudflareClient()
+	if cfClient == nil {
+		return nil
+	}
+
+	if owner == nil || owner.ProjectID == uuid.Nil {
+		return fmt.Errorf(
+			"refusing to release the custom hostname for %s: the requesting project could not be determined", domain)
+	}
+
+	owners, err := h.hostnameOwners(ctx, domain)
+	if err != nil {
+		return err
+	}
+	if foreign, ok := firstForeignOwner(owners, owner.ProjectID); ok {
+		return fmt.Errorf(
+			"refusing to release custom hostname %s on behalf of project %s: it belongs to project %s",
+			domain, owner.ProjectID, foreign)
+	}
+	if len(owners) == 0 {
+		return fmt.Errorf(
+			"refusing to release custom hostname %s on behalf of project %s: no record entitles that project to it. "+
+				"The fallback-origin zone is shared, so a hostname with no owning custom_domains row and no junction "+
+				"is not an unclaimed hostname, it is one whose claim this request cannot prove",
+			domain, owner.ProjectID)
+	}
+
+	hostname, err := cfClient.FindCustomHostname(ctx, zoneID, domain)
+	if err != nil {
+		return fmt.Errorf("failed to look up custom hostname for %s: %w", domain, err)
+	}
+	if hostname == nil {
+		return nil
+	}
+
+	return cfClient.DeleteCustomHostname(ctx, zoneID, hostname.ID)
+}
+
+// deleteCustomHostname removes a custom hostname during domain teardown, using
+// the id stored on the domain record. The record is the ownership proof here:
+// the caller loaded it from the project's own row.
+func (h *Handler) deleteCustomHostname(ctx context.Context, domain, customHostnameID string) error {
+	if customHostnameID == "" {
+		return nil
+	}
+
+	zoneID, _, ok := h.customHostnameZone()
+	if !ok {
+		return fmt.Errorf("cloudflare for saas is not configured, cannot delete custom hostname for %s", domain)
+	}
+	if h.domainSyncService == nil {
+		return fmt.Errorf("domain sync service unavailable, cannot delete custom hostname for %s", domain)
+	}
+	cfClient := h.domainSyncService.GetCloudflareClient()
+	if cfClient == nil {
+		return fmt.Errorf("cloudflare client unavailable, cannot delete custom hostname for %s", domain)
+	}
+
+	return cfClient.DeleteCustomHostname(ctx, zoneID, customHostnameID)
+}
+
+// toPendingDNSRecords converts the Cloudflare client's record list into the
+// transport/storage type. Kept explicit so the sdk-go types package does not
+// take a dependency on the internal cloudflare package.
+func toPendingDNSRecords(records []cloudflare.ClientDNSRecord) []types.PendingDNSRecord {
+	if len(records) == 0 {
+		return nil
+	}
+	out := make([]types.PendingDNSRecord, 0, len(records))
+	for _, record := range records {
+		out = append(out, types.PendingDNSRecord{
+			Purpose: record.Purpose,
+			Type:    record.Type,
+			Name:    record.Name,
+			Value:   record.Value,
+		})
+	}
+	return out
+}
+
+// describePendingClientAction renders the outstanding client action as a
+// single operator-readable sentence.
+//
+// It includes record VALUES — the ownership token and the DCV challenge — so
+// it is for the domain owner, over an authenticated response. Never log it;
+// use describePendingClientRecordNames for that.
+func describePendingClientAction(result domainProvisioningResult) string {
+	if result.Err != nil {
+		return fmt.Sprintf("Provisioning failed for %s: %s", result.Domain, result.ErrorMessage)
+	}
+	if !result.WaitingOnClient() {
+		if result.Mechanism == mechanismCustomHostname {
+			return fmt.Sprintf("Cloudflare reports %s as %s (certificate %s).",
+				result.Domain, result.HostnameStatus, result.SSLStatus)
+		}
+		return ""
+	}
+
+	parts := make([]string, 0, len(result.PendingDNSRecords))
+	for _, record := range result.PendingDNSRecords {
+		parts = append(parts, fmt.Sprintf("%s %s -> %s", record.Type, record.Name, record.Value))
+	}
+	return fmt.Sprintf(
+		"Waiting on the domain owner to add %d DNS record(s) on %s: %s",
+		len(parts), result.Domain, strings.Join(parts, "; "))
+}
+
+// describePendingClientRecordNames renders the outstanding client action with
+// record names only. The values are secrets in the useful sense — the
+// `_cf-custom-hostname` ownership token and the `_acme-challenge` DCV value
+// are what proves control of the hostname — and logs are the one place they
+// must not be reproduced.
+func describePendingClientRecordNames(result domainProvisioningResult) string {
+	if !result.WaitingOnClient() {
+		return ""
+	}
+
+	names := make([]string, 0, len(result.PendingDNSRecords))
+	for _, record := range result.PendingDNSRecords {
+		names = append(names, fmt.Sprintf("%s %s", record.Type, record.Name))
+	}
+	return fmt.Sprintf("%d DNS record(s) on %s: %s",
+		len(names), result.Domain, strings.Join(names, "; "))
+}

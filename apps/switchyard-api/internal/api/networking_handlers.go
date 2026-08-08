@@ -89,6 +89,12 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 			VerificationTXT:  verificationTXT,
 			DNSCNAME:         domain.DNSCNAME,
 			CreatedAt:        domain.CreatedAt,
+
+			// Surface the provisioning diagnosis: a domain that cannot be
+			// provisioned at all must not read as merely "pending".
+			ProvisioningError:     domain.ProvisioningError,
+			ProvisioningCheckedAt: domain.ProvisioningCheckedAt,
+			PendingDNSRecords:     domain.PendingDNSRecords,
 		}
 
 		// For unverified custom domains, always include verification info
@@ -256,6 +262,9 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		}
 	}
 
+	// Canonicalise before validating: the validated value is the stored value.
+	domainName = canonicalDomain(domainName)
+
 	// Validate domain format
 	if !isValidDomain(domainName) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain format"})
@@ -349,7 +358,23 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		DNSCNAME:         dnsCNAME,
 	}
 
-	if err := h.repos.CustomDomains.Create(ctx, domain); err != nil {
+	// Checked and claimed in one transaction, under the cross-project hostname
+	// lock. The Exists check above only sees custom_domains; a junction-served
+	// hostname has no row there, and a concurrent claim for another project can
+	// land between that check and this insert. See AddCustomDomain for why the
+	// gate inside also fails closed rather than reading an unresolvable lookup
+	// as "free".
+	if err := h.claimHostname(ctx, domain, &domainOwner{
+		ProjectID: service.ProjectID,
+		ServiceID: serviceUUID,
+	}); err != nil {
+		if isHostnameHeld(err) {
+			h.logger.Warn(ctx, "Refusing a service domain for a hostname another project holds",
+				logging.String("domain", domainName),
+				logging.Error("error", err))
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		h.logger.Error(ctx, "Failed to create custom domain", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create custom domain"})
 		return

@@ -53,21 +53,19 @@ func (s *TunnelRoutesServiceCloudflare) AddRoute(ctx context.Context, spec *Rout
 		return fmt.Errorf("failed to get tunnel configuration: %w", err)
 	}
 
-	// Check if route already exists
-	for i, rule := range config.Config.Ingress {
-		if rule.Hostname == spec.Hostname {
-			s.logger.WithField("hostname", spec.Hostname).Warn("Route already exists, updating")
-			return s.updateExistingRoute(ctx, config, i, spec)
-		}
+	// Check if route already exists. Case-insensitive: see CanonicalHostname.
+	if i := indexOfHostnameCF(config.Config.Ingress, spec.Hostname); i >= 0 {
+		s.logger.WithField("hostname", spec.Hostname).Warn("Route already exists, updating")
+		return s.updateExistingRoute(ctx, config, i, spec)
 	}
 
 	// Build service URL
 	serviceURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
 		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
 
-	// Create new rule
+	// Create new rule, stored canonically so the config converges on one form.
 	newRule := cloudflare.TunnelIngressRule{
-		Hostname: spec.Hostname,
+		Hostname: CanonicalHostname(spec.Hostname),
 		Service:  serviceURL,
 	}
 
@@ -105,15 +103,7 @@ func (s *TunnelRoutesServiceCloudflare) RemoveRoute(ctx context.Context, hostnam
 	}
 
 	// Find and remove the route
-	found := false
-	newIngress := make([]cloudflare.TunnelIngressRule, 0, len(config.Config.Ingress)-1)
-	for _, rule := range config.Config.Ingress {
-		if rule.Hostname == hostname {
-			found = true
-			continue
-		}
-		newIngress = append(newIngress, rule)
-	}
+	newIngress, found := filterOutHostnameCF(config.Config.Ingress, hostname)
 
 	if !found {
 		s.logger.WithField("hostname", hostname).Warn("Route not found, nothing to remove")
@@ -169,13 +159,7 @@ func (s *TunnelRoutesServiceCloudflare) RouteExists(ctx context.Context, hostnam
 		return false, fmt.Errorf("failed to get tunnel configuration: %w", err)
 	}
 
-	for _, rule := range config.Config.Ingress {
-		if rule.Hostname == hostname {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return indexOfHostnameCF(config.Config.Ingress, hostname) >= 0, nil
 }
 
 // updateExistingRoute updates an existing route in place
@@ -183,6 +167,9 @@ func (s *TunnelRoutesServiceCloudflare) updateExistingRoute(ctx context.Context,
 	serviceURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
 		spec.ServiceName, spec.ServiceNamespace, spec.ServicePort)
 
+	// Canonicalise on the way past, so a pre-existing mixed-case rule is
+	// converted by the first reconciliation that touches it.
+	config.Config.Ingress[index].Hostname = CanonicalHostname(config.Config.Ingress[index].Hostname)
 	config.Config.Ingress[index].Service = serviceURL
 	if spec.ConnectTimeout != "" || spec.KeepAliveTimeout != "" {
 		config.Config.Ingress[index].OriginRequest = &cloudflare.TunnelOriginRequest{
@@ -199,6 +186,34 @@ func (s *TunnelRoutesServiceCloudflare) updateExistingRoute(ctx context.Context,
 }
 
 // insertBeforeCatchAllCF inserts a rule before the catch-all rule (Cloudflare types)
+// indexOfHostnameCF returns the index of the rule serving hostname, or -1.
+// Case-insensitive; see indexOfHostname.
+func indexOfHostnameCF(rules []cloudflare.TunnelIngressRule, hostname string) int {
+	for i, rule := range rules {
+		if sameHostname(rule.Hostname, hostname) {
+			return i
+		}
+	}
+	return -1
+}
+
+// filterOutHostnameCF returns rules with every rule serving hostname removed,
+// and whether any were.
+func filterOutHostnameCF(
+	rules []cloudflare.TunnelIngressRule, hostname string,
+) ([]cloudflare.TunnelIngressRule, bool) {
+	kept := make([]cloudflare.TunnelIngressRule, 0, len(rules))
+	found := false
+	for _, rule := range rules {
+		if sameHostname(rule.Hostname, hostname) {
+			found = true
+			continue
+		}
+		kept = append(kept, rule)
+	}
+	return kept, found
+}
+
 func insertBeforeCatchAllCF(rules []cloudflare.TunnelIngressRule, newRule cloudflare.TunnelIngressRule) []cloudflare.TunnelIngressRule {
 	// Find catch-all rule (rule without hostname)
 	catchAllIndex := -1
