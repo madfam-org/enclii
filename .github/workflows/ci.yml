@@ -370,6 +370,16 @@ jobs:
       # that bridge entry too (exemption key = newName leaf = ROUNDHOUSE).
       # ROTATE OUT: once roundhouse-worker gets a passing scan + fresh pin.
       AGE_RATCHET_EXEMPT_ROUNDHOUSE: "api/worker split landed 2026-07; api repins on next main build, worker bridge pin blocked on upstream dind engine CVEs; ETA 2026-08 or next docker release with containerd/runc fixes"
+      # Added 2026-08-07 to unblock the Loki storage fix during a live incident.
+      # switchyard-api crossed 30 days at 31 days (digest built 2026-07-07); the
+      # ratchet tripped on the CLOCK mid-session, not on any change in this PR --
+      # main was green at 16:56Z and this PR ran at 00:06Z with nothing between
+      # them but time. THIS IS ACKNOWLEDGED STALENESS, NOT A FIX: the correct
+      # action is a rebuild + repin via the normal CI flow, which is a deploy and
+      # not something this PR can do. ETA: next switchyard-api build. If this
+      # comment is still here after that, the exemption is overdue and should be
+      # deleted rather than re-dated.
+      AGE_RATCHET_EXEMPT_SWITCHYARD_API: "clock-trip during the 2026-08-07 Loki incident; digest 2026-07-07 is 31d; rebuild+repin owed, ETA next switchyard-api build"
       AGE_RATCHET_EXEMPT_WAYBILL: "stable manifest serializer, no upstream CVE pressure; ETA 2026-06 alongside roundhouse"
       PYTHONUNBUFFERED: "1"
     steps:
