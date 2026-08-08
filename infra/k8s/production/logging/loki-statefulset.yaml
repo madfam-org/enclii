@@ -1,7 +1,14 @@
 ---
 # Loki - Log aggregation engine
 # Single-binary mode (monolithic) suitable for small clusters.
-# Receives logs from Fluent Bit, stores on Longhorn PVC, retains for 7 days.
+# Receives logs from Fluent Bit, stores on Longhorn PVC, retains for 48h.
+#
+# Retention was 168h (7 days) until 2026-08-07. It was cut to 48h after the
+# 5Gi volume filled with 10.9Gi of Longhorn SNAPSHOTS (actualSize 218% of
+# nominal) and Loki deadlocked at startup building tsdb from WALs -- it dies
+# before reaching the compactor that would free space, so it cannot recover on
+# its own at any timescale. See limits_config below and
+# internal-devops runbooks/2026-08-07-loki-snapshot-exhaustion.md.
 #
 # Query via Grafana (add Loki datasource: http://loki.logging.svc.cluster.local:3100)
 apiVersion: v1
