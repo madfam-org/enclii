@@ -1,7 +1,14 @@
 ---
 # Loki - Log aggregation engine
 # Single-binary mode (monolithic) suitable for small clusters.
-# Receives logs from Fluent Bit, stores on Longhorn PVC, retains for 7 days.
+# Receives logs from Fluent Bit, stores on Longhorn PVC, retains for 48h.
+#
+# Retention was 168h (7 days) until 2026-08-07. It was cut to 48h after the
+# 5Gi volume filled with 10.9Gi of Longhorn SNAPSHOTS (actualSize 218% of
+# nominal) and Loki deadlocked at startup building tsdb from WALs -- it dies
+# before reaching the compactor that would free space, so it cannot recover on
+# its own at any timescale. See limits_config below and
+# internal-devops runbooks/2026-08-07-loki-snapshot-exhaustion.md.
 #
 # Query via Grafana (add Loki datasource: http://loki.logging.svc.cluster.local:3100)
 apiVersion: v1
@@ -56,14 +63,29 @@ data:
       delete_request_store: filesystem
 
     limits_config:
-      retention_period: 168h
-      ingestion_rate_mb: 10
-      ingestion_burst_size_mb: 20
+      # SIZING MUST AGREE WITH THE VOLUME. On 2026-08-07 this asked for 168h of
+      # retention at up to 10 MB/s ingestion while volumeClaimTemplates requested
+      # 5Gi. Those cannot both be true for a 40-namespace cluster: even a small
+      # fraction of the permitted rate fills 5Gi in well under a day. Loki filled
+      # the volume and began failing at STARTUP --
+      #   error initialising module: store
+      #   mkdir /loki/tsdb-index/scratch/...: no space left on device
+      # -- which is a DEADLOCK, not slow degradation: it dies while building tsdb
+      # from WALs, so it never reaches the compactor that would delete old data.
+      # It sat at 933 restarts and could not have recovered on its own.
+      #
+      # The cost was not "no logs". Centralised logging was the only surface that
+      # would have reported a failed rollout, so while this was down a dhanam
+      # prod promote failed ~17h and meridian's API stayed down ~12d, unnoticed.
+      # See internal-devops runbooks/2026-08-07-failed-rollout-sweep.md
+      retention_period: 48h
+      ingestion_rate_mb: 2
+      ingestion_burst_size_mb: 4
       max_streams_per_user: 10000
       max_entries_limit_per_query: 5000
       max_query_series: 500
       reject_old_samples: true
-      reject_old_samples_max_age: 168h
+      reject_old_samples_max_age: 48h
 
     query_range:
       results_cache:
@@ -211,6 +233,18 @@ spec:
         storageClassName: longhorn
         resources:
           requests:
+            # STAYS 5Gi. An earlier draft of this PR raised it to 20Gi; that was
+            # wrong. The volume was never too small -- it held 10.9 Gi of
+            # SNAPSHOTS on 5 Gi of nominal space (actualSize 218%), because the
+            # `default` recurring-job group retains 7 daily snapshots and Loki
+            # rewrites its TSDB index constantly, so each one approached a full
+            # copy. A 20 Gi volume would simply have grown 20 Gi of snapshots and
+            # failed identically a few weeks later.
+            #
+            # The real fixes are the retention above (48h, 2 MB/s ingest cap) and
+            # the `high-churn` recurring-job group in
+            # infra/helm/longhorn/recurring-jobs.yaml, which retains 2 local
+            # snapshots instead of 7. With both, 5 Gi is comfortable.
             storage: 5Gi
 ---
 # ServiceAccount for Loki (minimal — no cluster-wide access needed)
