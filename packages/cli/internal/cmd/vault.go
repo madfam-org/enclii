@@ -44,14 +44,14 @@ const (
 	// created by the Helm chart at infra/helm/vault/values.yaml.
 	defaultVaultAddr = "http://vault.vault.svc.cluster.local:8200"
 
-	// Vault sys/health status codes we care about.
+	// NOTE: `enclii vault status` currently prints Vault's raw health code
+	// ("Vault: HTTP %d") without interpreting it. The sys/health codes are
+	// documented at
 	// https://developer.hashicorp.com/vault/api-docs/system/health
-	healthStatusInitializedActive  = 200
-	healthStatusInitializedStandby = 429 // standby replica
-	healthStatusDRSecondary        = 472
-	healthStatusPerfStandby        = 473
-	healthStatusSealed             = 503
-	healthStatusNotInitialized     = 501
+	// -- 200 active, 429 standby, 472 DR secondary, 473 perf standby,
+	// 501 not initialized, 503 sealed. They were previously declared as
+	// constants here but never referenced by any comparison, so they were
+	// dead code that read as implemented behaviour.
 
 	vaultHealthTimeout = 5 * time.Second
 )

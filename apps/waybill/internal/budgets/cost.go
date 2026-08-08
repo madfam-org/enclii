@@ -298,13 +298,13 @@ func (r *CostReader) priceCents(metric string, total float64, start, end time.Ti
 	case "build_minutes":
 		return total * r.pricing.BuildPerMinute
 	case "storage_gb_hours":
-		hours := end.Sub(start).Hours()
-		if hours <= 0 {
-			hours = 1
-		}
-		gbMonths := total / (24 * 30.0) * (hours / hours) // same rescale as dollar calc
-		// Simplified: treat stored total (gb-hours) as gb-months by dividing by month-hours
-		gbMonths = total / (24 * 30.0)
+		// The stored total is already gb-hours, so it is rescaled to gb-months
+		// by the hours in a 30-day month. NOTE: the [start,end) window does not
+		// affect this price. That was already true -- the previous code derived
+		// `hours` from the window, multiplied by (hours / hours) which is 1,
+		// then overwrote the result with this same expression. Behaviour is
+		// unchanged; only the dead computation is gone.
+		gbMonths := total / (24 * 30.0)
 		return gbMonths * r.pricing.StoragePerGBMonth
 	case "bandwidth_gb":
 		return total * r.pricing.BandwidthPerGB
