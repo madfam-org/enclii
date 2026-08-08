@@ -45,8 +45,9 @@ var serviceTestColumns = []string{
 	"created_at", "updated_at", "jobs", "type", "region", "health_check",
 }
 
-// expectHostnameOwnedBy stages the two reads hostnameOwner performs: the
-// custom_domains row for the hostname, and the service it belongs to.
+// expectHostnameOwnedBy stages the three reads hostnameOwners performs: the
+// custom_domains row for the hostname, the service it belongs to, and the
+// junctions serving the same hostname.
 func expectHostnameOwnedBy(mock sqlmock.Sqlmock, domain string, serviceID, projectID uuid.UUID, customHostnameID string) {
 	now := time.Now()
 	mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
@@ -64,13 +65,29 @@ func expectHostnameOwnedBy(mock sqlmock.Sqlmock, domain string, serviceID, proje
 			[]byte(`[]`), false, "main", "production", now, now, []byte(`[]`),
 			"web", "mx", []byte(`{}`),
 		))
+	expectJunctionOwners(mock, domain)
 }
 
-// expectHostnameUnclaimed stages a custom_domains lookup that finds nothing.
+// expectHostnameUnclaimed stages an ownership lookup that finds nothing: no
+// custom_domains row and no junction.
 func expectHostnameUnclaimed(mock sqlmock.Sqlmock, domain string) {
 	mock.ExpectQuery(`SELECT\s+id, service_id, environment_id, domain`).
 		WithArgs(domain).
 		WillReturnRows(sqlmock.NewRows(customDomainTestColumns))
+	expectJunctionOwners(mock, domain)
+}
+
+// expectJunctionOwners stages the junction half of the ownership lookup.
+// Junction-provisioned hostnames have no custom_domains row, so this is the
+// only record that can name their owner.
+func expectJunctionOwners(mock sqlmock.Sqlmock, domain string, projectIDs ...uuid.UUID) {
+	rows := sqlmock.NewRows([]string{"project_id"})
+	for _, projectID := range projectIDs {
+		rows.AddRow(projectID)
+	}
+	mock.ExpectQuery(`SELECT DISTINCT project_id FROM junctions WHERE lower\(domain\) = lower\(\$1\)`).
+		WithArgs(domain).
+		WillReturnRows(rows)
 }
 
 func newSQLMockHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
@@ -350,7 +367,7 @@ func TestReleaseCustomHostnameForJunctionKeepsHostnameStillInUse(t *testing.T) {
 		Path:      "/api",
 	}
 
-	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM junctions WHERE domain = \$1 AND id <> \$2`).
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM junctions WHERE lower\(domain\) = lower\(\$1\) AND id <> \$2`).
 		WithArgs(junction.Domain, junction.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 

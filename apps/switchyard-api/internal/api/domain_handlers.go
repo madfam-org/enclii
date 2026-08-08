@@ -36,6 +36,10 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		return
 	}
 
+	// Canonicalise before validating, so the value that is validated is the one
+	// that is stored, looked up and compared against Cloudflare's zone names.
+	req.Domain = canonicalDomain(req.Domain)
+
 	ctx := c.Request.Context()
 
 	// Validate service exists
@@ -107,6 +111,21 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusConflict, gin.H{"error": "domain already in use"})
+		return
+	}
+
+	// The Exists check above only sees custom_domains. A hostname served
+	// through a junction has no row there, so without this it could be claimed
+	// here — which both overwrites the junction's routing and leaves the
+	// hostname permanently contested for its rightful owner.
+	if err := h.assertHostnameNotHeldByAnotherProject(ctx, req.Domain, &domainOwner{
+		ProjectID: service.ProjectID,
+		ServiceID: serviceUUID,
+	}); err != nil {
+		h.logger.Warn(ctx, "Refusing a custom domain for a hostname another project holds",
+			logging.String("domain", req.Domain),
+			logging.Error("error", err))
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 

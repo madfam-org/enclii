@@ -69,7 +69,11 @@ func (h *Handler) provisionSingleDomain(
 	domainCfg manifest.EncliiYAMLDomain,
 	runtimePort int,
 ) {
-	domainName := domainCfg.Name
+	// Canonical form before anything else reads it. The manifest parser already
+	// lowercases, but this path is also reached with manifests assembled in
+	// memory, and one uppercase byte surviving to here is enough to make the
+	// zone match miss and reroute a MADFAM domain onto the custom-hostname path.
+	domainName := canonicalDomain(domainCfg.Name)
 	envName := domainCfg.Environment
 	servicePort := domainCfg.GetPort(runtimePort)
 	external, externalDeclared := domainCfg.ExternalOverride()
@@ -179,14 +183,25 @@ func (h *Handler) provisionSingleDomain(
 // Cloudflare edge and the tunnel ingress rule — in the order the mechanism
 // demands.
 //
-// For a client-owned (custom hostname) domain the edge step runs FIRST,
-// because it carries the ownership check and because AddRoute OVERWRITES any
-// existing ingress rule for the same hostname. Establishing the rule before we
-// know the hostname is ours would hand another project's traffic to this
-// service, and would do so even when the custom hostname is then refused.
+// AddRoute OVERWRITES any existing ingress rule for the same hostname, and the
+// ingress config is keyed on hostname across every tenant. It is therefore the
+// mutation that has to be ordered against ownership, on every branch:
 //
-// Every other domain keeps the pre-existing order: tunnel route first, then
-// the zone CNAME.
+//   - custom hostname — the edge step runs FIRST because it carries the
+//     ownership check. Establishing the rule before we know the hostname is
+//     ours hands another project's traffic to this service, and would do so
+//     even when the custom hostname is then refused.
+//   - UNDETERMINED (or a mechanism that cannot be run at all) — nothing is
+//     mutated. An undecidable zone lookup means we do not know whether this
+//     hostname is ours or a client's, and "we could not find out" must not
+//     buy the same ingress write that a decided mechanism does. Only the
+//     diagnosis is recorded.
+//   - zone + CNAME — keeps the pre-existing route-first order, but not
+//     unconditionally: a hostname another project positively holds is refused
+//     before the route is touched. The zone path is reached for domains whose
+//     apex is a zone in our own account, and for anything a manifest pinned
+//     with `external: false` — which is a claim the declaring project makes
+//     about a hostname, not proof of one.
 func (h *Handler) provisionDomainEdge(
 	ctx context.Context,
 	domain string,
@@ -198,6 +213,20 @@ func (h *Handler) provisionDomainEdge(
 	owner := ownerFromService(service)
 	plan := h.planDomainRouting(ctx, domain, external)
 
+	if plan.err != nil || plan.mechanism == mechanismUndetermined {
+		result := h.applyDomainRouting(ctx, plan, owner)
+		reason := "the mechanism this domain asked for cannot be run"
+		if plan.mechanism == mechanismUndetermined {
+			reason = "how this domain reaches the edge could not be decided"
+		}
+		h.logger.Warn(ctx, "Leaving the tunnel ingress rule untouched: "+reason,
+			logging.String("domain", domain),
+			logging.String("service", serviceNameOf(service)),
+			logging.String("mechanism", string(plan.mechanism)),
+			logging.Error("error", plan.err))
+		return result
+	}
+
 	if plan.mechanism == mechanismCustomHostname {
 		result := h.applyDomainRouting(ctx, plan, owner)
 		if result.Err != nil {
@@ -208,6 +237,17 @@ func (h *Handler) provisionDomainEdge(
 			return result
 		}
 		h.ensureTunnelRoute(ctx, domain, service, envName, servicePort)
+		return result
+	}
+
+	if err := h.zonePathHostnameConflict(ctx, domain, owner); err != nil {
+		h.logger.Warn(ctx, "Leaving the tunnel ingress rule untouched: another project holds this hostname",
+			logging.String("domain", domain),
+			logging.String("service", serviceNameOf(service)),
+			logging.Error("error", err))
+		result := domainProvisioningResult{Domain: domain, Mechanism: plan.mechanism}
+		result.setErr(err)
+		h.persistDomainProvisioningResult(ctx, result)
 		return result
 	}
 

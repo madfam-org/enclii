@@ -262,6 +262,9 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		}
 	}
 
+	// Canonicalise before validating: the validated value is the stored value.
+	domainName = canonicalDomain(domainName)
+
 	// Validate domain format
 	if !isValidDomain(domainName) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid domain format"})
@@ -310,6 +313,20 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusConflict, gin.H{"error": "domain already in use"})
+		return
+	}
+
+	// The Exists check above only sees custom_domains; a junction-served
+	// hostname has no row there. See AddCustomDomain for why this gate fails
+	// closed rather than assuming an unresolvable lookup means "free".
+	if err := h.assertHostnameNotHeldByAnotherProject(ctx, domainName, &domainOwner{
+		ProjectID: service.ProjectID,
+		ServiceID: serviceUUID,
+	}); err != nil {
+		h.logger.Warn(ctx, "Refusing a service domain for a hostname another project holds",
+			logging.String("domain", domainName),
+			logging.Error("error", err))
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 

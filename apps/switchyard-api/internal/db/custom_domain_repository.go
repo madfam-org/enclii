@@ -273,8 +273,14 @@ func (r *CustomDomainRepository) GetByID(ctx context.Context, id string) (*types
 
 // GetByDomain retrieves a custom domain by its hostname.
 // Returns (nil, nil) when the hostname is not registered.
+//
+// Matched case-insensitively: this is the ownership gate for the Cloudflare for
+// SaaS path, and Cloudflare compares hostnames case-insensitively. A
+// case-sensitive `domain = $1` answered "nobody holds app.victim.com" for a row
+// stored as "App.Victim.com", which is a cross-tenant claim, not a miss. See
+// the note in junction_repository.go.
 func (r *CustomDomainRepository) GetByDomain(ctx context.Context, domainName string) (*types.CustomDomain, error) {
-	query := "SELECT " + customDomainSelectColumns + " FROM custom_domains WHERE domain = $1"
+	query := "SELECT " + customDomainSelectColumns + " FROM custom_domains WHERE lower(domain) = lower($1)"
 
 	domain, err := scanCustomDomain(r.db.QueryRowContext(ctx, query, domainName))
 	if err == sql.ErrNoRows {
@@ -381,9 +387,10 @@ func (r *CustomDomainRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Exists checks if a domain is already registered
+// Exists checks if a domain is already registered.
+// Case-insensitive: a case variant is the same hostname, not a free one.
 func (r *CustomDomainRepository) Exists(ctx context.Context, domain string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM custom_domains WHERE domain = $1)`
+	query := `SELECT EXISTS(SELECT 1 FROM custom_domains WHERE lower(domain) = lower($1))`
 
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, domain).Scan(&exists)

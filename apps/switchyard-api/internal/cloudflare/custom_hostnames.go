@@ -423,7 +423,14 @@ func (c *Client) ListCustomHostnames(ctx context.Context, zoneID string, filter 
 
 		all = append(all, resp.Result...)
 
-		if resp.ResultInfo == nil || page >= resp.ResultInfo.TotalPages {
+		// Same fail-closed rule as the zone listing: a truncated custom-hostname
+		// listing reads as "nobody holds this hostname", which is the input to
+		// both the ownership check and the create/adopt decision.
+		done, pageErr := lastPage(resp.ResultInfo, page, perPage, len(resp.Result), "custom hostname listing")
+		if pageErr != nil {
+			return nil, pageErr
+		}
+		if done {
 			break
 		}
 		page++

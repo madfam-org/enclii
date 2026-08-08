@@ -261,13 +261,83 @@ every header the manifest declares.
 > manifests; dropping them from reconciliation on a validation rule would take
 > a working deploy away to fix a certificate that was already broken.
 >
+> **What changed here is the deploy path, not the validator.** Measured over the
+> declared corpus, the *previous* validator rejected exactly the same two
+> shipped hostnames the current one does; the number of shipped hostnames the
+> stricter rule newly rejects is **zero**. The fix is `provisionSingleDomain`
+> warning and continuing instead of skipping.
+>
 > "Nested" is only claimed when the public suffix is one the validator
-> recognises (`knownPublicSuffixes` in `domain_handlers.go`, which carries
-> one-, two- and three-label entries). An unrecognised suffix means "cannot
-> determine the apex", never "assume the last two labels" — guessing derived
-> `com.pe` as the apex of `example.com.pe` and rejected valid client domains.
-> A genuinely nested host that slips through still fails visibly at the TLS
-> handshake, which is cheaper than refusing to deploy a correct domain.
+> recognises (`knownPublicSuffixes` in `internal/api/domain_validation.go`,
+> which carries one-, two- and three-label entries). An unrecognised suffix
+> means "cannot determine the apex", never "assume the last two labels" —
+> guessing derived `com.pe` as the apex of `example.com.pe` and rejected valid
+> client domains. A genuinely nested host that slips through still fails
+> visibly at the TLS handshake, which is cheaper than refusing to deploy a
+> correct domain.
+>
+> **The size of that trade, measured.** Over 112 unique declared hostnames (70
+> from 46 `enclii.yaml` files, plus the hostnames tabulated in
+> `internal-devops/ecosystem/domain-map.md`), **21** had an undeterminable apex
+> because their TLD was missing from the table — every `.tube` (7), `.town` (7),
+> `.solar` (3), `.lol`, `.one`, `.design` and `.pro` host in the estate. The
+> check was simply inert for `blueprint.tube`, `almanac.solar`, `selva.town`,
+> `ceq.lol`, `forj.design`, `nuit.one` and `primavera3d.pro`. Those TLDs are now
+> listed (with `.academy` and `.onl`, and with `.pro`'s professional
+> second-level suffixes so `firm.cpa.pro` derives a three-label apex), and the
+> figure is **0 of 112**.
+>
+> **Residual, stated plainly:** the table is curated, not the Public Suffix
+> List. The next TLD the estate registers on will be absent from it, and the
+> check will be silently inert for that suffix until someone adds it — there is
+> no test that can catch a registration that has not happened yet. The failure
+> mode of a miss is unchanged and deliberate: allow the host through, and let a
+> genuinely nested one fail visibly at the TLS handshake.
+
+> [!IMPORTANT]
+> **Hostnames are canonically lowercase.** DNS is case-insensitive and
+> Cloudflare returns zone names lowercased, but `custom_domains.domain` and
+> `junctions.domain` are plain `varchar` with case-sensitive btree indexes. A
+> mixed-case spelling was therefore a different hostname to Postgres and the
+> same hostname to Cloudflare — enough to miss the zone match (rerouting a
+> MADFAM domain onto the custom-hostname path with no Cloudflare failure
+> involved) and enough to pass an ownership check for a hostname another tenant
+> holds.
+>
+> Every entry point canonicalises before validating (`canonicalDomain` in
+> `internal/api/domain_validation.go`, `manifest.CanonicalHostname` at the parse
+> boundary), every hostname lookup compares with `lower()`, zone matching folds
+> case on both sides, and migration `034` normalised the rows already stored.
+>
+> Labels are validated as strict LDH — ASCII letters, digits and hyphens — for
+> their whole length, not just their first and last byte. An internationalised
+> domain is declarable in its punycode `xn--` form.
+
+#### Who may be served on a hostname
+
+The Cloudflare for SaaS fallback-origin zone is shared by every tenant, and the
+tunnel ingress config is keyed on hostname across every tenant, so a hostname
+string is never evidence of ownership. Two records confer the entitlement and
+both are consulted (`hostnameOwners`):
+
+- a `custom_domains` row, and
+- a `junctions` row — junctions provision edge infrastructure without ever
+  writing a `custom_domains` row, so without this a junction-served client
+  hostname read as unowned, which is the one answer that lets another project
+  adopt it.
+
+The ordering rule is that **no ingress mutation precedes ownership**:
+
+| Mechanism | Order |
+|-----------|-------|
+| custom hostname | ownership → Cloudflare → `AddRoute`. A refusal leaves the existing ingress rule untouched. |
+| undetermined | nothing is mutated at all. Only `provisioning_error` / `provisioning_checked_at` are written. |
+| zone + CNAME | `AddRoute` first, as before — but refused when another project positively holds the hostname. |
+
+Releasing a custom hostname fails closed twice: another project holding it
+refuses, and **no** project holding it refuses too. "Nobody owns it" is not
+permission on a shared zone; it is the state of a hostname whose owning record
+the caller cannot see.
 
 ## Credentials
 

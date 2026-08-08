@@ -261,7 +261,7 @@ func TestProvisionSingleDomainDoesNotSkipShippedNestedHost(t *testing.T) {
 	h, mock, cleanup := newSQLMockHandler(t)
 	defer cleanup()
 
-	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE domain = \$1\)`).
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE lower\(domain\) = lower\(\$1\)\)`).
 		WithArgs("api.pravara.madfam.io").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 

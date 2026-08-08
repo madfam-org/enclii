@@ -89,7 +89,7 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 			"id", "project_id", "name", "kube_namespace", "created_at", "updated_at",
 		}).AddRow(envID, projectID, "staging", "enclii-dhanam-staging", now, now))
 
-	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE domain = \$1\)`).
+	mock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM custom_domains WHERE lower\(domain\) = lower\(\$1\)\)`).
 		WithArgs("staging-api.dhan.am").
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 

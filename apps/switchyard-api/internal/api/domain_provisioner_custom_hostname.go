@@ -176,64 +176,6 @@ func (h *Handler) resolveDomainMechanism(
 	}
 }
 
-// hostnameOwner resolves the project that holds the custom_domains record for
-// a hostname.
-//
-//	(uuid.Nil, false, nil) — no record exists; nobody holds this hostname
-//	(id,       true,  nil) — project id holds it
-//	(_,        _,     err) — could not tell; callers must fail closed
-func (h *Handler) hostnameOwner(ctx context.Context, domain string) (uuid.UUID, bool, error) {
-	if h == nil || h.repos == nil || h.repos.CustomDomains == nil || h.repos.Services == nil {
-		return uuid.Nil, false, fmt.Errorf(
-			"cannot establish which project owns %s: the domain repositories are unavailable", domain)
-	}
-
-	record, err := h.repos.CustomDomains.GetByDomain(ctx, domain)
-	if err != nil {
-		return uuid.Nil, false, fmt.Errorf("failed to look up the owner of %s: %w", domain, err)
-	}
-	if record == nil {
-		return uuid.Nil, false, nil
-	}
-
-	service, err := h.repos.Services.GetByID(record.ServiceID)
-	if err != nil {
-		return uuid.Nil, false, fmt.Errorf("failed to resolve the project that owns %s: %w", domain, err)
-	}
-	if service == nil {
-		return uuid.Nil, false, fmt.Errorf(
-			"custom domain %s references service %s, which no longer exists", domain, record.ServiceID)
-	}
-
-	return service.ProjectID, true, nil
-}
-
-// assertHostnameClaimableBy refuses when another project already holds the
-// custom_domains record for this hostname.
-//
-// The fallback-origin zone is shared, so without this check any project could
-// register — or silently adopt — a hostname another project is already being
-// served on, and have its own row marked verified off the back of the other
-// project's certificate.
-func (h *Handler) assertHostnameClaimableBy(ctx context.Context, domain string, owner *domainOwner) error {
-	if owner == nil || owner.ProjectID == uuid.Nil {
-		return fmt.Errorf(
-			"refusing to provision a custom hostname for %s: the claiming project could not be determined", domain)
-	}
-
-	ownerProjectID, held, err := h.hostnameOwner(ctx, domain)
-	if err != nil {
-		return err
-	}
-	if held && ownerProjectID != owner.ProjectID {
-		return fmt.Errorf(
-			"refusing to claim custom hostname %s for project %s: it is already registered to project %s",
-			domain, owner.ProjectID, ownerProjectID)
-	}
-
-	return nil
-}
-
 // ensureCustomHostname registers (idempotently) a Cloudflare for SaaS custom
 // hostname for a client-owned domain and reports what the client still owes.
 //
@@ -352,13 +294,20 @@ func (h *Handler) refreshCustomHostnameState(ctx context.Context, domain, custom
 
 // releaseCustomHostnameForProject removes the custom hostname serving domain,
 // but only after proving the caller's project is the one entitled to remove
-// it. Junctions store no hostname id, so the hostname is resolved from the
-// project's own custom_domains record, or — when there is none and no other
-// project holds one either — by hostname on the fallback-origin zone.
+// it. Junctions store no hostname id, so the hostname is resolved by name on
+// the shared fallback-origin zone — which means the name alone must never be
+// what authorises the delete.
 //
-// Every uncertain case refuses. Deleting a custom hostname takes the client's
-// domain offline at the edge; doing that to the wrong tenant is worse than
-// leaving a registration behind for an operator to reap.
+// It fails closed twice over:
+//
+//   - another project holding a record for the hostname refuses, and
+//   - NO project holding a record refuses as well. "Nobody owns it" is not
+//     permission; on a zone shared by every tenant it is the state of a
+//     hostname whose owning record this caller simply cannot see, and acting on
+//     it is how a caller with no claim at all deletes a live registration.
+//
+// Deleting a custom hostname takes the client's domain offline at the edge.
+// Leaving a registration behind for an operator to reap is the cheaper mistake.
 func (h *Handler) releaseCustomHostnameForProject(ctx context.Context, domain string, owner *domainOwner) error {
 	zoneID, _, ok := h.customHostnameZone()
 	if !ok {
@@ -379,14 +328,21 @@ func (h *Handler) releaseCustomHostnameForProject(ctx context.Context, domain st
 			"refusing to release the custom hostname for %s: the requesting project could not be determined", domain)
 	}
 
-	ownerProjectID, held, err := h.hostnameOwner(ctx, domain)
+	owners, err := h.hostnameOwners(ctx, domain)
 	if err != nil {
 		return err
 	}
-	if held && ownerProjectID != owner.ProjectID {
+	if foreign, ok := firstForeignOwner(owners, owner.ProjectID); ok {
 		return fmt.Errorf(
 			"refusing to release custom hostname %s on behalf of project %s: it belongs to project %s",
-			domain, owner.ProjectID, ownerProjectID)
+			domain, owner.ProjectID, foreign)
+	}
+	if len(owners) == 0 {
+		return fmt.Errorf(
+			"refusing to release custom hostname %s on behalf of project %s: no record entitles that project to it. "+
+				"The fallback-origin zone is shared, so a hostname with no owning custom_domains row and no junction "+
+				"is not an unclaimed hostname, it is one whose claim this request cannot prove",
+			domain, owner.ProjectID)
 	}
 
 	hostname, err := cfClient.FindCustomHostname(ctx, zoneID, domain)

@@ -50,6 +50,12 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 		return
 	}
 
+	// Canonicalise before validating, so the value that is validated is the one
+	// that is stored and that every ownership lookup keys off. A case variant
+	// used to be a different hostname to Postgres and the same hostname to
+	// Cloudflare, which is the whole cross-tenant hazard.
+	req.Domain = canonicalDomain(req.Domain)
+
 	// Validate domain
 	if err := validateDomain(req.Domain, false); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -122,6 +128,23 @@ func (h *Handler) CreateJunction(c *gin.Context) {
 	}
 	if exists {
 		c.JSON(http.StatusConflict, gin.H{"error": "junction for this domain+path already exists"})
+		return
+	}
+
+	// Ownership before anything is created. The domain+path index is not
+	// project-scoped, so declaring another project's hostname on a different
+	// path was accepted — and creating the junction is what gives the caller a
+	// record to provision, and later release, that hostname's edge
+	// infrastructure with. Refuse at declaration, where a human reads the error.
+	if err := h.assertHostnameNotHeldByAnotherProject(ctx, req.Domain, &domainOwner{
+		ProjectID: project.ID,
+		ServiceID: serviceID,
+	}); err != nil {
+		h.logger.Warn(ctx, "Refusing a junction for a hostname another project holds",
+			logging.String("domain", req.Domain),
+			logging.String("project", slug),
+			logging.Error("error", err))
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 

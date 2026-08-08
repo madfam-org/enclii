@@ -41,6 +41,23 @@ var knownPublicSuffixes = newSuffixSet(
 	"store", "shop", "blog", "page", "live", "studio", "agency", "digital",
 	"media", "network", "systems", "solutions", "services", "works", "world",
 	"space", "website", "link", "run", "quest", "cam", "email", "team",
+	// Generic TLDs the MADFAM estate actually registers on. Their absence made
+	// the nesting check inert for the hosts named beside each one, which is the
+	// bulk of the ecosystem's non-.io surface.
+	"tube",    // blueprint.tube, fortuna.tube
+	"solar",   // almanac.solar
+	"town",    // selva.town
+	"lol",     // ceq.lol
+	"academy", // reserved for a future surface; registry allows 2LD only
+	"onl",     // penny.onl
+	"design",  // forj.design
+	"one",     // nuit.one
+	// .pro allows direct second-level registration (primavera3d.pro) but also
+	// carries a fixed set of professional second-level suffixes, which must be
+	// listed beside it or "example.cpa.pro" would derive an apex of "cpa.pro".
+	"pro",
+	"aaa.pro", "aca.pro", "acct.pro", "avocat.pro", "bar.pro", "cpa.pro",
+	"eng.pro", "jur.pro", "law.pro", "med.pro", "recht.pro",
 	// Country-code TLDs that allow direct second-level registration and whose
 	// second-level public suffixes are enumerated below.
 	"mx", "uk", "au", "br", "ar", "jp", "nz", "es", "pe", "in", "tr", "il",
@@ -108,6 +125,24 @@ var knownPublicSuffixes = newSuffixSet(
 	// United States / Canada.
 	"gc.ca", "k12.us", "fed.us",
 )
+
+// canonicalDomain renders a hostname in the ONE form the platform stores,
+// indexes and compares.
+//
+// DNS is case-insensitive and Cloudflare zone names are always lowercase, but
+// nothing upstream lowercased what a manifest or an API request declared. That
+// made `api.madfam.io` and `api.Madfam.io` two different rows, two different
+// `WHERE domain = $1` matches and — because bestZoneMatch compared
+// case-sensitively — two different provisioning mechanisms for one hostname.
+// Every entry point canonicalises before validating, so only this form reaches
+// storage.
+//
+// The trailing root dot is deliberately NOT stripped: validateDomain rejects
+// it as a malformed declaration, and silently accepting `example.com.` here
+// would make that rejection unreachable.
+func canonicalDomain(domain string) string {
+	return strings.ToLower(strings.TrimSpace(domain))
+}
 
 // suffixSet stores public suffixes and reports the longest one covering a
 // hostname.
@@ -196,6 +231,11 @@ func isNestedSubdomain(domain string) bool {
 // for the exact hostname; Cloudflare Universal SSL on the zone path covers a
 // single level, so a nested host there would fail the TLS handshake at the
 // edge after appearing to provision cleanly.
+//
+// Callers pass the canonical form (see canonicalDomain). Uppercase input is
+// still accepted — it is legal DNS, and rejecting it would break a manifest
+// for a cosmetic reason — but the value that reaches storage must be the one
+// that was validated, or the two disagree.
 func validateDomain(domain string, allowNested bool) error {
 	if len(domain) == 0 {
 		return fmt.Errorf("domain is required")
@@ -222,6 +262,21 @@ func validateDomain(domain string, allowNested bool) error {
 		if !isAlphanumeric(label[0]) || !isAlphanumeric(label[len(label)-1]) {
 			return fmt.Errorf("domain label %q must start and end with a letter or digit", label)
 		}
+		// Every INTERIOR byte too. Gating only the first and last byte let a
+		// label carry anything in between: interior non-ASCII (the IDN
+		// homoglyph case — "pаypal.com" with a Cyrillic а reads identically to
+		// the ASCII spelling and is a different hostname), and separators like
+		// "_", " " or "/" that are not legal in a hostname at all but would be
+		// handed to Cloudflare and written into a tunnel ingress rule. An IDN
+		// is declarable in its punycode form ("xn--…"), which is pure LDH and
+		// passes.
+		if idx := indexNonLDH(label); idx >= 0 {
+			return fmt.Errorf(
+				"domain label %q contains %q at position %d: hostname labels may only use "+
+					"ASCII letters, digits and hyphens (declare an internationalised domain in its "+
+					"punycode \"xn--\" form)",
+				label, string([]rune(label[idx:])[0]), idx)
+		}
 	}
 
 	if !allowNested && isNestedSubdomain(domain) {
@@ -246,6 +301,17 @@ func isValidDomain(domain string) bool {
 // isAlphanumeric checks if a byte is alphanumeric
 func isAlphanumeric(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+}
+
+// indexNonLDH returns the byte offset of the first character in label that is
+// not an ASCII letter, digit or hyphen, or -1 when every character is.
+func indexNonLDH(label string) int {
+	for i := 0; i < len(label); i++ {
+		if !isAlphanumeric(label[i]) && label[i] != '-' {
+			return i
+		}
+	}
+	return -1
 }
 
 // verifyDNSTXTRecord checks if a DNS TXT record exists with the expected value

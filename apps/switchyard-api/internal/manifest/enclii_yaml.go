@@ -251,11 +251,28 @@ func validateEncliiYAMLHeader(config *EncliiYAML) error {
 	return nil
 }
 
+// CanonicalHostname renders a declared hostname in the single form the rest of
+// the platform stores and compares.
+//
+// DNS is case-insensitive; Enclii's storage and lookups are not. A manifest
+// that spells a host `api.Madfam.io` used to produce a second row, a second
+// `WHERE domain = $1` identity and — because Cloudflare returns zone names
+// lowercased — a case-exact zone match that missed, reclassifying a MADFAM
+// domain as client-owned. Canonicalising at the parse boundary means every
+// consumer of Spec.Domains sees one spelling.
+//
+// The counterpart for HTTP request bodies is canonicalDomain in
+// internal/api/domain_validation.go; both are deliberately the same rule.
+func CanonicalHostname(host string) string {
+	return strings.ToLower(strings.TrimSpace(host))
+}
+
 func applyEncliiYAMLDefaults(config *EncliiYAML) {
 	if config.Kind == "Project" && config.Metadata.Project == "" {
 		config.Metadata.Project = config.Metadata.Name
 	}
 	for i := range config.Spec.Domains {
+		config.Spec.Domains[i].Name = CanonicalHostname(config.Spec.Domains[i].Name)
 		if config.Spec.Domains[i].Environment == "" {
 			config.Spec.Domains[i].Environment = "production"
 		}

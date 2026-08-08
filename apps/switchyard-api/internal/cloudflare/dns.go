@@ -391,13 +391,43 @@ func (c *Client) listZonesPaginated(ctx context.Context, baseQuery url.Values) (
 
 		allZones = append(allZones, resp.Result...)
 
-		if resp.ResultInfo == nil || page >= resp.ResultInfo.TotalPages {
+		done, err := lastPage(resp.ResultInfo, page, perPage, len(resp.Result), "zone listing")
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
 		page++
 	}
 
 	return allZones, nil
+}
+
+// lastPage reports whether a paginated Cloudflare listing is complete after the
+// page just read, and refuses to guess when it cannot tell.
+//
+// A missing result_info used to break the loop and return the pages collected
+// so far with a NIL error. For zones that is the worst possible shape: a
+// truncated listing is indistinguishable from a complete one, so
+// FindZoneForDomain concludes ErrZoneNotFound, and callers read that sentinel
+// as Cloudflare's positive confirmation that the domain is client-owned. A
+// silent truncation became a confirmed miss.
+//
+// A short page is still provably the last one — Cloudflare fills a page before
+// starting another — so the common stub/response shape with no result_info and
+// fewer than per_page results is accepted. Only a FULL page with no pagination
+// metadata is undecidable, and that is refused.
+func lastPage(info *ResultInfo, page, perPage, got int, what string) (bool, error) {
+	if info != nil {
+		return page >= info.TotalPages, nil
+	}
+	if got < perPage {
+		return true, nil
+	}
+	return false, fmt.Errorf(
+		"cloudflare: %s returned a full page (%d results) with no result_info, so whether more pages exist is unknown; "+
+			"refusing to report a possibly truncated listing as complete", what, got)
 }
 
 // ErrZoneNotFound is returned by FindZoneForDomain when the account genuinely
@@ -460,18 +490,27 @@ func (c *Client) FindZoneForDomain(ctx context.Context, domain string) (*Zone, e
 
 // bestZoneMatch returns the most specific zone covering domain (longest suffix
 // match), or nil when none does.
+//
+// The comparison is case-insensitive. DNS is case-insensitive and Cloudflare
+// returns zone names lowercased, so a case-exact match would answer "we hold no
+// zone for api.Madfam.io" — and the caller reads that answer as "this domain
+// belongs to a client", which reroutes a live MADFAM hostname onto the
+// Cloudflare for SaaS path with no Cloudflare failure involved. Callers
+// canonicalise too; this is the second lock on the same door.
 func bestZoneMatch(zones []Zone, domain string) *Zone {
 	var bestMatch *Zone
 	bestLen := 0
 
+	needle := strings.ToLower(strings.TrimSpace(domain))
 	for i, zone := range zones {
 		if zone.Name == "" {
 			continue
 		}
-		if domain == zone.Name || strings.HasSuffix(domain, "."+zone.Name) {
-			if len(zone.Name) > bestLen {
+		zoneName := strings.ToLower(zone.Name)
+		if needle == zoneName || strings.HasSuffix(needle, "."+zoneName) {
+			if len(zoneName) > bestLen {
 				bestMatch = &zones[i]
-				bestLen = len(zone.Name)
+				bestLen = len(zoneName)
 			}
 		}
 	}
