@@ -15,8 +15,18 @@
 
 # Pinned to a specific runner version, never :latest.
 # Bump deliberately — see internal-devops/runbooks/arc-runner-image-rebuild.md.
+#
+# This pin is load-bearing for org-wide CI availability, not just for
+# package freshness. GitHub rejects runner agents that lag the latest
+# release by ~60 days *at the registration layer*: the agent starts,
+# fails to register, and ARC respawns it forever. The pool reports
+# runners as CURRENT while RUNNING stays 0 and every job sits queued.
+# 2.334.0 (2026-04-21) went past that window and stalled the whole
+# ecosystem on 2026-08-10 — 3,149 EphemeralRunners, all "Outdated /
+# Runner is deprecated", zero jobs served. Honour the 30-day bump
+# cadence in the runbook; the deprecation is silent until it isn't.
 ARG BASE_IMAGE=ghcr.io/actions/actions-runner
-ARG BASE_TAG=2.334.0
+ARG BASE_TAG=2.336.0
 FROM ${BASE_IMAGE}:${BASE_TAG}
 ARG BASE_IMAGE
 ARG BASE_TAG

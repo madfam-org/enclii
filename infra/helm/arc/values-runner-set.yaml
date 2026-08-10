@@ -58,7 +58,9 @@ template:
         # CI needs (libatomic1 for pnpm; xz-utils for setup-node;
         # libasound2t64 + libnss3 + libxkbcommon0 + libgbm1 for Playwright;
         # jq + python3-pip + python3-venv for misc CI scripting).
-        # Pinned to base 2.334.0.
+        # Pinned to base 2.336.0. This comment tracks the BASE_TAG in
+        # infra/docker/arc-runner/Dockerfile — that file is the source of
+        # truth; update both together when bumping.
         # Built by .github/workflows/arc-runner-image.yml.
         # Source: infra/docker/arc-runner/.
         image: ghcr.io/madfam-org/enclii/arc-runner:stable
