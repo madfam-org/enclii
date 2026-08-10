@@ -1,0 +1,369 @@
+# ARC pool-health detector
+#
+# Pages a human when the ARC runner pool stops serving jobs.
+#
+# WHY THIS EXISTS
+# On 2026-08-10 every private repo's CI sat QUEUED for hours and nothing
+# noticed. The pool reported 20 CURRENT runners with 0 RUNNING while 3,149
+# EphemeralRunners churned in a create/reject/respawn loop, all of them
+# phase=Outdated with "Runner is deprecated" — the pinned actions/runner base
+# had aged past GitHub's ~60-day registration-deprecation window. The outage
+# was found by a human going looking, not by any alert.
+#
+# WHY THE EXISTING ALERT DID NOT FIRE
+# infra/k8s/production/arc/monitoring.yaml already declares ARCNoRunnersAvailable.
+# It is dead four ways over, each independently sufficient (all verified
+# 2026-08-10):
+#   1. There is no prometheus-operator pod, so the PrometheusRule CR is never
+#      reconciled into Prometheus. The CRDs exist, so `kubectl apply` succeeds
+#      and the object sits there looking healthy — 82 days, in that case.
+#   2. It is absent from Prometheus's loaded rules. (Positive control: 1,556
+#      metrics and many other rule groups DO load, so this is a real negative.)
+#   3. No arc_* metric is scraped at all. There is no ARC job in
+#      prometheus-config, and no Service in arc-system for the ServiceMonitor
+#      to select.
+#   4. arc_runner_scale_set_* are LISTENER metrics, and the controller runs
+#      with --listener-metrics-addr= set empty.
+#
+# So this detector deliberately does NOT go through Prometheus. It reads the
+# Kubernetes API directly and posts to Alertmanager, which are the only two
+# components in that chain verified to actually work.
+#
+# WHAT IT WATCHES
+#   ARCRunnersDeprecated (critical) — any EphemeralRunner in phase=Outdated.
+#     The exact signature of the 2026-08-10 outage and of every future runner
+#     deprecation. Nothing else produces this phase, so it fires immediately.
+#   ARCPoolServingNoJobs (critical) — running == 0 while pending >= max.
+#     Held for BREACH_THRESHOLD consecutive cycles because scale-set
+#     replacement legitimately produces this shape: during the 2026-08-10
+#     recovery there was a ~5-minute window with zero pods while ARC drained
+#     1,826 stale runners. A single-cycle alert would have cried wolf then.
+#   ARCEphemeralRunnerBacklog (warning) — more than BACKLOG_CEILING runners.
+#     Runaway churn regardless of cause, and the condition that OOMKilled the
+#     stuck-runner watchdog.
+#
+# Lives in `monitoring`, not `arc-runners`, because arc-runners carries a
+# blanket default-deny-egress and could never reach Alertmanager from there.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arc-pool-health
+  namespace: monitoring
+  labels:
+    app: arc-pool-health
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: platform-watchdog
+---
+# Read-only access to the ARC resources, granted in arc-runners to a subject in
+# monitoring. Namespaced Role rather than a ClusterRole: this detector has no
+# business reading runners anywhere else, and no business writing anything.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-pool-health-reader
+  namespace: arc-runners
+rules:
+  - apiGroups: ["actions.github.com"]
+    resources: ["autoscalingrunnersets", "ephemeralrunners"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-pool-health-reader
+  namespace: arc-runners
+subjects:
+  - kind: ServiceAccount
+    name: arc-pool-health
+    namespace: monitoring
+roleRef:
+  kind: Role
+  name: arc-pool-health-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# State for the consecutive-breach counter. A CronJob has no memory between
+# runs, and "sustained for N cycles" is the whole difference between a
+# trustworthy page and one people learn to ignore.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-pool-health-state
+  namespace: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["arc-pool-health-state"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-pool-health-state
+  namespace: monitoring
+subjects:
+  - kind: ServiceAccount
+    name: arc-pool-health
+    namespace: monitoring
+roleRef:
+  kind: Role
+  name: arc-pool-health-state
+  apiGroup: rbac.authorization.k8s.io
+---
+# monitoring runs default-deny-all, so egress has to be granted explicitly.
+# Modelled on deploy-pipeline-monitor-egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arc-pool-health-egress
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: arc-pool-health
+  policyTypes: ["Egress"]
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Alertmanager
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9093
+          protocol: TCP
+    # Kubernetes API
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+---
+# Alertmanager's ingress policy admits only `app: prometheus` and the
+# cloudflare-tunnel namespace. Without this the POST is silently dropped and
+# the detector reports success while paging nobody — the same shape of failure
+# it exists to catch.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-ingress-arc-pool-health
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: alertmanager
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: arc-pool-health
+      ports:
+        - port: 9093
+          protocol: TCP
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: arc-pool-health
+  namespace: monitoring
+  labels:
+    app: arc-pool-health
+    app.kubernetes.io/managed-by: enclii
+    app.kubernetes.io/component: platform-watchdog
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app: arc-pool-health
+        spec:
+          restartPolicy: Never
+          serviceAccountName: arc-pool-health
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pool-health
+              # alpine/kubectl carries kubectl AND curl; the bitnami kubectl
+              # image used by the stuck-runner watchdog has neither curl nor
+              # wget, so it cannot POST to Alertmanager.
+              image: docker.io/alpine/kubectl:1.33.4@sha256:f032392d7c23894ac391425ff5ff9658c064279d8519df8eb8c7d38dde867ce5
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: SCALE_SET
+                  value: madfam-runners-blue
+                - name: ARC_NAMESPACE
+                  value: arc-runners
+                - name: ALERTMANAGER_URL
+                  value: http://alertmanager.monitoring.svc.cluster.local:9093
+                - name: STATE_CONFIGMAP
+                  value: arc-pool-health-state
+                # Consecutive breaching cycles before ARCPoolServingNoJobs
+                # fires. At */5 that is 15 minutes — longer than the ~5-minute
+                # zero-pod window a legitimate scale-set replacement produces.
+                - name: BREACH_THRESHOLD
+                  value: "3"
+                - name: BACKLOG_CEILING
+                  value: "500"
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  SERVICEACCOUNT_DIR="${SERVICEACCOUNT_DIR:-/var/run/secrets/kubernetes.io/serviceaccount}"
+                  KUBE_API="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
+                  KUBECTL="kubectl --server=$KUBE_API --certificate-authority=${SERVICEACCOUNT_DIR}/ca.crt --token=$(cat ${SERVICEACCOUNT_DIR}/token)"
+
+                  fail() { echo "error: $*" >&2; exit 1; }
+
+                  # ---- read pool state -------------------------------------
+                  ars="$($KUBECTL --request-timeout=20s -n "$ARC_NAMESPACE" get autoscalingrunnerset "$SCALE_SET" \
+                        -o jsonpath='{.spec.maxRunners}|{.status.runningEphemeralRunners}|{.status.pendingEphemeralRunners}|{.status.currentRunners}')" \
+                        || fail "could not read AutoscalingRunnerSet $SCALE_SET"
+
+                  max=$(echo "$ars" | cut -d'|' -f1)
+                  running=$(echo "$ars" | cut -d'|' -f2)
+                  pending=$(echo "$ars" | cut -d'|' -f3)
+                  current=$(echo "$ars" | cut -d'|' -f4)
+                  # jsonpath renders an absent integer as empty, not 0.
+                  max=${max:-0}; running=${running:-0}; pending=${pending:-0}; current=${current:-0}
+
+                  # Bounded read. Counting Outdated runners must never become
+                  # the thing that dies of too many Outdated runners — that is
+                  # exactly how the stuck-runner watchdog OOMKilled itself.
+                  # This image has no jq, so the page is counted with grep. Two
+                  # things matter here:
+                  #  - `tr ',' '\n'` first, because grep -c counts matching
+                  #    LINES and the API returns the whole page on one line.
+                  #  - whitespace-tolerant patterns, so the count does not
+                  #    silently read zero if the encoder ever emits `": "`.
+                  #    A miscount here fails open, which is the one direction
+                  #    an alert must never fail.
+                  # The trailing quote in the EphemeralRunner pattern is load
+                  # bearing: without it the list wrapper's own
+                  # "kind":"EphemeralRunnerList" would be counted as an item.
+                  ER_API="/apis/actions.github.com/v1alpha1/namespaces/${ARC_NAMESPACE}/ephemeralrunners"
+                  er_page="$($KUBECTL --request-timeout=20s get --raw "${ER_API}?limit=${BACKLOG_CEILING}" | tr ',' '\n')" \
+                    || fail "could not list EphemeralRunners"
+                  outdated="$(printf '%s\n' "$er_page" | grep -cE '"phase"[[:space:]]*:[[:space:]]*"Outdated"' || true)"
+                  total="$(printf '%s\n' "$er_page" | grep -cE '"kind"[[:space:]]*:[[:space:]]*"EphemeralRunner"' || true)"
+                  outdated=${outdated:-0}
+                  total=${total:-0}
+
+                  echo "pool: max=$max current=$current running=$running pending=$pending outdated=$outdated total_er=$total"
+
+                  # ---- consecutive-breach counter --------------------------
+                  breach=0
+                  if [ "$running" -eq 0 ] && [ "$pending" -ge "$max" ] && [ "$max" -gt 0 ]; then
+                    breach=1
+                  fi
+
+                  prev="$($KUBECTL --request-timeout=20s -n monitoring get configmap "$STATE_CONFIGMAP" \
+                         -o jsonpath='{.data.consecutive_breaches}' 2>/dev/null || true)"
+                  prev=${prev:-0}
+                  case "$prev" in ''|*[!0-9]*) prev=0 ;; esac
+
+                  if [ "$breach" -eq 1 ]; then
+                    streak=$((prev + 1))
+                  else
+                    streak=0
+                  fi
+                  echo "breach=$breach streak=$streak threshold=$BREACH_THRESHOLD"
+
+                  $KUBECTL --request-timeout=20s -n monitoring create configmap "$STATE_CONFIGMAP" \
+                    --from-literal=consecutive_breaches="$streak" --dry-run=client -o yaml \
+                    | $KUBECTL --request-timeout=20s -n monitoring apply -f - >/dev/null 2>&1 \
+                    || echo "warn: could not persist breach counter; ARCPoolServingNoJobs may re-arm from zero" >&2
+
+                  # ---- emit -------------------------------------------------
+                  # endsAt is deliberately 3 cycles out. Alertmanager's
+                  # resolve_timeout is 5m, equal to our schedule, so an alert
+                  # without an explicit end can lapse between runs and flap.
+                  ends_at="$(date -u -d '@'"$(( $(date +%s) + 900 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                            || date -u -r "$(( $(date +%s) + 900 ))" +%Y-%m-%dT%H:%M:%SZ)"
+                  alerts=""
+                  add_alert() {
+                    [ -n "$alerts" ] && alerts="$alerts,"
+                    alerts="$alerts{\"labels\":{\"alertname\":\"$1\",\"severity\":\"$2\",\"service\":\"arc\",\"category\":\"ci-capacity\",\"scale_set\":\"$SCALE_SET\"},\"annotations\":{\"summary\":\"$3\",\"description\":\"$4\",\"runbook_url\":\"https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md\"},\"endsAt\":\"$ends_at\"}"
+                  }
+
+                  if [ "$outdated" -gt 0 ]; then
+                    add_alert "ARCRunnersDeprecated" "critical" \
+                      "ARC runners are being rejected at registration" \
+                      "$outdated EphemeralRunner(s) on $SCALE_SET are phase=Outdated. GitHub is refusing the runner agent, typically because the pinned actions/runner base has aged past the ~60-day deprecation window. CI across every private repo will sit QUEUED until the image is bumped AND the digest is repinned."
+                  fi
+
+                  if [ "$streak" -ge "$BREACH_THRESHOLD" ]; then
+                    add_alert "ARCPoolServingNoJobs" "critical" \
+                      "ARC pool is saturated but running nothing" \
+                      "$SCALE_SET has running=0 with pending=$pending against max=$max for $streak consecutive checks. Jobs are queued and no runner is picking them up."
+                  fi
+
+                  if [ "$total" -ge "$BACKLOG_CEILING" ]; then
+                    add_alert "ARCEphemeralRunnerBacklog" "warning" \
+                      "ARC EphemeralRunner backlog is large" \
+                      "At least $total EphemeralRunners exist on $SCALE_SET. Runaway churn; this also starves the stuck-runner watchdog."
+                  fi
+
+                  if [ -z "$alerts" ]; then
+                    echo "ok: no alert conditions"
+                    exit 0
+                  fi
+
+                  echo "firing: $alerts"
+                  code="$(curl -sS -o /tmp/am_resp -w '%{http_code}' \
+                          --max-time 20 \
+                          -H 'Content-Type: application/json' \
+                          -d "[$alerts]" \
+                          "$ALERTMANAGER_URL/api/v2/alerts")" || fail "POST to Alertmanager failed"
+
+                  case "$code" in
+                    2*) echo "alertmanager accepted (HTTP $code)" ;;
+                    *)  fail "alertmanager rejected the alert (HTTP $code): $(cat /tmp/am_resp 2>/dev/null)" ;;
+                  esac
+              terminationMessagePolicy: FallbackToLogsOnError
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: tmp
+              emptyDir: {}

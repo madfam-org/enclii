@@ -1,5 +1,31 @@
 # Prometheus monitoring for ARC
 # Requires prometheus-operator CRDs (ServiceMonitor, PrometheusRule)
+#
+# ⚠️  NONE OF THIS IS LIVE. DO NOT READ IT AS COVERAGE.
+#
+# Verified 2026-08-10, during an org-wide CI outage that ARCNoRunnersAvailable
+# below did not catch. It is dead four separate ways, each on its own enough:
+#
+#   1. There is no prometheus-operator pod in the cluster. The CRDs are
+#      installed, so `kubectl apply` succeeds and the objects sit there looking
+#      healthy — the arc-alerts PrometheusRule had been "applied" for 82 days —
+#      but nothing ever reconciles them into Prometheus.
+#   2. These rules are absent from Prometheus's loaded rule set. Positive
+#      control: Prometheus holds 1,556 metric names and does load other rule
+#      groups, so this is a real negative and not a broken query.
+#   3. No arc_* metric is scraped at all. prometheus-config has no ARC job, and
+#      arc-system has no Service for the ServiceMonitor to select.
+#   4. arc_runner_scale_set_* are LISTENER metrics, and the controller runs with
+#      --listener-metrics-addr= set to empty.
+#
+# It is also not deployed: infra/argocd/apps/arc-watchdog.yaml uses an explicit
+# `directory.include` allowlist that has never named this file.
+#
+# The working detector is pool-health-alert.yaml, which reads the Kubernetes API
+# and posts straight to Alertmanager — the only two links in this chain that are
+# verified to work. This file is kept because the rule expressions are the right
+# ones to restore once the metrics path is fixed; see the follow-up note in
+# pool-health-alert.yaml's header. Until then it is documentation, not alerting.
 ---
 # ServiceMonitor for ARC Controller metrics
 apiVersion: monitoring.coreos.com/v1

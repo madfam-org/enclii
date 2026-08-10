@@ -1,13 +1,23 @@
-# ARC stuck-runner watchdog
+# ARC platform watchdogs
 #
-# Auto-purges EphemeralRunner CRs that got stuck in Running state
-# referencing already-completed workflow runs — root cause of the
-# intermittent "queue sits still despite idle runners" behavior we
-# observed on 2026-04-19.
+# Two things, both plain YAML in infra/k8s/production/arc:
 #
-# Separate ArgoCD app because the main arc-runners/arc-runners-blue
-# apps are Helm-chart-based and won't auto-sync plain Kubernetes
-# YAML from the enclii repo.
+#   stuck-runner-watchdog.yaml — auto-purges EphemeralRunner CRs stuck in
+#     Running against already-completed workflow runs, the root cause of the
+#     intermittent "queue sits still despite idle runners" behavior seen on
+#     2026-04-19.
+#   pool-health-alert.yaml — pages a human when the pool stops serving jobs
+#     at all. Added 2026-08-10, when org-wide CI was down for hours and the
+#     only detector that noticed was a person going to look.
+#
+# Separate ArgoCD app because the main arc-runners/arc-runners-blue apps are
+# Helm-chart-based and won't auto-sync plain Kubernetes YAML from this repo.
+#
+# NOTE ON `include`: it is an explicit allowlist, so a new manifest dropped in
+# that directory is NOT deployed until it is named here. monitoring.yaml sits
+# in the same directory and has never been applied by this app — which is part
+# of why its ARCNoRunnersAvailable alert was dead for 82 days. Add the filename
+# when you add a manifest, or you will ship a detector that never runs.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -27,7 +37,7 @@ spec:
     targetRevision: main
     path: infra/k8s/production/arc
     directory:
-      include: "stuck-runner-watchdog.yaml"
+      include: "{stuck-runner-watchdog.yaml,pool-health-alert.yaml}"
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-runners
