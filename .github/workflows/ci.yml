@@ -291,6 +291,13 @@ jobs:
       - name: Run secret key-count exporter tests
         run: pytest tests/scripts/test_secret_key_count_exporter.py -v
 
+      # Exercises the bash embedded in the ARC watchdog + pool-health manifests.
+      # Both are scale-sensitive: they behaved correctly on a handful of runners
+      # and failed on a large backlog, which is the only time they matter. The
+      # scale cases are the point — do not trim them to make the job faster.
+      - name: Run ARC watchdog + pool-health tests
+        run: pytest tests/scripts/test_stuck_runner_watchdog.py tests/scripts/test_arc_pool_health.py -v
+
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
     runs-on: ubuntu-latest

@@ -16,6 +16,17 @@
 #
 # It intentionally does NOT delete a live Running pod at the 20-min mark:
 # Playwright/e2e and multi-image deploy jobs can legitimately exceed that.
+#
+# Scale limits (added 2026-08-10 after this watchdog slept through an outage):
+# every cycle reads at most MAX_SCAN EphemeralRunners via an explicit API
+# `limit`, and reads pods once in bulk rather than once per runner. Both were
+# unbounded before, and both failure modes are backlog-proportional — the
+# watchdog worked fine in normal conditions and died in exactly the conditions
+# it exists to detect. It reported nothing while doing so, which is why the
+# bounded path now logs a loud BACKLOG line instead of exiting non-zero.
+#
+# This watchdog clears stuck runners. It does NOT page anyone; see
+# pool-health-alert.yaml for the detector that does.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -104,7 +115,15 @@ spec:
                   set -euo pipefail
                   ORPHAN_THRESHOLD_SEC=1200  # 20 minutes
                   RUNNING_THRESHOLD_SEC=14400 # 4 hours
-                  SERVICEACCOUNT_DIR=/var/run/secrets/kubernetes.io/serviceaccount
+                  # Hard ceiling on how many EphemeralRunners we will pull in one
+                  # cycle. This bounds peak memory by construction rather than by
+                  # hoping the limit is generous enough — see the backlog guard
+                  # below for why that distinction cost us an outage.
+                  MAX_SCAN=400
+                  # Overridable so tests/scripts/test_stuck_runner_watchdog.py can
+                  # point at a fixture dir. In the cluster nothing sets it and the
+                  # projected volume path below is used.
+                  SERVICEACCOUNT_DIR="${SERVICEACCOUNT_DIR:-/var/run/secrets/kubernetes.io/serviceaccount}"
                   KUBE_API="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
                   KUBECTL=(
                     kubectl
@@ -152,10 +171,46 @@ spec:
                     esac
                   }
 
-                  # List all EphemeralRunners with creation timestamp +
-                  # the workflow run they reference (if any).
-                  "${KUBECTL[@]}" --request-timeout=10s -n arc-runners get ephemeralrunners \
-                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.phase}{"|"}{.status.workflowRunId}{"\n"}{end}' \
+                  # Fetch EphemeralRunners through the raw API with an explicit
+                  # `limit`, NOT `kubectl get ephemeralrunners`.
+                  #
+                  # Why: an EphemeralRunner CR is ~5.8 KB because it embeds the
+                  # whole runner pod template. An unbounded list of 3,149 of them
+                  # is ~18 MB of JSON, and kubectl's deserialization multiplies
+                  # that several times over — far past this container's limit. On
+                  # 2026-08-10 that is exactly what happened: every cycle was
+                  # OOMKilled while the pool sat at 3,149 stuck runners. The
+                  # watchdog died precisely when it was needed, and stayed dead
+                  # for the whole outage. `limit` makes that structurally
+                  # impossible instead of merely unlikely.
+                  ER_API="/apis/actions.github.com/v1alpha1/namespaces/arc-runners/ephemeralrunners"
+                  er_page="$("${KUBECTL[@]}" --request-timeout=30s get --raw "${ER_API}?limit=${MAX_SCAN}")"
+
+                  # A `continue` token means the namespace holds more than
+                  # MAX_SCAN runners. That is a backlog, not a stuck runner, and
+                  # this watchdog cannot drain it one delete at a time — 3,149
+                  # deletes at ~10s timeouts would outrun the */5 schedule while
+                  # concurrencyPolicy: Forbid silently skipped every later cycle.
+                  # Say so loudly and keep working on the bounded page; the
+                  # arc-pool-health CronJob is what pages a human for this.
+                  if [ -n "$(printf '%s' "$er_page" | jq -r '.metadata.continue // ""')" ]; then
+                    echo "BACKLOG: more than ${MAX_SCAN} EphemeralRunners present; scanning the first ${MAX_SCAN} only." >&2
+                    echo "BACKLOG: a backlog this size means runners are not registering — check for phase=Outdated and see runbooks/arc-runner-image-rebuild.md" >&2
+                  fi
+
+                  # One bulk pod read per cycle instead of one per runner. The old
+                  # code issued a `get pod` per EphemeralRunner: at 3,149 runners
+                  # that is 3,149 sequential round trips at a 10s timeout, which
+                  # could never finish inside a 5-minute schedule even with
+                  # unlimited memory. Absence from this map means the pod is gone.
+                  pod_phases="$("${KUBECTL[@]}" --request-timeout=30s -n arc-runners get pods \
+                    -o jsonpath='{range .items[*]}{.metadata.name}={.status.phase}{"\n"}{end}')" || {
+                    echo "error: could not list pods; skipping this cycle rather than guessing pod state" >&2
+                    exit 0
+                  }
+
+                  printf '%s' "$er_page" \
+                    | jq -r '.items[] | [.metadata.name, .metadata.creationTimestamp, (.status.phase // ""), (.status.workflowRunId // "")] | join("|")' \
                     | while IFS='|' read -r name created phase run_id; do
                       [ -z "$name" ] && continue
 
@@ -165,16 +220,12 @@ spec:
                       now=$(date +%s)
                       age=$(( now - created_sec ))
 
-                      pod_phase=""
-                      pod_lookup="$("${KUBECTL[@]}" --request-timeout=10s -n arc-runners get pod "$name" -o jsonpath='{.status.phase}' 2>&1)" || {
-                        if echo "$pod_lookup" | grep -Eiq 'not found|NotFound'; then
-                          pod_phase="missing"
-                        else
-                          echo "  warn: could not read pod for $name; leaving runner untouched this cycle: $pod_lookup" >&2
-                          continue
-                        fi
-                      }
-                      pod_phase="${pod_phase:-${pod_lookup:-missing}}"
+                      # Look the pod up in the map fetched once above. The bulk
+                      # read already succeeded (we exit the cycle otherwise), so
+                      # a name that is absent genuinely has no pod — there is no
+                      # "API error" case left to confuse with "missing".
+                      pod_phase="$(printf '%s\n' "$pod_phases" | grep -m1 -F "${name}=" | cut -d= -f2- || true)"
+                      pod_phase="${pod_phase:-missing}"
                       echo "candidate: $name (age ${age}s, er_phase=${phase:-unknown}, pod_phase=${pod_phase:-missing}, workflow_run=${run_id:-none})"
 
                       # If no jobWorkflowRunId, it's a fresh CR waiting — leave alone.
@@ -217,10 +268,16 @@ spec:
               resources:
                 requests:
                   cpu: 20m
-                  memory: 32Mi
+                  memory: 64Mi
                 limits:
+                  # 128Mi was not enough to deserialize a large EphemeralRunner
+                  # list and the container was OOMKilled every cycle through the
+                  # 2026-08-10 outage. The real fix is the `limit=MAX_SCAN` page
+                  # in the script — this is headroom, not the mechanism. Raising
+                  # it alone would only have moved the cliff from 3,149 runners
+                  # to some larger number and left the same failure waiting.
                   cpu: 100m
-                  memory: 128Mi
+                  memory: 512Mi
               securityContext:
                 allowPrivilegeEscalation: false
                 privileged: false
