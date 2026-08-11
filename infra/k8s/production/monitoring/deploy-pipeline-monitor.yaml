@@ -34,6 +34,26 @@ metadata:
 data:
   # 14 critical-path repos. Adding a repo: append below; per-repo `branch`
   # defaults to `main` (override only if the repo's deploy branch differs).
+  #
+  # THIS LIST IS FROZEN LEGACY STATE — do not extend it. check-zero-touch-
+  # boundaries.sh rejects any new entry, because monitor targets belong in
+  # onboarding/Argo state, not hardcoded per-app in Enclii. avala was added
+  # here on 2026-08-11 and correctly bounced by that guard.
+  #
+  # What that means for coverage, since the two monitors answer different
+  # questions:
+  #
+  #   - "did the rollout land" — argo-main-parity-monitor, which DISCOVERS its
+  #     targets by listing Argo Applications. avala needs no entry anywhere; it
+  #     was already enumerated, and the new argo_main_rollout_* metrics cover it
+  #     from the moment they deploy. This is the signal that was missing on
+  #     2026-08-07, and it is the one this change actually fixes.
+  #
+  #   - "is CI failing on main" — check_main_ci.py, driven by this frozen list,
+  #     so avala is NOT covered for CI freshness. Closing that gap properly
+  #     means deriving these targets from Argo state the way the parity monitor
+  #     already does, which is a separate change and the shape the zero-touch
+  #     boundary is pointing at.
   repos.json: |
     {
       "repos": [
@@ -505,10 +525,31 @@ spec:
 ---
 # Alerting rules
 # ----------------------------------------------------------------------------
+# !! THIS PrometheusRule IS INERT ON THIS CLUSTER — DO NOT ADD RULES HERE !!
+#
+# The CRD is installed but there is NO prometheus-operator running, so nothing
+# ever reads a PrometheusRule. Our Prometheus loads rules only from the
+# `prometheus-rules` ConfigMap (`rule_files: /etc/prometheus/rules/*.yml`,
+# see prometheus.yaml). Every alert in this object — ArgoMainParityDrift
+# included — has therefore never been capable of firing.
+#
+# That is not theoretical. On 2026-08-07 `avala-services` failed its PreSync
+# hook and sat OutOfSync for four days; `ArgoMainParityDrift` would not have
+# caught it anyway (see the monitor docstring), but neither would any alert
+# here, because none of them are loaded.
+#
+# The live rules for this monitor live in:
+#   infra/k8s/production/monitoring/prometheus.yaml
+#     -> ConfigMap/prometheus-rules -> data["deploy-parity-alerts.yml"]
+#
+# This object is kept only so the intent survives if an operator is ever
+# installed. Anything added here must ALSO be added to the ConfigMap, or it
+# is decoration.
+#
 # Routed to alertmanager via the existing severity routes. Category
-# `deploy-pipeline` is new — it groups all CI/build/deploy freshness alerts
-# so the on-call rotation can mute them independently of platform-layer
-# incidents during planned maintenance.
+# `deploy-pipeline` groups all CI/build/deploy freshness alerts so the on-call
+# rotation can mute them independently of platform-layer incidents during
+# planned maintenance.
 #
 # 30-min thresholds reflect the original gap: had this monitor been live on
 # 2026-05-04 02:29 UTC, the first alert would have fired at 02:59 — instead
