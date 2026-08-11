@@ -230,8 +230,12 @@ func runOnboard(cfg *config.Config, opts onboardOpts) error {
 		return fmt.Errorf("onboarding failed: %w", err)
 	}
 
-	// Print summary
-	printOnboardResult(result)
+	// Print summary. A partial result exits non-zero: the operator has work left
+	// to do, and an exit 0 tells both them and any surrounding automation that
+	// they do not.
+	if !printOnboardResult(result) {
+		return fmt.Errorf("onboarding did not complete — see the failed steps above")
+	}
 
 	return nil
 }
@@ -283,9 +287,62 @@ func printDryRun(opts onboardOpts, req types.OnboardingRequest) {
 	fmt.Println("Run without --dry-run to execute.")
 }
 
-func printOnboardResult(result map[string]interface{}) {
+// onboardStepFailures extracts the steps the API reported as failed, formatted
+// as "name: detail". The API already sends everything needed to say exactly what
+// went wrong — `status` plus a per-step `detail` — and this CLI used to discard
+// both, which is the whole defect this function exists to fix.
+func onboardStepFailures(result map[string]interface{}) []string {
+	raw, ok := result["step_results"].([]interface{})
+	if !ok {
+		return nil
+	}
+	var failures []string
+	for _, item := range raw {
+		step, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if fmt.Sprintf("%v", step["status"]) != "failed" {
+			continue
+		}
+		name := fmt.Sprintf("%v", step["name"])
+		if detail, ok := step["detail"]; ok && detail != "" {
+			failures = append(failures, fmt.Sprintf("%s: %v", name, detail))
+			continue
+		}
+		failures = append(failures, name)
+	}
+	return failures
+}
+
+// printOnboardResult renders the API's response and reports whether onboarding
+// actually completed.
+//
+// It returns false for a "partial" result. That is deliberate and it is a
+// behaviour change: this function used to print "Onboarding complete!"
+// unconditionally, ignore the `status` field entirely, and let the command exit
+// 0 no matter what.
+//
+// The failure that motivated it: onboarding nauta on 2026-08-11 reported success
+// while never creating its R2 bucket. Nothing surfaced the gap. The bucket name
+// was already in the app's ConfigMap from its own config.yaml, so every later
+// read said "configured", and the miss only came to light when an operator went
+// to mint a token scoped to a bucket that did not exist.
+//
+// A provisioning command that half-provisions and exits 0 is worse than one that
+// fails, because the operator moves on. Non-critical means "does not abort the
+// remaining steps"; it must not also mean "invisible".
+func printOnboardResult(result map[string]interface{}) bool {
+	status := fmt.Sprintf("%v", result["status"])
+	failures := onboardStepFailures(result)
+	ok := status == "completed" || status == "<nil>"
+
 	fmt.Println()
-	fmt.Println("Onboarding complete!")
+	if ok {
+		fmt.Println("Onboarding complete!")
+	} else {
+		fmt.Printf("Onboarding %s — some steps did NOT run.\n", strings.ToUpper(status))
+	}
 	fmt.Println()
 
 	if ns, ok := result["namespace"]; ok {
@@ -326,6 +383,22 @@ func printOnboardResult(result map[string]interface{}) {
 			}
 		}
 	}
+
+	// Failed steps go LAST and to stderr, so they are the final thing on screen
+	// and survive a `| tee`. A warning buried above a wall of next-steps is a
+	// warning nobody reads.
+	if len(failures) > 0 {
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintf(os.Stderr, "  %d step(s) did NOT complete:\n", len(failures))
+		for _, f := range failures {
+			fmt.Fprintf(os.Stderr, "    x %s\n", f)
+		}
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "  Anything those steps were meant to create does not exist.")
+		fmt.Fprintln(os.Stderr, "  Re-run onboarding once the cause is fixed; the completed steps are idempotent.")
+	}
+
+	return ok
 }
 
 // parseEnvFile reads a .env file and returns SecretEntry pairs.

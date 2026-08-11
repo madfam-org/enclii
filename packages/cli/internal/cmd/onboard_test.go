@@ -653,3 +653,98 @@ func TestOnboardProject_ClientIntegration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "completed", result["status"])
 }
+
+// ---------------------------------------------------------------------------
+// Onboard result reporting
+//
+// Regression cover for 2026-08-11: onboarding nauta reported success while
+// never creating its R2 bucket. The API said status="partial" and named the
+// failed step with a detail; the CLI printed "Onboarding complete!", ignored
+// both fields, and exited 0. The miss surfaced days later, when an operator
+// went to mint a token scoped to a bucket that did not exist.
+//
+// The scenario test below is the one that matters — it replays that exact
+// payload. A test that only exercises the happy path would have stayed green
+// through the entire incident.
+// ---------------------------------------------------------------------------
+
+func partialR2Result() map[string]interface{} {
+	return map[string]interface{}{
+		"status": "partial",
+		"step_results": []interface{}{
+			map[string]interface{}{"name": "namespace", "status": "ok"},
+			map[string]interface{}{"name": "postgres", "status": "ok"},
+			map[string]interface{}{
+				"name":   "r2",
+				"status": "failed",
+				"detail": "R2 API error: Authentication error (code 10000)",
+			},
+		},
+	}
+}
+
+func TestPrintOnboardResult_PartialIsNotSuccess(t *testing.T) {
+	assert.False(t, printOnboardResult(partialR2Result()),
+		"a partial onboard must not report success — this is the 2026-08-11 nauta R2 defect")
+}
+
+func TestPrintOnboardResult_CompletedIsSuccess(t *testing.T) {
+	assert.True(t, printOnboardResult(map[string]interface{}{
+		"status": "completed",
+		"step_results": []interface{}{
+			map[string]interface{}{"name": "namespace", "status": "ok"},
+		},
+	}))
+}
+
+func TestPrintOnboardResult_FailedIsNotSuccess(t *testing.T) {
+	assert.False(t, printOnboardResult(map[string]interface{}{
+		"status": "failed",
+		"step_results": []interface{}{
+			map[string]interface{}{"name": "namespace", "status": "failed", "detail": "boom"},
+		},
+	}))
+}
+
+func TestPrintOnboardResult_MissingStatusStaysSuccess(t *testing.T) {
+	// Older API builds omit `status`. Treat absence as success so a CLI upgrade
+	// against an older control plane does not start failing every onboard —
+	// the step_results list still surfaces anything genuinely broken.
+	assert.True(t, printOnboardResult(map[string]interface{}{}))
+}
+
+func TestOnboardStepFailures_NamesStepAndDetail(t *testing.T) {
+	failures := onboardStepFailures(partialR2Result())
+	require.Len(t, failures, 1)
+	assert.Contains(t, failures[0], "r2")
+	assert.Contains(t, failures[0], "Authentication error",
+		"the operator needs the cause, not just the step name")
+}
+
+func TestOnboardStepFailures_IgnoresOkSteps(t *testing.T) {
+	assert.Empty(t, onboardStepFailures(map[string]interface{}{
+		"status": "completed",
+		"step_results": []interface{}{
+			map[string]interface{}{"name": "namespace", "status": "ok"},
+			map[string]interface{}{"name": "r2", "status": "ok"},
+		},
+	}))
+}
+
+func TestOnboardStepFailures_HandlesMissingOrOddShapes(t *testing.T) {
+	assert.Empty(t, onboardStepFailures(map[string]interface{}{}))
+	assert.Empty(t, onboardStepFailures(map[string]interface{}{"step_results": "not-a-list"}))
+	assert.Empty(t, onboardStepFailures(map[string]interface{}{
+		"step_results": []interface{}{"not-a-map"},
+	}))
+}
+
+func TestOnboardStepFailures_FailedStepWithoutDetail(t *testing.T) {
+	failures := onboardStepFailures(map[string]interface{}{
+		"step_results": []interface{}{
+			map[string]interface{}{"name": "r2", "status": "failed"},
+		},
+	})
+	require.Len(t, failures, 1)
+	assert.Equal(t, "r2", failures[0])
+}
