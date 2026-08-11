@@ -112,3 +112,34 @@ targets:
     external_secret: coupler-gateway-secrets
     keys:
       - JANUA_SERVICE_TOKEN
+
+  # Nauta writes LOWERCASE Vault properties, unlike dhanam/ceq/coupler above.
+  # That is not a style choice to normalise away: nauta's ExternalSecrets
+  # reference `property: janua_client_id`, and ESO is all-or-nothing per
+  # ExternalSecret — a case mismatch here syncs ZERO keys and the pods start
+  # with no environment at all.
+  nauta/oidc-janua:
+    label: Nauta Janua OAuth client (cockpit)
+    description: Nauta fractional-CTO cockpit OIDC client (nauta.madfam.io / cto.madfam.io)
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-web-secrets
+    keys:
+      - janua_client_id
+      - janua_client_secret
+
+  # PARKED, deliberately. The nauta-portal client is registered and real, but no
+  # ExternalSecret projects these two properties yet, so nothing consumes them.
+  # They are intaken anyway because a Janua client_secret is shown exactly once:
+  # capturing it now costs nothing and avoids a rotation on the day the portal
+  # surface is wired. Extra properties at a Vault path are ignored by ESO, which
+  # only fails on properties it references and cannot find.
+  nauta/oidc-janua-portal:
+    label: Nauta Janua OAuth client (white-labeled client workspace)
+    description: Nauta tier-3 client workspace OIDC client (crea.madfam.io) — parked until an ExternalSecret projects it
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-web-secrets
+    keys:
+      - janua_portal_client_id
+      - janua_portal_client_secret
