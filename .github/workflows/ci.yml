@@ -298,6 +298,19 @@ jobs:
       - name: Run ARC watchdog + pool-health tests
         run: pytest tests/scripts/test_stuck_runner_watchdog.py tests/scripts/test_arc_pool_health.py -v
 
+  intake-policy-parity:
+    name: Intake/Vault-policy parity
+    runs-on: ubuntu-latest
+    # Cheap (sub-second). Every secrets-intake vault_path must be writable
+    # under the switchyard-secret-writer policy — they drifted once (nauta,
+    # enclii#379) and the first live use failed with an opaque 500 days after
+    # the green merge. See scripts/check-intake-policy-parity.sh.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run intake/policy parity check
+        run: ./scripts/check-intake-policy-parity.sh
+
   status-configmap-drift:
     name: Status Configmap Drift (ST-3)
     runs-on: ubuntu-latest
