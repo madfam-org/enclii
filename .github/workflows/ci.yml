@@ -1325,6 +1325,26 @@ jobs:
           # (currently the pack CLI's embedded docker/docker in the
           # switchyard-api image — see the file for the rotation condition).
           trivyignores: .trivyignore
+        env:
+          # Trivy authenticates to the registry ITSELF; it does not reliably
+          # inherit the credentials `docker/login-action` wrote above. Without
+          # these it requests an ANONYMOUS pull token, and every package under
+          # madfam-org is private, so GHCR answers `DENIED: denied` and the scan
+          # fails as though the image were missing:
+          #
+          #   remote error: GET https://ghcr.io/token?scope=repository%3A…%3Apull
+          #     &service=ghcr.io: DENIED: denied
+          #
+          # The failure is worse than a red scan. `commit-digests` pins only
+          # services whose scan passed, and switchyard-api has NO ArgoCD app and
+          # NO push-triggered deploy — the digest pin IS its deploy path. So a
+          # scan that cannot authenticate silently stops the service from ever
+          # shipping while main CI reports the merge as done. That is exactly
+          # what happened to enclii#379: merged 15:36, never deployed, and
+          # `enclii secrets provision oidc --platform nauta` kept failing on a
+          # control plane that predated it. See enclii#380.
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GHCR_PAT || github.token }}
 
       - name: Record scan outcome for digest pinning
         # Runs on scan success AND failure: commit-digests consumes these
