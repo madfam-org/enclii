@@ -1158,6 +1158,104 @@ data:
                 a target dialing an unpublished Service port is
                 indistinguishable from a NetworkPolicy drop — the exact
                 confusion of 2026-08-06.
+
+  # =========================================================================
+  # THE 2026-08-11 CONTROL — a rollout that never landed.
+  #
+  # avala-services failed its PreSync migrate hook on 2026-08-07T19:18:34Z,
+  # Argo retried 5 times and gave up, and prod served two-commit-old pods for
+  # four days. Nothing alerted, because every available signal was green:
+  #
+  #   - Argo health stayed `Healthy` — a failed sync leaves the PREVIOUS pods
+  #     running, and those pods were fine.
+  #   - Every HTTP surface returned 200, for the same reason.
+  #   - `argo_main_parity_drift_sources` stayed 0, because Argo records
+  #     `sync.revision` for a sync that FAILED, so revision parity held.
+  #   - The repo's own post-deploy gate asserts live behaviour, not which
+  #     commit is live, so old-but-working also reads as pass.
+  #
+  # The missing question was never "is prod healthy" or "is the revision
+  # right" but "did the rollout actually land". `argo_main_rollout_ok`
+  # answers it: revision parity AND Synced AND last operation not failed.
+  #
+  # These rules live HERE and not in the PrometheusRule in
+  # deploy-pipeline-monitor.yaml: there is no prometheus-operator on this
+  # cluster, so PrometheusRule objects are inert. Prometheus reads
+  # rule_files: /etc/prometheus/rules/*.yml, which is this ConfigMap.
+  #
+  # After editing: kubelet propagates the ConfigMap within ~60s, then
+  # `curl -X POST http://prometheus.monitoring:9090/-/reload`.
+  # =========================================================================
+  deploy-parity-alerts.yml: |
+    groups:
+      - name: argo-rollout-truth
+        interval: 1m
+        rules:
+          - alert: ArgoMainRolloutNotLanded
+            expr: |
+              argo_main_rollout_failed_sources > 0
+            for: 15m
+            labels:
+              severity: critical
+              category: deploy-parity
+            annotations:
+              summary: "An ArgoCD app tracking main has not rolled out its target revision"
+              description: |
+                At least one Git-backed prod Argo source is not genuinely
+                running GitHub main: either it is OutOfSync, or its last sync
+                operation failed. Inspect `argo_main_rollout_ok` labels for the
+                offending application/repo/path.
+
+                Argo health and HTTP probes will BOTH look fine while this is
+                firing — a failed sync leaves the previous pods serving. Do not
+                dismiss this because the site is up.
+
+                Triage:
+                  kubectl -n argocd get application <app> \
+                    -o jsonpath='{.status.sync.status}{" "}{.status.operationState.phase}{" "}{.status.operationState.message}'
+              runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+          # Escalates the same condition on duration. 15m catches the incident;
+          # this catches the "nobody looked at the ticket" tail — the actual
+          # 2026-08-07 failure mode, where Argo's automated sync will not retry
+          # a revision it already failed, so a stuck app stays stuck silently
+          # until the next commit lands.
+          - alert: ArgoMainRolloutStuckForTooLong
+            expr: |
+              max(argo_main_rollout_stuck_seconds) by (application, repo) > 7200
+            for: 10m
+            labels:
+              severity: critical
+              category: deploy-parity
+            annotations:
+              summary: "{{ $labels.application }} has had a failed sync for over 2h"
+              description: |
+                The last sync operation for {{ $labels.application }}
+                ({{ $labels.repo }}) failed {{ $value | humanizeDuration }} ago
+                and has not been retried successfully.
+
+                Argo's automated sync does NOT retry a revision that already
+                failed, so this will not clear on its own — it needs either a
+                new commit on main or a manual sync.
+              runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+          # The monitor emits rollout metrics only when it completes. Absence
+          # must read as "not measured", never as "nothing wrong".
+          - alert: ArgoRolloutTruthUnavailable
+            expr: |
+              absent(argo_main_rollout_failed_sources)
+            for: 30m
+            labels:
+              severity: warning
+              category: deploy-parity
+            annotations:
+              summary: "No rollout-truth signal from the argo-main-parity monitor"
+              description: |
+                `argo_main_rollout_failed_sources` has been absent for 30m, so
+                a stuck rollout is currently undetectable. Check the
+                argo-main-parity-monitor CronJob in the monitoring namespace
+                and its Pushgateway target.
+              runbook: docs/runbooks/deploy-pipeline-monitor.md
 ---
 # Prometheus PVC
 apiVersion: v1
