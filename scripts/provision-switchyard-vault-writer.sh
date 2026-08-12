@@ -93,6 +93,20 @@ path "secret/data/phynd-crm/*" {
 path "secret/data/coupler" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# nauta — added 2026-08-11. The intake registry gained nauta/oidc-janua in
+# enclii#379 and this policy did not follow, so the FIRST live use of
+# `enclii secrets provision oidc --platform nauta` failed: Janua reconciled the
+# client, then the Vault merge got 403 permission denied, surfaced to the CLI
+# as an opaque "API error 500: failed to write to Vault". The registry and this
+# policy are two copies of one truth; scripts/check-intake-policy-parity.sh now
+# fails CI when they drift, so the next platform added to the registry cannot
+# ship without its policy path.
+path "secret/data/nauta" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/nauta/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/data/coupler/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
