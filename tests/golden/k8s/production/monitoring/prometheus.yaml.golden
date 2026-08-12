@@ -192,6 +192,42 @@ data:
             regex: http
         metrics_path: /metrics
 
+      # Pushgateway — batch/CronJob metrics.
+      #
+      # ADDED 2026-08-11. The pushgateway has existed for 96 days and NOTHING
+      # HAS EVER SCRAPED IT: there was no job here, so every metric the
+      # CronJob monitors push has been written to a gateway Prometheus never
+      # read. That silently voided every alert built on them, including
+      # ArgoMainParityDrift and the whole deploy-pipeline-monitor alert family.
+      #
+      # It was found on 2026-08-11 while arming a new rollout-truth alert: the
+      # rules loaded, the monitor ran, the metric sat on the gateway, and the
+      # series count in Prometheus was zero. An alert is usually dead in more
+      # than one way at once — this was the second way.
+      #
+      # honor_labels: true is REQUIRED, not stylistic. Pushed samples already
+      # carry their own `job` (e.g. argo_main_parity_monitor) and `instance`.
+      # Without it Prometheus overwrites both with this scrape's job/instance,
+      # so every pusher collapses into one series set and alert expressions
+      # that group by application/repo silently lose their identity.
+      - job_name: 'pushgateway'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - monitoring
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+            action: keep
+            regex: pushgateway
+          # The Service and its headless twin share every label, so without
+          # this the same gateway is scraped twice and each sample arrives
+          # duplicated. Keep the stable ClusterIP Service only.
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: pushgateway
+
       # Node exporter metrics (host CPU, memory, disk, network)
       - job_name: 'node-exporter'
         kubernetes_sd_configs:
