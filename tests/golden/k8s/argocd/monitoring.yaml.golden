@@ -31,10 +31,29 @@ spec:
       - CreateNamespace=true
       - ServerSideApply=true
 
-  # Ignore Prometheus data (changes constantly)
-  ignoreDifferences:
-    - group: ""
-      kind: ConfigMap
-      name: prometheus-config
-      jsonPointers:
-        - /data/prometheus.yml  # May have scrape targets added dynamically
+  # NO ignoreDifferences.
+  #
+  # This app used to exempt ConfigMap/prometheus-config `/data/prometheus.yml`
+  # from the diff, on the stated premise that it "may have scrape targets added
+  # dynamically". Nothing does that: Prometheus discovers targets through
+  # kubernetes_sd_configs, and the config file itself is static. The premise was
+  # defensive rather than observed, and it was added in the original GitOps
+  # foundation commit.
+  #
+  # The cost was that the scrape config became permanently un-deployable. Argo
+  # reported `Synced` while ignoring every change to the one key that matters,
+  # so the live ConfigMap sat at whatever was last applied by hand — its own
+  # managedFields show argocd-controller last writing it 2026-05-06, three
+  # months before this line was removed, while the neighbouring
+  # prometheus-rules ConfigMap (not exempted) updated the same day it changed.
+  #
+  # That is how the pushgateway went 96 days unscraped: adding the job to git
+  # would not have helped, because git had no authority over this file. Every
+  # metric pushed by the CronJob monitors — argo_main_parity_*, the whole
+  # deploy-pipeline-monitor family — went to a gateway Prometheus never read,
+  # and every alert built on them was dead on arrival. Found 2026-08-11.
+  #
+  # If a future change genuinely needs a runtime-mutated scrape config, scope
+  # the exemption to that key and say what writes it — never to the whole file,
+  # and never without a control that proves the ignored field still matches
+  # intent.
