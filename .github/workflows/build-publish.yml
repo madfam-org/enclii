@@ -520,15 +520,63 @@ jobs:
           git commit -m "ci: pin image digests from ${{ github.sha }}"
           git push
 
+      # Registering a Release is not optional bookkeeping. Enclii's reconciler
+      # owns the replica count — which is why the ArgoCD Applications it
+      # generates list /spec/replicas under ignoreDifferences — and it derives
+      # desired_replicas from Releases. A service with none stays pinned at 0
+      # replicas while ArgoCD reports Synced at the correct digest forever.
+      #
+      # This step was silently dead org-wide. It gated on secrets.ENCLII_API_URL
+      # and authenticated with secrets.ENCLII_DEPLOY_TOKEN, and NO repository in
+      # madfam-org has either: the credential is called ENCLII_CALLBACK_TOKEN
+      # (janua, dhanam, phynd-crm, enclii). So `env.ENCLII_API_URL != ''` was
+      # false everywhere and the step was skipped on every green run. Releases
+      # stopped being recorded around 2026-06-01 and nobody noticed, because
+      # already-scaled services keep running — they just stop getting Release
+      # rows. The first service onboarded after that (angelia) could never
+      # start at all, with no error anywhere in the pipeline.
+      #
+      # So: accept the name the org actually uses, fall back to the documented
+      # endpoint rather than requiring a secret to hold a public URL, and only
+      # skip when there is genuinely no credential.
       - name: Notify enclii lifecycle
-        if: ${{ steps.digests.outputs.count != '0' && inputs.enclii_notify_event != '' && env.ENCLII_API_URL != '' }}
+        if: ${{ steps.digests.outputs.count != '0' && inputs.enclii_notify_event != '' }}
         env:
-          ENCLII_API_URL: ${{ secrets.ENCLII_API_URL }}
-          ENCLII_DEPLOY_TOKEN: ${{ secrets.ENCLII_DEPLOY_TOKEN }}
+          # ENCLII_CALLBACK_TOKEN is the lifecycle credential and must match the
+          # server's ENCLII_ARGOCD_WEBHOOK_SECRET. It is NOT an `enclii tokens
+          # create` API token — /v1/callbacks/lifecycle-event compares the
+          # bearer against config.ArgocdWebhookSecret, so a personal API token
+          # 401s here and the `|| true` below hides it.
+          ENCLII_TOKEN: ${{ secrets.ENCLII_CALLBACK_TOKEN || secrets.ENCLII_DEPLOY_TOKEN }}
+          ENCLII_API_URL: ${{ secrets.ENCLII_API_URL || 'https://api.enclii.dev' }}
           EVENT: ${{ inputs.enclii_notify_event }}
         run: |
-          curl -sS -X POST "$ENCLII_API_URL/v1/callbacks/lifecycle-event" \
-            -H "Authorization: Bearer $ENCLII_DEPLOY_TOKEN" \
+          if [ -z "${ENCLII_TOKEN:-}" ]; then
+            echo "::warning::No ENCLII_CALLBACK_TOKEN (or ENCLII_DEPLOY_TOKEN) is set for this"
+            echo "::warning::repository, so no Enclii Release will be registered for this build."
+            echo "::warning::A service with no Release stays at desired_replicas 0 and cannot"
+            echo "::warning::start, while ArgoCD reports Synced. This is not a cosmetic skip."
+            exit 0
+          fi
+          # Report the outcome. `|| true` alone turned an auth failure into a
+          # green step, which is how this went unnoticed for two months.
+          code=$(curl -sS -o /tmp/enclii-notify.out -w '%{http_code}' \
+            -X POST "$ENCLII_API_URL/v1/callbacks/lifecycle-event" \
+            -H "Authorization: Bearer $ENCLII_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"project\":\"${{ github.event.repository.name }}\",\"commit\":\"${{ github.sha }}\",\"event\":\"$EVENT\"}" \
-            || true
+            || echo 000)
+          echo "lifecycle callback -> HTTP $code"
+          case "$code" in
+            2*) : ;;
+            401|403)
+              echo "::error::Enclii rejected the lifecycle callback (HTTP $code). The token is"
+              echo "::error::wrong: this endpoint expects the value of the server's"
+              echo "::error::ENCLII_ARGOCD_WEBHOOK_SECRET, not an 'enclii tokens create' API token."
+              echo "::error::No Release was registered, so the service will not scale off 0."
+              exit 1 ;;
+            *)
+              echo "::warning::Lifecycle callback returned HTTP $code; no Release may have been"
+              echo "::warning::registered. Build artifacts are unaffected."
+              head -c 300 /tmp/enclii-notify.out 2>/dev/null || true ;;
+          esac

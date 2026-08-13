@@ -254,3 +254,70 @@ func TestAPITokenRepository_CountByUser(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+// TestAPITokenRepository_CountByUser_ExcludesExpired is the regression guard
+// for the defect that locked an account out of creating API tokens entirely.
+//
+// CountByUser backs a hard cap of 10 tokens per user, and it used to read:
+//
+//	SELECT COUNT(*) FROM api_tokens WHERE user_id = $1 AND revoked = false
+//
+// which counts every row that was never explicitly revoked — including tokens
+// that expired months ago and cannot authenticate anything. The cap therefore
+// limited ROWS EVER CREATED rather than live credentials: ten 90-day tokens
+// permanently consumed the quota once they aged out, and the API's advice was
+// "revoke unused tokens" while offering no way to tell which were unused.
+//
+// The perverse consequence is that using expiries — the safe practice — was
+// what broke you. Every bounded token leaked a quota slot on a timer, while a
+// never-expiring token cost exactly the same slot and kept working.
+//
+// The existing "returns count" case above matches on `SELECT COUNT`, which is
+// far too loose to notice any of this, so this asserts the predicate itself.
+func TestAPITokenRepository_CountByUser_ExcludesExpired(t *testing.T) {
+	repo, mock, cleanup := newAPITokenMockDB(t)
+	defer cleanup()
+
+	userID := uuid.New()
+
+	// sqlmock matches this as a regular expression against the real query, so
+	// a CountByUser that drops the expiry predicate fails here rather than in
+	// production a quarter later.
+	mock.ExpectQuery(`revoked = false\s+AND \(expires_at IS NULL OR expires_at > NOW\(\)\)`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+	count, err := repo.CountByUser(context.Background(), userID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+	require.NoError(t, mock.ExpectationsWereMet(),
+		"CountByUser must exclude expired tokens; counting them makes the "+
+			"per-user cap permanent instead of a limit on live credentials")
+}
+
+// TestAPITokenRepository_CountByUser_EvaluatesExpiryInTheDatabase guards the
+// smaller decision inside the fix: expiry is compared with NOW() in SQL rather
+// than a Go time.Now() bound passed as a parameter.
+//
+// Those are not equivalent. The authentication path rejects an expired token
+// using the database clock; if the cap check used the application clock, skew
+// between them could admit a token that auth has already started refusing, and
+// the two would disagree about whether a slot is occupied.
+func TestAPITokenRepository_CountByUser_EvaluatesExpiryInTheDatabase(t *testing.T) {
+	repo, mock, cleanup := newAPITokenMockDB(t)
+	defer cleanup()
+
+	userID := uuid.New()
+
+	// Exactly one argument — the user id. A time bound smuggled in as $2 would
+	// mean the comparison had moved into Go.
+	mock.ExpectQuery(`SELECT COUNT`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	_, err := repo.CountByUser(context.Background(), userID)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet(),
+		"CountByUser must take only the user id; evaluating expiry against an "+
+			"application clock can disagree with the auth path")
+}
