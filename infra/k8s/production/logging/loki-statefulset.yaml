@@ -160,6 +160,80 @@ spec:
                 matchExpressions:
                   - key: builder
                     operator: DoesNotExist
+      initContainers:
+        # ONE-TIME WAL quarantine (2026-08-13).
+        #
+        # loki-0 crash-looped 784 times from 2026-08-08 on:
+        #   corruption in segment /loki/tsdb-index/wal/filesystem_2026-03-20/
+        #   1786377834/00000000 at 28834: unexpected checksum
+        # Loki refuses to start on a corrupt index WAL, so the whole logging
+        # stack was down for five days. The repair has to live here rather than
+        # be done by hand: this StatefulSet is Argo-managed with selfHeal, which
+        # reverts a scale-down within seconds, so the volume can never be
+        # detached long enough to fix from outside the pod.
+        #
+        # Safety properties, in order:
+        # 1. GUARDED BY A TOKEN. It runs once. After a successful pass it writes
+        #    a marker and every later start is a no-op, so a normal restart
+        #    never discards a healthy WAL. To deliberately re-run it, change
+        #    QUARANTINE_TOKEN in git — which is a reviewable act, not a side
+        #    effect.
+        # 2. MOVES, NEVER DELETES. The suspect WAL is renamed aside, so it stays
+        #    on the volume for inspection. Rename is within one filesystem, so
+        #    it costs no extra space.
+        # 3. NARROW. It touches tsdb-index/wal and nothing else. Chunks — the
+        #    actual log data — are not in scope.
+        #
+        # Cost of the quarantine: index entries not yet flushed at the moment of
+        # corruption. That data was already unreadable; the alternative was an
+        # indefinite outage.
+        - name: wal-quarantine
+          image: docker.io/grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -eu
+            - -c
+            - |
+              QUARANTINE_TOKEN="2026-08-13-tsdb-wal-checksum"
+              MARKER="/loki/.wal-quarantine-${QUARANTINE_TOKEN}"
+
+              if [ -e "${MARKER}" ]; then
+                echo "quarantine ${QUARANTINE_TOKEN} already applied; leaving WAL untouched"
+                exit 0
+              fi
+
+              WAL="/loki/tsdb-index/wal"
+              if [ -d "${WAL}" ]; then
+                DEST="/loki/tsdb-index/wal.quarantined-${QUARANTINE_TOKEN}"
+                echo "quarantining ${WAL} -> ${DEST}"
+                du -sh "${WAL}" 2>/dev/null || true
+                rm -rf "${DEST}"
+                mv "${WAL}" "${DEST}"
+                echo "moved aside; loki will rebuild a fresh WAL"
+              else
+                echo "no ${WAL} present; nothing to quarantine"
+              fi
+
+              touch "${MARKER}"
+              echo "marker written: ${MARKER}"
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: data
+              mountPath: /loki
       containers:
         - name: loki
           image: docker.io/grafana/loki:3.4.2@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
