@@ -18,7 +18,6 @@ import (
 // REQUEST/RESPONSE TYPES
 // ============================================================================
 
-// CreateAPITokenRequest represents the request to create a new API token
 // Token lifecycle policy.
 //
 // These were implicit before: the cap was a bare `10` at the comparison site,
@@ -38,6 +37,7 @@ const (
 	maxTokenLifetimeDays = 365
 )
 
+// CreateAPITokenRequest represents the request to create a new API token.
 type CreateAPITokenRequest struct {
 	Name   string   `json:"name" binding:"required,min=1,max=100"`
 	Scopes []string `json:"scopes,omitempty"` // Roles, NOT restrictions — see below
@@ -65,8 +65,19 @@ type APITokenResponse struct {
 	Scopes     []string   `json:"scopes,omitempty"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	Revoked    bool       `json:"revoked"`
+	// LastUsedIP is where the token was last presented from. The database has
+	// recorded it all along (UpdateLastUsed passes c.ClientIP()) but it was
+	// absent from this struct, so it was never returned by the API.
+	//
+	// That gap has a cost. Deciding whether a token is safe to revoke means
+	// answering "what is still using this?", and with the name being a free-text
+	// label and token authentications not appearing in the audit log, the
+	// originating IP was the only evidence available — and it was hidden. On
+	// 2026-08-13 an account with 23 tokens had to attribute them by correlating
+	// token names against workflow filenames and cron schedules by hand.
+	LastUsedIP string    `json:"last_used_ip,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	Revoked    bool      `json:"revoked"`
 }
 
 // ============================================================================
@@ -242,6 +253,7 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 				Scopes:     t.Scopes,
 				ExpiresAt:  t.ExpiresAt,
 				LastUsedAt: t.LastUsedAt,
+				LastUsedIP: t.LastUsedIP,
 				CreatedAt:  t.CreatedAt,
 				Revoked:    t.Revoked,
 			})
@@ -261,6 +273,7 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 				Scopes:     t.Scopes,
 				ExpiresAt:  t.ExpiresAt,
 				LastUsedAt: t.LastUsedAt,
+				LastUsedIP: t.LastUsedIP,
 				CreatedAt:  t.CreatedAt,
 				Revoked:    t.Revoked,
 			})
