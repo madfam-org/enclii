@@ -240,6 +240,35 @@ data:
             action: keep
             regex: node-exporter
 
+      # Kubernetes OBJECT state (jobs, pods, deployments) — the series that the
+      # kube_job_*/kube_pod_*/kube_deployment_* alert rules query.
+      #
+      # honor_labels: true is LOAD-BEARING, not style. Every sample here already
+      # carries the `namespace`, `pod` and `job` of the object it DESCRIBES.
+      # Without honor_labels those are overwritten by the scrape target's own
+      # identity (namespace="monitoring", pod="kube-state-metrics-…") and the
+      # originals are pushed to exported_*. BackupJobFailed{namespace="data"}
+      # would then never match and would stay silently dead — the exact failure
+      # this exporter is being deployed to end.
+      #
+      # For the same reason this uses endpoints discovery with no namespace/pod
+      # relabeling, rather than the annotation-based kubernetes-pods job.
+      - job_name: 'kube-state-metrics'
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - monitoring
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+            action: keep
+            regex: kube-state-metrics
+          # Metrics port only; drop the self-telemetry endpoint target.
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: http-metrics
+
       # Redis metrics (redis-exporter in data namespace)
       - job_name: 'redis'
         kubernetes_sd_configs:

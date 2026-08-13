@@ -122,10 +122,33 @@ spec:
                 - |
                   echo "=== Backup Verification Started ==="
 
-                  # Start temporary postgres
+                  # Start temporary postgres.
+                  #
+                  # Every setting below is bounded ON PURPOSE. This job runs a
+                  # real postgres inside the pod's memory limit and restores the
+                  # ENTIRE pg_dumpall into it, so postgres' footprint has to be
+                  # a function of configuration, not of how big production has
+                  # grown. With initdb defaults (shared_buffers=128MB) this job
+                  # OOMKilled on three consecutive weekly runs once the cluster
+                  # passed ~1.4 GB — silently, because BackupVerifyFailed was
+                  # itself dead (kube-state-metrics was never deployed).
+                  #
+                  # fsync/full_page_writes/synchronous_commit are off because
+                  # this cluster is thrown away at the end of the job. Durability
+                  # here would protect nothing and costs a large amount of the
+                  # restore's wall-clock.
                   echo "Starting temporary PostgreSQL..."
                   initdb -D "${PGDATA}" --auth=trust > /dev/null
-                  pg_ctl -D "${PGDATA}" -l /tmp/pg.log start
+                  pg_ctl -D "${PGDATA}" -l /tmp/pg.log start -o "\
+                    -c shared_buffers=32MB \
+                    -c maintenance_work_mem=64MB \
+                    -c work_mem=4MB \
+                    -c max_connections=10 \
+                    -c fsync=off \
+                    -c full_page_writes=off \
+                    -c synchronous_commit=off \
+                    -c max_wal_size=256MB \
+                    -c checkpoint_timeout=30min"
 
                   # Wait for postgres to be ready
                   for i in $(seq 1 30); do
@@ -191,11 +214,16 @@ spec:
                   echo "=== Backup Verification Complete ==="
               resources:
                 requests:
-                  memory: "256Mi"
+                  # Sized against the TUNED postgres footprint above
+                  # (shared_buffers 32M + maintenance_work_mem 64M + backends)
+                  # plus dirty page cache while writing PGDATA, with ~2x headroom
+                  # so ordinary data growth does not resurrect the OOM.
+                  # Revisit when total prod data passes ~4 GB.
+                  memory: "384Mi"
                   cpu: "100m"
                 limits:
-                  memory: "512Mi"
-                  cpu: "500m"
+                  memory: "1Gi"
+                  cpu: "1000m"
               volumeMounts:
                 - name: temp-data
                   mountPath: /var/lib/postgresql/data
@@ -204,7 +232,10 @@ spec:
           volumes:
             - name: temp-data
               emptyDir:
-                sizeLimit: 2Gi
+                # Holds the fully restored cluster + WAL. Prod data was 1.4 GB
+                # at 2026-08-13; 2Gi left almost no margin.
+                sizeLimit: 6Gi
             - name: shared
               emptyDir:
-                sizeLimit: 1Gi
+                # Holds the compressed pg_dumpall downloaded from R2.
+                sizeLimit: 3Gi
