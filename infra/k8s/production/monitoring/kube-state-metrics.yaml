@@ -1,0 +1,264 @@
+---
+# kube-state-metrics — Kubernetes OBJECT-state metrics (jobs, pods, deployments).
+#
+# WHY THIS EXISTS: 19 alert rules already shipped in prometheus-platform-rules
+# and the chronic-restart/client-slo groups query kube_job_*, kube_pod_*,
+# kube_deployment_* and kube_statefulset_* series. None of those series existed,
+# because this exporter was never deployed. Every one of those rules evaluated
+# against an empty vector — which is not an error in Prometheus, it is simply
+# "never fires". The alerts appeared healthy in the rules ConfigMap and were
+# dead in practice.
+#
+# What that cost (found 2026-08-13): backup-verify had failed three consecutive
+# WEEKLY runs (OOMKilled) with BackupVerifyFailed defined and silent, and 56
+# pods sat in Error/OOMKilled/ImagePullBackOff across the cluster with
+# PodCrashLooping, PodNotReady and PodStuckNotRunning equally silent.
+#
+# cadvisor (already scraped) reports CONTAINER resource usage. It does not
+# report object state — whether a Job failed, whether a Deployment has its
+# replicas. Those are two different data sources and only the second one
+# answers "did the backup run succeed".
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+  labels:
+    app: kube-state-metrics
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+---
+# Read-only across the object kinds the alert rules actually reference.
+# Deliberately NOT cluster-admin and deliberately no `secrets` read: this
+# exporter publishes object metadata to a metrics endpoint, so anything it can
+# read is effectively public within the monitoring namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - pods
+      - services
+      - resourcequotas
+      - replicationcontrollers
+      - limitranges
+      - persistentvolumeclaims
+      - persistentvolumes
+      - namespaces
+      - endpoints
+    verbs: ["list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - statefulsets
+      - daemonsets
+      - deployments
+      - replicasets
+    verbs: ["list", "watch"]
+  - apiGroups: ["batch"]
+    resources:
+      - cronjobs
+      - jobs
+    verbs: ["list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "volumeattachments"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+  - kind: ServiceAccount
+    name: kube-state-metrics
+    namespace: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+  labels:
+    app: kube-state-metrics
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+        app.kubernetes.io/name: kube-state-metrics
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/part-of: enclii
+      # NO prometheus.io/scrape annotation on purpose. The generic
+      # 'kubernetes-pods' job relabels `namespace` and `pod` from the SCRAPED
+      # POD's identity, which would rewrite every kube_* series to
+      # namespace="monitoring" and push the real object namespace to
+      # `exported_namespace`. BackupJobFailed{namespace="data"} would then stay
+      # dead while looking deployed. This is scraped by a dedicated job with
+      # honor_labels: true in prometheus.yaml instead.
+    spec:
+      serviceAccountName: kube-state-metrics
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kube-state-metrics
+          image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0@sha256:db384bf43222b066c378e77027a675d4cd9911107adba46c2922b3a55e10d6fb
+          imagePullPolicy: IfNotPresent
+          args:
+            - --port=8080
+            - --telemetry-port=8081
+            # Only the collectors the shipped alert rules query. Fewer
+            # collectors = less memory and a smaller metrics surface.
+            - --resources=cronjobs,daemonsets,deployments,horizontalpodautoscalers,jobs,namespaces,nodes,persistentvolumeclaims,persistentvolumes,poddisruptionbudgets,pods,replicasets,statefulsets
+          ports:
+            - name: http-metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: telemetry
+              containerPort: 8081
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8081
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              # Scales with OBJECT COUNT, not traffic. ~1.1k pods + ~1.5k jobs
+              # in this cluster sits well under this; the headroom is for job
+              # history accumulating between CronJob cleanups.
+              cpu: 200m
+              memory: 320Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+  labels:
+    app: kube-state-metrics
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  clusterIP: None
+  selector:
+    app: kube-state-metrics
+  ports:
+    - name: http-metrics
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: telemetry
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+---
+# Ingress: Prometheus only, on the metrics port.
+# Port MUST match containerPort 8080 — a mismatch here is a silent CNI drop
+# (the 2026-05-04 status.enclii.dev outage class), which would leave every
+# kube_* alert exactly as dead as it was before this file existed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kube-state-metrics-ingress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: kube-state-metrics
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+---
+# Egress: DNS + the Kubernetes API. Unlike node-exporter (which only exposes
+# metrics), this exporter WATCHES the API server, so an API-less egress policy
+# would leave it running and permanently empty.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kube-state-metrics-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: kube-state-metrics
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
