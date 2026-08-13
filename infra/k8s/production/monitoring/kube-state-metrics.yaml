@@ -151,25 +151,28 @@ spec:
             - name: telemetry
               containerPort: 8081
               protocol: TCP
-          # /livez and /readyz are served by the MAIN server (--port 8080), not
-          # the telemetry server. Pointing these at 8081 returns 404, which
-          # fails liveness and puts the exporter in CrashLoopBackOff while its
+          # VERIFIED against the running image, not assumed: this build serves
+          # `/healthz` on the main port (returns "OK") and has NO /livez or
+          # /readyz — both 404. A 404 fails the probe, so pointing a liveness
+          # probe at them puts the exporter in CrashLoopBackOff while its own
           # log still reads "Listening on [::]:8080" and looks perfectly fine.
+          # If this image is ever bumped, re-check the endpoints before trusting
+          # upstream docs for the version you think you are running.
           readinessProbe:
             httpGet:
-              path: /readyz
+              path: /healthz
               port: 8080
             initialDelaySeconds: 5
             timeoutSeconds: 5
           livenessProbe:
             httpGet:
-              path: /livez
+              path: /healthz
               port: 8080
             initialDelaySeconds: 5
             timeoutSeconds: 5
             # The readiness gate already removes a wedged pod from the
             # endpoints list; give liveness room so a slow initial LIST/WATCH
-            # of a large cluster is not mistaken for a hang.
+            # over a large cluster is not mistaken for a hang.
             periodSeconds: 20
             failureThreshold: 6
           resources:
