@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/cloudflare"
 )
 
 func (h *Handler) handleProviderCloudflareZoneAddApplyDryRun(ctx context.Context, operation string, req operatorOperationRequest) operatorOperationResponse {
@@ -44,7 +46,18 @@ func (h *Handler) handleProviderCloudflareZoneAddApplyDryRun(ctx context.Context
 		}
 	}
 	existing, err := client.FindZoneForDomain(ctx, target)
-	if err != nil && !strings.Contains(err.Error(), "no Cloudflare zone found") {
+	// "Zone absent" is the ONLY state in which this operation has work to do, so
+	// it must fall through to mutation = "create" rather than being reported as a
+	// read failure. This previously matched on the literal "no Cloudflare zone
+	// found", which FindZoneForDomain has not returned since it was reworded to
+	// cloudflare.ErrZoneNotFound ("cloudflare: no zone found for domain") — see
+	// the HIGH-1 note in internal/cloudflare/zone_lookup_test.go. The strings do
+	// not overlap, so every absent zone was misclassified as provider_read_failed
+	// and zone-add-apply could never create a zone. The apply path returns 502 on
+	// that status, so both paths were dead.
+	// errors.Is is what the rest of this package already uses for this sentinel
+	// (domain_provisioner_custom_hostname.go, domain_teardown.go).
+	if err != nil && !errors.Is(err, cloudflare.ErrZoneNotFound) {
 		return operatorOperationResponse{
 			OperationID: fmt.Sprintf("op_%d", time.Now().UTC().UnixNano()),
 			Operation:   operation,
