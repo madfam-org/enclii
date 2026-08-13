@@ -554,7 +554,17 @@ data:
               description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping."
 
           - alert: PodNotReady
-            expr: kube_pod_status_ready{condition="true"} == 0
+            # A pod that has Succeeded or Failed is not "not ready" — it is
+            # DONE. Without this exclusion every completed CronJob pod in the
+            # cluster fires: the first evaluation after kube-state-metrics
+            # landed produced 342 PodNotReady alerts, of which 166 were
+            # terminal-phase pods. That volume buries the real signal and is
+            # how an alert stops being read, which is the same outcome as the
+            # alert being dead — just arrived at from the other direction.
+            expr: |
+              kube_pod_status_ready{condition="true"} == 0
+              unless on(namespace, pod)
+              kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1
             for: 5m
             labels:
               severity: warning
