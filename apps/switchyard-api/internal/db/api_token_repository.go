@@ -327,9 +327,31 @@ func (r *APITokenRepository) Delete(ctx context.Context, id uuid.UUID, userID uu
 }
 
 // CountByUser returns the number of tokens for a user
+// CountByUser counts a user's tokens that are still USABLE — not revoked and
+// not expired.
+//
+// It used to count `revoked = false` alone, which made the 10-token cap
+// permanent rather than a limit on live credentials: an expired token cannot
+// authenticate anything, but it still occupied a slot forever. A user who
+// created ten 90-day tokens was locked out of token creation for good once they
+// aged out, and the error told them to "revoke unused tokens" while the CLI's
+// own `tokens list` was broken (it decoded the array response as an object), so
+// there was no supported way to discover what to revoke.
+//
+// This matters more, not less, as expiries get used: bounded lifetimes are the
+// safe practice, and under the old query every expiry was a slot leaked on a
+// timer.
+//
+// Expiry is evaluated in the database rather than in Go so that the cap check
+// and any concurrent authentication agree on "now" — comparing against an
+// application clock can admit a token the auth path has already rejected.
 func (r *APITokenRepository) CountByUser(ctx context.Context, userID uuid.UUID) (int, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM api_tokens WHERE user_id = $1 AND revoked = false`
+	query := `
+		SELECT COUNT(*) FROM api_tokens
+		WHERE user_id = $1
+		  AND revoked = false
+		  AND (expires_at IS NULL OR expires_at > NOW())`
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(&count)
 	return count, err
 }

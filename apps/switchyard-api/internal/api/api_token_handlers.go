@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -18,11 +19,43 @@ import (
 // ============================================================================
 
 // CreateAPITokenRequest represents the request to create a new API token
+// Token lifecycle policy.
+//
+// These were implicit before: the cap was a bare `10` at the comparison site,
+// and there was no lifetime policy at all — an absent expiry meant forever.
+const (
+	// maxActiveTokensPerUser bounds LIVE credentials, not rows. Expired tokens
+	// are excluded by APITokenRepository.CountByUser.
+	maxActiveTokensPerUser = 10
+
+	// defaultTokenLifetimeDays applies when a caller specifies no lifetime.
+	// It is deliberately not "forever": the default must be the safe case.
+	defaultTokenLifetimeDays = 90
+
+	// maxTokenLifetimeDays is the ceiling for an explicit lifetime. A year is
+	// long enough for CI credentials to be practical and short enough that
+	// every token is re-authorised within a normal audit cycle.
+	maxTokenLifetimeDays = 365
+)
+
 type CreateAPITokenRequest struct {
-	Name      string   `json:"name" binding:"required,min=1,max=100"`
-	Scopes    []string `json:"scopes,omitempty"`          // Optional scopes (empty = full access)
-	ExpiresIn *int     `json:"expires_in_days,omitempty"` // Optional expiration in days
+	Name   string   `json:"name" binding:"required,min=1,max=100"`
+	Scopes []string `json:"scopes,omitempty"` // Roles, NOT restrictions — see below
+	// ExpiresIn is in days. Absent or non-positive means
+	// defaultTokenLifetimeDays; values above maxTokenLifetimeDays are rejected.
+	// It can no longer mean "never expires".
+	ExpiresIn *int `json:"expires_in_days,omitempty"`
 }
+
+// NOTE ON SCOPES — they are ROLES, and the two auth paths disagree about them.
+// middleware/auth.go sets user_roles to this list VERBATIM, replacing the
+// default ["developer"]; auth/jwt_middleware.go ignores everything except the
+// literal "admin", which ESCALATES the token to the admin role. So a
+// well-intentioned `--scopes deploy` restricts nothing and renames the role to
+// one nothing grants, while `--scopes admin` quietly issues an admin
+// credential. Omitting scopes yields "developer" in both paths. The comment
+// this replaces said "empty = full access", which is the opposite of what the
+// middleware does.
 
 // APITokenResponse represents a token in list responses (without the actual token)
 type APITokenResponse struct {
@@ -83,24 +116,62 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 
-	// Check token limit (max 10 active tokens per user)
+	// Check token limit. CountByUser excludes expired tokens as well as revoked
+	// ones, so the cap limits LIVE credentials rather than rows.
 	count, err := h.repos.APITokens.CountByUser(ctx, uid)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to count user tokens", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 		return
 	}
-	if count >= 10 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Maximum of 10 active tokens allowed. Please revoke unused tokens."})
+	if count >= maxActiveTokensPerUser {
+		// The old message said "revoke unused tokens" and stopped there, which
+		// is not actionable: there is no way to tell which are unused without
+		// listing them, and a user at the cap is by definition stuck. Name the
+		// commands.
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf(
+				"Maximum of %d active tokens allowed (you have %d). "+
+					"List them with `enclii tokens list` and revoke the ones you no longer "+
+					"need with `enclii tokens revoke <id>`. Expired tokens no longer count "+
+					"toward this limit, so anything blocking you here is still usable and "+
+					"should be revoked deliberately.",
+				maxActiveTokensPerUser, count),
+			"active_tokens": count,
+			"limit":         maxActiveTokensPerUser,
+		})
 		return
 	}
 
-	// Calculate expiration
-	var expiresAt *time.Time
+	// Calculate expiration.
+	//
+	// A nil or non-positive value used to mean "never expires", which is how a
+	// single account accumulated 23 immortal credentials — every one still able
+	// to authenticate months after the work that needed it had finished. An
+	// unbounded default is the wrong default for a credential: the safe case
+	// should be the one you get by saying nothing.
+	//
+	// So an unspecified lifetime now means defaultTokenLifetimeDays, and any
+	// explicit lifetime is capped at maxTokenLifetimeDays. Callers that relied
+	// on permanence get a year of runway and a rotation deadline instead of a
+	// credential that outlives the project.
+	days := defaultTokenLifetimeDays
 	if req.ExpiresIn != nil && *req.ExpiresIn > 0 {
-		exp := time.Now().AddDate(0, 0, *req.ExpiresIn)
-		expiresAt = &exp
+		days = *req.ExpiresIn
 	}
+	if days > maxTokenLifetimeDays {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf(
+				"Token lifetime of %d days exceeds the maximum of %d. "+
+					"A credential that outlives the context it was granted in cannot be "+
+					"audited; mint a shorter one and rotate it.",
+				days, maxTokenLifetimeDays),
+			"max_expires_in_days": maxTokenLifetimeDays,
+		})
+		return
+	}
+	exp := time.Now().AddDate(0, 0, days)
+	expiresAt := &exp
 
 	// Create the token
 	tokenResp, err := h.repos.APITokens.Create(ctx, uid, req.Name, req.Scopes, expiresAt)
