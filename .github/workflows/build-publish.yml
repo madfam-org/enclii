@@ -582,17 +582,42 @@ jobs:
           # quiet.
           shopt -s nullglob
           sent=0; failed=0
+          # The same digest file is reachable by both globs, which posted every
+          # event twice. Harmless (findOrCreateRelease is idempotent per git
+          # SHA) but it doubles the calls and makes the log read as two
+          # services.
+          seen_svcs=" "
           for f in digests/*.txt "$GITHUB_WORKSPACE"/digests/*.txt; do
             [ -f "$f" ] || continue
             line=$(cat "$f")
             svc="${line%%=*}"
             digest="${line#*=}"
             [ -n "$svc" ] && [ -n "$digest" ] || continue
+            case "$seen_svcs" in *" $svc "*) continue ;; esac
+            seen_svcs="$seen_svcs$svc "
             image="${IMAGE_PREFIX}/${svc}"
+
+            # metadata.service MUST be project-qualified. The server resolves it
+            # with ServiceRepository.GetByName, which is
+            #     SELECT ... FROM services WHERE name = $1
+            # with NO project filter — so a bare matrix name like "landing"
+            # matches whichever service in the WHOLE platform is called that,
+            # and the Release is attached to another project's service. Observed
+            # on 2026-08-13: angelia posted metadata.service "landing", the
+            # event recorded resolution as SUCCESSFUL, and angelia-landing still
+            # had zero releases.
+            #
+            # "<project>-<svc>" is exactly the first candidate
+            # extractServiceCandidates derives from the image path, and how
+            # enclii names per-workload services, so this agrees with the
+            # server rather than working around it.
+            proj="${IMAGE_PREFIX##*/}"
+            qualified="$svc"
+            [ -n "$proj" ] && [ "$proj" != "$svc" ] && qualified="${proj}-${svc}"
 
             export REPO="$GITHUB_REPOSITORY" SHA="$GITHUB_SHA" \
                    BRANCH="$GITHUB_REF_NAME" REF="$GITHUB_REF" \
-                   SVC="$svc" IMG="$image" DIG="$digest" EV="$EVENT"
+                   SVC="$qualified" IMG="$image" DIG="$digest" EV="$EVENT"
             # Built with python rather than a heredoc so every value is JSON-escaped.
             # Kept to ONE line: a multi-line snippet inside this block scalar dedents
             # to column 0 and silently terminates the YAML block.
