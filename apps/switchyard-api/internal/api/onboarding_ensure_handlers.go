@@ -142,6 +142,18 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	var steps []stepResult
 	encliiConfig := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, req.RepoFullName, "HEAD")
 
+	// A nil config here is NOT benign: every domain, status entry and network
+	// policy the manifest declares is silently dropped, and onboarding still
+	// reports success. That is how madfam-org/angelia onboarded on 2026-08-13
+	// with "Onboarding complete!" and zero of its five domains provisioned —
+	// the repo is private and the server token could not read enclii.yaml.
+	// Record it as a step so the operator sees the omission instead of
+	// inferring it from an empty result days later.
+	if encliiConfig == nil {
+		h.recordStep(ctx, &steps, "manifest_fetch", false,
+			fmt.Errorf("could not read enclii.yaml from %s — domains, status entries and network policies declared there are being SKIPPED (private repo without server access, missing file, or parse error; see switchyard-api logs)", req.RepoFullName))
+	}
+
 	project, err := h.repos.Projects.GetBySlug(req.ProjectName)
 	if err != nil {
 		if err == sql.ErrNoRows {
