@@ -102,7 +102,7 @@ spec:
                   mountPath: /shared
           containers:
             - name: verify
-              image: docker.io/library/postgres:16@sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae
+              image: docker.io/pgvector/pgvector:pg15@sha256:bd12d6788a617f4147d5a2ae0b56d07921398adabfe5a033bd3f50c245df55a1
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: false
@@ -144,11 +144,11 @@ spec:
                     -c maintenance_work_mem=64MB \
                     -c work_mem=4MB \
                     -c max_connections=10 \
-                    -c fsync=off \
-                    -c full_page_writes=off \
+                    -c fsync=on \
+                    -c full_page_writes=on \
                     -c synchronous_commit=off \
-                    -c max_wal_size=256MB \
-                    -c checkpoint_timeout=30min"
+                    -c max_wal_size=128MB \
+                    -c checkpoint_timeout=60s"
 
                   # Wait for postgres to be ready
                   for i in $(seq 1 30); do
@@ -166,6 +166,34 @@ spec:
                   if ! gunzip -c /shared/backup.sql.gz | psql -U postgres -d postgres -q 2>/tmp/restore.err; then
                     echo "ERROR: Restore failed"
                     sed -n '1,80p' /tmp/restore.err
+                    exit 1
+                  fi
+
+                  # COMPLETENESS GATE (added 2026-08-13).
+                  #
+                  # The old check was `TABLE_COUNT > 0`, which passes when ONE
+                  # database out of 35 restores. That is exactly what was
+                  # happening: a psql/server major-version mismatch left the
+                  # restore in \restrict mode, every \connect was refused, and
+                  # only the alphabetically-first few databases came back — while
+                  # this job reported "Status: SUCCESS".
+                  #
+                  # Compare what the ARCHIVE claims against what actually landed.
+                  # A DR rehearsal that cannot detect losing 85% of the estate is
+                  # not a rehearsal.
+                  EXPECTED_DBS=$(gunzip -c /shared/backup.sql.gz | grep -c "^CREATE DATABASE" || true)
+                  RESTORED_DBS=$(psql -U postgres -d postgres -tAc "SELECT count(*) FROM pg_database WHERE datistemplate = false AND datname <> 'postgres';")
+                  echo "Databases in archive: ${EXPECTED_DBS}, restored: ${RESTORED_DBS}"
+
+                  if [ "${EXPECTED_DBS}" -lt 1 ]; then
+                    echo "ERROR: archive declares no databases — it is not a cluster dump"
+                    exit 1
+                  fi
+
+                  if [ "${RESTORED_DBS}" -lt "${EXPECTED_DBS}" ]; then
+                    echo "ERROR: INCOMPLETE RESTORE — archive has ${EXPECTED_DBS} databases, only ${RESTORED_DBS} restored"
+                    echo "First 40 lines of restore stderr:"
+                    sed -n '1,40p' /tmp/restore.err
                     exit 1
                   fi
 
@@ -219,10 +247,10 @@ spec:
                   # plus dirty page cache while writing PGDATA, with ~2x headroom
                   # so ordinary data growth does not resurrect the OOM.
                   # Revisit when total prod data passes ~4 GB.
-                  memory: "384Mi"
+                  memory: "512Mi"
                   cpu: "100m"
                 limits:
-                  memory: "1Gi"
+                  memory: "3Gi"
                   cpu: "1000m"
               volumeMounts:
                 - name: temp-data
