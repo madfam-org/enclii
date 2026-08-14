@@ -18,7 +18,7 @@ import (
 const (
 	AnnotationR2Bucket        = "enclii.dev/r2-bucket"
 	AnnotationR2Project       = "enclii.dev/r2-project"
-	AnnotationR2TokenName     = "enclii.dev/r2-token-name"
+	AnnotationR2TokenName     = "enclii.dev/r2-token-name" // #nosec G101 -- annotation key, not a token
 	AnnotationR2ProvisionedAt = "enclii.dev/r2-provisioned-at"
 )
 
@@ -32,10 +32,10 @@ const (
 const (
 	FindingMissingCredentials = "missing_credentials"
 	FindingBucketMismatch     = "bucket_mismatch"
-	FindingSharedCredentials  = "shared_credentials"
+	FindingSharedCredentials  = "shared_credentials" // #nosec G101 -- finding label, not a credential
 	FindingBucketShared       = "bucket_shared_across_namespaces"
 	FindingUnmanaged          = "unmanaged_credentials"
-	FindingOrphanCredentials  = "orphan_credentials"
+	FindingOrphanCredentials  = "orphan_credentials" // #nosec G101 -- finding label, not a credential
 )
 
 // R2SecretBinding is the non-secret summary of the R2 configuration found in

@@ -52,7 +52,7 @@ const (
 
 	// r2TokenNamePrefix marks tokens minted by this provisioner so they can be
 	// identified (and revoked) later.
-	r2TokenNamePrefix = "enclii-r2"
+	r2TokenNamePrefix = "enclii-r2" // #nosec G101 -- token NAME prefix, not a token
 
 	// cloudflareTimeout bounds every Cloudflare API call.
 	cloudflareTimeout = 30 * time.Second
@@ -61,9 +61,9 @@ const (
 // R2 secret keys written into the service's credential Secret. Exported
 // because the drift guard matches on exactly these names.
 const (
-	SecretKeyR2Bucket          = "R2_BUCKET_NAME"
-	SecretKeyR2Endpoint        = "R2_ENDPOINT_URL"
-	SecretKeyR2AccessKeyID     = "R2_ACCESS_KEY_ID"
+	SecretKeyR2Bucket          = "R2_BUCKET_NAME"   // #nosec G101 -- Secret key name, not a value
+	SecretKeyR2Endpoint        = "R2_ENDPOINT_URL"  // #nosec G101 -- Secret key name, not a value
+	SecretKeyR2AccessKeyID     = "R2_ACCESS_KEY_ID" // #nosec G101 -- Secret key name, not a value
 	SecretKeyR2SecretAccessKey = "R2_SECRET_ACCESS_KEY"
 	SecretKeyStorageBackend    = "STORAGE_BACKEND"
 
