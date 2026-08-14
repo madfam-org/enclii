@@ -38,6 +38,31 @@ func ValidateSecretValue(key, value string) error {
 	return nil
 }
 
+// r2BucketNameRe matches Cloudflare R2 bucket names: 3-63 chars, lowercase
+// alphanumerics and hyphens, starting and ending alphanumeric.
+var r2BucketNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+
+// ValidateR2BucketName checks that a name is a legal R2 bucket name.
+//
+// This is a security boundary as much as a usability one: the bucket name is
+// interpolated into a Cloudflare API path AND into the token's resource
+// identifier (com.cloudflare.edge.r2.bucket.<account>_<jurisdiction>_<name>).
+// An unvalidated name containing "_" or "/" could widen a token's scope beyond
+// the intended bucket.
+func ValidateR2BucketName(name string) error {
+	if name == "" {
+		return fmt.Errorf("R2 bucket name is required")
+	}
+	if !r2BucketNameRe.MatchString(name) {
+		return fmt.Errorf("R2 bucket name %q is invalid: must be 3-63 characters of "+
+			"lowercase letters, digits, and hyphens, starting and ending alphanumeric", name)
+	}
+	if strings.Contains(name, "--") {
+		return fmt.Errorf("R2 bucket name %q is invalid: consecutive hyphens are not allowed", name)
+	}
+	return nil
+}
+
 // ValidateExtensionName checks that a Postgres extension name is safe.
 func ValidateExtensionName(name string) error {
 	// Extensions use the same identifier rules but also allow hyphens

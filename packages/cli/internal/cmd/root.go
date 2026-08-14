@@ -89,6 +89,9 @@ Learn more at https://enclii.dev`,
 	// Managed-DB addons (P3.1 Sprint 1)
 	rootCmd.AddCommand(NewAddonCommand(cfg))
 
+	// Object storage buckets (Cloudflare R2) — day-2 lifecycle
+	rootCmd.AddCommand(NewStorageCommand(cfg))
+
 	// Tenant data export (P3.6)
 	rootCmd.AddCommand(NewExportCommand(cfg))
 

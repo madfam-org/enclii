@@ -23,6 +23,7 @@ func newAdminGAVerifyCommand(cfg *config.Config) *cobra.Command {
   - Longhorn CPU settings plan (admin dry-run)
   - Detached Longhorn orphan prune plan (admin dry-run)
   - node-maintenance CronJob presence (admin read)
+  - R2 credential isolation (no shared, borrowed, or missing bucket keys)
 
 With --stability, also runs Wave 1 read-only checks (Argo drift, Vault readiness).
 
@@ -127,6 +128,28 @@ func runAdminGAVerify(cmd *cobra.Command, cfg *config.Config, jsonOut, stability
 		add("node maintenance cronjob", "pass", "node-maintenance CronJob present in enclii namespace")
 	} else {
 		add("node maintenance cronjob", "warn", jobsRead.Summary)
+	}
+
+	// Object-storage credential isolation. A critical finding here means some
+	// service is either configured for R2 with no keys of its own, or is
+	// holding credentials that belong to another service — both of which have
+	// already caused a production incident, so this fails rather than warns.
+	var r2Audit operationResponse
+	r2Req := operationRequest{
+		Operation: "ops.storage.r2-audit",
+		DryRun:    true,
+	}
+	if err := apiRequest(cmd.Context(), cfg, "POST", "/v1/ops/storage/r2-audit", r2Req, &r2Audit); err != nil {
+		add("r2 credential isolation", "warn", err.Error())
+	} else if r2Audit.Status == "succeeded" {
+		if critical := intFromAny(nestedAny(r2Audit.Data, "critical_count")); critical > 0 {
+			add("r2 credential isolation", "fail", fmt.Sprintf(
+				"criticalCount=%d — run enclii ops storage r2-audit", critical))
+		} else {
+			add("r2 credential isolation", "pass", r2Audit.Summary)
+		}
+	} else {
+		add("r2 credential isolation", "fail", r2Audit.Summary)
 	}
 
 	if stability {

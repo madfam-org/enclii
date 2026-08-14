@@ -129,28 +129,28 @@ func (h *Handler) ProvisionR2(c *gin.Context) {
 	h.logger.Info(ctx, "Provisioning R2 bucket",
 		logging.String("bucket", req.BucketName))
 
-	r2Entries, err := h.r2Provisioner.CreateBucket(ctx, req.BucketName)
+	// Shares the day-2 implementation, so this operator path also mints
+	// bucket-scoped credentials and records provenance rather than writing a
+	// bucket name with no keys behind it.
+	result, err := h.ensureProjectR2Bucket(ctx, r2ProvisionOptions{
+		Project:   req.Namespace,
+		Namespace: req.Namespace,
+		Bucket:    req.BucketName,
+	})
 	if err != nil {
 		h.logger.Error(ctx, "R2 provisioning failed",
 			logging.String("bucket", req.BucketName),
 			logging.Error("error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(r2ProvisionStatusCode(err), gin.H{"error": err.Error()})
 		return
 	}
 
-	// Optionally add R2 creds to the K8s secret
-	if h.secretsProvisioner != nil && req.Namespace != "" {
-		project := req.Namespace
-		if err := h.secretsProvisioner.AppendEntries(ctx, req.Namespace, project, "", r2Entries); err != nil {
-			h.logger.Warn(ctx, "Failed to append R2 creds to K8s secret (non-fatal)",
-				logging.String("namespace", req.Namespace),
-				logging.Error("error", err))
-		}
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"status":      "provisioned",
-		"bucket":      req.BucketName,
-		"credentials": len(r2Entries),
+		"status":      result.Action,
+		"bucket":      result.Bucket,
+		"namespace":   result.Namespace,
+		"secret_name": result.SecretName,
+		"credentials": len(result.SecretKeys),
+		"warnings":    result.Warnings,
 	})
 }

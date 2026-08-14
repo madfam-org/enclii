@@ -153,6 +153,43 @@ func TestValidateExtensionName(t *testing.T) {
 	}
 }
 
+// TestValidateR2BucketName covers the bucket-name boundary. It matters beyond
+// usability: the name is interpolated into the Cloudflare API path AND into
+// the token's resource identifier
+// (com.cloudflare.edge.r2.bucket.<account>_<jurisdiction>_<name>), where a
+// stray underscore or slash could widen the token's scope past one bucket.
+func TestValidateR2BucketName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid simple", "karafiel-documents", false},
+		{"valid digits", "bucket-123", false},
+		{"valid minimum length", "abc", false},
+		{"empty", "", true},
+		{"too short", "ab", true},
+		{"too long", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true},
+		{"uppercase", "Karafiel", true},
+		{"underscore widens the token resource id", "karafiel_documents", true},
+		{"slash escapes the api path", "karafiel/documents", true},
+		{"leading hyphen", "-karafiel", true},
+		{"trailing hyphen", "karafiel-", true},
+		{"consecutive hyphens", "karafiel--documents", true},
+		{"space", "karafiel documents", true},
+		{"dot", "karafiel.documents", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateR2BucketName(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateR2BucketName(%q): wantErr=%v, got err=%v", tt.input, tt.wantErr, err)
+			}
+		})
+	}
+}
+
 // contains is a helper to check substring presence without importing strings in tests.
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
