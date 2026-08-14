@@ -148,14 +148,10 @@ func (h *Handler) handleOperatorOperation(c *gin.Context, prefix, domain, action
 
 func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, bool) {
 	if prefix == "providers" {
-		if domain == "cloudflare" && action == "dns-apply" {
-			return h.handleProviderCloudflareDNSApplyDryRun(ctx, operation, req), true
-		}
-		if domain == "cloudflare" && action == "zone-add-apply" {
-			return h.handleProviderCloudflareZoneAddApplyDryRun(ctx, operation, req), true
-		}
-		if domain == "cloudflare" && action == "tunnels-apply" {
-			return h.handleProviderCloudflareTunnelsApplyDryRun(ctx, operation, req), true
+		if domain == "cloudflare" {
+			if resp, ok := h.cloudflareDryRunDispatch(ctx, action, operation, req); ok {
+				return resp, true
+			}
 		}
 		if domain == "porkbun" && action == "dns-apply" {
 			return h.handleProviderPorkbunDNSApplyDryRun(ctx, operation, req), true
@@ -286,17 +282,10 @@ func (h *Handler) handleApplyOperatorDryRun(ctx context.Context, prefix, domain,
 }
 
 func (h *Handler) handleApplyOperatorOperation(ctx context.Context, prefix, domain, action, operation string, req operatorOperationRequest) (operatorOperationResponse, int, bool) {
-	if prefix == "providers" && domain == "cloudflare" && action == "dns-apply" {
-		resp, statusCode := h.handleProviderCloudflareDNSApply(ctx, operation, req)
-		return resp, statusCode, true
-	}
-	if prefix == "providers" && domain == "cloudflare" && action == "zone-add-apply" {
-		resp, statusCode := h.handleProviderCloudflareZoneAddApply(ctx, operation, req)
-		return resp, statusCode, true
-	}
-	if prefix == "providers" && domain == "cloudflare" && action == "tunnels-apply" && h.tunnelRoutesService != nil {
-		resp, statusCode := h.handleProviderCloudflareTunnelsApply(ctx, operation, req)
-		return resp, statusCode, true
+	if prefix == "providers" && domain == "cloudflare" {
+		if resp, statusCode, ok := h.cloudflareApplyDispatch(ctx, action, operation, req); ok {
+			return resp, statusCode, true
+		}
 	}
 	if prefix == "providers" && domain == "porkbun" && action == "dns-apply" {
 		resp, statusCode := h.handleProviderPorkbunDNSApply(ctx, operation, req)
