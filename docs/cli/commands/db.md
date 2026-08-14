@@ -25,7 +25,7 @@ The `db` subtree exposes read-only inspection of the platform Postgres instance:
 
 Mutating operations (`backup`, `restore`, point-in-time recovery) are intentionally **not** in this CLI. Run them through `kubectl exec` into the `pgbackrest` sidecar under operator supervision; see `docs/runbooks/POSTGRES_WAL_ARCHIVING.md` for the procedure.
 
-> Note: `enclii db` and `enclii addon` are different subtrees. `enclii addon` is also reachable via the alias `enclii db`, but the `wal-status` subcommand documented here lives only under `enclii db wal-status`.
+> Note: `enclii db` and [`enclii addon`](./addon.md) are different subtrees. `enclii db` inspects the **platform** Postgres; `enclii addon` provisions **per-service managed** Postgres. There is no alias between them — to create or list addons, run `enclii addon create` / `enclii addon ls`.
 
 ## Subcommands
 
