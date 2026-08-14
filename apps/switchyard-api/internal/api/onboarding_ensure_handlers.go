@@ -291,17 +291,14 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	}
 
 	if req.ProvisionR2 != nil {
-		var r2Err error
-		if h.r2Provisioner != nil {
-			r2Entries, bucketErr := h.r2Provisioner.CreateBucket(ctx, req.ProvisionR2.BucketName)
-			if bucketErr != nil {
-				r2Err = bucketErr
-			} else if h.secretsProvisioner != nil {
-				r2Err = h.secretsProvisioner.AppendEntries(ctx, namespace, req.ProjectName, req.SecretName, r2Entries)
-			}
-		} else {
-			r2Err = fmt.Errorf("not configured (Cloudflare credentials not set)")
-		}
+		// Same code path as `enclii storage create`: complete credentials or a
+		// failed step. Never STORAGE_BACKEND=r2 with no access keys.
+		_, r2Err := h.ensureProjectR2Bucket(ctx, r2ProvisionOptions{
+			Project:    req.ProjectName,
+			Namespace:  namespace,
+			SecretName: req.SecretName,
+			Bucket:     req.ProvisionR2.BucketName,
+		})
 		h.recordStep(ctx, &steps, "r2", false, r2Err)
 	}
 

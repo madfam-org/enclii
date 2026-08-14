@@ -14,7 +14,7 @@ var operatorReadActions = map[string]map[string]map[string]bool{
 		"apps":       {"status": true, "diff": true},
 		"pods":       {"diagnose": true, "logs": true},
 		"jobs":       {"list": true},
-		"storage":    {"volumes": true, "pvc": true, "longhorn": true},
+		"storage":    {"volumes": true, "pvc": true, "longhorn": true, "r2-audit": true},
 		"secrets":    {"external": true, "vault": true},
 		"policy":     {"violations": true, "exceptions": true},
 		"runners":    {"arc": true},
@@ -158,6 +158,11 @@ func (h *Handler) handleOpsReadOperation(ctx context.Context, domain, action, op
 			return operatorReadFailed(operation, domain, action, err)
 		}
 		return operatorReadSuccess(operation, domain, action, data)
+	case "storage.r2-audit":
+		if h.opsKubeClient() == nil {
+			return operatorReadUnavailable(operation, domain, action, "kubernetes typed client is not configured on switchyard-api")
+		}
+		return h.handleOpsStorageR2Audit(ctx, operation, domain, action, req)
 	case "storage.longhorn":
 		return h.readDynamicOperatorResources(ctx, operation, domain, action, req, schema.GroupVersionResource{Group: "longhorn.io", Version: "v1beta2", Resource: "volumes"}, "longhorn-system")
 	case "secrets.external":

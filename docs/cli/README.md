@@ -139,6 +139,7 @@ enclii deploy --env production
 | [`jobs`](./commands/jobs.md) | Manage cron and one-off scheduled jobs |
 | [`junctions`](./commands/junctions.md) | Manage routing rules and ingress configuration |
 | [`addon`](./commands/addon.md) | Manage database addons (managed Postgres) |
+| [`buckets`](./commands/buckets.md) | Manage object storage buckets (Cloudflare R2) |
 | [`webhooks`](./commands/webhooks.md) | Manage outbound lifecycle webhook subscriptions |
 
 ### Teams & collaboration

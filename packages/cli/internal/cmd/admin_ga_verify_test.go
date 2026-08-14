@@ -36,6 +36,8 @@ func TestAdminGAVerify_PassWithMockedEndpoints(t *testing.T) {
 			_, _ = w.Write([]byte(`{"operation":"ops.storage.prune-detached","status":"succeeded","dry_run":true,"summary":"no detached Longhorn volumes to prune"}`))
 		case "/v1/ops/jobs/list":
 			_, _ = w.Write([]byte(`{"operation":"ops.jobs.list","status":"succeeded","dry_run":true,"summary":"jobs.list read completed through Enclii"}`))
+		case "/v1/ops/storage/r2-audit":
+			_, _ = w.Write([]byte(`{"operation":"ops.storage.r2-audit","status":"succeeded","dry_run":true,"summary":"3 R2 binding(s) checked","data":{"critical_count":0}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -67,6 +69,8 @@ func TestAdminGAVerify_StabilityWithMockedEndpoints(t *testing.T) {
 			_, _ = w.Write([]byte(`{"operation":"ops.storage.prune-detached","status":"succeeded","dry_run":true,"summary":"no detached Longhorn volumes to prune"}`))
 		case "/v1/ops/jobs/list":
 			_, _ = w.Write([]byte(`{"operation":"ops.jobs.list","status":"succeeded","dry_run":true,"summary":"jobs.list read completed through Enclii"}`))
+		case "/v1/ops/storage/r2-audit":
+			_, _ = w.Write([]byte(`{"operation":"ops.storage.r2-audit","status":"succeeded","dry_run":true,"summary":"3 R2 binding(s) checked","data":{"critical_count":0}}`))
 		case "/v1/ops/apps/diff":
 			_, _ = w.Write([]byte(`{"operation":"ops.apps.diff","status":"succeeded","dry_run":true,"data":{"driftedCount":0}}`))
 		case "/v1/ops/secrets/vault":

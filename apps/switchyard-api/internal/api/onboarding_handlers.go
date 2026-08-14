@@ -333,18 +333,18 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	}
 
 	// Step: Create R2 bucket (optional, important)
+	//
+	// Delegates to the day-2 implementation so onboarding and
+	// `enclii storage create` cannot drift apart. Historically this branch
+	// wrote STORAGE_BACKEND=r2 with no access keys, leaving the service
+	// configured for object storage it could not authenticate to.
 	if req.ProvisionR2 != nil {
-		var r2Err error
-		if h.r2Provisioner != nil {
-			r2Entries, bucketErr := h.r2Provisioner.CreateBucket(ctx, req.ProvisionR2.BucketName)
-			if bucketErr != nil {
-				r2Err = bucketErr
-			} else if h.secretsProvisioner != nil {
-				r2Err = h.secretsProvisioner.AppendEntries(ctx, namespace, req.ProjectName, req.SecretName, r2Entries)
-			}
-		} else {
-			r2Err = fmt.Errorf("not configured (Cloudflare credentials not set)")
-		}
+		_, r2Err := h.ensureProjectR2Bucket(ctx, r2ProvisionOptions{
+			Project:    req.ProjectName,
+			Namespace:  namespace,
+			SecretName: req.SecretName,
+			Bucket:     req.ProvisionR2.BucketName,
+		})
 		h.recordStep(ctx, &steps, "r2", false, r2Err)
 	}
 
