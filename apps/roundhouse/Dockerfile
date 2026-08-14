@@ -22,14 +22,14 @@
 # =============================================================================
 
 # Build stage
-FROM public.ecr.aws/docker/library/golang:1.26.5-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.6-alpine AS builder
 
 WORKDIR /app
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates
 
-# Build cosign from source with the pinned CI Go toolchain (1.26.5).
+# Build cosign from source with the pinned CI Go toolchain (1.26.6).
 # The official release binaries are compiled with an older Go stdlib that
 # carries HIGH CVEs, so building here keeps the worker image free of known
 # HIGH/CRITICAL findings while pinning the cosign version (same pattern as
