@@ -33,8 +33,13 @@ import (
 // See docs/architecture/managed-db-addon.md for the full design.
 func NewAddonCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "addon",
-		Aliases: []string{"addons", "db"},
+		Use: "addon",
+		// Do NOT add "db" here: a real top-level `enclii db` command exists
+		// (db.go). cobra matches names and aliases with equal precedence in
+		// slice order, so a "db" alias never routes reliably — it only
+		// threatens to steal `enclii db wal-status`. See the rationale in
+		// alias_collision_test.go, which enforces this tree-wide.
+		Aliases: []string{"addons"},
 		Short:   "Manage database addons (managed Postgres)",
 		Long: `Manage database addons — fresh isolated Postgres instances
 scoped to your service, credentials auto-injected as DATABASE_URL.

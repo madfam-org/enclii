@@ -8,7 +8,7 @@ Manage database addons — fresh, isolated managed Postgres instances scoped to 
 enclii addon <subcommand> [flags]
 ```
 
-**Aliases:** `addons`, `db`
+**Aliases:** `addons`
 
 ## Description
 
@@ -118,7 +118,8 @@ enclii addon destroy 123e4567-e89b-12d3-a456-426614174000 --yes
 
 - Addon names are namespaced inside the project; they need only be unique within a project.
 - The bound service rolls automatically once the credentials secret exists.
-- `enclii addon` is the canonical name; `enclii db` is a top-level alias for the same subtree.
+- `enclii addon` is the canonical name; `enclii addons` is the only alias.
+- `enclii db` is a **different** command ([`db`](./db.md) — read-only platform Postgres inspection) and has never reached this subtree. Use `enclii addon …` for every addon operation.
 
 ## Exit Codes
 
