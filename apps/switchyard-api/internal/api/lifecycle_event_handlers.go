@@ -303,13 +303,37 @@ func (h *Handler) createDeploymentFromLifecycleEvent(ctx context.Context, req ty
 		}
 	}
 
+	// Resolve by name, but ONLY accept a service that belongs to the repo that
+	// sent the event.
+	//
+	// ServiceRepository.GetByName is `SELECT ... FROM services WHERE name = $1`
+	// with no project filter, so a bare candidate like "landing" or "web"
+	// matches whichever service in the WHOLE platform carries that name.
+	// Nothing in a lifecycle callback identifies the project, so without this
+	// check one project's CI can attach a Release — and then a Deployment
+	// record — to a DIFFERENT project's service. The image URI in that Release
+	// would point at the sending repo's package, which is how a deploy of the
+	// wrong image to the wrong service becomes possible from an ordinary build.
+	//
+	// The repo IS the ownership fact we have, so it is what we verify against.
+	// A candidate whose service belongs to someone else is skipped rather than
+	// accepted, and resolution continues — the project-qualified candidate is
+	// usually next in the list.
 	var service *types.Service
 	for _, candidate := range candidates {
 		svc, err := h.repos.Services.GetByName(candidate)
-		if err == nil {
-			service = svc
-			break
+		if err != nil {
+			continue
 		}
+		if !serviceBelongsToRepo(svc, req.RepoFullName) {
+			h.logger.Warn(ctx, "Rejecting cross-project service match for lifecycle event",
+				logging.String("candidate", candidate),
+				logging.String("matched_service_repo", svc.GitRepo),
+				logging.String("event_repo", req.RepoFullName))
+			continue
+		}
+		service = svc
+		break
 	}
 	// Fallback: look up by git repo URL (handles mono-service repos
 	// where the DB service name doesn't match image-derived candidates)
@@ -551,4 +575,44 @@ func buildOutboundData(event *types.DeploymentLifecycleEvent) map[string]any {
 		data["meta_"+k] = v
 	}
 	return data
+}
+
+// serviceBelongsToRepo reports whether a service record is owned by the given
+// GitHub repo (`owner/name`).
+//
+// It exists because Services.GetByName is not project-scoped, so a name match
+// alone is not evidence of ownership. See the resolution loop in
+// createDeploymentFromLifecycleEvent.
+//
+// An EMPTY repo on either side returns true. That is deliberate and is the
+// conservative choice here: services onboarded before git_repo was consistently
+// populated have no URL to compare, and refusing them would stop recording
+// releases for working services in order to prevent a collision that may not
+// exist. The check tightens the common case without introducing a new way for
+// deploys to silently stop.
+func serviceBelongsToRepo(svc *types.Service, repoFullName string) bool {
+	if svc == nil {
+		return false
+	}
+	if svc.GitRepo == "" || repoFullName == "" {
+		return true
+	}
+	return normalizeRepoRef(svc.GitRepo) == normalizeRepoRef(repoFullName)
+}
+
+// normalizeRepoRef reduces the several shapes a repo is written in to
+// "owner/name", lowercased. Seen in the wild across service records and
+// callbacks: "https://github.com/org/repo", "https://github.com/org/repo.git",
+// "git@github.com:org/repo.git", a trailing slash, and the bare "org/repo" a
+// lifecycle event carries.
+func normalizeRepoRef(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, "/")
+	s = strings.TrimSuffix(s, ".git")
+	if i := strings.Index(s, "github.com"); i >= 0 {
+		s = s[i+len("github.com"):]
+		s = strings.TrimPrefix(s, "/")
+		s = strings.TrimPrefix(s, ":")
+	}
+	return strings.ToLower(s)
 }
