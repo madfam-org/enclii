@@ -34,8 +34,21 @@ RUN apk add --no-cache git ca-certificates
 # carries HIGH CVEs, so building here keeps the worker image free of known
 # HIGH/CRITICAL findings while pinning the cosign version (same pattern as
 # apps/switchyard-api/Dockerfile).
-ENV COSIGN_VERSION=v3.1.1
-RUN CGO_ENABLED=0 GOBIN=/usr/local/bin go install "github.com/sigstore/cosign/v3/cmd/cosign@${COSIGN_VERSION}"
+ENV COSIGN_VERSION=v3.1.3
+# Built from a clone, not `go install`, because upstream cosign v3.1.3 still
+# pins two dependencies below their fixed versions — golang.org/x/text
+# v0.38.0 (CVE-2026-56852, fixed 0.39.0) and google.golang.org/grpc v1.82.0
+# (GHSA-hrxh-6v49-42gf, fixed 1.82.1). `go install pkg@version` builds in
+# module-authoritative mode and offers no way to raise them, so the scan
+# fails on a binary we compile ourselves. A clone lets us `go get` exactly
+# those two and nothing else. Drop this back to `go install` the moment a
+# cosign release carries both fixes.
+RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
+    cd /tmp/cosign-src && \
+    go get golang.org/x/text@v0.39.0 google.golang.org/grpc@v1.82.1 && \
+    go mod tidy && \
+    CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
+    rm -rf /tmp/cosign-src
 
 # Build syft from source for the same reason (the release binary currently
 # ships a Go 1.26.3 stdlib with 2 HIGH findings, and the previous install.sh
