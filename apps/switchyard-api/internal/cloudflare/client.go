@@ -111,6 +111,21 @@ func (c *Client) put(ctx context.Context, path string, body io.Reader, result in
 	return c.handleResponse(resp, result)
 }
 
+// patch performs a PATCH request and decodes the response.
+//
+// Zone settings are the reason this exists: Cloudflare's
+// /zones/{id}/settings/{setting} endpoint takes PATCH, and PUT is not an
+// accepted substitute there.
+func (c *Client) patch(ctx context.Context, path string, body io.Reader, result interface{}) error {
+	resp, err := c.doRequest(ctx, http.MethodPatch, path, nil, body)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return c.handleResponse(resp, result)
+}
+
 // post performs a POST request and decodes the response
 func (c *Client) post(ctx context.Context, path string, body io.Reader, result interface{}) error {
 	resp, err := c.doRequest(ctx, http.MethodPost, path, nil, body)

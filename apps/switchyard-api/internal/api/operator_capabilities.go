@@ -31,8 +31,8 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "storage",
 		Status:      "partial",
-		Description: "PVC/PV/Longhorn reads plus attach-state and repair planning contracts",
-		Actions:     []string{"volumes", "pvc", "longhorn", "repair-plan", "settings-apply", "prune-detached", "storageclass-apply"},
+		Description: "PVC/PV/Longhorn reads, object-storage credential drift audit, plus attach-state and repair planning contracts",
+		Actions:     []string{"volumes", "pvc", "longhorn", "r2-audit", "repair-plan", "settings-apply", "prune-detached", "storageclass-apply"},
 		Scopes:      []string{"namespace", "target"},
 	},
 	{
@@ -77,7 +77,7 @@ var providerCapabilities = []operatorCapability{
 		Name:        "cloudflare",
 		Status:      "partial",
 		Description: "Tunnel/domain sync exists; DNS, Access, R2, SaaS hostname, and credential-readiness ops are contract-first",
-		Actions:     []string{"zones", "zone-add-apply", "dns", "dns-apply", "tunnels", "tunnels-apply", "access", "r2", "hostnames", "credentials"},
+		Actions:     []string{"zones", "zone-add-apply", "zone-settings-apply", "dns", "dns-apply", "tunnels", "tunnels-apply", "access", "r2", "hostnames", "credentials"},
 		Scopes:      []string{"project", "service", "target"},
 	},
 	{
