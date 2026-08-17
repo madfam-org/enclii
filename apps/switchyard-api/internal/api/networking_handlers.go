@@ -297,7 +297,13 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 				return
 			}
 
-			h.ensureTunnelRoute(ctx, domainName, service, env.Name, 80)
+			// BOTH halves, not just the tunnel: `domains add` used to register
+			// the row and print manual DNS instructions while creating neither
+			// the record nor the route (issue #386 — bit eido on 2026-07-10 and
+			// nauta on 2026-08-16, both hand-fixed under break-glass). The
+			// deploy path already had provisionDomainEdge; the CLI path now
+			// takes the same door.
+			edge := h.provisionDomainEdge(ctx, domainName, service, env.Name, 80, nil)
 			ready := false
 			if h.tunnelRoutesService != nil {
 				ready, _ = h.tunnelRoutesService.RouteExists(ctx, domainName)
@@ -305,9 +311,10 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 
 			c.JSON(http.StatusOK, gin.H{
 				"domain":             existing,
-				"message":            fmt.Sprintf("Domain %s already exists. Tunnel route reconciliation requested.", domainName),
+				"message":            fmt.Sprintf("Domain %s already exists. Edge reconciliation requested.", domainName),
 				"tunnel_route_added": ready,
 				"reconciled":         true,
+				"provisioning":       edge,
 			})
 			return
 		}
@@ -385,14 +392,27 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 		go h.triggerDomainReconciliation(ctx, serviceUUID, envUUID)
 	}
 
+	// Establish the edge NOW — tunnel ingress rule plus the DNS record (zone
+	// CNAME for hostnames in zones this account controls, custom hostname for
+	// client-owned domains). Before this call, `domains add` wrote the row and
+	// answered with manual instructions while zone records stayed at zero and
+	// the tunnel config never mentioned the host (issue #386). The manifest
+	// deploy path has taken this exact door all along; the mechanism decision
+	// (zone vs SaaS) and the zone RESOLUTION-BY-HOSTNAME both live inside it,
+	// so a madfam.io host can never be written into the enclii.dev zone.
+	edge := h.provisionDomainEdge(ctx, domainName, service, env.Name, 80, nil)
+
 	// Build response
 	response := gin.H{
-		"domain":  domain,
-		"message": "Domain added successfully",
+		"domain":       domain,
+		"message":      "Domain added successfully",
+		"provisioning": edge,
 	}
 
-	// Add DNS instructions for custom domains
-	if !req.IsPlatformDomain {
+	// Manual DNS instructions remain ONLY for the case that still needs a
+	// human: a client-owned domain whose records we cannot write. A hostname
+	// the edge just provisioned gets no homework.
+	if !req.IsPlatformDomain && edge.WaitingOnClient() {
 		response["dns_instructions"] = gin.H{
 			"verification": gin.H{
 				"type":  "TXT",
