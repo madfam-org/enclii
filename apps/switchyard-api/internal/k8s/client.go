@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -349,6 +350,106 @@ func (c *Client) EnsureProjectScopedIngressPolicy(
 // buildProjectScopedIngressPolicy: same shape as the data-access variant but
 // the From namespaceSelector keys on the project label, so only same-project
 // namespaces may reach the selected pods on the port.
+// EnsureAddonNamespaceResourceGuards applies a LimitRange and a ResourceQuota
+// to an addon namespace. The 2026-08-17 audit found these ran ONLY on the
+// service-reconciler path (enclii-* namespaces) and never on addon namespaces
+// (project-*), so a Postgres cluster provisioned with empty CPU/Memory (the
+// legacy or shared-discovered plan) became an UNBOUNDED BestEffort DB pod that
+// could starve its node. The LimitRange's DefaultRequest is the load-bearing
+// piece: it guarantees every container in the namespace gets requests even
+// when the manifest omits them, so nothing lands as BestEffort. The quota is a
+// namespace ceiling so one addon cannot consume the cluster.
+//
+// Idempotent. Non-fatal to the caller: a DB without a quota is worse than one
+// with, but a quota failure must not fail provisioning (the caller logs it).
+func (c *Client) EnsureAddonNamespaceResourceGuards(ctx context.Context, namespace string) error {
+	if err := c.ensureAddonLimitRange(ctx, namespace); err != nil {
+		return err
+	}
+	return c.ensureAddonResourceQuota(ctx, namespace)
+}
+
+func (c *Client) ensureAddonLimitRange(ctx context.Context, namespace string) error {
+	lrClient := c.kubeClient().CoreV1().LimitRanges(namespace)
+	desired := &corev1.LimitRange{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "enclii-addon-default",
+			Namespace: namespace,
+			Labels:    map[string]string{"enclii.dev/managed-by": "onboarding-api"},
+		},
+		Spec: corev1.LimitRangeSpec{
+			Limits: []corev1.LimitRangeItem{{
+				Type: corev1.LimitTypeContainer,
+				// Higher floor than the service default: a database container's
+				// floor is memory, and 128Mi would OOM a real Postgres. This is
+				// the floor applied when a manifest omits requests, not a cap on
+				// what a sized plan may ask for.
+				DefaultRequest: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("256Mi"),
+				},
+				Default: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1Gi"),
+				},
+			}},
+		},
+	}
+	existing, err := lrClient.Get(ctx, desired.Name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		if _, err := lrClient.Create(ctx, desired, metav1.CreateOptions{}); err != nil && !k8serrors.IsAlreadyExists(err) {
+			return fmt.Errorf("create addon LimitRange in %s: %w", namespace, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get addon LimitRange in %s: %w", namespace, err)
+	}
+	desired.ResourceVersion = existing.ResourceVersion
+	if _, err := lrClient.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update addon LimitRange in %s: %w", namespace, err)
+	}
+	return nil
+}
+
+func (c *Client) ensureAddonResourceQuota(ctx context.Context, namespace string) error {
+	quotaClient := c.kubeClient().CoreV1().ResourceQuotas(namespace)
+	desired := &corev1.ResourceQuota{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "enclii-addon-default",
+			Namespace: namespace,
+			Labels:    map[string]string{"enclii.dev/managed-by": "onboarding-api"},
+		},
+		Spec: corev1.ResourceQuotaSpec{
+			// Generous enough for an HA Postgres (3 instances) plus sidecars,
+			// bounded so one addon namespace cannot swallow the node. Operators
+			// raise it per-namespace for a large plan, as they do for service
+			// namespaces today.
+			Hard: corev1.ResourceList{
+				corev1.ResourceRequestsCPU:    resource.MustParse("6"),
+				corev1.ResourceRequestsMemory: resource.MustParse("12Gi"),
+				corev1.ResourceLimitsCPU:      resource.MustParse("12"),
+				corev1.ResourceLimitsMemory:   resource.MustParse("24Gi"),
+			},
+		},
+	}
+	existing, err := quotaClient.Get(ctx, desired.Name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		if _, err := quotaClient.Create(ctx, desired, metav1.CreateOptions{}); err != nil && !k8serrors.IsAlreadyExists(err) {
+			return fmt.Errorf("create addon ResourceQuota in %s: %w", namespace, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get addon ResourceQuota in %s: %w", namespace, err)
+	}
+	desired.ResourceVersion = existing.ResourceVersion
+	if _, err := quotaClient.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update addon ResourceQuota in %s: %w", namespace, err)
+	}
+	return nil
+}
+
 func buildProjectScopedIngressPolicy(
 	namespace, policyName, projectID string, podSelectorLabels map[string]string, port int32,
 ) *networkingv1.NetworkPolicy {
