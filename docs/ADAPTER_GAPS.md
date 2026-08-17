@@ -20,6 +20,26 @@ When closing a gap, remove the row and link the PR that added the adapter.
 
 ## Progress log
 
+### 2026-08-17 — `domains add` provisions the edge (issue #386 closed)
+
+`enclii domains add` used to write the `custom_domains` row and print manual
+DNS instructions while creating **neither** the DNS record nor the tunnel
+ingress rule — reproduced on two platforms (eido 2026-07-10, nauta
+2026-08-16), both hand-fixed under break-glass §4. The manifest deploy path
+already called `provisionDomainEdge`; the CLI/API path now takes the same
+door on both the create and already-registered branches
+(`internal/api/networking_handlers.go` `AddServiceDomain`).
+
+Because the machinery already existed, this also closes the two sharp edges
+the issue named: **zone resolution by hostname** (`bestZoneMatch` in
+`internal/cloudflare/dns.go` — a `madfam.io` host can never be written into
+the stored `enclii.dev` zone default) and the tunnel config write preserves
+the catch-all rule. Manual `dns_instructions` now appear ONLY for a
+client-owned domain whose records the platform cannot write.
+
+PR: fix/domains-add-provisions-edge.
+
+
 ### 2026-07-12 — ArgoCD Application poller lands (ships dark)
 
 Implemented adapter option 1 from the row below: a read-only ArgoCD `Application`
