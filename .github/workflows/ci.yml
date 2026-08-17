@@ -411,6 +411,7 @@ jobs:
       # comment is still here after that, the exemption is overdue and should be
       # deleted rather than re-dated.
       AGE_RATCHET_EXEMPT_SWITCHYARD_API: "clock-trip during the 2026-08-07 Loki incident; digest 2026-07-07 is 31d; rebuild+repin owed, ETA next switchyard-api build"
+      AGE_RATCHET_EXEMPT_SWITCHYARD_UI: "digest 2026-07-17 crossed 30d on 2026-08-17; no code change owed, rebuild+repin only (a deploy this PR cannot do); ETA next switchyard-ui build. Delete when repinned."
       AGE_RATCHET_EXEMPT_WAYBILL: "stable manifest serializer, no upstream CVE pressure; ETA 2026-06 alongside roundhouse"
       PYTHONUNBUFFERED: "1"
     steps:
