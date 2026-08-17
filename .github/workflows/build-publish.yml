@@ -518,6 +518,21 @@ jobs:
           fi
           git add -- "$target"
           git commit -m "ci: pin image digests from ${{ github.sha }}"
+          # The push races anything that lands on the branch mid-build (a
+          # docs merge is enough) and a non-fast-forward here strands BUILT,
+          # SIGNED digests unpinned — with `gh run rerun` useless, because a
+          # rerun re-checks-out the ORIGINAL stale SHA (bit accionables-madlab
+          # 2026-08-17 and nauta the same day, run 32063785498). Rebase and
+          # retry: the pin commit touches only the kustomization, so replaying
+          # it over whatever landed is exactly the integration we want; a real
+          # conflict on the kustomization itself still fails loudly below.
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "push attempt ${attempt} rejected (non-fast-forward?); rebasing onto fresh ${GITHUB_REF_NAME}"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+          done
           git push
 
       # Registering a Release is not optional bookkeeping. Enclii's reconciler
