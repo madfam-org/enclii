@@ -35,8 +35,11 @@ func TestConstants(t *testing.T) {
 		})
 	}
 
-	if DefaultPostgresVersion != 16 {
-		t.Errorf("DefaultPostgresVersion = %d, want 16", DefaultPostgresVersion)
+	// 18 is deliberate (2026-08-17): the pruned-postgresVersion era deployed
+	// 18.x while claiming 16, so the honest default matches the fleet. Move
+	// this assertion WITH the constant when the default is next raised.
+	if DefaultPostgresVersion != 18 {
+		t.Errorf("DefaultPostgresVersion = %d, want 18", DefaultPostgresVersion)
 	}
 	if DefaultInstances != 1 {
 		t.Errorf("DefaultInstances = %d, want 1", DefaultInstances)
