@@ -1,5 +1,13 @@
 # Managed Postgres Addon Backups
 
+> **Boundary checkpoint (2026-08-17, platform on-call):** Public-safe runbook —
+> no secrets or production topology beyond this repo's own IaC; the R2 bucket
+> names and env keys here are configuration contracts, not values. Private
+> operational detail and the incident sink live in `internal-devops` (2026-08-17
+> enclii platform security audit). Policy: `docs/PUBLIC_REPO_BOUNDARY.md`
+> (repo-boundary contract).
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: raw `kubectl` below is bootstrap /
 > break-glass only. The recurring path is switchyard's provisioner, which
