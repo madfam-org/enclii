@@ -42,8 +42,8 @@ var cnpgScheduledBackupGVR = schema.GroupVersionResource{
 // the values change only with a redeploy, and reading late means a test can
 // set them per case.
 //
-//   ENCLII_ADDON_BACKUP_DESTINATION_BASE  e.g. s3://enclii-db-backups
-//   ENCLII_ADDON_BACKUP_ENDPOINT_URL      the R2 S3 endpoint
+//	ENCLII_ADDON_BACKUP_DESTINATION_BASE  e.g. s3://enclii-db-backups
+//	ENCLII_ADDON_BACKUP_ENDPOINT_URL      the R2 S3 endpoint
 //
 // Empty destination base = backups NOT configured. Provision then proceeds —
 // a database without backups beats no database — but says so at ERROR level

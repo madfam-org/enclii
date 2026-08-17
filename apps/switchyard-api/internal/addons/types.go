@@ -163,7 +163,7 @@ const (
 	BackupCredentialsSourceNS   = "enclii"
 	BackupRetention             = "30d"
 	BackupSchedule              = "0 0 4 * * *" // daily 04:00 UTC (22:00 CDMX)
-	DefaultUser            = "app"
+	DefaultUser                 = "app"
 
 	// CloudNativePG constants
 	CloudNativePGAPIVersion = "postgresql.cnpg.io/v1"
