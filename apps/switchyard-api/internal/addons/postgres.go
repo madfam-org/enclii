@@ -208,7 +208,14 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 
 	// Add monitoring if available
 	spec["monitoring"] = map[string]interface{}{
-		"enablePodMonitor": false, // Can be enabled when monitoring stack is ready
+		// Deep DB metrics (pg_up, connections, replication lag) need a PodMonitor
+		// selector that covers project-* namespaces plus a postgres-exporter per
+		// addon; that Prometheus-side wiring is a tracked follow-up (2026-08-17
+		// audit #4). Until it lands, pod/deploy/backup ALERTS for client DBs come
+		// from the cluster-wide kube-state-metrics rules (rescoped in
+		// prometheus-platform-rules.yaml), so a crashlooping/failed-backup client
+		// DB now pages even without the exporter.
+		"enablePodMonitor": false,
 	}
 
 	return cluster

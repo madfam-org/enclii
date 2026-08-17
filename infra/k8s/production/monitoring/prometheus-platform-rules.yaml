@@ -209,7 +209,7 @@ spec:
       rules:
         - alert: PodCrashLooping
           expr: |
-            increase(kube_pod_container_status_restarts_total{namespace=~"enclii|data|monitoring"}[1h]) > 3
+            increase(kube_pod_container_status_restarts_total{namespace=~"enclii|data|monitoring|project-.*|enclii-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[1h]) > 3
           for: 5m
           labels:
             severity: warning
@@ -220,8 +220,8 @@ spec:
 
         - alert: DeploymentUnavailable
           expr: |
-            kube_deployment_status_replicas_available{namespace="enclii"}
-            < kube_deployment_spec_replicas{namespace="enclii"}
+            kube_deployment_status_replicas_available{namespace=~"enclii|project-.*|enclii-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
+            < kube_deployment_spec_replicas{namespace=~"enclii|project-.*|enclii-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
           for: 5m
           labels:
             severity: critical
@@ -238,7 +238,7 @@ spec:
       rules:
         - alert: BackupJobFailed
           expr: |
-            kube_job_status_failed{namespace="data",job_name=~"postgres-backup.*"} > 0
+            kube_job_status_failed{namespace=~"data|project-.*",job_name=~"postgres-backup.*|.*-backup.*"} > 0
           for: 0m
           labels:
             severity: critical
