@@ -915,7 +915,7 @@ jobs:
           # numbers do not cover.
           declare -A BASELINE=(
             [apps/roundhouse]=1
-            [apps/switchyard-api]=1
+            [apps/switchyard-api]=0 # was 1 (a G304 in the dead internal/backup stub, deleted 2026-08-17)
             [apps/waybill]=0
             [packages/cli]=14
             [packages/otel-go]=0
