@@ -1,10 +1,15 @@
 package k8s
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // Guards the fix for the eido-db go-live incident: every addon namespace gets a
@@ -73,4 +78,50 @@ func TestProjectScopedIngressPolicyIsolatesByProject(t *testing.T) {
 	// Pod selector and port are unchanged from the working data-access shape.
 	assert.Equal(t, "pg-crea-db", pol.Spec.PodSelector.MatchLabels["cnpg.io/cluster"])
 	assert.Equal(t, int32(5432), pol.Spec.Ingress[0].Ports[0].Port.IntVal)
+}
+
+// The 2026-08-17 audit found addon namespaces (project-*) got no LimitRange or
+// ResourceQuota, so a Postgres cluster with empty CPU/Memory became an
+// unbounded BestEffort pod. These guards must exist and must set a DB-sized
+// memory floor (not the 128Mi service default that would OOM Postgres).
+func TestAddonNamespaceResourceGuardsAreAppliedWithDbSizedFloor(t *testing.T) {
+	c := &Client{KubeClient: fake.NewSimpleClientset()}
+	ctx := context.Background()
+	if err := c.EnsureAddonNamespaceResourceGuards(ctx, "project-crea"); err != nil {
+		t.Fatalf("apply guards: %v", err)
+	}
+
+	lr, err := c.KubeClient.CoreV1().LimitRanges("project-crea").Get(ctx, "enclii-addon-default", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("LimitRange must exist: %v", err)
+	}
+	memFloor := lr.Spec.Limits[0].DefaultRequest[corev1.ResourceMemory]
+	if memFloor.Cmp(resource.MustParse("256Mi")) != 0 {
+		t.Fatalf("DefaultRequest memory floor = %s; must be DB-sized (256Mi), not the 128Mi service default", memFloor.String())
+	}
+	cpuFloor := lr.Spec.Limits[0].DefaultRequest[corev1.ResourceCPU]
+	if cpuFloor.IsZero() {
+		t.Fatal("a CPU request floor is required so the pod is not BestEffort")
+	}
+
+	q, err := c.KubeClient.CoreV1().ResourceQuotas("project-crea").Get(ctx, "enclii-addon-default", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("ResourceQuota must exist: %v", err)
+	}
+	cpuCeil := q.Spec.Hard[corev1.ResourceRequestsCPU]
+	if cpuCeil.IsZero() {
+		t.Fatal("namespace CPU ceiling required so one addon cannot starve the node")
+	}
+}
+
+// Idempotent: re-applying must not error (provisioning re-runs are the refresh).
+func TestAddonResourceGuardsIdempotent(t *testing.T) {
+	c := &Client{KubeClient: fake.NewSimpleClientset()}
+	ctx := context.Background()
+	if err := c.EnsureAddonNamespaceResourceGuards(ctx, "project-crea"); err != nil {
+		t.Fatalf("first apply: %v", err)
+	}
+	if err := c.EnsureAddonNamespaceResourceGuards(ctx, "project-crea"); err != nil {
+		t.Fatalf("second apply must be a no-op, got: %v", err)
+	}
 }

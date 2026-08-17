@@ -67,6 +67,12 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	if err := p.k8sClient.LabelProjectOnNamespace(ctx, req.Namespace, req.ProjectID.String()); err != nil {
 		logger.WithError(err).Error("Failed to label namespace with project — per-project DB network isolation may be incomplete")
 	}
+	// Bound the addon namespace: a LimitRange floor so a cluster with empty
+	// CPU/Memory (legacy/shared-discovered plan) is not BestEffort, and a quota
+	// ceiling so it cannot starve the node (2026-08-17 audit #7). Non-fatal.
+	if err := p.k8sClient.EnsureAddonNamespaceResourceGuards(ctx, req.Namespace); err != nil {
+		logger.WithError(err).Error("Failed to apply addon namespace resource guards — the DB may be unbounded")
+	}
 
 	// Generate resource name
 	resourceName := fmt.Sprintf("pg-%s-%s", req.Addon.Name, req.Addon.ID.String()[:8])
