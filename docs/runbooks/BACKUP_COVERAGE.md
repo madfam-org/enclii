@@ -34,6 +34,15 @@ Monthly (1st):
   5:00 AM  postgres-restore-drill     Non-destructive restore test
 ```
 
+## Per-tenant addon databases
+
+The backups above cover the PLATFORM's own state. Per-tenant Postgres created
+by `enclii` addons (client `Cluster`s in `project-*` namespaces) are covered
+separately — see [ADDON_BACKUPS.md](ADDON_BACKUPS.md). Until 2026-08-17 those
+addon databases had NO backups at all; the provisioner now wires a daily
+`ScheduledBackup` per addon once the operator prerequisites in that runbook
+exist.
+
 ## Backup Details
 
 | Backup | R2 Path | Retention | RPO | Secret Required |
