@@ -159,6 +159,7 @@ const (
 	// credentials Secret is replicated into each addon namespace from the
 	// enclii namespace because CNPG resolves s3Credentials locally. An empty
 	// destination base disables backup wiring — loudly, per provision.
+	// #nosec G101 -- this is the NAME of a Kubernetes Secret, not a credential value.
 	BackupCredentialsSecretName = "enclii-db-backup-credentials"
 	BackupCredentialsSourceNS   = "enclii"
 	BackupRetention             = "30d"
