@@ -1,5 +1,12 @@
 # Restore from a tenant export
 
+> **Boundary checkpoint (2026-08-17, platform on-call):** Public-safe runbook —
+> standard restore recipe using open formats; no secrets, and secret values are
+> explicitly the client's to supply (never in the tarball). Private operational
+> detail lives in `internal-devops` (2026-08-17 enclii platform security audit).
+> Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
+
 The companion to [tenant-export.md](../architecture/tenant-export.md): how a
 client (or a successor operator) turns an `enclii export` tarball back into a
 running system — **on enclii, on another Kubernetes cluster, or on plain
