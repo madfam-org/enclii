@@ -27,9 +27,20 @@ provisions clusters WITHOUT backups and says so loudly in the logs.
    from the platform `enclii-backups` bucket so tenant retention/lifecycle is
    independent.
 2. **Credentials Secret** `enclii-db-backup-credentials` in namespace
-   `enclii`, keys `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY` (an R2 token scoped
-   to that bucket only). The provisioner replicates this into each addon
-   namespace at provision time (CNPG resolves `s3Credentials` locally).
+   `enclii`, keys `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY`. The provisioner
+   replicates this into each addon namespace at provision time (CNPG resolves
+   `s3Credentials` locally); the copy is **owned by the CNPG Cluster**
+   (garbage-collected on delete) and **Immutable** (a tenant workload cannot
+   swap it) — 2026-08-17 security audit.
+
+   > [!WARNING]
+   > **Least-privilege the R2 token.** The copy's lifetime and tamper surface
+   > are bounded in code, but the *credential itself* is only as scoped as the
+   > R2 token you mint. The destination path is a per-cluster PREFIX under one
+   > bucket, so a bucket-wide token grants any namespace that can read the
+   > copied Secret visibility into every tenant's backups. Mint a token scoped
+   > to the addon-backups bucket ONLY, and prefer a per-prefix token as the
+   > object store gains per-tenant paths. Remaining leg of audit finding #1.
 3. **switchyard-api env**:
    - `ENCLII_ADDON_BACKUP_DESTINATION_BASE` = `s3://enclii-addon-db-backups`
    - `ENCLII_ADDON_BACKUP_ENDPOINT_URL` = the R2 S3 endpoint

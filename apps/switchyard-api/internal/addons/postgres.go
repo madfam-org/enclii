@@ -111,7 +111,7 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	}
 
 	// Create the CloudNativePG Cluster
-	_, err = p.dynamicClient.Resource(cnpgGVR).Namespace(req.Namespace).Create(
+	created, err := p.dynamicClient.Resource(cnpgGVR).Namespace(req.Namespace).Create(
 		ctx,
 		&unstructuredObj,
 		metav1.CreateOptions{},
@@ -119,6 +119,15 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	if err != nil {
 		logger.WithError(err).Error("Failed to create CloudNativePG cluster")
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
+	}
+	// The Cluster owns the copied backup credential (below): its UID makes the
+	// copy garbage-collectable so a deleted cluster does not leave a bucket-wide
+	// credential lingering in the tenant namespace (2026-08-17 audit).
+	clusterOwner := k8s.SecretCopyOwner{
+		APIVersion: CloudNativePGAPIVersion,
+		Kind:       CloudNativePGKind,
+		Name:       resourceName,
+		UID:        created.GetUID(),
 	}
 
 	// Open the addon namespace's default-deny to consuming services. Every addon
@@ -143,7 +152,7 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	// this existed.
 	if backup := backupConfigFromEnv(); backup.enabled() {
 		if err := p.k8sClient.EnsureSecretCopiedFrom(
-			ctx, BackupCredentialsSourceNS, BackupCredentialsSecretName, req.Namespace,
+			ctx, BackupCredentialsSourceNS, BackupCredentialsSecretName, req.Namespace, clusterOwner,
 		); err != nil {
 			logger.WithError(err).Error("Failed to replicate backup credentials — barman will not be able to write backups")
 		}
