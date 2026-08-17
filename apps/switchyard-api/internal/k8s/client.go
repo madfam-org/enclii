@@ -781,3 +781,57 @@ func (c *Client) getPreviousImage(ctx context.Context, deploymentName, namespace
 
 	return previousRS.Spec.Template.Spec.Containers[0].Image, nil
 }
+
+// EnsureSecretCopiedFrom replicates a Secret from a source namespace into a
+// target namespace, for machinery that must exist wherever an addon lands —
+// today: the object-store credentials CNPG's barman needs to write backups.
+//
+// COPY, NOT REFERENCE, because Kubernetes Secrets are namespace-scoped and
+// CNPG resolves s3Credentials in the CLUSTER'S namespace. The copy is
+// re-synced on every call (provisioning re-runs are the natural refresh
+// tick), so a rotated source credential propagates on the next reconcile
+// rather than never.
+func (c *Client) EnsureSecretCopiedFrom(ctx context.Context, sourceNamespace, name, targetNamespace string) error {
+	src, err := c.Clientset.CoreV1().Secrets(sourceNamespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("read source secret %s/%s: %w", sourceNamespace, name, err)
+	}
+
+	desired := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: targetNamespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "enclii",
+				"enclii.madfam.io/copied-from": sourceNamespace,
+			},
+		},
+		Type: src.Type,
+		Data: src.Data,
+	}
+
+	existing, err := c.Clientset.CoreV1().Secrets(targetNamespace).Get(ctx, name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		_, createErr := c.Clientset.CoreV1().Secrets(targetNamespace).Create(ctx, desired, metav1.CreateOptions{})
+		if createErr != nil {
+			return fmt.Errorf("create secret %s/%s: %w", targetNamespace, name, createErr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check existing secret %s/%s: %w", targetNamespace, name, err)
+	}
+
+	existing.Type = desired.Type
+	existing.Data = desired.Data
+	if existing.Labels == nil {
+		existing.Labels = map[string]string{}
+	}
+	for k, v := range desired.Labels {
+		existing.Labels[k] = v
+	}
+	if _, err := c.Clientset.CoreV1().Secrets(targetNamespace).Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update secret %s/%s: %w", targetNamespace, name, err)
+	}
+	return nil
+}
