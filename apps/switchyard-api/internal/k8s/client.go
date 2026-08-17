@@ -25,6 +25,11 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
+// LabelProjectNamespace marks a namespace with its owning project's id, so
+// per-project NetworkPolicies can select same-project namespaces instead of
+// the flat data-access class (2026-08-17 tenant-isolation audit).
+const LabelProjectNamespace = "enclii.dev/project"
+
 // =============================================================================
 // Client Core (Creation, Configuration, Deployment Operations)
 // =============================================================================
@@ -285,6 +290,73 @@ func (c *Client) EnsureDataAccessIngressPolicy(
 		return fmt.Errorf("create data-access ingress NetworkPolicy %s in %s: %w", policyName, namespace, err)
 	}
 	return nil
+}
+
+// LabelProjectOnNamespace stamps the owning project's id on a namespace so
+// per-project NetworkPolicies can select "same project" instead of the flat
+// data-access class. Idempotent; only patches when the label is missing or
+// wrong. This is the key the 2026-08-17 audit found absent — without it, a
+// tenant DB's ingress could only be scoped to ALL data-access namespaces.
+func (c *Client) LabelProjectOnNamespace(ctx context.Context, namespace, projectID string) error {
+	ns, err := c.kubeClient().CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("read namespace %s: %w", namespace, err)
+	}
+	if ns.Labels[LabelProjectNamespace] == projectID {
+		return nil
+	}
+	if ns.Labels == nil {
+		ns.Labels = map[string]string{}
+	}
+	ns.Labels[LabelProjectNamespace] = projectID
+	if _, err := c.kubeClient().CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("label project on namespace %s: %w", namespace, err)
+	}
+	return nil
+}
+
+// EnsureProjectScopedIngressPolicy is the tenant-isolating replacement for
+// EnsureDataAccessIngressPolicy: it admits ingress to the addon's pods ONLY
+// from namespaces carrying the SAME project label, not from every namespace in
+// the data-access class. This is what keeps one tenant's clinical Postgres
+// unreachable at L3/L4 from another tenant's workloads — the CRITICAL finding
+// of the 2026-08-17 audit. Credential separation remains the second layer; this
+// restores the first.
+func (c *Client) EnsureProjectScopedIngressPolicy(
+	ctx context.Context, namespace, policyName, projectID string, podSelectorLabels map[string]string, port int32,
+) error {
+	npClient := c.kubeClient().NetworkingV1().NetworkPolicies(namespace)
+	desired := buildProjectScopedIngressPolicy(namespace, policyName, projectID, podSelectorLabels, port)
+
+	existing, err := npClient.Get(ctx, policyName, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		if _, err := npClient.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			return fmt.Errorf("create project-scoped ingress NetworkPolicy %s in %s: %w", policyName, namespace, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check existing NetworkPolicy %s: %w", policyName, err)
+	}
+	// Upgrade an older flat data-access policy in place to the scoped shape.
+	existing.Spec = desired.Spec
+	if _, err := npClient.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update project-scoped ingress NetworkPolicy %s in %s: %w", policyName, namespace, err)
+	}
+	return nil
+}
+
+// buildProjectScopedIngressPolicy: same shape as the data-access variant but
+// the From namespaceSelector keys on the project label, so only same-project
+// namespaces may reach the selected pods on the port.
+func buildProjectScopedIngressPolicy(
+	namespace, policyName, projectID string, podSelectorLabels map[string]string, port int32,
+) *networkingv1.NetworkPolicy {
+	pol := buildDataAccessIngressPolicy(namespace, policyName, podSelectorLabels, port)
+	pol.Spec.Ingress[0].From[0].NamespaceSelector = &metav1.LabelSelector{
+		MatchLabels: map[string]string{LabelProjectNamespace: projectID},
+	}
+	return pol
 }
 
 // buildDataAccessIngressPolicy constructs the allow-ingress NetworkPolicy that

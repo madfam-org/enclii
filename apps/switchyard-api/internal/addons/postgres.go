@@ -59,6 +59,14 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	if err := p.k8sClient.EnsureNamespace(ctx, req.Namespace); err != nil {
 		return nil, fmt.Errorf("failed to ensure namespace: %w", err)
 	}
+	// Stamp the owning project on the namespace so the per-project ingress
+	// policy below can select same-project namespaces (2026-08-17 audit: the
+	// flat data-access label was the ONLY isolation key and let any tenant
+	// reach any addon DB port). Non-fatal: log and continue — but this is the
+	// key the network isolation depends on.
+	if err := p.k8sClient.LabelProjectOnNamespace(ctx, req.Namespace, req.ProjectID.String()); err != nil {
+		logger.WithError(err).Error("Failed to label namespace with project — per-project DB network isolation may be incomplete")
+	}
 
 	// Generate resource name
 	resourceName := fmt.Sprintf("pg-%s-%s", req.Addon.Name, req.Addon.ID.String()[:8])
@@ -94,13 +102,18 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	// need them (the eido-db go-live crash-looped for hours on a silent
 	// ConnectionRefused for exactly this reason). Scope the allow to this
 	// cluster's pods on 5432, from any namespace labeled data-access.
-	if npErr := p.k8sClient.EnsureDataAccessIngressPolicy(
+	// PROJECT-SCOPED ingress, not the flat data-access class: only namespaces
+	// carrying THIS project's label may reach the cluster on 5432. This is the
+	// tenant-isolation fix — a self-checkout tenant's pod can no longer open a
+	// connection to another tenant's clinical Postgres port; credential
+	// separation is the second layer, not the only one (2026-08-17 audit #2).
+	if npErr := p.k8sClient.EnsureProjectScopedIngressPolicy(
 		ctx, req.Namespace, fmt.Sprintf("%s-data-access", resourceName),
-		map[string]string{"cnpg.io/cluster": resourceName}, 5432,
+		req.ProjectID.String(), map[string]string{"cnpg.io/cluster": resourceName}, 5432,
 	); npErr != nil {
 		// Non-fatal: the cluster is up; surface the gap so the operator can add
 		// the policy rather than leaving the addon silently unreachable.
-		logger.WithError(npErr).Error("Failed to create data-access ingress NetworkPolicy — consumers may be blocked by default-deny")
+		logger.WithError(npErr).Error("Failed to create project-scoped ingress NetworkPolicy — consumers may be blocked by default-deny")
 	}
 
 	// Connection secret name follows CloudNativePG naming convention
