@@ -93,6 +93,7 @@ Examples:
 	cmd.AddCommand(newExportStatusCmd(cfg))
 	cmd.AddCommand(newExportDownloadCmd(cfg))
 	cmd.AddCommand(newExportListCmd(cfg))
+	cmd.AddCommand(newExportApproveCmd(cfg))
 	return cmd
 }
 
@@ -139,6 +140,27 @@ func newExportListCmd(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&projectSlug, "project", "p", "", "Project slug")
 	return cmd
+}
+
+// newExportApproveCmd is the second half of the production HITL approval: a
+// project admin approves a pending export so it can run. It existed only as a
+// string in the initiate output ("enclii export approve <id>") with no command
+// behind it (2026-08-17 audit #5), so the approval step could only be done
+// through the dashboard. This makes the CLI flow self-contained.
+func newExportApproveCmd(cfg *config.Config) *cobra.Command {
+	return &cobra.Command{
+		Use:   "approve <export_id>",
+		Short: "Approve a pending tenant export (production HITL second approver)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dl, err := approveExport(cfg, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Export %s approved.\n", args[0])
+			return printJSON(cmd.OutOrStdout(), dl)
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +238,33 @@ func waitForExport(cfg *config.Config, exportID, outPath string, pollInterval ti
 		time.Sleep(pollInterval)
 	}
 	return fmt.Errorf("timeout waiting for export")
+}
+
+func approveExport(cfg *config.Config, exportID string) (*types.TenantExportDownload, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		cfg.APIEndpoint+"/v1/exports/"+exportID+"/approve", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("approve failed (%d): %s", resp.StatusCode, string(body))
+	}
+	var dl types.TenantExportDownload
+	if err := json.NewDecoder(resp.Body).Decode(&dl); err != nil {
+		return nil, err
+	}
+	return &dl, nil
 }
 
 func fetchExport(cfg *config.Config, exportID string) (*types.TenantExportDownload, error) {
