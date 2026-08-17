@@ -71,12 +71,22 @@ storage:
     size: 50Gi
   tieredConfig: {}  # No S3 offload for now.
 
-# Per-broker resources. Right-sized for the 3-node 128/64/64 GB cluster
-# — 2 Gi reservation per broker leaves plenty for other workloads.
+# Per-broker resources. Right-sized against MEASURED usage (2026-08-17
+# capacity audit): each broker requested a full core but uses ~55m — an 18x
+# over-reservation, and three brokers were reserving 3 cores of the cluster's
+# scheduling budget while the CPUs sat at ~12% actual. `overprovisioned: true`
+# drops the Redpanda CPU *request* to a fractional share (broker still runs;
+# it simply stops reserving a whole idle core each), which is what frees the
+# scheduling headroom that had pods Pending on an idle cluster. Memory
+# reservation is realistic (~440Mi used vs 2Gi cap) and kept as burst room.
+#
+# NOTE: `cpu.cores` MUST stay an integer — the Redpanda chart schema rejects a
+# fractional value. The knob that lowers the request is `overprovisioned`, not
+# a fractional `cores`.
 resources:
   cpu:
     cores: 1
-    overprovisioned: false
+    overprovisioned: true
   memory:
     enable_memory_locking: false
     container:
