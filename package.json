@@ -5,6 +5,8 @@
   "description": "Workspace root manifest. Exists to carry pnpm dependency overrides for CVE remediation; not a publishable package.",
   "pnpm": {
     "overrides": {
+      "@types/react": "^18.2.0",
+      "@types/react-dom": "^18.2.0",
       "form-data@<2.5.6": "^2.5.6",
       "form-data@>=4.0.0 <4.0.6": "^4.0.6",
       "js-yaml@>=3.0.0 <3.15.0": "^3.15.0",

@@ -106,10 +106,12 @@ export default function ActivityPage() {
     );
   };
 
-  // Typed as ReactElement (not ReactNode): with two @types/react majors in
-  // the tree, ReactNode unions diverge (React 19 adds bigint) and the
-  // `??`-fallback union stops being assignable to the JSX runtime's children
-  // type — which broke `next build` type-checking on 2026-07-10.
+  // Returns ReactElement (never null): callers render it directly as JSX
+  // children. The cross-major @types/react conflict that previously broke
+  // `next build` type-checking here (two @types/react majors in the tree —
+  // React 19 adds bigint to ReactNode) is now resolved at the source by the
+  // pnpm `@types/react`/`@types/react-dom` overrides in the workspace-root
+  // package.json, which dedup the type packages to a single major.
   const getResourceIcon = (resourceType: string): React.ReactElement => {
     const icons: Record<string, React.ReactElement> = {
       project: (
