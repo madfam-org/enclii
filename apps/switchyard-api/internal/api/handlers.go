@@ -666,11 +666,24 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			// timeline + secret references (no values). 14-day R2 retention
 			// per tarball; row retains 90 days for audit. HITL approval in
 			// production. See docs/architecture/tenant-export.md.
-			protected.POST("/projects/:slug/exports", h.auth.RequireRole(string(types.RoleAdmin)), h.CreateTenantExport)
-			protected.GET("/projects/:slug/exports", h.ListTenantExports)
+			//
+			// AUTHORIZATION IS PROJECT-ADMIN, ENFORCED IN THE SERVICE, not
+			// platform-admin at the route. These previously carried
+			// RequireRole(RoleAdmin) — a PLATFORM role gate — while the service
+			// layer already checks requireProjectAdmin against project_access
+			// (export/service.go Create/Approve/Delete). Because a self-service
+			// client holds platform role `developer` and project-admin only via
+			// project_access, the route gate rejected them BEFORE the correct
+			// check ran: the client could never export their OWN data, which
+			// hollowed out the whole "leave with your data" promise (2026-08-17
+			// audit #5). Removing the platform gate lets the service's
+			// project-admin check govern — the export subsystem was built for
+			// exactly this and was only wired shut.
+			protected.POST("/projects/:slug/exports", h.RequireProjectAccessBySlug(), h.CreateTenantExport)
+			protected.GET("/projects/:slug/exports", h.RequireProjectAccessBySlug(), h.ListTenantExports)
 			protected.GET("/exports/:export_id", h.GetTenantExport)
-			protected.POST("/exports/:export_id/approve", h.auth.RequireRole(string(types.RoleAdmin)), h.ApproveTenantExport)
-			protected.DELETE("/exports/:export_id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteTenantExport)
+			protected.POST("/exports/:export_id/approve", h.ApproveTenantExport)
+			protected.DELETE("/exports/:export_id", h.DeleteTenantExport)
 
 			// Consolidated audit surface (P1.5) — aggregates Janua sessions,
 			// Switchyard lifecycle/audit, and 4 Selva RFC ledgers (via nexus-api).
