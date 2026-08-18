@@ -328,6 +328,24 @@ func main() {
 	}()
 	logrus.Info("✓ Addon reconciler started (syncing database addon status)")
 
+	// Initialize the data-API service (auto-generated REST over managed Postgres,
+	// PostgREST — parity gap C1). See docs/architecture/data-api-postgrest.md.
+	dataAPIService := addons.NewDataAPIService(repos, k8sClient, logrus.StandardLogger(), cfg.DataAPIBaseDomain)
+	logrus.Info("✓ DataAPIService initialized (auto REST API over managed Postgres)")
+
+	// Initialize and start the data-API reconciler (provisions/tears down the
+	// per-addon PostgREST Deployment+Service+Ingress and syncs status).
+	dataAPIReconciler := reconciler.NewDataAPIReconciler(repos, k8sClient, logrus.StandardLogger(), cfg.DataAPIBaseDomain)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("Data-API reconciler panicked: %v", r)
+			}
+		}()
+		dataAPIReconciler.Start(ctx)
+	}()
+	logrus.Info("✓ Data-API reconciler started (PostgREST provisioning)")
+
 	// Initialize and start function reconciler (scale-to-zero serverless functions)
 	functionReconciler := reconciler.NewFunctionReconciler(repos, k8sClient, logrus.StandardLogger(), cfg.FunctionBaseDomain)
 	go func() {
@@ -477,6 +495,10 @@ func main() {
 	// Wire up addon service (database add-ons)
 	apiHandler.SetAddonService(addonService)
 	logrus.Info("✓ Addon service wired to API handler")
+
+	// Wire up the data-API service (PostgREST over managed Postgres)
+	apiHandler.SetDataAPIService(dataAPIService)
+	logrus.Info("✓ Data-API service wired to API handler")
 
 	// Initialize notification service (Slack/Discord/Telegram webhooks)
 	notificationService := notifications.NewService(repos.Webhooks, logrus.StandardLogger())
@@ -748,6 +770,10 @@ func main() {
 	// Stop addon reconciler
 	addonReconciler.Stop()
 	logrus.Info("Addon reconciler stopped")
+
+	// Stop data-API reconciler
+	dataAPIReconciler.Stop()
+	logrus.Info("Data-API reconciler stopped")
 
 	// Stop function reconciler
 	functionReconciler.Stop()

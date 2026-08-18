@@ -4,6 +4,12 @@
 **Author**: Senior Product Architect / DevOps Engineer
 **Version**: 1.0
 
+> **Boundary checkpoint (2026-08-18, platform on-call):** Public-safe platform
+> gap analysis — capability comparison only, no secrets or production topology
+> beyond this repo's own IaC. Private operational detail and sink live in
+> `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary
+> contract).
+
 ---
 
 ## Executive Summary
@@ -38,6 +44,15 @@ This report provides a comprehensive technical gap analysis of Enclii against tw
 ---
 
 ### 2. Data & State
+
+> **Update (2026-08):** The "Databases → bring your own connection strings" gap
+> has since been closed for Postgres — managed Postgres addons provision a
+> cluster-per-addon via CloudNativePG (`internal/addons/postgres.go`), and an
+> **auto-generated REST API over that Postgres (PostgREST, the Supabase data-API
+> equivalent)** is available via `enclii addon api enable` (parity gap C1). See
+> [`docs/architecture/data-api-postgrest.md`](../architecture/data-api-postgrest.md)
+> and [`docs/guides/DATA_API_GUIDE.md`](../guides/DATA_API_GUIDE.md). The matrix
+> row below reflects the original 2025-11 assessment.
 
 | Feature | Vercel Standard | Railway Standard | Enclii Status | Gap Severity | Remediation Strategy |
 |---------|----------------|------------------|---------------|--------------|---------------------|

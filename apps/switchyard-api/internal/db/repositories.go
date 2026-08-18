@@ -36,6 +36,7 @@ type Repositories struct {
 	DatabaseAddons            *DatabaseAddonRepository
 	ManagedDBPlans            *ManagedDBPlanRepository
 	ManagedDBAddonEvents      *ManagedDBAddonEventRepository
+	DataAPIs                  *DataAPIRepository
 	Templates                 *TemplateRepository
 	Webhooks                  *WebhookRepository
 	OutboundWebhooks          *OutboundWebhookRepository
@@ -160,6 +161,7 @@ func newTxRepositories(db *sql.DB, tx *sql.Tx) *Repositories {
 		DatabaseAddons:            NewDatabaseAddonRepositoryWithTx(tx),
 		ManagedDBPlans:            NewManagedDBPlanRepositoryWithTx(tx),
 		ManagedDBAddonEvents:      NewManagedDBAddonEventRepositoryWithTx(tx),
+		DataAPIs:                  NewDataAPIRepositoryWithTx(tx),
 		Templates:                 NewTemplateRepositoryWithTx(tx),
 		Webhooks:                  NewWebhookRepositoryWithTx(tx),
 		OutboundWebhooks:          NewOutboundWebhookRepositoryWithTx(tx),
@@ -230,6 +232,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		DatabaseAddons:            NewDatabaseAddonRepository(db),
 		ManagedDBPlans:            NewManagedDBPlanRepository(db),
 		ManagedDBAddonEvents:      NewManagedDBAddonEventRepository(db),
+		DataAPIs:                  NewDataAPIRepository(db),
 		Templates:                 NewTemplateRepository(db),
 		Webhooks:                  NewWebhookRepository(db),
 		OutboundWebhooks:          NewOutboundWebhookRepository(db),

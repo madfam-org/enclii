@@ -46,6 +46,7 @@ type Handler struct {
 	domainSyncService      *services.DomainSyncService
 	tunnelRoutesService    services.TunnelRoutesManager
 	addonService           *addons.AddonService
+	dataAPIService         *addons.DataAPIService
 	notificationService    *notifications.Service
 	emailService           *notifications.EmailService
 
@@ -229,6 +230,12 @@ func (h *Handler) SetDomainSyncService(svc *services.DomainSyncService) {
 // This is optional - if not set, addon endpoints will return 503 Service Unavailable
 func (h *Handler) SetAddonService(svc *addons.AddonService) {
 	h.addonService = svc
+}
+
+// SetDataAPIService sets the data-API (PostgREST) service. Optional — if not
+// set, data-API endpoints return 503 Service Unavailable.
+func (h *Handler) SetDataAPIService(svc *addons.DataAPIService) {
+	h.dataAPIService = svc
 }
 
 // SetNotificationService sets the notification service for webhook delivery
@@ -756,6 +763,13 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.DELETE("/addons/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteAddon)
 			protected.POST("/addons/:id/bindings", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateAddonBinding)
 			protected.DELETE("/addons/:id/bindings/:service_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.DeleteAddonBinding)
+
+			// Data API (auto-generated REST over managed Postgres, PostgREST).
+			// See docs/architecture/data-api-postgrest.md.
+			protected.GET("/addons/:id/data-api", h.GetDataAPI)
+			protected.POST("/addons/:id/data-api", h.auth.RequireRole(string(types.RoleDeveloper)), h.EnableDataAPI)
+			protected.DELETE("/addons/:id/data-api", h.auth.RequireRole(string(types.RoleAdmin)), h.DisableDataAPI)
+			protected.POST("/addons/:id/data-api/token", h.auth.RequireRole(string(types.RoleDeveloper)), h.MintDataAPIToken)
 			protected.GET("/services/:id/bindings", h.GetServiceBindings)
 
 			// Realtime DB change subscriptions (parity gap C2). The WS stream

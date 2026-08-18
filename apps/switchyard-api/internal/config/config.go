@@ -163,6 +163,9 @@ type Config struct {
 	// Serverless Functions
 	FunctionBaseDomain string // Base domain for functions (default: fn.enclii.dev)
 
+	// Data API (auto-generated REST over managed Postgres, PostgREST)
+	DataAPIBaseDomain string // Base domain for addon data-APIs (default: data.enclii.dev)
+
 	// Database Pool Configuration
 	DBPoolSize int // Maximum number of database connections (default: 25)
 
@@ -322,6 +325,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("porkbun-secret-api-key", "")
 	viper.SetDefault("porkbun-api-base-url", "https://api.porkbun.com/api/json/v3")
 	viper.SetDefault("function-base-domain", "fn.enclii.dev")
+	viper.SetDefault("data-api-base-domain", "data.enclii.dev")
 
 	// K8s environment variable defaults (wired from infra/k8s docs)
 	viper.SetDefault("db-pool-size", 25)                                                                                // DB_POOL_SIZE
@@ -440,6 +444,7 @@ func Load() (*Config, error) {
 		PorkbunAPIBaseURL:                 viper.GetString("porkbun-api-base-url"),
 		PostgresAdminURL:                  viper.GetString("postgres-admin-url"),
 		FunctionBaseDomain:                viper.GetString("function-base-domain"),
+		DataAPIBaseDomain:                 viper.GetString("data-api-base-domain"),
 		DBPoolSize:                        viper.GetInt("db-pool-size"),
 		CacheTTLSeconds:                   viper.GetInt("cache-ttl-seconds"),
 		RateLimitRequestsPerMinute:        viper.GetInt("rate-limit-requests-per-minute"),
