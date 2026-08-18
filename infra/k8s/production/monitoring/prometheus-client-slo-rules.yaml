@@ -1,6 +1,14 @@
 ---
 # Client SLO Alerting Rules
-# Parameterized by namespace label enclii.dev/tenant for multi-tenant monitoring.
+#
+# Scoped to the real client/service namespace schemes: enclii-* (per-service),
+# project-* (managed addons), and the bare GitOps client namespaces. The prior
+# selector `tenant-.*` matched NOTHING — no code has ever created a `tenant-*`
+# namespace (see internal-devops audit #3; the platform rules were rescoped in
+# enclii #416, but these SLO rules were missed), so every alert below was inert.
+#
+# Keep this selector in sync with prometheus-platform-rules.yaml. When a new
+# client onboards under a bare namespace, add it here and there.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -20,37 +28,37 @@ spec:
         - alert: ClientServiceErrorRate
           expr: |
             (
-              sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"tenant-.*"}[5m]))
+              sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
               /
-              sum by (namespace) (rate(http_requests_total{namespace=~"tenant-.*"}[5m]))
+              sum by (namespace) (rate(http_requests_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
             ) > 0.01
           for: 5m
           labels:
             severity: warning
             category: client-slo
           annotations:
-            summary: "High error rate in tenant namespace {{ $labels.namespace }}"
+            summary: "High error rate in client namespace {{ $labels.namespace }}"
             description: "Error rate {{ $value | humanizePercentage }} exceeds 1% threshold for 5m."
 
         # P95 latency > 2s for 5 minutes
         - alert: ClientServiceLatencyP95
           expr: |
             histogram_quantile(0.95,
-              sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"tenant-.*"}[5m]))
+              sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
             ) > 2
           for: 5m
           labels:
             severity: warning
             category: client-slo
           annotations:
-            summary: "High P95 latency in tenant namespace {{ $labels.namespace }}"
+            summary: "High P95 latency in client namespace {{ $labels.namespace }}"
             description: "P95 latency {{ $value | humanizeDuration }} exceeds 2s threshold."
 
         # Pod restart rate > 3/hour
         - alert: ClientPodRestartRate
           expr: |
             sum by (namespace) (
-              increase(kube_pod_container_status_restarts_total{namespace=~"tenant-.*"}[1h])
+              increase(kube_pod_container_status_restarts_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[1h])
             ) > 3
           for: 5m
           labels:
@@ -63,9 +71,9 @@ spec:
         # Deployment unavailable for 5 minutes
         - alert: ClientDeploymentUnavailable
           expr: |
-            kube_deployment_status_replicas_available{namespace=~"tenant-.*"}
+            kube_deployment_status_replicas_available{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
             <
-            kube_deployment_spec_replicas{namespace=~"tenant-.*"}
+            kube_deployment_spec_replicas{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
           for: 5m
           labels:
             severity: critical
@@ -75,12 +83,12 @@ spec:
             description: "Available replicas ({{ $value }}) < desired for 5m."
 
         # Resource quota usage > 90%
-        - alert: TenantResourceQuotaNearLimit
+        - alert: ClientResourceQuotaNearLimit
           expr: |
             (
-              kube_resourcequota{type="used", namespace=~"tenant-.*"}
+              kube_resourcequota{type="used", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
               /
-              kube_resourcequota{type="hard", namespace=~"tenant-.*"}
+              kube_resourcequota{type="hard", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
             ) > 0.9
           for: 5m
           labels:
