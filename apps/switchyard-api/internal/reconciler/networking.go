@@ -108,7 +108,11 @@ func (r *ServiceReconciler) generateIngress(req *ReconcileRequest, namespace str
 		}
 	}
 
-	// Determine cert-manager issuer
+	// Determine cert-manager issuer. NOTE: this is the nginx-Ingress TLS path,
+	// which is distinct from the Cloudflare-tunnel path (where Cloudflare
+	// terminates TLS at the edge). `letsencrypt-prod`/`letsencrypt-staging` are
+	// real ClusterIssuers (infra/k8s/base/cert-manager.yaml) consumed by the
+	// cert-manager.io/cluster-issuer annotation below — NOT a vestigial label.
 	tlsIssuer := "letsencrypt-prod"
 	if len(req.CustomDomains) > 0 && req.CustomDomains[0].TLSIssuer != "" {
 		tlsIssuer = req.CustomDomains[0].TLSIssuer
