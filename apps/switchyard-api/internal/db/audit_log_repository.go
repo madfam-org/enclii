@@ -211,3 +211,9 @@ func (r *AuditLogRepository) Query(ctx context.Context, filters map[string]inter
 
 	return logs, nil
 }
+
+// QueryByProject returns audit logs for a single project, newest-first. Thin
+// convenience over Query used by the tenant-export audit provider.
+func (r *AuditLogRepository) QueryByProject(ctx context.Context, projectID uuid.UUID, limit, offset int) ([]*types.AuditLog, error) {
+	return r.Query(ctx, map[string]interface{}{"project_id": projectID}, limit, offset)
+}
