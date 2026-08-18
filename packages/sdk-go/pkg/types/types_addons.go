@@ -161,6 +161,82 @@ type DatabaseAddonWithBindings struct {
 	Bindings []DatabaseAddonBinding `json:"bindings,omitempty"`
 }
 
+// ============================================================================
+// DATA API (PostgREST) TYPES
+// Auto-generated REST API over a managed Postgres addon — the Supabase
+// PostgREST equivalent (parity gap C1). One PostgREST Deployment per addon.
+// See docs/architecture/data-api-postgrest.md.
+// ============================================================================
+
+// DataAPIStatus is the provisioning state of an addon's data-API.
+type DataAPIStatus string
+
+const (
+	DataAPIStatusPending      DataAPIStatus = "pending"
+	DataAPIStatusProvisioning DataAPIStatus = "provisioning"
+	DataAPIStatusReady        DataAPIStatus = "ready"
+	DataAPIStatusDisabling    DataAPIStatus = "disabling"
+	DataAPIStatusDisabled     DataAPIStatus = "disabled"
+	DataAPIStatusFailed       DataAPIStatus = "failed"
+)
+
+// DataAPI describes the auto-generated REST API (PostgREST) fronting a managed
+// Postgres addon. Persisted in managed_db_data_apis; one row per addon that has
+// the data-API enabled.
+//
+// Authorization is enforced by row-level security in the tenant database, not
+// here — enclii creates deny-by-default roles (anon/authenticated) and wires the
+// JWT signing secret; the tenant owns the RLS policies. This is identical to
+// Supabase's model.
+type DataAPI struct {
+	AddonID   uuid.UUID `json:"addon_id" db:"addon_id"`
+	ProjectID uuid.UUID `json:"project_id" db:"project_id"`
+
+	Status        DataAPIStatus `json:"status" db:"status"`
+	StatusMessage string        `json:"status_message,omitempty" db:"status_message"`
+
+	// Comma-separated exposed schemas (PostgREST db-schemas). Default "public".
+	Schemas string `json:"schemas" db:"schemas"`
+	// Role used for unauthenticated requests (PostgREST db-anon-role).
+	AnonRole string `json:"anon_role" db:"anon_role"`
+	// PostgREST connection pool size.
+	DBPool int `json:"db_pool" db:"db_pool"`
+
+	// Name of the K8s Secret holding the JWT signing secret. The value is never
+	// serialized into this struct or returned by the API.
+	JWTSecretName string `json:"jwt_secret_name,omitempty" db:"jwt_secret_name"`
+
+	// Public host, e.g. <addon>.<project>.data.enclii.dev.
+	Host string `json:"host,omitempty" db:"host"`
+	// The Deployment/Service/ConfigMap/Ingress name, e.g. data-<addon>.
+	K8sResourceName string `json:"k8s_resource_name,omitempty" db:"k8s_resource_name"`
+
+	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at" db:"updated_at"`
+	EnabledAt  *time.Time `json:"enabled_at,omitempty" db:"enabled_at"`
+	DisabledAt *time.Time `json:"disabled_at,omitempty" db:"disabled_at"`
+}
+
+// DataAPIEnableRequest is the API request body to enable an addon's data-API.
+type DataAPIEnableRequest struct {
+	Schemas  string `json:"schemas,omitempty"`   // default "public"
+	AnonRole string `json:"anon_role,omitempty"` // default "anon"
+}
+
+// DataAPITokenRequest is the API request body to mint a JWT for the data-API.
+type DataAPITokenRequest struct {
+	Role       string            `json:"role,omitempty"`     // default "authenticated"
+	TTLSeconds int               `json:"ttl_seconds,omitempty"` // default 3600, max 86400
+	Claims     map[string]string `json:"claims,omitempty"`   // extra JWT claims
+}
+
+// DataAPITokenResponse carries a freshly minted JWT for the tenant to use.
+type DataAPITokenResponse struct {
+	Token     string    `json:"token"`
+	Role      string    `json:"role"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 // =============================================================================
 // Templates (Starter Templates & Marketplace)
 // =============================================================================

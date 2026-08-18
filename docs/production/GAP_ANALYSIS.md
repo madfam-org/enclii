@@ -39,6 +39,15 @@ This report provides a comprehensive technical gap analysis of Enclii against tw
 
 ### 2. Data & State
 
+> **Update (2026-08):** The "Databases → bring your own connection strings" gap
+> has since been closed for Postgres — managed Postgres addons provision a
+> cluster-per-addon via CloudNativePG (`internal/addons/postgres.go`), and an
+> **auto-generated REST API over that Postgres (PostgREST, the Supabase data-API
+> equivalent)** is available via `enclii addon api enable` (parity gap C1). See
+> [`docs/architecture/data-api-postgrest.md`](../architecture/data-api-postgrest.md)
+> and [`docs/guides/DATA_API_GUIDE.md`](../guides/DATA_API_GUIDE.md). The matrix
+> row below reflects the original 2025-11 assessment.
+
 | Feature | Vercel Standard | Railway Standard | Enclii Status | Gap Severity | Remediation Strategy |
 |---------|----------------|------------------|---------------|--------------|---------------------|
 | **Databases** | Marketplace/Integrations (Neon, Supabase) | Native Provisioning (Postgres, Redis, Mongo inside project) | **❌ Not Supported** - Users must bring own connection strings | **Critical** | **Medium Complexity**. Implement addon provisioning system: (1) Database operator/controller for K8s, (2) Helm chart templates for Postgres/Redis/MongoDB, (3) Secret injection for connection strings, (4) Lifecycle management (create/delete/backup), (5) Integration with cloud-managed services (RDS, CloudSQL). Estimated 3-6 months. |

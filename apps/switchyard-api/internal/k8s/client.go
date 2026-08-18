@@ -114,6 +114,14 @@ func (c *Client) kubeClient() kubernetes.Interface {
 	return c.Clientset
 }
 
+// Kube returns the typed Kubernetes client as an interface, preferring the
+// injectable KubeClient (a fake in tests) over the concrete Clientset. Callers
+// in other packages should use this instead of the exported Clientset field
+// when they want their reconcile paths to be unit-testable with a fake client.
+func (c *Client) Kube() kubernetes.Interface {
+	return c.kubeClient()
+}
+
 // Config returns the Kubernetes REST config for creating additional clients
 func (c *Client) Config() *rest.Config {
 	return c.config

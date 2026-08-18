@@ -55,6 +55,7 @@ Examples:
 	cmd.AddCommand(newAddonListCommand(cfg))
 	cmd.AddCommand(newAddonDestroyCommand(cfg))
 	cmd.AddCommand(newAddonPlansCommand(cfg))
+	cmd.AddCommand(newAddonAPICommand(cfg))
 	return cmd
 }
 
