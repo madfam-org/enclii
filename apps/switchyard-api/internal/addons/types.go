@@ -2,6 +2,7 @@ package addons
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -166,9 +167,27 @@ const (
 	BackupSchedule              = "0 0 4 * * *" // daily 04:00 UTC (22:00 CDMX)
 	DefaultUser                 = "app"
 
+	// DefaultDeletionRetention is the grace window a data-bearing addon spends
+	// in the pending_deletion state before its CNPG Cluster + PVCs are actually
+	// torn down. During this window a mistaken or malicious delete is
+	// recoverable. 7 days mirrors the backup retention horizon and gives a
+	// departing client a "dignified exit" window to pull an export
+	// (2026-08-17 audit #10; relevant to ADR-0004).
+	DefaultDeletionRetention = 7 * 24 * time.Hour
+
 	// CloudNativePG constants
 	CloudNativePGAPIVersion = "postgresql.cnpg.io/v1"
 	CloudNativePGKind       = "Cluster"
+
+	// RetainStorageClass is the Longhorn StorageClass whose reclaimPolicy is
+	// Retain (infra/helm/longhorn/storageclass.yaml). Managed-DB PVCs are
+	// pinned here so that when a Cluster is torn down — CNPG deletes the PVCs on
+	// cluster deletion — the underlying PersistentVolume (and Longhorn volume)
+	// survives and the data stays recoverable. The default `longhorn` class is
+	// reclaimPolicy: Delete, which destroys the volume with the PVC; that was
+	// the unrecoverable path the retention hold guards against (2026-08-17
+	// audit #10).
+	RetainStorageClass = "longhorn-replicated"
 
 	// Labels
 	LabelManagedBy    = "managed-by"

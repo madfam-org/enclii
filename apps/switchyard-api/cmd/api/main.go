@@ -314,6 +314,9 @@ func main() {
 
 	// Initialize and start addon reconciler (syncs database addon status from K8s)
 	addonReconciler := reconciler.NewAddonReconciler(repos, k8sClient, logrus.StandardLogger())
+	// Wire the retention finalizer so the reconciler can tear down retention-hold
+	// addons once their grace window elapses (2026-08-17 audit #10).
+	addonReconciler.SetRetentionFinalizer(addonService)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

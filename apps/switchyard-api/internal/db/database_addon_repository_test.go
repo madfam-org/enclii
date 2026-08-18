@@ -95,7 +95,8 @@ func TestDatabaseAddonRepository_GetByID(t *testing.T) {
 		"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
 		"host", "port", "database_name", "username",
 		"storage_used_bytes", "connections_active", "last_backup_at",
-		"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at", "deleted_at",
+		"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at",
+		"deletion_scheduled_at", "deleted_at",
 	}
 
 	t.Run("found", func(t *testing.T) {
@@ -128,6 +129,7 @@ func TestDatabaseAddonRepository_GetByID(t *testing.T) {
 					sql.NullString{},
 					now, now,
 					sql.NullTime{Time: now, Valid: true},
+					sql.NullTime{},
 					sql.NullTime{}))
 
 		result, err := repo.GetByID(context.Background(), id)
@@ -220,6 +222,102 @@ func TestDatabaseAddonRepository_SoftDelete(t *testing.T) {
 	})
 }
 
+// --- ScheduleDeletion (retention hold, audit #10) ---
+
+func TestDatabaseAddonRepository_ScheduleDeletion(t *testing.T) {
+	t.Run("stamps pending_deletion and scheduled time", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		scheduledAt := time.Now().Add(7 * 24 * time.Hour)
+
+		// Args: status, deletion_scheduled_at, status_message, updated_at, id.
+		mock.ExpectExec(`UPDATE database_addons\s+SET status = \$1, deletion_scheduled_at = \$2`).
+			WithArgs(types.DatabaseAddonStatusPendingDeletion, scheduledAt, "hold", sqlmock.AnyArg(), id).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.ScheduleDeletion(context.Background(), id, scheduledAt, "hold")
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("unknown or already-hard-deleted id returns ErrNoRows", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		scheduledAt := time.Now().Add(time.Hour)
+		mock.ExpectExec(`UPDATE database_addons`).
+			WithArgs(types.DatabaseAddonStatusPendingDeletion, scheduledAt, "hold", sqlmock.AnyArg(), id).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := repo.ScheduleDeletion(context.Background(), id, scheduledAt, "hold")
+		assert.ErrorIs(t, err, sql.ErrNoRows)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+// --- ListDeletionDue (retention sweep, audit #10) ---
+
+func TestDatabaseAddonRepository_ListDeletionDue(t *testing.T) {
+	dueScanColumns := []string{
+		"id", "project_id", "environment_id", "type", "name", "plan", "status", "status_message",
+		"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
+		"host", "port", "database_name", "username",
+		"storage_used_bytes", "connections_active", "last_backup_at",
+		"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at",
+		"deletion_scheduled_at", "deleted_at",
+	}
+
+	t.Run("returns holds whose window has elapsed", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		now := time.Now()
+		past := now.Add(-time.Hour)
+		addonID := uuid.New()
+		projID := uuid.New()
+
+		// The query must filter on status = 'pending_deletion', not-yet-deleted,
+		// a non-null scheduled time in the past.
+		mock.ExpectQuery(`(?s)WHERE status = 'pending_deletion'\s+AND deleted_at IS NULL\s+AND deletion_scheduled_at IS NOT NULL\s+AND deletion_scheduled_at <= \$1`).
+			WithArgs(now).
+			WillReturnRows(sqlmock.NewRows(dueScanColumns).AddRow(
+				addonID, projID, nil,
+				types.DatabaseAddonTypePostgres, "old-db", "standard-0", types.DatabaseAddonStatusPendingDeletion, "",
+				[]byte("{}"), "project-abc", "pg-old-db", nil,
+				nil, nil, nil, nil,
+				int64(0), 0, nil,
+				nil, "", now, now, nil,
+				past, nil,
+			))
+
+		out, err := repo.ListDeletionDue(context.Background(), now)
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.Equal(t, "old-db", out[0].Name)
+		require.NotNil(t, out[0].DeletionScheduledAt)
+		assert.Equal(t, types.DatabaseAddonStatusPendingDeletion, out[0].Status)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no due holds returns empty", func(t *testing.T) {
+		repo, mock, cleanup := newDatabaseAddonMockDB(t)
+		defer cleanup()
+
+		now := time.Now()
+		mock.ExpectQuery(`(?s)WHERE status = 'pending_deletion'`).
+			WithArgs(now).
+			WillReturnRows(sqlmock.NewRows(dueScanColumns))
+
+		out, err := repo.ListDeletionDue(context.Background(), now)
+		require.NoError(t, err)
+		assert.Empty(t, out)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 // --- Delete ---
 
 func TestDatabaseAddonRepository_Delete(t *testing.T) {
@@ -260,7 +358,8 @@ func TestDatabaseAddonRepository_ListByTeam(t *testing.T) {
 		"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
 		"host", "port", "database_name", "username",
 		"storage_used_bytes", "connections_active", "last_backup_at",
-		"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at", "deleted_at",
+		"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at",
+		"deletion_scheduled_at", "deleted_at",
 	}
 
 	t.Run("team match returns rows", func(t *testing.T) {
@@ -280,7 +379,7 @@ func TestDatabaseAddonRepository_ListByTeam(t *testing.T) {
 				[]byte("{}"), nil, nil, nil,
 				nil, nil, nil, nil,
 				int64(0), 0, nil,
-				nil, "", now, now, nil, nil,
+				nil, "", now, now, nil, nil, nil,
 			))
 
 		out, err := repo.ListByTeam(context.Background(), teamID)
