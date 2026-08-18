@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -49,12 +50,14 @@ Examples:
   enclii addon create my-db --plan standard-0        # create a 1 GB Postgres
   enclii addon ls --project my-api                   # list project addons
   enclii addon destroy 123e4567-e89b-12d3-...        # destroy (requires --yes)
+  enclii addon realtime enable <addon> --table public.orders  # stream row changes
 `,
 	}
 	cmd.AddCommand(newAddonCreateCommand(cfg))
 	cmd.AddCommand(newAddonListCommand(cfg))
 	cmd.AddCommand(newAddonDestroyCommand(cfg))
 	cmd.AddCommand(newAddonPlansCommand(cfg))
+	cmd.AddCommand(newAddonRealtimeCommand(cfg))
 	return cmd
 }
 
@@ -353,6 +356,164 @@ func newAddonPlansCommand(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&engine, "engine", "", "Filter by engine (postgres|redis|mysql)")
+	cmd.Flags().BoolVar(&outputJSON, "json", false, "JSON output")
+	return cmd
+}
+
+// ----------------------------------------------------------------------------
+// addon realtime — database change subscriptions over websockets (parity C2)
+// ----------------------------------------------------------------------------
+
+// newAddonRealtimeCommand creates the `enclii addon realtime` subtree:
+//
+//	enclii addon realtime enable  <addon> --table public.orders
+//	enclii addon realtime disable <addon> --table public.orders
+//	enclii addon realtime list    <addon>
+//
+// Enabling installs an opt-in NOTIFY trigger on the table; a websocket client
+// then streams row changes from
+// GET /v1/projects/<slug>/addons/<addon>/realtime. See
+// docs/architecture/ADR_002_REALTIME_DB_SUBSCRIPTIONS.md.
+func newAddonRealtimeCommand(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "realtime",
+		Short: "Manage realtime change subscriptions on a database addon",
+		Long: `Enable, disable, and list realtime row-change streaming for tables in a
+managed Postgres addon. Enabling a table installs an opt-in trigger that
+publishes INSERT/UPDATE/DELETE events; clients subscribe over a websocket at
+/v1/projects/<slug>/addons/<addon>/realtime and receive change frames.
+
+Examples:
+  enclii addon realtime enable  <addon> --table public.orders
+  enclii addon realtime list    <addon>
+  enclii addon realtime disable <addon> --table public.orders
+`,
+	}
+	cmd.AddCommand(newAddonRealtimeEnableCommand(cfg))
+	cmd.AddCommand(newAddonRealtimeDisableCommand(cfg))
+	cmd.AddCommand(newAddonRealtimeListCommand(cfg))
+	return cmd
+}
+
+// splitSchemaTable parses a "schema.table" or bare "table" argument into its
+// parts, defaulting the schema to "public". Rejects malformed input (empty
+// table, more than one dot).
+func splitSchemaTable(arg string) (schema, table string, err error) {
+	switch parts := strings.Split(arg, "."); len(parts) {
+	case 1:
+		if parts[0] == "" {
+			return "", "", fmt.Errorf("table name is required")
+		}
+		return "public", parts[0], nil
+	case 2:
+		if parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("invalid table reference %q (want schema.table)", arg)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("invalid table reference %q (want schema.table)", arg)
+	}
+}
+
+func newAddonRealtimeEnableCommand(cfg *config.Config) *cobra.Command {
+	var table string
+	cmd := &cobra.Command{
+		Use:   "enable <addon_id>",
+		Short: "Enable realtime change streaming on a table",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addonID := args[0]
+			if table == "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--table is required (e.g. public.orders)")}
+			}
+			schema, tbl, err := splitSchemaTable(table)
+			if err != nil {
+				return &exitcodes.ValidationError{Err: err}
+			}
+
+			ctx := context.Background()
+			path := fmt.Sprintf("/v1/addons/%s/realtime/tables", url.PathEscape(addonID))
+			payload := map[string]string{"schema": schema, "table": tbl}
+			if err := addonRequest(ctx, cfg, "POST", path, payload, nil); err != nil {
+				return err
+			}
+			fmt.Printf("Realtime enabled on %s.%s for addon %s\n", schema, tbl, addonID)
+			fmt.Printf("  Subscribe: GET /v1/projects/<slug>/addons/%s/realtime?schema=%s&table=%s\n", addonID, schema, tbl)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&table, "table", "", "Table to stream (schema.table, e.g. public.orders)")
+	return cmd
+}
+
+func newAddonRealtimeDisableCommand(cfg *config.Config) *cobra.Command {
+	var table string
+	cmd := &cobra.Command{
+		Use:   "disable <addon_id>",
+		Short: "Disable realtime change streaming on a table",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addonID := args[0]
+			if table == "" {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--table is required (e.g. public.orders)")}
+			}
+			schema, tbl, err := splitSchemaTable(table)
+			if err != nil {
+				return &exitcodes.ValidationError{Err: err}
+			}
+
+			ctx := context.Background()
+			path := fmt.Sprintf("/v1/addons/%s/realtime/tables/%s/%s",
+				url.PathEscape(addonID), url.PathEscape(schema), url.PathEscape(tbl))
+			if err := addonRequest(ctx, cfg, "DELETE", path, nil, nil); err != nil {
+				return err
+			}
+			fmt.Printf("Realtime disabled on %s.%s for addon %s\n", schema, tbl, addonID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&table, "table", "", "Table to stop streaming (schema.table)")
+	return cmd
+}
+
+func newAddonRealtimeListCommand(cfg *config.Config) *cobra.Command {
+	var outputJSON bool
+	cmd := &cobra.Command{
+		Use:   "list <addon_id>",
+		Short: "List tables with realtime enabled",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addonID := args[0]
+			ctx := context.Background()
+			path := fmt.Sprintf("/v1/addons/%s/realtime/tables", url.PathEscape(addonID))
+
+			var resp struct {
+				Tables []struct {
+					Schema string `json:"schema"`
+					Table  string `json:"table"`
+				} `json:"tables"`
+				Count int `json:"count"`
+			}
+			if err := addonRequest(ctx, cfg, "GET", path, nil, &resp); err != nil {
+				return err
+			}
+			if outputJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(resp)
+			}
+			if len(resp.Tables) == 0 {
+				fmt.Println("No tables have realtime enabled.")
+				return nil
+			}
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "SCHEMA\tTABLE")
+			for _, t := range resp.Tables {
+				fmt.Fprintf(w, "%s\t%s\n", t.Schema, t.Table)
+			}
+			return w.Flush()
+		},
+	}
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "JSON output")
 	return cmd
 }

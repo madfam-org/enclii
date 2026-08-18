@@ -401,6 +401,7 @@ Enclii is a **open source DevOps platform** running on cost-optimized infrastruc
 | **Auto-Scaling** | ✅ | ✅ | Equivalent |
 | **Zero-Downtime Deploys** | ✅ | ✅ | Equivalent |
 | **Database Hosting** | ⚠️ BYOD | ✅ | Railway wins (but Enclii has Ubicloud) |
+| **Realtime DB Subscriptions** | ⚠️ v1 (LISTEN/NOTIFY) | ❌ | **Enclii wins** — opt-in per-table WS change streams (Supabase-parity gap C2); ADR-002. CDC (logical replication) deferred |
 | **Custom Domains** | ✅ Unlimited | ⚠️ Limited | **Enclii wins** |
 | **Preview Environments** | ✅ | ✅ | Equivalent |
 | **Log Streaming** | ✅ | ✅ | Equivalent |
