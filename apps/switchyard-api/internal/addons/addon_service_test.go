@@ -3,6 +3,7 @@ package addons
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -123,4 +124,47 @@ func TestEventActorZero(t *testing.T) {
 	assert.Nil(t, actor.UserID)
 	assert.Equal(t, "", actor.UserSub)
 	assert.Equal(t, "", actor.UserEmail)
+}
+
+// TestAddonSupportsRetention pins WHICH addons get a retention hold on delete
+// versus an immediate hard teardown (2026-08-17 audit #10). Only a provisioned,
+// platform-owned, data-bearing engine should hold.
+func TestAddonSupportsRetention(t *testing.T) {
+	provisioned := func(t types.DatabaseAddonType, plan string) *types.DatabaseAddon {
+		return &types.DatabaseAddon{
+			Type:            t,
+			Plan:            plan,
+			K8sNamespace:    "project-abc",
+			K8sResourceName: "pg-something",
+		}
+	}
+
+	t.Run("provisioned postgres holds", func(t *testing.T) {
+		assert.True(t, addonSupportsRetention(provisioned(types.DatabaseAddonTypePostgres, "standard-0")))
+	})
+	t.Run("provisioned mysql holds", func(t *testing.T) {
+		assert.True(t, addonSupportsRetention(provisioned(types.DatabaseAddonTypeMySQL, "standard-0")))
+	})
+	t.Run("redis never holds — ephemeral cache", func(t *testing.T) {
+		assert.False(t, addonSupportsRetention(provisioned(types.DatabaseAddonTypeRedis, "standard-0")))
+	})
+	t.Run("shared-discovered never holds — platform does not own it", func(t *testing.T) {
+		assert.False(t, addonSupportsRetention(provisioned(types.DatabaseAddonTypePostgres, "shared-discovered")))
+	})
+	t.Run("not-yet-provisioned postgres does not hold — nothing to retain", func(t *testing.T) {
+		assert.False(t, addonSupportsRetention(&types.DatabaseAddon{
+			Type: types.DatabaseAddonTypePostgres,
+			Plan: "standard-0",
+			// No K8s resources yet.
+		}))
+	})
+	t.Run("nil is safe", func(t *testing.T) {
+		assert.False(t, addonSupportsRetention(nil))
+	})
+}
+
+// TestDefaultDeletionRetentionIsPositive guards against a zero/negative window
+// that would make every hold instantly due.
+func TestDefaultDeletionRetentionIsPositive(t *testing.T) {
+	assert.Greater(t, DefaultDeletionRetention, time.Duration(0))
 }

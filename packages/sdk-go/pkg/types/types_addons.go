@@ -29,8 +29,16 @@ const (
 	DatabaseAddonStatusProvisioning DatabaseAddonStatus = "provisioning"
 	DatabaseAddonStatusReady        DatabaseAddonStatus = "ready"
 	DatabaseAddonStatusFailed       DatabaseAddonStatus = "failed"
-	DatabaseAddonStatusDeleting     DatabaseAddonStatus = "deleting"
-	DatabaseAddonStatusDeleted      DatabaseAddonStatus = "deleted"
+	// DatabaseAddonStatusPendingDeletion is the retention-hold state: a delete
+	// has been requested and the addon is scheduled for teardown at
+	// DeletionScheduledAt, but its data-bearing Kubernetes resources (the CNPG
+	// Cluster and its PVCs/backups) are deliberately kept until the window
+	// elapses (or an explicit force-delete). This is the "dignified exit" grace
+	// window — a mistaken or malicious delete of a production DB is recoverable
+	// until the scheduled time (2026-08-17 audit #10).
+	DatabaseAddonStatusPendingDeletion DatabaseAddonStatus = "pending_deletion"
+	DatabaseAddonStatusDeleting        DatabaseAddonStatus = "deleting"
+	DatabaseAddonStatusDeleted         DatabaseAddonStatus = "deleted"
 )
 
 // DatabaseAddonConfig represents the configuration for a database addon
@@ -79,7 +87,13 @@ type DatabaseAddon struct {
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
 	ProvisionedAt *time.Time `json:"provisioned_at,omitempty" db:"provisioned_at"`
-	DeletedAt     *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`
+	// DeletionScheduledAt is when a retention-hold addon becomes eligible for
+	// hard teardown. Set on delete-request for data-bearing engines; the CNPG
+	// Cluster is kept until this time passes, so a delete stays recoverable
+	// during the window (2026-08-17 audit #10). NULL for addons not in the
+	// retention-hold state.
+	DeletionScheduledAt *time.Time `json:"deletion_scheduled_at,omitempty" db:"deletion_scheduled_at"`
+	DeletedAt           *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // DatabaseAddonBindingStatus represents the status of a service binding

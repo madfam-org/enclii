@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,6 +31,145 @@ func TestAddonCommandStructure(t *testing.T) {
 	assert.True(t, names["ls"])
 	assert.True(t, names["destroy"])
 	assert.True(t, names["plans"])
+	assert.True(t, names["realtime"])
+}
+
+// TestAddonRealtimeCommandStructure confirms the `enclii addon realtime` subtree
+// carries enable/disable/list.
+func TestAddonRealtimeCommandStructure(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "http://localhost:0"}
+	cmd := NewAddonCommand(cfg)
+
+	var realtime *cobra.Command
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "realtime" {
+			realtime = sub
+		}
+	}
+	require.NotNil(t, realtime, "expected a realtime subcommand")
+
+	names := map[string]bool{}
+	for _, sub := range realtime.Commands() {
+		names[sub.Name()] = true
+	}
+	assert.True(t, names["enable"])
+	assert.True(t, names["disable"])
+	assert.True(t, names["list"])
+}
+
+// TestSplitSchemaTable covers the schema.table parser used by the realtime CLI.
+func TestSplitSchemaTable(t *testing.T) {
+	cases := []struct {
+		in         string
+		wantSchema string
+		wantTable  string
+		wantErr    bool
+	}{
+		{"public.orders", "public", "orders", false},
+		{"orders", "public", "orders", false},
+		{"billing.invoices", "billing", "invoices", false},
+		{"", "", "", true},
+		{".orders", "", "", true},
+		{"public.", "", "", true},
+		{"a.b.c", "", "", true},
+	}
+	for _, tc := range cases {
+		schema, table, err := splitSchemaTable(tc.in)
+		if tc.wantErr {
+			assert.Error(t, err, "input %q", tc.in)
+			continue
+		}
+		require.NoError(t, err, "input %q", tc.in)
+		assert.Equal(t, tc.wantSchema, schema, "input %q", tc.in)
+		assert.Equal(t, tc.wantTable, table, "input %q", tc.in)
+	}
+}
+
+// TestAddonRealtimeEnableRequiresTable enforces the --table rail.
+func TestAddonRealtimeEnableRequiresTable(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "http://localhost:0"}
+	root := NewRootCommand(cfg)
+	root.SetArgs([]string{"addon", "realtime", "enable", "abc-123"})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "table is required")
+}
+
+// TestAddonRealtimeEnableAgainstFakeServer exercises the enable POST with a
+// schema.table argument.
+func TestAddonRealtimeEnableAgainstFakeServer(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/v1/addons/00000000-0000-0000-0000-000000000001/realtime/tables", r.URL.Path)
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		assert.Equal(t, "public", body["schema"])
+		assert.Equal(t, "orders", body["table"])
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "realtime enabled"})
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{APIEndpoint: srv.URL, APIToken: "t"}
+	root := NewRootCommand(cfg)
+	root.SetArgs([]string{
+		"addon", "realtime", "enable",
+		"00000000-0000-0000-0000-000000000001",
+		"--table", "public.orders",
+	})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	require.NoError(t, root.Execute())
+	assert.Equal(t, 1, hits)
+}
+
+// TestAddonRealtimeDisableAgainstFakeServer exercises the disable DELETE with
+// the schema/table path segments.
+func TestAddonRealtimeDisableAgainstFakeServer(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		assert.Equal(t, "DELETE", r.Method)
+		assert.Equal(t, "/v1/addons/00000000-0000-0000-0000-000000000001/realtime/tables/public/orders", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "realtime disabled"})
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{APIEndpoint: srv.URL, APIToken: "t"}
+	root := NewRootCommand(cfg)
+	root.SetArgs([]string{
+		"addon", "realtime", "disable",
+		"00000000-0000-0000-0000-000000000001",
+		"--table", "orders",
+	})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	require.NoError(t, root.Execute())
+	assert.Equal(t, 1, hits)
+}
+
+// TestAddonRealtimeListAgainstFakeServer exercises the list GET rendering.
+func TestAddonRealtimeListAgainstFakeServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/v1/addons/00000000-0000-0000-0000-000000000001/realtime/tables", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"tables": []map[string]string{{"schema": "public", "table": "orders"}},
+			"count":  1,
+		})
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{APIEndpoint: srv.URL, APIToken: "t"}
+	root := NewRootCommand(cfg)
+	root.SetArgs([]string{"addon", "realtime", "list", "00000000-0000-0000-0000-000000000001"})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	require.NoError(t, root.Execute())
 }
 
 // TestAddonRegisteredOnRoot verifies that `enclii addon` is exposed at the

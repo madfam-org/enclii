@@ -33,6 +33,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/realtime"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/topology"
@@ -314,6 +315,9 @@ func main() {
 
 	// Initialize and start addon reconciler (syncs database addon status from K8s)
 	addonReconciler := reconciler.NewAddonReconciler(repos, k8sClient, logrus.StandardLogger())
+	// Wire the retention finalizer so the reconciler can tear down retention-hold
+	// addons once their grace window elapses (2026-08-17 audit #10).
+	addonReconciler.SetRetentionFinalizer(addonService)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -650,6 +654,23 @@ func main() {
 		} else {
 			logrus.Warn("⚠ Loki log tail DISABLED (ENCLII_LOKI_URL not set); /v1/services/:id/logs returns 503")
 		}
+	}
+
+	// Wire the C2 realtime DB-change subscriptions (Supabase Realtime
+	// equivalent). The hub holds one LISTEN connection per addon and fans row
+	// changes out to WS subscribers; the manager installs the opt-in NOTIFY
+	// triggers on tenant tables. Both dial the addon's own database on demand
+	// via the addon service, so there is no global dependency to gate on — the
+	// feature is always wired when the addon service is present. WebSocket
+	// origins reuse the same allow-list as the Loki tail. See
+	// docs/architecture/ADR_002_REALTIME_DB_SUBSCRIPTIONS.md.
+	{
+		realtimeHub := realtime.NewHub(realtime.NewPQDialer(logrus.StandardLogger()), logrus.StandardLogger())
+		realtimeManager := realtime.NewManager(realtime.NewPQConnector(), logrus.StandardLogger())
+		apiHandler.SetRealtime(realtimeHub, realtimeManager, cfg.WebSocketAllowedOrigins, logrus.StandardLogger())
+		// Ensure listeners are torn down on shutdown alongside other resources.
+		defer realtimeHub.Shutdown()
+		logrus.Info("✓ Realtime DB subscriptions wired at /v1/projects/:slug/addons/:id/realtime (LISTEN/NOTIFY)")
 	}
 
 	// -------------------------------------------------------------------

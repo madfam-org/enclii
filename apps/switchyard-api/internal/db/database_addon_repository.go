@@ -75,14 +75,15 @@ func (r *DatabaseAddonRepository) GetByID(ctx context.Context, id uuid.UUID) (*t
 	var envID, createdBy sql.NullString
 	var statusMsg, k8sNs, k8sRes, connSecret, host, dbName, username, createdByEmail sql.NullString
 	var port sql.NullInt64
-	var provisionedAt, deletedAt, lastBackupAt sql.NullTime
+	var provisionedAt, deletionScheduledAt, deletedAt, lastBackupAt sql.NullTime
 
 	query := `
 		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
-		       created_by, created_by_email, created_at, updated_at, provisioned_at, deleted_at
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
 		FROM database_addons WHERE id = $1 AND deleted_at IS NULL
 	`
 
@@ -91,7 +92,8 @@ func (r *DatabaseAddonRepository) GetByID(ctx context.Context, id uuid.UUID) (*t
 		&configJSON, &k8sNs, &k8sRes, &connSecret,
 		&host, &port, &dbName, &username,
 		&addon.StorageUsedBytes, &addon.ConnectionsActive, &lastBackupAt,
-		&createdBy, &createdByEmail, &addon.CreatedAt, &addon.UpdatedAt, &provisionedAt, &deletedAt,
+		&createdBy, &createdByEmail, &addon.CreatedAt, &addon.UpdatedAt, &provisionedAt,
+		&deletionScheduledAt, &deletedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -135,6 +137,9 @@ func (r *DatabaseAddonRepository) GetByID(ctx context.Context, id uuid.UUID) (*t
 	}
 	if provisionedAt.Valid {
 		addon.ProvisionedAt = &provisionedAt.Time
+	}
+	if deletionScheduledAt.Valid {
+		addon.DeletionScheduledAt = &deletionScheduledAt.Time
 	}
 	if deletedAt.Valid {
 		addon.DeletedAt = &deletedAt.Time
@@ -160,14 +165,15 @@ func (r *DatabaseAddonRepository) GetByName(ctx context.Context, projectID uuid.
 	var envID, createdBy sql.NullString
 	var statusMsg, k8sNs, k8sRes, connSecret, host, dbName, username, createdByEmail sql.NullString
 	var port sql.NullInt64
-	var provisionedAt, deletedAt, lastBackupAt sql.NullTime
+	var provisionedAt, deletionScheduledAt, deletedAt, lastBackupAt sql.NullTime
 
 	query := `
 		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
-		       created_by, created_by_email, created_at, updated_at, provisioned_at, deleted_at
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
 		FROM database_addons
 		WHERE project_id = $1 AND name = $2 AND deleted_at IS NULL
 	`
@@ -177,7 +183,8 @@ func (r *DatabaseAddonRepository) GetByName(ctx context.Context, projectID uuid.
 		&configJSON, &k8sNs, &k8sRes, &connSecret,
 		&host, &port, &dbName, &username,
 		&addon.StorageUsedBytes, &addon.ConnectionsActive, &lastBackupAt,
-		&createdBy, &createdByEmail, &addon.CreatedAt, &addon.UpdatedAt, &provisionedAt, &deletedAt,
+		&createdBy, &createdByEmail, &addon.CreatedAt, &addon.UpdatedAt, &provisionedAt,
+		&deletionScheduledAt, &deletedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -222,6 +229,9 @@ func (r *DatabaseAddonRepository) GetByName(ctx context.Context, projectID uuid.
 	if provisionedAt.Valid {
 		addon.ProvisionedAt = &provisionedAt.Time
 	}
+	if deletionScheduledAt.Valid {
+		addon.DeletionScheduledAt = &deletionScheduledAt.Time
+	}
 	if deletedAt.Valid {
 		addon.DeletedAt = &deletedAt.Time
 	}
@@ -246,7 +256,8 @@ func (r *DatabaseAddonRepository) ListByProject(ctx context.Context, projectID u
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
-		       created_by, created_by_email, created_at, updated_at, provisioned_at, deleted_at
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
 		FROM database_addons
 		WHERE project_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -276,7 +287,8 @@ func (r *DatabaseAddonRepository) ListByProjects(ctx context.Context, projectIDs
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
-		       created_by, created_by_email, created_at, updated_at, provisioned_at, deleted_at
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
 		FROM database_addons
 		WHERE project_id = ANY($1) AND deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -310,7 +322,8 @@ func (r *DatabaseAddonRepository) ListByTeam(ctx context.Context, teamID uuid.UU
 		       a.config, a.k8s_namespace, a.k8s_resource_name, a.connection_secret,
 		       a.host, a.port, a.database_name, a.username,
 		       a.storage_used_bytes, a.connections_active, a.last_backup_at,
-		       a.created_by, a.created_by_email, a.created_at, a.updated_at, a.provisioned_at, a.deleted_at
+		       a.created_by, a.created_by_email, a.created_at, a.updated_at, a.provisioned_at,
+		       a.deletion_scheduled_at, a.deleted_at
 		FROM database_addons a
 		JOIN projects p ON p.id = a.project_id
 		WHERE p.team_id = $1 AND a.deleted_at IS NULL
@@ -333,7 +346,8 @@ func (r *DatabaseAddonRepository) ListByType(ctx context.Context, projectID uuid
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
-		       created_by, created_by_email, created_at, updated_at, provisioned_at, deleted_at
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
 		FROM database_addons
 		WHERE project_id = $1 AND type = $2 AND deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -355,7 +369,8 @@ func (r *DatabaseAddonRepository) ListPending(ctx context.Context) ([]*types.Dat
 		       config, k8s_namespace, k8s_resource_name, connection_secret,
 		       host, port, database_name, username,
 		       storage_used_bytes, connections_active, last_backup_at,
-		       created_by, created_by_email, created_at, updated_at, provisioned_at, deleted_at
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
 		FROM database_addons
 		WHERE status IN ('pending', 'provisioning', 'deleting') AND deleted_at IS NULL
 		ORDER BY created_at ASC
@@ -380,14 +395,15 @@ func (r *DatabaseAddonRepository) scanAddons(rows *sql.Rows) ([]*types.DatabaseA
 		var envID, createdBy sql.NullString
 		var statusMsg, k8sNs, k8sRes, connSecret, host, dbName, username, createdByEmail sql.NullString
 		var port sql.NullInt64
-		var provisionedAt, deletedAt, lastBackupAt sql.NullTime
+		var provisionedAt, deletionScheduledAt, deletedAt, lastBackupAt sql.NullTime
 
 		err := rows.Scan(
 			&addon.ID, &addon.ProjectID, &envID, &addon.Type, &addon.Name, &addon.Plan, &addon.Status, &statusMsg,
 			&configJSON, &k8sNs, &k8sRes, &connSecret,
 			&host, &port, &dbName, &username,
 			&addon.StorageUsedBytes, &addon.ConnectionsActive, &lastBackupAt,
-			&createdBy, &createdByEmail, &addon.CreatedAt, &addon.UpdatedAt, &provisionedAt, &deletedAt,
+			&createdBy, &createdByEmail, &addon.CreatedAt, &addon.UpdatedAt, &provisionedAt,
+			&deletionScheduledAt, &deletedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -431,6 +447,9 @@ func (r *DatabaseAddonRepository) scanAddons(rows *sql.Rows) ([]*types.DatabaseA
 		}
 		if provisionedAt.Valid {
 			addon.ProvisionedAt = &provisionedAt.Time
+		}
+		if deletionScheduledAt.Valid {
+			addon.DeletionScheduledAt = &deletionScheduledAt.Time
 		}
 		if deletedAt.Valid {
 			addon.DeletedAt = &deletedAt.Time
@@ -532,6 +551,64 @@ func (r *DatabaseAddonRepository) MarkProvisioned(ctx context.Context, id uuid.U
 	}
 
 	return nil
+}
+
+// ScheduleDeletion moves an addon into the retention-hold state: status
+// becomes pending_deletion and deletion_scheduled_at is stamped with the time
+// the addon becomes eligible for hard teardown. The data-bearing K8s
+// resources are deliberately NOT torn down here — the reconciler finalizes
+// them once the window elapses. Idempotent for a row already in the hold
+// state; returns sql.ErrNoRows for an unknown or already-hard-deleted id
+// (2026-08-17 audit #10).
+func (r *DatabaseAddonRepository) ScheduleDeletion(ctx context.Context, id uuid.UUID, scheduledAt time.Time, message string) error {
+	now := time.Now()
+	query := `
+		UPDATE database_addons
+		SET status = $1, deletion_scheduled_at = $2, status_message = $3, updated_at = $4
+		WHERE id = $5 AND deleted_at IS NULL
+	`
+	result, err := r.db.ExecContext(ctx, query,
+		types.DatabaseAddonStatusPendingDeletion, scheduledAt, message, now, id,
+	)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+// ListDeletionDue returns retention-hold addons whose scheduled teardown time
+// has passed (deletion_scheduled_at <= now) and that are not yet hard-deleted.
+// The reconciler calls this to finalize expired holds. Ordered oldest-first so
+// the longest-overdue teardown runs first.
+func (r *DatabaseAddonRepository) ListDeletionDue(ctx context.Context, now time.Time) ([]*types.DatabaseAddon, error) {
+	query := `
+		SELECT id, project_id, environment_id, type, name, plan, status, status_message,
+		       config, k8s_namespace, k8s_resource_name, connection_secret,
+		       host, port, database_name, username,
+		       storage_used_bytes, connections_active, last_backup_at,
+		       created_by, created_by_email, created_at, updated_at, provisioned_at,
+		       deletion_scheduled_at, deleted_at
+		FROM database_addons
+		WHERE status = 'pending_deletion'
+		  AND deleted_at IS NULL
+		  AND deletion_scheduled_at IS NOT NULL
+		  AND deletion_scheduled_at <= $1
+		ORDER BY deletion_scheduled_at ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, now)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanAddons(rows)
 }
 
 // SoftDelete marks a database addon as deleted (soft delete)

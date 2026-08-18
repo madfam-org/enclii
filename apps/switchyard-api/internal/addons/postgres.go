@@ -252,6 +252,11 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 			"primaryUpdateStrategy": "unsupervised",
 			"storage": map[string]interface{}{
 				"size": storageSize,
+				// Pin to the Retain-reclaim StorageClass so a Cluster teardown
+				// leaves the underlying PersistentVolume recoverable rather than
+				// destroying the client's data with the PVC (2026-08-17 audit
+				// #10). The default class is reclaimPolicy: Delete.
+				"storageClass": RetainStorageClass,
 			},
 			"bootstrap": map[string]interface{}{
 				"initdb": map[string]interface{}{

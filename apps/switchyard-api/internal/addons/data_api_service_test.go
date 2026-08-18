@@ -31,7 +31,8 @@ var addonColsSvc = []string{
 	"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
 	"host", "port", "database_name", "username",
 	"storage_used_bytes", "connections_active", "last_backup_at",
-	"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at", "deleted_at",
+	"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at",
+	"deletion_scheduled_at", "deleted_at",
 }
 
 // newTestDataAPIService wires a DataAPIService onto a sqlmock DB and a fake
@@ -79,7 +80,8 @@ func expectAddonGet(mock sqlmock.Sqlmock, addon *types.DatabaseAddon) {
 			[]byte(`{}`), addon.K8sNamespace, "", addon.ConnectionSecret,
 			"", nil, "", "",
 			0, 0, nil,
-			nil, "", now, now, nil, nil,
+			nil, "", now, now, nil,
+			nil, nil, // deletion_scheduled_at, deleted_at
 		))
 }
 

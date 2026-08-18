@@ -272,17 +272,52 @@ type EventActor struct {
 	UserEmail string
 }
 
+// DeleteAddonOptions tunes deletion behavior.
+type DeleteAddonOptions struct {
+	// Force bypasses the retention hold and tears the addon down immediately,
+	// destroying its data-bearing K8s resources. Reserved for platform-admin
+	// use (the HTTP layer gates this). Non-data-bearing addons ignore the flag
+	// because there is nothing to retain.
+	Force bool
+}
+
 // DeleteAddon deletes a database addon. Retained for back-compat; prefer
 // DeleteAddonBy which records the actor in the event ledger.
 func (s *AddonService) DeleteAddon(ctx context.Context, addonID uuid.UUID) error {
 	return s.DeleteAddonBy(ctx, addonID, EventActor{})
 }
 
-// DeleteAddonBy deletes a database addon and records the actor in the
-// lifecycle ledger. Call this from HTTP handlers; the plain DeleteAddon
-// remains available for system-initiated calls.
+// DeleteAddonBy requests deletion of a database addon and records the actor in
+// the lifecycle ledger. Call this from HTTP handlers; the plain DeleteAddon
+// remains available for system-initiated calls. Uses the default
+// (non-forced) options — data-bearing addons enter the retention hold.
 func (s *AddonService) DeleteAddonBy(ctx context.Context, addonID uuid.UUID, actor EventActor) error {
-	logger := s.logger.WithField("addon_id", addonID)
+	return s.DeleteAddonWithOptions(ctx, addonID, actor, DeleteAddonOptions{})
+}
+
+// DeleteAddonWithOptions is the retention-aware deletion entry point
+// (2026-08-17 audit #10).
+//
+// For a provisioned data-bearing engine (managed Postgres/MySQL) the default
+// path is a SOFT delete: the addon is marked pending_deletion with a
+// deletion_scheduled_at retention timestamp and its CNPG Cluster + PVCs +
+// barman backups are LEFT INTACT. The reconciler finalizes the teardown once
+// the window elapses. This makes a mistaken or malicious delete of a
+// production database recoverable during the window, and gives a departing
+// client a grace period to pull an export.
+//
+// opts.Force (platform-admin only, gated at the HTTP layer) skips the hold and
+// tears the addon down immediately — the pre-audit behavior, kept for the
+// deliberate "destroy now" case.
+//
+// Non-data-bearing or not-yet-provisioned addons (Redis, or an addon with no
+// K8s resources) are hard-deleted immediately regardless: there is no
+// platform-recoverable data to protect and no barman backup to retain.
+func (s *AddonService) DeleteAddonWithOptions(ctx context.Context, addonID uuid.UUID, actor EventActor, opts DeleteAddonOptions) error {
+	logger := s.logger.WithFields(logrus.Fields{
+		"addon_id": addonID,
+		"force":    opts.Force,
+	})
 	logger.Info("Deleting database addon")
 
 	addon, err := s.repos.DatabaseAddons.GetByID(ctx, addonID)
@@ -290,27 +325,74 @@ func (s *AddonService) DeleteAddonBy(ctx context.Context, addonID uuid.UUID, act
 		return fmt.Errorf("addon not found: %w", err)
 	}
 
-	// Get provisioner
+	// Validate the provisioner exists up front so an unsupported type fails
+	// before we mutate any state.
+	if _, ok := s.provisioners[addon.Type]; !ok {
+		return fmt.Errorf("unsupported addon type: %s", addon.Type)
+	}
+
+	// Retention hold: default path for provisioned data-bearing engines. Skip
+	// it only on an explicit force. This is the audit #10 fix — the destructive
+	// teardown no longer runs inline on a plain delete.
+	if !opts.Force && addonSupportsRetention(addon) {
+		scheduledAt := time.Now().Add(DefaultDeletionRetention)
+
+		s.emitEventWithActor(ctx, addon, actor, db.EventAddonDestroyRequested, map[string]interface{}{
+			"plan":                  addon.Plan,
+			"retention_hold":        true,
+			"deletion_scheduled_at": scheduledAt.UTC().Format(time.RFC3339),
+		})
+
+		msg := fmt.Sprintf("Retention hold: scheduled for teardown at %s", scheduledAt.UTC().Format(time.RFC3339))
+		if err := s.repos.DatabaseAddons.ScheduleDeletion(ctx, addonID, scheduledAt, msg); err != nil {
+			logger.WithError(err).Error("Failed to schedule addon deletion")
+			return fmt.Errorf("failed to schedule addon deletion: %w", err)
+		}
+
+		logger.WithField("deletion_scheduled_at", scheduledAt).Info("Addon entered retention hold; data retained until window elapses")
+		return nil
+	}
+
+	// Immediate teardown path: force delete, or a non-data-bearing /
+	// not-yet-provisioned addon.
+	return s.finalizeDeletion(ctx, addon, actor, opts.Force)
+}
+
+// finalizeDeletion performs the actual destructive teardown: deprovision the
+// K8s resources, then soft-delete the DB row. Shared by the force-delete path
+// and the reconciler's retention sweep. `forced` records in the ledger whether
+// this bypassed the retention window.
+func (s *AddonService) finalizeDeletion(ctx context.Context, addon *types.DatabaseAddon, actor EventActor, forced bool) error {
+	logger := s.logger.WithFields(logrus.Fields{
+		"addon_id": addon.ID,
+		"forced":   forced,
+	})
+
 	provisioner, ok := s.provisioners[addon.Type]
 	if !ok {
 		return fmt.Errorf("unsupported addon type: %s", addon.Type)
 	}
 
-	// Emit destroy-requested event before any mutation so we capture intent
-	// even if the deprovision path fails.
-	s.emitEventWithActor(ctx, addon, actor, db.EventAddonDestroyRequested, map[string]interface{}{
-		"plan": addon.Plan,
-	})
+	// Emit destroy-requested (with retention_hold:false) only when this is a
+	// direct teardown that did not already emit one via the hold path. The
+	// reconciler-driven finalize does not re-emit request; it emits destroyed.
+	if forced {
+		s.emitEventWithActor(ctx, addon, actor, db.EventAddonDestroyRequested, map[string]interface{}{
+			"plan":           addon.Plan,
+			"retention_hold": false,
+			"force":          true,
+		})
+	}
 
 	// Update status to deleting
-	if err := s.repos.DatabaseAddons.UpdateStatus(ctx, addonID, types.DatabaseAddonStatusDeleting, "Deletion in progress"); err != nil {
+	if err := s.repos.DatabaseAddons.UpdateStatus(ctx, addon.ID, types.DatabaseAddonStatusDeleting, "Deletion in progress"); err != nil {
 		logger.WithError(err).Error("Failed to update addon status")
 	}
 
 	// Deprovision from K8s
 	if err := provisioner.Deprovision(ctx, addon); err != nil {
 		logger.WithError(err).Error("Failed to deprovision addon")
-		_ = s.repos.DatabaseAddons.UpdateStatus(ctx, addonID, types.DatabaseAddonStatusFailed, fmt.Sprintf("Deprovision failed: %s", err))
+		_ = s.repos.DatabaseAddons.UpdateStatus(ctx, addon.ID, types.DatabaseAddonStatusFailed, fmt.Sprintf("Deprovision failed: %s", err))
 		s.emitEventWithActor(ctx, addon, actor, db.EventAddonFailed, map[string]interface{}{
 			"phase": "deprovision",
 			"error": err.Error(),
@@ -324,17 +406,55 @@ func (s *AddonService) DeleteAddonBy(ctx context.Context, addonID uuid.UUID, act
 	// unknown. A second delete call on the same id will succeed silently
 	// if the row still exists (soft-deleted rows are still returned by the
 	// underlying UPDATE … WHERE id = ? clause).
-	if err := s.repos.DatabaseAddons.SoftDelete(ctx, addonID); err != nil {
+	if err := s.repos.DatabaseAddons.SoftDelete(ctx, addon.ID); err != nil {
 		logger.WithError(err).Error("Failed to soft delete addon")
 		return fmt.Errorf("failed to delete addon: %w", err)
 	}
 
 	s.emitEventWithActor(ctx, addon, actor, db.EventAddonDestroyed, map[string]interface{}{
-		"plan": addon.Plan,
+		"plan":   addon.Plan,
+		"forced": forced,
 	})
 
 	logger.Info("Addon deleted successfully")
 	return nil
+}
+
+// addonSupportsRetention reports whether an addon's data is
+// platform-recoverable and therefore worth a retention hold on delete. True
+// only for a provisioned CNPG-backed engine (managed Postgres/MySQL) that owns
+// its own K8s resources.
+//
+// Excluded (immediate hard delete on request):
+//   - Redis — ephemeral cache, no durable client data the platform protects.
+//   - Addons with no K8s resources yet (still pending/failed provisioning) —
+//     nothing has been created to retain.
+//   - `shared-discovered` addons — pointers at a pre-existing shared DB the
+//     platform does not own the lifecycle of; tearing down the pointer must
+//     not linger.
+func addonSupportsRetention(addon *types.DatabaseAddon) bool {
+	if addon == nil {
+		return false
+	}
+	if addon.Plan == "shared-discovered" {
+		return false
+	}
+	if addon.K8sNamespace == "" || addon.K8sResourceName == "" {
+		return false
+	}
+	switch addon.Type {
+	case types.DatabaseAddonTypePostgres, types.DatabaseAddonTypeMySQL:
+		return true
+	default:
+		return false
+	}
+}
+
+// FinalizeExpiredDeletion is the reconciler entry point for tearing down a
+// retention-hold addon whose window has elapsed. It runs the shared
+// destructive path as a system action (no user actor).
+func (s *AddonService) FinalizeExpiredDeletion(ctx context.Context, addon *types.DatabaseAddon) error {
+	return s.finalizeDeletion(ctx, addon, EventActor{}, false)
 }
 
 // GetCredentials retrieves connection credentials for an addon

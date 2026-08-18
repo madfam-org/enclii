@@ -354,6 +354,20 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 		return
 	}
 
+	// force=true bypasses the retention hold and tears the data-bearing
+	// resources down immediately (audit #10). This is the destructive,
+	// unrecoverable path, so it is restricted to platform admins — a plain
+	// project member (even a project admin) can only ever schedule the
+	// retention hold, never nuke a production DB instantly. Checked up front so
+	// an unauthorized force fails fast, before any addon lookup.
+	force := isTruthyQueryParam(c.Query("force"))
+	if force && !callerIsPlatformAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "force delete requires platform admin; a standard delete schedules a retention hold instead",
+		})
+		return
+	}
+
 	addonMeta, err := h.addonService.GetAddonWithBindings(ctx, addonUUID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -370,7 +384,7 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 
 	actor := addonActorFromContext(c)
 
-	if err := h.addonService.DeleteAddonBy(ctx, addonUUID, actor); err != nil {
+	if err := h.addonService.DeleteAddonWithOptions(ctx, addonUUID, actor, addons.DeleteAddonOptions{Force: force}); err != nil {
 		// Treat "addon not found" as 404 so second-delete / unknown-id both
 		// surface as proper client errors (idempotency for destroy flows).
 		if err == sql.ErrNoRows || strings.Contains(err.Error(), "addon not found") {
@@ -384,9 +398,35 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info(ctx, "Addon deleted", logging.String("addon_id", addonID))
+	// Re-read to report the resulting state: a retention hold reports the
+	// scheduled teardown time; an immediate teardown reports plain deletion.
+	if !force {
+		if addon, err := h.addonService.GetAddon(ctx, addonUUID); err == nil &&
+			addon.Status == types.DatabaseAddonStatusPendingDeletion {
+			h.logger.Info(ctx, "Addon scheduled for retention-hold deletion",
+				logging.String("addon_id", addonID))
+			c.JSON(http.StatusAccepted, gin.H{
+				"message":               "Addon scheduled for deletion; data retained during the grace window",
+				"status":                addon.Status,
+				"deletion_scheduled_at": addon.DeletionScheduledAt,
+			})
+			return
+		}
+	}
 
+	h.logger.Info(ctx, "Addon deleted", logging.String("addon_id", addonID))
 	c.JSON(http.StatusOK, gin.H{"message": "Addon deleted successfully"})
+}
+
+// isTruthyQueryParam interprets a query-string flag loosely: "1", "true",
+// "yes", "on" (any case) all mean true. Empty / anything else is false.
+func isTruthyQueryParam(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // addonActorFromContext extracts actor fields from the authenticated request

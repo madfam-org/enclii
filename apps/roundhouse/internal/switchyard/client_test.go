@@ -33,7 +33,7 @@ func TestCreatePreview(t *testing.T) {
 		assert.Equal(t, "feat-branch", req.PRBranch)
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"preview":{"id":"prev-1","preview_url":"https://pr-42.preview.enclii.app","status":"active"},"action":"created"}`))
+		w.Write([]byte(`{"preview":{"id":"prev-1","preview_url":"https://pr-42.preview.enclii.dev","status":"active"},"action":"created"}`))
 	})
 
 	resp, err := c.CreatePreview(context.Background(), &CreatePreviewRequest{
@@ -44,7 +44,7 @@ func TestCreatePreview(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "prev-1", resp.Preview.ID)
-	assert.Equal(t, "https://pr-42.preview.enclii.app", resp.Preview.PreviewURL)
+	assert.Equal(t, "https://pr-42.preview.enclii.dev", resp.Preview.PreviewURL)
 	assert.Equal(t, "created", resp.Action)
 }
 
