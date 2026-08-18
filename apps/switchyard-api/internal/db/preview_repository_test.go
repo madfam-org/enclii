@@ -38,7 +38,7 @@ func previewRow(id, projID, svcID uuid.UUID, now time.Time) *sqlmock.Rows {
 			sql.NullString{String: "https://github.com/pr/42", Valid: true},
 			sql.NullString{String: "dev", Valid: true},
 			"feature/fix", "main", "abc123",
-			"pr-42.preview.enclii.app", "https://pr-42.preview.enclii.app",
+			"pr-42.preview.enclii.dev", "https://pr-42.preview.enclii.dev",
 			types.PreviewStatusActive,
 			sql.NullString{},
 			30,
@@ -64,7 +64,7 @@ func TestPreviewEnvironmentRepository_Create(t *testing.T) {
 			PRBaseBranch:     "main",
 			CommitSHA:        "abc123",
 			PreviewSubdomain: "pr-42",
-			PreviewURL:       "https://pr-42.preview.enclii.app",
+			PreviewURL:       "https://pr-42.preview.enclii.dev",
 			Status:           types.PreviewStatusPending,
 			AutoSleepAfter:   30,
 		}
@@ -74,7 +74,7 @@ func TestPreviewEnvironmentRepository_Create(t *testing.T) {
 				sqlmock.AnyArg(), preview.ProjectID, preview.ServiceID, 42,
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 				"feature/fix", "main", "abc123", "pr-42",
-				"https://pr-42.preview.enclii.app",
+				"https://pr-42.preview.enclii.dev",
 				types.PreviewStatusPending, sqlmock.AnyArg(), 30,
 				sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 			).

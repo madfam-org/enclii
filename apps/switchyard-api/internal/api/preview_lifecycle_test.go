@@ -84,7 +84,7 @@ func TestPreviewLifecycle_APICreateGetClose(t *testing.T) {
 	now := time.Now()
 	prNumber := 42
 	subdomain := fmt.Sprintf("pr-%d-my-api", prNumber)
-	previewURL := fmt.Sprintf("https://%s.preview.enclii.app", subdomain)
+	previewURL := fmt.Sprintf("https://%s.preview.enclii.dev", subdomain)
 
 	expectServiceByID(mock, serviceID, projectID, "my-api", testRepoHTMLURL)
 	expectServiceByID(mock, serviceID, projectID, "my-api", testRepoHTMLURL)
@@ -232,7 +232,7 @@ func TestPreviewLifecycle_WebhookPROpenCreates(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "Preview environment created", resp.Message)
 	assert.Equal(t, prNumber, resp.PRNumber)
-	assert.Contains(t, resp.PreviewURL, fmt.Sprintf("pr-%d-my-api.preview.enclii.app", prNumber))
+	assert.Contains(t, resp.PreviewURL, fmt.Sprintf("pr-%d-my-api.preview.enclii.dev", prNumber))
 	assert.Contains(t, resp.Subdomain, fmt.Sprintf("pr-%d-my-api", prNumber))
 
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -250,7 +250,7 @@ func TestPreviewLifecycle_WebhookPRClosedClosesPreview(t *testing.T) {
 	prNumber := 42
 	now := time.Now()
 	subdomain := fmt.Sprintf("pr-%d-my-api", prNumber)
-	previewURL := fmt.Sprintf("https://%s.preview.enclii.app", subdomain)
+	previewURL := fmt.Sprintf("https://%s.preview.enclii.dev", subdomain)
 
 	expectServiceByGitRepo(mock, serviceID, projectID, "my-api", testRepoCloneURL)
 	mock.ExpectQuery(`FROM preview_environments\s+WHERE service_id`).
