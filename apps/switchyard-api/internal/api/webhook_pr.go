@@ -15,6 +15,15 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
+// previewDomainSuffix is the zone previews are served under. It MUST be a
+// subdomain of a domain we actually own (enclii.dev / enclii.com) — the prior
+// value `.preview.enclii.app` pointed at a domain we do NOT control, so previews
+// could never resolve or obtain TLS, and cleanup (which used `.enclii.dev`)
+// removed a route that was never created. The serving Ingress, the tunnel route,
+// and the cleanup that removes that route all derive from this one constant so
+// they can never drift to different zones.
+const previewDomainSuffix = ".preview.enclii.dev"
+
 // GitHubPullRequestEvent represents a GitHub pull_request webhook payload
 type GitHubPullRequestEvent struct {
 	Action      string `json:"action"` // opened, synchronize, closed, reopened
@@ -137,11 +146,11 @@ func (h *Handler) createPreviewEnvironment(c *gin.Context, ctx context.Context, 
 		return
 	}
 
-	// Generate preview subdomain: pr-{number}-{service-slug}.preview.enclii.app
+	// Generate preview subdomain: pr-{number}-{service-slug}.preview.enclii.dev
 	serviceSlug := strings.ToLower(strings.ReplaceAll(service.Name, " ", "-"))
 	serviceSlug = strings.ToLower(strings.ReplaceAll(serviceSlug, "_", "-"))
 	subdomain := "pr-" + itoa(event.Number) + "-" + serviceSlug
-	previewURL := "https://" + subdomain + ".preview.enclii.app"
+	previewURL := "https://" + subdomain + previewDomainSuffix
 
 	preview := &types.PreviewEnvironment{
 		ID:               uuid.New(),
@@ -389,7 +398,7 @@ func (h *Handler) triggerPreviewBuild(service *types.Service, preview *types.Pre
 	// Generate preview-specific Ingress with the preview subdomain
 	previewDomains := []types.CustomDomain{
 		{
-			Domain:     preview.PreviewSubdomain + ".preview.enclii.app",
+			Domain:     preview.PreviewSubdomain + previewDomainSuffix,
 			TLSEnabled: true,
 			TLSIssuer:  "letsencrypt-prod",
 		},
@@ -542,9 +551,11 @@ func (h *Handler) cleanupPreviewResources(preview *types.PreviewEnvironment) {
 		}
 	}
 
-	// Remove Cloudflare tunnel route for the preview subdomain
+	// Remove Cloudflare tunnel route for the preview subdomain. MUST match the
+	// hostname the route was created under (previewDomainSuffix) — using a
+	// different zone here silently orphaned the real route on every merge.
 	if h.tunnelRoutesService != nil && preview.PreviewSubdomain != "" {
-		hostname := preview.PreviewSubdomain + ".enclii.dev"
+		hostname := preview.PreviewSubdomain + previewDomainSuffix
 		if err := h.tunnelRoutesService.RemoveRoute(ctx, hostname); err != nil {
 			h.logger.Warn(ctx, "Failed to remove CF tunnel route for preview",
 				logging.String("hostname", hostname),

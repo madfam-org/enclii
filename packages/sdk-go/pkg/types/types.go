@@ -666,7 +666,7 @@ type PreviewEnvironment struct {
 	PRBaseBranch string `json:"pr_base_branch" db:"pr_base_branch"`
 	CommitSHA    string `json:"commit_sha" db:"commit_sha"`
 
-	// Preview URL (e.g., pr-123.preview.enclii.app)
+	// Preview URL (e.g., pr-123.preview.enclii.dev)
 	PreviewSubdomain string `json:"preview_subdomain" db:"preview_subdomain"`
 	PreviewURL       string `json:"preview_url" db:"preview_url"`
 

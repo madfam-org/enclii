@@ -244,10 +244,10 @@ func (h *Handler) CreatePreview(c *gin.Context) {
 		return
 	}
 
-	// Generate preview subdomain: pr-{number}-{service-slug}.preview.enclii.app
+	// Generate preview subdomain: pr-{number}-{service-slug}.preview.enclii.dev
 	serviceSlug := strings.ToLower(strings.ReplaceAll(service.Name, " ", "-"))
 	subdomain := fmt.Sprintf("pr-%d-%s", req.PRNumber, serviceSlug)
-	previewURL := fmt.Sprintf("https://%s.preview.enclii.app", subdomain)
+	previewURL := "https://" + subdomain + previewDomainSuffix
 
 	// Set default base branch if not provided
 	baseBranch := req.PRBaseBranch
