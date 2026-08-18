@@ -240,7 +240,8 @@ var addonsScanColumns = []string{
 	"config", "k8s_namespace", "k8s_resource_name", "connection_secret",
 	"host", "port", "database_name", "username",
 	"storage_used_bytes", "connections_active", "last_backup_at",
-	"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at", "deleted_at",
+	"created_by", "created_by_email", "created_at", "updated_at", "provisioned_at",
+	"deletion_scheduled_at", "deleted_at",
 }
 
 func TestListAllAddons_ActingAs_FiltersByTeam(t *testing.T) {
@@ -261,7 +262,7 @@ func TestListAllAddons_ActingAs_FiltersByTeam(t *testing.T) {
 			[]byte("{}"), nil, nil, nil,
 			nil, nil, nil, nil,
 			int64(0), 0, nil,
-			nil, "", now, now, nil, nil,
+			nil, "", now, now, nil, nil, nil,
 		))
 
 	w := httptest.NewRecorder()

@@ -119,3 +119,55 @@ func TestGetAddonEventsNoRepos(t *testing.T) {
 	h.GetAddonEvents(c)
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
+
+// TestIsTruthyQueryParam pins how the destructive `?force=` flag is parsed on
+// the delete path (2026-08-17 audit #10). Only explicit truthy values enable
+// the force path; anything else (including the empty default) is a safe,
+// retention-holding delete.
+func TestIsTruthyQueryParam(t *testing.T) {
+	truthy := []string{"1", "true", "TRUE", "True", "yes", "YES", "on", " on "}
+	for _, v := range truthy {
+		assert.Truef(t, isTruthyQueryParam(v), "%q should be truthy", v)
+	}
+	falsy := []string{"", "0", "false", "no", "off", "maybe", "2", "force"}
+	for _, v := range falsy {
+		assert.Falsef(t, isTruthyQueryParam(v), "%q should be falsy", v)
+	}
+}
+
+// TestForceDeleteRequiresPlatformAdmin guards the authorization concern from
+// audit #10: a non-platform-admin caller must not be able to trigger the
+// immediate, unrecoverable teardown via ?force=true. The handler must reject
+// with 403 before reaching the service. A missing/false force flag is the
+// normal (retention-holding) path and is not blocked here.
+func TestForceDeleteRequiresPlatformAdmin(t *testing.T) {
+	// A non-admin principal with force=true. addonService is nil: if the guard
+	// did NOT fire first, the handler would panic dereferencing it — so a clean
+	// 403 also proves the guard runs before any service call.
+	h := &Handler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_role", "developer")
+	c.Params = gin.Params{{Key: "id", Value: uuid.New().String()}}
+	c.Request, _ = http.NewRequest("DELETE", "/v1/addons/x?force=true", nil)
+
+	assert.NotPanics(t, func() { h.DeleteAddon(c) })
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// TestForceDeleteAdminPassesGuard confirms a platform admin clears the force
+// guard (the request then proceeds into normal handler flow). We only assert
+// the guard itself does not 403 the admin — downstream behavior needs a wired
+// service and is covered at the service layer.
+func TestForceDeleteAdminPassesGuard(t *testing.T) {
+	assert.True(t, callerIsPlatformAdmin(adminCtx(t)), "admin role must be recognized as platform admin")
+}
+
+// adminCtx builds a gin context carrying the admin role.
+func adminCtx(t *testing.T) *gin.Context {
+	t.Helper()
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_role", "admin")
+	return c
+}

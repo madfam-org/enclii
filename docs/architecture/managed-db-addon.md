@@ -67,7 +67,7 @@ What Sprint 1 **adds** to this baseline:
 | D1 | **Isolation: cluster-per-addon (CloudNativePG)**, not DB-per-addon in a shared cluster. | Pre-existing implementation is already at this level; rolling back to shared-cluster would be a downgrade. Cluster-per-addon matches Heroku Essential-tier isolation and avoids noisy-neighbor / credential-leak classes of bug entirely. | — (choice ratified) |
 | D2 | **Plans are enum (not free-form config)**. Sprint 1 ships three: `standard-0` (1 GB / 0.1 CPU / 256 Mi), `standard-1` (10 GB / 0.5 CPU / 1 Gi), `standard-2` (50 GB / 1 CPU / 2 Gi). | Plans are how billing will price in Sprint 3. Making them enum-typed now avoids a retroactive migration. Free-form config remains on the row as `config_override` for internal escape hatches. | Sprint 3 billing cutover |
 | D3 | **Credential delivery: K8s Secret ref** (CloudNativePG materializes `<cluster>-app`). API responses carry the Secret name, never the password. Bindings inject `DATABASE_URL` env var by reading the Secret at Deployment-render time. | Matches existing pattern. External Secrets Operator + Vault integration (from P0.2) is a Sprint 2 hardening — for Sprint 1 the Secret lives in the project's namespace directly. | Vault integration (Sprint 2) |
-| D4 | **Lifecycle states: `pending / provisioning / ready / deleting / deleted / failed`**. Pre-existing enum, we keep it. | Spec called for `provisioning → ready → decommissioning → destroyed`; the pre-existing state set is functionally equivalent and already enforced by a CHECK constraint. | — |
+| D4 | **Lifecycle states: `pending / provisioning / ready / pending_deletion / deleting / deleted / failed`**. `pending_deletion` added by the 2026-08-17 audit #10 retention hold (migration 035). | Spec called for `provisioning → ready → decommissioning → destroyed`; the pre-existing state set is functionally equivalent and already enforced by a CHECK constraint. `pending_deletion` is the retention-hold grace state — see "Retention hold on delete" below. | — |
 | D5 | **Naming: customer-provided `name`, unique per project**. No forced `<service>-db` suffix. | Pre-existing `unique_addon_name_per_project` constraint. Customers pick; CLI can default if they leave it blank. | — |
 | D6 | **Extensions: `uuid-ossp` and `pgcrypto` on by default**. | Configured via CloudNativePG `bootstrap.initdb.postInitSQL` in Sprint 2; Sprint 1 provisions the cluster without them and documents the gap. | Sprint 2 |
 | D7 | **Plan enforcement is server-side**. CLI sends `plan` string; API rejects unknown plans with 400. The plan catalog lives in the `managed_db_plans` table (Sprint 1) so Sprint 3 can attach prices and toggle availability without a code deploy. | Decoupling catalog from code lets product adjust pricing and plan availability operationally. | — |
@@ -127,17 +127,68 @@ What Sprint 1 **adds** to this baseline:
   DELETE /v1/addons/:id  (RequireRole Admin)
         │
         ▼
-  addons.AddonService.DeleteAddon
-        │ • status: → deleting
-        │ • emit 'addon.destroy.requested'
-        │ • PostgresProvisioner.Deprovision → dynamicClient.Delete Cluster CR
-        │   (CloudNativePG cascades StatefulSet, PVC, Services, Secret)
-        │ • soft-delete row: deleted_at=now(), status=deleted
-        │ • emit 'addon.destroyed'
+  addons.AddonService.DeleteAddonWithOptions
+        │
+        ├─ default (data-bearing engine, provisioned): RETENTION HOLD
+        │     • status: → pending_deletion, deletion_scheduled_at = now + 7d
+        │     • emit 'addon.destroy.requested' {retention_hold:true, deletion_scheduled_at}
+        │     • CNPG Cluster + PVCs + barman backups LEFT INTACT
+        │     • HTTP 202; recoverable until the window elapses
+        │           │
+        │           ▼  (reconciler tick, once deletion_scheduled_at passes)
+        │     addon_reconciler.sweepExpiredRetentionHolds
+        │           → AddonService.FinalizeExpiredDeletion → finalizeDeletion (below)
+        │
+        └─ force=true (platform-admin only) OR Redis OR not-yet-provisioned:
+              finalizeDeletion:
+                • status: → deleting
+                • PostgresProvisioner.Deprovision → dynamicClient.Delete Cluster CR
+                  (CNPG cascades StatefulSet, PVC, Services, Secret — but PVCs are
+                   on a Retain-reclaim StorageClass so the underlying PV survives)
+                • soft-delete row: deleted_at=now(), status=deleted
+                • emit 'addon.destroyed' {forced}
         ▼
   Bindings referencing this addon fall through to empty env vars on next deploy.
   Historical data in database_addons row is retained for audit + future billing.
 ```
+
+## Retention hold on delete (2026-08-17 audit #10)
+
+Before this change a `DELETE /v1/addons/:id` immediately tore down the
+CloudNativePG `Cluster`, and CNPG's default reclaim behavior destroyed the
+cluster PVCs — a single delete irreversibly destroyed a client's production
+database with no grace window and no platform-side recovery path. Two
+mitigations now stand between a delete request and data destruction:
+
+1. **Retention window (soft delete).** For a provisioned, platform-owned,
+   data-bearing engine (managed Postgres/MySQL) a plain delete marks the addon
+   `pending_deletion` and stamps `deletion_scheduled_at = now + 7d`
+   (`DefaultDeletionRetention`). The CNPG `Cluster`, its PVCs, and its barman
+   backups are **not** torn down. The `addon_reconciler` sweeps for holds whose
+   window has elapsed (`DatabaseAddons.ListDeletionDue`) and only then runs the
+   destructive teardown. During the window the delete is fully recoverable and a
+   departing client has time to pull an export ("dignified exit", relevant to
+   ADR-0004). Redis addons and not-yet-provisioned rows skip the hold — there is
+   no platform-recoverable data to protect.
+
+2. **PVC reclaim = Retain.** Managed-Postgres PVCs are pinned to the
+   `longhorn-replicated` StorageClass (`RetainStorageClass`), whose
+   `reclaimPolicy` is `Retain`. So even when the teardown finally deletes the
+   PVC, the underlying `PersistentVolume` (and Longhorn volume) survives and the
+   data remains recoverable — unlike the default `longhorn` class
+   (`reclaimPolicy: Delete`) which destroys the volume with the PVC.
+
+3. **Force delete is platform-admin only.** `DELETE /v1/addons/:id?force=true`
+   bypasses the hold and tears down immediately. The route already requires
+   `RequireRole(Admin)`; the `force` flag additionally requires the caller to be
+   a platform admin (`callerIsPlatformAdmin`), so an ordinary project member
+   can only ever schedule the hold, never instantly destroy a production DB.
+
+**Recovering an addon inside the window:** the addon row is still present
+(`deleted_at IS NULL`, `status = pending_deletion`). Clearing
+`deletion_scheduled_at` and restoring the prior status un-schedules the
+teardown; the CNPG `Cluster` was never touched. A first-class
+`enclii addon undo-delete <id>` surface is a follow-up (see below).
 
 ## Rollback strategy per state
 
@@ -145,7 +196,9 @@ What Sprint 1 **adds** to this baseline:
 | --- | --- | --- |
 | `pending → provisioning` | CloudNativePG namespace create fails | Row stuck in `pending`; reconciler retries 3× with 30s backoff, then `failed` with reason. Operator reruns with `enclii addon retry <id>` (Sprint 2). |
 | `provisioning → ready` | Cluster stuck in `Setting up primary` > 15min | Reconciler transitions to `failed` with `provision_timeout`. Operator destroys addon, reviews CNPG logs, recreates. |
-| `ready → deleting` | CNPG Cluster delete returns error | Row stays in `deleting`. Reconciler retries delete every 60s. If 5× failures, `failed` + operator alert. |
+| `ready → pending_deletion` | `ScheduleDeletion` write fails | Delete request returns an error; nothing torn down (fail-safe). Client retries. |
+| `pending_deletion → deleting` | Retention sweep's `Deprovision` errors | Row stays in `pending_deletion` (or `failed` if deprovision half-ran); next reconciler tick retries the finalize. A stuck teardown surfaces via `status_message` + the event ledger. |
+| `ready → deleting` (force) | CNPG Cluster delete returns error | Row moves to `failed` with the deprovision error; force-delete is a synchronous operator action, so the operator sees it and retries. |
 | `deleting → deleted` | Row soft-delete fails | CNPG already gone, row orphaned in `deleting`. Audit event captures intent; cleanup script in `scripts/addon-gc.sh` (Sprint 2). |
 
 ## Security
@@ -162,7 +215,9 @@ Tenancy enforced at three layers:
 3. **API layer**: `RequireRole(Developer)` for create / create-binding;
    `RequireRole(Admin)` for delete. The handler resolves `project_slug` →
    `project_id` against `ProjectAccess` to verify the authenticated user has
-   access.
+   access. The **immediate/unrecoverable** teardown (`?force=true`) additionally
+   requires a platform admin — a project-scoped admin's plain delete only
+   schedules the retention hold (2026-08-17 audit #10).
 
 Password rotation: not wired in Sprint 1. CNPG supports password rotation via
 `kubectl` restart of the cluster Secret; Sprint 2 adds an `enclii addon
@@ -190,6 +245,12 @@ name as a reference.
 5. **Per-region placement** — Sprint 4+ (requires multi-region bare-metal).
 6. **Redis / MySQL GA** — scaffolds exist but need the same treatment (plans
    + events + CLI + UI). Pushed until there's pull.
+7. **`enclii addon undo-delete <id>` + UI affordance** — the retention hold
+   (audit #10) makes a delete recoverable during the window, but there is no
+   first-class un-schedule surface yet; recovery is currently a manual DB
+   update (clear `deletion_scheduled_at`, restore prior status). The delete
+   response returns `deletion_scheduled_at` so the UI can show a countdown and
+   an "undo" affordance. Follow-up.
 
 ## Exit criteria for Sprint 1
 

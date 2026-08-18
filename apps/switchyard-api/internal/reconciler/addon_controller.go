@@ -17,6 +17,14 @@ import (
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
+// RetentionFinalizer tears down a retention-hold addon whose grace window has
+// elapsed. Satisfied by *addons.AddonService.FinalizeExpiredDeletion. Kept as a
+// narrow interface so the reconciler stays decoupled from the addon service and
+// unit-testable with a fake (2026-08-17 audit #10).
+type RetentionFinalizer interface {
+	FinalizeExpiredDeletion(ctx context.Context, addon *types.DatabaseAddon) error
+}
+
 // AddonReconciler monitors and syncs database addon status
 type AddonReconciler struct {
 	repos         *db.Repositories
@@ -24,6 +32,10 @@ type AddonReconciler struct {
 	dynamicClient dynamic.Interface
 	logger        *logrus.Logger
 	stopCh        chan struct{}
+
+	// finalizer tears down retention-hold addons past their window. May be nil
+	// (older wiring) — the sweep is skipped in that case rather than panicking.
+	finalizer RetentionFinalizer
 }
 
 // CloudNativePG Group Version Resource
@@ -48,6 +60,13 @@ func NewAddonReconciler(repos *db.Repositories, k8sClient *k8s.Client, logger *l
 		logger:        logger,
 		stopCh:        make(chan struct{}),
 	}
+}
+
+// SetRetentionFinalizer wires the finalizer used by the retention sweep. Called
+// from main after the addon service is built (the service and reconciler are
+// constructed separately). Safe to leave unset — the sweep no-ops then.
+func (r *AddonReconciler) SetRetentionFinalizer(f RetentionFinalizer) {
+	r.finalizer = f
 }
 
 // Start begins the addon reconciliation loop
@@ -79,8 +98,13 @@ func (r *AddonReconciler) Stop() {
 	close(r.stopCh)
 }
 
-// reconcileAll checks all pending/provisioning addons and updates their status
+// reconcileAll checks all pending/provisioning addons and updates their status,
+// then sweeps retention-hold addons whose grace window has elapsed.
 func (r *AddonReconciler) reconcileAll(ctx context.Context) {
+	// Retention sweep first: finalize any expired holds (audit #10). Runs even
+	// when there are no pending/provisioning addons.
+	r.sweepExpiredRetentionHolds(ctx)
+
 	// Get all addons that need reconciliation
 	addons, err := r.repos.DatabaseAddons.ListPending(ctx)
 	if err != nil {
@@ -96,6 +120,43 @@ func (r *AddonReconciler) reconcileAll(ctx context.Context) {
 
 	for _, addon := range addons {
 		r.reconcileAddon(ctx, addon)
+	}
+}
+
+// sweepExpiredRetentionHolds finds retention-hold addons whose
+// deletion_scheduled_at has passed and finalizes their teardown. This is the
+// deferred half of the audit #10 fix: a delete parks the addon in
+// pending_deletion (data retained), and this sweep is what eventually destroys
+// it once the window elapses. No-ops when no finalizer is wired.
+func (r *AddonReconciler) sweepExpiredRetentionHolds(ctx context.Context) {
+	if r.finalizer == nil {
+		return
+	}
+
+	due, err := r.repos.DatabaseAddons.ListDeletionDue(ctx, time.Now())
+	if err != nil {
+		r.logger.WithError(err).Error("Failed to list retention-hold addons due for teardown")
+		return
+	}
+	if len(due) == 0 {
+		return
+	}
+
+	r.logger.WithField("count", len(due)).Info("Finalizing retention-hold addons past their window")
+
+	for _, addon := range due {
+		logger := r.logger.WithFields(logrus.Fields{
+			"addon_id":              addon.ID,
+			"deletion_scheduled_at": addon.DeletionScheduledAt,
+		})
+		if err := r.finalizer.FinalizeExpiredDeletion(ctx, addon); err != nil {
+			// Leave the row in pending_deletion (unless finalize already moved
+			// it to failed) so the next tick retries. A stuck teardown surfaces
+			// via the addon's status_message / event ledger.
+			logger.WithError(err).Error("Failed to finalize expired retention hold; will retry next tick")
+			continue
+		}
+		logger.Info("Retention hold finalized; addon torn down")
 	}
 }
 
