@@ -585,10 +585,9 @@ func (p *DataAPIProvisioner) Deprovision(ctx context.Context, addon *types.Datab
 	record(ignoreNotFound(p.k8sClient.Kube().AppsV1().Deployments(ns).Delete(ctx, resourceName, del)))
 	record(ignoreNotFound(p.k8sClient.Kube().CoreV1().ConfigMaps(ns).Delete(ctx, resourceName+dataAPIConfigSuffix, del)))
 	record(ignoreNotFound(p.k8sClient.Kube().CoreV1().Secrets(ns).Delete(ctx, resourceName+dataAPIDBSecretSuffix, del)))
-	// The JWT secret is deleted last; its name is tracked on the row.
-	if addon != nil {
-		record(ignoreNotFound(p.k8sClient.Kube().CoreV1().Secrets(ns).Delete(ctx, resourceName+dataAPIJWTSecretSuffix, del)))
-	}
+	// The JWT secret is deleted last; its name is tracked on the row. (addon is
+	// non-nil here — it was dereferenced at the top of the function.)
+	record(ignoreNotFound(p.k8sClient.Kube().CoreV1().Secrets(ns).Delete(ctx, resourceName+dataAPIJWTSecretSuffix, del)))
 	return firstErr
 }
 

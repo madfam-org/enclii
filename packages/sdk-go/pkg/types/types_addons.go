@@ -225,9 +225,9 @@ type DataAPIEnableRequest struct {
 
 // DataAPITokenRequest is the API request body to mint a JWT for the data-API.
 type DataAPITokenRequest struct {
-	Role       string            `json:"role,omitempty"`     // default "authenticated"
+	Role       string            `json:"role,omitempty"`        // default "authenticated"
 	TTLSeconds int               `json:"ttl_seconds,omitempty"` // default 3600, max 86400
-	Claims     map[string]string `json:"claims,omitempty"`   // extra JWT claims
+	Claims     map[string]string `json:"claims,omitempty"`      // extra JWT claims
 }
 
 // DataAPITokenResponse carries a freshly minted JWT for the tenant to use.

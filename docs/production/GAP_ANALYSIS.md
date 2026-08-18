@@ -4,6 +4,12 @@
 **Author**: Senior Product Architect / DevOps Engineer
 **Version**: 1.0
 
+> **Boundary checkpoint (2026-08-18, platform on-call):** Public-safe platform
+> gap analysis — capability comparison only, no secrets or production topology
+> beyond this repo's own IaC. Private operational detail and sink live in
+> `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary
+> contract).
+
 ---
 
 ## Executive Summary
