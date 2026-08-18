@@ -147,12 +147,70 @@ permission rather than emitting `STORAGE_BACKEND=r2` with no keys.
 
 ## API
 
+### Bucket lifecycle
+
 | Method | Path |
 |--------|------|
 | `POST` | `/v1/projects/:slug/storage/buckets` |
 | `GET` | `/v1/projects/:slug/storage/buckets` |
 | `DELETE` | `/v1/projects/:slug/storage/buckets/:bucket` |
 | `POST` | `/v1/ops/storage/r2-audit` |
+
+### Object API (Supabase-Storage-style)
+
+The object API operates on the **contents** of a bucket a project already owns.
+The primary upload and download path never streams bytes through the API pod —
+the API mints a short-lived presigned URL and the client transfers directly to
+Cloudflare R2.
+
+| Method | Path | Role | Purpose |
+|--------|------|------|---------|
+| `GET` | `/v1/projects/:slug/storage/buckets/:bucket/objects` | project access | List objects (query: `prefix`, `limit`) |
+| `POST` | `/v1/projects/:slug/storage/buckets/:bucket/objects/presign-upload` | developer | Mint a presigned **PUT** URL (body: `key`, `content_type`, `expiry_seconds`) |
+| `GET` | `/v1/projects/:slug/storage/buckets/:bucket/objects/presign-download` | project access | Mint a presigned **GET** URL (query: `key`, `expiry_seconds`) |
+| `POST` | `/v1/projects/:slug/storage/buckets/:bucket/objects/upload` | developer | Direct passthrough upload for tiny files (≤ 5 MiB; query: `key`) |
+| `DELETE` | `/v1/projects/:slug/storage/buckets/:bucket/objects` | developer | Delete an object (`key` in query or body) |
+
+#### Presigned upload flow
+
+```bash
+# 1. Ask the API for a presigned PUT URL (developer role)
+curl -X POST \
+  https://<api>/v1/projects/<slug>/storage/buckets/<bucket>/objects/presign-upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"uploads/report.csv","content_type":"text/csv","expiry_seconds":900}'
+# → {"url":"https://<bucket>.r2.cloudflarestorage.com/...","method":"PUT","key":"uploads/report.csv","expires_in":900}
+
+# 2. Upload the bytes straight to R2 — the API pod is never in the data path
+curl -X PUT "<url>" -H "Content-Type: text/csv" --data-binary @report.csv
+```
+
+Download is the mirror image: `GET …/presign-download?key=uploads/report.csv`
+returns a presigned GET URL the client fetches directly.
+
+#### Isolation model
+
+Every object operation is confined to the calling project on three independent
+axes, so no single mistake crosses a tenant boundary:
+
+1. **Own-credential minting.** Presigned URLs are signed with the *project's own*
+   bucket-scoped R2 credentials (`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`
+   from the project's Secret — the same keys the running service uses). Those
+   keys are physically incapable of signing a request for another project's
+   bucket; isolation does not depend on an authorization check being correct.
+2. **Bucket-ownership check.** The `:bucket` in the path must match the bucket
+   recorded in the project's Secret. Naming a bucket the project does not own is
+   refused with `409` before anything is minted.
+3. **Key namespacing.** Every object key is stored under `projects/<slug>/`, and
+   keys are rejected (not silently rewritten) if they attempt path traversal
+   (`..`, `.`), are absolute, contain backslashes, or carry control characters.
+   The internal prefix is stripped from every response, so callers work in a
+   flat per-project keyspace.
+
+When object storage is not configured on the platform (no secrets provisioner),
+these endpoints return `503`, matching the bucket-lifecycle endpoints. A project
+with no bucket bound returns `404`; an R2-side failure surfaces as `502`.
 
 ## See also
 

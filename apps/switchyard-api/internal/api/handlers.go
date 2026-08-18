@@ -128,6 +128,13 @@ type Handler struct {
 	// the badge silently — without polluting the operator's console with
 	// one error per service per page load.
 	sentryClient *sentry.Client
+
+	// objectStoreFactory builds an R2-backed object store bound to a project's
+	// own bucket-scoped credentials, for the storage object API
+	// (storage_object_handlers.go). Nil in production — the handlers fall back
+	// to the real R2 client factory; tests inject a fake so presigning can be
+	// exercised without a live endpoint.
+	objectStoreFactory objectStoreFactory
 }
 
 // SetSignupService wires the P3.2 self-serve signup service.
