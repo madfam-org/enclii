@@ -1,6 +1,10 @@
 package k8s
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"sort"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -953,4 +957,120 @@ func (c *Client) getPreviousImage(ctx context.Context, deploymentName, namespace
 	}
 
 	return previousRS.Spec.Template.Spec.Containers[0].Image, nil
+}
+
+// EnsureSecretCopiedFrom replicates a Secret from a source namespace into a
+// target namespace, for machinery that must exist wherever an addon lands —
+// today: the object-store credentials CNPG's barman needs to write backups.
+//
+// COPY, NOT REFERENCE, because Kubernetes Secrets are namespace-scoped and
+// CNPG resolves s3Credentials in the CLUSTER'S namespace. The copy is
+// re-synced on every call (provisioning re-runs are the natural refresh
+// tick), so a rotated source credential propagates on the next reconcile
+// rather than never.
+// SecretCopyOwner ties a copied Secret to the lifecycle of the resource that
+// needs it, so it is garbage-collected instead of lingering in a tenant
+// namespace after that resource is gone.
+type SecretCopyOwner struct {
+	APIVersion string
+	Kind       string
+	Name       string
+	UID        k8stypes.UID
+}
+
+// EnsureSecretCopiedFrom replicates a Secret into a target namespace, OWNED by
+// `owner` (an OwnerReference) so Kubernetes garbage-collects the copy when the
+// owner is deleted, and IMMUTABLE so a tenant workload with write access cannot
+// silently swap the credential under the machinery that consumes it.
+//
+// SECURITY (why owner+immutable are not optional): the security audit of
+// 2026-08-17 found the earlier copy-without-owner shipped a SHARED credential
+// into every tenant namespace and left it there after the cluster was deleted —
+// indefinite residual exposure of a bucket-wide key. The OwnerReference bounds
+// the lifetime; immutability bounds the tamper surface. The remaining leg —
+// making the credential itself per-tenant/least-privilege so reading it in one
+// namespace does not expose every tenant's backups — is an operator concern
+// documented in ADDON_BACKUPS.md (scope the R2 token to the bucket, and prefer
+// a per-prefix token as the object store gains per-tenant paths).
+//
+// An owner in a DIFFERENT namespace than the target is rejected: cross-namespace
+// owner references are invalid in Kubernetes and would make the copy
+// un-GC-able, which is the exact bug this signature exists to prevent.
+func (c *Client) EnsureSecretCopiedFrom(
+	ctx context.Context, sourceNamespace, name, targetNamespace string, owner SecretCopyOwner,
+) error {
+	src, err := c.kubeClient().CoreV1().Secrets(sourceNamespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("read source secret %s/%s: %w", sourceNamespace, name, err)
+	}
+
+	immutable := true
+	ownerRefs := []metav1.OwnerReference{{
+		APIVersion: owner.APIVersion,
+		Kind:       owner.Kind,
+		Name:       owner.Name,
+		UID:        owner.UID,
+	}}
+	desired := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       targetNamespace,
+			OwnerReferences: ownerRefs,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "enclii",
+				"enclii.madfam.io/copied-from": sourceNamespace,
+			},
+		},
+		Type:      src.Type,
+		Data:      src.Data,
+		Immutable: &immutable,
+	}
+
+	existing, err := c.kubeClient().CoreV1().Secrets(targetNamespace).Get(ctx, name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		_, createErr := c.kubeClient().CoreV1().Secrets(targetNamespace).Create(ctx, desired, metav1.CreateOptions{})
+		if createErr != nil {
+			return fmt.Errorf("create secret %s/%s: %w", targetNamespace, name, createErr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check existing secret %s/%s: %w", targetNamespace, name, err)
+	}
+
+	// An immutable Secret's Data cannot be updated in place. If the source
+	// credential rotated (Data differs) or the existing copy predates
+	// owner/immutability, replace it: delete + recreate under the new
+	// invariants. The consumer (CNPG barman) re-reads on its next backup, and
+	// the OwnerReference means a missed delete still gets GC'd with the cluster.
+	needsReplace := !bytes.Equal(secretDataDigest(existing.Data), secretDataDigest(desired.Data)) ||
+		existing.Immutable == nil || len(existing.OwnerReferences) == 0
+	if !needsReplace {
+		return nil
+	}
+	if err := c.kubeClient().CoreV1().Secrets(targetNamespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		return fmt.Errorf("replace (delete) secret %s/%s: %w", targetNamespace, name, err)
+	}
+	if _, err := c.kubeClient().CoreV1().Secrets(targetNamespace).Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("replace (create) secret %s/%s: %w", targetNamespace, name, err)
+	}
+	return nil
+}
+
+// secretDataDigest gives a stable comparison of Secret Data independent of map
+// ordering, without logging any value.
+func secretDataDigest(data map[string][]byte) []byte {
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write(data[k])
+		h.Write([]byte{0})
+	}
+	return h.Sum(nil)
 }

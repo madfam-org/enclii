@@ -143,13 +143,28 @@ type CloudNativePGDataConfig struct {
 
 // Default configuration values
 const (
-	DefaultPostgresVersion = 16
+	// 18 matches what CNPG's operator has ACTUALLY been deploying while the
+	// old `postgresVersion` field was silently pruned (live clusters run
+	// 18.3) — pinning the default anywhere lower would make brand-new addons
+	// OLDER than the unpinned fleet. The point of the constant is that it is
+	// now honest: it becomes the imageName tag and therefore the truth.
+	DefaultPostgresVersion = 18
 	DefaultStorageSize     = "10Gi"
 	DefaultCPU             = "100m"
 	DefaultMemory          = "256Mi"
 	DefaultInstances       = 1
 	DefaultDatabase        = "app"
-	DefaultUser            = "app"
+
+	// Backups. The barman object store lives OUTSIDE the cluster (R2); the
+	// credentials Secret is replicated into each addon namespace from the
+	// enclii namespace because CNPG resolves s3Credentials locally. An empty
+	// destination base disables backup wiring — loudly, per provision.
+	// #nosec G101 -- this is the NAME of a Kubernetes Secret, not a credential value.
+	BackupCredentialsSecretName = "enclii-db-backup-credentials"
+	BackupCredentialsSourceNS   = "enclii"
+	BackupRetention             = "30d"
+	BackupSchedule              = "0 0 4 * * *" // daily 04:00 UTC (22:00 CDMX)
+	DefaultUser                 = "app"
 
 	// CloudNativePG constants
 	CloudNativePGAPIVersion = "postgresql.cnpg.io/v1"

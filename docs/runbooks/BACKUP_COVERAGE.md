@@ -1,5 +1,13 @@
 # Backup Coverage Report
 
+> **Boundary checkpoint (2026-08-17, platform on-call):** Public-safe runbook —
+> no secrets or production topology beyond this repo's own IaC; the R2 bucket
+> names and env keys here are configuration contracts, not values. Private
+> operational detail and the incident sink live in `internal-devops` (2026-08-17
+> enclii platform security audit). Policy: `docs/PUBLIC_REPO_BOUNDARY.md`
+> (repo-boundary contract).
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -33,6 +41,15 @@ Monthly (1st):
   4:00 AM  Longhorn weekly-s3-backup  Block storage to R2
   5:00 AM  postgres-restore-drill     Non-destructive restore test
 ```
+
+## Per-tenant addon databases
+
+The backups above cover the PLATFORM's own state. Per-tenant Postgres created
+by `enclii` addons (client `Cluster`s in `project-*` namespaces) are covered
+separately — see [ADDON_BACKUPS.md](ADDON_BACKUPS.md). Until 2026-08-17 those
+addon databases had NO backups at all; the provisioner now wires a daily
+`ScheduledBackup` per addon once the operator prerequisites in that runbook
+exist.
 
 ## Backup Details
 

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +31,37 @@ var cnpgGVR = schema.GroupVersionResource{
 	Version:  "v1",
 	Resource: "clusters",
 }
+
+var cnpgScheduledBackupGVR = schema.GroupVersionResource{
+	Group:    "postgresql.cnpg.io",
+	Version:  "v1",
+	Resource: "scheduledbackups",
+}
+
+// backupConfig is read from the environment once per call rather than cached:
+// the values change only with a redeploy, and reading late means a test can
+// set them per case.
+//
+//	ENCLII_ADDON_BACKUP_DESTINATION_BASE  e.g. s3://enclii-db-backups
+//	ENCLII_ADDON_BACKUP_ENDPOINT_URL      the R2 S3 endpoint
+//
+// Empty destination base = backups NOT configured. Provision then proceeds —
+// a database without backups beats no database — but says so at ERROR level
+// on every provision, because "quietly unprotected" is how the first 28
+// addons shipped and exactly what this exists to end.
+type backupConfig struct {
+	DestinationBase string
+	EndpointURL     string
+}
+
+func backupConfigFromEnv() backupConfig {
+	return backupConfig{
+		DestinationBase: os.Getenv("ENCLII_ADDON_BACKUP_DESTINATION_BASE"),
+		EndpointURL:     os.Getenv("ENCLII_ADDON_BACKUP_ENDPOINT_URL"),
+	}
+}
+
+func (b backupConfig) enabled() bool { return b.DestinationBase != "" }
 
 // NewPostgresProvisioner creates a new PostgreSQL provisioner
 func NewPostgresProvisioner(k8sClient *k8s.Client, logger *logrus.Logger) *PostgresProvisioner {
@@ -92,7 +125,7 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	}
 
 	// Create the CloudNativePG Cluster
-	_, err = p.dynamicClient.Resource(cnpgGVR).Namespace(req.Namespace).Create(
+	created, err := p.dynamicClient.Resource(cnpgGVR).Namespace(req.Namespace).Create(
 		ctx,
 		&unstructuredObj,
 		metav1.CreateOptions{},
@@ -100,6 +133,15 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 	if err != nil {
 		logger.WithError(err).Error("Failed to create CloudNativePG cluster")
 		return nil, fmt.Errorf("failed to create PostgreSQL cluster: %w", err)
+	}
+	// The Cluster owns the copied backup credential (below): its UID makes the
+	// copy garbage-collectable so a deleted cluster does not leave a bucket-wide
+	// credential lingering in the tenant namespace (2026-08-17 audit).
+	clusterOwner := k8s.SecretCopyOwner{
+		APIVersion: CloudNativePGAPIVersion,
+		Kind:       CloudNativePGKind,
+		Name:       resourceName,
+		UID:        created.GetUID(),
 	}
 
 	// Open the addon namespace's default-deny to consuming services. Every addon
@@ -120,6 +162,31 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 		// Non-fatal: the cluster is up; surface the gap so the operator can add
 		// the policy rather than leaving the addon silently unreachable.
 		logger.WithError(npErr).Error("Failed to create project-scoped ingress NetworkPolicy — consumers may be blocked by default-deny")
+	}
+
+	// Backups. Same non-fatal posture as the netpol above: the cluster is up
+	// either way, and each gap is surfaced rather than swallowed — but unlike
+	// the netpol, an UNCONFIGURED backup store is an operator-level ERROR on
+	// every provision, because 28 addons shipped quietly unprotected before
+	// this existed.
+	if backup := backupConfigFromEnv(); backup.enabled() {
+		if err := p.k8sClient.EnsureSecretCopiedFrom(
+			ctx, BackupCredentialsSourceNS, BackupCredentialsSecretName, req.Namespace, clusterOwner,
+		); err != nil {
+			logger.WithError(err).Error("Failed to replicate backup credentials — barman will not be able to write backups")
+		}
+		sb := p.buildScheduledBackupManifest(req, resourceName)
+		sbJSON, _ := json.Marshal(sb)
+		var sbObj unstructured.Unstructured
+		if err := json.Unmarshal(sbJSON, &sbObj.Object); err == nil {
+			if _, err := p.dynamicClient.Resource(cnpgScheduledBackupGVR).Namespace(req.Namespace).Create(
+				ctx, &sbObj, metav1.CreateOptions{},
+			); err != nil {
+				logger.WithError(err).Error("Failed to create ScheduledBackup — cluster has no recurring backups")
+			}
+		}
+	} else {
+		logger.Error("ENCLII_ADDON_BACKUP_DESTINATION_BASE is not set — this cluster is being provisioned WITHOUT backups")
 	}
 
 	// Connection secret name follows CloudNativePG naming convention
@@ -147,7 +214,11 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 		instances = 3 // Minimum 3 for HA
 	}
 
-	// Parse PostgreSQL version
+	// Parse PostgreSQL version. This feeds imageName below — CNPG has no
+	// `postgresVersion` field, and the years this manifest carried one the
+	// API server pruned it silently, so every "pinned" cluster actually ran
+	// whatever the operator defaulted to (found 2026-08-17: addons claiming
+	// 16 were running 18.3). The image tag is the only pin that is real.
 	postgresVersion := DefaultPostgresVersion
 	if config.Version != "" {
 		if v, err := strconv.Atoi(config.Version); err == nil {
@@ -177,7 +248,7 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 		},
 		"spec": map[string]interface{}{
 			"instances":             instances,
-			"postgresVersion":       postgresVersion,
+			"imageName":             fmt.Sprintf("ghcr.io/cloudnative-pg/postgresql:%d", postgresVersion),
 			"primaryUpdateStrategy": "unsupervised",
 			"storage": map[string]interface{}{
 				"size": storageSize,
@@ -224,7 +295,55 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 		"enablePodMonitor": false,
 	}
 
+	// Backups: barman object store, per-cluster path, retention. Absent when
+	// unconfigured — Provision logs that absence loudly.
+	if backup := backupConfigFromEnv(); backup.enabled() {
+		spec["backup"] = map[string]interface{}{
+			"retentionPolicy": BackupRetention,
+			"barmanObjectStore": map[string]interface{}{
+				"destinationPath": fmt.Sprintf("%s/%s/%s",
+					strings.TrimRight(backup.DestinationBase, "/"), req.Namespace, resourceName),
+				"endpointURL": backup.EndpointURL,
+				"s3Credentials": map[string]interface{}{
+					"accessKeyId": map[string]interface{}{
+						"name": BackupCredentialsSecretName,
+						"key":  "ACCESS_KEY_ID",
+					},
+					"secretAccessKey": map[string]interface{}{
+						"name": BackupCredentialsSecretName,
+						"key":  "SECRET_ACCESS_KEY",
+					},
+				},
+			},
+		}
+	}
+
 	return cluster
+}
+
+// buildScheduledBackupManifest pairs every cluster with a daily backup CR.
+// `immediate: true` so the first backup exists minutes after provisioning,
+// not tomorrow — a restore point that does not exist yet protects nothing.
+func (p *PostgresProvisioner) buildScheduledBackupManifest(req *ProvisionRequest, resourceName string) map[string]interface{} {
+	return map[string]interface{}{
+		"apiVersion": CloudNativePGAPIVersion,
+		"kind":       "ScheduledBackup",
+		"metadata": map[string]interface{}{
+			"name":      resourceName + "-daily",
+			"namespace": req.Namespace,
+			"labels": map[string]interface{}{
+				LabelManagedBy: LabelManagedValue,
+				LabelAddonID:   req.Addon.ID.String(),
+			},
+		},
+		"spec": map[string]interface{}{
+			"schedule":  BackupSchedule,
+			"immediate": true,
+			"cluster": map[string]interface{}{
+				"name": resourceName,
+			},
+		},
+	}
 }
 
 // Deprovision removes a PostgreSQL cluster
@@ -255,6 +374,15 @@ func (p *PostgresProvisioner) Deprovision(ctx context.Context, addon *types.Data
 			return nil
 		}
 		return fmt.Errorf("failed to delete PostgreSQL cluster: %w", err)
+	}
+
+	// The ScheduledBackup is a sibling CR, not a child — CNPG does not cascade
+	// it. Best-effort: a stray ScheduledBackup for a deleted cluster fails
+	// harmlessly, but leaving it around is clutter that pages someone later.
+	if err := p.dynamicClient.Resource(cnpgScheduledBackupGVR).Namespace(addon.K8sNamespace).Delete(
+		ctx, addon.K8sResourceName+"-daily", metav1.DeleteOptions{},
+	); err != nil && !isNotFoundError(err) {
+		logger.WithError(err).Warn("Failed to delete ScheduledBackup for deprovisioned cluster")
 	}
 
 	logger.Info("PostgreSQL cluster deleted successfully")

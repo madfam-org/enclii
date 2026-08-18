@@ -1,6 +1,7 @@
 package addons
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,7 +53,7 @@ func TestHydrateConfigFromPlan(t *testing.T) {
 	t.Run("postgres default version applied when override empty", func(t *testing.T) {
 		cfg := hydrateConfigFromPlan(plan, types.DatabaseAddonConfig{})
 		// DefaultPostgresVersion is 16; stringified.
-		assert.Equal(t, "16", cfg.Version)
+		assert.Equal(t, fmt.Sprintf("%d", DefaultPostgresVersion), cfg.Version)
 	})
 
 	t.Run("mysql default version", func(t *testing.T) {
@@ -93,7 +94,7 @@ func TestApplyDefaultConfigRedis(t *testing.T) {
 
 func TestApplyDefaultConfigPostgres(t *testing.T) {
 	cfg := applyDefaultConfig(types.DatabaseAddonTypePostgres, types.DatabaseAddonConfig{})
-	assert.Equal(t, "16", cfg.Version) // DefaultPostgresVersion
+	assert.Equal(t, fmt.Sprintf("%d", DefaultPostgresVersion), cfg.Version) // DefaultPostgresVersion
 	assert.Equal(t, 10, cfg.StorageGB)
 	assert.Equal(t, DefaultCPU, cfg.CPU)
 	assert.Equal(t, DefaultMemory, cfg.Memory)
