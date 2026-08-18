@@ -75,6 +75,11 @@ func wireTenantExport(
 		BundleProvider: export.NewRepoBundleProvider(repos, logrus.StandardLogger()),
 		DumpProvider:   export.NewJobPgDumpProvider(logrus.StandardLogger(), k8sClient, r2Client, prefix),
 		BlobProvider:   export.NewR2BlobProvider(r2Client, nil, logrus.StandardLogger()),
+		// Previously omitted — exports shipped an empty audit timeline and empty
+		// secrets/references.json. A leaving tenant must get both (secret NAMES
+		// only, never values).
+		AuditProvider:  export.NewRepoAuditProvider(repos.AuditLogs),
+		SecretProvider: export.NewK8sSecretProvider(k8sClient, repos.Projects),
 		Notifier:       export.NewEmailNotifier(emailService, cfg.AppBaseURL),
 		Logger:         logrus.StandardLogger(),
 		R2Prefix:       prefix,
