@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/audit"
@@ -22,6 +23,7 @@ import (
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/notifications"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provenance"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/provisioning"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/realtime"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/signup"
@@ -98,6 +100,14 @@ type Handler struct {
 	// /v1/services/:id/logs/tail against Loki. Optional; if nil the
 	// routes return 503. See internal/logstream/.
 	logsHandler *logstream.Handler
+
+	// Realtime DB change subscriptions (parity gap C2) — serves the WS
+	// stream at /v1/projects/:slug/addons/:id/realtime and the trigger-
+	// management endpoints under /v1/addons/:id/realtime/tables. Both
+	// optional; if nil the routes return 503. See internal/realtime/ and
+	// docs/architecture/ADR_002_REALTIME_DB_SUBSCRIPTIONS.md.
+	realtimeHandler *realtime.Handler
+	realtimeManager *realtime.Manager
 
 	// Outbound lifecycle webhooks (P2.3). Dispatcher fans lifecycle
 	// events out to customer-configured HTTPS subscriptions; encryptor
@@ -284,6 +294,19 @@ func (h *Handler) SetAuditHandler(handler *audit.Handler) {
 // already provide coverage.
 func (h *Handler) SetLogsHandler(handler *logstream.Handler) {
 	h.logsHandler = handler
+}
+
+// SetRealtime wires the C2 realtime DB-change subscription feature. It builds
+// the WS handler with an addon resolver that closes over this *Handler (for
+// addon → DSN resolution) and stores the trigger manager. Pass a nil hub or
+// manager to leave the /realtime routes returning 503 — used in local-dev
+// setups without the realtime hub. logger may be nil.
+func (h *Handler) SetRealtime(hub *realtime.Hub, manager *realtime.Manager, allowedOrigins []string, logger logrus.FieldLogger) {
+	if hub != nil {
+		resolver := &realtimeAddonResolver{handler: h}
+		h.realtimeHandler = realtime.NewHandler(hub, resolver, allowedOrigins, logger)
+	}
+	h.realtimeManager = manager
 }
 
 // SetWebhookDispatcher wires the outbound lifecycle webhook fan-out
@@ -727,6 +750,18 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.POST("/addons/:id/bindings", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateAddonBinding)
 			protected.DELETE("/addons/:id/bindings/:service_id", h.auth.RequireRole(string(types.RoleDeveloper)), h.DeleteAddonBinding)
 			protected.GET("/services/:id/bindings", h.GetServiceBindings)
+
+			// Realtime DB change subscriptions (parity gap C2). The WS stream
+			// sits under :slug so RequireProjectAccessBySlug gates the upgrade;
+			// StreamAddonRealtime re-checks the addon→project link as defense
+			// in depth. The trigger-management routes are addon-scoped (they
+			// self-gate via loadAddonWithAccess) and require Developer role for
+			// the mutating enable/disable, matching the other addon mutations.
+			// See docs/architecture/ADR_002_REALTIME_DB_SUBSCRIPTIONS.md.
+			protected.GET("/projects/:slug/addons/:id/realtime", h.RequireProjectAccessBySlug(), h.StreamAddonRealtime)
+			protected.POST("/addons/:id/realtime/tables", h.auth.RequireRole(string(types.RoleDeveloper)), h.EnableAddonRealtimeTable)
+			protected.GET("/addons/:id/realtime/tables", h.ListAddonRealtimeTables)
+			protected.DELETE("/addons/:id/realtime/tables/:schema/:table", h.auth.RequireRole(string(types.RoleDeveloper)), h.DisableAddonRealtimeTable)
 
 			h.registerStorageRoutes(protected)
 
