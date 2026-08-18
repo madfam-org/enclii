@@ -1,4 +1,4 @@
--- Reverse of 035_managed_db_data_apis.up.sql.
+-- Reverse of 036_managed_db_data_apis.up.sql.
 -- Drops the per-addon data-API table and restores the event-ledger CHECK to its
 -- pre-035 (migration 014) type set. Safe to run even if the table is empty.
 

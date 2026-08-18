@@ -25,7 +25,7 @@ const (
 	EventAddonBindingDeleted      ManagedDBAddonEventType = "addon.binding.deleted"
 	EventAddonCredentialsRotated  ManagedDBAddonEventType = "addon.credentials.rotated" // #nosec G101 -- event name, not a credential
 	EventAddonPlanChanged         ManagedDBAddonEventType = "addon.plan.changed"
-	// Data-API (PostgREST) lifecycle. Added by migration 035; see
+	// Data-API (PostgREST) lifecycle. Added by migration 036; see
 	// docs/architecture/data-api-postgrest.md.
 	EventAddonDataAPIEnabled  ManagedDBAddonEventType = "addon.data_api.enabled"
 	EventAddonDataAPIDisabled ManagedDBAddonEventType = "addon.data_api.disabled"
