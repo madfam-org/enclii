@@ -168,10 +168,10 @@ func (h *Handler) handleProviderPorkbunDNSApply(ctx context.Context, operation s
 	}
 
 	changed, err := client.CreateDNSRecord(ctx, intent.Domain, porkbun.DNSRecord{
-		Name:    intent.Name,
-		Type:    intent.RecordType,
-		Content: intent.Content,
-		TTL:     intent.TTL,
+		Name:    porkbun.FlexibleString(intent.Name),
+		Type:    porkbun.FlexibleString(intent.RecordType),
+		Content: porkbun.FlexibleString(intent.Content),
+		TTL:     porkbun.FlexibleString(intent.TTL),
 	}, req.IdempotencyKey)
 	if err != nil {
 		return operatorOperationResponse{
@@ -422,10 +422,10 @@ func findPorkbunDNSRecord(ctx context.Context, client *porkbun.Client, intent po
 		return nil, nil, err
 	}
 	for _, record := range records.Records {
-		if !strings.EqualFold(record.Type, intent.RecordType) {
+		if !strings.EqualFold(record.Type.String(), intent.RecordType) {
 			continue
 		}
-		if porkbunRecordNameMatches(record.Name, intent) {
+		if porkbunRecordNameMatches(record.Name.String(), intent) {
 			recordCopy := record
 			return &recordCopy, records.Records, nil
 		}
@@ -447,8 +447,8 @@ func porkbunRecordNameMatches(recordName string, intent porkbunDNSApplyIntent) b
 }
 
 func porkbunRecordContentMatches(record porkbun.DNSRecord, intent porkbunDNSApplyIntent) bool {
-	return strings.EqualFold(strings.TrimSpace(record.Type), intent.RecordType) &&
-		strings.TrimSpace(record.Content) == strings.TrimSpace(intent.Content)
+	return strings.EqualFold(strings.TrimSpace(record.Type.String()), intent.RecordType) &&
+		strings.TrimSpace(record.Content.String()) == strings.TrimSpace(intent.Content)
 }
 
 func parseNameservers(value string) []string {

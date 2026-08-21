@@ -27,24 +27,35 @@ type Client struct {
 	httpClient   *http.Client
 }
 
+// BasicResponse is the envelope every Porkbun response carries. `code` in
+// particular has been observed both as a bare number and as a numeric
+// string, so all four fields decode tolerantly.
 type BasicResponse struct {
-	Status    string `json:"status"`
-	Message   string `json:"message,omitempty"`
-	Code      string `json:"code,omitempty"`
-	RequestID string `json:"requestId,omitempty"`
+	Status    FlexibleString `json:"status"`
+	Message   FlexibleString `json:"message,omitempty"`
+	Code      FlexibleString `json:"code,omitempty"`
+	RequestID FlexibleString `json:"requestId,omitempty"`
 }
 
+// Domain mirrors a Porkbun domain record.
+//
+// Every scalar decodes through the tolerant types in flexible.go: Porkbun
+// has flipped the boolean-ish flags between JSON numbers and numeric
+// strings without notice (see flexible.go), and the string fields are
+// equally unguaranteed. Marshalling is unchanged — FlexibleInt still emits
+// a number and FlexibleString still emits a string — so API consumers see
+// the same payload they always have.
 type Domain struct {
-	Domain       string `json:"domain"`
-	Status       string `json:"status"`
-	TLD          string `json:"tld"`
-	CreateDate   string `json:"createDate"`
-	ExpireDate   string `json:"expireDate"`
-	SecurityLock int    `json:"securityLock"`
-	WhoisPrivacy int    `json:"whoisPrivacy"`
-	AutoRenew    int    `json:"autoRenew"`
-	APIAccess    int    `json:"apiAccess"`
-	NotLocal     int    `json:"notLocal"`
+	Domain       FlexibleString `json:"domain"`
+	Status       FlexibleString `json:"status"`
+	TLD          FlexibleString `json:"tld"`
+	CreateDate   FlexibleString `json:"createDate"`
+	ExpireDate   FlexibleString `json:"expireDate"`
+	SecurityLock FlexibleInt    `json:"securityLock"`
+	WhoisPrivacy FlexibleInt    `json:"whoisPrivacy"`
+	AutoRenew    FlexibleInt    `json:"autoRenew"`
+	APIAccess    FlexibleInt    `json:"apiAccess"`
+	NotLocal     FlexibleInt    `json:"notLocal"`
 }
 
 type ListDomainsResponse struct {
@@ -57,19 +68,30 @@ type GetDomainResponse struct {
 	Domain Domain `json:"domain"`
 }
 
+// NameserversResponse carries the authoritative nameserver list. `ns` is a
+// JSON array of hostnames — there is no numeric value for a registrar to
+// stringify — so it stays a plain []string.
 type NameserversResponse struct {
 	BasicResponse
 	Nameservers []string `json:"ns"`
 }
 
+// DNSRecord mirrors a Porkbun DNS record.
+//
+// id/ttl/prio are numeric values that Porkbun returns as JSON strings, and
+// FlexibleString decodes each of them from a number too, so a flip to real
+// JSON numbers cannot reproduce the securityLock breakage. DNSRecord is
+// also an *input* type (CreateDNSRecord builds its request body from these
+// fields), so the tolerance is deliberately one-directional: it only
+// affects decoding, and the fields still marshal as strings.
 type DNSRecord struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Content string `json:"content"`
-	TTL     string `json:"ttl"`
-	Prio    string `json:"prio"`
-	Notes   string `json:"notes"`
+	ID      FlexibleString `json:"id"`
+	Name    FlexibleString `json:"name"`
+	Type    FlexibleString `json:"type"`
+	Content FlexibleString `json:"content"`
+	TTL     FlexibleString `json:"ttl"`
+	Prio    FlexibleString `json:"prio"`
+	Notes   FlexibleString `json:"notes"`
 }
 
 type DNSRecordsResponse struct {
@@ -79,7 +101,7 @@ type DNSRecordsResponse struct {
 
 type CreateDNSRecordResponse struct {
 	BasicResponse
-	ID string `json:"id,omitempty"`
+	ID FlexibleString `json:"id,omitempty"`
 }
 
 func NewClient(cfg Config) *Client {
@@ -143,15 +165,15 @@ func (c *Client) ListDNSRecords(ctx context.Context, domain string) (*DNSRecords
 func (c *Client) CreateDNSRecord(ctx context.Context, domain string, record DNSRecord, idempotencyKey string) (*CreateDNSRecordResponse, error) {
 	var out CreateDNSRecordResponse
 	body := map[string]any{
-		"type":    strings.ToUpper(strings.TrimSpace(record.Type)),
-		"name":    strings.TrimSpace(record.Name),
-		"content": strings.TrimSpace(record.Content),
+		"type":    strings.ToUpper(strings.TrimSpace(record.Type.String())),
+		"name":    strings.TrimSpace(record.Name.String()),
+		"content": strings.TrimSpace(record.Content.String()),
 	}
-	if strings.TrimSpace(record.TTL) != "" {
-		body["ttl"] = strings.TrimSpace(record.TTL)
+	if ttl := strings.TrimSpace(record.TTL.String()); ttl != "" {
+		body["ttl"] = ttl
 	}
-	if strings.TrimSpace(record.Prio) != "" {
-		body["prio"] = strings.TrimSpace(record.Prio)
+	if prio := strings.TrimSpace(record.Prio.String()); prio != "" {
+		body["prio"] = prio
 	}
 	if err := c.do(ctx, http.MethodPost, "/dns/create/"+url.PathEscape(domain), body, idempotencyKey, &out); err != nil {
 		return nil, err
@@ -225,15 +247,17 @@ func responseFailed(out any) (bool, string) {
 	if err := json.Unmarshal(payload, &basic); err != nil {
 		return false, ""
 	}
-	if strings.EqualFold(basic.Status, "ERROR") {
-		if basic.Message != "" && basic.Code != "" {
-			return true, basic.Code + ": " + basic.Message
+	message := basic.Message.String()
+	code := basic.Code.String()
+	if strings.EqualFold(basic.Status.String(), "ERROR") {
+		if message != "" && code != "" {
+			return true, code + ": " + message
 		}
-		if basic.Message != "" {
-			return true, basic.Message
+		if message != "" {
+			return true, message
 		}
-		if basic.Code != "" {
-			return true, basic.Code
+		if code != "" {
+			return true, code
 		}
 		return true, "unknown error"
 	}
