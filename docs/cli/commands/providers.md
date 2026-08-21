@@ -26,7 +26,7 @@ returns `adapter_unconfigured`.
 |---------|---------|
 | `enclii providers capabilities` | List server-supported provider capabilities |
 | `enclii providers github runs|rerun|cancel|secrets|packages|protection` | GitHub Actions, repo secrets, GHCR, branch protection |
-| `enclii providers cloudflare dns|dns-apply|tunnels|tunnels-apply|access|r2|hostnames` | DNS, tunnels, Access, R2, custom hostnames |
+| `enclii providers cloudflare zones|zone-add-apply|zone-settings-apply|dns|dns-apply|tunnels|tunnels-apply|access|r2|hostnames` | Zones, DNS, tunnels, Access, R2, custom hostnames |
 | `enclii providers porkbun domains|dns|dns-apply|renewals|nameservers|nameservers-apply` | Domain inventory, DNS create fallback, renewal state, registrar delegation |
 | `enclii providers hetzner nodes|lb|vswitch|storage|firewall` | Robot/Cloud nodes, DR LB, vSwitch, storage boxes, firewall |
 
@@ -36,6 +36,9 @@ returns `adapter_unconfigured`.
 enclii providers capabilities
 enclii providers github runs madfam-org/digifab-quoting --json
 enclii providers github packages madfam-org/enclii --json
+enclii providers cloudflare zones --json
+enclii providers cloudflare zone-add-apply kalya.app --apply --reason "create Cloudflare zone for newly acquired apex"
+enclii providers cloudflare zone-settings-apply kalya.app --apply --reason "apply Enclii HTTPS posture to kalya.app"
 enclii providers cloudflare dns cotiza.studio
 enclii providers cloudflare dns-apply app.example.com --project example --service web --apply --reason "point app host at Enclii tunnel"
 enclii providers cloudflare tunnels --json
@@ -59,6 +62,11 @@ enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR to
 - GitHub `rerun` and `cancel` remain contract-only.
 - GitHub `packages` now reads GHCR package metadata and recent versions; write
   operations for package visibility/deletion are intentionally out of scope.
+- Cloudflare `zones` reads the account's zone inventory. `zone-add-apply`
+  creates the zone for an apex domain, and `zone-settings-apply` applies
+  Enclii's HTTPS posture to it. For a newly acquired apex the order is
+  `zone-add-apply` -> registrar delegation (`providers porkbun
+  nameservers-apply`) -> `zone-settings-apply` -> `dns-apply`.
 - Cloudflare `dns-apply` creates, updates, or no-ops DNS records when the target
   zone is visible to the configured Enclii Cloudflare account. It blocks with
   `blocked_by_dns_authority` when the apex zone still needs registrar

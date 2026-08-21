@@ -111,6 +111,8 @@ The `ops` and `providers` replacement-layer commands are plan-first: mutating
 operations are dry-run by default and require `--apply --reason "..."` once the
 server-side adapter is wired. Wired surfaces include `secrets sync`,
 `secrets rotate` (ExternalSecret cutover), `secrets vault-backfill`,
+`providers cloudflare zone-add-apply` (create the zone for a new apex),
+`providers cloudflare zone-settings-apply` (Enclii HTTPS posture),
 `providers cloudflare dns-apply` (zone-owned DNS create/update/no-op),
 `providers cloudflare tunnels-apply --project <slug>` (junction tunnel route
 reconcile), `ops storage storageclass-apply`, and `ops policy cosign-enable`. DNS apply

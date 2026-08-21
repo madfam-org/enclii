@@ -29,7 +29,10 @@ once the server-side provider adapter supports the operation.`,
 		{name: "packages", short: "Inspect GHCR package ownership and permissions", readOnly: true},
 		{name: "protection", short: "Inspect or plan branch protection changes", readOnly: true},
 	}))
-	cmd.AddCommand(newProviderCommand(cfg, "cloudflare", "Cloudflare DNS, tunnels, Access, R2, and SaaS hostnames", []providerAction{
+	cmd.AddCommand(newProviderCommand(cfg, "cloudflare", "Cloudflare zones, DNS, tunnels, Access, R2, and SaaS hostnames", []providerAction{
+		{name: "zones", short: "Inspect the account's Cloudflare zone inventory", readOnly: true},
+		{name: "zone-add-apply", short: "Create the Cloudflare zone for an apex domain", readOnly: false},
+		{name: "zone-settings-apply", short: "Apply Enclii's HTTPS posture to a zone", readOnly: false},
 		{name: "dns", short: "Inspect or plan DNS record changes", readOnly: true},
 		{name: "dns-apply", short: "Apply DNS record changes", readOnly: false},
 		{name: "tunnels", short: "Inspect tunnel route inventory", readOnly: true},
