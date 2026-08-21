@@ -1,7 +1,10 @@
 package spec
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,16 +29,41 @@ func (e ValidationError) Error() string {
 }
 
 func (p *Parser) ParseServiceSpec(path string) (*types.ServiceSpec, error) {
+	return p.ParseServiceSpecNamed(path, "")
+}
+
+// ParseServiceSpecNamed reads a service spec from a manifest that may contain
+// more than one YAML document.
+//
+// The onboard-standard `enclii.yaml` is a two-document file — `kind: Project`
+// followed by `kind: Service` — but the loader only ever decoded the first
+// document. On such a manifest it therefore validated the Project document as
+// if it were a Service and failed with "service spec validation failed",
+// which is what forced domains to be wired by hand for kalya and crea-map.
+//
+// Selection rules:
+//   - every document in the file is decoded;
+//   - documents that are not `kind: Service` (notably `kind: Project`) are
+//     skipped, as are wholly empty documents;
+//   - when serviceName is non-empty it selects the Service document whose
+//     metadata.name matches;
+//   - a single Service document is used regardless of serviceName, so
+//     single-document service.yaml behavior is unchanged;
+//   - several Service documents with no disambiguating serviceName is an
+//     error that lists the candidates.
+//
+// Only the selected document is validated, so a Project document alongside it
+// can never fail Service validation.
+func (p *Parser) ParseServiceSpecNamed(path, serviceName string) (*types.ServiceSpec, error) {
 	// Read the file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read service spec file: %w", err)
 	}
 
-	// Parse YAML
-	var spec types.ServiceSpec
-	if err := yaml.Unmarshal(data, &spec); err != nil {
-		return nil, fmt.Errorf("failed to parse service spec YAML: %w", err)
+	spec, err := selectServiceDocument(data, serviceName)
+	if err != nil {
+		return nil, err
 	}
 
 	// Use current working directory as project root for validation
@@ -46,11 +74,90 @@ func (p *Parser) ParseServiceSpec(path string) (*types.ServiceSpec, error) {
 	}
 
 	// Validate the spec
-	if err := p.ValidateServiceSpec(&spec, projectDir); err != nil {
+	if err := p.ValidateServiceSpec(spec, projectDir); err != nil {
 		return nil, fmt.Errorf("service spec validation failed: %w", err)
 	}
 
-	return &spec, nil
+	return spec, nil
+}
+
+// selectServiceDocument decodes every YAML document in data and returns the
+// one Service document to validate. See ParseServiceSpecNamed for the rules.
+func selectServiceDocument(data []byte, serviceName string) (*types.ServiceSpec, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+
+	var services []types.ServiceSpec
+	// firstDoc preserves the single-document error behavior: a lone document
+	// that is not a Service must still be validated (and fail) rather than
+	// being silently skipped into a "no Service document" error.
+	var firstDoc *types.ServiceSpec
+	docCount := 0
+
+	for {
+		var doc types.ServiceSpec
+		if err := decoder.Decode(&doc); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("failed to parse service spec YAML: %w", err)
+		}
+		docCount++
+
+		// Skip wholly empty documents (e.g. a trailing `---`).
+		if doc.APIVersion == "" && doc.Kind == "" && doc.Metadata.Name == "" {
+			continue
+		}
+		if firstDoc == nil {
+			docCopy := doc
+			firstDoc = &docCopy
+		}
+		// Skip non-Service documents (kind: Project in the standard
+		// two-document enclii.yaml).
+		if doc.Kind != "" && doc.Kind != "Service" {
+			continue
+		}
+		services = append(services, doc)
+	}
+
+	if docCount == 0 {
+		return nil, fmt.Errorf("failed to parse service spec YAML: file contains no YAML documents")
+	}
+
+	switch len(services) {
+	case 0:
+		// No Service document. For a single-document file, hand the document
+		// back so validation produces the same message it always did.
+		if firstDoc != nil && docCount == 1 {
+			return firstDoc, nil
+		}
+		if firstDoc == nil {
+			return nil, fmt.Errorf("failed to parse service spec YAML: file contains no YAML documents")
+		}
+		return nil, fmt.Errorf("no 'kind: Service' document found in manifest (found %d document(s))", docCount)
+	case 1:
+		// Exactly one Service document: use it whether or not a name was
+		// requested, matching prior single-document behavior.
+		selected := services[0]
+		if serviceName != "" && selected.Metadata.Name != serviceName {
+			return nil, fmt.Errorf("service %q not found in manifest (contains service %q)", serviceName, selected.Metadata.Name)
+		}
+		return &selected, nil
+	}
+
+	// Several Service documents: require a name to disambiguate.
+	names := make([]string, 0, len(services))
+	for _, svc := range services {
+		names = append(names, svc.Metadata.Name)
+	}
+	if serviceName == "" {
+		return nil, fmt.Errorf("manifest contains %d services (%s) — pass --service to select one", len(services), strings.Join(names, ", "))
+	}
+	for i := range services {
+		if services[i].Metadata.Name == serviceName {
+			return &services[i], nil
+		}
+	}
+	return nil, fmt.Errorf("service %q not found in manifest (contains: %s)", serviceName, strings.Join(names, ", "))
 }
 
 func (p *Parser) ValidateServiceSpec(spec *types.ServiceSpec, projectDir string) error {

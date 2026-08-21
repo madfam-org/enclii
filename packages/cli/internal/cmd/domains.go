@@ -501,23 +501,22 @@ func resolveService(ctx context.Context, cfg *config.Config, serviceName, specFi
 	var projectSlug string
 	var svcName string
 
-	if serviceName != "" {
-		// Service name provided, need to find project from service.yaml
-		parser := spec.NewParser()
-		serviceSpec, err := parser.ParseServiceSpec(specFile)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to parse %s: %w (use --service with a valid service.yaml)", specFile, err)
+	// The manifest may be the onboard-standard two-document enclii.yaml
+	// (kind: Project + kind: Service), so select the Service document by
+	// name when --service was given; ParseServiceSpecNamed ignores the
+	// Project document either way.
+	parser := spec.NewParser()
+	serviceSpec, err := parser.ParseServiceSpecNamed(specFile, serviceName)
+	if err != nil {
+		if serviceName != "" {
+			return nil, "", fmt.Errorf("failed to parse %s: %w (use --service with a valid service.yaml or enclii.yaml)", specFile, err)
 		}
-		projectSlug = serviceSpec.Metadata.Project
+		return nil, "", fmt.Errorf("failed to parse %s: %w", specFile, err)
+	}
+	projectSlug = serviceSpec.Metadata.Project
+	if serviceName != "" {
 		svcName = serviceName
 	} else {
-		// Use service.yaml
-		parser := spec.NewParser()
-		serviceSpec, err := parser.ParseServiceSpec(specFile)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to parse %s: %w", specFile, err)
-		}
-		projectSlug = serviceSpec.Metadata.Project
 		svcName = serviceSpec.Metadata.Name
 	}
 
