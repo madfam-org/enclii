@@ -131,3 +131,53 @@ func TestClient_CreateDNSRecord_SendsStringBody(t *testing.T) {
 		t.Errorf("empty prio should be omitted, got %v", gotBody["prio"])
 	}
 }
+
+// Reads must be POST with credentials in the JSON body — NOT a GET with
+// X-API-Key headers. Over GET, Porkbun returns a misleading INVALID_DOMAIN for a
+// domain the account owns (observed live against getNs for ctm.ac), which is the
+// 2026-08-24 production failure this fix closes. Pin the method + body-auth
+// contract for every read so a refactor cannot silently revert it.
+func TestClient_Reads_UsePostWithBodyCredentials(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(c *Client) error
+		path string
+	}{
+		{"ListDomains", func(c *Client) error { _, e := c.ListDomains(context.Background()); return e }, "/domain/listAll"},
+		{"GetNameservers", func(c *Client) error { _, e := c.GetNameservers(context.Background(), "ctm.ac"); return e }, "/domain/getNs/ctm.ac"},
+		{"GetDomain", func(c *Client) error { _, e := c.GetDomain(context.Background(), "ctm.ac"); return e }, "/domain/get/ctm.ac"},
+		{"ListDNSRecords", func(c *Client) error { _, e := c.ListDNSRecords(context.Background(), "ctm.ac"); return e }, "/dns/retrieve/ctm.ac"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			var gotBody map[string]any
+			var gotHeaderAuth bool
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				if r.Header.Get("X-API-Key") != "" || r.Header.Get("X-Secret-API-Key") != "" {
+					gotHeaderAuth = true
+				}
+				decodeJSONBody(t, r, &gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"SUCCESS","ns":["ns1.example"],"domains":[],"records":[],"domain":{}}`))
+			})
+
+			if err := tc.call(client); err != nil {
+				t.Fatalf("%s call failed: %v", tc.name, err)
+			}
+			if gotMethod != http.MethodPost {
+				t.Errorf("%s used %s, want POST (Porkbun reads are POST+body)", tc.name, gotMethod)
+			}
+			if gotPath != tc.path {
+				t.Errorf("%s hit %s, want %s", tc.name, gotPath, tc.path)
+			}
+			if gotBody["apikey"] != "test-key" || gotBody["secretapikey"] != "test-secret" {
+				t.Errorf("%s missing body credentials: apikey=%v secretapikey=%v", tc.name, gotBody["apikey"], gotBody["secretapikey"])
+			}
+			if gotHeaderAuth {
+				t.Errorf("%s sent X-API-Key headers; Porkbun ignores them and the GET+header path is the bug being fixed", tc.name)
+			}
+		})
+	}
+}

@@ -121,9 +121,17 @@ func (c *Client) Configured() bool {
 	return c != nil && c.apiKey != "" && c.secretAPIKey != ""
 }
 
+// NOTE ON METHOD: Porkbun is a POST-with-JSON-body API. Its reads authenticate
+// by the `apikey`/`secretapikey` fields in the POST body, exactly like its
+// writes — a GET (even carrying X-API-Key headers) does not establish the
+// credential context Porkbun's domain-scoped reads need, and Porkbun answers
+// with a misleading "INVALID_DOMAIN" for a domain the account actually owns
+// (observed live against getNs for ctm.ac). So every read below is POST; `do()`
+// injects the credentials into the body for every request.
+
 func (c *Client) ListDomains(ctx context.Context) (*ListDomainsResponse, error) {
 	var out ListDomainsResponse
-	if err := c.do(ctx, http.MethodGet, "/domain/listAll", nil, "", &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/domain/listAll", nil, "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -131,7 +139,7 @@ func (c *Client) ListDomains(ctx context.Context) (*ListDomainsResponse, error) 
 
 func (c *Client) GetDomain(ctx context.Context, domain string) (*GetDomainResponse, error) {
 	var out GetDomainResponse
-	if err := c.do(ctx, http.MethodGet, "/domain/get/"+url.PathEscape(domain), nil, "", &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/domain/get/"+url.PathEscape(domain), nil, "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -139,7 +147,7 @@ func (c *Client) GetDomain(ctx context.Context, domain string) (*GetDomainRespon
 
 func (c *Client) GetNameservers(ctx context.Context, domain string) (*NameserversResponse, error) {
 	var out NameserversResponse
-	if err := c.do(ctx, http.MethodGet, "/domain/getNs/"+url.PathEscape(domain), nil, "", &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/domain/getNs/"+url.PathEscape(domain), nil, "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -156,7 +164,7 @@ func (c *Client) UpdateNameservers(ctx context.Context, domain string, nameserve
 
 func (c *Client) ListDNSRecords(ctx context.Context, domain string) (*DNSRecordsResponse, error) {
 	var out DNSRecordsResponse
-	if err := c.do(ctx, http.MethodGet, "/dns/retrieve/"+url.PathEscape(domain), nil, "", &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/dns/retrieve/"+url.PathEscape(domain), nil, "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -186,32 +194,26 @@ func (c *Client) do(ctx context.Context, method, path string, body map[string]an
 		return fmt.Errorf("porkbun API credentials are not configured")
 	}
 
-	var reader io.Reader
-	if method == http.MethodPost {
-		if body == nil {
-			body = map[string]any{}
-		}
-		body["apikey"] = c.apiKey
-		body["secretapikey"] = c.secretAPIKey
-		payload, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal porkbun request: %w", err)
-		}
-		reader = bytes.NewReader(payload)
+	// Porkbun authenticates every call — reads included — by the apikey/
+	// secretapikey pair in the JSON body of a POST (see the method note above the
+	// read helpers). We always send a body carrying the credentials.
+	if body == nil {
+		body = map[string]any{}
 	}
+	body["apikey"] = c.apiKey
+	body["secretapikey"] = c.secretAPIKey
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal porkbun request: %w", err)
+	}
+	reader := bytes.NewReader(payload)
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	if method == http.MethodPost {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if method == http.MethodGet {
-		req.Header.Set("X-API-Key", c.apiKey)
-		req.Header.Set("X-Secret-API-Key", c.secretAPIKey)
-	}
+	req.Header.Set("Content-Type", "application/json")
 	if strings.TrimSpace(idempotencyKey) != "" {
 		req.Header.Set("Idempotency-Key", strings.TrimSpace(idempotencyKey))
 	}
