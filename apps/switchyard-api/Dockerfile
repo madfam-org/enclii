@@ -12,16 +12,21 @@ RUN apk add --no-cache git
 # HIGH/CRITICAL findings while pinning the cosign version.
 ENV COSIGN_VERSION=v3.1.3
 # Built from a clone, not `go install`, because upstream cosign v3.1.3 still
-# pins two dependencies below their fixed versions — golang.org/x/text
-# v0.38.0 (CVE-2026-56852, fixed 0.39.0) and google.golang.org/grpc v1.82.0
-# (GHSA-hrxh-6v49-42gf, fixed 1.82.1). `go install pkg@version` builds in
-# module-authoritative mode and offers no way to raise them, so the scan
-# fails on a binary we compile ourselves. A clone lets us `go get` exactly
-# those two and nothing else. Drop this back to `go install` the moment a
-# cosign release carries both fixes.
+# pins three dependencies below their fixed versions — golang.org/x/text
+# v0.38.0 (CVE-2026-56852, fixed 0.39.0), google.golang.org/grpc v1.82.0
+# (GHSA-hrxh-6v49-42gf, fixed 1.82.1), and golang.org/x/mod v0.37.0
+# (CVE-2026-56864 + CVE-2026-56865, fixed 0.40.0 — the 2026-08-21 findings
+# that failed `Scan: switchyard-api` and blocked digest pinning).
+# `go install pkg@version` builds in module-authoritative mode and offers no
+# way to raise them, so the scan fails on a binary we compile ourselves. A
+# clone lets us `go get` exactly those three and nothing else. The x/text
+# floor is v0.41.0 (not the 0.39.0 fix minimum) because x/mod v0.40.0's
+# graph requires x/text >= v0.41.0 — `go get` rejects the pair otherwise.
+# Drop this back to `go install` the moment a cosign release carries all
+# three fixes.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.39.0 google.golang.org/grpc@v1.82.1 && \
+    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.82.1 golang.org/x/mod@v0.40.0 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
