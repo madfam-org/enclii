@@ -1,5 +1,11 @@
 # Enclii Porkbun Provider Remediation
 
+<!-- Boundary checkpoint (2026-08-24, platform ops): public-facing runbook. Names
+registrar/DNS remediation steps + example domains (phynd.app, ctm.ac) and enclii
+CLI commands — no secret values (API keys live in Vault, never here). Public-safe
+summary: how enclii recovers registrar/DNS control for a domain. Policy:
+docs/PUBLIC_REPO_BOUNDARY.md / repo-boundary-contract. -->
+
 Date: 2026-05-16
 Scope: Enclii-first registrar recovery for domains that are not yet under the configured Cloudflare zone authority.
 
@@ -111,3 +117,17 @@ The expected outcome is that Cloudflare no longer reports `blocked_by_dns_author
 - `https://crm.phynd.app` reaches the generic PhyndCRM authenticated app and not the MADFAM tenant slice.
 - `https://crm.madfam.io` immediately routes to the MADFAM tenant Janua SSO flow.
 - `https://status.madfam.io/api/status` no longer lists `https://crm.phynd.app` as affected.
+
+## 2026-08-24 — Porkbun READ path was broken; fixed (PR #432)
+
+The completion criteria above (`porkbun domains` / `nameservers` succeeding) could
+not pass before this date: those reads were issued as **GET with `X-API-Key`
+headers**, but Porkbun is a **POST-with-JSON-body** API that authenticates by
+`apikey`/`secretapikey` in the body. Over GET, Porkbun ignored the headers and
+returned a misleading `INVALID_DOMAIN` even for a domain the account owns
+(observed live against `getNs ctm.ac`). PR #432 switched the four reads
+(`ListDomains`/`GetDomain`/`GetNameservers`/`ListDNSRecords`) to POST + body auth;
+`porkbun/client_test.go` now pins method=POST + body-credentials for every read so
+it cannot regress. This composed with the earlier `flexible.go` decode fix
+(`securityLock` string→int): the read path had been broken twice. **Takes effect on
+`api.enclii.dev` only after `switchyard-api` redeploys.**
