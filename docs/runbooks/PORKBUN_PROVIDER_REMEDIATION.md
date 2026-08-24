@@ -1,5 +1,11 @@
 # Enclii Porkbun Provider Remediation
 
+<!-- Boundary checkpoint (2026-08-24, platform ops): public-facing runbook. Names
+registrar/DNS remediation steps + example domains (phynd.app, ctm.ac) and enclii
+CLI commands — no secret values (API keys live in Vault, never here). Public-safe
+summary: how enclii recovers registrar/DNS control for a domain. Policy:
+docs/PUBLIC_REPO_BOUNDARY.md / repo-boundary-contract. -->
+
 Date: 2026-05-16
 Scope: Enclii-first registrar recovery for domains that are not yet under the configured Cloudflare zone authority.
 
