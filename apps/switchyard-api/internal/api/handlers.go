@@ -79,6 +79,11 @@ type Handler struct {
 	secretsProvisioner  *provisioning.SecretsProvisioner
 	r2Provisioner       *provisioning.R2Provisioner
 
+	// pgbouncerAdminURL is the Postgres admin connection string used by the
+	// read-only userlist-reconcile check (ReconcileUserlist). Set alongside the
+	// provisioners; empty disables the reconcile endpoint.
+	pgbouncerAdminURL string
+
 	// Pipeline services (optional — set via setters for incremental migration)
 	webhookService *services.WebhookService
 	buildService   *services.BuildService
@@ -352,6 +357,13 @@ func (h *Handler) SetProvisioners(
 	h.pgbouncerUpdater = pgb
 	h.secretsProvisioner = sec
 	h.r2Provisioner = r2
+}
+
+// SetPgbouncerAdminURL supplies the Postgres admin connection string the
+// read-only userlist-reconcile check needs. Kept separate from
+// SetProvisioners so that shared signature does not change.
+func (h *Handler) SetPgbouncerAdminURL(adminURL string) {
+	h.pgbouncerAdminURL = adminURL
 }
 
 // SetupRoutes configures all API routes

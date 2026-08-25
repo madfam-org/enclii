@@ -95,6 +95,10 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	admin.POST("/provision/secrets", h.ProvisionSecrets)
 	admin.POST("/provision/r2", h.ProvisionR2)
 
+	// Read-only drift check: PgBouncer userlist vs Postgres login roles.
+	// 409 when a login role is missing from the userlist (page on it).
+	admin.GET("/provision/pgbouncer/reconcile", h.ReconcilePgbouncerUserlist)
+
 	// Status Page Management
 	admin.GET("/status/services", h.ListStatusServices)
 	admin.POST("/status/regenerate", h.RegenerateStatusConfig)

@@ -154,3 +154,44 @@ func (h *Handler) ProvisionR2(c *gin.Context) {
 		"warnings":    result.Warnings,
 	})
 }
+
+// ReconcilePgbouncerUserlist reports drift between the PgBouncer userlist and
+// the login roles that actually exist in Postgres. Read-only: it never mutates
+// the userlist (restoring a dropped credential needs the role's password, which
+// lives in the consuming service's own secret). It exists because a
+// hand-applied userlist silently dropped four users on 2026-08-23 and took
+// api.fortuna.tube hard-down — a `missing` result is the fail-closed signal to
+// page on.
+// GET /v1/admin/provision/pgbouncer/reconcile
+func (h *Handler) ReconcilePgbouncerUserlist(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	if h.pgbouncerUpdater == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "PgBouncer updater not configured (K8s client unavailable)"})
+		return
+	}
+	if h.pgbouncerAdminURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "userlist reconcile not configured (POSTGRES_ADMIN_URL not set)"})
+		return
+	}
+
+	drift, err := h.pgbouncerUpdater.ReconcileUserlist(ctx, h.pgbouncerAdminURL)
+	if err != nil {
+		h.logger.Error(ctx, "PgBouncer userlist reconcile failed", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// A missing login role is a real, page-worthy divergence — surface it as a
+	// non-2xx so a probe or CronJob wrapping this endpoint fails loudly, exactly
+	// the signal the 2026-08-23 outage lacked.
+	status := http.StatusOK
+	if drift.HasMissing() {
+		status = http.StatusConflict
+	}
+	c.JSON(status, gin.H{
+		"in_sync":               drift.Empty(),
+		"missing_from_userlist": drift.MissingFromUserlist,
+		"stale_in_userlist":     drift.StaleInUserlist,
+	})
+}
