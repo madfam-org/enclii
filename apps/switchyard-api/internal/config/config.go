@@ -304,10 +304,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("argocd-registration-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-registration", false)
 	viper.SetDefault("argocd-namespace", "argocd")
-	viper.SetDefault("argocd-poller-enabled", false)      // ENCLII_ARGOCD_POLLER_ENABLED — ships dark
-	viper.SetDefault("argocd-poll-interval", "3m")        // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
+	viper.SetDefault("argocd-poller-enabled", false)       // ENCLII_ARGOCD_POLLER_ENABLED — ships dark
+	viper.SetDefault("argocd-poll-interval", "3m")         // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
 	viper.SetDefault("timetable-reconciler-enabled", true) // ENCLII_TIMETABLE_RECONCILER_ENABLED — jobs runner, on by default
-	viper.SetDefault("status-projection-mode", "runtime") // "runtime" or legacy "gitops"
+	viper.SetDefault("status-projection-mode", "runtime")  // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-status-projection", false)
 	viper.SetDefault("status-config-namespace", "enclii")
 	viper.SetDefault("compliance-webhooks-enabled", false)
