@@ -103,6 +103,12 @@ type Config struct {
 	ArgocdPollerEnabled bool   // ENCLII_ARGOCD_POLLER_ENABLED (default false)
 	ArgocdPollInterval  string // ENCLII_ARGOCD_POLL_INTERVAL — Go duration (default "3m")
 
+	// Timetable reconciler (cron + one-off jobs created via `enclii jobs`).
+	// Reconciles cron_jobs/one_off_jobs DB records into k8s CronJob/Job resources
+	// on a 30s loop. Defaults ON — without it, `enclii jobs create` persists a row
+	// that nothing ever executes. Flag exists only as a break-glass off switch.
+	TimetableReconcilerEnabled bool // ENCLII_TIMETABLE_RECONCILER_ENABLED (default true)
+
 	// Status ConfigMap Projection
 	StatusProjectionMode              string // "runtime" (default zero-touch ConfigMap projection) or "gitops" (legacy Enclii config commit)
 	AllowLegacyGitOpsStatusProjection bool   // Explicit break-glass gate for legacy Enclii repo status commits
@@ -300,6 +306,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("argocd-namespace", "argocd")
 	viper.SetDefault("argocd-poller-enabled", false)      // ENCLII_ARGOCD_POLLER_ENABLED — ships dark
 	viper.SetDefault("argocd-poll-interval", "3m")        // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
+	viper.SetDefault("timetable-reconciler-enabled", true) // ENCLII_TIMETABLE_RECONCILER_ENABLED — jobs runner, on by default
 	viper.SetDefault("status-projection-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-status-projection", false)
 	viper.SetDefault("status-config-namespace", "enclii")
@@ -414,6 +421,7 @@ func Load() (*Config, error) {
 		AllowLegacyGitOpsRegistration:     viper.GetBool("allow-legacy-gitops-registration"),
 		ArgocdNamespace:                   viper.GetString("argocd-namespace"),
 		ArgocdPollerEnabled:               viper.GetBool("argocd-poller-enabled"),
+		TimetableReconcilerEnabled:        viper.GetBool("timetable-reconciler-enabled"),
 		ArgocdPollInterval:                viper.GetString("argocd-poll-interval"),
 		StatusProjectionMode:              viper.GetString("status-projection-mode"),
 		AllowLegacyGitOpsStatusProjection: viper.GetBool("allow-legacy-gitops-status-projection"),

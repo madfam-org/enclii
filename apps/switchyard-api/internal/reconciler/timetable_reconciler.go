@@ -76,12 +76,12 @@ func (r *TimetableReconciler) Start(ctx context.Context) {
 		defer ticker.Stop()
 
 		// Run an immediate pass on startup.
-		r.reconcile(ctx)
+		r.safeReconcile(ctx)
 
 		for {
 			select {
 			case <-ticker.C:
-				r.reconcile(ctx)
+				r.safeReconcile(ctx)
 			case <-r.stopCh:
 				r.logger.Info("Timetable reconciler stopped")
 				return
@@ -96,6 +96,18 @@ func (r *TimetableReconciler) Start(ctx context.Context) {
 // Stop gracefully shuts down the reconciliation loop.
 func (r *TimetableReconciler) Stop() {
 	close(r.stopCh)
+}
+
+// safeReconcile runs one reconcile pass with panic recovery, so a bug in any pass
+// logs and is retried on the next tick rather than killing the reconciler goroutine
+// (which would silently stop all cron/one-off jobs from executing).
+func (r *TimetableReconciler) safeReconcile(ctx context.Context) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.WithField("panic", rec).Error("Timetable reconcile pass panicked; will retry next tick")
+		}
+	}()
+	r.reconcile(ctx)
 }
 
 // reconcile performs a single reconciliation pass: sync cron jobs, dispatch
