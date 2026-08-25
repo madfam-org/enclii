@@ -102,6 +102,14 @@ data:
           "namespace": "dhanam",
           "service": "dhanam-api",
           "port": 80
+        },
+        {
+          "name": "angelia-api",
+          "url": "http://angelia-api.angelia.svc.cluster.local:80/health",
+          "expected_status": 200,
+          "namespace": "angelia",
+          "service": "angelia-api",
+          "port": 80
         }
       ]
     }
