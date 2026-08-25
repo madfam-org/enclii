@@ -563,6 +563,7 @@ func main() {
 		}
 
 		apiHandler.SetProvisioners(pgProv, pgbUpdater, secProv, r2Prov)
+		apiHandler.SetPgbouncerAdminURL(cfg.PostgresAdminURL)
 	}
 
 	// P3.6: Tenant data export wiring (see tenant_export_wiring.go).

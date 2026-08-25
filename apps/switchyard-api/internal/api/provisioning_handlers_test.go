@@ -147,3 +147,56 @@ func TestProvisionSecretsUsesRequestedSecretName(t *testing.T) {
 		t.Fatalf("OIDC_CLIENT_SECRET was not written to requested secret")
 	}
 }
+
+// TestReconcilePgbouncerUserlistConfigGates verifies the two 503 gates on the
+// read-only reconcile endpoint. The drift path itself needs a live Postgres, so
+// it is covered by the pure-function tests in the provisioning package
+// (TestDiffUserlist) rather than here.
+func TestReconcilePgbouncerUserlistConfigGates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	logger, err := logging.NewStructuredLogger(&logging.LogConfig{
+		Level:  "panic",
+		Format: "text",
+		Output: "stderr",
+	})
+	if err != nil {
+		t.Fatalf("create logger: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		handler  *Handler
+		wantCode int
+	}{
+		{
+			name:     "updater nil",
+			handler:  &Handler{logger: logger},
+			wantCode: http.StatusServiceUnavailable,
+		},
+		{
+			name: "admin URL empty",
+			handler: &Handler{
+				logger:           logger,
+				pgbouncerUpdater: provisioning.NewPgBouncerUpdater(fake.NewSimpleClientset(), logger),
+				// pgbouncerAdminURL deliberately left empty
+			},
+			wantCode: http.StatusServiceUnavailable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			_, engine := gin.CreateTestContext(w)
+			engine.GET("/v1/admin/provision/pgbouncer/reconcile", tt.handler.ReconcilePgbouncerUserlist)
+
+			req, _ := http.NewRequest(http.MethodGet, "/v1/admin/provision/pgbouncer/reconcile", nil)
+			engine.ServeHTTP(w, req)
+
+			if w.Code != tt.wantCode {
+				t.Errorf("%s: want status %d, got %d (body: %s)", tt.name, tt.wantCode, w.Code, w.Body.String())
+			}
+		})
+	}
+}
