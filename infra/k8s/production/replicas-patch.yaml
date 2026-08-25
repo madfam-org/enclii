@@ -8,8 +8,14 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      # maxSurge 0: the cluster runs near its CPU-request ceiling and the two
+      # non-builder nodes cannot fit a third switchyard-api pod, so a surge
+      # rollout parks Pending forever (bit the 2026-08-24 #434 rollout:
+      # "0/4 nodes available: 2 Insufficient cpu, 2 untolerated builder
+      # taint"). Replace-in-place instead: one replica drains, its CPU frees,
+      # the new pod schedules. Brief 2→1 capacity dip per rollout, accepted.
+      maxSurge: 0
+      maxUnavailable: 1
 ---
 # Note: Redis Sentinel HA cluster lives in a separate ArgoCD Application
 # (infra/argocd/apps/redis-sentinel.yaml). This Deployment remains the
