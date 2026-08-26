@@ -424,6 +424,43 @@ data:
               summary: "PostgreSQL high connection usage"
               description: "Connection pool usage is above 80%."
 
+          # PgBouncer userlist drift (availability remediation Tier 0.6, enclii#436/#441).
+          # Metrics come from switchyard-api's in-process drift checker
+          # (internal/reconciler/pgbouncer_drift_checker.go). Three rules on
+          # purpose: (a) the drift itself, (b) the checker erroring, (c) the
+          # checker dead — (a) alone can lie if the checker dies with
+          # missing_users frozen at 0. Full rationale + synthetic-test recipe:
+          # docs/monitoring/pgbouncer-drift-alerts.md.
+          - alert: PgbouncerUserlistDrift
+            expr: enclii_pgbouncer_userlist_missing_users > 0
+            for: 10m
+            labels:
+              severity: critical
+              service: pgbouncer
+            annotations:
+              summary: "pgbouncer userlist drift — pooler auth diverged from DB truth (the 2026-08-24 outage class)"
+              description: "{{ $value }} Postgres login role(s) exist that pgbouncer's userlist does not have a line for. Every pooled connection as those roles is failing auth right now — this is the exact drift class that took fortuna/bloom-scroll/ceq hard-down for days on 2026-08-24. Check GET /v1/admin/provision/pgbouncer/reconcile on switchyard-api for the current missing-role list; repair requires the role's password from the consuming service's own secret (see internal-devops/scripts/restore-pgbouncer-users.py) — this alert does NOT self-heal."
+
+          - alert: PgbouncerUserlistCheckErrors
+            expr: increase(enclii_pgbouncer_userlist_check_errors_total[15m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+              service: pgbouncer
+            annotations:
+              summary: "pgbouncer userlist drift checker is erroring"
+              description: "The periodic userlist drift checker (switchyard-api, ENCLII_PGBOUNCER_DRIFT_CHECK_ENABLED) failed {{ $value }} time(s) in the last 15 minutes instead of completing a comparison. Likely causes: Postgres admin connection down, k8s API access lost, or ENCLII_POSTGRES_ADMIN_URL/k8s client not configured. Missing_users may be stale while this fires."
+
+          - alert: PgbouncerUserlistCheckerDead
+            expr: time() - enclii_pgbouncer_userlist_last_check_timestamp_seconds > 900
+            for: 5m
+            labels:
+              severity: warning
+              service: pgbouncer
+            annotations:
+              summary: "pgbouncer userlist drift detector itself is dead"
+              description: "No successful userlist drift check has completed in over 15 minutes (checker runs every 5m). Per the availability audit's green-lies doctrine, treat this as UNKNOWN, not healthy — PgbouncerUserlistDrift staying quiet right now proves nothing. Check whether the switchyard-api process is up and whether the checker goroutine panicked/exited; see internal/reconciler/pgbouncer_drift_checker.go."
+
           # Redis Health
           - alert: RedisDown
             expr: redis_up == 0
