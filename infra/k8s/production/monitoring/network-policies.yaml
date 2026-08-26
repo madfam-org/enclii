@@ -215,6 +215,23 @@ spec:
     ports:
     - protocol: TCP
       port: 9090
+  # Memberlist gossip to the OTHER alertmanager replicas (TCP + UDP 9094).
+  # Absent since default-deny landed: all three "HA" members ran as isolated
+  # singletons for months — no silence replication, no dedup — visible as
+  # "Failed to join ...:9094: connection refused" in every member's log.
+  # Harmless while notifications went nowhere; a triple-page bug the moment a
+  # real receiver (Telegram, 0.1) is armed. Bare same-namespace podSelector on
+  # purpose: k3s's netpol controller renders combined namespaceSelector+
+  # podSelector entries as deny-everything (angelia PR #9, 2026-08-26).
+  - to:
+    - podSelector:
+        matchLabels:
+          app: alertmanager
+    ports:
+    - protocol: TCP
+      port: 9094
+    - protocol: UDP
+      port: 9094
 ---
 # AlertManager ingress — from Prometheus (in-cluster) and the Cloudflare
 # tunnel (external UI at alertmanager.enclii.dev). Without the tunnel rule the
@@ -246,6 +263,17 @@ spec:
     ports:
     - protocol: TCP
       port: 9093
+  # Memberlist gossip from the OTHER alertmanager replicas — pair of the
+  # egress rule above; both sides are needed under default-deny.
+  - from:
+    - podSelector:
+        matchLabels:
+          app: alertmanager
+    ports:
+    - protocol: TCP
+      port: 9094
+    - protocol: UDP
+      port: 9094
 ---
 # Grafana egress — DNS, Prometheus datasource, OIDC provider
 apiVersion: networking.k8s.io/v1
