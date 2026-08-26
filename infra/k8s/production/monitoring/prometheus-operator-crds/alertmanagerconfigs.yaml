@@ -46,7 +46,7 @@ spec:
                           matchType:
                             enum:
                             - '!='
-                            - =
+                            - '='
                             - =~
                             - '!~'
                             type: string
@@ -68,7 +68,7 @@ spec:
                           matchType:
                             enum:
                             - '!='
-                            - =
+                            - '='
                             - =~
                             - '!~'
                             type: string
@@ -6311,7 +6311,7 @@ spec:
                         matchType:
                           enum:
                           - '!='
-                          - =
+                          - '='
                           - =~
                           - '!~'
                           type: string
