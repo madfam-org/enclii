@@ -480,6 +480,67 @@ def test_amtool_layer_is_optional_and_reports_when_absent(tmp_path):
     assert "structural checks only" in out
 
 
+def test_infra_failure_degrades_instead_of_failing_the_build(tmp_path):
+    """A registry/daemon failure must NOT be reported as a bad config.
+
+    This is the distinction that matters most for trust in the lane: if a
+    Docker Hub hiccup turns this check red, people learn to ignore its red —
+    and an ignored check is worth less than no check, because it looks like
+    coverage. Only a validator that actually RAN and rejected the config may
+    fail the build.
+    """
+    write(tmp_path, configmap(MINIMAL))
+    for stderr_text in (
+        "docker: command not found",
+        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+        "failed to resolve reference: dial tcp: i/o timeout",
+        "toomanyrequests: You have reached your pull rate limit",
+    ):
+        code, out, err = run_script(
+            tmp_path,
+            env={"ENCLII_AMTOOL": f"sh -c 'echo \"{stderr_text}\" >&2; exit 125'"},
+        )
+        assert code == 0, f"{stderr_text!r} must not fail the build:\n{out}\n{err}"
+        assert "UNAVAILABLE" in out
+        assert "WARNING" in err, "degraded coverage must be loud on stderr"
+
+
+def test_silent_nonzero_exit_is_treated_as_unavailable(tmp_path):
+    """A real rejection always prints. Silence + nonzero is the runtime dying."""
+    write(tmp_path, configmap(MINIMAL))
+    code, out, _ = run_script(tmp_path, env={"ENCLII_AMTOOL": "false"})
+    assert code == 0
+    assert "UNAVAILABLE" in out
+
+
+def test_amtool_timeout_degrades(tmp_path):
+    write(tmp_path, configmap(MINIMAL))
+    code, out, err = run_script(
+        tmp_path,
+        env={"ENCLII_AMTOOL": "sleep 30", "ENCLII_AMTOOL_TIMEOUT": "1"},
+    )
+    assert code == 0
+    assert "UNAVAILABLE" in out
+    assert "did not finish" in err
+
+
+def test_genuine_amtool_rejection_still_fails(tmp_path):
+    """The degradation path must not swallow a REAL verdict."""
+    write(tmp_path, configmap(MINIMAL))
+    code, out, _ = run_script(
+        tmp_path,
+        env={
+            "ENCLII_AMTOOL": (
+                "sh -c 'echo \"Checking /w/alertmanager.yml  FAILED: "
+                "missing chat_id on telegram_config\"; exit 1'"
+            )
+        },
+    )
+    assert code == 1
+    assert "amtool check-config rejected this config" in out
+    assert "missing chat_id on telegram_config" in out
+
+
 def test_amtool_layer_runs_when_configured(tmp_path):
     """ENCLII_AMTOOL is honored, and its failure fails the check."""
     write(tmp_path, configmap(MINIMAL))
@@ -488,8 +549,13 @@ def test_amtool_layer_runs_when_configured(tmp_path):
     assert "amtool check-config: ran." in out
 
     code, out, _ = run_script(
-        tmp_path, env={"ENCLII_AMTOOL": "sh -c 'echo simulated failure >&2; exit 1'"}
+        tmp_path,
+        env={
+            "ENCLII_AMTOOL": (
+                "sh -c 'echo \"Checking /w/x.yml  FAILED: bad config\"; exit 1'"
+            )
+        },
     )
     assert code == 1
     assert "amtool check-config rejected this config" in out
-    assert "simulated failure" in out
+    assert "bad config" in out

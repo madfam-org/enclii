@@ -54,6 +54,13 @@ Two layers, in order:
      lint that gets skipped during an incident. Structural is the floor;
      amtool is the ceiling when available.
 
+     If the validator cannot RUN (no docker, unreachable registry, rate
+     limit, timeout), this degrades to structural-only with a loud stderr
+     WARNING and does NOT fail the build — a lane that goes red on registry
+     hiccups teaches people to ignore its red, and an ignored check is worth
+     less than no check because it still looks like coverage. Only a
+     validator that ran and REJECTED the config fails the build.
+
 HONEST LIMITATIONS
 ==================
 The structural layer does NOT reimplement `yaml.UnmarshalStrict`, so it will
@@ -382,31 +389,100 @@ def check_alertmanager_yml(path: Path, cm_name: str, key: str, body: str) -> lis
     return [Finding(path, prefix, m) for m in messages]
 
 
+# How long to give the optional validator before treating it as unavailable.
+# Generous enough for a cold image pull, short enough not to wedge CI.
+AMTOOL_TIMEOUT_SECONDS = int(os.environ.get("ENCLII_AMTOOL_TIMEOUT", "180"))
+
+# Signatures of "the validator could not run", as opposed to "the validator
+# ran and rejected the config". A container runtime that cannot pull, cannot
+# reach its daemon, or is not installed says so on stderr and exits nonzero —
+# indistinguishable from a real rejection by exit code alone.
+UNAVAILABLE_MARKERS = (
+    "command not found",
+    "not found: docker",
+    "cannot connect to the docker daemon",
+    "docker daemon is not running",
+    "error during connect",
+    "failed to resolve reference",
+    "pull access denied",
+    "manifest unknown",
+    "no such host",
+    "connection refused",
+    "network is unreachable",
+    "i/o timeout",
+    "tls handshake timeout",
+    "context deadline exceeded",
+    "temporary failure in name resolution",
+    "toomanyrequests",
+    "permission denied while trying to connect",
+)
+
+
+class AmtoolUnavailable(Exception):
+    """The optional validator could not be run. NOT a config verdict."""
+
+
 def run_amtool(body: str, key: str) -> tuple[bool, str] | None:
     """Run the real validator if one is reachable. None means 'not available'.
 
     ENCLII_AMTOOL, when set, is a command template with {dir} and {name}
     placeholders — this lets CI or an operator point at a container image
     without this script hardcoding a runtime.
+
+    CRITICAL DISTINCTION: a nonzero exit from the wrapper command does NOT by
+    itself mean the config is bad. If the container runtime cannot pull the
+    image, cannot reach its daemon, or is not installed, it also exits
+    nonzero. Treating that as a config rejection would fail the merge queue
+    over a registry hiccup and — far worse — train everyone to ignore this
+    lane's red, which is exactly how the crashloop this check exists to
+    prevent shipped green in the first place. Infrastructure failures degrade
+    to structural-only (reported loudly on stderr); only a validator that
+    actually ran and rejected the config fails the build.
     """
     template = os.environ.get("ENCLII_AMTOOL")
     with tempfile.TemporaryDirectory() as tmp:
         name = "alertmanager.yml" if key.endswith(".yml") else key
         target = Path(tmp) / name
         target.write_text(body, encoding="utf-8")
-        if template:
-            cmd = template.format(dir=tmp, name=name)
-            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        elif shutil.which("amtool"):
-            proc = subprocess.run(
-                ["amtool", "check-config", str(target)],
-                capture_output=True,
-                text=True,
-            )
-        else:
-            return None
+        try:
+            if template:
+                cmd = template.format(dir=tmp, name=name)
+                proc = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=AMTOOL_TIMEOUT_SECONDS,
+                )
+            elif shutil.which("amtool"):
+                proc = subprocess.run(
+                    ["amtool", "check-config", str(target)],
+                    capture_output=True,
+                    text=True,
+                    timeout=AMTOOL_TIMEOUT_SECONDS,
+                )
+            else:
+                return None
+        except subprocess.TimeoutExpired:
+            raise AmtoolUnavailable(
+                f"validator did not finish within {AMTOOL_TIMEOUT_SECONDS}s "
+                "(slow or unreachable image registry)"
+            ) from None
+        except OSError as exc:
+            raise AmtoolUnavailable(f"could not execute validator: {exc}") from None
+
         output = (proc.stdout + proc.stderr).strip()
-        return proc.returncode == 0, output
+        if proc.returncode == 0:
+            return True, output
+
+        lowered = output.lower()
+        if any(marker in lowered for marker in UNAVAILABLE_MARKERS):
+            raise AmtoolUnavailable(output or "validator exited nonzero with no output")
+        if not output:
+            # A real rejection always prints "Checking '<file>' FAILED: <err>".
+            # Silence plus nonzero is the runtime failing, not a verdict.
+            raise AmtoolUnavailable("validator exited nonzero with no output")
+        return False, output
 
 
 def main(argv: list[str]) -> int:
@@ -420,6 +496,7 @@ def main(argv: list[str]) -> int:
     checked = 0
     amtool_ran = False
     amtool_failed = False
+    amtool_unavailable: str | None = None
 
     try:
         for root in roots:
@@ -438,7 +515,11 @@ def main(argv: list[str]) -> int:
                     checked += 1
                     findings.extend(check_alertmanager_yml(path, cm_name, key, body))
 
-                    result = run_amtool(body, key)
+                    try:
+                        result = run_amtool(body, key)
+                    except AmtoolUnavailable as exc:
+                        amtool_unavailable = str(exc)
+                        continue
                     if result is None:
                         continue
                     amtool_ran = True
@@ -469,14 +550,25 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
+    if amtool_ran:
+        amtool_status = "amtool check-config: ran."
+    elif amtool_unavailable:
+        amtool_status = "amtool check-config: UNAVAILABLE, structural checks only."
+        # Loud on stderr: degraded coverage must be visible in the CI log, not
+        # inferred from its absence. It is deliberately not a build failure —
+        # see run_amtool's docstring.
+        print(
+            f"WARNING: the optional amtool layer could not run, so unknown-field "
+            f"and template validation were SKIPPED. Structural checks still ran "
+            f"and passed. Reason: {amtool_unavailable}",
+            file=sys.stderr,
+        )
+    else:
+        amtool_status = "amtool check-config: not configured, structural checks only."
+
     print(
         f"checked {checked} alertmanager config(s) in {len(roots)} root(s); "
-        f"{len(findings)} failure(s). "
-        + (
-            "amtool check-config: ran."
-            if amtool_ran
-            else "amtool check-config: not available, structural checks only."
-        )
+        f"{len(findings)} failure(s). " + amtool_status
     )
 
     if findings:
