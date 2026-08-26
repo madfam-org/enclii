@@ -373,11 +373,44 @@ jobs:
           secrets: |
             npmrc=//npm.madfam.io/:_authToken=${{ secrets.NPM_MADFAM_TOKEN }}
 
+      # Keyless signing depends on THREE remote services at once — GitHub's
+      # ambient OIDC endpoint, Fulcio, and Rekor — and a hiccup in any of them
+      # fails the step. The image is already built and pushed by this point, so
+      # a bare failure here strands the run BEFORE the digest artifact, the pin
+      # job finds no digests, ArgoCD never syncs, and main goes green while the
+      # live host keeps serving the previous build. That is exactly what bit
+      # crea-frontend on 2026-08-26 (run 33010085743): GitHub's OIDC endpoint
+      # returned non-JSON and cosign reported
+      #   getting key from Fulcio: fetching ambient OIDC credentials:
+      #   invalid character 'u' looking for beginning of value
+      # A plain `gh run rerun --failed` then succeeded — i.e. it was transient
+      # and a retry was the entire fix. Retry in-step so the run never reaches
+      # that stranded state. Only the sign call is retried; the build/push above
+      # is untouched and never repeats.
       - name: Sign image (keyless, Fulcio/Rekor)
         env:
           COSIGN_EXPERIMENTAL: "true"
+          IMAGE_REF: ${{ inputs.image_prefix }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}
         run: |
-          cosign sign --yes "${{ inputs.image_prefix }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}"
+          set -euo pipefail
+          signed=0
+          for wait in 0 20 60; do
+            if [ "$wait" -gt 0 ]; then
+              echo "::warning::cosign sign failed for ${IMAGE_REF} (transient OIDC/Fulcio/Rekor?); retrying in ${wait}s..."
+              sleep "$wait"
+            fi
+            if cosign sign --yes "${IMAGE_REF}"; then
+              signed=1
+              break
+            fi
+          done
+          if [ "$signed" -ne 1 ]; then
+            echo "::error::cosign sign failed 3 times for ${IMAGE_REF}."
+            echo "::error::The image was BUILT AND PUSHED but is NOT signed, so it will not be"
+            echo "::error::pinned and ArgoCD will not roll it: the live host is still serving the"
+            echo "::error::PREVIOUS build even though this commit is on main. Rerun the failed jobs."
+            exit 1
+          fi
 
       - name: Emit digest artifact
         run: |
@@ -672,3 +705,59 @@ jobs:
             exit 1
           fi
           echo "registered $sent release event(s)"
+
+  # ---------------------------------------------------------------------------
+  # The silent-stale-deploy guard.
+  #
+  # The dangerous state in this pipeline is not "a job failed" — it is "a job
+  # failed AFTER the image was pushed but BEFORE the digest pin landed". The
+  # image exists in GHCR, main carries a green-looking squash, ArgoCD was never
+  # given a new digest, and the live host quietly keeps serving the previous
+  # build. crea-frontend hit exactly this on 2026-08-26 (run 33010085743) when
+  # keyless signing died on a transient OIDC hiccup; nothing in the run said
+  # "your deploy did not happen" and it was caught only by an external census
+  # deploy-gate.
+  #
+  # The retry above makes that far less likely, but "less likely" is not a
+  # signal. This job's whole purpose is to make the state name itself: if the
+  # build job pushed images and the pin job did not succeed, fail with a message
+  # that says the host is stale and what to do about it. It costs one short
+  # ubuntu job per run and it is the only thing standing between a transient
+  # network error and an undetected stale production host.
+  # ---------------------------------------------------------------------------
+  deploy-state-guard:
+    name: Guard against silent stale deploy
+    needs: [detect-changes, build, pin]
+    if: always() && needs.detect-changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail loudly when images were pushed but not pinned
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          PIN_RESULT: ${{ needs.pin.result }}
+        run: |
+          set -euo pipefail
+          echo "build=${BUILD_RESULT} pin=${PIN_RESULT}"
+
+          # Nothing was attempted: no build ran, so nothing can be stale.
+          if [ "$BUILD_RESULT" = "skipped" ] || [ "$BUILD_RESULT" = "cancelled" ]; then
+            echo "No build ran; nothing to guard."
+            exit 0
+          fi
+
+          if [ "$PIN_RESULT" = "success" ]; then
+            echo "Digest pin completed; the deployed digest matches this run."
+            exit 0
+          fi
+
+          echo "::error title=Image pushed but NOT pinned/deployed::The image(s) for this commit"
+          echo "::error::were built and pushed to GHCR, but the digest pin did not complete"
+          echo "::error::(build=${BUILD_RESULT}, pin=${PIN_RESULT})."
+          echo "::error::"
+          echo "::error::ArgoCD was never handed a new digest, so THE LIVE HOST IS STILL SERVING"
+          echo "::error::THE PREVIOUS BUILD even though this commit is green on main."
+          echo "::error::"
+          echo "::error::Fix: rerun the failed jobs for this run (gh run rerun <run-id> --failed)."
+          echo "::error::Do not merge over this; a later run that touches different paths may not"
+          echo "::error::rebuild this service at all, leaving the host stale indefinitely."
+          exit 1
