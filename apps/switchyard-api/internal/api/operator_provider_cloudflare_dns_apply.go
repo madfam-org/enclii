@@ -21,15 +21,17 @@ type cloudflareDNSApplyIntent struct {
 func (h *Handler) handleProviderCloudflareDNSApplyDryRun(ctx context.Context, operation string, req operatorOperationRequest) operatorOperationResponse {
 	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
 	intent := cloudflareDNSApplyIntentFromRequest(req, cloudflareDNSDefaultContent(h))
+	allowPending := cloudflareDNSApplyAllowPending(req)
 	data := map[string]any{
-		"target":     intent.Target,
-		"type":       intent.RecordType,
-		"content":    intent.Content,
-		"proxied":    intent.Proxied,
-		"project":    strings.TrimSpace(req.Scope["project"]),
-		"service":    strings.TrimSpace(req.Scope["service"]),
-		"can_apply":  false,
-		"zone_owned": false,
+		"target":             intent.Target,
+		"type":               intent.RecordType,
+		"content":            intent.Content,
+		"proxied":            intent.Proxied,
+		"project":            strings.TrimSpace(req.Scope["project"]),
+		"service":            strings.TrimSpace(req.Scope["service"]),
+		"can_apply":          false,
+		"zone_owned":         false,
+		"allow_pending_zone": allowPending,
 	}
 	steps := []operatorOperationStep{
 		{Name: "authorize", Status: "planned", Detail: "check caller RBAC and require reason on apply"},
@@ -65,7 +67,7 @@ func (h *Handler) handleProviderCloudflareDNSApplyDryRun(ctx context.Context, op
 		}
 	}
 
-	zone, err := cfClient.FindZoneForDomain(ctx, intent.Target)
+	zone, err := cloudflareDNSApplyFindZone(ctx, cfClient, intent.Target, allowPending)
 	if err != nil {
 		return operatorOperationResponse{
 			OperationID: operationID,
@@ -78,6 +80,7 @@ func (h *Handler) handleProviderCloudflareDNSApplyDryRun(ctx context.Context, op
 			Warnings:    []string{err.Error()},
 			Next: []string{
 				"delegate or import the apex zone into the Enclii-managed Cloudflare account",
+				"pass args.allow_pending_zone=\"true\" to deliberately stage records into a created-but-not-yet-delegated zone",
 				"configure the Enclii Porkbun adapter when registrar nameserver changes are required",
 				"rerun this dry-run before applying DNS",
 			},
@@ -86,8 +89,10 @@ func (h *Handler) handleProviderCloudflareDNSApplyDryRun(ctx context.Context, op
 
 	data["zoneID"] = zone.ID
 	data["zoneName"] = zone.Name
+	data["zone_status"] = zone.Status
 	data["zone_owned"] = true
-	record, err := cfClient.GetDNSRecordByType(ctx, intent.Target, intent.RecordType)
+	pendingWarnings := cloudflareDNSApplyPendingWarnings(zone)
+	record, err := cfClient.GetDNSRecordByTypeInZone(ctx, zone.ID, intent.Target, intent.RecordType)
 	if err != nil {
 		return operatorOperationResponse{
 			OperationID: operationID,
@@ -120,6 +125,7 @@ func (h *Handler) handleProviderCloudflareDNSApplyDryRun(ctx context.Context, op
 		Summary:     fmt.Sprintf("cloudflare.dns-apply dry-run completed for %s", intent.Target),
 		Data:        data,
 		Steps:       steps,
+		Warnings:    pendingWarnings,
 		Next: []string{
 			"rerun with --apply and a reason to execute the DNS mutation through Enclii",
 			"poll providers.cloudflare.dns and the public DNS resolver until the record converges",
@@ -130,13 +136,15 @@ func (h *Handler) handleProviderCloudflareDNSApplyDryRun(ctx context.Context, op
 func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
 	operationID := fmt.Sprintf("op_%d", time.Now().UTC().UnixNano())
 	intent := cloudflareDNSApplyIntentFromRequest(req, cloudflareDNSDefaultContent(h))
+	allowPending := cloudflareDNSApplyAllowPending(req)
 	data := map[string]any{
-		"target":  intent.Target,
-		"type":    intent.RecordType,
-		"content": intent.Content,
-		"proxied": intent.Proxied,
-		"project": strings.TrimSpace(req.Scope["project"]),
-		"service": strings.TrimSpace(req.Scope["service"]),
+		"target":             intent.Target,
+		"type":               intent.RecordType,
+		"content":            intent.Content,
+		"proxied":            intent.Proxied,
+		"project":            strings.TrimSpace(req.Scope["project"]),
+		"service":            strings.TrimSpace(req.Scope["service"]),
+		"allow_pending_zone": allowPending,
 	}
 	steps := []operatorOperationStep{
 		{Name: "authorize", Status: "completed", Detail: "reason supplied and caller passed endpoint authorization"},
@@ -172,7 +180,7 @@ func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operatio
 		}, http.StatusServiceUnavailable
 	}
 
-	zone, err := cfClient.FindZoneForDomain(ctx, intent.Target)
+	zone, err := cloudflareDNSApplyFindZone(ctx, cfClient, intent.Target, allowPending)
 	if err != nil {
 		return operatorOperationResponse{
 			OperationID: operationID,
@@ -185,6 +193,7 @@ func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operatio
 			Warnings:    []string{err.Error()},
 			Next: []string{
 				"delegate or import the apex zone into the Enclii-managed Cloudflare account",
+				"pass args.allow_pending_zone=\"true\" to deliberately stage records into a created-but-not-yet-delegated zone",
 				"configure and apply the Enclii Porkbun adapter if registrar nameservers must change",
 			},
 		}, http.StatusFailedDependency
@@ -192,8 +201,10 @@ func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operatio
 
 	data["zoneID"] = zone.ID
 	data["zoneName"] = zone.Name
+	data["zone_status"] = zone.Status
 	steps[1].Status = "completed"
-	record, err := cfClient.GetDNSRecordByType(ctx, intent.Target, intent.RecordType)
+	pendingWarnings := cloudflareDNSApplyPendingWarnings(zone)
+	record, err := cfClient.GetDNSRecordByTypeInZone(ctx, zone.ID, intent.Target, intent.RecordType)
 	if err != nil {
 		return operatorOperationResponse{
 			OperationID: operationID,
@@ -221,6 +232,7 @@ func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operatio
 			Summary:     fmt.Sprintf("Cloudflare DNS for %s already matches desired Enclii state", intent.Target),
 			Data:        data,
 			Steps:       steps,
+			Warnings:    pendingWarnings,
 			Next:        []string{"poll public DNS and the service health check until status converges"},
 		}, http.StatusOK
 	}
@@ -251,6 +263,16 @@ func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operatio
 	steps[2].Status = "completed"
 	steps[2].Detail = fmt.Sprintf("%s %s record through Cloudflare", mutation, intent.RecordType)
 	steps[3].Status = "completed"
+	next := []string{
+		"poll providers.cloudflare.dns until the record is visible",
+		"poll the public service endpoint until status.madfam.io converges",
+	}
+	if len(pendingWarnings) > 0 {
+		next = []string{
+			"the record is staged only — it serves nothing until the registrar delegates to this zone's nameservers",
+			"at cutover time: apply the registrar nameserver change, then poll public DNS until the staged records serve",
+		}
+	}
 	return operatorOperationResponse{
 		OperationID: operationID,
 		Operation:   operation,
@@ -259,11 +281,40 @@ func (h *Handler) handleProviderCloudflareDNSApply(ctx context.Context, operatio
 		Summary:     fmt.Sprintf("%sd Cloudflare DNS record for %s through Enclii", mutation, intent.Target),
 		Data:        data,
 		Steps:       steps,
-		Next: []string{
-			"poll providers.cloudflare.dns until the record is visible",
-			"poll the public service endpoint until status.madfam.io converges",
-		},
+		Warnings:    pendingWarnings,
+		Next:        next,
 	}, http.StatusAccepted
+}
+
+// cloudflareDNSApplyAllowPending reads the strict opt-in for writing into a
+// created-but-not-yet-delegated zone. Only the literal string "true"
+// (case-insensitive) enables it — pre-staging records must be an explicit,
+// auditable choice, never a truthy accident.
+func cloudflareDNSApplyAllowPending(req operatorOperationRequest) bool {
+	return strings.EqualFold(strings.TrimSpace(req.Args["allow_pending_zone"]), "true")
+}
+
+// cloudflareDNSApplyFindZone picks the zone lookup for the operation:
+// the strict active-only authority check by default, or the
+// pending-tolerant lookup when the caller explicitly opted in.
+func cloudflareDNSApplyFindZone(ctx context.Context, cfClient *cloudflare.Client, target string, allowPending bool) (*cloudflare.Zone, error) {
+	if allowPending {
+		return cfClient.FindZoneForDomainIncludingPending(ctx, target)
+	}
+	return cfClient.FindZoneForDomain(ctx, target)
+}
+
+// cloudflareDNSApplyPendingWarnings makes a non-active zone impossible to
+// miss in the response: a staged write that reads like live DNS is how a
+// cutover gets called done while nothing serves.
+func cloudflareDNSApplyPendingWarnings(zone *cloudflare.Zone) []string {
+	if zone == nil || strings.EqualFold(zone.Status, "active") {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"zone %s is %q, not active: this record is INERT until the registrar delegates to the zone's nameservers",
+		zone.Name, zone.Status,
+	)}
 }
 
 func (h *Handler) cloudflareDNSApplyClient() *cloudflare.Client {

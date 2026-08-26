@@ -488,6 +488,61 @@ func (c *Client) FindZoneForDomain(ctx context.Context, domain string) (*Zone, e
 	return nil, fmt.Errorf("%w: %s", ErrZoneNotFound, domain)
 }
 
+// FindZoneForDomainIncludingPending resolves the account's zone for domain,
+// additionally accepting zones Cloudflare is not serving yet (typically status
+// "pending": created in the account but not yet delegated at the registrar).
+//
+// Records written into a pending zone are inert until the registrar delegates
+// to the zone's nameservers — which is exactly what pre-cutover staging needs:
+// seed the zone while the old DNS provider still serves, so the later
+// delegation flip changes nothing visible. Callers MUST surface the zone's
+// status to the operator; a pending zone answering "write succeeded" without
+// that context reads as live DNS when it is not.
+//
+// Failure modes mirror FindZoneForDomain: ErrZoneNotFound when the account
+// holds nothing for the domain; transport/HTTP errors returned verbatim.
+func (c *Client) FindZoneForDomainIncludingPending(ctx context.Context, domain string) (*Zone, error) {
+	zone, err := c.FindZoneForDomain(ctx, domain)
+	if err == nil {
+		return zone, nil
+	}
+	var notActive *ZoneNotActiveError
+	if !errors.As(err, &notActive) {
+		return nil, err
+	}
+	allZones, allErr := c.ListAccountZones(ctx)
+	if allErr != nil {
+		return nil, fmt.Errorf("zone %s is not active and re-resolving it from the unfiltered listing failed: %w", notActive.ZoneName, allErr)
+	}
+	if match := bestZoneMatch(allZones, domain); match != nil {
+		return match, nil
+	}
+	return nil, fmt.Errorf("%w: %s", ErrZoneNotFound, domain)
+}
+
+// GetDNSRecordByTypeInZone is GetDNSRecordByType for callers that already
+// resolved the zone — possibly leniently, via
+// FindZoneForDomainIncludingPending — and must not have the read re-run the
+// strict active-only zone lookup.
+func (c *Client) GetDNSRecordByTypeInZone(ctx context.Context, zoneID, domain, recordType string) (*DNSRecord, error) {
+	query := url.Values{}
+	query.Set("name", domain)
+	query.Set("type", recordType)
+
+	var resp APIResponse[[]DNSRecord]
+	path := fmt.Sprintf("/zones/%s/dns_records", zoneID)
+
+	if err := c.get(ctx, path, query, &resp); err != nil {
+		return nil, fmt.Errorf("failed to get %s record for %s: %w", recordType, domain, err)
+	}
+
+	if !resp.Success || len(resp.Result) == 0 {
+		return nil, nil
+	}
+
+	return &resp.Result[0], nil
+}
+
 // bestZoneMatch returns the most specific zone covering domain (longest suffix
 // match), or nil when none does.
 //

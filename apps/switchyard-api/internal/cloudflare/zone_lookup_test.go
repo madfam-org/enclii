@@ -367,3 +367,91 @@ func TestNewClientHonoursBaseURLOverride(t *testing.T) {
 		t.Error("the override was not used")
 	}
 }
+
+// FindZoneForDomainIncludingPending exists for pre-cutover staging: seeding
+// records into a zone the account holds but the registrar has not delegated
+// yet (status "pending"). The strict lookup deliberately refuses those zones;
+// the lenient one must accept exactly that case and nothing more.
+func TestFindZoneForDomainIncludingPending(t *testing.T) {
+	pendingZoneServer := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// ListZones filters status=active; ListAccountZones does not.
+			if r.URL.Query().Get("status") == "active" {
+				writeJSON(t, w, http.StatusOK, APIResponse[[]Zone]{
+					Success:    true,
+					Result:     []Zone{},
+					ResultInfo: &ResultInfo{TotalPages: 1},
+				})
+				return
+			}
+			writeJSON(t, w, http.StatusOK, APIResponse[[]Zone]{
+				Success:    true,
+				Result:     []Zone{{ID: "z-pending", Name: "creatumundo.mx", Status: "pending"}},
+				ResultInfo: &ResultInfo{TotalPages: 1},
+			})
+		}))
+	}
+
+	t.Run("strict lookup refuses a pending zone with a typed error", func(t *testing.T) {
+		server := pendingZoneServer()
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		_, err := client.FindZoneForDomain(context.Background(), "creatumundo.mx")
+		var notActive *ZoneNotActiveError
+		if !errors.As(err, &notActive) {
+			t.Fatalf("err = %v, want *ZoneNotActiveError — the lenient lookup's recovery branch depends on this type", err)
+		}
+		if notActive.Status != "pending" {
+			t.Fatalf("status = %q, want pending", notActive.Status)
+		}
+	})
+
+	t.Run("lenient lookup returns the pending zone", func(t *testing.T) {
+		server := pendingZoneServer()
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		zone, err := client.FindZoneForDomainIncludingPending(context.Background(), "creatumundo.mx")
+		if err != nil {
+			t.Fatalf("err = %v, want zone", err)
+		}
+		if zone.ID != "z-pending" || zone.Status != "pending" {
+			t.Fatalf("zone = %+v, want the pending creatumundo.mx zone", zone)
+		}
+	})
+
+	t.Run("a genuinely absent zone is still ErrZoneNotFound", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(t, w, http.StatusOK, APIResponse[[]Zone]{
+				Success:    true,
+				Result:     []Zone{},
+				ResultInfo: &ResultInfo{TotalPages: 1},
+			})
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		_, err := client.FindZoneForDomainIncludingPending(context.Background(), "nadie.example")
+		if !errors.Is(err, ErrZoneNotFound) {
+			t.Fatalf("err = %v, want ErrZoneNotFound — leniency must not invent zones", err)
+		}
+	})
+
+	t.Run("transport failures are not swallowed into leniency", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("internal server error"))
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		_, err := client.FindZoneForDomainIncludingPending(context.Background(), "creatumundo.mx")
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		if errors.Is(err, ErrZoneNotFound) {
+			t.Fatalf("a 500 was reported as ErrZoneNotFound: %v", err)
+		}
+	})
+}
