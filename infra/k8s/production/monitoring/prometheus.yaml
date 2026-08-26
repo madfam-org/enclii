@@ -1017,6 +1017,23 @@ data:
               description: "Pod has been in Pending/Unknown phase for over 6 hours. Common causes: image pull failure (check `kubectl describe pod` events), PVC unbindable, taint mismatch. The sim4d-studio :latest tag missing-from-registry incident (102,575 failed pulls over 16 days) would have fired here."
               runbook: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/chronic-restart-triage.md"
 
+  # =========================================================================
+  # SLO-selector fix (availability remediation Tier 0.3, 2026-08-26).
+  #
+  # The selector below was `namespace=~"tenant-.*"` until this fix. No code
+  # has ever created a `tenant-*` namespace (see internal-devops audit #3),
+  # so every rule in this group was inert from the day it was written — a
+  # live rule with a dead selector is a different flavor of the same "green
+  # lie" as a rule that never loads at all. The corrected enumerated-namespace
+  # selector was already written and committed, correctly, in the dead
+  # PrometheusRule copy at prometheus-client-slo-rules.yaml (enclii #416
+  # follow-up) — but because that object is a PrometheusRule CRD with no
+  # operator to reconcile it, the fix never reached the running evaluator.
+  # Ported here verbatim from that CRD's spec.
+  #
+  # Keep this selector in sync with any future client-namespace scheme
+  # change. When a new client onboards under a bare namespace, add it here.
+  # =========================================================================
   client-slo-rules.yml: |
     groups:
       - name: client-slo
@@ -1025,35 +1042,35 @@ data:
           - alert: ClientServiceErrorRate
             expr: |
               (
-                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"tenant-.*"}[5m]))
+                sum by (namespace) (rate(http_requests_total{code=~"5..", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
                 /
-                sum by (namespace) (rate(http_requests_total{namespace=~"tenant-.*"}[5m]))
+                sum by (namespace) (rate(http_requests_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
               ) > 0.01
             for: 5m
             labels:
               severity: warning
               category: client-slo
             annotations:
-              summary: "High error rate in tenant namespace {{ $labels.namespace }}"
+              summary: "High error rate in client namespace {{ $labels.namespace }}"
               description: "Error rate {{ $value | humanizePercentage }} exceeds 1% threshold for 5m."
 
           - alert: ClientServiceLatencyP95
             expr: |
               histogram_quantile(0.95,
-                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"tenant-.*"}[5m]))
+                sum by (namespace, le) (rate(http_request_duration_seconds_bucket{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[5m]))
               ) > 2
             for: 5m
             labels:
               severity: warning
               category: client-slo
             annotations:
-              summary: "High P95 latency in tenant namespace {{ $labels.namespace }}"
+              summary: "High P95 latency in client namespace {{ $labels.namespace }}"
               description: "P95 latency {{ $value | humanizeDuration }} exceeds 2s threshold."
 
           - alert: ClientPodRestartRate
             expr: |
               sum by (namespace) (
-                increase(kube_pod_container_status_restarts_total{namespace=~"tenant-.*"}[1h])
+                increase(kube_pod_container_status_restarts_total{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}[1h])
               ) > 3
             for: 5m
             labels:
@@ -1065,9 +1082,9 @@ data:
 
           - alert: ClientDeploymentUnavailable
             expr: |
-              kube_deployment_status_replicas_available{namespace=~"tenant-.*"}
+              kube_deployment_status_replicas_available{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
               <
-              kube_deployment_spec_replicas{namespace=~"tenant-.*"}
+              kube_deployment_spec_replicas{namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
             for: 5m
             labels:
               severity: critical
@@ -1079,9 +1096,9 @@ data:
           - alert: TenantResourceQuotaNearLimit
             expr: |
               (
-                kube_resourcequota{type="used", namespace=~"tenant-.*"}
+                kube_resourcequota{type="used", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
                 /
-                kube_resourcequota{type="hard", namespace=~"tenant-.*"}
+                kube_resourcequota{type="hard", namespace=~"enclii-.*|project-.*|nauta|janua|karafiel|coupler|dhanam|tezca|pravara-mes|primavera3d|fortuna|forgesight|selva"}
               ) > 0.9
             for: 5m
             labels:
@@ -1331,6 +1348,447 @@ data:
                 argo-main-parity-monitor CronJob in the monitoring namespace
                 and its Pushgateway target.
               runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+  # =========================================================================
+  # Resurrected 2026-08-26 (availability remediation Tier 0.3) from the dead
+  # PrometheusRule pgbackrest-health-rules.yaml (monitoring/pgbackrest-health).
+  # That object existed in the cluster as a CRD but was never reconciled —
+  # no prometheus-operator runs here, so only /etc/prometheus/rules/*.yml
+  # (this ConfigMap) is ever loaded. See the doctrine note above
+  # secret-integrity-rules.yml for the verified 2026-08-06 rule-count check.
+  #
+  # PgBackRestRestoreDrillOverdue duplicated PostgresBackupCheckFailed from
+  # the also-dead wal-archive-rules/postgres-wal-archive.yaml at
+  # warning severity with a weaker expr (no `absent()` guard) — skipped in
+  # favor of the critical-severity, absent-guarded version here
+  # (PgBackRestCheckUnhealthy behaves like PostgresBackupCheckFailed but is
+  # correct on total absence, not just staleness).
+  # =========================================================================
+  pgbackrest-health-rules.yml: |
+    groups:
+      - name: pgbackrest-operational-health
+        interval: 60s
+        rules:
+          - alert: PgBackRestCheckUnhealthy
+            expr: |
+              (pgbackrest_check_healthy{stanza="main"} == 0)
+              or
+              (
+                absent(pgbackrest_check_last_run_timestamp_seconds{stanza="main"})
+                or
+                (time() - pgbackrest_check_last_run_timestamp_seconds{stanza="main"} > 2700)
+              )
+            for: 5m
+            labels:
+              severity: critical
+              category: platform
+              component: pgbackrest
+            annotations:
+              summary: "pgBackRest backup health check is unhealthy or stale"
+              description: |
+                pgbackrest_check_healthy{stanza="main"} is 0 OR the check CronJob
+                has not run in >45 minutes. This means the backup repo may be
+                unreachable, the stanza may be corrupt, or credentials rotated
+                without updating the backup pod.
+
+                Immediate steps:
+                  1. kubectl -n data get jobs -l app=pgbackrest-check --sort-by=.metadata.creationTimestamp | tail -5
+                  2. kubectl -n data logs job/<latest-check-job>
+                  3. kubectl -n data exec deploy/postgres -c pgbackrest -- pgbackrest check --stanza=main
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
+
+          # NOTE: the source CRD's expr referenced
+          # pgbackrest_restore_drill_last_success_timestamp_seconds, a metric
+          # name that CronJob never emitted (it writes
+          # pgbackrest_restore_drill_last_run_timestamp_seconds — see
+          # infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml).
+          # That mismatch meant this rule would never have fired even if the
+          # operator had reconciled it. Fixed to the real metric name here.
+          - alert: PgBackRestRestoreDrillOverdue
+            expr: |
+              (
+                absent(pgbackrest_restore_drill_last_run_timestamp_seconds{stanza="main"})
+                or
+                (time() - pgbackrest_restore_drill_last_run_timestamp_seconds{stanza="main"} > 3024000)
+              )
+            for: 15m
+            labels:
+              severity: warning
+              category: platform
+              component: pgbackrest
+            annotations:
+              summary: "pgBackRest restore drill is overdue (>35 days)"
+              description: |
+                No successful restore drill recorded in the past 35 days.
+                Without a successful restore drill, the backup cannot be
+                considered verified for DR purposes.
+
+                Trigger a drill manually:
+                  kubectl -n data create job --from=cronjob/pgbackrest-restore-drill \
+                    drill-$(date +%Y%m%d)
+                Then monitor: kubectl -n data logs job/drill-$(date +%Y%m%d) -f
+                Runbook: docs/runbooks/disaster-recovery.md#restore-drill
+
+          - alert: PgBackRestCronJobFailed
+            expr: |
+              kube_job_status_failed{
+                namespace="data",
+                job_name=~"pgbackrest-(check|backup-full|backup-diff).*"
+              } > 0
+            for: 0m
+            labels:
+              severity: critical
+              category: platform
+              component: pgbackrest
+            annotations:
+              summary: "pgBackRest CronJob {{ $labels.job_name }} has failed"
+              description: |
+                The CronJob {{ $labels.job_name }} in namespace {{ $labels.namespace }}
+                has failed (kube_job_status_failed > 0). This is a K8s-level
+                failure (OOM, bad image, scheduling error) distinct from a
+                successful run that found unhealthy state.
+
+                Investigate:
+                  kubectl -n data describe job {{ $labels.job_name }}
+                  kubectl -n data logs job/{{ $labels.job_name }}
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
+
+  # =========================================================================
+  # Resurrected 2026-08-26 (availability remediation Tier 0.3) from the dead
+  # PrometheusRule wal-archive-rules/postgres-wal-archive.yaml
+  # (monitoring/postgres-wal-archive). Same dead-CRD story as above.
+  #
+  # PostgresBackupCheckFailed from the source file is skipped here: it
+  # duplicates PgBackRestCheckUnhealthy above (same pgbackrest_check_healthy
+  # condition) at a weaker, non-absent-guarded warning severity.
+  # =========================================================================
+  postgres-wal-archive-rules.yml: |
+    groups:
+      - name: postgres-wal-archive
+        interval: 30s
+        rules:
+          - alert: PostgresWALArchiveBehind
+            expr: |
+              (
+                pg_stat_archiver_failed_count - pg_stat_archiver_failed_count offset 5m > 0
+              )
+              and
+              (
+                (pg_stat_archiver_last_archive_age_seconds > 300)
+                or
+                (pg_stat_archiver_last_archive_age_seconds == 0)
+              )
+            for: 5m
+            labels:
+              severity: critical
+              category: platform
+              component: postgres-wal-archive
+            annotations:
+              summary: "Postgres WAL archiver is behind or failing"
+              description: |
+                pg_stat_archiver shows failed_count incrementing AND no successful
+                archive in >5min. RPO is at risk. Check pgbackrest sidecar logs:
+                  kubectl -n data logs deploy/postgres -c pgbackrest --tail=100
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#failure-modes
+
+          - alert: PostgresWALLagHigh
+            expr: pg_stat_archiver_last_archive_age_seconds > 300
+            for: 2m
+            labels:
+              severity: warning
+              category: platform
+              component: postgres-wal-archive
+            annotations:
+              summary: "Postgres WAL archive lag > 5 minutes"
+              description: |
+                Most recent WAL archive is {{ $value | humanizeDuration }} old.
+                RPO target is 5 minutes. This is a warning — if it persists and
+                the archiver is failing (see failed_count), PostgresWALArchiveBehind
+                will page.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#wal-lag
+
+          - alert: PostgresWALSpoolDiskHigh
+            expr: |
+              kubelet_volume_stats_used_bytes{namespace="data",persistentvolumeclaim="pgbackrest-spool-pvc"}
+              /
+              kubelet_volume_stats_capacity_bytes{namespace="data",persistentvolumeclaim="pgbackrest-spool-pvc"}
+              > 0.80
+            for: 5m
+            labels:
+              severity: warning
+              category: platform
+              component: postgres-wal-archive
+            annotations:
+              summary: "pgBackRest spool PVC over 80%"
+              description: |
+                Spool usage is {{ $value | humanizePercentage }} of 20Gi. If R2
+                is unreachable, this PVC will fill and archive_command will
+                start failing. Investigate R2 reachability first, then consider
+                an emergency resize.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#spool-pressure
+
+          - alert: PostgresBackupJobsStale
+            expr: |
+              time() - max(kube_job_status_completion_time{namespace="data",job_name=~"pgbackrest-backup-.*"}) > 129600
+            for: 15m
+            labels:
+              severity: warning
+              category: platform
+              component: postgres-wal-archive
+            annotations:
+              summary: "No successful pgBackRest full/diff backup in >36h"
+              description: |
+                Last successful pgbackrest-backup-{{full|diff}} Job completion is
+                over 36 hours ago. Expected cadence: full weekly, diff daily.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#backup-cadence
+
+  # =========================================================================
+  # Resurrected 2026-08-26 (availability remediation Tier 0.3). Two sources:
+  #
+  #   CloudflaredTunnelDown ported from the dead
+  #   prometheus-platform-rules.yaml (PrometheusRule platform-infrastructure-
+  #   rules). This is the "Cloudflare tunnel monitoring" the audit flagged —
+  #   the live cloudflared-probe-misconfigured group above only detects
+  #   misconfigured probe TARGETS, not the tunnel itself being unreachable.
+  #
+  #   CloudflaredProbeBackendUnreachable / CloudflaredProbeNotRunning ported
+  #   from the dead infra/k8s/production/cloudflared-probe.yaml
+  #   PrometheusRule (cloudflared-probe-rules) — that file's own header
+  #   comment already documented it as unloaded (verified 2026-08-06) and
+  #   pointed here as the fix. Distinct alert names from the misconfigured-
+  #   target group above: these fire on the probe finding the backend
+  #   actually unreachable, not on the probe's target list being wrong.
+  # =========================================================================
+  cloudflared-tunnel-rules.yml: |
+    groups:
+      - name: cloudflared
+        interval: 30s
+        rules:
+          - alert: CloudflaredTunnelDown
+            expr: |
+              absent(up{job="cloudflared"}) or up{job="cloudflared"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              category: platform
+            annotations:
+              summary: "Cloudflare tunnel is down"
+              description: "All cloudflared instances are unreachable for more than 2 minutes. External traffic cannot reach the cluster."
+
+      - name: cloudflared-probe
+        interval: 30s
+        rules:
+          - alert: CloudflaredProbeBackendUnreachable
+            expr: |
+              cloudflared_probe_reachable_total == 0
+            for: 2m
+            labels:
+              severity: critical
+              category: platform
+            annotations:
+              summary: "cloudflared cannot reach {{ $labels.namespace }}/{{ $labels.service }}:{{ $labels.port }}"
+              description: |
+                In-cluster synthetic probe in the cloudflare-tunnel namespace
+                failed to reach {{ $labels.namespace }}/{{ $labels.service }}:{{ $labels.port }}
+                for >2m. Because the probe pod mirrors cloudflared's labels,
+                cloudflared itself cannot reach this Service either. Likely
+                cause: NetworkPolicy denies cloudflare-tunnel egress to that
+                namespace, the Service has no endpoints, or the underlying
+                pod is failing health checks.
+                Runbook: docs/runbooks/cloudflared-probe.md
+
+          - alert: CloudflaredProbeNotRunning
+            expr: |
+              absent(cloudflared_probe_runs_total) or rate(cloudflared_probe_runs_total[5m]) == 0
+            for: 5m
+            labels:
+              severity: warning
+              category: platform
+            annotations:
+              summary: "cloudflared-probe is not emitting metrics"
+              description: |
+                No probe iterations recorded in the last 5 minutes. The probe
+                itself may be crashlooping or unscheduled. Without it we lose
+                visibility into in-cluster cloudflared reachability.
+
+  # =========================================================================
+  # Resurrected 2026-08-26 (availability remediation Tier 0.3) from the dead
+  # infra/k8s/production/synthetic-flow-probe.yaml PrometheusRule
+  # (synthetic-flow-probe-rules). Not referenced by any kustomization and
+  # never reconciled by an operator — same dead-on-arrival story.
+  # =========================================================================
+  synthetic-flow-probe-rules.yml: |
+    groups:
+      - name: synthetic-flow-probe
+        interval: 30s
+        rules:
+          - alert: SyntheticJourneyConsecutivelyFailing
+            expr: |
+              synthetic_journey_consecutive_failures >= 3
+            for: 1m
+            labels:
+              severity: critical
+              category: synthetic-flow
+            annotations:
+              summary: "Synthetic journey {{ $labels.platform }}/{{ $labels.journey }} is broken"
+              description: |
+                The synthetic-flow-probe has reported {{ $value }} consecutive failures
+                for the journey {{ $labels.platform }}/{{ $labels.journey }}.
+                At the default 5-min schedule that's ~15+ minutes of broken user flow.
+
+                Inspect the failing step:
+                  kubectl -n cloudflare-tunnel logs deploy/synthetic-flow-probe --tail=100 | \
+                    jq -c 'select(.event=="journey_failed" and .platform=="{{ $labels.platform }}")'
+
+                Cross-correlate with cloudflared-probe: if `cloudflared_probe_reachable_total` for
+                the same backend is 1 (Service reachable) but this journey is failing, the issue is
+                application-layer (CSP, CORS, SSO callback, session, redirect). If the cloudflared
+                probe is also 0 the issue is in-cluster network reachability — fix that first.
+
+                Runbook: docs/runbooks/synthetic-flow-probe.md
+
+          - alert: SyntheticJourneyStepLatencyRegression
+            expr: |
+              histogram_quantile(0.95,
+                sum by (platform, journey, step, le) (
+                  rate(synthetic_journey_step_latency_seconds_bucket[5m])
+                )
+              )
+              >
+              2 * histogram_quantile(0.95,
+                sum by (platform, journey, step, le) (
+                  rate(synthetic_journey_step_latency_seconds_bucket[1h] offset 5m)
+                )
+              )
+            for: 10m
+            labels:
+              severity: warning
+              category: synthetic-flow
+            annotations:
+              summary: "Synthetic journey step {{ $labels.platform }}/{{ $labels.journey }}/{{ $labels.step }} is >2x slower than baseline"
+              description: |
+                p95 latency for step `{{ $labels.step }}` in journey
+                {{ $labels.platform }}/{{ $labels.journey }} has been more than 2x its prior 1h
+                baseline for 10+ minutes. Likely cause: backend slowness, network congestion,
+                or a recently-deployed change that added latency.
+
+          - alert: SyntheticFlowProbeNotRunning
+            expr: |
+              absent(synthetic_journey_last_run_timestamp)
+              or
+              (time() - max by (platform, journey) (synthetic_journey_last_run_timestamp)) > 600
+            for: 5m
+            labels:
+              severity: warning
+              category: synthetic-flow
+            annotations:
+              summary: "synthetic-flow-probe is not emitting metrics"
+              description: |
+                No journey runs recorded in the last 10 minutes for at least one journey.
+                The probe pod may be crashlooping, the ConfigMap may be malformed, or scrapes
+                may be broken. Check:
+                  kubectl -n cloudflare-tunnel get pod -l app=synthetic-flow-probe
+                  kubectl -n cloudflare-tunnel logs deploy/synthetic-flow-probe --tail=50
+
+  # =========================================================================
+  # Resurrected 2026-08-26 (availability remediation Tier 0.3): the 5 of 8
+  # "decoration" rules from deploy-pipeline-monitor.yaml's PrometheusRule
+  # (deploy-pipeline-monitor-rules, group `deploy-pipeline-monitor`) whose
+  # metrics are genuinely emitted by check_main_ci.py (confirmed against
+  # infra/deploy-pipeline-monitor/check_main_ci.py and its tests) and have
+  # no live equivalent.
+  #
+  # The other 3 rules in that PrometheusRule (group `argo-main-parity-
+  # monitor`: ArgoMainParityDrift, ArgoMainParityMonitorFailed,
+  # ArgoMainParityMonitorStale) are DELETED, not ported: their metrics
+  # (argo_main_parity_drift_sources etc., from check_argo_main_parity.py)
+  # are real, but deploy-parity-alerts.yml above already covers this exact
+  # monitor with a redesigned, more accurate signal
+  # (argo_main_rollout_ok/argo_main_rollout_failed_sources) — see that
+  # key's own header comment for why the drift-sources approach missed the
+  # 2026-08-07 avala-services incident. Porting the superseded metric
+  # verbatim would double-alert on every real rollout failure.
+  # =========================================================================
+  deploy-pipeline-freshness-rules.yml: |
+    groups:
+      - name: deploy-pipeline-monitor
+        interval: 1m
+        rules:
+          - alert: MainCIFailingForTooLong
+            expr: repo_main_blocked_seconds > 1800
+            for: 0m
+            labels:
+              severity: critical
+              category: deploy-pipeline
+            annotations:
+              summary: "{{ $labels.repo }} main CI has been failing for >30 min"
+              description: |
+                Latest CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
+                is failed. The failing commit was pushed {{ $value | humanizeDuration }}
+                ago — no image has been rebuilt → no deploys are reaching ArgoCD
+                → live pods are drifting from `main`.
+                Open the Actions tab on the repo, identify the failing run,
+                fix or rerun it.
+                Runbook: docs/runbooks/deploy-pipeline-monitor.md
+
+          - alert: MainCommitsAccumulatingNotDeployed
+            expr: |
+              (repo_main_latest_commit_age_seconds
+               - repo_main_latest_ci_age_seconds) > 1800
+            for: 5m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "{{ $labels.repo }} main has unbuilt commits (>30 min)"
+              description: |
+                `{{ $labels.repo }}` main HEAD is {{ $value | humanizeDuration }}
+                newer than the most recent completed CI run. Either CI is
+                stalled, the workflow filter isn't matching, or the runner
+                fleet is starved. ArgoCD will reconcile the *previous* image
+                until this clears.
+
+          - alert: MainCIConsecutiveFailures
+            expr: repo_main_ci_failure_streak_count >= 3
+            for: 15m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "{{ $labels.repo }} main CI: 3+ consecutive failures"
+              description: |
+                `{{ $labels.repo }}` has {{ $value }} consecutive non-success
+                CI runs on `{{ $labels.branch }}`. Likely a real defect rather
+                than a flake.
+
+          - alert: DeployPipelineMonitorNotRunning
+            expr: |
+              time() - deploy_pipeline_monitor_last_run_timestamp_seconds > 900
+              or absent(deploy_pipeline_monitor_last_run_timestamp_seconds)
+            for: 5m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "deploy-pipeline-monitor has not pushed metrics in >15 min"
+              description: |
+                The CronJob is supposed to push every 5 min. Either it is not
+                scheduling (check `kubectl -n monitoring get cronjob`), the
+                GitHub token expired, or pushgateway is unreachable.
+
+          - alert: DeployPipelineMonitorRepoProbeFailing
+            expr: repo_main_probe_ok == 0
+            for: 30m
+            labels:
+              severity: warning
+              category: deploy-pipeline
+            annotations:
+              summary: "deploy-pipeline-monitor cannot probe {{ $labels.repo }}"
+              description: |
+                The monitor has been unable to fetch state from
+                `{{ $labels.repo }}` for 30+ minutes. Likely causes: PAT scope
+                missing the repo, repo renamed, or branch deleted. The monitor
+                keeps running for the other repos.
 ---
 # Prometheus PVC
 apiVersion: v1
