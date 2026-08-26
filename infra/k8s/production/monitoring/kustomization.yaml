@@ -14,6 +14,11 @@ resources:
   # cutover window. See alertmanager-statefulset.yaml header comment
   # for the migration sequence.
   - alertmanager-statefulset.yaml
+  # Sources the Telegram bot token from Vault (availability remediation
+  # Tier 0.3). INERT until Tier 0.1 populates secret/alertmanager in
+  # Vault — see the file's own header and the telegram_configs comment
+  # in alertmanager.yaml.
+  - alertmanager-telegram-credentials.externalsecret.yaml
   # Object-state exporter (kube_job_*, kube_pod_*, kube_deployment_*).
   # WITHOUT this line the manifest file still sits in this directory,
   # kustomize never renders it, and Argo reports Synced/Healthy for a
