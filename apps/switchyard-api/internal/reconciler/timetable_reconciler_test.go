@@ -78,14 +78,14 @@ func TestCronJobK8sName(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// oneOffJobK8sName
+// OneOffJobK8sName
 // ---------------------------------------------------------------------------
 
 func TestOneOffJobK8sName(t *testing.T) {
 	t.Run("includes uuid suffix", func(t *testing.T) {
 		id := uuid.MustParse("12345678-1234-1234-1234-123456789abc")
 		job := &types.OneOffJob{ID: id, Name: "migration"}
-		name := oneOffJobK8sName(job)
+		name := OneOffJobK8sName(job)
 		assert.Equal(t, "job-migration-12345678", name)
 	})
 
@@ -95,7 +95,7 @@ func TestOneOffJobK8sName(t *testing.T) {
 			ID:   id,
 			Name: "this-is-a-very-long-one-off-job-name-that-will-exceed-the-maximum-kubernetes-resource-name-limit",
 		}
-		name := oneOffJobK8sName(job)
+		name := OneOffJobK8sName(job)
 		assert.LessOrEqual(t, len(name), 63)
 	})
 }
@@ -277,7 +277,7 @@ func TestBuildOneOffJob(t *testing.T) {
 		assert.Equal(t, []string{"/bin/sh", "-c", "migrate up"}, containers[0].Command)
 
 		assert.Equal(t, labelManagedByValue, result.Labels[labelManagedBy])
-		assert.Equal(t, job.ID.String(), result.Labels[labelOneOffJobID])
+		assert.Equal(t, job.ID.String(), result.Labels[LabelOneOffJobID])
 	})
 
 	t.Run("defaults applied", func(t *testing.T) {
@@ -669,7 +669,7 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, "app.kubernetes.io/managed-by", labelManagedBy)
 	assert.Equal(t, "enclii", labelManagedByValue)
 	assert.Equal(t, "enclii.dev/cron-job-id", labelCronJobID)
-	assert.Equal(t, "enclii.dev/one-off-job-id", labelOneOffJobID)
+	assert.Equal(t, "enclii.dev/one-off-job-id", LabelOneOffJobID)
 	assert.Equal(t, "busybox:latest", defaultJobImage)
 }
 

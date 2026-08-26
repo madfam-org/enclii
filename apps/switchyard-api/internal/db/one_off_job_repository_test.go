@@ -200,10 +200,10 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 			AddRow(uuid.New(), projectID, serviceID, "seed-data", "seed run", sql.NullString{String: "node:20", Valid: true}, 60, nil, "pending", nil, now, nil, nil)
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-			WithArgs(projectID).
+			WithArgs(projectID, 50).
 			WillReturnRows(rows)
 
-		results, err := repo.ListByProject(context.Background(), projectID)
+		results, err := repo.ListByProject(context.Background(), projectID, 50)
 		assert.NoError(t, err)
 		assert.Len(t, results, 2)
 		assert.Equal(t, "migration-01", results[0].Name)
@@ -219,12 +219,31 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 
 		projectID := uuid.New()
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-			WithArgs(projectID).
+			WithArgs(projectID, 50).
 			WillReturnRows(sqlmock.NewRows(oneOffJobColumns))
 
-		results, err := repo.ListByProject(context.Background(), projectID)
+		results, err := repo.ListByProject(context.Background(), projectID, 50)
 		assert.NoError(t, err)
 		assert.Empty(t, results)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("limit defaults to 50 and caps at 500", func(t *testing.T) {
+		repo, mock, cleanup := newOneOffJobMockDB(t)
+		defer cleanup()
+
+		projectID := uuid.New()
+		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+			WithArgs(projectID, 50).
+			WillReturnRows(sqlmock.NewRows(oneOffJobColumns))
+		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+			WithArgs(projectID, 500).
+			WillReturnRows(sqlmock.NewRows(oneOffJobColumns))
+
+		_, err := repo.ListByProject(context.Background(), projectID, 0)
+		assert.NoError(t, err)
+		_, err = repo.ListByProject(context.Background(), projectID, 9999)
+		assert.NoError(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

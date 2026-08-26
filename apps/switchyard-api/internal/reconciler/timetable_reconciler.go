@@ -31,8 +31,9 @@ const (
 	// labelCronJobID links a K8s CronJob back to the database record.
 	labelCronJobID = "enclii.dev/cron-job-id"
 
-	// labelOneOffJobID links a K8s Job back to the database record.
-	labelOneOffJobID = "enclii.dev/one-off-job-id"
+	// LabelOneOffJobID links a K8s Job (and its pods) back to the database
+	// record. Exported: the API's one-off job logs endpoint selects pods by it.
+	LabelOneOffJobID = "enclii.dev/one-off-job-id"
 
 	// defaultJobImage is the last-resort image used when the job has no
 	// explicit image AND the target service's Deployment cannot be resolved
@@ -398,12 +399,12 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 
 	labels := map[string]string{
 		labelManagedBy:   labelManagedByValue,
-		labelOneOffJobID: job.ID.String(),
+		LabelOneOffJobID: job.ID.String(),
 	}
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      oneOffJobK8sName(job),
+			Name:      OneOffJobK8sName(job),
 			Namespace: namespace,
 			Labels:    labels,
 		},
@@ -600,7 +601,7 @@ func (r *TimetableReconciler) syncJobStatusInNamespace(ctx context.Context, name
 	for i := range jobList.Items {
 		k8sJob := &jobList.Items[i]
 
-		jobIDStr, ok := k8sJob.Labels[labelOneOffJobID]
+		jobIDStr, ok := k8sJob.Labels[LabelOneOffJobID]
 		if !ok {
 			// Not a one-off job (could be a CronJob-spawned Job). Skip.
 			continue
@@ -683,10 +684,10 @@ func cronJobK8sName(job *types.CronJob) string {
 	return name
 }
 
-// oneOffJobK8sName derives a deterministic K8s Job name from the database record.
+// OneOffJobK8sName derives a deterministic K8s Job name from the database record.
 // Includes a truncated UUID suffix for uniqueness across re-runs of the same
 // named job.
-func oneOffJobK8sName(job *types.OneOffJob) string {
+func OneOffJobK8sName(job *types.OneOffJob) string {
 	idSuffix := job.ID.String()[:8]
 	name := fmt.Sprintf("job-%s-%s", sanitizeK8sName(job.Name), idSuffix)
 	if len(name) > 63 {

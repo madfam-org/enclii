@@ -15,9 +15,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 )
 
 // testLogger creates a structured logger suitable for tests (writes to stdout, text format, error level).
@@ -81,7 +86,7 @@ var cronJobRunSelectColumns = []string{
 	"id", "cron_job_id", "status", "exit_code", "started_at", "ended_at", "log_output",
 }
 
-// oneOffJobSelectColumns matches the columns scanned by OneOffJobRepository (not used in handler currently, but needed for completeness)
+// oneOffJobSelectColumns matches the columns scanned by OneOffJobRepository.GetByID/ListByProject
 var oneOffJobSelectColumns = []string{
 	"id", "project_id", "service_id", "name", "command", "image",
 	"timeout", "run_at", "status", "exit_code",
@@ -683,5 +688,332 @@ func TestListCronJobRuns_CronJobNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), "cron job not found")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// --- ListOneOffJobs ---
+
+func TestListOneOffJobs_Success(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	projectID := uuid.New()
+	serviceID := uuid.New()
+	now := time.Now()
+
+	// Mock: GetBySlug
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
+		WithArgs("test-project").
+		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
+
+	// Mock: OneOffJobs.ListByProject (bounded at 50, newest first)
+	rows := sqlmock.NewRows(oneOffJobSelectColumns).
+		AddRow(uuid.New(), projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", int64(0), now, now, now).
+		AddRow(uuid.New(), projectID, serviceID, "seed-data", "./seed.sh", sql.NullString{String: "node:20", Valid: true}, 600, nil, "pending", nil, now, nil, nil)
+
+	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+		WithArgs(projectID, 50).
+		WillReturnRows(rows)
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/projects/:slug/one-off-jobs", h.ListOneOffJobs)
+
+	req := httptest.NewRequest("GET", "/v1/projects/test-project/one-off-jobs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, float64(2), resp["total"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestListOneOffJobs_Empty(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	projectID := uuid.New()
+	now := time.Now()
+
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
+		WithArgs("empty-project").
+		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
+			AddRow(projectID, "Empty Project", "empty-project", "github", now, now))
+
+	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+		WithArgs(projectID, 50).
+		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns))
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/projects/:slug/one-off-jobs", h.ListOneOffJobs)
+
+	req := httptest.NewRequest("GET", "/v1/projects/empty-project/one-off-jobs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), resp["total"])
+	// Verify one_off_jobs is an empty array (not null)
+	jobs, ok := resp["one_off_jobs"].([]interface{})
+	require.True(t, ok)
+	assert.Empty(t, jobs)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestListOneOffJobs_ProjectNotFound(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE slug`).
+		WithArgs("nonexistent").
+		WillReturnError(sql.ErrNoRows)
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/projects/:slug/one-off-jobs", h.ListOneOffJobs)
+
+	req := httptest.NewRequest("GET", "/v1/projects/nonexistent/one-off-jobs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "project not found")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// --- GetOneOffJob ---
+
+func TestGetOneOffJob_Success(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.MustParse("12345678-1234-1234-1234-123456789abc")
+	projectID := uuid.New()
+	serviceID := uuid.New()
+	now := time.Now()
+	exitCode := int64(0)
+
+	// Mock: OneOffJobs.GetByID
+	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+		WithArgs(jobID).
+		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
+			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", exitCode, now, now, now))
+
+	// Mock: Projects.GetByID (namespace == project slug)
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
+		WithArgs(projectID).
+		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id", h.GetOneOffJob)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String(), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "job-db-migrate-12345678", resp["k8s_job_name"])
+	assert.Equal(t, "test-project", resp["namespace"])
+
+	job, ok := resp["one_off_job"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, jobID.String(), job["id"])
+	assert.Equal(t, "completed", job["status"])
+	assert.Equal(t, float64(0), job["exit_code"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetOneOffJob_NotFound(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.New()
+
+	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+		WithArgs(jobID).
+		WillReturnError(sql.ErrNoRows)
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id", h.GetOneOffJob)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String(), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "one-off job not found")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetOneOffJob_InvalidID(t *testing.T) {
+	h, _, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id", h.GetOneOffJob)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/not-a-uuid", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid one-off job ID")
+}
+
+// --- GetOneOffJobLogs ---
+
+// expectOneOffJobLookup queues the job + project queries GetOneOffJobLogs
+// performs before touching K8s.
+func expectOneOffJobLookup(mock sqlmock.Sqlmock, jobID, projectID, serviceID uuid.UUID, status string) {
+	now := time.Now()
+	var exitCode interface{}
+	if status == "completed" {
+		exitCode = int64(0)
+	}
+	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+		WithArgs(jobID).
+		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
+			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, status, exitCode, now, nil, nil))
+
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
+		WithArgs(projectID).
+		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
+}
+
+func TestGetOneOffJobLogs_Success(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.New()
+	projectID := uuid.New()
+	expectOneOffJobLookup(mock, jobID, projectID, uuid.New(), "completed")
+
+	// Fake clientset with the job's pod in the project namespace, labeled the
+	// way the timetable reconciler labels one-off job pods.
+	h.k8sClient = &k8s.Client{KubeClient: fake.NewSimpleClientset(&corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job-db-migrate-abcd1234-xyz",
+			Namespace: "test-project",
+			Labels: map[string]string{
+				reconciler.LabelOneOffJobID: jobID.String(),
+			},
+		},
+	})}
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id/logs", h.GetOneOffJobLogs)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String()+"/logs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	// client-go's fake clientset serves a fixed body for log requests.
+	assert.Equal(t, "fake logs", resp["logs"])
+	assert.Equal(t, "job-db-migrate-abcd1234-xyz", resp["pod"])
+	assert.Equal(t, "completed", resp["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetOneOffJobLogs_PodsGone(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.New()
+	projectID := uuid.New()
+	expectOneOffJobLookup(mock, jobID, projectID, uuid.New(), "completed")
+
+	// No pods left in the namespace (K8s Job TTL cleaned them up).
+	h.k8sClient = &k8s.Client{KubeClient: fake.NewSimpleClientset()}
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id/logs", h.GetOneOffJobLogs)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String()+"/logs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", resp["status"])
+	assert.Contains(t, resp["message"], "logs no longer available")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetOneOffJobLogs_JobPending(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.New()
+	projectID := uuid.New()
+	expectOneOffJobLookup(mock, jobID, projectID, uuid.New(), "pending")
+
+	h.k8sClient = &k8s.Client{KubeClient: fake.NewSimpleClientset()}
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id/logs", h.GetOneOffJobLogs)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String()+"/logs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "pending", resp["status"])
+	assert.Contains(t, resp["message"], "has not started yet")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetOneOffJobLogs_NoK8sClient(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.New()
+	projectID := uuid.New()
+	expectOneOffJobLookup(mock, jobID, projectID, uuid.New(), "running")
+
+	// h.k8sClient stays nil.
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id/logs", h.GetOneOffJobLogs)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String()+"/logs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "Kubernetes client not configured")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
