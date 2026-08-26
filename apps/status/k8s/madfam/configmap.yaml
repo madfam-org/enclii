@@ -31,6 +31,25 @@ data:
   #   Content & Creative   — blueprint, coforma, almanac, ceq, nuit
   #   MADFAM Corporate     — madfam.io, platform-wide infra (npm, deal-sniper)
   #
+  # Updated: 2026-08-26 — added client-facing hosts per the availability
+  # remediation program (internal-devops/roadmaps/2026-08-26-availability-
+  # remediation-9999.md, Tier 0.4): MAP + public site (Crea Tu Mundo group,
+  # new "MADFAM Clients" family), the Nauta client workspace host
+  # (crea.madfam.io, distinct from the Nauta staff cockpit), and kalya's two
+  # live hosts (kalya.madfam.io + the acquired kalya.app apex). Entries and
+  # probe paths copied verbatim from each project's own `enclii.yaml`
+  # `spec.status.entries[]` (the durable source per RFC 0002 / status
+  # README "Configuration"), which is the mechanism that
+  # `POST /v1/admin/status/regenerate` (apps/switchyard-api/internal/api/
+  # status_handlers.go) would already project onto this file — hand-applied
+  # here because no live regenerate cycle has run since those enclii.yaml
+  # entries merged. auth.madfam.io and api.tezca.mx were already present
+  # (Janua + Tezca groups above) and are unchanged. kalya.app is not yet
+  # declared in kalya's own enclii.yaml (only kalya.madfam.io is) — added
+  # here to close the immediate monitoring gap; see follow-up to add it
+  # there too so a future regenerate does not drop it (mergePreserve
+  # keeps unowned legacy entries, so it is safe either way).
+  #
   # Updated: 2026-07-07 — added deep assertions to the three Tulana probes
   # (deferred from the Tulana platform-hardening wave). Landing asserts the
   # hero host string; App asserts anonymous root redirects to the Janua
@@ -625,5 +644,45 @@ data:
         "name": "Symbiosis HCM",
         "url": "https://hcm.madfam.io",
         "group": "Symbiosis HCM"
+      },
+      {
+        "name": "MAP (Crea Tu Mundo)",
+        "url": "https://crea-map.madfam.io/api/health",
+        "href": "https://crea-map.madfam.io",
+        "group": "Crea Tu Mundo",
+        "family": "MADFAM Clients",
+        "description": "Clinical objetivos bank — the MAP successor (staff/therapists)"
+      },
+      {
+        "name": "Crea Tu Mundo (sitio)",
+        "url": "https://crea-frontend.madfam.io/api/health",
+        "href": "https://crea-frontend.madfam.io",
+        "group": "Crea Tu Mundo",
+        "family": "MADFAM Clients",
+        "description": "Public marketing site (staging host; apex creatumundo.mx pending cutover)"
+      },
+      {
+        "name": "Nauta Client Workspace",
+        "url": "https://crea.madfam.io/health",
+        "href": "https://crea.madfam.io",
+        "group": "Nauta",
+        "family": "MADFAM Platform",
+        "description": "White-labeled tier-3 client workspace"
+      },
+      {
+        "name": "kalya (booking engine)",
+        "url": "https://kalya.madfam.io/api/health",
+        "href": "https://kalya.madfam.io",
+        "group": "Platform",
+        "family": "MADFAM Platform",
+        "description": "Availability + booking engine — service API (Phase 1)"
+      },
+      {
+        "name": "kalya.app",
+        "url": "https://kalya.app/api/health",
+        "href": "https://kalya.app",
+        "group": "Platform",
+        "family": "MADFAM Platform",
+        "description": "Availability + booking engine — public acquired apex (acquired 2026-08-21); same deployment as kalya.madfam.io"
       }
     ]
