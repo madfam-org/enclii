@@ -415,6 +415,12 @@ UNAVAILABLE_MARKERS = (
     "temporary failure in name resolution",
     "toomanyrequests",
     "permission denied while trying to connect",
+    # The container user cannot read the bind-mounted config at all. amtool
+    # never parsed anything, so this is emphatically not a config verdict.
+    # Fixed at the source by the chmod in run_amtool; kept here so a future
+    # runtime with different uid semantics degrades instead of lying.
+    "permission denied",
+    "no such file or directory",
 )
 
 
@@ -444,6 +450,14 @@ def run_amtool(body: str, key: str) -> tuple[bool, str] | None:
         name = "alertmanager.yml" if key.endswith(".yml") else key
         target = Path(tmp) / name
         target.write_text(body, encoding="utf-8")
+        # tempfile creates the dir 0700 owned by the invoking user. The
+        # alertmanager image runs as nobody (65534), so a bind-mounted 0700
+        # dir gives "amtool: error: stat /w/alertmanager.yml: permission
+        # denied" — the container cannot even traverse it. Widen to
+        # world-readable: the content is a config already committed to a repo,
+        # and the directory is deleted on scope exit.
+        os.chmod(tmp, 0o755)
+        os.chmod(target, 0o644)
         try:
             if template:
                 cmd = template.format(dir=tmp, name=name)

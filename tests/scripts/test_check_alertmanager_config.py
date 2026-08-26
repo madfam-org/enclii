@@ -505,6 +505,53 @@ def test_infra_failure_degrades_instead_of_failing_the_build(tmp_path):
         assert "WARNING" in err, "degraded coverage must be loud on stderr"
 
 
+def test_config_is_readable_by_an_unprivileged_container_user(tmp_path):
+    """Regression: CI failed with 'stat /w/alertmanager.yml: permission denied'.
+
+    tempfile makes its directory 0700 owned by the invoking user, but the
+    alertmanager image runs as nobody (65534), so the bind-mounted config was
+    unreadable and amtool could not stat it. The script now widens the
+    permissions; this asserts the temp file the validator is handed is
+    world-readable inside a world-traversable directory.
+    """
+    write(tmp_path, configmap(MINIMAL))
+    probe = tmp_path / "modes.txt"
+    code, _, _ = run_script(
+        tmp_path,
+        env={
+            "ENCLII_AMTOOL": (
+                f"sh -c 'stat -f %Lp {{dir}} {{dir}}/{{name}} "
+                f"2>/dev/null || stat -c %a {{dir}} {{dir}}/{{name}}' "
+                f"> {probe}"
+            )
+        },
+    )
+    assert code == 0
+    modes = probe.read_text().split()
+    assert len(modes) == 2, f"expected dir and file modes, got {modes!r}"
+    dir_mode, file_mode = modes
+    assert dir_mode[-1] in "5744567", f"temp dir {dir_mode} not traversable by others"
+    assert int(dir_mode, 8) & 0o001, f"temp dir {dir_mode} lacks o+x"
+    assert int(file_mode, 8) & 0o004, f"config file {file_mode} lacks o+r"
+
+
+def test_permission_denied_is_not_reported_as_a_bad_config(tmp_path):
+    """Defense in depth for the CI regression above."""
+    write(tmp_path, configmap(MINIMAL))
+    code, out, err = run_script(
+        tmp_path,
+        env={
+            "ENCLII_AMTOOL": (
+                "sh -c 'echo \"amtool: error: stat /w/alertmanager.yml: "
+                "permission denied\" >&2; exit 1'"
+            )
+        },
+    )
+    assert code == 0, "a file the validator cannot read is not a config verdict"
+    assert "UNAVAILABLE" in out
+    assert "WARNING" in err
+
+
 def test_silent_nonzero_exit_is_treated_as_unavailable(tmp_path):
     """A real rejection always prints. Silence + nonzero is the runtime dying."""
     write(tmp_path, configmap(MINIMAL))
