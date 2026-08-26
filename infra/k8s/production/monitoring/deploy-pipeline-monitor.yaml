@@ -522,179 +522,27 @@ spec:
         - protocol: TCP
           port: 9091
 
----
-# Alerting rules
-# ----------------------------------------------------------------------------
-# !! THIS PrometheusRule IS INERT ON THIS CLUSTER — DO NOT ADD RULES HERE !!
+# The PrometheusRule (deploy-pipeline-monitor-rules) that used to live here
+# was removed 2026-08-26 (availability remediation Tier 0.3). Its own header
+# comment already documented it as inert ("THIS PrometheusRule IS INERT ON
+# THIS CLUSTER") because no prometheus-operator runs here.
 #
-# The CRD is installed but there is NO prometheus-operator running, so nothing
-# ever reads a PrometheusRule. Our Prometheus loads rules only from the
-# `prometheus-rules` ConfigMap (`rule_files: /etc/prometheus/rules/*.yml`,
-# see prometheus.yaml). Every alert in this object — ArgoMainParityDrift
-# included — has therefore never been capable of firing.
+# Of its 8 rules:
+#   - 5 (group `deploy-pipeline-monitor`: MainCIFailingForTooLong,
+#     MainCommitsAccumulatingNotDeployed, MainCIConsecutiveFailures,
+#     DeployPipelineMonitorNotRunning, DeployPipelineMonitorRepoProbeFailing)
+#     were ported into
+#     infra/k8s/production/monitoring/prometheus.yaml's prometheus-rules
+#     ConfigMap, key deploy-pipeline-freshness-rules.yml. Their metrics are
+#     genuinely emitted by check_main_ci.py and have no live equivalent.
+#   - 3 (group `argo-main-parity-monitor`: ArgoMainParityDrift,
+#     ArgoMainParityMonitorFailed, ArgoMainParityMonitorStale) were DELETED,
+#     not ported: that ConfigMap's deploy-parity-alerts.yml key already
+#     covers this exact monitor with a redesigned signal
+#     (argo_main_rollout_ok / argo_main_rollout_failed_sources) that fixes
+#     the false-green the drift-sources approach had during the 2026-08-07
+#     avala-services incident. Porting the superseded rules would double
+#     up on every real rollout failure.
 #
-# That is not theoretical. On 2026-08-07 `avala-services` failed its PreSync
-# hook and sat OutOfSync for four days; `ArgoMainParityDrift` would not have
-# caught it anyway (see the monitor docstring), but neither would any alert
-# here, because none of them are loaded.
-#
-# The live rules for this monitor live in:
-#   infra/k8s/production/monitoring/prometheus.yaml
-#     -> ConfigMap/prometheus-rules -> data["deploy-parity-alerts.yml"]
-#
-# This object is kept only so the intent survives if an operator is ever
-# installed. Anything added here must ALSO be added to the ConfigMap, or it
-# is decoration.
-#
-# Routed to alertmanager via the existing severity routes. Category
-# `deploy-pipeline` groups all CI/build/deploy freshness alerts so the on-call
-# rotation can mute them independently of platform-layer incidents during
-# planned maintenance.
-#
-# 30-min thresholds reflect the original gap: had this monitor been live on
-# 2026-05-04 02:29 UTC, the first alert would have fired at 02:59 — instead
-# of 05:30 when a human noticed.
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: deploy-pipeline-monitor-rules
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/name: deploy-pipeline-monitor-rules
-    app.kubernetes.io/part-of: enclii
-    prometheus: kube-prometheus
-    role: alert-rules
-spec:
-  groups:
-    - name: argo-main-parity-monitor
-      interval: 1m
-      rules:
-        - alert: ArgoMainParityDrift
-          expr: argo_main_parity_drift_sources > 0
-          for: 5m
-          labels:
-            severity: critical
-            category: deploy-parity
-          annotations:
-            summary: "ArgoCD deployed revision differs from GitHub main"
-            description: >
-              At least one Git-backed prod ArgoCD source tracks `main` but is
-              not deployed at the current GitHub main SHA. Inspect
-              `argo_main_parity_source_ok` labels for the app/repo/path.
-            runbook: docs/runbooks/deploy-pipeline-monitor.md
-        - alert: ArgoMainParityMonitorFailed
-          expr: argo_main_parity_probe_ok == 0
-          for: 5m
-          labels:
-            severity: warning
-            category: deploy-parity
-          annotations:
-            summary: "Argo main parity monitor failed"
-            description: >
-              The parity monitor could not list Argo apps, query GitHub, or
-              push metrics. Check the `argo-main-parity-monitor` CronJob logs.
-            runbook: docs/runbooks/deploy-pipeline-monitor.md
-        - alert: ArgoMainParityMonitorStale
-          expr: time() - argo_main_parity_last_run_timestamp_seconds > 900 or absent(argo_main_parity_last_run_timestamp_seconds)
-          for: 0m
-          labels:
-            severity: warning
-            category: deploy-parity
-          annotations:
-            summary: "Argo main parity monitor has not pushed metrics in >15 min"
-            description: >
-              The parity monitor is stale or missing. Check CronJob scheduling,
-              GHCR pull credentials, network egress, and Pushgateway health.
-            runbook: docs/runbooks/deploy-pipeline-monitor.md
-    - name: deploy-pipeline-monitor
-      interval: 1m
-      rules:
-        - alert: MainCIFailingForTooLong
-          # The headline alert. Fires when the latest CI run on a tracked
-          # branch is failed AND the failing commit was pushed >30 min ago.
-          # Implies: no new image, no rebuild, ArgoCD has nothing new.
-          expr: repo_main_blocked_seconds > 1800
-          for: 0m
-          labels:
-            severity: critical
-            category: deploy-pipeline
-          annotations:
-            summary: "{{ $labels.repo }} main CI has been failing for >30 min"
-            description: |
-              Latest CI run on `{{ $labels.branch }}` of `{{ $labels.repo }}`
-              is failed. The failing commit was pushed {{ $value | humanizeDuration }}
-              ago — no image has been rebuilt → no deploys are reaching ArgoCD
-              → live pods are drifting from `main`.
-              Open the Actions tab on the repo, identify the failing run,
-              fix or rerun it.
-              Runbook: docs/runbooks/deploy-pipeline-monitor.md
-
-        - alert: MainCommitsAccumulatingNotDeployed
-          # Catch the case where main HEAD is older than X minutes without
-          # an even newer CI completion — i.e. commits are landing but the
-          # build pipeline isn't keeping up. The argocd_app_info_revision_*
-          # series isn't reliably scraped today, so the simpler heuristic is:
-          # ci_age - commit_age > 30 min  (CI is lagging behind main).
-          expr: |
-            (repo_main_latest_commit_age_seconds
-             - repo_main_latest_ci_age_seconds) > 1800
-          for: 5m
-          labels:
-            severity: warning
-            category: deploy-pipeline
-          annotations:
-            summary: "{{ $labels.repo }} main has unbuilt commits (>30 min)"
-            description: |
-              `{{ $labels.repo }}` main HEAD is {{ $value | humanizeDuration }}
-              newer than the most recent completed CI run. Either CI is
-              stalled, the workflow filter isn't matching, or the runner
-              fleet is starved. ArgoCD will reconcile the *previous* image
-              until this clears.
-
-        - alert: MainCIConsecutiveFailures
-          # Three failures in a row on main is almost always a real bug, not
-          # a flake — flag for the originating team even before the 30 min
-          # blocked-seconds threshold trips.
-          expr: repo_main_ci_failure_streak_count >= 3
-          for: 15m
-          labels:
-            severity: warning
-            category: deploy-pipeline
-          annotations:
-            summary: "{{ $labels.repo }} main CI: 3+ consecutive failures"
-            description: |
-              `{{ $labels.repo }}` has {{ $value }} consecutive non-success
-              CI runs on `{{ $labels.branch }}`. Likely a real defect rather
-              than a flake.
-
-        - alert: DeployPipelineMonitorNotRunning
-          # If the CronJob hasn't pushed in 15 min, we have no signal. Fail loud.
-          expr: |
-            time() - deploy_pipeline_monitor_last_run_timestamp_seconds > 900
-            or absent(deploy_pipeline_monitor_last_run_timestamp_seconds)
-          for: 5m
-          labels:
-            severity: warning
-            category: deploy-pipeline
-          annotations:
-            summary: "deploy-pipeline-monitor has not pushed metrics in >15 min"
-            description: |
-              The CronJob is supposed to push every 5 min. Either it is not
-              scheduling (check `kubectl -n monitoring get cronjob`), the
-              GitHub token expired, or pushgateway is unreachable.
-
-        - alert: DeployPipelineMonitorRepoProbeFailing
-          # Per-repo probe failures (auth scope wrong, repo renamed, etc.)
-          # don't break the others, but we still want to know.
-          expr: repo_main_probe_ok == 0
-          for: 30m
-          labels:
-            severity: warning
-            category: deploy-pipeline
-          annotations:
-            summary: "deploy-pipeline-monitor cannot probe {{ $labels.repo }}"
-            description: |
-              The monitor has been unable to fetch state from
-              `{{ $labels.repo }}` for 30+ minutes. Likely causes: PAT scope
-              missing the repo, repo renamed, or branch deleted. The monitor
-              keeps running for the other repos.
+# The `prometheus-rules` ConfigMap is the only rule source this Prometheus
+# actually loads (rule_files: /etc/prometheus/rules/*.yml).

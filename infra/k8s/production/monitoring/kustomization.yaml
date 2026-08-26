@@ -14,6 +14,11 @@ resources:
   # cutover window. See alertmanager-statefulset.yaml header comment
   # for the migration sequence.
   - alertmanager-statefulset.yaml
+  # Sources the Telegram bot token from Vault (availability remediation
+  # Tier 0.3). INERT until Tier 0.1 populates secret/alertmanager in
+  # Vault — see the file's own header and the telegram_configs comment
+  # in alertmanager.yaml.
+  - alertmanager-telegram-credentials.externalsecret.yaml
   # Object-state exporter (kube_job_*, kube_pod_*, kube_deployment_*).
   # WITHOUT this line the manifest file still sits in this directory,
   # kustomize never renders it, and Argo reports Synced/Healthy for a
@@ -22,9 +27,15 @@ resources:
   - kube-state-metrics.yaml
   - network-policies.yaml
   - monitoring-policy-exception.yaml
-  - prometheus-platform-rules.yaml
-  - pgbackrest-health-rules.yaml
   - dashboards/
+  # prometheus-platform-rules.yaml, pgbackrest-health-rules.yaml, and
+  # wal-archive-rules/ were removed 2026-08-26 (availability remediation
+  # Tier 0.3): they were PrometheusRule CRDs with no operator to reconcile
+  # them into the running Prometheus. Every rule worth keeping was ported
+  # into the prometheus-rules ConfigMap in prometheus.yaml (rule_files:
+  # /etc/prometheus/rules/*.yml is the only thing this Prometheus loads);
+  # duplicates of already-live rules were dropped. See that ConfigMap's
+  # per-key header comments for the full port/skip accounting.
 
 # Note: commonLabels are NOT used here because kustomize adds them to service
 # selectors, causing selector mismatches with pods. Labels are set directly

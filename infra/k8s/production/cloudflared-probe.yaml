@@ -316,76 +316,10 @@ spec:
   selector:
     app: cloudflared-probe
 
----
-# Alerting rules
-# ----------------------------------------------------------------------------
-# Routed to alertmanager via the existing `severity: critical` route in
-# infra/k8s/production/monitoring/alertmanager.yaml. The
-# `category: platform` label keeps these alongside the other platform
-# infrastructure alerts.
-#
-# !! NOT CURRENTLY LOADED BY THE RUNNING PROMETHEUS !! (verified 2026-08-06)
-# ----------------------------------------------------------------------------
-# There is no prometheus-operator in this cluster. `monitoring/prometheus` is a
-# plain single-container Deployment started with
-# `--config.file=/etc/prometheus/prometheus.yml` and `rule_files:
-# /etc/prometheus/rules/*.yml`, which is the `prometheus-rules` ConfigMap in
-# infra/k8s/production/monitoring/prometheus.yaml. The PrometheusRule CRD is
-# installed (monitoring/prometheus-operator-crds/) and this object exists in
-# the cluster, but nothing reconciles it into a rule file — Prometheus's
-# /api/v1/rules lists 18 groups and none of them is `cloudflared-probe`.
-#
-# This object is kept so the intent stays version-controlled and so it starts
-# working the day a prometheus-operator is adopted. The rules that actually
-# fire live in the `prometheus-rules` ConfigMap, including the
-# `cloudflared-probe-misconfigured` group added on 2026-08-06. Keep the two in
-# sync; prefer the ConfigMap when they disagree.
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: cloudflared-probe-rules
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/name: cloudflared-probe-rules
-    app.kubernetes.io/part-of: enclii
-    prometheus: kube-prometheus
-    role: alert-rules
-spec:
-  groups:
-    - name: cloudflared-probe
-      interval: 30s
-      rules:
-        - alert: CloudflaredProbeBackendUnreachable
-          expr: |
-            cloudflared_probe_reachable_total == 0
-          for: 2m
-          labels:
-            severity: critical
-            category: platform
-          annotations:
-            summary: "cloudflared cannot reach {{ $labels.namespace }}/{{ $labels.service }}:{{ $labels.port }}"
-            description: |
-              In-cluster synthetic probe in the cloudflare-tunnel namespace
-              failed to reach {{ $labels.namespace }}/{{ $labels.service }}:{{ $labels.port }}
-              for >2m. Because the probe pod mirrors cloudflared's labels,
-              cloudflared itself cannot reach this Service either. Likely
-              cause: NetworkPolicy denies cloudflare-tunnel egress to that
-              namespace, the Service has no endpoints, or the underlying
-              pod is failing health checks.
-              Runbook: docs/runbooks/cloudflared-probe.md
-
-        - alert: CloudflaredProbeNotRunning
-          # If no probe iterations completed in 5 minutes, the probe pod is
-          # crashlooping or scrapes are broken — either way we have no signal.
-          expr: |
-            absent(cloudflared_probe_runs_total) or rate(cloudflared_probe_runs_total[5m]) == 0
-          for: 5m
-          labels:
-            severity: warning
-            category: platform
-          annotations:
-            summary: "cloudflared-probe is not emitting metrics"
-            description: |
-              No probe iterations recorded in the last 5 minutes. The probe
-              itself may be crashlooping or unscheduled. Without it we lose
-              visibility into in-cluster cloudflared reachability.
+# The PrometheusRule (cloudflared-probe-rules) that used to live here was
+# removed 2026-08-26 (availability remediation Tier 0.3): it was never
+# reconciled by any operator (none is deployed on this cluster) and its
+# rules were ported into
+# infra/k8s/production/monitoring/prometheus.yaml's prometheus-rules
+# ConfigMap, key cloudflared-tunnel-rules.yml, group `cloudflared-probe`.
+# That ConfigMap is the only rule source this Prometheus actually loads.
