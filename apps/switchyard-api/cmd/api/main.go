@@ -382,6 +382,34 @@ func main() {
 		logrus.Warn("Timetable reconciler DISABLED (ENCLII_TIMETABLE_RECONCILER_ENABLED=false) — `enclii jobs` will not execute")
 	}
 
+	// Initialize and start the pgbouncer userlist drift checker (availability
+	// remediation Tier 0.6). Runs the read-only ReconcileUserlist detector
+	// (enclii#436, internal/provisioning/userlist_reconcile.go) every 5
+	// minutes and exports enclii_pgbouncer_userlist_* metrics so a Prometheus
+	// alert rule can page. The detector's own doc comment names this exact
+	// gap: "wire it into a periodic check that pages when HasMissing() is
+	// true." WITHOUT this, a hand-applied userlist edit silently drops login
+	// roles from the pooler with no page — the 2026-08-24 outage class
+	// (fortuna/bloom-scroll/ceq hard-down for days behind a silent 502).
+	// Requires both a valid k8s client (to read the userlist Secret) and
+	// PostgresAdminURL (to query pg_authid); degrades to a logged warning
+	// and error-counted no-op checks otherwise, same as the manual
+	// ReconcilePgbouncerUserlist admin endpoint's 503 guard.
+	// Start() is non-blocking (it launches its own goroutine), so call it
+	// directly. The flag defaults ON and exists only as a break-glass off switch.
+	var pgbouncerDriftChecker *reconciler.PgbouncerDriftChecker
+	if cfg.PgbouncerDriftCheckEnabled {
+		var pgbUpdaterForDrift *provisioning.PgBouncerUpdater
+		if k8sClient != nil && k8sClient.IsValid() {
+			pgbUpdaterForDrift = provisioning.NewPgBouncerUpdater(k8sClient.Clientset, logger)
+		}
+		pgbouncerDriftChecker = reconciler.NewPgbouncerDriftChecker(pgbUpdaterForDrift, cfg.PostgresAdminURL, logrus.StandardLogger())
+		pgbouncerDriftChecker.Start(ctx)
+		logrus.Info("✓ Pgbouncer userlist drift checker started (pages on login roles missing from the pooler)")
+	} else {
+		logrus.Warn("Pgbouncer userlist drift checker DISABLED (ENCLII_PGBOUNCER_DRIFT_CHECK_ENABLED=false) — userlist drift will not page")
+	}
+
 	// Initialize Roundhouse client (for async builds)
 	var roundhouseClient *clients.RoundhouseClient
 	if cfg.BuildMode == "roundhouse" {
@@ -804,6 +832,12 @@ func main() {
 	if timetableReconciler != nil {
 		timetableReconciler.Stop()
 		logrus.Info("Timetable reconciler stopped")
+	}
+
+	// Stop pgbouncer userlist drift checker (only started when enabled)
+	if pgbouncerDriftChecker != nil {
+		pgbouncerDriftChecker.Stop()
+		logrus.Info("Pgbouncer userlist drift checker stopped")
 	}
 
 	// Stop security middleware cleanup goroutine

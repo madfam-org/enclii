@@ -109,6 +109,15 @@ type Config struct {
 	// that nothing ever executes. Flag exists only as a break-glass off switch.
 	TimetableReconcilerEnabled bool // ENCLII_TIMETABLE_RECONCILER_ENABLED (default true)
 
+	// Pgbouncer userlist drift checker (availability remediation Tier 0.6).
+	// Runs the read-only ReconcileUserlist detector (enclii#436) every 5
+	// minutes and exports enclii_pgbouncer_userlist_* metrics for alerting.
+	// Defaults ON — without it, a hand-applied userlist edit silently drops
+	// login roles from the pooler with no page, the exact 2026-08-24 outage
+	// class (fortuna/bloom-scroll/ceq hard-down for days). Flag exists only
+	// as a break-glass off switch.
+	PgbouncerDriftCheckEnabled bool // ENCLII_PGBOUNCER_DRIFT_CHECK_ENABLED (default true)
+
 	// Status ConfigMap Projection
 	StatusProjectionMode              string // "runtime" (default zero-touch ConfigMap projection) or "gitops" (legacy Enclii config commit)
 	AllowLegacyGitOpsStatusProjection bool   // Explicit break-glass gate for legacy Enclii repo status commits
@@ -304,10 +313,11 @@ func Load() (*Config, error) {
 	viper.SetDefault("argocd-registration-mode", "runtime") // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-registration", false)
 	viper.SetDefault("argocd-namespace", "argocd")
-	viper.SetDefault("argocd-poller-enabled", false)       // ENCLII_ARGOCD_POLLER_ENABLED — ships dark
-	viper.SetDefault("argocd-poll-interval", "3m")         // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
-	viper.SetDefault("timetable-reconciler-enabled", true) // ENCLII_TIMETABLE_RECONCILER_ENABLED — jobs runner, on by default
-	viper.SetDefault("status-projection-mode", "runtime")  // "runtime" or legacy "gitops"
+	viper.SetDefault("argocd-poller-enabled", false)        // ENCLII_ARGOCD_POLLER_ENABLED — ships dark
+	viper.SetDefault("argocd-poll-interval", "3m")          // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
+	viper.SetDefault("timetable-reconciler-enabled", true)  // ENCLII_TIMETABLE_RECONCILER_ENABLED — jobs runner, on by default
+	viper.SetDefault("pgbouncer-drift-check-enabled", true) // ENCLII_PGBOUNCER_DRIFT_CHECK_ENABLED — userlist drift checker, on by default
+	viper.SetDefault("status-projection-mode", "runtime")   // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-status-projection", false)
 	viper.SetDefault("status-config-namespace", "enclii")
 	viper.SetDefault("compliance-webhooks-enabled", false)
@@ -422,6 +432,7 @@ func Load() (*Config, error) {
 		ArgocdNamespace:                   viper.GetString("argocd-namespace"),
 		ArgocdPollerEnabled:               viper.GetBool("argocd-poller-enabled"),
 		TimetableReconcilerEnabled:        viper.GetBool("timetable-reconciler-enabled"),
+		PgbouncerDriftCheckEnabled:        viper.GetBool("pgbouncer-drift-check-enabled"),
 		ArgocdPollInterval:                viper.GetString("argocd-poll-interval"),
 		StatusProjectionMode:              viper.GetString("status-projection-mode"),
 		AllowLegacyGitOpsStatusProjection: viper.GetBool("allow-legacy-gitops-status-projection"),

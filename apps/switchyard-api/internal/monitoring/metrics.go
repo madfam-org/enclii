@@ -211,6 +211,7 @@ func NewMetricsCollector() *MetricsCollector {
 		goGoroutines,
 	}
 	metrics = append(metrics, ReconcilerMetricsCollectors()...)
+	metrics = append(metrics, PgbouncerDriftMetricsCollectors()...)
 
 	for _, metric := range metrics {
 		registry.MustRegister(metric)
