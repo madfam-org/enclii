@@ -36,6 +36,13 @@ resources:
   # /etc/prometheus/rules/*.yml is the only thing this Prometheus loads);
   # duplicates of already-live rules were dropped. See that ConfigMap's
   # per-key header comments for the full port/skip accounting.
+  # prometheus-operator + rules-eval Prometheus (availability remediation
+  # Tier 0.3b, follows the Tier 0.3 port above). New subdirectory; does not
+  # touch the existing hand-rolled Prometheus/Alertmanager above. The
+  # rules-eval instance evaluates PrometheusRule CRDs cluster-wide (the
+  # product-repo rule fleet the 0.3 port could not reach). See
+  # prometheus-operator/README.md for what this deploys and why.
+  - prometheus-operator/
 
 # Note: commonLabels are NOT used here because kustomize adds them to service
 # selectors, causing selector mismatches with pods. Labels are set directly
