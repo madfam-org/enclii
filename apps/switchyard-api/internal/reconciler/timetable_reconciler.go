@@ -3,11 +3,13 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -32,7 +34,11 @@ const (
 	// labelOneOffJobID links a K8s Job back to the database record.
 	labelOneOffJobID = "enclii.dev/one-off-job-id"
 
-	// defaultJobImage is used when no image is specified on the job.
+	// defaultJobImage is the last-resort image used when the job has no
+	// explicit image AND the target service's Deployment cannot be resolved
+	// (service deleted, never deployed, or K8s lookup failure). Jobs for
+	// deployed services run in the service's own image instead -- see
+	// resolveJobRuntimeContext.
 	defaultJobImage = "busybox:latest"
 )
 
@@ -151,7 +157,8 @@ func (r *TimetableReconciler) reconcileCronJob(ctx context.Context, job *types.C
 	}
 
 	cronJobName := cronJobK8sName(job)
-	desired := r.buildCronJob(job, cronJobName, namespace)
+	rc := r.resolveJobRuntimeContext(ctx, job.ServiceID, namespace, job.Image)
+	desired := r.buildCronJob(job, cronJobName, namespace, rc)
 
 	existing, err := r.k8sClient.Clientset.BatchV1().CronJobs(namespace).Get(ctx, cronJobName, metav1.GetOptions{})
 	if err != nil {
@@ -174,7 +181,7 @@ func (r *TimetableReconciler) reconcileCronJob(ctx context.Context, job *types.C
 	}
 
 	// CronJob exists -- update it if the spec has drifted.
-	if r.cronJobNeedsUpdate(existing, job) {
+	if r.cronJobNeedsUpdate(existing, job, rc) {
 		desired.ResourceVersion = existing.ResourceVersion
 		if _, updateErr := r.k8sClient.Clientset.BatchV1().CronJobs(namespace).Update(ctx, desired, metav1.UpdateOptions{}); updateErr != nil {
 			return fmt.Errorf("update CronJob %s/%s: %w", namespace, cronJobName, updateErr)
@@ -190,13 +197,10 @@ func (r *TimetableReconciler) reconcileCronJob(ctx context.Context, job *types.C
 	return nil
 }
 
-// buildCronJob constructs the desired K8s CronJob spec from the database record.
-func (r *TimetableReconciler) buildCronJob(job *types.CronJob, name, namespace string) *batchv1.CronJob {
-	image := job.Image
-	if image == "" {
-		image = defaultJobImage
-	}
-
+// buildCronJob constructs the desired K8s CronJob spec from the database record
+// and the resolved service runtime context (image, env, serviceAccount,
+// imagePullSecrets -- see resolveJobRuntimeContext).
+func (r *TimetableReconciler) buildCronJob(job *types.CronJob, name, namespace string, rc jobRuntimeContext) *batchv1.CronJob {
 	timeout := int64(job.Timeout)
 	if timeout <= 0 {
 		timeout = 3600 // 1 hour default
@@ -233,12 +237,16 @@ func (r *TimetableReconciler) buildCronJob(job *types.CronJob, name, namespace s
 							Labels: labels,
 						},
 						Spec: corev1.PodSpec{
-							RestartPolicy: corev1.RestartPolicyNever,
+							RestartPolicy:      corev1.RestartPolicyNever,
+							ServiceAccountName: rc.ServiceAccountName,
+							ImagePullSecrets:   rc.ImagePullSecrets,
 							Containers: []corev1.Container{
 								{
 									Name:    "job",
-									Image:   image,
+									Image:   rc.Image,
 									Command: []string{"/bin/sh", "-c", job.Command},
+									Env:     rc.Env,
+									EnvFrom: rc.EnvFrom,
 								},
 							},
 						},
@@ -250,8 +258,11 @@ func (r *TimetableReconciler) buildCronJob(job *types.CronJob, name, namespace s
 }
 
 // cronJobNeedsUpdate returns true if the live K8s CronJob diverges from the
-// database record on fields the reconciler manages.
-func (r *TimetableReconciler) cronJobNeedsUpdate(existing *batchv1.CronJob, job *types.CronJob) bool {
+// database record on fields the reconciler manages. The image and pod context
+// are compared against the RESOLVED runtime context (the same one buildCronJob
+// consumes) -- comparing against job.Image/defaultJobImage directly would make
+// the reconcile loop fight itself, rewriting the CronJob on every pass.
+func (r *TimetableReconciler) cronJobNeedsUpdate(existing *batchv1.CronJob, job *types.CronJob, rc jobRuntimeContext) bool {
 	if existing.Spec.Schedule != job.Schedule {
 		return true
 	}
@@ -260,21 +271,34 @@ func (r *TimetableReconciler) cronJobNeedsUpdate(existing *batchv1.CronJob, job 
 		return true
 	}
 
-	// Check command and image.
-	containers := existing.Spec.JobTemplate.Spec.Template.Spec.Containers
-	if len(containers) > 0 {
+	// Check command, image and inherited container context.
+	podSpec := existing.Spec.JobTemplate.Spec.Template.Spec
+	if len(podSpec.Containers) > 0 {
 		expectedCmd := []string{"/bin/sh", "-c", job.Command}
-		if !stringSliceEqual(containers[0].Command, expectedCmd) {
+		if !stringSliceEqual(podSpec.Containers[0].Command, expectedCmd) {
 			return true
 		}
 
-		expectedImage := job.Image
-		if expectedImage == "" {
-			expectedImage = defaultJobImage
-		}
-		if containers[0].Image != expectedImage {
+		if podSpec.Containers[0].Image != rc.Image {
 			return true
 		}
+
+		if !typedSlicesEqual(podSpec.Containers[0].Env, rc.Env) {
+			return true
+		}
+
+		if !typedSlicesEqual(podSpec.Containers[0].EnvFrom, rc.EnvFrom) {
+			return true
+		}
+	}
+
+	// Check inherited pod context.
+	if podSpec.ServiceAccountName != rc.ServiceAccountName {
+		return true
+	}
+
+	if !typedSlicesEqual(podSpec.ImagePullSecrets, rc.ImagePullSecrets) {
+		return true
 	}
 
 	return false
@@ -329,7 +353,8 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 		return fmt.Errorf("resolve namespace for project %s: %w", job.ProjectID, err)
 	}
 
-	k8sJob := r.buildOneOffJob(job, namespace)
+	rc := r.resolveJobRuntimeContext(ctx, job.ServiceID, namespace, job.Image)
+	k8sJob := r.buildOneOffJob(job, namespace, rc)
 
 	_, err = r.k8sClient.Clientset.BatchV1().Jobs(namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
 	if err != nil {
@@ -359,13 +384,10 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 	return nil
 }
 
-// buildOneOffJob constructs the desired K8s Job spec from the database record.
-func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace string) *batchv1.Job {
-	image := job.Image
-	if image == "" {
-		image = defaultJobImage
-	}
-
+// buildOneOffJob constructs the desired K8s Job spec from the database record
+// and the resolved service runtime context (image, env, serviceAccount,
+// imagePullSecrets -- see resolveJobRuntimeContext).
+func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace string, rc jobRuntimeContext) *batchv1.Job {
 	timeout := int64(job.Timeout)
 	if timeout <= 0 {
 		timeout = 3600
@@ -393,18 +415,142 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy:      corev1.RestartPolicyNever,
+					ServiceAccountName: rc.ServiceAccountName,
+					ImagePullSecrets:   rc.ImagePullSecrets,
 					Containers: []corev1.Container{
 						{
 							Name:    "job",
-							Image:   image,
+							Image:   rc.Image,
 							Command: []string{"/bin/sh", "-c", job.Command},
+							Env:     rc.Env,
+							EnvFrom: rc.EnvFrom,
 						},
 					},
 				},
 			},
 		},
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Service runtime context resolution
+// ---------------------------------------------------------------------------
+
+// jobRuntimeContext carries the execution context a timetable job pod runs
+// with: the container image plus the env, envFrom, serviceAccount and
+// imagePullSecrets inherited from the target service's live Deployment. It is
+// resolved once per reconcile of a job and passed to the builders so that the
+// desired spec and the drift comparison always derive from the same source.
+type jobRuntimeContext struct {
+	Image              string
+	Env                []corev1.EnvVar
+	EnvFrom            []corev1.EnvFromSource
+	ServiceAccountName string
+	ImagePullSecrets   []corev1.LocalObjectReference
+}
+
+// resolveJobRuntimeContext derives the execution context for a timetable job
+// from its target service's live Deployment (Deployment name == service name,
+// the convention used by the service reconciler and the topology builder).
+// The command `rails db:migrate` only works when the job pod runs the same
+// image with the same env/secrets as the service it belongs to.
+//
+// Resolution order:
+//  1. Load the service record for job.ServiceID, then read the Deployment
+//     named after the service in the project namespace.
+//  2. Copy image/env/envFrom from the Deployment's first container and
+//     serviceAccountName/imagePullSecrets from its pod spec.
+//  3. explicitImage (job.Image set by the user) overrides the service image
+//     but the job STILL inherits env/serviceAccount/pullSecrets when the
+//     Deployment is resolvable: the common case for an image override is
+//     running a sibling tool (e.g. migrate/migrate) against the same
+//     configuration the service runs with.
+//  4. If the service or its Deployment cannot be resolved, fall back to
+//     explicitImage or defaultJobImage with no inherited context, preserving
+//     the pre-existing behavior for services that were never deployed. The
+//     reason is logged as a warning so operators can tell why a job ran in
+//     busybox.
+//
+// SECURITY: inheriting the service's env (including secret references),
+// service account and image pull secrets into a job grants the job the same
+// privilege as deploying code to the service itself. That is intentional:
+// cron/one-off job creation is already gated at RequireRole(Developer) on the
+// API -- the same role required to deploy the service -- so this resolution
+// adds no privilege beyond what the job creator already holds.
+func (r *TimetableReconciler) resolveJobRuntimeContext(ctx context.Context, serviceID uuid.UUID, namespace, explicitImage string) jobRuntimeContext {
+	fallback := jobRuntimeContext{Image: explicitImage}
+	if fallback.Image == "" {
+		fallback.Image = defaultJobImage
+	}
+
+	if r.repos == nil || r.repos.Services == nil {
+		r.logger.WithFields(logrus.Fields{
+			"service_id": serviceID,
+			"namespace":  namespace,
+		}).Warn("Timetable: services repository unavailable, job will run without service context")
+		return fallback
+	}
+
+	svc, err := r.repos.Services.GetByID(serviceID)
+	if err != nil || svc == nil {
+		r.logger.WithError(err).WithFields(logrus.Fields{
+			"service_id": serviceID,
+			"namespace":  namespace,
+			"fallback":   fallback.Image,
+		}).Warn("Timetable: could not load service for job runtime context, falling back to default image without service env")
+		return fallback
+	}
+
+	if r.k8sClient == nil || r.k8sClient.Kube() == nil {
+		r.logger.WithFields(logrus.Fields{
+			"service":   svc.Name,
+			"namespace": namespace,
+		}).Warn("Timetable: K8s client unavailable, job will run without service context")
+		return fallback
+	}
+
+	deployment, err := r.k8sClient.Kube().AppsV1().Deployments(namespace).Get(ctx, svc.Name, metav1.GetOptions{})
+	if err != nil {
+		r.logger.WithError(err).WithFields(logrus.Fields{
+			"service":   svc.Name,
+			"namespace": namespace,
+			"fallback":  fallback.Image,
+		}).Warn("Timetable: could not read service Deployment for job runtime context, falling back to default image without service env")
+		return fallback
+	}
+
+	return runtimeContextFromDeployment(deployment, explicitImage)
+}
+
+// runtimeContextFromDeployment copies the runtime context out of a service
+// Deployment's pod template: image, env and envFrom from the first container,
+// plus serviceAccountName and imagePullSecrets from the pod spec. An explicit
+// image overrides the container image; defaultJobImage covers the degenerate
+// case of a Deployment with no containers.
+func runtimeContextFromDeployment(deployment *appsv1.Deployment, explicitImage string) jobRuntimeContext {
+	podSpec := deployment.Spec.Template.Spec
+
+	rc := jobRuntimeContext{
+		Image:              explicitImage,
+		ServiceAccountName: podSpec.ServiceAccountName,
+		ImagePullSecrets:   podSpec.ImagePullSecrets,
+	}
+
+	if len(podSpec.Containers) > 0 {
+		first := podSpec.Containers[0]
+		if rc.Image == "" {
+			rc.Image = first.Image
+		}
+		rc.Env = first.Env
+		rc.EnvFrom = first.EnvFrom
+	}
+
+	if rc.Image == "" {
+		rc.Image = defaultJobImage
+	}
+
+	return rc
 }
 
 // ---------------------------------------------------------------------------
@@ -590,4 +736,18 @@ func stringSliceEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// typedSlicesEqual returns true if two slices are identical in length and
+// content, treating nil and empty as equal (reflect.DeepEqual alone would not,
+// which would make the reconcile loop rewrite specs where the API server
+// returns nil for a field we submitted as absent).
+func typedSlicesEqual[T any](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
 }
