@@ -205,3 +205,30 @@ func TestLoad_SignupDisabledAllowsEmptyJanuaAdminToken(t *testing.T) {
 		t.Fatalf("unexpected error when signup is disabled: %v", err)
 	}
 }
+
+func TestLoad_TimetableReconciler_DefaultOn(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The jobs runner must default ON — without it, `enclii jobs create` persists a
+	// row that nothing executes. This defends against it silently reverting to off.
+	if !cfg.TimetableReconcilerEnabled {
+		t.Fatal("expected timetable reconciler to be enabled by default")
+	}
+}
+
+func TestLoad_TimetableReconciler_Override(t *testing.T) {
+	t.Setenv("ENCLII_DATABASE_URL", "postgres://user:pass@localhost:5432/test?sslmode=disable")
+	t.Setenv("ENCLII_TIMETABLE_RECONCILER_ENABLED", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.TimetableReconcilerEnabled {
+		t.Fatal("expected timetable reconciler to be disabled when the env override is false")
+	}
+}

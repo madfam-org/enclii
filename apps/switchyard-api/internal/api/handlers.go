@@ -826,6 +826,9 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.DELETE("/cron-jobs/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteCronJob)
 			protected.GET("/cron-jobs/:id/runs", h.ListCronJobRuns)
 			protected.POST("/projects/:slug/one-off-jobs", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateOneOffJob)
+			protected.GET("/projects/:slug/one-off-jobs", h.ListOneOffJobs)
+			protected.GET("/one-off-jobs/:id", h.GetOneOffJob)
+			protected.GET("/one-off-jobs/:id/logs", h.GetOneOffJobLogs)
 
 			// Junctions — Routing & Ingress
 			protected.POST("/projects/:slug/junctions", h.auth.RequireRole(string(types.RoleDeveloper)), h.CreateJunction)

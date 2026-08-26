@@ -30,7 +30,7 @@ Cron jobs run on a recurring schedule (standard cron expressions).
 One-off jobs run immediately or at a specified time.
 
 Examples:
-  # List all jobs
+  # List all jobs (cron and one-off)
   enclii jobs list --project my-project
 
   # Create a cron job
@@ -40,6 +40,10 @@ Examples:
   # Run a one-off job immediately
   enclii jobs run-once --name db-migrate --command "rails db:migrate" \
     --service-id <id> --project my-project
+
+  # Check the result and logs of a one-off job
+  enclii jobs get <job-id>
+  enclii jobs logs <job-id>
 
   # View runs for a cron job
   enclii jobs runs <job-id>
@@ -54,6 +58,7 @@ Examples:
 	cmd.AddCommand(newJobsDeleteCommand(cfg))
 	cmd.AddCommand(newJobsRunsCommand(cfg))
 	cmd.AddCommand(newJobsRunOnceCommand(cfg))
+	cmd.AddCommand(newJobsLogsCommand(cfg))
 
 	return cmd
 }
@@ -105,6 +110,15 @@ Examples:
 }
 
 func runJobsList(cfg *config.Config, projectSlug string) error {
+	if err := printCronJobsSection(cfg, projectSlug); err != nil {
+		return err
+	}
+	return printOneOffJobsSection(cfg, projectSlug)
+}
+
+// printCronJobsSection lists the project's timetable cron jobs, falling back
+// to service-defined CronJobs when there are none.
+func printCronJobsSection(cfg *config.Config, projectSlug string) error {
 	resp, err := jobsRequest(cfg, http.MethodGet, fmt.Sprintf("/v1/projects/%s/cron-jobs", projectSlug), nil)
 	if err != nil {
 		return fmt.Errorf("failed to list cron jobs: %w", err)
@@ -153,6 +167,57 @@ func runJobsList(cfg *config.Config, projectSlug string) error {
 			suspended,
 			lastRun,
 			nextRun,
+		)
+	}
+
+	_ = w.Flush()
+	return nil
+}
+
+// printOneOffJobsSection lists the project's recent one-off jobs, if any.
+func printOneOffJobsSection(cfg *config.Config, projectSlug string) error {
+	resp, err := jobsRequest(cfg, http.MethodGet, fmt.Sprintf("/v1/projects/%s/one-off-jobs", projectSlug), nil)
+	if err != nil {
+		return fmt.Errorf("failed to list one-off jobs: %w", err)
+	}
+
+	// Servers that predate the one-off listing endpoint 404 here; the cron
+	// section already rendered, so skip quietly rather than fail the command.
+	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		return nil
+	}
+
+	var payload struct {
+		OneOffJobs []types.OneOffJob `json:"one_off_jobs"`
+		Total      int               `json:"total"`
+	}
+	if err := decodeOrError(resp, &payload); err != nil {
+		return err
+	}
+
+	if len(payload.OneOffJobs) == 0 {
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("One-off jobs:")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "ID\tNAME\tSTATUS\tEXIT CODE\tCREATED")
+
+	for _, job := range payload.OneOffJobs {
+		exitCode := "-"
+		if job.ExitCode != nil {
+			exitCode = fmt.Sprintf("%d", *job.ExitCode)
+		}
+
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			job.ID.String()[:8],
+			job.Name,
+			job.Status,
+			exitCode,
+			jobTimeAgo(job.CreatedAt),
 		)
 	}
 
@@ -318,8 +383,12 @@ func runJobsCreate(cfg *config.Config, projectSlug, name, schedule, command, ser
 func newJobsGetCommand(cfg *config.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <job-id>",
-		Short: "Get cron job details",
-		Long: `Get detailed information about a cron job.
+		Short: "Get cron or one-off job details",
+		Long: `Get detailed information about a job.
+
+The ID is looked up first as a cron job, then as a one-off job. One-off jobs
+show their execution outcome: status, exit code, timestamps and the
+Kubernetes Job name/namespace they ran as.
 
 Examples:
   enclii jobs get <job-id>`,
@@ -336,6 +405,14 @@ func runJobsGet(cfg *config.Config, jobID string) error {
 	resp, err := jobsRequest(cfg, http.MethodGet, fmt.Sprintf("/v1/cron-jobs/%s", jobID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to get cron job: %w", err)
+	}
+
+	// Not a cron job? The same ID may be a one-off job -- try that endpoint
+	// before giving up.
+	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		return runOneOffJobGet(cfg, jobID)
 	}
 
 	var job types.CronJob
@@ -360,6 +437,56 @@ func runJobsGet(cfg *config.Config, jobID string) error {
 	}
 	if job.NextRunAt != nil {
 		fmt.Printf("Next Run:    %s\n", job.NextRunAt.Format(time.RFC3339))
+	}
+
+	return nil
+}
+
+// runOneOffJobGet fetches and renders a one-off job, including its execution
+// outcome and K8s coordinates. Called by runJobsGet when the ID is not a cron
+// job.
+func runOneOffJobGet(cfg *config.Config, jobID string) error {
+	resp, err := jobsRequest(cfg, http.MethodGet, fmt.Sprintf("/v1/one-off-jobs/%s", jobID), nil)
+	if err != nil {
+		return fmt.Errorf("failed to get one-off job: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		return fmt.Errorf("job '%s' not found (checked cron jobs and one-off jobs)", jobID)
+	}
+
+	var payload struct {
+		OneOffJob  types.OneOffJob `json:"one_off_job"`
+		K8sJobName string          `json:"k8s_job_name"`
+		Namespace  string          `json:"namespace"`
+	}
+	if err := decodeOrError(resp, &payload); err != nil {
+		return err
+	}
+	job := payload.OneOffJob
+
+	fmt.Printf("ID:          %s\n", job.ID)
+	fmt.Printf("Name:        %s\n", job.Name)
+	fmt.Printf("Command:     %s\n", job.Command)
+	if job.Image != "" {
+		fmt.Printf("Image:       %s\n", job.Image)
+	}
+	fmt.Printf("Status:      %s\n", job.Status)
+	if job.ExitCode != nil {
+		fmt.Printf("Exit Code:   %d\n", *job.ExitCode)
+	}
+	fmt.Printf("Timeout:     %ds\n", job.Timeout)
+	fmt.Printf("Service ID:  %s\n", job.ServiceID)
+	fmt.Printf("K8s Job:     %s\n", payload.K8sJobName)
+	fmt.Printf("Namespace:   %s\n", payload.Namespace)
+	fmt.Printf("Created:     %s\n", job.CreatedAt.Format(time.RFC3339))
+	if job.StartedAt != nil {
+		fmt.Printf("Started:     %s\n", job.StartedAt.Format(time.RFC3339))
+	}
+	if job.EndedAt != nil {
+		fmt.Printf("Ended:       %s\n", job.EndedAt.Format(time.RFC3339))
 	}
 
 	return nil
@@ -487,6 +614,7 @@ func newJobsRunOnceCommand(cfg *config.Config) *cobra.Command {
 		name        string
 		command     string
 		serviceID   string
+		image       string
 		timeout     int
 	)
 
@@ -495,14 +623,21 @@ func newJobsRunOnceCommand(cfg *config.Config) *cobra.Command {
 		Short: "Run a one-off job immediately",
 		Long: `Run a one-off job that executes once and exits.
 
+The job runs with the service's runtime context: its current deployment
+image, environment variables and secrets. Pass --image to run a different
+image while keeping the service's environment.
+
 Examples:
   enclii jobs run-once --name db-migrate --command "rails db:migrate" \
     --service-id <uuid> --project my-project
 
   enclii jobs run-once --name seed-data --command "./seed.sh" \
-    --service-id <uuid> --project my-project --timeout 600`,
+    --service-id <uuid> --project my-project --timeout 600
+
+  enclii jobs run-once --name schema-check --command "migrate status" \
+    --image migrate/migrate:v4 --service-id <uuid> --project my-project`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runJobsRunOnce(cfg, projectSlug, name, command, serviceID, timeout)
+			return runJobsRunOnce(cfg, projectSlug, name, command, serviceID, image, timeout)
 		},
 	}
 
@@ -510,6 +645,7 @@ Examples:
 	cmd.Flags().StringVarP(&name, "name", "n", "", "Job name (required)")
 	cmd.Flags().StringVarP(&command, "command", "c", "", "Command to execute (required)")
 	cmd.Flags().StringVar(&serviceID, "service-id", "", "Service ID (required)")
+	cmd.Flags().StringVar(&image, "image", "", "Container image (default: the service's current deployment image + env)")
 	cmd.Flags().IntVar(&timeout, "timeout", 3600, "Max execution time in seconds")
 
 	_ = cmd.MarkFlagRequired("project")
@@ -520,12 +656,15 @@ Examples:
 	return cmd
 }
 
-func runJobsRunOnce(cfg *config.Config, projectSlug, name, command, serviceID string, timeout int) error {
+func runJobsRunOnce(cfg *config.Config, projectSlug, name, command, serviceID, image string, timeout int) error {
 	payload := map[string]interface{}{
 		"name":       name,
 		"command":    command,
 		"service_id": serviceID,
 		"timeout":    timeout,
+	}
+	if image != "" {
+		payload["image"] = image
 	}
 
 	resp, err := jobsRequest(cfg, http.MethodPost, fmt.Sprintf("/v1/projects/%s/one-off-jobs", projectSlug), payload)
@@ -546,7 +685,68 @@ func runJobsRunOnce(cfg *config.Config, projectSlug, name, command, serviceID st
 	fmt.Printf("  ID:      %s\n", job.ID)
 	fmt.Printf("  Name:    %s\n", job.Name)
 	fmt.Printf("  Command: %s\n", job.Command)
+	if job.Image != "" {
+		fmt.Printf("  Image:   %s\n", job.Image)
+	}
 	fmt.Printf("  Status:  %s\n", job.Status)
+
+	return nil
+}
+
+// --- jobs logs ---
+
+func newJobsLogsCommand(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logs <job-id>",
+		Short: "Fetch logs for a one-off job",
+		Long: `Fetch the pod logs of a one-off job execution.
+
+Logs are read from the job's Kubernetes pod. If the job has not started yet,
+or its pods were already cleaned up, the job status is shown with an
+explanatory message instead.
+
+Examples:
+  enclii jobs logs <job-id>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runJobsLogs(cfg, args[0])
+		},
+	}
+
+	return cmd
+}
+
+func runJobsLogs(cfg *config.Config, jobID string) error {
+	resp, err := jobsRequest(cfg, http.MethodGet, fmt.Sprintf("/v1/one-off-jobs/%s/logs", jobID), nil)
+	if err != nil {
+		return fmt.Errorf("failed to get one-off job logs: %w", err)
+	}
+
+	var payload struct {
+		Logs    string `json:"logs"`
+		Pod     string `json:"pod"`
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := decodeOrError(resp, &payload); err != nil {
+		return err
+	}
+
+	// The server sets message when logs are not retrievable (job pending, or
+	// pods cleaned up after completion): show it with the durable DB status.
+	if payload.Message != "" {
+		fmt.Printf("Status: %s\n", payload.Status)
+		fmt.Println(payload.Message)
+		return nil
+	}
+
+	if payload.Pod != "" {
+		fmt.Printf("Pod: %s (status: %s)\n", payload.Pod, payload.Status)
+	}
+	fmt.Print(payload.Logs)
+	if payload.Logs != "" && !strings.HasSuffix(payload.Logs, "\n") {
+		fmt.Println()
+	}
 
 	return nil
 }

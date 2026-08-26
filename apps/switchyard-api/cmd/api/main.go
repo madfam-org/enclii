@@ -366,6 +366,22 @@ func main() {
 	namespaceDiscoverer.Start(ctx)
 	logrus.Info("✓ Namespace discoverer started (orphan/zombie detection)")
 
+	// Initialize and start the timetable reconciler (cron + one-off jobs created
+	// via `enclii jobs`). It reconciles cron_jobs/one_off_jobs DB records into k8s
+	// CronJob/Job resources every 30s (direct client-go apply, the same pattern as
+	// the reconcilers above). WITHOUT this, `enclii jobs create` persists a row that
+	// nothing ever executes — the runner was written but never wired (enclii#jobs).
+	// Start() is non-blocking (it launches its own goroutine), so call it directly.
+	// The flag defaults ON and exists only as a break-glass off switch.
+	var timetableReconciler *reconciler.TimetableReconciler
+	if cfg.TimetableReconcilerEnabled {
+		timetableReconciler = reconciler.NewTimetableReconciler(repos, k8sClient, logrus.StandardLogger())
+		timetableReconciler.Start(ctx)
+		logrus.Info("✓ Timetable reconciler started (cron + one-off jobs → k8s)")
+	} else {
+		logrus.Warn("Timetable reconciler DISABLED (ENCLII_TIMETABLE_RECONCILER_ENABLED=false) — `enclii jobs` will not execute")
+	}
+
 	// Initialize Roundhouse client (for async builds)
 	var roundhouseClient *clients.RoundhouseClient
 	if cfg.BuildMode == "roundhouse" {
@@ -783,6 +799,12 @@ func main() {
 	// Stop namespace discoverer
 	namespaceDiscoverer.Stop()
 	logrus.Info("Namespace discoverer stopped")
+
+	// Stop timetable reconciler (only started when enabled)
+	if timetableReconciler != nil {
+		timetableReconciler.Stop()
+		logrus.Info("Timetable reconciler stopped")
+	}
 
 	// Stop security middleware cleanup goroutine
 	securityMiddleware.Stop()

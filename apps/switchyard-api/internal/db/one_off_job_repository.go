@@ -86,8 +86,17 @@ func (r *OneOffJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*types
 	return job, nil
 }
 
-// ListByProject retrieves all one-off jobs for a project
-func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.UUID) ([]*types.OneOffJob, error) {
+// ListByProject retrieves the most recent one-off jobs for a project, newest
+// first. Limit defaults to 50 and is capped at 500 (same bounds as
+// CronJobRunRepository.ListByCronJob).
+func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.UUID, limit int) ([]*types.OneOffJob, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
 		       timeout, run_at, status, exit_code,
@@ -95,9 +104,10 @@ func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.
 		FROM one_off_jobs
 		WHERE project_id = $1
 		ORDER BY created_at DESC
+		LIMIT $2
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, projectID)
+	rows, err := r.db.QueryContext(ctx, query, projectID, limit)
 	if err != nil {
 		return nil, err
 	}

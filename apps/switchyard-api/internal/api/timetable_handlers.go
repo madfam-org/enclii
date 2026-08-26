@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/reconciler"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
@@ -429,5 +431,192 @@ func (h *Handler) CreateOneOffJob(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"one_off_job": job,
 		"message":     "One-off job created successfully",
+	})
+}
+
+// oneOffJobListLimit bounds ListOneOffJobs responses (mirrors the cron job
+// runs listing, ListCronJobRuns).
+const oneOffJobListLimit = 50
+
+// oneOffJobLogTailLines / oneOffJobLogLimitBytes bound how much log output the
+// one-off job logs endpoint returns per request.
+const (
+	oneOffJobLogTailLines  = 1000
+	oneOffJobLogLimitBytes = 1024 * 1024 // 1 MiB
+)
+
+// ListOneOffJobs lists the most recent one-off jobs for a project
+// GET /v1/projects/:slug/one-off-jobs
+func (h *Handler) ListOneOffJobs(c *gin.Context) {
+	ctx := c.Request.Context()
+	slug := c.Param("slug")
+
+	project, err := h.repos.Projects.GetBySlug(slug)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get project", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get project"})
+		return
+	}
+
+	jobs, err := h.repos.OneOffJobs.ListByProject(ctx, project.ID, oneOffJobListLimit)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to list one-off jobs", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list one-off jobs"})
+		return
+	}
+
+	if jobs == nil {
+		jobs = []*types.OneOffJob{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"one_off_jobs": jobs,
+		"total":        len(jobs),
+	})
+}
+
+// GetOneOffJob retrieves a single one-off job by ID, including its execution
+// outcome (status, exit code, timestamps) and the computed K8s coordinates
+// (job name + namespace) so operators can correlate with kubectl output.
+// GET /v1/one-off-jobs/:id
+func (h *Handler) GetOneOffJob(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid one-off job ID"})
+		return
+	}
+
+	job, err := h.repos.OneOffJobs.GetByID(ctx, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "one-off job not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get one-off job", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get one-off job"})
+		return
+	}
+
+	if !h.enforceUserProjectAccess(c, job.ProjectID) {
+		return
+	}
+
+	// The K8s Job lives in the project's namespace (namespace == project slug,
+	// same convention as the timetable reconciler's resolveNamespace).
+	project, err := h.repos.Projects.GetByID(ctx, job.ProjectID)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get project for one-off job", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get project"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"one_off_job":  job,
+		"k8s_job_name": reconciler.OneOffJobK8sName(job),
+		"namespace":    project.Slug,
+	})
+}
+
+// GetOneOffJobLogs fetches the pod logs for a one-off job's execution. Pods
+// are located by the reconciler's enclii.dev/one-off-job-id label. Two
+// non-error outcomes are expected and return 200 with an explanatory message
+// instead of failing: the job has not been scheduled yet (no pods), and the
+// pods were already cleaned up (K8s Job TTL) -- the job's DB status and exit
+// code remain the durable record either way.
+// GET /v1/one-off-jobs/:id/logs
+func (h *Handler) GetOneOffJobLogs(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid one-off job ID"})
+		return
+	}
+
+	job, err := h.repos.OneOffJobs.GetByID(ctx, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "one-off job not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get one-off job", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get one-off job"})
+		return
+	}
+
+	if !h.enforceUserProjectAccess(c, job.ProjectID) {
+		return
+	}
+
+	project, err := h.repos.Projects.GetByID(ctx, job.ProjectID)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get project for one-off job", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get project"})
+		return
+	}
+	namespace := project.Slug
+
+	if h.k8sClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Kubernetes client not configured"})
+		return
+	}
+
+	pods, err := h.k8sClient.ListPods(ctx, namespace, fmt.Sprintf("%s=%s", reconciler.LabelOneOffJobID, job.ID))
+	if err != nil {
+		h.logger.Error(ctx, "Failed to list one-off job pods", logging.Error("k8s_error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list job pods"})
+		return
+	}
+
+	if len(pods.Items) == 0 {
+		message := "logs no longer available: the job's pods were cleaned up"
+		if job.Status == "pending" {
+			message = "job has not started yet: no pods scheduled"
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"logs":    "",
+			"pod":     "",
+			"status":  job.Status,
+			"message": message,
+		})
+		return
+	}
+
+	// One-off jobs run with BackoffLimit 0, so there is normally exactly one
+	// pod; pick the newest defensively in case of manual re-runs.
+	pod := pods.Items[0]
+	for i := range pods.Items {
+		if pods.Items[i].CreationTimestamp.After(pod.CreationTimestamp.Time) {
+			pod = pods.Items[i]
+		}
+	}
+
+	logs, err := h.k8sClient.GetPodLogsWithOptions(ctx, pod.Name, namespace, "", oneOffJobLogTailLines, oneOffJobLogLimitBytes)
+	if err != nil {
+		// The pod exists but its logs cannot be streamed yet (container still
+		// creating/pending). The job status is the durable record; report the
+		// transient state rather than a hard failure.
+		h.logger.Warn(ctx, "One-off job pod logs not readable",
+			logging.String("pod", pod.Name),
+			logging.Error("k8s_error", err))
+		c.JSON(http.StatusOK, gin.H{
+			"logs":    "",
+			"pod":     pod.Name,
+			"status":  job.Status,
+			"message": "logs not available yet: the job's container may still be starting",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"logs":   logs,
+		"pod":    pod.Name,
+		"status": job.Status,
 	})
 }
