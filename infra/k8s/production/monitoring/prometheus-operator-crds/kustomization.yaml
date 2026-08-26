@@ -1,6 +1,36 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# prometheusrules.yaml and podmonitors.yaml predate the operator deployment
+# (availability remediation Tier 0.3b) and are pinned to
+# operator.prometheus.io/version: 0.75.2 / controller-gen v0.15.0. The 8 CRDs
+# below are version-matched to prometheus-operator v0.93.1 (see
+# ../prometheus-operator/README.md for how that version was chosen and how
+# every image digest was obtained). This is a KNOWN, DELIBERATE version skew,
+# not an oversight:
+#   - Confirmed via diff against the v0.93.1 stripped-down-crds.yaml bundle:
+#     the v0.75.2 PrometheusRule/PodMonitor schemas are missing fields added
+#     since (e.g. PrometheusRule groups[].labels, groups[].query_offset;
+#     PodMonitor podMetricsEndpoints[].fallbackScrapeProtocol,
+#     convertClassicHistogramsToNHCB, and several new `minimum: 0` bounds).
+#   - None of those newer fields are used by any PrometheusRule or PodMonitor
+#     object currently in this cluster (verified by inventory of the 12
+#     existing rule/PodMonitor locations as part of Tier 0.3b), so this does
+#     not block the operator from reconciling any object that exists today.
+#   - Bumping these two files to v0.93.1 was deliberately left OUT of this
+#     change: it touches objects other in-flight branches may also depend on,
+#     and is a separate, independently-reviewable decision. Do it as a
+#     fast-follow once the operator has been running clean for a while.
 resources:
   - prometheusrules.yaml
   - podmonitors.yaml
+  # Added for the operator deployment (Tier 0.3b) — version-matched to
+  # prometheus-operator v0.93.1's stripped-down-crds.yaml release bundle.
+  - alertmanagerconfigs.yaml
+  - alertmanagers.yaml
+  - probes.yaml
+  - prometheusagents.yaml
+  - prometheuses.yaml
+  - scrapeconfigs.yaml
+  - servicemonitors.yaml
+  - thanosrulers.yaml
