@@ -11,9 +11,11 @@ YAML in this doc is retained as rationale + reference; **the config file is
 the source of truth** if the two ever diverge.
 
 The live Alertmanager config (`infra/k8s/production/monitoring/alertmanager.yaml`)
-routes `critical-receiver` and `warning-receiver` to both `telegram_configs`
-and `slack_configs`; the Telegram side stays inert until Tier 0.1's arming
-steps (Vault token + chat_id) complete.
+routes `critical-receiver` and `warning-receiver` to `email_configs` and
+`slack_configs`. Telegram is NOT wired: the staged `telegram_configs` blocks
+were removed 2026-08-26 because their `chat_id: 0` sentinel crashlooped
+Alertmanager v0.26.0 at config load. They return in one commit once Tier 0.1's
+arming steps (Vault `telegram_bot_token` + a real `chat_id`) both complete.
 
 ## What this closes
 

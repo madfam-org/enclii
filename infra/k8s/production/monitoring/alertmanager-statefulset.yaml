@@ -199,9 +199,11 @@ spec:
           secret:
             defaultMode: 420
             # Populated by alertmanager-telegram-credentials.externalsecret.yaml.
-            # INERT (Secret has no data / pod mount 404s) until the operator
-            # completes Tier 0.1 — see the telegram_configs comment in
-            # alertmanager.yaml's ConfigMap.
+            # INERT: no telegram_configs consume it yet, and the Secret does
+            # not exist until the operator completes Tier 0.1. `optional: true`
+            # keeps a missing Secret from blocking startup. Mount kept so
+            # re-enabling Telegram is a config-only change — see the
+            # ExternalSecret's header for the sequence.
             secretName: alertmanager-telegram-secret
             optional: true
   # Each pod gets its own 1Gi PVC. RWO is fine because each pod owns its own
@@ -226,9 +228,16 @@ spec:
           requests:
             storage: 1Gi
 ---
-# Updated PDB — keeps minAvailable: 1 (lose up to 2 of 3 peers without
-# being completely silenced) but raises the floor for `kubectl drain`.
-# Operators planning a node drain should still pause silences first.
+# The ONLY PodDisruptionBudget selecting alertmanager pods. The
+# Deployment-era `alertmanager-pdb` (minAvailable: 1) in alertmanager.yaml
+# selected the same `app: alertmanager` label and was removed 2026-08-26 —
+# two PDBs over one pod make the eviction API choose arbitrarily between
+# them, which is not a disruption policy at all.
+#
+# minAvailable: 2 of a 3-member gossip cluster: exactly one voluntary
+# disruption at a time, so the remaining two keep quorum on silence and
+# notification-dedup state. Operators planning a node drain should still
+# pause silences first.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
