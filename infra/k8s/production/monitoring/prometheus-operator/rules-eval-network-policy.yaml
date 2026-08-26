@@ -1,0 +1,168 @@
+# =============================================================================
+# NetworkPolicies for the operator + rules-eval Prometheus.
+#
+# The monitoring namespace enforces a default-deny-all NetworkPolicy
+# (../network-policies.yaml, `default-deny-all` — podSelector: {}, both
+# Ingress and Egress). Every new pod identity in this namespace needs its own
+# explicit allow rules or its traffic silently drops at the CNI layer — this
+# is the exact "NetworkPolicy blocks new flows" trap from the platform's own
+# failure-mode catalog (see ../../cloudflared-probe.yaml and
+# ../../synthetic-flow-probe.yaml header comments for prior incidents in this
+# same family).
+#
+# ONE CROSS-CUTTING DEPENDENCY THIS FILE DOES NOT (AND CANNOT) FIX BY ITSELF:
+# the existing `alertmanager-ingress` NetworkPolicy in ../network-policies.yaml
+# only allows ingress FROM `podSelector: {matchLabels: {app: prometheus}}`.
+# rules-eval's pods carry `app: rules-eval` (see rules-eval-prometheus.yaml's
+# podMetadata), which that selector does NOT match — so without an additional
+# allow rule, rules-eval's `alerting.alertmanagers` push to
+# alertmanager:9093 would silently time out exactly like a real outage,
+# while every other signal (Argo health, HTTP probes) stays green.
+#
+# ../network-policies.yaml is owned by #440
+# (fix/monitoring-resurrect-dead-rules) per the file-ownership split for this
+# change — this branch does not edit it. Kubernetes NetworkPolicy objects are
+# ADDITIVE: multiple NetworkPolicy objects selecting the same pods have their
+# ingress/egress rules UNIONED (OR'd), not replaced. So the fix here is a
+# SEPARATE NetworkPolicy object (`alertmanager-ingress-rules-eval` below) that
+# also selects `app: alertmanager` and adds the one rule the existing object
+# is missing, rather than an edit to the existing object. This is a real
+# Kubernetes object, additive and independent — not a workaround — but it
+# does mean there are now two NetworkPolicy objects governing Alertmanager's
+# ingress instead of one. Fold this rule into the primary
+# `alertmanager-ingress` object in ../network-policies.yaml during Phase B
+# cleanup once #440 has merged and this rule has been observed working.
+# =============================================================================
+---
+# prometheus-operator — egress only. It has no listener anything else needs
+# to reach today (its own :8080 /metrics is not currently scraped by any
+# Prometheus instance — add an ingress rule here if that changes).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-operator-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus-operator
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+    # Kubernetes API server — the operator watches/reconciles
+    # Prometheus/Alertmanager/PrometheusRule/PodMonitor/etc. cluster-wide.
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+---
+# rules-eval — ingress from nothing new (no Grafana wiring in Phase A; add an
+# ingress rule mirroring ../network-policies.yaml's `prometheus-ingress` if
+# rules-eval ever gets its own UI exposure or Grafana datasource).
+# Egress mirrors the existing `prometheus-egress` policy's scrape-target
+# namespace list exactly (../network-policies.yaml), since rules-eval scrapes
+# the identical set of targets via the duplicated scrape config, PLUS egress
+# to Alertmanager (the one target the primary Prometheus's egress policy
+# already covers via its blanket "Scrape targets in monitoring" rule, which
+# also happens to cover the alertmanager Service since it's in-namespace —
+# confirmed by port 9093 being explicitly reachable under that namespace-wide
+# rule already, so no separate alertmanager port rule is needed on egress,
+# only on Alertmanager's INGRESS side, handled below).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rules-eval-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: rules-eval
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: rules-eval
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+    # Scrape targets — same namespace list as the primary Prometheus's
+    # `prometheus-egress` policy, since rules-eval's additionalScrapeConfigs
+    # duplicates the same job list verbatim.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: enclii
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kyverno
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: external-secrets
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+    # Kubernetes API server — service discovery (kubernetes_sd_configs) for
+    # every job in the duplicated scrape config.
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+---
+# Additive ingress rule for Alertmanager — see this file's header comment for
+# why this is a second NetworkPolicy object rather than an edit to
+# ../network-policies.yaml's `alertmanager-ingress`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-ingress-rules-eval
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: alertmanager
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: rules-eval
+      ports:
+        - protocol: TCP
+          port: 9093

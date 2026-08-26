@@ -1,0 +1,286 @@
+# =============================================================================
+# prometheus-operator — Deployment + RBAC
+# Availability remediation Tier 0.3b (internal-devops roadmap
+# 2026-08-26-availability-remediation-9999.md).
+#
+# WHY THIS EXISTS: an ecosystem sweep found ~90 PrometheusRule alert rules
+# across 12 locations (48 in 7 product repos, mostly kustomization-applied,
+# plus enclii's own arc/monitoring.yaml, verdaccio/npm-token-alert.yaml, and
+# postgres-ha/podmonitor.yaml) — every one of them dead on arrival because no
+# operator has ever run in this cluster to reconcile the CRD into a running
+# Prometheus. The CRD TYPE was installed (prometheus-operator-crds/,
+# prometheusrules.yaml only, at v0.75.2) 82+ days before this was noticed —
+# `kubectl apply` on a PrometheusRule succeeds and the object sits there
+# looking healthy, but nothing was ever watching it. See
+# ../prometheus-operator-crds/kustomization.yaml for the version-skew note on
+# those two pre-existing CRD files.
+#
+# See README.md in this directory for the full picture: what this deploys,
+# what it deliberately does NOT do yet (Phase A: operator + one evaluator
+# Prometheus only; existing hand-rolled Prometheus/Alertmanager stay primary
+# and untouched), the Phase B consolidation sketch, and the post-deploy
+# acceptance test.
+#
+# VERSION: prometheus-operator v0.93.1 (latest stable as of 2026-08-26, per
+# `gh api repos/prometheus-operator/prometheus-operator/releases/latest`).
+#
+# IMAGE DIGESTS — both obtained via the quay.io Docker Registry HTTP API v2
+# (anonymous pull token + HEAD request against the tag with an
+# `Accept: application/vnd.docker.distribution.manifest.list.v2+json` header;
+# `docker manifest inspect` was used as a first cross-check and agreed on the
+# same per-platform manifest digests, but the `docker-content-digest` response
+# header from the registry API is what a container runtime resolves a bare
+# tag to, i.e. the multi-arch index digest — that is the value pinned below,
+# not any single platform's manifest digest):
+#
+#   quay.io/prometheus-operator/prometheus-operator:v0.93.1
+#     -> sha256:e52bb28fd41c98dd407c7a8cba8bdcfe7eabd7447e250afaf1fe7bb816dedbff
+#   quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1
+#     -> sha256:428f088fe6fe07ab138bda92113664b04848a1dc408e4d3680a60ecdb55d1a65
+#
+# Verification commands (repeatable):
+#   TOKEN=$(curl -s "https://quay.io/v2/auth?service=quay.io&scope=repository:prometheus-operator/prometheus-operator:pull" | jq -r .token)
+#   curl -sI -H "Authorization: Bearer $TOKEN" \
+#     -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+#     "https://quay.io/v2/prometheus-operator/prometheus-operator/manifests/v0.93.1" \
+#     | grep -i docker-content-digest
+#   (repeat with repository/manifests path swapped to prometheus-config-reloader)
+#
+# --prometheus-config-reloader arg matches the upstream v0.93.1 bundle.yaml
+# default exactly (quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1)
+# — same release, same tag, pinned to the digest above instead of the tag.
+# =============================================================================
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-operator
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+automountServiceAccountToken: true
+---
+# RBAC — matches the upstream v0.93.1 bundle.yaml ClusterRole verbatim
+# (broad by necessity: the operator manages Prometheus/Alertmanager
+# StatefulSets, their config Secrets, and discovers ServiceMonitor/PodMonitor/
+# Probe/ScrapeConfig/PrometheusRule objects cluster-wide). Narrower than
+# cluster-admin: no wildcard resources, no delete on core workloads outside
+# what it owns, no access to arbitrary Secrets (endpoints get/create/update/
+# delete is for its own EndpointSlices only, via the config-reloader).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-operator
+  labels:
+    app.kubernetes.io/name: prometheus-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: ["monitoring.coreos.com"]
+    resources:
+      - alertmanagers
+      - alertmanagers/finalizers
+      - alertmanagers/status
+      - alertmanagerconfigs
+      - prometheuses
+      - prometheuses/finalizers
+      - prometheuses/status
+      - prometheusagents
+      - prometheusagents/finalizers
+      - prometheusagents/status
+      - thanosrulers
+      - thanosrulers/finalizers
+      - thanosrulers/status
+      - scrapeconfigs
+      - servicemonitors
+      - podmonitors
+      - probes
+      - prometheusrules
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources:
+      - statefulsets
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - secrets
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs: ["list", "delete"]
+  - apiGroups: [""]
+    resources:
+      - services
+      - services/finalizers
+      - endpoints
+    verbs: ["get", "create", "update", "delete"]
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["patch", "create"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources:
+      - endpointslices
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources:
+      - tokenreviews
+    verbs: ["create"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources:
+      - subjectaccessreviews
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-operator
+  labels:
+    app.kubernetes.io/name: prometheus-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-operator
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-operator
+    namespace: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-operator
+  namespace: monitoring
+  labels:
+    app: prometheus-operator
+    app.kubernetes.io/name: prometheus-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-operator
+  template:
+    metadata:
+      labels:
+        app: prometheus-operator
+        app.kubernetes.io/name: prometheus-operator
+        app.kubernetes.io/component: monitoring
+        app.kubernetes.io/part-of: enclii
+      annotations:
+        kubectl.kubernetes.io/default-container: prometheus-operator
+    spec:
+      serviceAccountName: prometheus-operator
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prometheus-operator
+          image: quay.io/prometheus-operator/prometheus-operator:v0.93.1@sha256:e52bb28fd41c98dd407c7a8cba8bdcfe7eabd7447e250afaf1fe7bb816dedbff
+          imagePullPolicy: IfNotPresent
+          args:
+            - --kubelet-service=kube-system/kubelet
+            - --prometheus-config-reloader=quay.io/prometheus-operator/prometheus-config-reloader:v0.93.1@sha256:428f088fe6fe07ab138bda92113664b04848a1dc408e4d3680a60ecdb55d1a65
+            # Only reconciles objects in `monitoring` and the handful of
+            # namespaces that already carry PrometheusRule/PodMonitor objects
+            # would be narrower, but the entire point of Tier 0.3b is
+            # ruleNamespaceSelector: {} on the rules-eval Prometheus (see
+            # ../prometheus-operator-rules-eval.yaml) — ALL namespaces, so the
+            # operator itself must watch referenced objects cluster-wide too,
+            # otherwise it silently ignores PrometheusRule/PodMonitor objects
+            # that live outside `monitoring` (which is most of them: 7 product
+            # repos' worth).
+            - --watch-referenced-objects-in-all-namespaces=true
+            - --disable-unmanaged-prometheus-configuration=true
+          env:
+            - name: GOGC
+              value: "30"
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 200Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-operator
+  namespace: monitoring
+  labels:
+    app: prometheus-operator
+    app.kubernetes.io/name: prometheus-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  clusterIP: None
+  selector:
+    app: prometheus-operator
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+# Deliberately NO PodDisruptionBudget here. With replicas: 1 and no standby,
+# `maxUnavailable: 0` would not protect anything — it would only block
+# `kubectl drain` on whichever node the pod lands on, indefinitely, with no
+# second replica ever available to satisfy it. The operator restarting after
+# an eviction is a brief reconcile gap (existing Prometheus/Alertmanager/rules
+# CRs already applied keep running unaffected — the operator is not on the
+# request path for anything), not an outage. Prefer that over an unremovable
+# drain blocker; add a real PDB only if this is ever run with replicas > 1.

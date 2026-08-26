@@ -1,0 +1,80 @@
+# =============================================================================
+# rules-eval Prometheus — dedicated ServiceAccount + RBAC.
+#
+# Separate from both `prometheus` (the existing hand-rolled Prometheus's SA)
+# and `prometheus-operator` (the operator's own SA). rules-eval needs its own
+# identity because the operator-generated Prometheus StatefulSet runs as this
+# ServiceAccount, and its permission needs are narrower than the operator's:
+# it only needs to WATCH/LIST the Kubernetes objects its own scrape configs
+# and service discovery reference (same shape as the existing `prometheus`
+# ClusterRole in ../prometheus.yaml — copied here rather than shared, because
+# a future Phase B consolidation may retire one Prometheus or the other and
+# they should not have a hidden RBAC dependency on each other in the
+# meantime).
+# =============================================================================
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rules-eval
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: rules-eval
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+automountServiceAccountToken: true
+---
+# Read-only, cluster-wide discovery — matches the existing `prometheus`
+# ClusterRole (../prometheus.yaml) plus watch on the CRD kinds this Prometheus
+# needs to discover for rule/target selection (handled by the operator on
+# rules-eval's behalf via its own ClusterRole, but the Prometheus pod itself
+# still needs core API read access for kubernetes_sd_configs-equivalent
+# service discovery the operator wires into the generated config, and for
+# its own additionalScrapeConfigs list above, which uses the same
+# kubernetes_sd_configs patterns as the primary Prometheus).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rules-eval
+  labels:
+    app.kubernetes.io/name: rules-eval
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+      - namespaces
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources:
+      - endpointslices
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rules-eval
+  labels:
+    app.kubernetes.io/name: rules-eval
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rules-eval
+subjects:
+  - kind: ServiceAccount
+    name: rules-eval
+    namespace: monitoring

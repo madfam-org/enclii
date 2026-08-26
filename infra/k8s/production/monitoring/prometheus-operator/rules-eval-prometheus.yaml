@@ -1,0 +1,171 @@
+# =============================================================================
+# `rules-eval` — the dedicated Prometheus CR that gives the ~90 resurrected
+# PrometheusRule alert rules somewhere to actually run.
+#
+# THE ARCHITECTURE (Phase A, deliberately incremental — see README.md):
+# this does NOT replace or touch the existing hand-rolled Prometheus
+# (../prometheus.yaml) or Alertmanager (../alertmanager.yaml /
+# ../alertmanager-statefulset.yaml). Both remain the primary stack, unchanged.
+# `rules-eval` is a second, small, operator-managed Prometheus whose only job
+# is to reconcile every PrometheusRule/PodMonitor object in the cluster (the
+# 12 locations named in the availability-remediation sweep: 7 product repos
+# plus enclii's arc/monitoring.yaml, verdaccio/npm-token-alert.yaml,
+# postgres-ha/podmonitor.yaml) and forward firing alerts to the SAME,
+# EXISTING Alertmanager the primary Prometheus already uses.
+#
+# ruleSelector: {} and ruleNamespaceSelector: {} are both empty on purpose —
+# an empty LabelSelector matches everything. That IS the point: every
+# PrometheusRule in every namespace, cluster-wide, no allowlist to maintain
+# and no risk of a new rule shipping "dark" because nobody remembered to add
+# a label. podMonitorSelector/podMonitorNamespaceSelector are opened the same
+# way so the postgres-ha PodMonitor (also named in the sweep as dead) starts
+# being scraped too.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: rules-eval
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: rules-eval
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+spec:
+  replicas: 1
+  serviceAccountName: rules-eval
+
+  # 24h is enough to evaluate every `for:` duration used by any resurrected
+  # rule (the longest is LonghornOrphanedVolume's `for: 24h`) plus headroom
+  # for `increase()`/`rate()` windows up to `[24h]` (PodChronicRestart24h).
+  # PodChronicRestart7d's `[7d]` window will simply see a partial (24h-deep)
+  # window until Phase B — flagged in the README's "does NOT do yet" section,
+  # not silently accepted.
+  retention: 24h
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+
+  # STORAGE: the existing Prometheus (../prometheus.yaml) uses a 20Gi
+  # longhorn PVC (`prometheus-data`), so this follows that precedent at a
+  # smaller size — 24h retention of rule-evaluation state plus 16
+  # scrape-config targets is a small fraction of the existing 7d/8GB
+  # instance's footprint. emptyDir was considered (rules-eval doesn't need to
+  # survive a node loss the way the primary Prometheus's 7-day history does),
+  # but a PVC means a pod reschedule / OOM restart doesn't cold-start every
+  # `for:`-duration timer on every rule back to zero, which would
+  # (temporarily, but repeatedly) make alerts look dead again — the exact
+  # failure class this whole program exists to eliminate.
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: longhorn
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+
+  # ALL PrometheusRules, ALL namespaces. This is the entire point.
+  ruleSelector: {}
+  ruleNamespaceSelector: {}
+
+  # ALL PodMonitors, ALL namespaces — picks up postgres-ha/podmonitor.yaml's
+  # PodMonitor (also dead until now) alongside the PrometheusRule fix.
+  podMonitorSelector: {}
+  podMonitorNamespaceSelector: {}
+
+  # ServiceMonitor/Probe/ScrapeConfig are left at nil (not `{}`) deliberately:
+  # nil means "operator does not manage this selector at all" for those CRD
+  # kinds on THIS Prometheus, vs. `{}` which means "manage it, matching
+  # everything". No ServiceMonitor/Probe/ScrapeConfig objects exist in this
+  # cluster yet (only PrometheusRule and PodMonitor, per the CRD inventory in
+  # ../prometheus-operator-crds/), so there is nothing to select today either
+  # way — nil is the more honest statement of current scope and avoids
+  # rules-eval silently starting to manage a CRD kind nobody has reviewed for
+  # it yet if one gets created later for an unrelated reason.
+
+  # Existing scrape targets, copied verbatim — see
+  # rules-eval-scrape-configs.secret.yaml's header for the full duplication
+  # rationale and the Phase B consolidation plan.
+  additionalScrapeConfigs:
+    name: rules-eval-additional-scrape-configs
+    key: scrape-configs.yaml
+
+  # Points at the SAME, EXISTING Alertmanager the primary Prometheus already
+  # uses (../prometheus.yaml ConfigMap: `alerting.alertmanagers[0].
+  # static_configs[0].targets: ['alertmanager:9093']). Service
+  # `alertmanager` in `monitoring`, port 9093 (named `http`), confirmed
+  # read-only against ../alertmanager.yaml — this Service selects
+  # `app: alertmanager` and stays stable across whichever backend
+  # (the legacy Deployment, currently scaled to 0, or the live 3-replica
+  # alertmanager-statefulset.yaml) is actually serving traffic, so pointing
+  # here rather than at a specific Pod or the StatefulSet directly is
+  # correct regardless of the in-flight Deployment->StatefulSet cutover
+  # documented in ../alertmanager-statefulset.yaml.
+  alerting:
+    alertmanagers:
+      - name: alertmanager
+        namespace: monitoring
+        port: http
+        pathPrefix: /
+        scheme: http
+        timeout: 10s
+        apiVersion: v2
+
+  podMetadata:
+    labels:
+      app: rules-eval
+      app.kubernetes.io/name: rules-eval
+      app.kubernetes.io/component: monitoring
+      app.kubernetes.io/part-of: enclii
+
+  # Pod + container securityContext mirroring other monitoring workloads in
+  # this namespace (kube-state-metrics.yaml, node-exporter.yaml): nonroot,
+  # fixed UID/GID 65534 (nobody), RuntimeDefault seccomp. The operator applies
+  # this to BOTH the prometheus container and the config-reloader sidecar it
+  # injects — there is no separate per-sidecar securityContext field on this
+  # CRD, which is why `resources.limits`/`requests` above and this
+  # securityContext both need to be compatible with the config-reloader's own
+  # (much smaller) footprint too; see the README's acceptance-test section
+  # for how to confirm the sidecar comes up healthy under these constraints.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+  containers:
+    - name: prometheus
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop:
+            - ALL
+    # config-reloader is operator-injected by name; this patches its
+    # securityContext + resources without needing to know its image (the
+    # operator sets that from the --prometheus-config-reloader flag on the
+    # operator Deployment, already pinned by digest there).
+    - name: config-reloader
+      resources:
+        requests:
+          memory: 32Mi
+          cpu: 10m
+        limits:
+          memory: 64Mi
+          cpu: 50m
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
