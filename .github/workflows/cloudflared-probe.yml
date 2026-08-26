@@ -103,11 +103,35 @@ jobs:
           cache-from: type=gha,scope=cloudflared-probe
           cache-to: type=gha,mode=max,scope=cloudflared-probe
 
+      # Keyless signing needs GitHub's ambient OIDC endpoint, Fulcio and Rekor all
+      # at once. A transient hiccup fails AFTER the image is pushed, stranding the
+      # run before anything downstream — the crea-frontend 2026-08-26 failure
+      # (run 33010085743, non-JSON from the OIDC endpoint; a plain rerun fixed it).
+      # Retry the sign call only; the push above is already done and never repeats.
       - name: Sign image (keyless, Fulcio/Rekor)
         env:
           COSIGN_EXPERIMENTAL: "true"
+          IMAGE_REF: ghcr.io/madfam-org/enclii/cloudflared-probe@${{ steps.build.outputs.digest }}
         run: |
-          cosign sign --yes "ghcr.io/madfam-org/enclii/cloudflared-probe@${{ steps.build.outputs.digest }}"
+          set -euo pipefail
+          signed=0
+          for wait in 0 20 60; do
+            if [ "$wait" -gt 0 ]; then
+              echo "::warning::cosign sign failed for ${IMAGE_REF} (transient OIDC/Fulcio/Rekor?); retrying in ${wait}s..."
+              sleep "$wait"
+            fi
+            if cosign sign --yes "${IMAGE_REF}"; then
+              signed=1
+              break
+            fi
+          done
+          if [ "$signed" -ne 1 ]; then
+            echo "::error::cosign sign failed 3 times for ${IMAGE_REF}."
+            echo "::error::The image was BUILT AND PUSHED but is NOT signed, so it will not be"
+            echo "::error::pinned and ArgoCD will not roll it: the live host is still serving the"
+            echo "::error::PREVIOUS build even though this commit is on main. Rerun the failed jobs."
+            exit 1
+          fi
 
       - name: Surface digest in run summary
         run: |
