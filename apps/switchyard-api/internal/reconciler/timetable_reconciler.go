@@ -253,13 +253,15 @@ func (r *TimetableReconciler) buildCronJob(job *types.CronJob, name, namespace s
 							RestartPolicy:      corev1.RestartPolicyNever,
 							ServiceAccountName: rc.ServiceAccountName,
 							ImagePullSecrets:   rc.ImagePullSecrets,
+							SecurityContext:    rc.PodSecurityContext,
 							Containers: []corev1.Container{
 								{
-									Name:    "job",
-									Image:   rc.Image,
-									Command: []string{"/bin/sh", "-c", job.Command},
-									Env:     rc.Env,
-									EnvFrom: rc.EnvFrom,
+									Name:            "job",
+									Image:           rc.Image,
+									Command:         []string{"/bin/sh", "-c", job.Command},
+									Env:             rc.Env,
+									EnvFrom:         rc.EnvFrom,
+									SecurityContext: rc.ContainerSecurityContext,
 								},
 							},
 						},
@@ -311,6 +313,17 @@ func (r *TimetableReconciler) cronJobNeedsUpdate(existing *batchv1.CronJob, job 
 	}
 
 	if !typedSlicesEqual(podSpec.ImagePullSecrets, rc.ImagePullSecrets) {
+		return true
+	}
+
+	// Inherited security contexts (nil-safe pointer comparison): a change in the
+	// service's securityContext must propagate, or job pods drift out of
+	// admission-policy compliance.
+	if !reflect.DeepEqual(podSpec.SecurityContext, rc.PodSecurityContext) {
+		return true
+	}
+	if len(podSpec.Containers) > 0 &&
+		!reflect.DeepEqual(podSpec.Containers[0].SecurityContext, rc.ContainerSecurityContext) {
 		return true
 	}
 
@@ -431,13 +444,15 @@ func (r *TimetableReconciler) buildOneOffJob(job *types.OneOffJob, namespace str
 					RestartPolicy:      corev1.RestartPolicyNever,
 					ServiceAccountName: rc.ServiceAccountName,
 					ImagePullSecrets:   rc.ImagePullSecrets,
+					SecurityContext:    rc.PodSecurityContext,
 					Containers: []corev1.Container{
 						{
-							Name:    "job",
-							Image:   rc.Image,
-							Command: []string{"/bin/sh", "-c", job.Command},
-							Env:     rc.Env,
-							EnvFrom: rc.EnvFrom,
+							Name:            "job",
+							Image:           rc.Image,
+							Command:         []string{"/bin/sh", "-c", job.Command},
+							Env:             rc.Env,
+							EnvFrom:         rc.EnvFrom,
+							SecurityContext: rc.ContainerSecurityContext,
 						},
 					},
 				},
@@ -461,6 +476,14 @@ type jobRuntimeContext struct {
 	EnvFrom            []corev1.EnvFromSource
 	ServiceAccountName string
 	ImagePullSecrets   []corev1.LocalObjectReference
+	// Security contexts are inherited from the service Deployment so job pods
+	// pass the same admission policies (Kyverno restrict-capabilities /
+	// require-run-as-non-root) that the service itself passes. A CronJob whose
+	// pods declared no securityContext has been DENIED admission in this
+	// cluster before (karafiel #210) — without this, jobs would dispatch and
+	// then sit podless.
+	PodSecurityContext       *corev1.PodSecurityContext
+	ContainerSecurityContext *corev1.SecurityContext
 }
 
 // resolveJobRuntimeContext derives the execution context for a timetable job
@@ -548,6 +571,7 @@ func runtimeContextFromDeployment(deployment *appsv1.Deployment, explicitImage s
 		Image:              explicitImage,
 		ServiceAccountName: podSpec.ServiceAccountName,
 		ImagePullSecrets:   podSpec.ImagePullSecrets,
+		PodSecurityContext: podSpec.SecurityContext,
 	}
 
 	if len(podSpec.Containers) > 0 {
@@ -557,6 +581,7 @@ func runtimeContextFromDeployment(deployment *appsv1.Deployment, explicitImage s
 		}
 		rc.Env = first.Env
 		rc.EnvFrom = first.EnvFrom
+		rc.ContainerSecurityContext = first.SecurityContext
 	}
 
 	if rc.Image == "" {

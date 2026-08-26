@@ -439,6 +439,22 @@ func TestCronJobNeedsUpdate(t *testing.T) {
 // serviceDeployment builds a Deployment shaped like the service reconciler's
 // manifests (see manifest.go generateManifests): the pod runs the release
 // image with env, envFrom and imagePullSecrets, named after the service.
+// testPodSC / testContainerSC mirror the securityContext pair every service
+// Deployment carries (manifest.go) — the pair Kyverno admission requires.
+func testPodSC() *corev1.PodSecurityContext {
+	runAsNonRoot := true
+	uid := int64(1000)
+	return &corev1.PodSecurityContext{RunAsNonRoot: &runAsNonRoot, RunAsUser: &uid}
+}
+
+func testContainerSC() *corev1.SecurityContext {
+	priv := false
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: &priv,
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+	}
+}
+
 func serviceDeployment(namespace, name string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -447,6 +463,7 @@ func serviceDeployment(namespace, name string) *appsv1.Deployment {
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "api-sa",
 					ImagePullSecrets:   []corev1.LocalObjectReference{{Name: "ghcr-credentials"}},
+					SecurityContext:    testPodSC(),
 					Containers: []corev1.Container{
 						{
 							Name:  name,
@@ -457,6 +474,7 @@ func serviceDeployment(namespace, name string) *appsv1.Deployment {
 							EnvFrom: []corev1.EnvFromSource{
 								{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "project-secrets"}}},
 							},
+							SecurityContext: testContainerSC(),
 						},
 					},
 				},
@@ -477,11 +495,13 @@ func TestRuntimeContextFromDeployment(t *testing.T) {
 			deployment:    serviceDeployment("myproj", "api"),
 			explicitImage: "",
 			expected: jobRuntimeContext{
-				Image:              "ghcr.io/org/api:v3",
-				Env:                []corev1.EnvVar{{Name: "DATABASE_URL", Value: "postgres://db"}},
-				EnvFrom:            []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "project-secrets"}}}},
-				ServiceAccountName: "api-sa",
-				ImagePullSecrets:   []corev1.LocalObjectReference{{Name: "ghcr-credentials"}},
+				Image:                    "ghcr.io/org/api:v3",
+				Env:                      []corev1.EnvVar{{Name: "DATABASE_URL", Value: "postgres://db"}},
+				EnvFrom:                  []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "project-secrets"}}}},
+				ServiceAccountName:       "api-sa",
+				ImagePullSecrets:         []corev1.LocalObjectReference{{Name: "ghcr-credentials"}},
+				PodSecurityContext:       testPodSC(),
+				ContainerSecurityContext: testContainerSC(),
 			},
 		},
 		{
@@ -489,11 +509,13 @@ func TestRuntimeContextFromDeployment(t *testing.T) {
 			deployment:    serviceDeployment("myproj", "api"),
 			explicitImage: "migrate/migrate:v4",
 			expected: jobRuntimeContext{
-				Image:              "migrate/migrate:v4",
-				Env:                []corev1.EnvVar{{Name: "DATABASE_URL", Value: "postgres://db"}},
-				EnvFrom:            []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "project-secrets"}}}},
-				ServiceAccountName: "api-sa",
-				ImagePullSecrets:   []corev1.LocalObjectReference{{Name: "ghcr-credentials"}},
+				Image:                    "migrate/migrate:v4",
+				Env:                      []corev1.EnvVar{{Name: "DATABASE_URL", Value: "postgres://db"}},
+				EnvFrom:                  []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "project-secrets"}}}},
+				ServiceAccountName:       "api-sa",
+				ImagePullSecrets:         []corev1.LocalObjectReference{{Name: "ghcr-credentials"}},
+				PodSecurityContext:       testPodSC(),
+				ContainerSecurityContext: testContainerSC(),
 			},
 		},
 		{
