@@ -516,13 +516,22 @@ def test_config_is_readable_by_an_unprivileged_container_user(tmp_path):
     """
     write(tmp_path, configmap(MINIMAL))
     probe = tmp_path / "modes.txt"
+    # Read the modes in Python, not with stat(1): `stat -f` means "format" on
+    # BSD/macOS but "filesystem info" on GNU/Linux, where it SUCCEEDS and
+    # silently defeats a `||` fallback. That portability trap failed this very
+    # test on the CI runner while the code under test was already correct.
+    reader = (
+        "import os,stat,sys;"
+        "d=sys.argv[1];f=os.path.join(d,sys.argv[2]);"
+        "open(sys.argv[3],'w').write("
+        "'%o %o' % (stat.S_IMODE(os.stat(d).st_mode),"
+        "stat.S_IMODE(os.stat(f).st_mode)))"
+    )
     code, _, _ = run_script(
         tmp_path,
         env={
             "ENCLII_AMTOOL": (
-                f"sh -c 'stat -f %Lp {{dir}} {{dir}}/{{name}} "
-                f"2>/dev/null || stat -c %a {{dir}} {{dir}}/{{name}}' "
-                f"> {probe}"
+                f"{sys.executable} -c \"{reader}\" {{dir}} {{name}} {probe}"
             )
         },
     )
@@ -530,8 +539,7 @@ def test_config_is_readable_by_an_unprivileged_container_user(tmp_path):
     modes = probe.read_text().split()
     assert len(modes) == 2, f"expected dir and file modes, got {modes!r}"
     dir_mode, file_mode = modes
-    assert dir_mode[-1] in "5744567", f"temp dir {dir_mode} not traversable by others"
-    assert int(dir_mode, 8) & 0o001, f"temp dir {dir_mode} lacks o+x"
+    assert int(dir_mode, 8) & 0o001, f"temp dir {dir_mode} lacks o+x (not traversable)"
     assert int(file_mode, 8) & 0o004, f"config file {file_mode} lacks o+r"
 
 
