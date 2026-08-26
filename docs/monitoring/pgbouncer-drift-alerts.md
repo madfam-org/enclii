@@ -2,22 +2,18 @@
 
 Availability remediation program, Tier 0.6 (`internal-devops/roadmaps/2026-08-26-availability-remediation-9999.md`).
 
-## Status: NOT YET INTEGRATED
+## Status: INTEGRATED (2026-08-26)
 
-These three rules are **not applied to the live Prometheus config**. They are
-delivered here as a snippet because another in-flight branch owns every file
-under `infra/k8s/production/monitoring/` at the time this checker was built.
-Once that branch (Tier 0.3, resurrecting the dead `PrometheusRule` set) lands,
-append these three rules into the `enclii-platform` group in
-`infra/k8s/production/monitoring/prometheus.yaml` (the same
-`enclii-alerts.yml` block that already holds `SwitchyardAPIDown`,
-`PostgresDown`, etc.), matching that file's existing `groups[].rules[]`
-structure exactly, and delete this status section.
+The three rules below are live in the `enclii-platform` group of
+`infra/k8s/production/monitoring/prometheus.yaml` (added after the Tier-0.3
+branch, #440, landed — it owned that file while this checker was built). The
+YAML in this doc is retained as rationale + reference; **the config file is
+the source of truth** if the two ever diverge.
 
 The live Alertmanager config (`infra/k8s/production/monitoring/alertmanager.yaml`)
 routes `critical-receiver` and `warning-receiver` to both `telegram_configs`
-and `slack_configs` today — this doc does not assume a single channel; check
-that file at integration time for the current routing.
+and `slack_configs`; the Telegram side stays inert until Tier 0.1's arming
+steps (Vault token + chat_id) complete.
 
 ## What this closes
 
