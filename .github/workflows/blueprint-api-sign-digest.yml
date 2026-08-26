@@ -71,8 +71,30 @@ jobs:
           set -euo pipefail
           DIGEST="${DIGEST_INPUT#sha256:}"
           REF="${IMAGE}@sha256:${DIGEST}"
+          # Keyless signing needs GitHub's ambient OIDC endpoint, Fulcio and Rekor
+          # all at once, and a transient hiccup in any of them fails the step. That
+          # is the crea-frontend 2026-08-26 failure (run 33010085743: the OIDC
+          # endpoint returned non-JSON; a plain rerun fixed it). Retry the sign.
+          sign_with_retry() {
+            local ref="$1" signed=0 wait
+            for wait in 0 20 60; do
+              if [ "$wait" -gt 0 ]; then
+                echo "::warning::cosign sign failed for ${ref} (transient OIDC/Fulcio/Rekor?); retrying in ${wait}s..."
+                sleep "$wait"
+              fi
+              if cosign sign --yes "${ref}"; then
+                signed=1
+                break
+              fi
+            done
+            if [ "$signed" -ne 1 ]; then
+              echo "::error::cosign sign failed 3 times for ${ref}; the digest stays UNSIGNED and"
+              echo "::error::Kyverno will refuse to admit it. Rerun this workflow."
+              return 1
+            fi
+          }
           echo "Signing ${REF} (reason: ${REASON})"
-          cosign sign --yes "${REF}"
+          sign_with_retry "${REF}"
           cosign verify \
             --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \

@@ -133,14 +133,38 @@ jobs:
         with:
           cosign-release: v2.4.3
 
+      # Keyless signing needs GitHub's ambient OIDC endpoint, Fulcio and Rekor all
+      # at once. A transient hiccup fails AFTER the image is pushed, stranding the
+      # run before anything downstream — the crea-frontend 2026-08-26 failure
+      # (run 33010085743, non-JSON from the OIDC endpoint; a plain rerun fixed it).
+      # Retry the sign call only; the push above is already done and never repeats.
       - name: Sign image (keyless)
         if: steps.meta.outputs.push_image == 'true'
         env:
           COSIGN_EXPERIMENTAL: "1"
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          set -euo pipefail
           # Sign by digest, not tag — tags are mutable, digests aren't.
-          cosign sign --yes "${IMAGE_NAME}@${DIGEST}"
+          IMAGE_REF="${IMAGE_NAME}@${DIGEST}"
+          signed=0
+          for wait in 0 20 60; do
+            if [ "$wait" -gt 0 ]; then
+              echo "::warning::cosign sign failed for ${IMAGE_REF} (transient OIDC/Fulcio/Rekor?); retrying in ${wait}s..."
+              sleep "$wait"
+            fi
+            if cosign sign --yes "${IMAGE_REF}"; then
+              signed=1
+              break
+            fi
+          done
+          if [ "$signed" -ne 1 ]; then
+            echo "::error::cosign sign failed 3 times for ${IMAGE_REF}."
+            echo "::error::The image was BUILT AND PUSHED but is NOT signed, so it will not be"
+            echo "::error::pinned and ArgoCD will not roll it: the live host is still serving the"
+            echo "::error::PREVIOUS build even though this commit is on main. Rerun the failed jobs."
+            exit 1
+          fi
 
       - name: Summary
         run: |

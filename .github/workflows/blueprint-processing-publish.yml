@@ -88,12 +88,37 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.7.0
 
+      # Keyless signing needs GitHub's ambient OIDC endpoint, Fulcio and Rekor all
+      # at once. A transient hiccup here fails AFTER the image is pushed but
+      # BEFORE the digest pin, so ArgoCD never rolls and the live host keeps
+      # serving the previous build while main looks green — the crea-frontend
+      # 2026-08-26 failure (run 33010085743, non-JSON from the OIDC endpoint;
+      # a plain rerun fixed it). Retry the sign call only; the push above is
+      # already done and never repeats.
       - name: Sign processing image
         env:
           COSIGN_EXPERIMENTAL: "true"
+          IMAGE_REF: ${{ env.IMAGE_PREFIX }}/processing@${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          cosign sign --yes "${{ env.IMAGE_PREFIX }}/processing@${{ steps.build.outputs.digest }}"
+          signed=0
+          for wait in 0 20 60; do
+            if [ "$wait" -gt 0 ]; then
+              echo "::warning::cosign sign failed for ${IMAGE_REF} (transient OIDC/Fulcio/Rekor?); retrying in ${wait}s..."
+              sleep "$wait"
+            fi
+            if cosign sign --yes "${IMAGE_REF}"; then
+              signed=1
+              break
+            fi
+          done
+          if [ "$signed" -ne 1 ]; then
+            echo "::error::cosign sign failed 3 times for ${IMAGE_REF}."
+            echo "::error::The image was BUILT AND PUSHED but is NOT signed, so it will not be"
+            echo "::error::pinned and ArgoCD will not roll it: the live host is still serving the"
+            echo "::error::PREVIOUS build even though this commit is on main. Rerun the failed jobs."
+            exit 1
+          fi
 
       - name: Install kustomize
         run: |
@@ -117,6 +142,7 @@ jobs:
           python3 scripts/enable_processing_prod_overlay.py --execute
 
       - name: Commit & push GitOps changes
+        id: pin_commit
         working-directory: blueprint-harvester
         env:
           REASON: ${{ inputs.reason }}
@@ -132,3 +158,35 @@ jobs:
           git commit -m "chore(gitops): pin processing digest from Enclii blueprint-processing-publish" \
             -m "Reason: ${REASON}"
           git push
+
+      # The silent-stale-deploy guard. The dangerous state is not "a step failed"
+      # but "the image was pushed and the digest pin never landed": GHCR has the
+      # image, the run looks like an ordinary failure, ArgoCD was never handed a
+      # new digest, and the live host quietly keeps serving the previous build.
+      # crea-frontend hit exactly this on 2026-08-26 (run 33010085743) and it was
+      # caught only by an external census deploy-gate. Make the state name itself.
+      - name: Guard against silent stale deploy
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PIN_OUTCOME: ${{ steps.pin_commit.outcome }}
+        run: |
+          set -euo pipefail
+          echo "build=${BUILD_OUTCOME} pin=${PIN_OUTCOME}"
+          if [ "${BUILD_OUTCOME}" != "success" ]; then
+            echo "No image was pushed; nothing to guard."
+            exit 0
+          fi
+          if [ "${PIN_OUTCOME}" = "success" ]; then
+            echo "Digest pin completed; the deployed digest matches this run."
+            exit 0
+          fi
+          echo "::error title=Image pushed but NOT pinned/deployed::The image for this commit was"
+          echo "::error::built and pushed to GHCR, but the digest pin did not complete"
+          echo "::error::(build=${BUILD_OUTCOME}, pin=${PIN_OUTCOME})."
+          echo "::error::"
+          echo "::error::ArgoCD was never handed a new digest, so THE LIVE HOST IS STILL SERVING"
+          echo "::error::THE PREVIOUS BUILD even though this run otherwise looks done."
+          echo "::error::"
+          echo "::error::Fix: rerun the failed jobs (gh run rerun <run-id> --failed)."
+          exit 1
