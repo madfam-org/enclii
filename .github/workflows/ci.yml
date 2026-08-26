@@ -298,6 +298,51 @@ jobs:
       - name: Run ARC watchdog + pool-health tests
         run: pytest tests/scripts/test_stuck_runner_watchdog.py tests/scripts/test_arc_pool_health.py -v
 
+  alertmanager-config-lint:
+    name: Alertmanager config loadability
+    runs-on: ubuntu-latest
+    # Cheap (sub-second). Prevents the 2026-08-26 class: an Alertmanager
+    # config that is valid YAML, renders under kustomize and syncs Healthy in
+    # Argo, but is REJECTED AT LOAD so the process exits 1 and the pod
+    # crashloops. A `chat_id: 0` committed as a deliberate "inert sentinel"
+    # did exactly that — v0.26.0 validates it in TelegramConfig.UnmarshalYAML,
+    # not at send time. alertmanager-2 crashlooped ~170 times while pods 0/1
+    # stayed Ready only because they still held a 72-day-old config in memory:
+    # the whole estate was one eviction from having no alerting at all, and
+    # no probe or Argo status showed it.
+    #
+    # The lint runs structurally by default (PyYAML only) and additionally
+    # shells out to the REAL `amtool check-config` when ENCLII_AMTOOL is set,
+    # which exercises Alertmanager's own config.LoadFile path. See
+    # scripts/check-alertmanager-config.py for what each layer does and does
+    # not cover.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run Alertmanager config self-tests
+        run: pytest tests/scripts/test_check_alertmanager_config.py -v
+
+      - name: Run Alertmanager config loadability lint
+        # ENCLII_AMTOOL points the lint at the real validator from the same
+        # pinned image the StatefulSet runs, so CI validates against the exact
+        # version production loads. The structural layer already covers this
+        # if the pull fails, so an image-registry hiccup degrades the check
+        # rather than blocking the merge queue.
+        env:
+          ENCLII_AMTOOL: >-
+            docker run --rm --entrypoint /bin/amtool -v {dir}:/w:ro
+            docker.io/prom/alertmanager:v0.26.0
+            check-config /w/{name}
+        run: python3 scripts/check-alertmanager-config.py infra/k8s/
+
   intake-policy-parity:
     name: Intake/Vault-policy parity
     runs-on: ubuntu-latest

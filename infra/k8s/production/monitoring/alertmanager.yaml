@@ -46,55 +46,18 @@ data:
           - to: 'admin@madfam.io'
             send_resolved: true
 
-      # ===================================================================
-      # Telegram — availability remediation Tier 0.3
-      # (internal-devops/roadmaps/2026-08-26-availability-remediation-9999.md).
-      # Telegram is the operator's main channel; Slack below is kept as a
-      # secondary, pre-existing route.
-      #
-      # INERT until the operator completes Tier 0.1:
-      #   1. Create the bot via @BotFather, write its token to Vault at
-      #      secret/alertmanager, property telegram_bot_token (synced by
-      #      alertmanager-telegram-credentials.externalsecret.yaml into the
-      #      alertmanager-telegram-secret Secret this pod mounts at
-      #      /etc/alertmanager/telegram-bot-token).
-      #   2. Add the bot to the target chat/channel/group and resolve its
-      #      numeric chat_id (e.g. via https://api.telegram.org/bot<token>/
-      #      getUpdates after sending the bot a message, or @userinfobot for
-      #      a private chat).
-      #   3. Replace the chat_id: 0 placeholder below with that real,
-      #      nonzero chat_id in BOTH telegram_configs blocks. This step is a
-      #      config-code edit, not a Vault write: Alertmanager's chat_id
-      #      field has no file-based / secret-sourced variant (confirmed
-      #      against prometheus/alertmanager v0.26.0's config/notifiers.go —
-      #      TelegramConfig.ChatID is a plain required int64, unlike
-      #      BotToken which does support bot_token_file), and this repo has
-      #      no config-templating step that could inject a Vault-sourced
-      #      scalar into this literal at deploy time. Adding one is out of
-      #      scope for this program (no new moving parts).
-      #      chat_id: 0 is used (not a string placeholder) because
-      #      Alertmanager's decoder requires a real int64 here -- a
-      #      non-numeric placeholder fails `amtool check-config` outright.
-      #      0 is not a valid Telegram chat id, so this is unambiguously a
-      #      sentinel, not a value someone could mistake for real and leave
-      #      in place.
-      # Until both steps land, requests to the Telegram API will fail loudly
-      # in the alertmanager notification log rather than silently -- unlike
-      # the empty Slack webhook file this program exists to fix, an invalid
-      # bot token/chat_id produces an explicit send error, not silence.
-      # ===================================================================
+      # Telegram receivers return in ONE commit when BOTH prerequisites exist:
+      # a real chat_id (v0.26.0 rejects chat_id: 0 at config LOAD time with
+      # "missing chat_id on telegram_config" — there is no valid inert
+      # placeholder) and a populated Vault secret/alertmanager
+      # telegram_bot_token. Tracker: internal-devops issue #496 era
+      # roadmaps/2026-08-26-availability-remediation-9999.md Tier 0.1/0.2.
       - name: 'critical-receiver'
         email_configs:
           - to: 'admin@madfam.io'
             send_resolved: true
             headers:
               Subject: '[CRITICAL] {{ .CommonLabels.alertname }} - Enclii'
-        telegram_configs:
-          - bot_token_file: '/etc/alertmanager/telegram-bot-token'
-            chat_id: 0
-            message: '[CRITICAL] {{ .CommonLabels.alertname }}: {{ .CommonAnnotations.description }}'
-            parse_mode: ''
-            send_resolved: true
         slack_configs:
           - api_url_file: '/etc/alertmanager/slack-webhook-url'
             channel: '#alerts-critical'
@@ -108,12 +71,6 @@ data:
             send_resolved: true
             headers:
               Subject: '[WARNING] {{ .CommonLabels.alertname }} - Enclii'
-        telegram_configs:
-          - bot_token_file: '/etc/alertmanager/telegram-bot-token'
-            chat_id: 0
-            message: '[WARNING] {{ .CommonLabels.alertname }}: {{ .CommonAnnotations.description }}'
-            parse_mode: ''
-            send_resolved: true
         slack_configs:
           - api_url_file: '/etc/alertmanager/slack-webhook-url'
             channel: '#alerts-warning'
@@ -257,8 +214,11 @@ spec:
         - name: telegram-secret
           secret:
             # Populated by alertmanager-telegram-credentials.externalsecret.yaml.
-            # INERT (Secret has no data / pod mount 404s) until the operator
-            # completes Tier 0.1 — see the telegram_configs comment above.
+            # INERT: no telegram_configs consume it yet, and the Secret does
+            # not exist until the operator completes Tier 0.1. `optional: true`
+            # keeps a missing Secret from blocking startup. Mount kept so
+            # re-enabling Telegram is a config-only change — see the
+            # ExternalSecret's header for the sequence.
             secretName: alertmanager-telegram-secret
             optional: true
         - name: data
@@ -321,19 +281,10 @@ spec:
       name: cluster
   selector:
     app: alertmanager
----
-# AlertManager PDB — prevent simultaneous eviction during node drain
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: alertmanager-pdb
-  namespace: monitoring
-  labels:
-    app.kubernetes.io/name: alertmanager
-    app.kubernetes.io/component: monitoring
-    app.kubernetes.io/part-of: enclii
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app: alertmanager
+# NOTE: the Deployment-era `alertmanager-pdb` (minAvailable: 1) that used to
+# live here was removed 2026-08-26. It selected `app: alertmanager` — the same
+# label the HA StatefulSet's pods carry — so it overlapped
+# `alertmanager-statefulset-pdb` in alertmanager-statefulset.yaml. Two PDBs
+# selecting one pod makes the eviction API pick between them arbitrarily
+# (448 `MultiplePodDisruptionBudgets` events observed in production), so
+# disruption safety was undefined. The StatefulSet PDB is the surviving one.
