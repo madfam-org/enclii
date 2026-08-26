@@ -38,11 +38,11 @@ func TestJobsCommand_HasExpectedSubcommands(t *testing.T) {
 		subNames = append(subNames, sub.Name())
 	}
 
-	expectedSubs := []string{"list", "create", "get", "delete", "runs", "run-once"}
+	expectedSubs := []string{"list", "create", "get", "delete", "runs", "run-once", "logs"}
 	for _, name := range expectedSubs {
 		assert.Contains(t, subNames, name, "missing subcommand: %s", name)
 	}
-	assert.Len(t, cmd.Commands(), 6, "expected exactly 6 subcommands")
+	assert.Len(t, cmd.Commands(), 7, "expected exactly 7 subcommands")
 }
 
 func TestJobsListSubcommand(t *testing.T) {
@@ -178,10 +178,30 @@ func TestJobsRunOnceSubcommand(t *testing.T) {
 	serviceIDFlag := runOnceCmd.Flags().Lookup("service-id")
 	require.NotNil(t, serviceIDFlag)
 
-	// Optional flag with default
+	// Optional flags with defaults
 	timeoutFlag := runOnceCmd.Flags().Lookup("timeout")
 	require.NotNil(t, timeoutFlag)
 	assert.Equal(t, "3600", timeoutFlag.DefValue)
+
+	// --image is optional: default is the service's deployment image + env
+	imageFlag := runOnceCmd.Flags().Lookup("image")
+	require.NotNil(t, imageFlag)
+	assert.Equal(t, "", imageFlag.DefValue)
+	assert.Contains(t, imageFlag.Usage, "service's current deployment image")
+}
+
+func TestJobsLogsSubcommand(t *testing.T) {
+	cfg := &config.Config{
+		APIEndpoint: "https://api.test.dev",
+		APIToken:    "test-token",
+	}
+
+	cmd := NewJobsCommand(cfg)
+	logsCmd := findSubcommand(cmd, "logs")
+	require.NotNil(t, logsCmd, "logs subcommand should exist")
+
+	// Requires exactly 1 arg
+	assert.NotNil(t, logsCmd.Args, "logs subcommand should have args validation")
 }
 
 func TestServiceManagedCronJobNameUsesProjectPrefixForRoleServices(t *testing.T) {
@@ -278,4 +298,242 @@ func TestDecodeOrError_DecodesSuccessResponse(t *testing.T) {
 	err = decodeOrError(resp, &target)
 	require.NoError(t, err)
 	assert.Equal(t, "test-job", target["name"])
+}
+
+// --- jobs get: one-off fallback ---
+
+func TestRunJobsGet_FallsBackToOneOffOn404(t *testing.T) {
+	jobID := "660e8400-e29b-41d4-a716-446655440099"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cron-jobs/" + jobID:
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"cron job not found"}`))
+		case "/v1/one-off-jobs/" + jobID:
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"one_off_job": {
+					"id": "` + jobID + `",
+					"project_id": "550e8400-e29b-41d4-a716-446655440000",
+					"service_id": "550e8400-e29b-41d4-a716-446655440001",
+					"name": "db-migrate",
+					"command": "rails db:migrate",
+					"timeout": 300,
+					"status": "completed",
+					"exit_code": 0,
+					"created_at": "2026-03-19T02:00:00Z"
+				},
+				"k8s_job_name": "job-db-migrate-660e8400",
+				"namespace": "my-api"
+			}`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsGet(cfg, jobID)
+	require.NoError(t, err)
+}
+
+func TestRunJobsGet_BothNotFound(t *testing.T) {
+	jobID := "660e8400-e29b-41d4-a716-446655440099"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"not found"}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsGet(cfg, jobID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found (checked cron jobs and one-off jobs)")
+}
+
+// --- jobs list: one-off section ---
+
+func TestRunJobsList_IncludesOneOffJobs(t *testing.T) {
+	var cronCalled, oneOffCalled bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/projects/my-api/cron-jobs":
+			cronCalled = true
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"cron_jobs": [{
+					"id": "550e8400-e29b-41d4-a716-446655440001",
+					"name": "nightly-backup",
+					"schedule": "0 2 * * *"
+				}],
+				"total": 1
+			}`))
+		case "/v1/projects/my-api/one-off-jobs":
+			oneOffCalled = true
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"one_off_jobs": [{
+					"id": "660e8400-e29b-41d4-a716-446655440099",
+					"name": "db-migrate",
+					"status": "completed",
+					"exit_code": 0,
+					"created_at": "2026-03-19T02:00:00Z"
+				}],
+				"total": 1
+			}`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsList(cfg, "my-api")
+	require.NoError(t, err)
+	assert.True(t, cronCalled, "cron jobs endpoint should be called")
+	assert.True(t, oneOffCalled, "one-off jobs endpoint should be called")
+}
+
+func TestRunJobsList_ToleratesMissingOneOffEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/projects/my-api/cron-jobs":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"cron_jobs": [{
+					"id": "550e8400-e29b-41d4-a716-446655440001",
+					"name": "nightly-backup",
+					"schedule": "0 2 * * *"
+				}],
+				"total": 1
+			}`))
+		default:
+			// Old server: one-off listing endpoint does not exist.
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"not found"}`))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsList(cfg, "my-api")
+	require.NoError(t, err)
+}
+
+// --- jobs logs ---
+
+func TestRunJobsLogs_PrintsLogs(t *testing.T) {
+	jobID := "660e8400-e29b-41d4-a716-446655440099"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/one-off-jobs/"+jobID+"/logs", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"logs":   "migration complete\n",
+			"pod":    "job-db-migrate-660e8400-abc",
+			"status": "completed",
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsLogs(cfg, jobID)
+	require.NoError(t, err)
+}
+
+func TestRunJobsLogs_ShowsUnavailableMessage(t *testing.T) {
+	jobID := "660e8400-e29b-41d4-a716-446655440099"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"logs":    "",
+			"pod":     "",
+			"status":  "completed",
+			"message": "logs no longer available: the job's pods were cleaned up",
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsLogs(cfg, jobID)
+	require.NoError(t, err)
+}
+
+// --- jobs run-once: --image passthrough ---
+
+func TestRunJobsRunOnce_SendsImageWhenSet(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, "migrate/migrate:v4", body["image"])
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"one_off_job": {"id": "660e8400-e29b-41d4-a716-446655440099", "name": "schema-check", "command": "migrate status", "image": "migrate/migrate:v4", "status": "pending"}, "message": "One-off job created successfully"}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsRunOnce(cfg, "my-api", "schema-check", "migrate status", "550e8400-e29b-41d4-a716-446655440001", "migrate/migrate:v4", 300)
+	require.NoError(t, err)
+}
+
+func TestRunJobsRunOnce_OmitsImageWhenEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		_, hasImage := body["image"]
+		assert.False(t, hasImage, "image key should be omitted when not set")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"one_off_job": {"id": "660e8400-e29b-41d4-a716-446655440099", "name": "db-migrate", "command": "rails db:migrate", "status": "pending"}, "message": "One-off job created successfully"}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIEndpoint: server.URL,
+		APIToken:    "test-token",
+	}
+
+	err := runJobsRunOnce(cfg, "my-api", "db-migrate", "rails db:migrate", "550e8400-e29b-41d4-a716-446655440001", "", 300)
+	require.NoError(t, err)
 }
