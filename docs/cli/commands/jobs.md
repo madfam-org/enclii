@@ -27,7 +27,8 @@ The job's command then runs as `/bin/sh -c "<command>"` inside that context, so 
 Two deviations from the default:
 
 - `--image <ref>` (on `run-once`, or `image` on the API) overrides the container image but **still inherits** the service's env/secrets/service account. Use this to run a sibling tool (e.g. `migrate/migrate:v4`) against the service's configuration.
-- If the service's Deployment cannot be resolved (service never deployed, or deleted), the job falls back to a bare `busybox:latest` container with **no** environment. The reconciler logs a warning naming the reason. Commands that depend on the service's runtime will not work in this fallback -- deploy the service first.
+- Deployment resolution tries three names in order -- the exact service name, `<service>-web`, then `<namespace>-web` -- because fleet deployments are conventionally suffixed (`nauta` -> `nauta-web`, `tezca-api` -> `tezca-web`). The reconciler logs which name resolved.
+- If no Deployment resolves at any of those names (service never deployed, or deleted), the job falls back to a pinned `docker.io/library/busybox:1.36` container with **no** environment but a hardened security context (capabilities dropped, non-root, RuntimeDefault seccomp) so cluster admission policies accept it. The reconciler logs a warning naming the reason. Commands that depend on the service's runtime will not work in this fallback -- deploy the service first.
 
 Cron jobs get the same context resolution, re-evaluated on every reconcile pass: when the service deploys a new release, the CronJob's image and environment follow it.
 
@@ -41,7 +42,7 @@ pending ──(reconciler dispatches K8s Job)──> running ──> completed (
    └── waits until --run-at / run_at, if set
 ```
 
-- **pending**: recorded in the database, not yet dispatched (or waiting for its `run_at` time).
+- **pending**: recorded in the database, not yet dispatched (or waiting for its `run_at` time). A job cannot sit pending forever on a deterministic rejection: if the cluster's admission control denies the Job (e.g. a policy violation), the dispatch marks it **failed** and stores the denial verbatim in `failure_reason` rather than silently retrying. Transient errors (conflicts, webhook downtime, network) do keep retrying.
 - **running**: the Kubernetes Job was created in the project's namespace.
 - **completed** / **failed**: synced back from the Kubernetes Job outcome, with `ended_at` set. The recorded exit code is the Job-level outcome (`0` = completed, `1` = failed); per-command output and exact process exit codes are visible in the logs.
 
@@ -131,7 +132,8 @@ enclii jobs logs <job-id>
 
 Logs are read from the job's Kubernetes pod (located by the `enclii.dev/one-off-job-id` label; up to the last 1000 lines / 1 MiB). Two cases print an explanatory message with the job's status instead of logs:
 
-- the job is still **pending** (no pods scheduled yet), or
+- the job is still **pending** (no pods scheduled yet),
+- the job **failed before any pod existed** (admission denial) -- the stored `failure_reason` is printed, or
 - the pods were already **cleaned up** (Kubernetes Job TTL) -- the status and exit code in `jobs get` remain the durable record.
 
 ---
