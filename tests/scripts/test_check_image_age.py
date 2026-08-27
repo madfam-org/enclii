@@ -243,6 +243,42 @@ def test_implausible_created_timestamp_skips_with_warning_not_failure():
 # Cheap, but it's the most likely fragility point in the registry path.
 # ---------------------------------------------------------------------------
 
+def test_module_imports_without_requests_installed(tmp_path):
+    """Importing this script must never call sys.exit().
+
+    Regression guard for the collection break: the `requests` ImportError
+    handler used to `sys.exit(2)` at module scope, which aborted pytest
+    *collection* for all of tests/scripts/ (an INTERNALERROR, not a test
+    failure) on any machine without `requests`. Importing is a read-only act;
+    only main() may exit.
+    """
+    # The module is already imported at the top of this file — reaching here
+    # at all proves import didn't exit. Re-exec it to pin the behaviour even
+    # when `requests` IS installed locally.
+    spec2 = importlib.util.spec_from_file_location("check_image_age_reimport", SCRIPT)
+    assert spec2 is not None and spec2.loader is not None
+    m2 = importlib.util.module_from_spec(spec2)
+    sys.modules["check_image_age_reimport"] = m2
+    spec2.loader.exec_module(m2)  # must not raise SystemExit
+    assert hasattr(m2, "main")
+
+
+def test_missing_requests_fails_loudly_in_main(tmp_path, monkeypatch, capsys):
+    """With a token present, a missing `requests` is fatal — rc 2, not a
+    silent pass. Pairs with the test above: import is safe, main() is strict.
+    """
+    k_dir = tmp_path / "infra" / "k8s" / "production"
+    k_dir.mkdir(parents=True)
+    _write_kustomization(k_dir)
+
+    monkeypatch.setattr(mod, "requests", None)
+    monkeypatch.setenv("GITHUB_TOKEN", "dummy-token")
+
+    rc = mod.main(["--repo-root", str(tmp_path)])
+    assert rc == 2
+    assert "requires `requests`" in capsys.readouterr().err
+
+
 def test_parse_iso8601_handles_nanoseconds_and_z():
     dt = mod._parse_iso8601("2026-04-15T18:22:43.987654321Z")
     assert dt is not None

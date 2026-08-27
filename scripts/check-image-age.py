@@ -60,8 +60,18 @@ import yaml
 try:
     import requests
 except ImportError:  # pragma: no cover - environment guard
-    print("ERROR: this script requires `requests`. `pip install requests`.", file=sys.stderr)
-    sys.exit(2)
+    # Deliberately do NOT exit here. This module is imported by
+    # tests/scripts/test_check_image_age.py, and a module-level sys.exit()
+    # aborts pytest *collection* for the whole directory rather than failing a
+    # single test. `requests` is only needed on the registry path, so we defer
+    # the hard failure to main(), which is the only caller that reaches the
+    # network. The pure-logic helpers (parse_kustomization, evaluate,
+    # _parse_iso8601) stay importable and testable without it.
+    requests = None  # type: ignore[assignment]
+
+REQUESTS_MISSING_MSG = (
+    "ERROR: this script requires `requests`. `pip install requests`."
+)
 
 
 GHCR_HOST = "ghcr.io"
@@ -352,6 +362,13 @@ def main(argv: list[str] | None = None) -> int:
             "This is fine for fork PRs; ops should ensure CI has a token."
         )
         return 0
+
+    # Only the registry path needs `requests`. Everything above this line
+    # (discovery, graceful token skip) works without it, so this is the first
+    # point where a missing dependency is genuinely fatal.
+    if requests is None:
+        print(REQUESTS_MISSING_MSG, file=sys.stderr)
+        return 2
 
     exemptions = _read_exemptions()
     now = datetime.now(timezone.utc)

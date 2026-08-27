@@ -29,6 +29,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "check-externalsecret-writers.py"
 
 
+# The script under test exits at import time if PyYAML is absent, which would
+# abort collection for this whole directory rather than failing one file. Skip
+# cleanly instead. (Same guard as tests/scripts/test_production_readiness_ratchet.py.)
+pytest.importorskip("yaml", exc_type=ImportError)
+
 # Load the module under test by path (it has hyphens in its name, so we
 # can't `import` it directly).
 spec = importlib.util.spec_from_file_location("check_es_writers", SCRIPT)
