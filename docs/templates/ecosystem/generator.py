@@ -25,6 +25,45 @@ LABSPACE = Path(os.environ.get("MADFAM_LABSPACE", "/Users/aldoruizluna/labspace"
 
 
 # ---------------------------------------------------------------------------
+# Enclii-first legacy-raw banner
+#
+# `internal-devops/scripts/check-enclii-first-docs.py` scans every repo's root
+# ECOSYSTEM.md. Any line matching its RAW_TOOL_PATTERNS fails the guard unless
+# either (a) the surrounding ±4-line window contains an ALLOW_TERM, or (b) the
+# document carries this marker anywhere in its text, which whitelists the file
+# wholesale.
+#
+# Rendered ECOSYSTEM.md files DO contain such a line — the "Break-glass-only
+# access" paragraph in ENCLII_CLI_REF names `kubectl`, `helm`, and
+# `docker exec`. Today that line survives only on route (a): "break-glass" and
+# "bootstrap" happen to sit inside the context window. That is incidental, not
+# designed — an unrelated edit to the surrounding prose silently re-arms the
+# guard fleet-wide.
+#
+# Every fleet ECOSYSTEM.md already carries this banner, applied by hand
+# (madfam-org/forj#134 being the most recent). The generator never emitted it,
+# so each re-render dropped it and someone re-added it downstream. Emitting it
+# here makes generator output self-sufficient under route (b) and ends the
+# hand-patch loop.
+#
+# The text below is byte-identical to the banner in all fleet ECOSYSTEM.md
+# files as of 2026-08-27. The marker string must stay exactly in sync with
+# LEGACY_RAW_MARKER in the checker.
+# ---------------------------------------------------------------------------
+
+LEGACY_RAW_MARKER = "MADFAM-ENCLII-FIRST-LEGACY-RAW v1"
+
+LEGACY_RAW_BANNER = dedent(f"""
+    > [!IMPORTANT]
+    > {LEGACY_RAW_MARKER}: This document contains legacy raw infrastructure command examples.
+    > Routine production operations must use Enclii web, API, or CLI. Treat raw
+    > `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+    > access as platform bootstrap or documented break-glass only, and record any
+    > missing Enclii adapter gap.
+""").strip()
+
+
+# ---------------------------------------------------------------------------
 # Shared boilerplate — embedded verbatim in every ECOSYSTEM.md so each repo
 # is truly self-contained.
 # ---------------------------------------------------------------------------
@@ -260,6 +299,8 @@ def render(repo: str, meta: dict) -> str:
     cli_ref = ENCLII_CLI_REF.replace("{SERVICE}", service_for_ops)
 
     return f"""# {repo} — Ecosystem Context
+
+{LEGACY_RAW_BANNER}
 
 > **{meta.get("tagline", "").strip()}**
 
