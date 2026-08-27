@@ -96,6 +96,11 @@ spec:
           port: 80
         - protocol: TCP
           port: 6443
+        # WHOIS (registrar checks in CI watchers — .mx publishes no RDAP,
+        # so tcp/43 is the only registrar read; internal-devops
+        # domain-transfer-watch.yml, PR #504). Read-only protocol, additive.
+        - protocol: TCP
+          port: 43
     # Git SSH (for private repos)
     - to:
         - ipBlock:
