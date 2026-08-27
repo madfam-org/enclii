@@ -171,12 +171,12 @@ REPOS = {
             'namespace': 'yantra4d',
         },
         'upstream_deps': [
-            'geom-core (C++ geometry analysis + WASM bindings)',
+            'geom-core (C++ geometry analysis + WASM bindings) — **planned, not yet wired**;\n  geometry is currently implemented in-house (Python SDF engine + OpenSCAD/CadQuery)',
             'postgres (catalog, user designs)',
-            'cloudflare R2 (asset storage)',
+            'cloudflare R2 (asset storage) — **planned, not yet wired**; render artifacts are\n  currently written to ephemeral local disk (garbage-collected), not R2',
             'janua (auth)',
             'dhanam (billing for paid features)',
-            'selva (LLM-assisted design)',
+            'selva (LLM-assisted design) — inference routed through the Selva gateway\n  (`SELVA_BASE_URL`); direct provider calls are disallowed',
         ],
         'downstream_consumers': [
             'forj (WIRED — the catalog materializer reads `GET /api/projects` + `GET /api/projects/<slug>/storefront` and drives `POST /api/render` for glb+stl, authenticated as the `forj-catalog-materializer` Janua client_credentials client with scope `yantra4d:render`)',
