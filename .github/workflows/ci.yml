@@ -559,6 +559,34 @@ jobs:
               continue
             fi
             echo "▶ Testing $mod"
+            # Pre-fetch modules with retry BEFORE `go test`.
+            #
+            # `go test` downloads dependencies implicitly, so a transient
+            # proxy.golang.org fault surfaces as `FAIL <pkg> [setup failed]`
+            # with no `--- FAIL` line anywhere -- a network flake wearing the
+            # costume of a broken test. Proven on run 33027289600, where four
+            # switchyard-api packages "failed" with:
+            #   read "https://proxy.golang.org/.../internal/v4a/@v/v1.4.39.zip":
+            #   stream error: stream ID 75; INTERNAL_ERROR; received from peer
+            # while every test that actually executed passed. The module was
+            # intact; the fetch was not.
+            #
+            # Retrying the download separately makes the fetch failure loud and
+            # correctly attributed, and keeps a blip from reading as red tests.
+            DOWNLOAD_OK=0
+            for attempt in 1 2 3; do
+              if (cd "$mod" && go mod download all); then
+                DOWNLOAD_OK=1
+                break
+              fi
+              echo "  ⏳ go mod download attempt $attempt failed, retrying..." >&2
+              sleep $((attempt * 10))
+            done
+            if [ "$DOWNLOAD_OK" -ne 1 ]; then
+              echo "::error::go mod download failed for $mod after 3 attempts (module proxy unreachable)" >&2
+              TEST_FAILED=1
+              continue
+            fi
             (cd "$mod" && go test -v -race -coverprofile=coverage.out -covermode=atomic ./...) || TEST_FAILED=1
             if [ -f "$mod/coverage.out" ]; then
               COVERAGE_FILES="$COVERAGE_FILES,$mod/coverage.out"
