@@ -147,6 +147,7 @@ jobs:
     environment: production
     outputs:
       runner_label: ${{ steps.color.outputs.runner_label }}
+      target_color: ${{ steps.color.outputs.target }}
     steps:
       - name: Check KUBECONFIG secret
         id: check-secret
@@ -238,16 +239,22 @@ jobs:
           INPUT_COLOR="${{ github.event.inputs.target_color }}"
 
           if [[ "${INPUT_COLOR}" == "auto" ]] || [[ -z "${INPUT_COLOR}" ]]; then
-            # Get current active color
             CURRENT=$(kubectl get autoscalingrunnerset -n arc-runners -o json 2>/dev/null | \
               jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' | \
               grep -oE '(blue|green)' | head -1 || echo "blue")
 
-            if [[ "${CURRENT}" == "blue" ]]; then
-              TARGET="green"
-            else
-              TARGET="blue"
-            fi
+            # PINNED TO BLUE on auto runs — deliberately NOT a blue/green flip
+            # (owner ruling 2026-08-27). The flip was the second half of the
+            # 100%-failure mechanism this PR fixes, and it was also operationally
+            # wrong: green is capped at maxRunners=2 (a standby/bootstrap set),
+            # while blue carries the whole estate (values-runner-set-blue.yaml:
+            # "the active scale set during normal operations"; estate workflows
+            # reference madfam-runners-blue throughout). An auto-flip would move
+            # all of CI onto a 2-runner pool after every arc-manifest merge.
+            # Auto runs therefore redeploy blue in place; switching to green is
+            # a DELIBERATE act via workflow_dispatch target_color=green, which
+            # still works below for real blue/green tests or emergencies.
+            TARGET="blue"
           else
             TARGET="${INPUT_COLOR}"
           fi
@@ -311,8 +318,21 @@ jobs:
           kubectl rollout status deployment/arc-controller-gha-rs-controller -n arc-system --timeout=2m
 
       - name: Verify runners
+        env:
+          # Tell the verifier which colour the deploy job actually switched to.
+          #
+          # verify-runners.sh defaults to `blue` (ARC_EXPECTED_ACTIVE_COLOR:-blue),
+          # but "Determine target color" flips AWAY from the active colour on
+          # every auto run: active=blue -> target=green. So the switch would
+          # activate green and this check would then assert blue, failing 100%
+          # of the time. That is exactly what happened -- byte-identical
+          #   [FAIL] Active scale set is madfam-runners-green; expected madfam-runners-blue
+          # on runs 31077253211 (08-06), 31444399312 (08-11) and 33027289534
+          # (08-27): every ARC Self-Deploy run since 2026-05-20, the commit that
+          # introduced the hardcoded default. The knob existed but nothing set it.
+          ARC_EXPECTED_ACTIVE_COLOR: ${{ needs.deploy.outputs.target_color || 'blue' }}
         run: |
-          echo "Verifying runner registration..."
+          echo "Verifying runner registration (expecting active colour: ${ARC_EXPECTED_ACTIVE_COLOR})..."
           chmod +x infra/scripts/arc/verify-runners.sh
           ./infra/scripts/arc/verify-runners.sh
 
@@ -342,6 +362,16 @@ jobs:
     if: failure() && needs.deploy.result == 'success'
     # Rollback also needs private Kubernetes API reachability.
     runs-on: madfam-runners-blue
+    # The "Create rollback issue" step needs issues:write. Without it the job
+    # restores the runners correctly and THEN dies on the notification:
+    #   Unhandled error: HttpError: Resource not accessible by integration
+    #     - https://docs.github.com/rest/issues/issues#create-an-issue
+    # (run 33027289534, after `[SUCCESS] Active scale set: madfam-runners-blue`).
+    # A rollback nobody is told about is the failure mode this job exists to
+    # prevent, so grant the scope rather than let the alert fail silently.
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
