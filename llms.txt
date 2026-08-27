@@ -9,6 +9,25 @@ Compact LLM context index for this repository.
 - `ECOSYSTEM.md` — MADFAM ecosystem and Enclii deployment context when present.
 - `llms-full.txt` — full context map and durable operating contract.
 
+## Platform behaviors agents most often get wrong (updated 2026-08-27)
+
+- One-off jobs (`enclii jobs run-once`): the dispatcher resolves the service's
+  Deployment as `<name>`, `<name>-web`, then `<namespace>-web`; deterministic
+  admission denials mark the job **failed** with a stored `failure_reason`
+  (surfaced by `jobs logs`) instead of pending forever. Full contract:
+  `docs/cli/commands/jobs.md`. There is NO `enclii exec` and NO `enclii jobs run <task>`.
+- Tunnel routes: switchyard refuses to write or replace an ingress rule whose
+  backend Service does not exist with that port, canaries every changed rule and
+  reverts dead ones (`ENCLII_TUNNEL_ROUTE_CANARY_ENABLED`, default on), and
+  manifest capture refuses to create domain records for a Service doc whose
+  name resolves to no live workload. Motivated by the 2026-08-27 identity
+  outage: a legacy single-doc manifest's name + declared domains rewrote
+  working routes to a dead backend.
+- Deploys: `build-publish.yml` (tag v1.0.0-alpha.5+) derives image digests from
+  GHCR (`imagetools inspect` on the immutable `:github.sha` tag) — no Actions
+  artifacts in the deploy path; the deploy-state-guard fails any run whose pin
+  job wrote zero pins.
+
 ## Production operations
 
 Routine production operations are Enclii-first. Use Enclii web, API, or CLI
