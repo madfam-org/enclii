@@ -57,6 +57,19 @@ Do not track independent GA task state outside these files (see `scripts/check-g
 
 Wave 0 Enclii-first ops: `scripts/wave0-ga-ops.sh`, `enclii admin ga-verify`, `make commercial-ga-proof`.
 
+## Recent operating-contract changes (2026-08-27)
+
+Three behaviors changed on this date; agents carrying older context will be
+wrong about all three. (1) One-off job dispatch resolves Deployments by
+`<name>` / `<name>-web` / `<namespace>-web` and turns deterministic admission
+denials into a terminal `failed` status with `failure_reason` persisted — see
+`docs/cli/commands/jobs.md`. (2) Tunnel-route writes are guarded: backends must
+resolve to a live Service+port, changed rules are canaried and reverted on
+dial failure, and manifest capture refuses domains declared under a Service-doc
+name with no live workload (the 2026-08-27 identity-outage class). (3) The
+reusable `build-publish.yml` (v1.0.0-alpha.5) derives digests from the
+registry, not Actions artifacts, and its guard requires pins_written > 0.
+
 ## Boundary
 
 This is not a full repository ingest. It is a compact context pointer; task-specific work must still read the relevant source documents listed below.
