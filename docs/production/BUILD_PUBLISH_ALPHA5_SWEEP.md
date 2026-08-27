@@ -1,3 +1,9 @@
+<!-- Boundary checkpoint (2026-08-27, platform ops): internal release/rollout doc for the
+build-publish v1.0.0-alpha.5 tag and its caller sweep. Public-safe summary = "the shared deploy
+workflow's digest hand-off moved to registry derivation and its guard was hardened." Operational
+detail (org storage-pool incident specifics, caller list) stays here; private sink for anything
+deeper = internal-devops runbooks. Policy: docs/PUBLIC_REPO_BOUNDARY.md. -->
+
 # build-publish.yml `v1.0.0-alpha.5` — tag + caller sweep
 
 Collateral for the release that follows the registry-digest-handoff PR. **Nothing here
