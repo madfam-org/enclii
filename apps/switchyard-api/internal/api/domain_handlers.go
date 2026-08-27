@@ -94,7 +94,7 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 				return
 			}
 
-			h.ensureTunnelRoute(ctx, req.Domain, service, req.Environment, 80)
+			h.ensureTunnelRoute(ctx, req.Domain, service, req.Environment, 80, ownerFromService(service))
 			ready := false
 			if h.tunnelRoutesService != nil {
 				ready, _ = h.tunnelRoutesService.RouteExists(ctx, req.Domain)

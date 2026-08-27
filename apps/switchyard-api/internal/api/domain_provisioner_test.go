@@ -136,7 +136,7 @@ func TestEnsureTunnelRoute_NilService(t *testing.T) {
 	h.ensureTunnelRoute(context.Background(), "example.com", &types.Service{
 		ID:   uuid.New(),
 		Name: "test-svc",
-	}, "production", 80)
+	}, "production", 80, nil)
 }
 
 func TestEnsureDomainRouting_NilDomainSyncService(t *testing.T) {
@@ -173,7 +173,7 @@ func TestCleanupDomainsForService_NilGuards(t *testing.T) {
 	h.ensureTunnelRoute(context.Background(), "test.com", &types.Service{
 		ID:   uuid.New(),
 		Name: "svc",
-	}, "production", 80)
+	}, "production", 80, nil)
 
 	// Edge provisioning with nil domainSyncService returns immediately
 	h.applyDomainRouting(context.Background(),
@@ -258,16 +258,21 @@ func TestEnsureTunnelRouteUpdatesWrongExistingTarget(t *testing.T) {
 		ServicePort:      80,
 	}
 	stagingNamespace := "enclii-dhanam-staging"
+	// The desired backend has to actually exist now: repointing a live rule at
+	// an unresolvable Service is exactly what Guard 1 refuses. See
+	// TestEnsureTunnelRoute_JanuaOutage for the refusal side.
 	h := &Handler{
 		tunnelRoutesService: tunnelRoutes,
 		logger:              newNopLogger(),
+		k8sClient:           fakeKubeWithServices(k8sService(stagingNamespace, "dhanam-admin", 80)),
+		config:              &config.Config{},
 	}
 
 	h.ensureTunnelRoute(context.Background(), "staging-admin.dhan.am", &types.Service{
 		ID:           uuid.New(),
 		Name:         "dhanam-admin",
 		K8sNamespace: &stagingNamespace,
-	}, "staging", 80)
+	}, "staging", 80, nil)
 
 	spec := tunnelRoutes.routes["staging-admin.dhan.am"]
 	if spec == nil {
@@ -295,6 +300,8 @@ func TestEnsureJunctionInfrastructureUsesResolvedServiceNamespace(t *testing.T) 
 	h := &Handler{
 		tunnelRoutesService: tunnelRoutes,
 		logger:              newNopLogger(),
+		k8sClient:           fakeKubeWithServices(k8sService(namespace, "tulana-web", 80)),
+		config:              &config.Config{},
 	}
 
 	summary := h.ensureJunctionInfrastructure(context.Background(), "tulana-app.madfam.io", &types.Service{

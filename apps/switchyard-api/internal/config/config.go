@@ -118,6 +118,17 @@ type Config struct {
 	// as a break-glass off switch.
 	PgbouncerDriftCheckEnabled bool // ENCLII_PGBOUNCER_DRIFT_CHECK_ENABLED (default true)
 
+	// Tunnel-route post-write canary. After the domain provisioner writes or
+	// changes a cloudflared ingress rule, it dials the backend it just pointed
+	// the hostname at and reverts the rule if nothing answers. Defaults ON —
+	// without it, a rule rewritten onto a dead backend stays live and silent,
+	// the 2026-08-27 janua outage class (eight hostnames including
+	// auth.madfam.io repointed at a Service that does not exist; all ecosystem
+	// SSO down). The probe only runs when a rule is actually written, which in
+	// steady state is close to never. Flag exists as a break-glass off switch
+	// and so unit tests can write rules without dialing anything.
+	TunnelRouteCanaryEnabled bool // ENCLII_TUNNEL_ROUTE_CANARY_ENABLED (default true)
+
 	// Status ConfigMap Projection
 	StatusProjectionMode              string // "runtime" (default zero-touch ConfigMap projection) or "gitops" (legacy Enclii config commit)
 	AllowLegacyGitOpsStatusProjection bool   // Explicit break-glass gate for legacy Enclii repo status commits
@@ -317,6 +328,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("argocd-poll-interval", "3m")          // ENCLII_ARGOCD_POLL_INTERVAL — Go duration
 	viper.SetDefault("timetable-reconciler-enabled", true)  // ENCLII_TIMETABLE_RECONCILER_ENABLED — jobs runner, on by default
 	viper.SetDefault("pgbouncer-drift-check-enabled", true) // ENCLII_PGBOUNCER_DRIFT_CHECK_ENABLED — userlist drift checker, on by default
+	viper.SetDefault("tunnel-route-canary-enabled", true)   // ENCLII_TUNNEL_ROUTE_CANARY_ENABLED — post-write tunnel-route probe + revert, on by default
 	viper.SetDefault("status-projection-mode", "runtime")   // "runtime" or legacy "gitops"
 	viper.SetDefault("allow-legacy-gitops-status-projection", false)
 	viper.SetDefault("status-config-namespace", "enclii")
@@ -433,6 +445,7 @@ func Load() (*Config, error) {
 		ArgocdPollerEnabled:               viper.GetBool("argocd-poller-enabled"),
 		TimetableReconcilerEnabled:        viper.GetBool("timetable-reconciler-enabled"),
 		PgbouncerDriftCheckEnabled:        viper.GetBool("pgbouncer-drift-check-enabled"),
+		TunnelRouteCanaryEnabled:          viper.GetBool("tunnel-route-canary-enabled"),
 		ArgocdPollInterval:                viper.GetString("argocd-poll-interval"),
 		StatusProjectionMode:              viper.GetString("status-projection-mode"),
 		AllowLegacyGitOpsStatusProjection: viper.GetBool("allow-legacy-gitops-status-projection"),
