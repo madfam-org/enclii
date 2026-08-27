@@ -767,7 +767,24 @@ jobs:
     name: Guard against silent stale deploy
     needs: [detect-changes, build, pin]
     if: always() && needs.detect-changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    # Must run on the SAME pool as the jobs it guards.
+    #
+    # On ubuntu-latest this job dies before its first step whenever
+    # GitHub-hosted minutes are unavailable — a 0-step failure — while build
+    # and pin succeed on ARC. That inverts the alarm: it reports "THE LIVE HOST
+    # IS STILL SERVING THE PREVIOUS BUILD" on deploys that were in fact fine.
+    # Verified tonight as `Guard against silent stale deploy steps=0` on kalya
+    # and acervo among others.
+    #
+    # This is the one alarm that must stay trustworthy: repeated false reds
+    # train operators to ignore the real thing (acervo's run had a genuine
+    # `Commit digest pins` failure sitting right next to the false one).
+    #
+    # Safe to move: the job shells out to nothing — no gh, no curl, no jq, no
+    # checkout. It only compares `needs.*.result` values, so it needs no
+    # outside vantage point and no tooling the ARC image lacks. (The two `gh`
+    # mentions below are inside echoed operator instructions, not commands.)
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     steps:
       - name: Fail loudly when images were pushed but not pinned
         env:
