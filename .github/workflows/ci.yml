@@ -719,12 +719,14 @@ jobs:
           echo "Built binaries:"
           ls -la bin/
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: enclii-binaries
-          path: bin/
-          retention-days: 7
+      # NO artifact upload here — deliberately. `enclii-binaries` was uploaded
+      # on every branch push (~115 MB × 1,628 copies = 183 GB, 87% of the org's
+      # entire Actions storage, 2026-08-27 quota incident) and NOTHING ever
+      # downloaded it: the API-smoke job builds its own binary, and release
+      # material ships via the Releases API from cli-release.yml, not Actions
+      # artifacts. The build loop above still proves every Go service compiles,
+      # which is this job's actual value. Also note: retention-days does NOT
+      # cap storage — GitHub bills expired artifacts until they are DELETED.
 
   # Boot the built binary against a real Postgres and issue real requests.
   #
