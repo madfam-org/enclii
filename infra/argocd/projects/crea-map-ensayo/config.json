@@ -1,0 +1,8 @@
+{
+  "branch": "main",
+  "manifestPath": "infra/k8s/ensayo",
+  "name": "crea-map-ensayo",
+  "namespace": "crea-map",
+  "partOf": "crea-map",
+  "repoURL": "https://github.com/madfam-org/crea-map.git"
+}
