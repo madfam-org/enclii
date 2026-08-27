@@ -250,13 +250,23 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	var domainResults []string
 	if project != nil && encliiConfig != nil && len(encliiConfig.Spec.Domains) > 0 {
 		svcList, _ := h.repos.Services.ListByProject(project.ID)
+		var captureService *types.Service
 		if len(svcList) > 0 {
-			go h.provisionDomainsFromYAML(context.Background(), svcList[0], encliiConfig)
-			for _, d := range encliiConfig.Spec.Domains {
-				domainResults = append(domainResults, d.Name+" (provisioning)")
-			}
+			captureService = svcList[0]
 		}
-		h.recordStep(ctx, &steps, "domain_provisioning", false, nil)
+		// Capture-time dead-name guard (2026-08-27 janua outage). A manifest doc
+		// whose metadata.name serves nothing gets a loud step failure here and
+		// its domains are never captured. See
+		// onboarding_manifest_workload_guard.go.
+		if h.guardManifestDomainCapture(ctx, &steps, namespace, captureService, encliiConfig) {
+			if captureService != nil {
+				go h.provisionDomainsFromYAML(context.Background(), captureService, encliiConfig)
+				for _, d := range encliiConfig.Spec.Domains {
+					domainResults = append(domainResults, d.Name+" (provisioning)")
+				}
+			}
+			h.recordStep(ctx, &steps, "domain_provisioning", false, nil)
+		}
 	}
 
 	if req.ProvisionPostgres != nil {
