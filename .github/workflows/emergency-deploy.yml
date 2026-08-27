@@ -155,25 +155,6 @@ jobs:
             exit 1
           fi
 
-      - name: Emit digest artifact
-        run: |
-          set -euo pipefail
-          mkdir -p digests
-          printf '%s|%s|%s|%s|%s\n' \
-            "${{ matrix.name }}" \
-            "${{ matrix.image }}" \
-            "${{ matrix.kustomization }}" \
-            "${{ matrix.kustomize_image }}" \
-            "${{ steps.docker-build.outputs.digest }}" \
-            > "digests/digest-${{ matrix.name }}.txt"
-
-      - name: Upload digest artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: digest-${{ matrix.name }}
-          path: digests/digest-${{ matrix.name }}.txt
-          retention-days: 1
-
     outputs:
       image: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
 
@@ -217,61 +198,75 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Download digest artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: digest-*
-          path: /tmp/digests
-          merge-multiple: true
-
-      - name: Update image digests from services.json
+      # Digests come from the registry, not from an artifact. This is the SAME
+      # mechanism build-publish.yml adopted in #460 (v1.0.0-alpha.5), applied
+      # here for the same reason: madfam-org is on the FREE plan, whose 500 MB
+      # pool is shared between Actions artifacts AND GHCR packages, hard-stop
+      # when full. Every deploy pushes another image version into that pool, so
+      # the pool refills itself — it blocked twice in 24h on 2026-08-27 and a
+      # purge bought only ~3h. An artifact hop here meant the break-glass path
+      # was blocked exactly when it is reached for.
+      #
+      # `docker buildx imagetools inspect` reads the manifest GHCR already holds
+      # for the tag the build job pushed. Two preconditions, both satisfied
+      # above and both required:
+      #   1. `docker login ghcr.io` — the "Login to GHCR" step above.
+      #   2. `packages: read` on the job token — see this job's `permissions:`.
+      #      Without it the manifest HEAD returns 403 even though login
+      #      succeeded (run 24939981458).
+      #
+      # Reference safety: `:${{ github.sha }}` is pushed by the build job above
+      # alongside `:latest`. We resolve the SHA tag, never `:latest`, because
+      # `:latest` moves with every emergency run and could drift to an unrelated
+      # build between build and deploy. The SHA tag is unique per commit and no
+      # branch-moving reference is involved.
+      #
+      # Unlike build-publish.yml's pin job, this path does NOT cosign-verify
+      # before pinning, and this change does not add that gate. Break-glass
+      # intentionally carries less ceremony than the main path; the build job
+      # above still signs each image with a hard-fail, and adding a new gate to
+      # a workflow reached only when the normal path is already broken would be
+      # a new way for the emergency to fail.
+      - name: Derive digests from GHCR
+        env:
+          MATRIX: ${{ needs.resolve-matrix.outputs.matrix }}
         run: |
           set -euo pipefail
           UPDATED=0
-          MODIFIED_FILES=""
-          MATRIX='${{ needs.resolve-matrix.outputs.matrix }}'
-          declare -A ARTIFACT_DIGESTS=()
 
-          shopt -s nullglob
-          for artifact in /tmp/digests/digest-*.txt; do
-            IFS='|' read -r ARTIFACT_NAME ARTIFACT_IMAGE ARTIFACT_KUSTOMIZATION ARTIFACT_KUSTOMIZE_IMAGE ARTIFACT_DIGEST < "$artifact"
-            if [ -n "$ARTIFACT_NAME" ] && [ -n "$ARTIFACT_DIGEST" ]; then
-              ARTIFACT_DIGESTS["$ARTIFACT_NAME"]="$ARTIFACT_IMAGE|$ARTIFACT_KUSTOMIZATION|$ARTIFACT_KUSTOMIZE_IMAGE|$ARTIFACT_DIGEST"
-            fi
-          done
-
-          # Prefer the digest emitted by docker/build-push-action in the
-          # parallel build job. GHCR lookup remains as a guarded fallback for
-          # artifact transport failures or older runs.
           while IFS= read -r line; do
             NAME=$(echo "$line" | jq -r '.name')
             IMAGE=$(echo "$line" | jq -r '.image')
             KUSTOMIZATION=$(echo "$line" | jq -r '.kustomization')
             KUSTOMIZE_IMAGE=$(echo "$line" | jq -r '.kustomize_image')
 
-            DIGEST=""
-            if [ -n "${ARTIFACT_DIGESTS[$NAME]:-}" ]; then
-              IFS='|' read -r IMAGE KUSTOMIZATION KUSTOMIZE_IMAGE DIGEST <<< "${ARTIFACT_DIGESTS[$NAME]}"
-              echo "Resolved ${NAME} digest from build artifact"
-            fi
-
             IMAGE_TAG="ghcr.io/${{ github.repository }}/${IMAGE}:${{ github.sha }}"
-            if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
-              echo "Digest artifact missing for ${NAME}; falling back to GHCR manifest lookup"
-              for attempt in 1 2 3 4 5; do
-                DIGEST=$(docker buildx imagetools inspect "$IMAGE_TAG" | awk '/^Digest:/{print $2; exit}' || true)
-                if [ -n "$DIGEST" ] && [ "$DIGEST" != "null" ]; then
-                  break
-                fi
-                echo "Digest lookup attempt ${attempt} failed for ${IMAGE_TAG}; retrying"
-                sleep 15
-              done
-            fi
 
-            if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            # Transient registry 5xx/timeouts must not look like "this service
+            # did not build" — that would silently skip the pin and strand the
+            # host, the very failure class this workflow exists to escape.
+            DIGEST=""
+            for wait in 0 5 15 30; do
+              [ "$wait" -gt 0 ] && sleep "$wait"
+              if DIGEST=$(docker buildx imagetools inspect "$IMAGE_TAG" \
+                            --format '{{json .Manifest.Digest}}' 2>/tmp/inspect-"$NAME".err); then
+                DIGEST=$(printf '%s' "$DIGEST" | tr -d '"[:space:]')
+                [ -n "$DIGEST" ] && break
+              fi
+              DIGEST=""
+            done
+
+            if [ -z "$DIGEST" ]; then
               echo "::error::Failed to resolve digest for $IMAGE_TAG"
+              head -c 300 /tmp/inspect-"$NAME".err 2>/dev/null || true; echo
               exit 1
             fi
+
+            if [[ "$DIGEST" != sha256:* ]]; then
+              echo "::error::Registry returned a non-sha256 digest for ${IMAGE_TAG}: ${DIGEST}"
+              exit 1
+            fi
+
             echo "Updating ${NAME}: ${KUSTOMIZE_IMAGE}@${DIGEST}"
             (cd "${KUSTOMIZATION}" && kustomize edit set image "${KUSTOMIZE_IMAGE}=ghcr.io/${{ github.repository }}/${IMAGE}@${DIGEST}")
             UPDATED=$((UPDATED + 1))
