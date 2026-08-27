@@ -25,7 +25,7 @@ func newOneOffJobMockDB(t *testing.T) (*OneOffJobRepository, sqlmock.Sqlmock, fu
 
 var oneOffJobColumns = []string{
 	"id", "project_id", "service_id", "name", "command", "image",
-	"timeout", "run_at", "status", "exit_code",
+	"timeout", "run_at", "status", "exit_code", "failure_reason",
 	"created_at", "started_at", "ended_at",
 }
 
@@ -66,7 +66,7 @@ func oneOffJobRow(job *types.OneOffJob) *sqlmock.Rows {
 	return sqlmock.NewRows(oneOffJobColumns).
 		AddRow(
 			job.ID, job.ProjectID, job.ServiceID, job.Name, job.Command, image,
-			job.Timeout, runAt, job.Status, exitCode,
+			job.Timeout, runAt, job.Status, exitCode, job.FailureReason,
 			job.CreatedAt, startedAt, endedAt,
 		)
 }
@@ -196,8 +196,8 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 		now := time.Now().Truncate(time.Microsecond)
 
 		rows := sqlmock.NewRows(oneOffJobColumns).
-			AddRow(uuid.New(), projectID, serviceID, "migration-01", "migrate up", sql.NullString{Valid: false}, 120, nil, "completed", int64(0), now, now, now).
-			AddRow(uuid.New(), projectID, serviceID, "seed-data", "seed run", sql.NullString{String: "node:20", Valid: true}, 60, nil, "pending", nil, now, nil, nil)
+			AddRow(uuid.New(), projectID, serviceID, "migration-01", "migrate up", sql.NullString{Valid: false}, 120, nil, "completed", int64(0), "", now, now, now).
+			AddRow(uuid.New(), projectID, serviceID, "seed-data", "seed run", sql.NullString{String: "node:20", Valid: true}, 60, nil, "pending", nil, "", now, nil, nil)
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 			WithArgs(projectID, 50).
@@ -294,6 +294,37 @@ func TestOneOffJobRepository_UpdateStatus_Failed(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// --- MarkFailed ---
+
+func TestOneOffJobRepository_MarkFailed(t *testing.T) {
+	repo, mock, cleanup := newOneOffJobMockDB(t)
+	defer cleanup()
+
+	id := uuid.New()
+	reason := "Kubernetes rejected the job: admission webhook \"validate.kyverno.svc-fail\" denied the request"
+
+	mock.ExpectExec(`UPDATE one_off_jobs SET status = 'failed', failure_reason`).
+		WithArgs(reason, sqlmock.AnyArg(), id).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := repo.MarkFailed(context.Background(), id, reason)
+	assert.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOneOffJobRepository_MarkFailed_NotFound(t *testing.T) {
+	repo, mock, cleanup := newOneOffJobMockDB(t)
+	defer cleanup()
+
+	id := uuid.New()
+	mock.ExpectExec(`UPDATE one_off_jobs SET status = 'failed', failure_reason`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err := repo.MarkFailed(context.Background(), id, "denied")
+	assert.ErrorIs(t, err, sql.ErrNoRows)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestOneOffJobRepository_UpdateStatus_NotFound(t *testing.T) {
 	repo, mock, cleanup := newOneOffJobMockDB(t)
 	defer cleanup()
@@ -320,7 +351,7 @@ func TestOneOffJobRepository_ListPending(t *testing.T) {
 		serviceID := uuid.New()
 
 		rows := sqlmock.NewRows(oneOffJobColumns).
-			AddRow(uuid.New(), projectID, serviceID, "pending-job", "echo run", sql.NullString{Valid: false}, 300, nil, "pending", nil, now, nil, nil)
+			AddRow(uuid.New(), projectID, serviceID, "pending-job", "echo run", sql.NullString{Valid: false}, 300, nil, "pending", nil, "", now, nil, nil)
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 			WillReturnRows(rows)

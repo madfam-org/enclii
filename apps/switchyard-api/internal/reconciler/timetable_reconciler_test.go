@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,9 +11,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
@@ -519,16 +523,16 @@ func TestRuntimeContextFromDeployment(t *testing.T) {
 			},
 		},
 		{
-			name:          "deployment with no containers falls back to default image",
+			name:          "deployment with no containers falls back to default image, hardened",
 			deployment:    &appsv1.Deployment{},
 			explicitImage: "",
-			expected:      jobRuntimeContext{Image: defaultJobImage},
+			expected:      hardenRuntimeContext(jobRuntimeContext{Image: defaultJobImage}),
 		},
 		{
-			name:          "deployment with no containers keeps explicit image",
+			name:          "deployment with no containers keeps explicit image, hardened",
 			deployment:    &appsv1.Deployment{},
 			explicitImage: "alpine:3",
-			expected:      jobRuntimeContext{Image: "alpine:3"},
+			expected:      hardenRuntimeContext(jobRuntimeContext{Image: "alpine:3"}),
 		},
 	}
 
@@ -626,7 +630,7 @@ func TestResolveJobRuntimeContext(t *testing.T) {
 
 		rc := r.resolveJobRuntimeContext(ctx, serviceID, "myproj", "")
 
-		assert.Equal(t, jobRuntimeContext{Image: defaultJobImage}, rc)
+		assert.Equal(t, hardenRuntimeContext(jobRuntimeContext{Image: defaultJobImage}), rc)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -640,7 +644,7 @@ func TestResolveJobRuntimeContext(t *testing.T) {
 
 		rc := r.resolveJobRuntimeContext(ctx, serviceID, "myproj", "")
 
-		assert.Equal(t, jobRuntimeContext{Image: defaultJobImage}, rc)
+		assert.Equal(t, hardenRuntimeContext(jobRuntimeContext{Image: defaultJobImage}), rc)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -653,7 +657,383 @@ func TestResolveJobRuntimeContext(t *testing.T) {
 
 		rc := r.resolveJobRuntimeContext(ctx, serviceID, "myproj", "alpine:3")
 
-		assert.Equal(t, jobRuntimeContext{Image: "alpine:3"}, rc)
+		assert.Equal(t, hardenRuntimeContext(jobRuntimeContext{Image: "alpine:3"}), rc)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Deployment name resolution: <service> then <service>-web
+//
+// The fleet's service reconciler names Deployments per process type
+// (nauta-web, crea-map-web, tezca-web/tezca-worker), so the bare service name
+// misses for every real service. That miss silently degraded every job to the
+// context-free fallback, which Kyverno then denied.
+// ---------------------------------------------------------------------------
+
+func TestResolveJobRuntimeContextWebSuffixFallback(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("falls back to <service>-web when the bare name is NotFound", func(t *testing.T) {
+		// Only nauta-web exists, exactly as in the live cluster.
+		r, mock, cleanup := newContextTestReconciler(t, serviceDeployment("nauta", "nauta-web"))
+		defer cleanup()
+
+		serviceID := uuid.New()
+		expectServiceGetByID(mock, serviceID, "nauta")
+
+		rc := r.resolveJobRuntimeContext(ctx, serviceID, "nauta", "")
+
+		// Full service context inherited -- not the busybox fallback.
+		assert.Equal(t, "ghcr.io/org/api:v3", rc.Image)
+		assert.Equal(t, []corev1.EnvVar{{Name: "DATABASE_URL", Value: "postgres://db"}}, rc.Env)
+		assert.Equal(t, "api-sa", rc.ServiceAccountName)
+		assert.Equal(t, testPodSC(), rc.PodSecurityContext)
+		assert.Equal(t, testContainerSC(), rc.ContainerSecurityContext)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("exact name still wins when a bare-named Deployment exists", func(t *testing.T) {
+		bare := serviceDeployment("myproj", "api")
+		bare.Spec.Template.Spec.Containers[0].Image = "ghcr.io/org/api:bare"
+
+		web := serviceDeployment("myproj", "api-web")
+		web.Spec.Template.Spec.Containers[0].Image = "ghcr.io/org/api:web"
+
+		r, mock, cleanup := newContextTestReconciler(t, bare, web)
+		defer cleanup()
+
+		serviceID := uuid.New()
+		expectServiceGetByID(mock, serviceID, "api")
+
+		rc := r.resolveJobRuntimeContext(ctx, serviceID, "myproj", "")
+
+		assert.Equal(t, "ghcr.io/org/api:bare", rc.Image, "exact-name Deployment must take precedence")
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	// The registered service name does not always prefix its deployments:
+	// namespace tezca runs tezca-web/tezca-worker/tezca-redis while the
+	// registered service is `tezca-api`, so `<service>-web` = `tezca-api-web`
+	// misses and only `<namespace>-web` resolves.
+	t.Run("falls back to <namespace>-web when the service name does not prefix the deployments", func(t *testing.T) {
+		r, mock, cleanup := newContextTestReconciler(t,
+			serviceDeployment("tezca", "tezca-web"),
+			serviceDeployment("tezca", "tezca-worker"),
+		)
+		defer cleanup()
+
+		serviceID := uuid.New()
+		expectServiceGetByID(mock, serviceID, "tezca-api")
+
+		rc := r.resolveJobRuntimeContext(ctx, serviceID, "tezca", "")
+
+		assert.Equal(t, "ghcr.io/org/api:v3", rc.Image, "must resolve tezca-web for service tezca-api")
+		assert.Equal(t, "api-sa", rc.ServiceAccountName)
+		assert.Equal(t, testContainerSC(), rc.ContainerSecurityContext)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("neither name resolves: hardened fallback", func(t *testing.T) {
+		r, mock, cleanup := newContextTestReconciler(t)
+		defer cleanup()
+
+		serviceID := uuid.New()
+		expectServiceGetByID(mock, serviceID, "never-deployed")
+
+		rc := r.resolveJobRuntimeContext(ctx, serviceID, "myproj", "")
+
+		assert.Equal(t, defaultJobImage, rc.Image)
+		require.NotNil(t, rc.ContainerSecurityContext)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("web-suffixed name is used for cron jobs too", func(t *testing.T) {
+		// The cron path shares this resolver; a -web-only service must inherit
+		// its real image there as well.
+		r, mock, cleanup := newContextTestReconciler(t, serviceDeployment("crea-map", "crea-map-web"))
+		defer cleanup()
+
+		serviceID := uuid.New()
+		expectServiceGetByID(mock, serviceID, "crea-map")
+
+		rc := r.resolveJobRuntimeContext(ctx, serviceID, "crea-map", "")
+		cronJob := r.buildCronJob(&types.CronJob{ID: uuid.New(), Name: "nightly", Schedule: "0 2 * * *", Command: "echo hi"}, "cj-nightly", "crea-map", rc)
+
+		assert.Equal(t, "ghcr.io/org/api:v3", cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Image)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestDeploymentNameCandidates(t *testing.T) {
+	tests := []struct {
+		name      string
+		namespace string
+		service   string
+		expected  []string
+	}{
+		{
+			name:      "service name prefixes its deployments",
+			namespace: "nauta",
+			service:   "nauta",
+			// `<service>-web` and `<namespace>-web` coincide -- deduplicated.
+			expected: []string{"nauta", "nauta-web"},
+		},
+		{
+			// The live tezca shape: service tezca-api, deployments tezca-web
+			// / tezca-worker / tezca-redis.
+			name:      "service name does not prefix its deployments",
+			namespace: "tezca",
+			service:   "tezca-api",
+			expected:  []string{"tezca-api", "tezca-api-web", "tezca-web"},
+		},
+		{
+			name:      "hyphenated project slug",
+			namespace: "crea-map",
+			service:   "crea-map",
+			expected:  []string{"crea-map", "crea-map-web"},
+		},
+		{
+			name:      "empty service name still tries the namespace",
+			namespace: "tezca",
+			service:   "",
+			expected:  []string{"tezca-web"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, deploymentNameCandidates(tt.namespace, tt.service))
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// hardenRuntimeContext / policy-compliant fallback jobs
+// ---------------------------------------------------------------------------
+
+func TestHardenRuntimeContext(t *testing.T) {
+	t.Run("fills a context-free fallback with the Kyverno baseline", func(t *testing.T) {
+		rc := hardenRuntimeContext(jobRuntimeContext{Image: defaultJobImage})
+
+		require.NotNil(t, rc.ContainerSecurityContext)
+		csc := rc.ContainerSecurityContext
+
+		// restrict-capabilities (autogen-drop-all-capabilities).
+		require.NotNil(t, csc.Capabilities)
+		assert.Equal(t, []corev1.Capability{"ALL"}, csc.Capabilities.Drop)
+
+		require.NotNil(t, csc.AllowPrivilegeEscalation)
+		assert.False(t, *csc.AllowPrivilegeEscalation)
+
+		require.NotNil(t, csc.SeccompProfile)
+		assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, csc.SeccompProfile.Type)
+
+		require.NotNil(t, csc.RunAsNonRoot)
+		assert.True(t, *csc.RunAsNonRoot)
+
+		require.NotNil(t, csc.RunAsUser)
+		assert.NotZero(t, *csc.RunAsUser, "runAsUser must be non-zero for require-run-as-non-root")
+
+		require.NotNil(t, rc.PodSecurityContext)
+		require.NotNil(t, rc.PodSecurityContext.RunAsNonRoot)
+		assert.True(t, *rc.PodSecurityContext.RunAsNonRoot)
+		require.NotNil(t, rc.PodSecurityContext.SeccompProfile)
+		assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, rc.PodSecurityContext.SeccompProfile.Type)
+	})
+
+	t.Run("leaves an inherited Deployment securityContext verbatim", func(t *testing.T) {
+		original := jobRuntimeContext{
+			Image:                    "ghcr.io/org/api:v3",
+			PodSecurityContext:       testPodSC(),
+			ContainerSecurityContext: testContainerSC(),
+		}
+
+		assert.Equal(t, original, hardenRuntimeContext(original))
+	})
+}
+
+func TestBuildOneOffJobFallbackIsPolicyCompliant(t *testing.T) {
+	r := &TimetableReconciler{}
+
+	job := &types.OneOffJob{ID: uuid.New(), Name: "shell", Command: "echo hi"}
+	// Exactly what a service with no resolvable Deployment produces.
+	k8sJob := r.buildOneOffJob(job, "nauta", hardenRuntimeContext(jobRuntimeContext{Image: defaultJobImage}))
+
+	podSpec := k8sJob.Spec.Template.Spec
+	require.Len(t, podSpec.Containers, 1)
+
+	// restrict-image-registries: fully qualified. disallow-latest-tag: pinned.
+	assert.Equal(t, "docker.io/library/busybox:1.36", podSpec.Containers[0].Image)
+	assert.NotContains(t, podSpec.Containers[0].Image, ":latest")
+
+	// restrict-capabilities.
+	csc := podSpec.Containers[0].SecurityContext
+	require.NotNil(t, csc, "a fallback job with no container securityContext is denied admission")
+	require.NotNil(t, csc.Capabilities)
+	assert.Equal(t, []corev1.Capability{"ALL"}, csc.Capabilities.Drop)
+
+	require.NotNil(t, podSpec.SecurityContext)
+	require.NotNil(t, podSpec.SecurityContext.RunAsNonRoot)
+	assert.True(t, *podSpec.SecurityContext.RunAsNonRoot)
+}
+
+// ---------------------------------------------------------------------------
+// isAdmissionRejection
+// ---------------------------------------------------------------------------
+
+func TestIsAdmissionRejection(t *testing.T) {
+	jobsResource := schema.GroupResource{Group: "batch", Resource: "jobs"}
+
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			// The exact shape of the live denial: Kyverno returns 403.
+			name: "kyverno webhook denial is terminal",
+			err: apierrors.NewForbidden(jobsResource, "job-migrate-4b8bf692", fmt.Errorf(
+				"admission webhook \"validate.kyverno.svc-fail\" denied the request: "+
+					"policy Job/nauta/job-migrate-4b8bf692 for resource violation: restrict-capabilities: "+
+					"autogen-drop-all-capabilities: validation failure")),
+			expected: true,
+		},
+		{
+			name:     "server-side validation rejection is terminal",
+			err:      apierrors.NewInvalid(schema.GroupKind{Group: "batch", Kind: "Job"}, "job-x", nil),
+			expected: true,
+		},
+		{
+			name:     "unclassified error naming an admission webhook is terminal",
+			err:      fmt.Errorf("admission webhook \"validate.kyverno.svc-fail\" denied the request"),
+			expected: true,
+		},
+		// Transient failures must keep the retry behavior: the job stays
+		// pending and the next pass tries again.
+		{
+			name:     "conflict is transient",
+			err:      apierrors.NewConflict(jobsResource, "job-x", fmt.Errorf("object was modified")),
+			expected: false,
+		},
+		{
+			name:     "server timeout is transient",
+			err:      apierrors.NewServerTimeout(jobsResource, "create", 1),
+			expected: false,
+		},
+		{
+			name:     "throttling is transient",
+			err:      apierrors.NewTooManyRequestsError("slow down"),
+			expected: false,
+		},
+		{
+			name:     "network failure is transient",
+			err:      fmt.Errorf("dial tcp 10.0.0.1:443: connect: connection refused"),
+			expected: false,
+		},
+		{
+			name:     "webhook merely unavailable is transient",
+			err:      apierrors.NewServiceUnavailable("webhook backend is down"),
+			expected: false,
+		},
+		{name: "nil is not a rejection", err: nil, expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isAdmissionRejection(tt.err))
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// dispatchOneOffJob: admission denial goes terminal, transient stays pending
+// ---------------------------------------------------------------------------
+
+// newDispatchTestReconciler builds a reconciler whose fake clientset rejects
+// Job creates with rejectErr (nil = accept), so dispatchOneOffJob's error
+// handling can be exercised end to end.
+func newDispatchTestReconciler(t *testing.T, rejectErr error) (*TimetableReconciler, sqlmock.Sqlmock, func()) {
+	t.Helper()
+	sqlDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+
+	logger := logrus.New()
+	logger.SetOutput(logrusDiscard{})
+
+	clientset := fake.NewSimpleClientset()
+	if rejectErr != nil {
+		clientset.PrependReactor("create", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, rejectErr
+		})
+	}
+
+	r := &TimetableReconciler{
+		repos:     db.NewRepositories(sqlDB),
+		k8sClient: &k8s.Client{KubeClient: clientset},
+		logger:    logger,
+		stopCh:    make(chan struct{}),
+	}
+	return r, mock, func() { _ = sqlDB.Close() }
+}
+
+// expectProjectGetByID queues the ProjectRepository.GetByID the dispatcher
+// makes to resolve the namespace from the project slug.
+func expectProjectGetByID(mock sqlmock.Sqlmock, projectID uuid.UUID, slug string) {
+	now := time.Now()
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects`).
+		WithArgs(projectID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}).
+			AddRow(projectID, slug, slug, "shared", now, now))
+}
+
+func TestDispatchOneOffJobAdmissionDenial(t *testing.T) {
+	ctx := context.Background()
+
+	// The verbatim denial observed against nauta 4b8bf692 / crea-map ffd2bca5.
+	denial := apierrors.NewForbidden(
+		schema.GroupResource{Group: "batch", Resource: "jobs"}, "job-migrate-4b8bf692",
+		fmt.Errorf("admission webhook \"validate.kyverno.svc-fail\" denied the request: "+
+			"restrict-capabilities: autogen-drop-all-capabilities: validation error"))
+
+	t.Run("admission denial marks the job failed with a stored reason", func(t *testing.T) {
+		r, mock, cleanup := newDispatchTestReconciler(t, denial)
+		defer cleanup()
+
+		projectID, serviceID := uuid.New(), uuid.New()
+		job := &types.OneOffJob{ID: uuid.New(), ProjectID: projectID, ServiceID: serviceID, Name: "migrate", Command: "echo hi"}
+
+		expectProjectGetByID(mock, projectID, "nauta")
+		expectServiceGetByID(mock, serviceID, "nauta")
+
+		// The failure is recorded terminally -- NOT left pending for retry.
+		mock.ExpectExec(`UPDATE one_off_jobs SET status = 'failed', failure_reason`).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := r.dispatchOneOffJob(ctx, job)
+
+		// Handled, not returned: the job is terminal, so the caller has
+		// nothing left to retry.
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("transient error leaves the job pending for retry", func(t *testing.T) {
+		transient := apierrors.NewServerTimeout(schema.GroupResource{Group: "batch", Resource: "jobs"}, "create", 1)
+		r, mock, cleanup := newDispatchTestReconciler(t, transient)
+		defer cleanup()
+
+		projectID, serviceID := uuid.New(), uuid.New()
+		job := &types.OneOffJob{ID: uuid.New(), ProjectID: projectID, ServiceID: serviceID, Name: "migrate", Command: "echo hi"}
+
+		expectProjectGetByID(mock, projectID, "nauta")
+		expectServiceGetByID(mock, serviceID, "nauta")
+		// No UPDATE is queued: any status write here would fail the
+		// expectations check below, proving the row stays pending.
+
+		err := r.dispatchOneOffJob(ctx, job)
+
+		require.Error(t, err, "transient failures must surface for retry")
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -692,7 +1072,15 @@ func TestConstants(t *testing.T) {
 	assert.Equal(t, "enclii", labelManagedByValue)
 	assert.Equal(t, "enclii.dev/cron-job-id", labelCronJobID)
 	assert.Equal(t, "enclii.dev/one-off-job-id", LabelOneOffJobID)
-	assert.Equal(t, "busybox:latest", defaultJobImage)
+
+	// The fallback image must be fully qualified (Kyverno
+	// restrict-image-registries matches an approved-registry PREFIX, which a
+	// bare `busybox` cannot satisfy) and must not be :latest
+	// (disallow-latest-tag). Both were violated by the previous
+	// `busybox:latest`, which is why every fallback job was denied admission.
+	assert.Equal(t, "docker.io/library/busybox:1.36", defaultJobImage)
+	assert.Contains(t, defaultJobImage, "docker.io/", "fallback image must be fully qualified for the registry prefix policy")
+	assert.NotContains(t, defaultJobImage, ":latest", "fallback image must be version-pinned")
 }
 
 // ---------------------------------------------------------------------------

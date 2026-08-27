@@ -39,9 +39,14 @@ type OneOffJob struct {
 	RunAt     *time.Time `json:"run_at,omitempty" db:"run_at"` // nil = run immediately
 	Status    string     `json:"status" db:"status"`           // "pending", "running", "completed", "failed"
 	ExitCode  *int       `json:"exit_code,omitempty" db:"exit_code"`
-	CreatedAt time.Time  `json:"created_at" db:"created_at"`
-	StartedAt *time.Time `json:"started_at,omitempty" db:"started_at"`
-	EndedAt   *time.Time `json:"ended_at,omitempty" db:"ended_at"`
+	// FailureReason explains why a job failed before it ever produced a pod --
+	// most importantly a Kubernetes admission webhook denial, which otherwise
+	// leaves the operator staring at "no pods scheduled" with no cause. Empty
+	// for jobs that ran (their outcome is ExitCode plus pod logs).
+	FailureReason string     `json:"failure_reason,omitempty" db:"failure_reason"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+	StartedAt     *time.Time `json:"started_at,omitempty" db:"started_at"`
+	EndedAt       *time.Time `json:"ended_at,omitempty" db:"ended_at"`
 }
 
 // CronJobRun represents a single execution of a cron job.
