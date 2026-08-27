@@ -7,15 +7,51 @@ name: Reusable — Build, sign, publish, pin
 #   1. Build with Docker Buildx (GHA cache)
 #   2. Push to GHCR as :${SHA} (no :latest — Kyverno disallows)
 #   3. Sign keyless with cosign (Fulcio + Rekor OIDC)
-#   4. Emit a digest artifact
 # Then, across all services once:
+#   4. Re-derive each service's digest FROM THE REGISTRY (see below)
 #   5. kustomize edit set image → @sha256:<digest> in kustomization.yaml
 #   6. Commit the digest pin back to main (triggers ArgoCD sync)
 #      Partial success: if the build matrix has mixed results, pin still runs
-#      and commits digests for every service that uploaded an artifact.
-#      Sibling build failures must not block deploy of successful builds
+#      and commits digests for every service whose :${SHA} tag resolves in
+#      GHCR. Sibling build failures must not block deploy of successful builds
 #      (RFC 0017 Tier B — forj-api 4-day outage class).
 #   7. (optional) POST an Enclii lifecycle callback
+#
+# WHY THE PIN JOB READS THE REGISTRY INSTEAD OF AN ARTIFACT
+#
+#   Until 2026-08-27 the build matrix handed digests to the pin job through an
+#   `actions/upload-artifact` → `actions/download-artifact` hop. That hop put
+#   GitHub *billing* on the deploy hot path, and it broke twice in 24h:
+#
+#     ##[error]Failed to CreateArtifact: Artifact storage quota has been hit.
+#
+#   madfam-org is on the FREE plan: a fixed 500 MB pool shared between Actions
+#   artifacts AND GHCR packages, hard-stop when full, no overage billing. Every
+#   deploy pushes another image version into that same pool, so the pool refills
+#   itself — a purge on 2026-08-27 04:35Z cleared it, uploads resumed for ~3h,
+#   and it re-blocked at ~07:33Z with zero uploads org-wide for the next 6h+.
+#   Meanwhile the images themselves built, pushed and signed GREEN every time.
+#   The result is the exact silent-drift state this pipeline exists to prevent:
+#   main goes green, ArgoCD is never handed a digest, and ~15 caller repos keep
+#   serving their previous build.
+#
+#   The registry already knows every digest it accepted. Asking it removes the
+#   dependency entirely: `docker buildx imagetools inspect` reads the manifest
+#   for the `:${{ github.sha }}` tag the build job just pushed. No artifact, no
+#   quota, no billing coupling. ADR-010: load-bearing paths must not depend on
+#   GitHub billing.
+#
+#   Why `:${{ github.sha }}` is a safe reference to derive from: it is the only
+#   tag this workflow pushes (there is deliberately no `:latest` — Kyverno's
+#   disallow-latest-tag rejects it), and it is unique per commit. The tag can
+#   only be rewritten by another run building the SAME commit, and such a run
+#   is by definition producing the artifact this pipeline wants pinned. There
+#   is no branch-moving tag anywhere in the push, so there is no reference that
+#   could drift to an unrelated build between build and pin.
+#
+#   Belt and braces: the derived digest is still cosign-verified against the
+#   madfam-org workflow identity before it is pinned (unchanged), so a digest
+#   read from a compromised or confused registry response cannot be deployed.
 #
 # What it accepts:
 #   services:            JSON array of {name, dockerfile, paths?}
@@ -426,41 +462,32 @@ jobs:
             exit 1
           fi
 
-      - name: Emit digest artifact
+      # No artifact hop. The digest is recorded here for humans only — the pin
+      # job re-derives it from GHCR (see the header note). Writing it to the
+      # step summary keeps the run self-documenting: when a pin looks wrong,
+      # this is the value the build actually produced, next to the value the
+      # registry later reported.
+      - name: Record digest in run summary
+        env:
+          SVC: ${{ matrix.service.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_PREFIX: ${{ inputs.image_prefix }}
         run: |
-          mkdir -p digests
-          printf '%s=%s\n' "${{ matrix.service.name }}" "${{ steps.build.outputs.digest }}" \
-            > "digests/${{ matrix.service.name }}.txt"
-
-      # NOT continue-on-error, and deliberately so.
-      #
-      # This artifact is load-bearing: the `pin` job downloads it (pattern
-      # digest-*) to commit the digest pins ArgoCD rolls on. Swallowing a
-      # failure here would push an image that never gets pinned — the live
-      # host keeps serving the previous build while main looks green, exactly
-      # the silent-drift failure the cosign step above shouts about.
-      #
-      # The quota error that broke every caller ("Failed to CreateArtifact:
-      # Artifact storage quota has been hit", angelia run 33032906876) is
-      # account-wide and clears on GitHub's 6-12h recalculation, so retry
-      # across that window; a genuinely exhausted quota still fails the job.
-      - name: Upload digest artifact
-        id: upload-digest
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: digest-${{ matrix.service.name }}
-          path: digests/
-
-      # The upload above is allowed to fail ONLY so this step can retry it and
-      # then decide. A silent skip is not on the table: an unpinned image means
-      # ArgoCD keeps serving the previous build while main looks green.
-      - name: Retry digest upload
-        if: steps.upload-digest.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: digest-${{ matrix.service.name }}
-          path: digests/
+          set -euo pipefail
+          echo "service=${SVC} digest=${DIGEST}"
+          echo "tag-ref=${IMAGE_PREFIX}/${SVC}:${GITHUB_SHA}"
+          {
+            echo "### Built \`${SVC}\`"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| digest | \`${DIGEST}\` |"
+            echo "| tag ref | \`${IMAGE_PREFIX}/${SVC}:${GITHUB_SHA}\` |"
+            echo "| pinned as | \`${IMAGE_PREFIX}/${SVC}@${DIGEST}\` |"
+            echo ""
+            echo "The \`pin\` job re-reads this digest from GHCR via the tag ref"
+            echo "above; it does not receive it through an artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   pin:
     name: Commit digest pins
@@ -476,6 +503,13 @@ jobs:
     permissions:
       contents: write
       packages: read
+    # Surfaced so the deploy-state-guard can assert on WORK DONE, not just on
+    # this job's result. This job reports success when every meaningful step
+    # skipped behind `count == 0`, so `pin.result == 'success'` alone is not
+    # evidence that anything was pinned.
+    outputs:
+      pins_written: ${{ steps.digests.outputs.count }}
+      pin_commit: ${{ steps.commit.outputs.pin_commit }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -506,27 +540,83 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT || github.token }}
 
-      - name: Download all digest artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: digests
-          pattern: digest-*
-          merge-multiple: true
-
-      - name: Skip when no successful builds produced digests
+      # Digests come from the registry, not from an artifact. `docker buildx
+      # imagetools inspect` reads the manifest GHCR holds for the tag the build
+      # job pushed.
+      #
+      # Two preconditions, both already satisfied by this job and both required:
+      #   1. `docker login ghcr.io` — the step above (private packages need it).
+      #   2. `packages: read` on the job token — declared in this job's
+      #      `permissions:`. WITHOUT IT the manifest HEAD returns 403 even
+      #      though the login succeeded, because the token is not authorized to
+      #      read the manifest. Verified in this repo on run 24939981458
+      #      ("403 Forbidden" against
+      #      /v2/madfam-org/enclii/switchyard-api/manifests/<sha>), which is why
+      #      emergency-deploy.yml carries the same pair for the same call.
+      #
+      # A service whose build failed never pushed its tag, so the
+      # inspect fails for it and it is skipped — which reproduces the old
+      # "pin every service that succeeded, skip the rest" partial-success
+      # behavior without the artifact (RFC 0017 Tier B).
+      #
+      # This writes the same `name=sha256:...` lines the artifact used to carry
+      # into digests/*.txt, so every downstream step is unchanged.
+      - name: Derive digests from GHCR
         id: digests
+        env:
+          SERVICES_MATRIX: ${{ needs.detect-changes.outputs.matrix }}
+          IMAGE_PREFIX: ${{ inputs.image_prefix }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          files=(digests/*.txt "$GITHUB_WORKSPACE"/digests/*.txt)
+          mkdir -p digests
           count=0
-          for f in "${files[@]}"; do
-            [ -f "$f" ] || continue
+          missing=""
+
+          while IFS= read -r svc; do
+            [ -n "$svc" ] || continue
+            ref="${IMAGE_PREFIX}/${svc}:${GITHUB_SHA}"
+
+            # Transient registry 5xx/timeouts must not look like "this service
+            # did not build" — that would silently skip the pin and strand the
+            # host, the very failure class this job exists to close. Retry
+            # before concluding the tag is absent.
+            digest=""
+            for wait in 0 5 15 30; do
+              [ "$wait" -gt 0 ] && sleep "$wait"
+              if digest=$(docker buildx imagetools inspect "$ref" \
+                            --format '{{json .Manifest.Digest}}' 2>/tmp/inspect-"$svc".err); then
+                digest=$(printf '%s' "$digest" | tr -d '"[:space:]')
+                [ -n "$digest" ] && break
+              fi
+              digest=""
+            done
+
+            if [ -z "$digest" ]; then
+              echo "::notice::No image found at ${ref}; treating '${svc}' as not built in this run."
+              head -c 300 /tmp/inspect-"$svc".err 2>/dev/null || true; echo
+              missing="${missing} ${svc}"
+              continue
+            fi
+
+            if [[ "$digest" != sha256:* ]]; then
+              echo "::error::Registry returned a non-sha256 digest for ${ref}: ${digest}"
+              exit 1
+            fi
+
+            printf '%s=%s\n' "$svc" "$digest" > "digests/${svc}.txt"
+            echo "resolved ${svc} -> ${digest}"
             count=$((count + 1))
-          done
+          done < <(printf '%s' "$SERVICES_MATRIX" | jq -r '.[].name')
+
           echo "count=$count" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Digests resolved from GHCR"
+            echo ""
+            echo "resolved: **${count}**${missing:+ · not found:\`${missing}\`}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           if [ "$count" -eq 0 ]; then
-            echo "No digest artifacts from successful builds; skipping pin."
+            echo "No images found in GHCR for this commit; nothing to pin."
           fi
 
       - name: Update kustomization image digests
@@ -538,7 +628,11 @@ jobs:
           set -euo pipefail
           cd "$KUSTOMIZATION_PATH"
           shopt -s nullglob
-          for f in ../../../digests/*.txt "$GITHUB_WORKSPACE"/digests/*.txt; do
+          # Absolute path only. The old relative `../../../digests/*.txt` glob
+          # assumed a kustomization exactly three levels deep and silently
+          # matched nothing otherwise; the digests are written to the workspace
+          # root by the derive step, so address them there unambiguously.
+          for f in "$GITHUB_WORKSPACE"/digests/*.txt; do
             [ -f "$f" ] || continue
             line=$(cat "$f")
             name="${line%%=*}"
@@ -573,6 +667,7 @@ jobs:
           done
 
       - name: Commit & push digest update
+        id: commit
         if: steps.digests.outputs.count != '0'
         env:
           CI_USER_NAME: ${{ inputs.ci_user_name }}
@@ -584,11 +679,17 @@ jobs:
           git config user.email "$CI_USER_EMAIL"
           target="${KUSTOMIZATION_PATH}/kustomization.yaml"
           if git diff --quiet -- "$target"; then
-            echo "No digest changes to commit."
+            # Not a failure: the kustomization already carries these exact
+            # digests (a rebuild of an unchanged tree reproduces them). The
+            # host is NOT stale in this case, so report the digests as pinned
+            # by recording the commit that already holds them.
+            echo "No digest changes to commit; kustomization already at this run's digests."
+            echo "pin_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git add -- "$target"
           git commit -m "ci: pin image digests from ${{ github.sha }}"
+          echo "pin_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           # The push races anything that lands on the branch mid-build (a
           # docs merge is enough) and a non-fast-forward here strands BUILT,
           # SIGNED digests unpinned — with `gh run rerun` useless, because a
@@ -668,12 +769,14 @@ jobs:
           # quiet.
           shopt -s nullglob
           sent=0; failed=0
-          # The same digest file is reachable by both globs, which posted every
-          # event twice. Harmless (findOrCreateRelease is idempotent per git
-          # SHA) but it doubles the calls and makes the log read as two
-          # services.
+          # Single canonical path (the derive step writes here). This used to
+          # glob both `digests/*.txt` and the absolute path, which matched the
+          # same file twice and posted every event twice — harmless, since
+          # findOrCreateRelease is idempotent per git SHA, but it doubled the
+          # calls and made the log read as two services. The seen_svcs guard
+          # below is kept as a cheap invariant.
           seen_svcs=" "
-          for f in digests/*.txt "$GITHUB_WORKSPACE"/digests/*.txt; do
+          for f in "$GITHUB_WORKSPACE"/digests/*.txt; do
             [ -f "$f" ] || continue
             line=$(cat "$f")
             svc="${line%%=*}"
@@ -762,6 +865,53 @@ jobs:
   # that says the host is stale and what to do about it. It costs one short
   # ubuntu job per run and it is the only thing standing between a transient
   # network error and an undetected stale production host.
+  #
+  # WHY THE GUARD ALSO CHECKS pins_written (2026-08-27)
+  #
+  #   Asserting `pin.result == 'success'` was not enough. The pin job reports
+  #   success when every meaningful step SKIPS behind "count == 0" — kustomize
+  #   edit, commit/push and the lifecycle notify are all gated on that. So the
+  #   combination (build=success, pin=success, zero digests resolved) passed the
+  #   guard while nothing was pinned and the host stayed stale. Observed on
+  #   2026-08-27 in run 33037992340, where all three pin steps skipped; that run
+  #   only went red because `build` also failed. Had the build reported success
+  #   with the digests unresolved, the guard would have exited 0 on a stale host.
+  #
+  #   So the guard now asserts on WORK DONE, not on job status:
+  #   when the build succeeded, at least one digest must have been resolved
+  #   and pinned.
+  #
+  #   TRUTH TABLE — build.result × pin.result × pins_written
+  #
+  #   build      pin        pins_written  verdict  why
+  #   ---------- ---------- ------------- -------- -------------------------------
+  #   skipped    *          *             PASS     no build ran; nothing to stale
+  #   cancelled  *          *             PASS     operator/CI aborted deliberately
+  #   success    success    >0            PASS     the happy path: images pinned
+  #   success    success    0             FAIL     THE GAP. Job green, nothing
+  #                                                pinned, host stale, main green.
+  #   success    failure    *             FAIL     pushed, pin broke mid-flight
+  #   success    cancelled  *             FAIL     pushed, pin aborted before pinning
+  #   success    skipped    *             FAIL     pushed, pin never ran at all
+  #   failure    success    >0            PASS     partial success (RFC 0017 Tier B):
+  #                                                a sibling matrix leg failed, but
+  #                                                every service that DID build is
+  #                                                pinned. The failed leg reds its
+  #                                                own job; this guard is about
+  #                                                pushed-but-unpinned, and nothing
+  #                                                pushed here went unpinned.
+  #   failure    success    0             FAIL     every leg failed to produce a
+  #                                                pinnable image — but if any leg
+  #                                                pushed before dying, that image
+  #                                                is unpinned. Fail loudly.
+  #   failure    failure    *             FAIL     as above, plus the pin broke
+  #   failure    cancelled  *             FAIL     as above
+  #   failure    skipped    *             FAIL     as above
+  #
+  #   `pins_written` is empty (not "0") whenever the pin job never reached its
+  #   derive step — a checkout/kustomize/login failure, or the job being skipped
+  #   outright. Empty is treated as 0, which lands those rows in FAIL exactly as
+  #   the table intends.
   # ---------------------------------------------------------------------------
   deploy-state-guard:
     name: Guard against silent stale deploy
@@ -790,24 +940,53 @@ jobs:
         env:
           BUILD_RESULT: ${{ needs.build.result }}
           PIN_RESULT: ${{ needs.pin.result }}
+          # Empty whenever the pin job never reached its derive step (skipped
+          # job, or a failure in checkout/kustomize/cosign/login before it).
+          PINS_WRITTEN: ${{ needs.pin.outputs.pins_written }}
+          PIN_COMMIT: ${{ needs.pin.outputs.pin_commit }}
         run: |
           set -euo pipefail
-          echo "build=${BUILD_RESULT} pin=${PIN_RESULT}"
+          # Normalize empty -> 0 so "the pin job never got that far" lands in
+          # the same FAIL rows as "the pin job resolved nothing".
+          pins="${PINS_WRITTEN:-0}"
+          case "$pins" in ''|*[!0-9]*) pins=0 ;; esac
+          echo "build=${BUILD_RESULT} pin=${PIN_RESULT} pins_written=${pins} pin_commit=${PIN_COMMIT:-<none>}"
 
-          # Nothing was attempted: no build ran, so nothing can be stale.
+          # Row: build=skipped|cancelled -> PASS. Nothing was attempted, so no
+          # image was pushed and nothing can be stale.
           if [ "$BUILD_RESULT" = "skipped" ] || [ "$BUILD_RESULT" = "cancelled" ]; then
             echo "No build ran; nothing to guard."
             exit 0
           fi
 
-          if [ "$PIN_RESULT" = "success" ]; then
-            echo "Digest pin completed; the deployed digest matches this run."
+          # Rows: pin=success AND pins_written>0 -> PASS.
+          # This is the ONLY passing outcome once a build ran, and it covers
+          # both build=success (happy path) and build=failure (RFC 0017 Tier B
+          # partial success: every service that built is pinned).
+          if [ "$PIN_RESULT" = "success" ] && [ "$pins" -gt 0 ]; then
+            echo "Digest pin completed: ${pins} digest(s) pinned at ${PIN_COMMIT:-HEAD}."
+            echo "The deployed digest matches this run."
             exit 0
           fi
 
-          echo "::error title=Image pushed but NOT pinned/deployed::The image(s) for this commit"
-          echo "::error::were built and pushed to GHCR, but the digest pin did not complete"
-          echo "::error::(build=${BUILD_RESULT}, pin=${PIN_RESULT})."
+          # Everything else FAILS. Distinguish the two shapes so the operator
+          # message names the actual state rather than a generic one.
+          if [ "$PIN_RESULT" = "success" ]; then
+            echo "::error title=Pin job green but NOTHING was pinned::The digest pin job reported"
+            echo "::error::success, but it resolved ZERO digests (pins_written=${pins}), so every"
+            echo "::error::step that would have pinned, committed and notified was SKIPPED."
+            echo "::error::"
+            echo "::error::A green pin job is not evidence of a deploy. This is the exact gap that"
+            echo "::error::let a stale host pass the guard before 2026-08-27."
+            echo "::error::"
+            echo "::error::Most likely: no image was found in GHCR at the :<commit-sha> tag for any"
+            echo "::error::service — the builds did not push, or the registry read was denied."
+            echo "::error::Check the 'Derive digests from GHCR' step in the pin job."
+          else
+            echo "::error title=Image pushed but NOT pinned/deployed::The image(s) for this commit"
+            echo "::error::were built and pushed to GHCR, but the digest pin did not complete"
+            echo "::error::(build=${BUILD_RESULT}, pin=${PIN_RESULT}, pins_written=${pins})."
+          fi
           echo "::error::"
           echo "::error::ArgoCD was never handed a new digest, so THE LIVE HOST IS STILL SERVING"
           echo "::error::THE PREVIOUS BUILD even though this commit is green on main."
