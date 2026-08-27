@@ -628,7 +628,7 @@ func (r *TimetableReconciler) resolveJobRuntimeContext(ctx context.Context, serv
 		r.logger.WithError(err).WithFields(logrus.Fields{
 			"service":         svc.Name,
 			"namespace":       namespace,
-			"names_attempted": []string{svc.Name, svc.Name + webDeploymentSuffix},
+			"names_attempted": deploymentNameCandidates(namespace, svc.Name),
 			"fallback":        fallback.Image,
 		}).Warn("Timetable: could not read service Deployment for job runtime context, falling back to default image with hardened security context")
 		return fallback
@@ -650,28 +650,65 @@ func (r *TimetableReconciler) resolveJobRuntimeContext(ctx context.Context, serv
 // service reconciler names Deployments per process type -- `<service>-web`,
 // `<service>-worker` -- so the bare name misses for every real service
 // (nauta-web, crea-map-web, tezca-web...). That miss silently degraded every
-// job to the context-free fallback. Two Gets, exact name first (so any service
-// that IS deployed under its bare name keeps working), then `<name>-web`.
+// job to the context-free fallback, which Kyverno then denied.
+//
+// Three deterministic Gets, in order:
+//
+//  1. `<serviceName>` exactly -- so any service that IS deployed under its
+//     bare name keeps working.
+//  2. `<serviceName>-web` -- the per-process-type convention: nauta ->
+//     nauta-web, crea-map -> crea-map-web.
+//  3. `<namespace>-web` -- the registered service name does not always prefix
+//     its deployments. Namespace tezca runs tezca-web/tezca-worker/tezca-redis
+//     while the registered service is `tezca-api`, so try 2 would look for
+//     `tezca-api-web` and miss. The namespace equals the project slug, which
+//     is the stable name the deployments actually carry.
+//
+// Gets only -- no list/label machinery.
 func (r *TimetableReconciler) getServiceDeployment(ctx context.Context, namespace, serviceName string) (*appsv1.Deployment, string, error) {
 	deployments := r.k8sClient.Kube().AppsV1().Deployments(namespace)
 
-	deployment, err := deployments.Get(ctx, serviceName, metav1.GetOptions{})
-	if err == nil {
-		return deployment, serviceName, nil
-	}
-	if !errors.IsNotFound(err) {
-		return nil, "", err
+	candidates := deploymentNameCandidates(namespace, serviceName)
+
+	var lastErr error
+	for _, name := range candidates {
+		deployment, err := deployments.Get(ctx, name, metav1.GetOptions{})
+		if err == nil {
+			return deployment, name, nil
+		}
+		if !errors.IsNotFound(err) {
+			// A real API failure (RBAC, connectivity): stop rather than
+			// masking it behind a subsequent NotFound.
+			return nil, "", err
+		}
+		lastErr = err
 	}
 
-	webName := serviceName + webDeploymentSuffix
-	deployment, webErr := deployments.Get(ctx, webName, metav1.GetOptions{})
-	if webErr != nil {
-		// Report the `-web` outcome: it is the convention-matching name and so
-		// the more informative failure for an operator reading the log.
-		return nil, "", webErr
+	return nil, "", lastErr
+}
+
+// deploymentNameCandidates lists the Deployment names to try for a service, in
+// order, de-duplicated so an already-covered name is not fetched twice (e.g. a
+// service named exactly after its namespace, where `<service>-web` and
+// `<namespace>-web` coincide).
+func deploymentNameCandidates(namespace, serviceName string) []string {
+	ordered := []string{
+		serviceName,
+		serviceName + webDeploymentSuffix,
+		namespace + webDeploymentSuffix,
 	}
 
-	return deployment, webName, nil
+	candidates := make([]string, 0, len(ordered))
+	seen := make(map[string]bool, len(ordered))
+	for _, name := range ordered {
+		if name == "" || name == webDeploymentSuffix || seen[name] {
+			continue
+		}
+		seen[name] = true
+		candidates = append(candidates, name)
+	}
+
+	return candidates
 }
 
 // hardenRuntimeContext fills in securityContexts that satisfy the cluster's

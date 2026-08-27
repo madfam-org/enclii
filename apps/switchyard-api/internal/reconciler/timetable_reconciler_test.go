@@ -712,6 +712,28 @@ func TestResolveJobRuntimeContextWebSuffixFallback(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	// The registered service name does not always prefix its deployments:
+	// namespace tezca runs tezca-web/tezca-worker/tezca-redis while the
+	// registered service is `tezca-api`, so `<service>-web` = `tezca-api-web`
+	// misses and only `<namespace>-web` resolves.
+	t.Run("falls back to <namespace>-web when the service name does not prefix the deployments", func(t *testing.T) {
+		r, mock, cleanup := newContextTestReconciler(t,
+			serviceDeployment("tezca", "tezca-web"),
+			serviceDeployment("tezca", "tezca-worker"),
+		)
+		defer cleanup()
+
+		serviceID := uuid.New()
+		expectServiceGetByID(mock, serviceID, "tezca-api")
+
+		rc := r.resolveJobRuntimeContext(ctx, serviceID, "tezca", "")
+
+		assert.Equal(t, "ghcr.io/org/api:v3", rc.Image, "must resolve tezca-web for service tezca-api")
+		assert.Equal(t, "api-sa", rc.ServiceAccountName)
+		assert.Equal(t, testContainerSC(), rc.ContainerSecurityContext)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("neither name resolves: hardened fallback", func(t *testing.T) {
 		r, mock, cleanup := newContextTestReconciler(t)
 		defer cleanup()
@@ -741,6 +763,49 @@ func TestResolveJobRuntimeContextWebSuffixFallback(t *testing.T) {
 		assert.Equal(t, "ghcr.io/org/api:v3", cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Image)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestDeploymentNameCandidates(t *testing.T) {
+	tests := []struct {
+		name      string
+		namespace string
+		service   string
+		expected  []string
+	}{
+		{
+			name:      "service name prefixes its deployments",
+			namespace: "nauta",
+			service:   "nauta",
+			// `<service>-web` and `<namespace>-web` coincide -- deduplicated.
+			expected: []string{"nauta", "nauta-web"},
+		},
+		{
+			// The live tezca shape: service tezca-api, deployments tezca-web
+			// / tezca-worker / tezca-redis.
+			name:      "service name does not prefix its deployments",
+			namespace: "tezca",
+			service:   "tezca-api",
+			expected:  []string{"tezca-api", "tezca-api-web", "tezca-web"},
+		},
+		{
+			name:      "hyphenated project slug",
+			namespace: "crea-map",
+			service:   "crea-map",
+			expected:  []string{"crea-map", "crea-map-web"},
+		},
+		{
+			name:      "empty service name still tries the namespace",
+			namespace: "tezca",
+			service:   "",
+			expected:  []string{"tezca-web"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, deploymentNameCandidates(tt.namespace, tt.service))
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
