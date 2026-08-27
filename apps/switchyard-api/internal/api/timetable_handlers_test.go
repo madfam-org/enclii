@@ -89,7 +89,7 @@ var cronJobRunSelectColumns = []string{
 // oneOffJobSelectColumns matches the columns scanned by OneOffJobRepository.GetByID/ListByProject
 var oneOffJobSelectColumns = []string{
 	"id", "project_id", "service_id", "name", "command", "image",
-	"timeout", "run_at", "status", "exit_code",
+	"timeout", "run_at", "status", "exit_code", "failure_reason",
 	"created_at", "started_at", "ended_at",
 }
 
@@ -709,8 +709,8 @@ func TestListOneOffJobs_Success(t *testing.T) {
 
 	// Mock: OneOffJobs.ListByProject (bounded at 50, newest first)
 	rows := sqlmock.NewRows(oneOffJobSelectColumns).
-		AddRow(uuid.New(), projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", int64(0), now, now, now).
-		AddRow(uuid.New(), projectID, serviceID, "seed-data", "./seed.sh", sql.NullString{String: "node:20", Valid: true}, 600, nil, "pending", nil, now, nil, nil)
+		AddRow(uuid.New(), projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", int64(0), "", now, now, now).
+		AddRow(uuid.New(), projectID, serviceID, "seed-data", "./seed.sh", sql.NullString{String: "node:20", Valid: true}, 600, nil, "pending", nil, "", now, nil, nil)
 
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 		WithArgs(projectID, 50).
@@ -807,7 +807,7 @@ func TestGetOneOffJob_Success(t *testing.T) {
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 		WithArgs(jobID).
 		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
-			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", exitCode, now, now, now))
+			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, "completed", exitCode, "", now, now, now))
 
 	// Mock: Projects.GetByID (namespace == project slug)
 	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
@@ -891,7 +891,7 @@ func expectOneOffJobLookup(mock sqlmock.Sqlmock, jobID, projectID, serviceID uui
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
 		WithArgs(jobID).
 		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
-			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, status, exitCode, now, nil, nil))
+			AddRow(jobID, projectID, serviceID, "db-migrate", "rails db:migrate", sql.NullString{Valid: false}, 300, nil, status, exitCode, "", now, nil, nil))
 
 	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
 		WithArgs(projectID).
@@ -936,6 +936,54 @@ func TestGetOneOffJobLogs_Success(t *testing.T) {
 	assert.Equal(t, "fake logs", resp["logs"])
 	assert.Equal(t, "job-db-migrate-abcd1234-xyz", resp["pod"])
 	assert.Equal(t, "completed", resp["status"])
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// A job denied by admission control never produces a pod. Before the fix it
+// sat "pending" forever and the endpoint said only "no pods scheduled"; now
+// the stored denial is the answer the operator gets.
+func TestGetOneOffJobLogs_AdmissionFailureReasonSurfaced(t *testing.T) {
+	h, mock, cleanup := setupTimetableTestHandler(t)
+	defer cleanup()
+
+	jobID := uuid.New()
+	projectID := uuid.New()
+	now := time.Now()
+	reason := "Kubernetes rejected the job: admission webhook \"validate.kyverno.svc-fail\" denied the request: restrict-capabilities"
+
+	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
+		WithArgs(jobID).
+		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns).
+			AddRow(jobID, projectID, uuid.New(), "db-migrate", "rails db:migrate",
+				sql.NullString{Valid: false}, 300, nil, "failed", nil, reason, now, nil, now))
+
+	mock.ExpectQuery(`SELECT id, name, slug, ci_runner_mode, created_at, updated_at FROM projects WHERE id`).
+		WithArgs(projectID).
+		WillReturnRows(sqlmock.NewRows(projectSelectColumns).
+			AddRow(projectID, "Test Project", "test-project", "github", now, now))
+
+	// No pod ever existed -- the Job create was refused.
+	h.k8sClient = &k8s.Client{KubeClient: fake.NewSimpleClientset()}
+
+	router := gin.New()
+	withTestAdminContext(router)
+	router.GET("/v1/one-off-jobs/:id/logs", h.GetOneOffJobLogs)
+
+	req := httptest.NewRequest("GET", "/v1/one-off-jobs/"+jobID.String()+"/logs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Equal(t, "failed", resp["status"])
+	assert.Equal(t, reason, resp["failure_reason"])
+	assert.Contains(t, resp["message"], "job never started")
+	assert.Contains(t, resp["message"], "restrict-capabilities")
+	// It must NOT claim the logs merely expired.
+	assert.NotContains(t, resp["message"], "cleaned up")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

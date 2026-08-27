@@ -576,14 +576,22 @@ func (h *Handler) GetOneOffJobLogs(c *gin.Context) {
 
 	if len(pods.Items) == 0 {
 		message := "logs no longer available: the job's pods were cleaned up"
-		if job.Status == "pending" {
+		switch {
+		case job.Status == "failed" && job.FailureReason != "":
+			// The job never produced a pod because Kubernetes refused to
+			// create it (admission webhook denial). That reason is the only
+			// record of what went wrong -- return it instead of implying the
+			// logs merely expired.
+			message = "job never started: " + job.FailureReason
+		case job.Status == "pending":
 			message = "job has not started yet: no pods scheduled"
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"logs":    "",
-			"pod":     "",
-			"status":  job.Status,
-			"message": message,
+			"logs":           "",
+			"pod":            "",
+			"status":         job.Status,
+			"message":        message,
+			"failure_reason": job.FailureReason,
 		})
 		return
 	}

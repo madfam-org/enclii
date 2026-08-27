@@ -40,7 +40,25 @@ const (
 	// (service deleted, never deployed, or K8s lookup failure). Jobs for
 	// deployed services run in the service's own image instead -- see
 	// resolveJobRuntimeContext.
-	defaultJobImage = "busybox:latest"
+	//
+	// It MUST be fully qualified and version-pinned. The cluster runs Kyverno
+	// `restrict-image-registries` (approved-registry prefix match, which a bare
+	// `busybox` fails) and `disallow-latest-tag` (which `:latest` fails). A
+	// fallback image that trips either policy makes every job Create a webhook
+	// denial -- the failure mode that left one-off jobs pending forever.
+	defaultJobImage = "docker.io/library/busybox:1.36"
+
+	// webDeploymentSuffix is appended to a service name when the
+	// exactly-named Deployment does not exist. The fleet's service reconciler
+	// names deployments `<service>-web` / `<service>-worker` per process type,
+	// so a service named `nauta` has `nauta-web`, never a bare `nauta`.
+	webDeploymentSuffix = "-web"
+
+	// hardenedJobRunAsUser is the non-root UID job pods run as when no
+	// Deployment securityContext could be inherited. 65532 is the
+	// conventional `nonroot` UID (distroless) and is non-zero, which
+	// Kyverno's require-run-as-non-root check demands.
+	hardenedJobRunAsUser int64 = 65532
 )
 
 // TimetableReconciler periodically reconciles cron jobs and one-off jobs from the
@@ -366,7 +384,12 @@ func (r *TimetableReconciler) reconcileOneOffJobs(ctx context.Context) {
 // dispatchOneOffJob creates a K8s Job for a pending one-off job and marks it
 // as running in the database.
 func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.OneOffJob) error {
-	if !r.k8sClient.IsValid() {
+	// Kube() is preferred over the concrete Clientset field throughout this
+	// path so the dispatch is unit-testable against a fake client (see the
+	// contract on k8s.Client.Kube). IsValid additionally requires a REST
+	// config, which a fake client has no need of, so the usable-client check
+	// is the nil check on Kube() itself.
+	if r.k8sClient == nil || r.k8sClient.Kube() == nil {
 		r.logger.WithFields(logrus.Fields{
 			"one_off_job_id": job.ID,
 			"name":           job.Name,
@@ -382,7 +405,7 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 	rc := r.resolveJobRuntimeContext(ctx, job.ServiceID, namespace, job.Image)
 	k8sJob := r.buildOneOffJob(job, namespace, rc)
 
-	_, err = r.k8sClient.Clientset.BatchV1().Jobs(namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
+	_, err = r.k8sClient.Kube().BatchV1().Jobs(namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			// Job was already created in a prior reconciliation pass.
@@ -391,7 +414,30 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 				"name":           k8sJob.Name,
 				"namespace":      namespace,
 			}).Debug("Timetable: K8s Job already exists, updating status to running")
+		} else if isAdmissionRejection(err) {
+			// Deterministic rejection: the API server (or an admission
+			// webhook) refuses this spec and will refuse it identically on
+			// every retry. Retrying forever is what left jobs "pending" with
+			// nothing but "no pods scheduled" to show the operator. Go
+			// terminal and persist the reason instead.
+			reason := fmt.Sprintf("Kubernetes rejected the job: %v", err)
+			r.logger.WithError(err).WithFields(logrus.Fields{
+				"one_off_job_id": job.ID,
+				"name":           k8sJob.Name,
+				"namespace":      namespace,
+				"image":          rc.Image,
+			}).Error("Timetable: one-off job rejected by admission control, marking failed")
+
+			if markErr := r.repos.OneOffJobs.MarkFailed(ctx, job.ID, reason); markErr != nil {
+				r.logger.WithError(markErr).WithField("one_off_job_id", job.ID).Error("Timetable: failed to record one-off job admission failure")
+				// Surface the original rejection to the caller's log either way.
+				return fmt.Errorf("create Job %s/%s rejected: %w (and recording the failure failed: %v)", namespace, k8sJob.Name, err, markErr)
+			}
+
+			return nil
 		} else {
+			// Transient (network, conflict, throttling): leave the row pending
+			// so the next pass retries.
 			return fmt.Errorf("create Job %s/%s: %w", namespace, k8sJob.Name, err)
 		}
 	} else {
@@ -408,6 +454,34 @@ func (r *TimetableReconciler) dispatchOneOffJob(ctx context.Context, job *types.
 	}
 
 	return nil
+}
+
+// isAdmissionRejection reports whether an error from a K8s write is a
+// deterministic rejection of the submitted object rather than a transient
+// failure worth retrying.
+//
+// Forbidden covers admission webhook denials (Kyverno returns 403 with an
+// "admission webhook ... denied the request" message) and PodSecurity
+// violations; Invalid covers server-side schema/validation rejections. Both
+// reproduce identically on every retry, so a job that hits them must go
+// terminal instead of sitting pending forever. The string check is a
+// belt-and-braces fallback for webhooks that surface a denial under a status
+// reason these helpers do not classify.
+//
+// Deliberately NOT included: timeouts, connection errors, Conflict,
+// TooManyRequests, ServerTimeout, and ServiceUnavailable (a webhook that is
+// merely down, rather than refusing) -- those are transient and keep the
+// existing retry behavior.
+func isAdmissionRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.IsForbidden(err) || errors.IsInvalid(err) {
+		return true
+	}
+
+	return strings.Contains(strings.ToLower(err.Error()), "admission webhook")
 }
 
 // buildOneOffJob constructs the desired K8s Job spec from the database record
@@ -515,7 +589,10 @@ type jobRuntimeContext struct {
 // API -- the same role required to deploy the service -- so this resolution
 // adds no privilege beyond what the job creator already holds.
 func (r *TimetableReconciler) resolveJobRuntimeContext(ctx context.Context, serviceID uuid.UUID, namespace, explicitImage string) jobRuntimeContext {
-	fallback := jobRuntimeContext{Image: explicitImage}
+	// Every fallback path is hardened: a job that inherits no securityContext
+	// from a Deployment must still supply one of its own or the cluster's
+	// Kyverno policies deny its admission.
+	fallback := hardenRuntimeContext(jobRuntimeContext{Image: explicitImage})
 	if fallback.Image == "" {
 		fallback.Image = defaultJobImage
 	}
@@ -546,17 +623,90 @@ func (r *TimetableReconciler) resolveJobRuntimeContext(ctx context.Context, serv
 		return fallback
 	}
 
-	deployment, err := r.k8sClient.Kube().AppsV1().Deployments(namespace).Get(ctx, svc.Name, metav1.GetOptions{})
+	deployment, resolvedName, err := r.getServiceDeployment(ctx, namespace, svc.Name)
 	if err != nil {
 		r.logger.WithError(err).WithFields(logrus.Fields{
-			"service":   svc.Name,
-			"namespace": namespace,
-			"fallback":  fallback.Image,
-		}).Warn("Timetable: could not read service Deployment for job runtime context, falling back to default image without service env")
+			"service":         svc.Name,
+			"namespace":       namespace,
+			"names_attempted": []string{svc.Name, svc.Name + webDeploymentSuffix},
+			"fallback":        fallback.Image,
+		}).Warn("Timetable: could not read service Deployment for job runtime context, falling back to default image with hardened security context")
 		return fallback
 	}
 
+	r.logger.WithFields(logrus.Fields{
+		"service":    svc.Name,
+		"namespace":  namespace,
+		"deployment": resolvedName,
+	}).Debug("Timetable: resolved service Deployment for job runtime context")
+
 	return runtimeContextFromDeployment(deployment, explicitImage)
+}
+
+// getServiceDeployment reads the Deployment backing a service, returning the
+// name it actually resolved under.
+//
+// Historically this did a single Get on the bare service name. The fleet's
+// service reconciler names Deployments per process type -- `<service>-web`,
+// `<service>-worker` -- so the bare name misses for every real service
+// (nauta-web, crea-map-web, tezca-web...). That miss silently degraded every
+// job to the context-free fallback. Two Gets, exact name first (so any service
+// that IS deployed under its bare name keeps working), then `<name>-web`.
+func (r *TimetableReconciler) getServiceDeployment(ctx context.Context, namespace, serviceName string) (*appsv1.Deployment, string, error) {
+	deployments := r.k8sClient.Kube().AppsV1().Deployments(namespace)
+
+	deployment, err := deployments.Get(ctx, serviceName, metav1.GetOptions{})
+	if err == nil {
+		return deployment, serviceName, nil
+	}
+	if !errors.IsNotFound(err) {
+		return nil, "", err
+	}
+
+	webName := serviceName + webDeploymentSuffix
+	deployment, webErr := deployments.Get(ctx, webName, metav1.GetOptions{})
+	if webErr != nil {
+		// Report the `-web` outcome: it is the convention-matching name and so
+		// the more informative failure for an operator reading the log.
+		return nil, "", webErr
+	}
+
+	return deployment, webName, nil
+}
+
+// hardenRuntimeContext fills in securityContexts that satisfy the cluster's
+// Kyverno baseline for any context that carries none.
+//
+// A context resolved from a live Deployment already carries the service's own
+// securityContext pair (which passes admission, or the service would not be
+// running) and is returned untouched. Only the context-free paths -- no
+// Deployment found, or an explicit --image against a service that was never
+// deployed -- get these defaults. Without them the Job is built with a nil
+// securityContext and `restrict-capabilities` (autogen-drop-all-capabilities)
+// denies the Create.
+func hardenRuntimeContext(rc jobRuntimeContext) jobRuntimeContext {
+	if rc.ContainerSecurityContext == nil {
+		allowPrivilegeEscalation := false
+		runAsNonRoot := true
+		runAsUser := hardenedJobRunAsUser
+		rc.ContainerSecurityContext = &corev1.SecurityContext{
+			AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			RunAsNonRoot:             &runAsNonRoot,
+			RunAsUser:                &runAsUser,
+		}
+	}
+
+	if rc.PodSecurityContext == nil {
+		runAsNonRoot := true
+		rc.PodSecurityContext = &corev1.PodSecurityContext{
+			RunAsNonRoot:   &runAsNonRoot,
+			SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+		}
+	}
+
+	return rc
 }
 
 // runtimeContextFromDeployment copies the runtime context out of a service
@@ -588,7 +738,11 @@ func runtimeContextFromDeployment(deployment *appsv1.Deployment, explicitImage s
 		rc.Image = defaultJobImage
 	}
 
-	return rc
+	// A Deployment with no containers (or one that declares no securityContext)
+	// yields a context-free job spec, which Kyverno denies. Harden whatever the
+	// Deployment did not supply; a Deployment that carries its own pair is
+	// returned verbatim.
+	return hardenRuntimeContext(rc)
 }
 
 // ---------------------------------------------------------------------------

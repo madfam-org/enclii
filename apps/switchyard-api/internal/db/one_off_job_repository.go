@@ -53,13 +53,13 @@ func (r *OneOffJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*types
 
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
-		       timeout, run_at, status, exit_code,
+		       timeout, run_at, status, exit_code, failure_reason,
 		       created_at, started_at, ended_at
 		FROM one_off_jobs WHERE id = $1
 	`
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&job.ID, &job.ProjectID, &job.ServiceID, &job.Name, &job.Command, &image,
-		&job.Timeout, &runAt, &job.Status, &exitCode,
+		&job.Timeout, &runAt, &job.Status, &exitCode, &job.FailureReason,
 		&job.CreatedAt, &startedAt, &endedAt,
 	)
 	if err != nil {
@@ -99,7 +99,7 @@ func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.
 
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
-		       timeout, run_at, status, exit_code,
+		       timeout, run_at, status, exit_code, failure_reason,
 		       created_at, started_at, ended_at
 		FROM one_off_jobs
 		WHERE project_id = $1
@@ -120,7 +120,7 @@ func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.
 func (r *OneOffJobRepository) ListPending(ctx context.Context) ([]*types.OneOffJob, error) {
 	query := `
 		SELECT id, project_id, service_id, name, command, image,
-		       timeout, run_at, status, exit_code,
+		       timeout, run_at, status, exit_code, failure_reason,
 		       created_at, started_at, ended_at
 		FROM one_off_jobs
 		WHERE status = 'pending' AND (run_at IS NULL OR run_at <= NOW())
@@ -168,6 +168,30 @@ func (r *OneOffJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	return nil
 }
 
+// MarkFailed records a terminal failure that happened before the job ever
+// produced a pod -- a Kubernetes admission denial, principally. The reason is
+// persisted so the logs endpoint can explain a job that has no pod to read
+// logs from; without it the operator sees only "no pods scheduled".
+//
+// exitCode is left NULL: the container never ran, so there is no exit status
+// to report, and a fabricated one would be indistinguishable from a real
+// non-zero exit.
+func (r *OneOffJobRepository) MarkFailed(ctx context.Context, id uuid.UUID, reason string) error {
+	query := `UPDATE one_off_jobs SET status = 'failed', failure_reason = $1, ended_at = $2 WHERE id = $3`
+
+	result, err := r.db.ExecContext(ctx, query, reason, time.Now(), id)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 // scanOneOffJobs scans multiple one-off job rows
 func (r *OneOffJobRepository) scanOneOffJobs(rows *sql.Rows) ([]*types.OneOffJob, error) {
 	var jobs []*types.OneOffJob
@@ -180,7 +204,7 @@ func (r *OneOffJobRepository) scanOneOffJobs(rows *sql.Rows) ([]*types.OneOffJob
 
 		err := rows.Scan(
 			&job.ID, &job.ProjectID, &job.ServiceID, &job.Name, &job.Command, &image,
-			&job.Timeout, &runAt, &job.Status, &exitCode,
+			&job.Timeout, &runAt, &job.Status, &exitCode, &job.FailureReason,
 			&job.CreatedAt, &startedAt, &endedAt,
 		)
 		if err != nil {
