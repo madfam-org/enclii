@@ -466,11 +466,18 @@ func TestProvisionDomainEdgeWithholdsTheRouteUntilOwnershipIsProven(t *testing.T
 	})
 
 	t.Run("a non-external domain keeps the route-first order", func(t *testing.T) {
-		h := &Handler{logger: newNopLogger(), config: &config.Config{}}
+		namespace := "tulana"
+		// The backend has to resolve for the route to be written at all now —
+		// the resolvability gate refuses a rule pointing at a Service that is
+		// not in the cluster. See TestEnsureTunnelRoute_JanuaOutage.
+		h := &Handler{
+			logger:    newNopLogger(),
+			config:    &config.Config{},
+			k8sClient: fakeKubeWithServices(k8sService(namespace, "tulana-web", 80)),
+		}
 		tunnelRoutes := newMockTunnelRoutesManager()
 		h.tunnelRoutesService = tunnelRoutes
 
-		namespace := "tulana"
 		h.provisionDomainEdge(context.Background(), "tulana-app.madfam.io", &types.Service{
 			ID:           uuid.New(),
 			ProjectID:    uuid.New(),

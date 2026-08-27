@@ -238,7 +238,7 @@ func (h *Handler) provisionDomainEdge(
 				logging.Error("error", result.Err))
 			return result
 		}
-		h.ensureTunnelRoute(ctx, domain, service, envName, servicePort)
+		h.ensureTunnelRoute(ctx, domain, service, envName, servicePort, owner)
 		return result
 	}
 
@@ -258,7 +258,7 @@ func (h *Handler) provisionDomainEdge(
 		return result
 	}
 
-	h.ensureTunnelRoute(ctx, domain, service, envName, servicePort)
+	h.ensureTunnelRoute(ctx, domain, service, envName, servicePort, owner)
 	return h.applyDomainRouting(ctx, plan, owner)
 }
 

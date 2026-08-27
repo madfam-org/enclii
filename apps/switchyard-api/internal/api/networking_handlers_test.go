@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/config"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/services"
 )
@@ -123,6 +124,12 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 		},
 		tunnelRoutesService: tunnels,
 		logger:              testLogger(t),
+		// The resolvability gate now reads the cluster before writing an
+		// ingress rule, so the backend this test expects to be routed has to
+		// actually be there. See TestEnsureTunnelRoute_JanuaOutage.
+		k8sClient: fakeKubeWithServices(
+			k8sService("enclii-dhanam-staging", "dhanam-api", 80)),
+		config: &config.Config{},
 	}
 
 	body, err := json.Marshal(AddDomainRequest{

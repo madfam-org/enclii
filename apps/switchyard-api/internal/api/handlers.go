@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
@@ -96,6 +98,13 @@ type Handler struct {
 	placementService      *services.PlacementService
 	driftService          *services.DriftService
 	costTrackingService   *services.CostTrackingService
+
+	// tunnelCanaryProbe substitutes the post-write tunnel-route probe. nil in
+	// production, where the probe dials the in-cluster backend for real; set
+	// only by tests, which cannot serve a .svc.cluster.local name and would
+	// otherwise spend seconds per case failing to resolve one. See
+	// domain_tunnel_backend.go.
+	tunnelCanaryProbe func(context.Context, *services.RouteSpec) error
 
 	// Consolidated audit surface (P1.5) — serves /v1/audit and /v1/audit/export
 	// by merging Janua + Switchyard + Nexus audit streams. Optional; if nil
