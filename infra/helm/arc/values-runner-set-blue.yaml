@@ -14,10 +14,14 @@ runnerScaleSetName: "madfam-runners-blue"
 # at 400m so 12 runners remain schedulable on the 8 vCPU builder without
 # creating Pending EphemeralRunner capacity starvation.
 #
-# Raise this further only after adding a second builder node or deliberately
-# allowing a separate spillover scale set onto non-production nodes.
+# 2026-08-27 reconcile: the second builder node EXISTS (foundry-builder-03),
+# and commit b6352294 raised blue to 20 for it — but only in
+# infra/k8s/production/arc/runner-blue/rendered.yaml, not here. The cluster
+# has run maxRunners=20 since; this file lagging at 12 meant the next
+# successful helm-path self-deploy would have silently clamped capacity
+# back to 12. Keep BOTH this file and rendered.yaml in agreement.
 minRunners: 1
-maxRunners: 12
+maxRunners: 20
 
 # Blue-specific labels for identification
 template:
