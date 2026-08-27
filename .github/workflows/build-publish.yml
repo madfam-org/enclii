@@ -332,6 +332,20 @@ jobs:
       - name: Build & push image
         id: build
         uses: docker/build-push-action@v7
+        env:
+          # Don't spend the org's artifact quota on build diagnostics.
+          #
+          # The docker actions toolkit uploads a "build record" artifact after
+          # every build. It is purely diagnostic — nothing here consumes it,
+          # and `provenance: false` below means no attestation depends on it —
+          # but it competes for the same capped account-wide artifact storage
+          # as the digest artifact, which IS load-bearing (the `pin` job
+          # downloads it to commit the digest pins ArgoCD rolls on).
+          #
+          # ADR-010: load-bearing paths must not depend on GitHub billing.
+          # Both env vars are documented in docker/build-push-action.
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+          DOCKER_BUILD_SUMMARY: "false"
         with:
           # `context` defaults to "." (repo root). Services with a
           # subdirectory build root (e.g. bloom-scroll's backend/ and
@@ -418,7 +432,31 @@ jobs:
           printf '%s=%s\n' "${{ matrix.service.name }}" "${{ steps.build.outputs.digest }}" \
             > "digests/${{ matrix.service.name }}.txt"
 
+      # NOT continue-on-error, and deliberately so.
+      #
+      # This artifact is load-bearing: the `pin` job downloads it (pattern
+      # digest-*) to commit the digest pins ArgoCD rolls on. Swallowing a
+      # failure here would push an image that never gets pinned — the live
+      # host keeps serving the previous build while main looks green, exactly
+      # the silent-drift failure the cosign step above shouts about.
+      #
+      # The quota error that broke every caller ("Failed to CreateArtifact:
+      # Artifact storage quota has been hit", angelia run 33032906876) is
+      # account-wide and clears on GitHub's 6-12h recalculation, so retry
+      # across that window; a genuinely exhausted quota still fails the job.
       - name: Upload digest artifact
+        id: upload-digest
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.service.name }}
+          path: digests/
+
+      # The upload above is allowed to fail ONLY so this step can retry it and
+      # then decide. A silent skip is not on the table: an unpinned image means
+      # ArgoCD keeps serving the previous build while main looks green.
+      - name: Retry digest upload
+        if: steps.upload-digest.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: digest-${{ matrix.service.name }}
@@ -729,7 +767,24 @@ jobs:
     name: Guard against silent stale deploy
     needs: [detect-changes, build, pin]
     if: always() && needs.detect-changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    # Must run on the SAME pool as the jobs it guards.
+    #
+    # On ubuntu-latest this job dies before its first step whenever
+    # GitHub-hosted minutes are unavailable — a 0-step failure — while build
+    # and pin succeed on ARC. That inverts the alarm: it reports "THE LIVE HOST
+    # IS STILL SERVING THE PREVIOUS BUILD" on deploys that were in fact fine.
+    # Verified tonight as `Guard against silent stale deploy steps=0` on kalya
+    # and acervo among others.
+    #
+    # This is the one alarm that must stay trustworthy: repeated false reds
+    # train operators to ignore the real thing (acervo's run had a genuine
+    # `Commit digest pins` failure sitting right next to the false one).
+    #
+    # Safe to move: the job shells out to nothing — no gh, no curl, no jq, no
+    # checkout. It only compares `needs.*.result` values, so it needs no
+    # outside vantage point and no tooling the ARC image lacks. (The two `gh`
+    # mentions below are inside echoed operator instructions, not commands.)
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
     steps:
       - name: Fail loudly when images were pushed but not pinned
         env:
