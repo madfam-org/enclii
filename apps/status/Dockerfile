@@ -6,7 +6,17 @@ FROM public.ecr.aws/docker/library/node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 # Upgrade the bundled npm CLI: the npm shipped with node:22-alpine bundles
 # vulnerable picomatch/sigstore versions that fail the Trivy HIGH/CRITICAL gate.
-RUN npm install -g npm@11.18.0
+#
+# Pinned to 11.19.1, NOT `latest`. npm vendors its whole dependency tree under
+# /usr/local/lib/node_modules/npm/node_modules, so Trivy scans those bundled
+# copies as part of the image. The previous 11.18.0 pin bundled
+# brace-expansion 5.0.7 (CVE-2026-69152, CVE-2026-14257) and ip-address 10.2.0
+# (CVE-2026-69192).
+#
+# 11.19.1 bundles the fixed brace-expansion 5.0.9 + ip-address 10.5.0.
+# Do NOT "upgrade" to npm 12.x: 12.0.2 REGRESSES both back to the vulnerable
+# 5.0.7 / 10.2.0. Verify the bundled versions before moving this pin.
+RUN npm install -g npm@11.19.1
 RUN corepack enable pnpm
 ENV npm_config_dangerously_allow_all_builds=true
 WORKDIR /app

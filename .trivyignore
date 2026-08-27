@@ -7,3 +7,15 @@
 # longer present in any published/scanned image. They now live only in the
 # unpublished dev-only stages (apps/switchyard-api/Dockerfile `dev`,
 # apps/roundhouse/Dockerfile `worker-dev`), which CI does not scan.
+
+# CVE-2025-71329, CVE-2025-71330 — image-size 2.0.2, transitive via
+# Docusaurus 3.10.2 (docs-site ONLY; no published service image carries it).
+# NO upstream fix exists as of 2026-08-27: image-size has no patched release
+# and Docusaurus pins the range. Justification: docs-site is an internal
+# documentation surface, not a production service path; the findings are
+# parser-DoS class reachable only by building the site from hostile images,
+# which our build does not do. Rotation condition: remove the moment
+# image-size ships a fix or Docusaurus bumps past it — re-check on every
+# Docusaurus upgrade, and no later than 2026-10-01.
+CVE-2025-71329
+CVE-2025-71330

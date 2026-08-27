@@ -6,6 +6,8 @@
   "//pnpm-overrides": "apps/status/Dockerfile installs this package STANDALONE (COPY package.json pnpm-lock.yaml; pnpm install --frozen-lockfile), so the workspace-root overrides in /package.json do not reach the production image. These mirror the root list for the transitives that ship in the status image. Keep the two lists in sync.",
   "pnpm": {
     "overrides": {
+      "nanoid@>=3.0.0 <3.3.18": "^3.3.18",
+      "nanoid@>=4.0.0 <5.1.6": "^5.1.6",
       "picomatch@>=2.0.0 <2.3.2": "~2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
       "postcss@>=8.0.0 <8.5.18": "^8.5.18",
