@@ -239,16 +239,22 @@ jobs:
           INPUT_COLOR="${{ github.event.inputs.target_color }}"
 
           if [[ "${INPUT_COLOR}" == "auto" ]] || [[ -z "${INPUT_COLOR}" ]]; then
-            # Get current active color
             CURRENT=$(kubectl get autoscalingrunnerset -n arc-runners -o json 2>/dev/null | \
               jq -r '.items[] | select(((.metadata.labels["arc.enclii.dev/active"] // .spec.template.metadata.labels["arc.enclii.dev/active"]) == "true")) | .metadata.name' | \
               grep -oE '(blue|green)' | head -1 || echo "blue")
 
-            if [[ "${CURRENT}" == "blue" ]]; then
-              TARGET="green"
-            else
-              TARGET="blue"
-            fi
+            # PINNED TO BLUE on auto runs — deliberately NOT a blue/green flip
+            # (owner ruling 2026-08-27). The flip was the second half of the
+            # 100%-failure mechanism this PR fixes, and it was also operationally
+            # wrong: green is capped at maxRunners=2 (a standby/bootstrap set),
+            # while blue carries the whole estate (values-runner-set-blue.yaml:
+            # "the active scale set during normal operations"; estate workflows
+            # reference madfam-runners-blue throughout). An auto-flip would move
+            # all of CI onto a 2-runner pool after every arc-manifest merge.
+            # Auto runs therefore redeploy blue in place; switching to green is
+            # a DELIBERATE act via workflow_dispatch target_color=green, which
+            # still works below for real blue/green tests or emergencies.
+            TARGET="blue"
           else
             TARGET="${INPUT_COLOR}"
           fi
