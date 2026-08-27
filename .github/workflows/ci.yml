@@ -468,7 +468,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install deps
-        run: pip install --quiet pyyaml requests
+        run: pip install --quiet pyyaml requests pytest
+
+      # These self-tests had no CI job at all, so a module-level sys.exit(2) in
+      # the script's `requests` ImportError guard went unnoticed — it aborted
+      # pytest collection for the entire tests/scripts/ directory. Pair the
+      # tests with the lint here, matching the other *-lint jobs.
+      - name: Run image age ratchet self-tests
+        run: pytest tests/scripts/test_check_image_age.py -v
 
       - name: Run image age ratchet
         env:
