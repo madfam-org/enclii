@@ -71,6 +71,48 @@ Vault (self-hosted) ← K8s ServiceAccount auth ← ESO ← ExternalSecret → K
                     ← OIDC auth (via Janua) ← Human operators (UI/CLI)
 ```
 
+## Cross-app secret reads (autoprovision one app's secret into another)
+
+When an app needs a secret **another app already holds** — e.g. crea-map needs
+janua's internal service key to send notification email — do **not** copy the
+value or run a Vault write. Reference the source app's Vault path directly in the
+**consumer's** ExternalSecret:
+
+```yaml
+# in the CONSUMER app's ExternalSecret (secretStoreRef: vault-store):
+- secretKey: JANUA_INTERNAL_API_KEY
+  remoteRef: { key: secret/janua, property: internal_api_key }
+```
+
+**Why this works — one cluster-wide reader role.** `vault-store` authenticates as
+the single `eso-reader` Vault role bound to the `external-secrets` ServiceAccount
+(not a per-app role), so an ExternalSecret in **any** namespace may reference
+**any** `secret/*` path. This is the sanctioned pattern, not a workaround:
+`secret/comms` (shared Resend credentials) is read this way by `janua-secrets`,
+`enclii-secrets` and `madfam-site-secrets`, and `janua-secrets` itself reads
+`secret/janua`, `secret/comms`, `secret/coupler` and `secret/dhanam`. It is a
+**live reference** (ESO re-reads Vault every `refreshInterval`), never a copy that
+can drift.
+
+**Before you add the line — prove the source property EXISTS.** ESO is
+all-or-nothing per ExternalSecret: one missing property fails the **whole** object
+and the pod starts with no env (the "N4 lesson"). Verify by finding an existing
+ExternalSecret that already maps the same source property, and confirming that
+source app is serving (its own all-or-nothing map being healthy proves the
+property is populated):
+
+```bash
+# is the property populated in the source path?
+grep -rn "property: internal_api_key" infra/k8s/base/external-secrets/vault-secrets/
+# is the source app up? (all-or-nothing → serving proves the property exists)
+curl -s -o /dev/null -w '%{http_code}\n' https://auth.madfam.io/health
+```
+
+The key lands in the consumer pod's env via `envFrom` and takes effect on the
+next pod **roll**. Prefer this cross-reference over `enclii secrets set`
+(which needs the raw value) whenever the secret already lives in Vault under
+another app's path.
+
 ## Secret Rotation
 
 ESO automatically syncs secrets based on `refreshInterval`:
