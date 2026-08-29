@@ -19,6 +19,16 @@ targets:
     keys:
       - JANUA_CLIENT_SECRET
 
+  lexidrop/oidc-janua:
+    label: LexiDrop Janua OAuth client
+    description: LexiDrop dashboard (ld-app.madfam.io) OIDC confidential client — id + secret for the api-side callback
+    vault_path: secret/lexidrop
+    namespace: lexidrop
+    external_secret: lexidrop-secrets
+    keys:
+      - janua_client_id
+      - janua_client_secret
+
   dhanam/stripe-mx-live:
     label: Dhanam Stripe MX live keys
     description: Production MX Stripe secret + webhook signing secret

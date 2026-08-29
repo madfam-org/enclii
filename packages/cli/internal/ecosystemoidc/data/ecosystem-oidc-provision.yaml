@@ -181,3 +181,33 @@ platforms:
       grant_types:
         - authorization_code
         - refresh_token
+
+  lexidrop:
+    intake_target: lexidrop/oidc-janua
+    # Lowercase Vault properties, because lexidrop's ExternalSecret reads
+    # `janua_client_secret` from secret/lexidrop and ESO is all-or-nothing.
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret
+    janua_client:
+      name: LexiDrop
+      client_key: lexidrop
+      audience: lexidrop
+      # Pinned to the client already registered on Janua (confirmed via the
+      # by-name endpoint 2026-08-29): the pin makes this RECONCILE, not create a
+      # duplicate.
+      client_id: jnc_VMg2JHsr8qjmvdhS1ff5qNIRjb0fUA2x
+      description: LexiDrop domain-acquisition intelligence (ld-app.madfam.io) — confidential OIDC client for the Janua-gated dashboard
+      is_confidential: true
+      website_url: https://ld-app.madfam.io
+      redirect_uris:
+        - https://ld-app.madfam.io/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
