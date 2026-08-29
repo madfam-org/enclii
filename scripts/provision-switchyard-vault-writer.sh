@@ -84,6 +84,12 @@ path "secret/data/karafiel" {
 path "secret/data/karafiel/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+path "secret/data/lexidrop" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/lexidrop/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/data/phynd-crm" {
   capabilities = ["create", "update", "patch", "read"]
 }
