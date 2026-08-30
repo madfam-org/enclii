@@ -137,13 +137,21 @@ platforms:
       client_key: nauta-cockpit
       audience: nauta-api
       client_id: jnc_43heE7PWV_UxbPGCDUccnMMz4OycY1kw
-      description: MADFAM fractional-CTO operating cockpit (cto.madfam.io). Staff only, OIDC authorization-code flow.
+      description: MADFAM fractional-CTO operating cockpit (app.nauta.quest). Staff only, OIDC authorization-code flow.
       is_confidential: true
-      website_url: https://cto.madfam.io
+      website_url: https://app.nauta.quest
+      # 2026-08-30 apex migration: cockpit moved to app.nauta.quest (hard cutover
+      # from nauta.madfam.io / cto.madfam.io; the nauta.quest apex serves the
+      # public landing). The callback path is /api/auth/callback/janua (Auth.js
+      # provider id 'janua') — the earlier entries here omitted the /janua suffix,
+      # which the live Janua registry never used. Old-host callbacks kept for the
+      # transition window; remove once DNS + config have fully moved. Mirrors
+      # nauta:infra/oauth-redirect-uris.json — keep in sync.
       redirect_uris:
-        - https://nauta.madfam.io/api/auth/callback
-        - https://cto.madfam.io/api/auth/callback
-        - http://localhost:3000/api/auth/callback
+        - https://app.nauta.quest/api/auth/callback/janua
+        - https://nauta.madfam.io/api/auth/callback/janua
+        - https://cto.madfam.io/api/auth/callback/janua
+        - http://localhost:3000/api/auth/callback/janua
       allowed_scopes:
         - openid
         - profile
