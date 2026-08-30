@@ -307,6 +307,55 @@ func TestProjectRepository_UpdateCIRunnerMode(t *testing.T) {
 	})
 }
 
+// --- SetTeam ---
+
+func TestProjectRepository_SetTeam(t *testing.T) {
+	t.Run("parents a project to a team", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		team := uuid.New()
+		mock.ExpectExec(`UPDATE projects SET team_id = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(team, id).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.SetTeam(context.Background(), id, team)
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("un-parents with uuid.Nil (team_id set NULL)", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		// uuid.Nil maps to a NULL team_id argument.
+		mock.ExpectExec(`UPDATE projects SET team_id = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(nil, id).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		err := repo.SetTeam(context.Background(), id, uuid.Nil)
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("no matching project → ErrNoRows", func(t *testing.T) {
+		repo, mock, cleanup := newProjectMockDB(t)
+		defer cleanup()
+
+		id := uuid.New()
+		team := uuid.New()
+		mock.ExpectExec(`UPDATE projects SET team_id = \$1, updated_at = NOW\(\) WHERE id = \$2`).
+			WithArgs(team, id).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := repo.SetTeam(context.Background(), id, team)
+		assert.ErrorIs(t, err, sql.ErrNoRows)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 // --- Delete ---
 
 func TestProjectRepository_Delete(t *testing.T) {

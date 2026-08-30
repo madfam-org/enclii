@@ -182,6 +182,35 @@ func (r *ProjectRepository) UpdateCIRunnerMode(ctx context.Context, id uuid.UUID
 	return nil
 }
 
+// SetTeam re-parents a project to a team (or, with uuid.Nil, un-parents it to
+// "personal"). This is the first-class replacement for the raw
+// `UPDATE projects SET team_id` a bootstrap migration (024/038) used to do: it
+// is how a project is assigned to a tenant after creation — e.g. onboarding a
+// client's app under their team so master-admin act-as and per-tenant listing
+// pick it up. team_id has an FK to teams(id) ON DELETE SET NULL, so the caller
+// must pass a team that exists; a uuid.Nil clears the parent.
+func (r *ProjectRepository) SetTeam(ctx context.Context, projectID uuid.UUID, teamID uuid.UUID) error {
+	var team interface{}
+	if teamID == uuid.Nil {
+		team = nil
+	} else {
+		team = teamID
+	}
+	query := `UPDATE projects SET team_id = $1, updated_at = NOW() WHERE id = $2`
+	result, err := r.db.ExecContext(ctx, query, team, projectID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // Delete removes a project by ID
 // Note: All related records (services, environments, etc.) are automatically
 // deleted via ON DELETE CASCADE foreign key constraints

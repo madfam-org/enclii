@@ -209,3 +209,65 @@ func (h *Handler) DeleteProject(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Project deleted successfully"})
 }
+
+// SetProjectTeam re-parents a project to a team (its tenant), or un-parents it
+// to "personal" when team_slug is empty/null. This is the first-class primitive
+// for assigning a project to a tenant AFTER creation — what onboarding a
+// client's app under their team requires, and what a bootstrap migration
+// (024/038) previously had to do in raw SQL. Admin-gated: reparenting changes
+// which tenant owns a project and which master-admin act-as view it appears in.
+//
+// Body: {"team_slug": "crea"} to parent, or {"team_slug": ""} / {"team_slug": null}
+// to un-parent. team_slug (not id) so operators name the tenant they mean.
+func (h *Handler) SetProjectTeam(c *gin.Context) {
+	ctx := c.Request.Context()
+	slug := c.Param("slug")
+
+	var req struct {
+		TeamSlug *string `json:"team_slug"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	project, err := h.repos.Projects.GetBySlug(slug)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+		return
+	}
+
+	// Resolve the target team (or uuid.Nil to un-parent).
+	teamID := uuid.Nil
+	teamSlug := ""
+	if req.TeamSlug != nil && *req.TeamSlug != "" {
+		team, terr := h.repos.Teams.GetBySlug(ctx, *req.TeamSlug)
+		if terr != nil || team == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+			return
+		}
+		teamID = team.ID
+		teamSlug = team.Slug
+	}
+
+	if err := h.repos.Projects.SetTeam(ctx, project.ID, teamID); err != nil {
+		h.logger.Error(ctx, "Failed to set project team",
+			logging.Error("error", err),
+			logging.String("project_slug", slug),
+			logging.String("team_slug", teamSlug))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set project team"})
+		return
+	}
+
+	h.logger.Info(ctx, "Project team set",
+		logging.String("project_id", project.ID.String()),
+		logging.String("project_slug", slug),
+		logging.String("team_slug", teamSlug),
+		logging.String("set_by", c.GetString("user_email")))
+
+	c.JSON(http.StatusOK, gin.H{
+		"project_slug": slug,
+		"team_slug":    teamSlug,
+		"parented":     teamID != uuid.Nil,
+	})
+}

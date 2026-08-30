@@ -21,7 +21,7 @@ func TestProjectsCommand_HasExpectedSubcommands(t *testing.T) {
 	cfg := &config.Config{APIEndpoint: "https://api.test.dev", APIToken: "tok"}
 	cmd := NewProjectsCommand(cfg)
 
-	expected := []string{"list", "get", "create", "delete", "environments", "services", "reconcile-services"}
+	expected := []string{"list", "get", "create", "delete", "set-team", "environments", "services", "reconcile-services"}
 	names := make(map[string]bool)
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true
@@ -30,6 +30,21 @@ func TestProjectsCommand_HasExpectedSubcommands(t *testing.T) {
 		assert.True(t, names[want], "missing subcommand: %s", want)
 	}
 	assert.Len(t, cmd.Commands(), len(expected))
+}
+
+func TestProjectsSetTeam_RequiresTeamOrUnparent(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev", APIToken: "tok"}
+	cmd := NewProjectsCommand(cfg)
+	setTeam := findSubcommand(cmd, "set-team")
+	require.NotNil(t, setTeam)
+	require.NotNil(t, setTeam.Flags().Lookup("team"))
+	require.NotNil(t, setTeam.Flags().Lookup("unparent"))
+
+	// Neither --team nor --unparent → error (no API call attempted).
+	setTeam.SetArgs([]string{"some-project"})
+	err := setTeam.RunE(setTeam, []string{"some-project"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "required")
 }
 
 func TestProjectsDelete_RequiresForceOrConfirm(t *testing.T) {
