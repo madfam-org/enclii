@@ -39,6 +39,7 @@ Examples:
 	cmd.AddCommand(newProjectsGetCommand(cfg))
 	cmd.AddCommand(newProjectsCreateCommand(cfg))
 	cmd.AddCommand(newProjectsDeleteCommand(cfg))
+	cmd.AddCommand(newProjectsSetTeamCommand(cfg))
 	cmd.AddCommand(newProjectsEnvironmentsCommand(cfg))
 	cmd.AddCommand(newProjectsServicesCommand(cfg))
 	cmd.AddCommand(newProjectsReconcileServicesCommand(cfg))
@@ -183,6 +184,52 @@ func newProjectsDeleteCommand(cfg *config.Config) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+	return cmd
+}
+
+// ----------------------------------------------------------------------------
+// projects set-team
+// ----------------------------------------------------------------------------
+
+func newProjectsSetTeamCommand(cfg *config.Config) *cobra.Command {
+	var team string
+	var unparent bool
+	cmd := &cobra.Command{
+		Use:   "set-team <project-slug>",
+		Short: "Re-parent a project to a team (its tenant), or un-parent it",
+		Long: `Assign a project to a team so it belongs to that tenant — what onboarding a
+client's app under their team requires. Admin only.
+
+  enclii projects set-team crea-map --team crea
+  enclii projects set-team crea-frontend --team crea
+  enclii projects set-team some-app --unparent      # back to "personal"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if team == "" && !unparent {
+				return fmt.Errorf("one of --team <slug> or --unparent is required")
+			}
+			if team != "" && unparent {
+				return fmt.Errorf("--team and --unparent are mutually exclusive")
+			}
+			// team_slug null/empty un-parents; a slug parents.
+			body := map[string]interface{}{"team_slug": nil}
+			if team != "" {
+				body["team_slug"] = team
+			}
+			path := fmt.Sprintf("/v1/projects/%s/team", args[0])
+			if err := apiRequest(context.Background(), cfg, "PUT", path, body, nil); err != nil {
+				return fmt.Errorf("set project team: %w", err)
+			}
+			if unparent {
+				fmt.Fprintf(cmd.OutOrStdout(), "Project '%s' un-parented (now personal).\n", args[0])
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Project '%s' assigned to team '%s'.\n", args[0], team)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&team, "team", "", "Team slug to parent the project under")
+	cmd.Flags().BoolVar(&unparent, "unparent", false, "Un-parent the project (back to personal)")
 	return cmd
 }
 

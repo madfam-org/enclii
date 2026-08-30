@@ -513,6 +513,9 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/projects/:slug/processes", h.GetProjectProcesses)
 			protected.GET("/projects/:slug/processes/stream", h.StreamProjectProcesses)
 			protected.DELETE("/projects/:slug", h.auth.RequireRole(string(types.RoleAdmin)), h.DeleteProject)
+			// Re-parent a project to a team (its tenant), or un-parent it.
+			// Admin-gated: reparenting changes which tenant owns the project.
+			protected.PUT("/projects/:slug/team", h.auth.RequireRole(string(types.RoleAdmin)), h.SetProjectTeam)
 
 			// CI Runner Configuration
 			protected.GET("/projects/:slug/ci-runner-config", h.GetCIRunnerConfig)
