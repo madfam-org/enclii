@@ -29,6 +29,15 @@ targets:
       - janua_client_id
       - janua_client_secret
 
+  lexidrop/selva-inference:
+    label: LexiDrop Selva inference token
+    description: LexiDrop's worker token for Selva's OpenAI-compatible inference gateway (inference.selva.town) — powers the /find AI naming assistant. Same per-platform pattern as fortuna's openai_api_key at secret/fortuna.
+    vault_path: secret/lexidrop
+    namespace: lexidrop
+    external_secret: lexidrop-selva
+    keys:
+      - selva_api_token
+
   dhanam/stripe-mx-live:
     label: Dhanam Stripe MX live keys
     description: Production MX Stripe secret + webhook signing secret
