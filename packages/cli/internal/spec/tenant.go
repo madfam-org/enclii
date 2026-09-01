@@ -222,6 +222,11 @@ var validJanuaTiers = map[string]bool{
 // tenant manifest describes exactly one client, and silently using the first of
 // several documents is how an operator provisions the wrong one.
 func ParseTenantSpec(path string) (*TenantSpecDoc, error) {
+	// #nosec G304 -- the path is the operator's own `-f` argument, read on their
+	// behalf with their own privileges. Identical trust model to every other
+	// file flag in this CLI (parser.go, onboard.go's --secrets-file). There is
+	// no boundary being crossed: a caller who can pass -f can already read the
+	// file.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read tenant manifest: %w", err)
