@@ -672,12 +672,42 @@ jobs:
         env:
           CI_USER_NAME: ${{ inputs.ci_user_name }}
           CI_USER_EMAIL: ${{ inputs.ci_user_email }}
+          IMAGE_PREFIX: ${{ inputs.image_prefix }}
           KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
         run: |
           set -euo pipefail
           git config user.name "$CI_USER_NAME"
           git config user.email "$CI_USER_EMAIL"
           target="${KUSTOMIZATION_PATH}/kustomization.yaml"
+
+          # Re-apply THIS run's already-derived, already-verified digests onto
+          # whatever the kustomization currently holds. Idempotent: `kustomize
+          # edit set image` sets each image to our digest regardless of the
+          # line's current value, so it produces the same result whether the
+          # tree is pristine or already carries a competitor's pin. The digests
+          # were persisted to $GITHUB_WORKSPACE/digests/*.txt by the derive
+          # step and verified (signature-gated) by "Update kustomization image
+          # digests"; we do NOT re-verify here, we only re-materialize the edit.
+          apply_our_digests() {
+            ( set -euo pipefail
+              cd "$KUSTOMIZATION_PATH"
+              shopt -s nullglob
+              for f in "$GITHUB_WORKSPACE"/digests/*.txt; do
+                [ -f "$f" ] || continue
+                line=$(cat "$f")
+                name="${line%%=*}"
+                digest="${line#*=}"
+                # Defense in depth: the derive step already rejected non-sha256,
+                # but never let a bad value reach a commit on main.
+                if [[ "$digest" != sha256:* ]]; then
+                  echo "ERROR: refusing to pin non-sha256 digest for $name: $digest"
+                  exit 1
+                fi
+                kustomize edit set image "${IMAGE_PREFIX}/${name}=${IMAGE_PREFIX}/${name}@${digest}"
+              done
+            )
+          }
+
           if git diff --quiet -- "$target"; then
             # Not a failure: the kustomization already carries these exact
             # digests (a rebuild of an unchanged tree reproduces them). The
@@ -689,23 +719,48 @@ jobs:
           fi
           git add -- "$target"
           git commit -m "ci: pin image digests from ${{ github.sha }}"
-          echo "pin_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          # The push races anything that lands on the branch mid-build (a
-          # docs merge is enough) and a non-fast-forward here strands BUILT,
-          # SIGNED digests unpinned — with `gh run rerun` useless, because a
-          # rerun re-checks-out the ORIGINAL stale SHA (bit accionables-madlab
-          # 2026-08-17 and nauta the same day, run 32063785498). Rebase and
-          # retry: the pin commit touches only the kustomization, so replaying
-          # it over whatever landed is exactly the integration we want; a real
-          # conflict on the kustomization itself still fails loudly below.
-          for attempt in 1 2 3; do
+
+          # The push races anything that lands on the branch mid-build (a docs
+          # merge, or ANOTHER build's pin) and a non-fast-forward here strands
+          # BUILT, SIGNED digests unpinned — with `gh run rerun` useless,
+          # because a rerun re-checks-out the ORIGINAL stale SHA (bit
+          # accionables-madlab 2026-08-17 and nauta the same day, run
+          # 32063785498).
+          #
+          # On rejection we do NOT `git pull --rebase` the pin commit: when the
+          # work that landed is ITSELF a pin (two builds finishing close
+          # together — crea-map #224/#225 on 2026-09-01, run 33563405147), both
+          # commits touch the same `digest:` line and the rebase dies with a
+          # CONFLICT that `set -e` turns into a hard step failure — the exact
+          # race this loop was meant to survive. Instead: reset onto the fresh
+          # remote tip and RE-MATERIALIZE our digests on top of it. Because the
+          # re-apply is idempotent, replaying over a competitor's pin cleanly
+          # supersedes it with our just-built, just-signed image (newer pin
+          # wins, which is what we want — the alternative is prod stranded on
+          # the older image). A genuine conflict — someone hand-editing the
+          # kustomization structure so `kustomize edit` can't parse it — still
+          # fails loudly, because apply_our_digests runs under `set -e`.
+          for attempt in 1 2 3 4 5; do
             if git push; then
+              echo "pin_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "push attempt ${attempt} rejected (non-fast-forward?); rebasing onto fresh ${GITHUB_REF_NAME}"
-            git pull --rebase origin "${GITHUB_REF_NAME}"
+            echo "push attempt ${attempt} rejected (non-fast-forward); reset onto fresh ${GITHUB_REF_NAME} and re-apply our digests"
+            git fetch origin "${GITHUB_REF_NAME}"
+            git reset --hard "origin/${GITHUB_REF_NAME}"
+            apply_our_digests
+            if git diff --quiet -- "$target"; then
+              # The tip already pins exactly our digests (a competitor pinned
+              # the same image, or ours). Nothing to push; we are done.
+              echo "Fresh ${GITHUB_REF_NAME} already carries this run's digests; nothing to push."
+              echo "pin_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git add -- "$target"
+            git commit -m "ci: pin image digests from ${{ github.sha }}"
           done
-          git push
+          echo "::error::Could not push digest pins after 5 attempts; branch is moving faster than the pin can rebase. Prod may be stranded on the previous image — investigate ${GITHUB_REF_NAME} push contention."
+          exit 1
 
       # Registering a Release is not optional bookkeeping. Enclii's reconciler
       # owns the replica count — which is why the ArgoCD Applications it
