@@ -97,6 +97,7 @@ See the [CLI Reference](../../docs/cli/README.md) for the canonical, grouped ind
 | `deploy` / `rollback` / `releases` / `deployments` / `ps` / `logs` | Deployment operations |
 | `secrets` / `domains` / `functions` / `jobs` / `junctions` | Service configuration |
 | `teams` / `integrations` | Team management + GitHub integration |
+| `tenant` | CLIENT-IN-A-DAY: one manifest -> a whole client (design preview; validates + plans, does not execute) |
 | `observe` / `activity` / `audit` | Metrics, lifecycle feed, audit log (CSV export) |
 | `ops` | Audited Kubernetes/Argo/Longhorn/Kyverno/ARC operator workflows |
 | `quote-flow` | Enclii-first doctor for Selva -> Yantra4D -> Cotiza -> ForgeSight quote readiness |

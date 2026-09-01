@@ -127,6 +127,7 @@ enclii deploy --env production
 | [`services-delete`](./commands/services-delete.md) | Delete a service from a project |
 | [`services-sync`](./commands/services-sync.md) | Synchronize service configuration |
 | [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
+| [`tenant`](./commands/tenant.md) | Provision a whole client from one manifest (design preview; validates + plans, does not execute) |
 
 ### Configuration
 | Command | Description |
