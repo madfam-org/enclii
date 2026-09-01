@@ -71,6 +71,10 @@ Learn more at https://enclii.dev`,
 	// Admin commands
 	rootCmd.AddCommand(NewOnboardCommand(cfg))
 
+	// CLIENT-IN-A-DAY: one manifest -> a whole client (design preview, dry-run
+	// only; see docs/rfcs/2026-09-01-client-in-a-day.md)
+	rootCmd.AddCommand(NewTenantCommand(cfg))
+
 	// Vault (P0.2 — RFC 0005 Sprint 3 prep; status only, no secret ops)
 	rootCmd.AddCommand(NewVaultCommand(cfg))
 
