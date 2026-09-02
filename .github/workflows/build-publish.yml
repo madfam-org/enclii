@@ -521,9 +521,34 @@ jobs:
           token: ${{ secrets.ENCLII_COMMIT_TOKEN || github.token }}
 
       - name: Install kustomize
+        env:
+          # Authenticate the download. The old `install_kustomize.sh | bash`
+          # made TWO unauthenticated GitHub requests (the script from
+          # raw.githubusercontent, then the release tarball) and GitHub's
+          # rate-limiter rejects unauthenticated calls from shared CI runner
+          # IPs — "Github rate-limiter failed the request" killed this step
+          # BEFORE the pin ever ran, stranding built+signed images unpinned
+          # (crea-map runs 33568849615 and 33571462204, 2026-09-01). ADR-010:
+          # load-bearing paths must not depend on unauthenticated GitHub.
+          GH_TOKEN: ${{ github.token }}
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          set -euo pipefail
+          # Pin the version (matches emergency-deploy.yml and ci.yml) and pull
+          # the release BINARY directly — no piping a remote script into bash,
+          # no double fetch. `-H Authorization` lifts the anon rate limit; a
+          # short retry rides out a transient blip.
+          KUSTOMIZE_VERSION="v5.4.3"
+          url="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          for attempt in 1 2 3; do
+            if curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$url" | tar xz; then
+              break
+            fi
+            echo "::warning::kustomize download attempt ${attempt} failed; retrying in $((attempt * 5))s..."
+            sleep $((attempt * 5))
+            [ "$attempt" -eq 3 ] && { echo "::error::could not download kustomize ${KUSTOMIZE_VERSION} after 3 attempts"; exit 1; }
+          done
           sudo mv kustomize /usr/local/bin/
+          kustomize version
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.7.0
