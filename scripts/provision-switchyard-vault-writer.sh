@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-09-04 (metadata paths for nauta + lexidrop)
+# Last Updated: 2026-09-04 (kalya data+metadata paths for `secrets provision kalya-feed`)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -128,6 +128,19 @@ path "secret/data/madfam-site" {
 path "secret/data/madfam-site/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# kalya — added 2026-09-04. Unlike crea-map/symbiosis-hcm, kalya is not an
+# intake target: nothing writes secret/kalya through `secrets intake submit`.
+# It is here because `enclii secrets provision kalya-feed` READS
+# secret/kalya:internal_api_key (kalya_feed_provisioner.go) to authorize minting
+# the feed token before writing the rendered URLs to secret/crea-map and the
+# token map to secret/nauta. A read capability the policy does not grant fails
+# the same opaque way a write does, so the whole three-path set ships together.
+path "secret/data/kalya" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/kalya/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 # crea-map + symbiosis-hcm — added 2026-09-03 alongside the intake targets for
 # the MAP smoke gate, the kalya feeds and the HCM absence feed. Both apps are
 # deployed through Enclii rather than this repo's infra/ tree, but the writer
@@ -209,6 +222,12 @@ path "secret/metadata/madfam-site" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/madfam-site/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/kalya" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/kalya/*" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/crea-map" {

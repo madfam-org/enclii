@@ -1,5 +1,13 @@
 # Vault Operations Runbook
 
+> **Boundary checkpoint (2026-09-04, platform on-call):** Public-safe runbook —
+> Vault path names, policy capability sets and command shapes are routing and
+> access contracts, never values. No token, unseal key or secret value appears
+> here. The verbatim `500` quoted under the Switchyard writer section is an
+> error string only; the operator token custody, the break-glass admin token
+> location and the per-app secret inventory live in `internal-devops`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -231,6 +239,37 @@ Add paths to an existing writer policy without rotating `vault-credentials`:
 POLICY_ONLY=1 VAULT_TOKEN_FILE=/path/to/vault-admin.token \
   ./scripts/provision-switchyard-vault-writer.sh
 ```
+
+Re-applying the policy is the same one-liner, run in-cluster against `vault-0`
+with the Vault admin token: `POLICY_ONLY=1 scripts/provision-switchyard-vault-writer.sh`.
+Existing `switchyard-secret-writer` tokens inherit the updated paths, so no
+rotation and no `switchyard-api` restart are needed.
+
+**Paths the policy must cover.** Merging a policy change in this repo does NOT
+change the running Vault — the script is the applier. A path present in git but
+never re-applied fails exactly like a path that was never added:
+
+```
+HTTP 500: failed to merge crea-map/crea-map-secrets into Vault secret/crea-map
+```
+
+That 500 is a wrapped 403. It is what `enclii secrets vault-backfill
+crea-map-secrets --namespace crea-map --vault-path secret/crea-map --apply`
+returned on 2026-09-04 even though `secret/data/crea-map` had been in the policy
+file since 2026-09-03 (enclii#480) — the policy had simply never been re-applied.
+**After merging any policy change, re-run the `POLICY_ONLY=1` command above.**
+
+The MAP/CTM substrate apps and why each is listed:
+
+| App | Vault path | Reached by |
+| --- | --- | --- |
+| `crea-map` | `secret/crea-map` | intake targets `crea-map/internal-api-key`, `crea-map/kalya-feeds`; `secrets vault-backfill`; write side of `secrets provision kalya-feed` |
+| `symbiosis-hcm` | `secret/symbiosis-hcm` | intake target `symbiosis-hcm/map-absence-feed` (HCM absence feed that crea-map consumes) |
+| `kalya` | `secret/kalya` | **read** side of `secrets provision kalya-feed` — `internal_api_key` authorizes minting the feed token. No intake target writes here; the path is policy-only |
+
+`scripts/check-intake-policy-parity.sh` fails CI when a path drifts out of the
+policy, scanning both the intake registry and switchyard-api Go sources (the
+provisioners hold their Vault paths as literals, with no registry entry).
 
 **Verify:**
 
