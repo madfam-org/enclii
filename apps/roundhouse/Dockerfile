@@ -36,16 +36,31 @@ RUN apk add --no-cache git ca-certificates
 # apps/switchyard-api/Dockerfile).
 ENV COSIGN_VERSION=v3.1.3
 # Built from a clone, not `go install`, because upstream cosign v3.1.3 still
-# pins two dependencies below their fixed versions — golang.org/x/text
-# v0.38.0 (CVE-2026-56852, fixed 0.39.0) and google.golang.org/grpc v1.82.0
-# (GHSA-hrxh-6v49-42gf, fixed 1.82.1). `go install pkg@version` builds in
-# module-authoritative mode and offers no way to raise them, so the scan
-# fails on a binary we compile ourselves. A clone lets us `go get` exactly
-# those two and nothing else. Drop this back to `go install` the moment a
-# cosign release carries both fixes.
+# pins three dependencies below their fixed versions — golang.org/x/text
+# v0.38.0 (CVE-2026-56852, fixed 0.39.0), google.golang.org/grpc v1.82.0
+# (CVE-2026-84304, fixed 1.83.1) and golang.org/x/mod v0.37.0
+# (CVE-2026-56864 + CVE-2026-56865, fixed 0.40.0). `go install pkg@version`
+# builds in module-authoritative mode and offers no way to raise them, so the
+# scan fails on a binary we compile ourselves. A clone lets us `go get`
+# exactly those three and nothing else.
+# 2026-09-04: the floors are now IDENTICAL to apps/switchyard-api/Dockerfile
+# (#485), which is the reference this stage claims to mirror and had drifted
+# from: grpc v1.82.1 -> v1.83.1 (v1.82.1 cleared GHSA-hrxh-6v49-42gf but is
+# itself vulnerable to CVE-2026-84304 — unbounded recvBuffer growth from
+# fragmented HTTP/2 DATA frames — which failed `Scan: switchyard-api` from run
+# 33843611930 onward), plus the x/mod floor that switchyard-api added in #434.
+# The x/text floor is v0.41.0 (not the 0.39.0 fix minimum) because x/mod
+# v0.40.0's graph requires x/text >= v0.41.0 — `go get` rejects the pair
+# otherwise. cosign v3.1.3 is still the latest release and still pins grpc
+# v1.82.0, so there is no release to upgrade to — the floors stay here.
+# The binary only ships in the unpublished `worker-dev` stage, so no scan
+# gate depends on it; keeping the two Dockerfiles on one pin set is what
+# stops the next CVE from being fixed in one and forgotten in the other.
+# Drop this back to `go install` the moment a cosign release carries all
+# three fixes.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.39.0 google.golang.org/grpc@v1.82.1 && \
+    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.83.1 golang.org/x/mod@v0.40.0 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
