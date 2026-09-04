@@ -229,6 +229,28 @@ def fetch_image_created(image: PinnedImage, read_token: str | None,
     # If we got a manifest list / index, pick the first manifest with a config
     # we can actually fetch. For our use case (single-arch service images)
     # this rarely fires.
+    #
+    # FOLLOW-UP, BEFORE ANYONE FLIPS `provenance: true` in
+    # .github/workflows/build-publish.yml (it is `false` today, at the
+    # `Build and push` step): that flip makes buildx push an OCI INDEX per
+    # service — the linux/amd64 image PLUS an attestation manifest whose
+    # platform is `unknown/unknown` and whose config blob carries
+    # `created: 0001-01-01T00:00:00Z`. This loop takes the first sub-manifest
+    # that yields a timestamp. buildx orders the image first today, so it
+    # would keep working — but nothing in the spec guarantees that ordering,
+    # and if it ever flips, this returns a year-1 timestamp, MIN_PLAUSIBLE_CREATED
+    # downgrades it to a SKIP, and the digest ratchet silently stops covering
+    # every service. Losing a guard quietly is worse than failing loudly.
+    #
+    # The fix is small and is already written twice below: select
+    # linux/amd64 explicitly, the way fetch_tag_created does. Do that in the
+    # same PR as the provenance flip, not after it. The rest of the chain
+    # tolerates the flip as far as the record can be read statically — the
+    # pin step derives `.Manifest.Digest` (the index digest), cosign signs
+    # and verifies that same digest, and Kyverno's require-image-digest only
+    # asks that a digest be present — but none of that has been exercised
+    # live, and the free-plan 500 MB GHCR/artifact pool that hard-blocked the
+    # org for 6h+ on 2026-08-27 gains another manifest per service per deploy.
     if body.get("manifests"):
         for sub in body["manifests"]:
             sub_digest = sub.get("digest")
