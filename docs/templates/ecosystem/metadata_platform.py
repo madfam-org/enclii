@@ -63,7 +63,7 @@ REPOS = {
     },
     'server-auction-tracker': {
         'tagline': 'Hetzner Server Auction intelligence — automated scoring, price history, cluster simulation.',
-        'description': "Monitors Hetzner's server auction in real time, scoring listings with a cluster-aware weighted formula (PassMark CPU benchmarks + RAM/drives/price/datacenter + ECC/NVMe). Produces deal badges, time-on-market urgency signals, and cluster-expansion simulations. Drives all MADFAM hardware procurement decisions — this is how we found `foundry-cp`, `foundry-worker-01`, and the builder VPS. CLI binary is `foundry-scout`; web dashboard at `sniper.madfam.io` is `deal-sniper`.",
+        'description': "Monitors Hetzner's server auction in real time, scoring listings with a cluster-aware weighted formula (PassMark CPU benchmarks + RAM/drives/price/datacenter + ECC/NVMe). Produces deal badges, time-on-market urgency signals, and cluster-expansion simulations. Drives all MADFAM hardware procurement decisions — this is how the current control-plane, worker and builder nodes were sourced. CLI binary is `foundry-scout`; web dashboard at `sniper.madfam.io` is `deal-sniper`.",
         'pillar': 'Infrastructure (procurement intelligence)',
         'type': 'service + CLI',
         'status': 'production',

@@ -1,5 +1,14 @@
 # Incident Response Runbook
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -10,7 +19,7 @@
 
 This document defines how the Enclii team detects, responds to, and recovers from production incidents. All on-call personnel must be familiar with these procedures.
 
-**Infrastructure context:** 3-node k3s cluster (foundry-cp [EX44] + foundry-worker-01 [AX41] + foundry-builder-01 [VPS]), Cloudflare tunnel ingress, self-hosted PostgreSQL and Redis, ArgoCD GitOps, Janua SSO.
+**Infrastructure context:** 3-node k3s cluster (1 control-plane + 1 worker + 1 builder), Cloudflare tunnel ingress, self-hosted PostgreSQL and Redis, ArgoCD GitOps, Janua SSO.
 
 ---
 
@@ -219,10 +228,10 @@ kubectl logs -n enclii -l app=roundhouse --tail=100
 
 # 4. Check builder node status
 kubectl get nodes
-kubectl describe node foundry-builder-01
+kubectl describe node <BUILDER_NODE>
 
 # 5. If builder node is NotReady, check k3s agent
-ssh foundry-builder-01 "systemctl status k3s-agent"
+ssh <BUILDER_NODE> "systemctl status k3s-agent"
 ```
 
 ---

@@ -1,5 +1,14 @@
 # Service Outage Remediation Playbook
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -17,7 +26,7 @@ This playbook covers diagnosing and remediating service outages visible on `stat
 ## Quick Start
 
 ```bash
-# From foundry-cp (or any host with KUBECONFIG)
+# From <CONTROL_PLANE_NODE> (or any host with KUBECONFIG)
 ./scripts/diagnose-outages.sh
 ```
 
@@ -134,7 +143,7 @@ kubectl rollout restart deployment/status-madfam -n status
 
 ## Hardware Capacity
 
-### Current Cluster (foundry-cp + foundry-worker-01 + foundry-builder-01)
+### Current Cluster (control-plane + worker + builder)
 
 | Resource | Spec |
 |----------|------|
@@ -168,8 +177,8 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 ### When to Scale
 
 - **> 85% RAM**: Set resource limits on non-critical ecosystem pods, scale down monitoring
-- **> 90% RAM**: Add another worker node or upgrade foundry-worker-01 RAM
-- **Check live**: `kubectl top nodes` + `kubectl describe node foundry-worker-01 | grep -A 10 "Allocated resources"`
+- **> 90% RAM**: Add another worker node or upgrade the worker node's RAM
+- **Check live**: `kubectl top nodes` + `kubectl describe node <WORKER_NODE> | grep -A 10 "Allocated resources"`
 
 ## Service Inventory
 
@@ -210,7 +219,7 @@ Typical ecosystem service pod: 256-512MB RAM, 100-250m CPU.
 
 After git-side fixes are merged:
 
-- [ ] SSH to foundry-cp, run `./scripts/diagnose-outages.sh`
+- [ ] SSH to the control-plane node, run `./scripts/diagnose-outages.sh`
 - [ ] Check `kubectl top nodes` — confirm < 85% memory
 - [ ] For each failing namespace: check pods, fix image pulls, restart
 - [ ] Create Pravara MES DNS CNAMEs (mes, mes-api, mes-admin) via Cloudflare API
