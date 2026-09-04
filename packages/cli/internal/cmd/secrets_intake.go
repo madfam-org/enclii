@@ -31,6 +31,7 @@ Examples:
   enclii secrets intake targets
   enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
   enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key
+  enclii secrets intake submit crea-map/internal-api-key --generate internal_api_key --reason "smoke gate"
   enclii secrets intake status int_1234567890`,
 	}
 
@@ -118,6 +119,7 @@ func newSecretsIntakeSubmitCommand(cfg *config.Config) *cobra.Command {
 	var reason string
 	var valueFile string
 	var fromStdin bool
+	var generate string
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "submit TARGET",
@@ -127,6 +129,12 @@ func newSecretsIntakeSubmitCommand(cfg *config.Config) *cobra.Command {
 Prompts for each registry key with masked input unless --value-file or --stdin is used.
 With --stdin, supply KEY=VALUE lines (one per line).
 
+--generate KEY[,KEY...] asks Switchyard to mint those keys itself with crypto/rand.
+The value is written straight into Vault and is never returned, printed, or logged —
+use it for shared internal keys that no human needs to read. Remaining keys of the
+target are still prompted (or supplied via --value-file / --stdin). A key cannot be
+both generated and supplied.
+
 Secret values are never echoed to stdout.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -134,14 +142,24 @@ Secret values are never echoed to stdout.`,
 				return fmt.Errorf("--reason is required")
 			}
 			target := strings.TrimSpace(args[0])
-			values, err := collectIntakeValues(cfg, target, valueFile, fromStdin)
+			generateKeys, err := parseGenerateKeys(generate)
 			if err != nil {
 				return err
+			}
+			values, err := collectIntakeValues(cfg, target, valueFile, fromStdin, generateKeys)
+			if err != nil {
+				return err
+			}
+			if len(values) == 0 && len(generateKeys) == 0 {
+				return fmt.Errorf("no values to submit")
 			}
 			payload := map[string]interface{}{
 				"target": target,
 				"reason": reason,
 				"values": values,
+			}
+			if len(generateKeys) > 0 {
+				payload["generate"] = generateKeys
 			}
 			raw, err := json.Marshal(payload)
 			if err != nil {
@@ -164,6 +182,10 @@ Secret values are never echoed to stdout.`,
 			fmt.Printf("intake_id: %v\n", resp["intake_id"])
 			fmt.Printf("status: %v\n", resp["status"])
 			fmt.Printf("keys_written: %v\n", resp["keys_written"])
+			if gen, ok := resp["keys_generated"]; ok && gen != nil {
+				fmt.Printf("keys_generated: %v\n", gen)
+				fmt.Fprintf(os.Stderr, "Generated server-side — the value exists only in Vault\n")
+			}
 			fmt.Fprintf(os.Stderr, "Tell your agent: intake %v is ready\n", resp["intake_id"])
 			return nil
 		},
@@ -171,11 +193,40 @@ Secret values are never echoed to stdout.`,
 	cmd.Flags().StringVar(&reason, "reason", "", "Audit reason (required)")
 	cmd.Flags().StringVar(&valueFile, "value-file", "", "Read KEY=VALUE lines from file")
 	cmd.Flags().BoolVar(&fromStdin, "stdin", false, "Read KEY=VALUE lines from stdin")
+	cmd.Flags().StringVar(&generate, "generate", "", "Comma-separated keys for Switchyard to generate server-side (value never returned)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "JSON output")
 	return cmd
 }
 
-func collectIntakeValues(cfg *config.Config, target, valueFile string, fromStdin bool) (map[string]string, error) {
+// parseGenerateKeys splits --generate into a de-duplicated key list. Casing is
+// preserved as typed; the server matches keys case-insensitively against the
+// registry, same as it does for supplied values.
+func parseGenerateKeys(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		key := strings.TrimSpace(part)
+		if key == "" {
+			continue
+		}
+		upper := strings.ToUpper(key)
+		if _, dup := seen[upper]; dup {
+			return nil, fmt.Errorf("--generate lists %q twice", key)
+		}
+		seen[upper] = struct{}{}
+		out = append(out, key)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("--generate was set but named no keys")
+	}
+	return out, nil
+}
+
+func collectIntakeValues(cfg *config.Config, target, valueFile string, fromStdin bool, generateKeys []string) (map[string]string, error) {
 	apiClient := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
 	body, err := apiClient.GetRaw(context.Background(), "/v1/secrets/intake/targets")
 	if err != nil {
@@ -201,19 +252,53 @@ func collectIntakeValues(cfg *config.Config, target, valueFile string, fromStdin
 		return nil, fmt.Errorf("unknown target %q (run: enclii secrets intake targets)", target)
 	}
 
-	if valueFile != "" {
-		return parseKeyValueLines(readFileLines(valueFile))
+	generated := make(map[string]struct{}, len(generateKeys))
+	for _, key := range generateKeys {
+		upper := strings.ToUpper(strings.TrimSpace(key))
+		found := false
+		for _, k := range keys {
+			if strings.ToUpper(k) == upper {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("--generate key %q is not declared by target %q (keys: %s)", key, target, strings.Join(keys, ","))
+		}
+		generated[upper] = struct{}{}
 	}
-	if fromStdin {
-		data, err := io.ReadAll(os.Stdin)
+
+	if valueFile != "" || fromStdin {
+		var supplied map[string]string
+		var err error
+		if valueFile != "" {
+			supplied, err = parseKeyValueLines(readFileLines(valueFile))
+		} else {
+			data, readErr := io.ReadAll(os.Stdin)
+			if readErr != nil {
+				return nil, readErr
+			}
+			supplied, err = parseKeyValueLines(strings.Split(string(data), "\n"))
+		}
 		if err != nil {
 			return nil, err
 		}
-		return parseKeyValueLines(strings.Split(string(data), "\n"))
+		// Catch the conflict here rather than letting the server 400 after the
+		// operator already piped a real secret into the process.
+		for key := range supplied {
+			if _, clash := generated[strings.ToUpper(strings.TrimSpace(key))]; clash {
+				return nil, fmt.Errorf("key %q is both supplied and listed in --generate", key)
+			}
+		}
+		return supplied, nil
 	}
 
 	values := make(map[string]string, len(keys))
 	for _, key := range keys {
+		if _, skip := generated[strings.ToUpper(key)]; skip {
+			fmt.Fprintf(os.Stderr, "%s: generated by Switchyard (not prompted)\n", key)
+			continue
+		}
 		fmt.Fprintf(os.Stderr, "Enter value for %s (input hidden): ", key)
 		val, err := readMaskedLine()
 		if err != nil {

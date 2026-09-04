@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,6 +32,7 @@ type secretIntakeStatus struct {
 	Namespace               string    `json:"namespace"`
 	ExternalSecret          string    `json:"external_secret,omitempty"`
 	KeysWritten             []string  `json:"keys_written"`
+	KeysGenerated           []string  `json:"keys_generated,omitempty"`
 	VaultVersion            int       `json:"vault_version,omitempty"`
 	ExternalSecretRefreshed bool      `json:"external_secret_refreshed"`
 	Reason                  string    `json:"reason,omitempty"`
@@ -42,7 +45,12 @@ type secretIntakeStatus struct {
 type secretIntakeSubmitRequest struct {
 	Target string            `json:"target"`
 	Values map[string]string `json:"values"`
-	Reason string            `json:"reason"`
+	// Generate names keys Switchyard should mint itself with crypto/rand. The
+	// value is written to Vault and never returned, logged, or echoed — the
+	// point is that a strong shared key can exist without any human, agent or
+	// terminal scrollback ever holding a copy of it.
+	Generate []string `json:"generate,omitempty"`
+	Reason   string   `json:"reason"`
 }
 
 // ListSecretIntakeTargets GET /v1/secrets/intake/targets
@@ -92,8 +100,12 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 	}
 	req.Target = strings.TrimSpace(req.Target)
 	req.Reason = strings.TrimSpace(req.Reason)
-	if req.Target == "" || len(req.Values) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target and values are required"})
+	if req.Target == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target is required"})
+		return
+	}
+	if len(req.Values) == 0 && len(req.Generate) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "values or generate is required"})
 		return
 	}
 	if req.Reason == "" {
@@ -110,6 +122,21 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 	updates, keysWritten, err := validateIntakeValues(target, req.Values)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_values", "message": err.Error()})
+		return
+	}
+
+	keysGenerated, err := applyGeneratedIntakeValues(target, req.Generate, updates)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_generate", "message": err.Error()})
+		return
+	}
+	if len(keysGenerated) > 0 {
+		keysWritten = append(keysWritten, keysGenerated...)
+		sort.Strings(keysWritten)
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_values", "message": "no values supplied"})
 		return
 	}
 
@@ -131,6 +158,7 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 			"enclii.dev/last-ops-requested":   now.Format(time.RFC3339),
 			"enclii.dev/secret-intake-id":     intakeID,
 			"enclii.dev/secret-intake-target": target.ID,
+			"enclii.dev/secret-intake-source": intakeSourceLabel(keysWritten, keysGenerated),
 		}, "")
 		refreshed = refreshErr == nil
 	}
@@ -147,13 +175,14 @@ func (h *Handler) SubmitSecretIntake(c *gin.Context) {
 		Namespace:               target.Namespace,
 		ExternalSecret:          target.ExternalSecret,
 		KeysWritten:             keysWritten,
+		KeysGenerated:           keysGenerated,
 		VaultVersion:            vaultVersion,
 		ExternalSecretRefreshed: refreshed,
 		Reason:                  req.Reason,
 		ActorSub:                actorStr,
 		CreatedAt:               now,
 		ExpiresAt:               now.Add(24 * time.Hour),
-		Message:                 "Secret merged into Vault; values are not retrievable via this API",
+		Message:                 intakeStatusMessage(keysGenerated),
 	}
 
 	if err := h.saveIntakeStatus(ctx, status); err != nil {
@@ -205,11 +234,67 @@ func validateIntakeValues(target secretsintake.Target, values map[string]string)
 		updates[normalized] = val
 		keysWritten = append(keysWritten, key)
 	}
-	if len(updates) == 0 {
-		return nil, nil, fmt.Errorf("no values supplied")
-	}
 	sort.Strings(keysWritten)
 	return updates, keysWritten, nil
+}
+
+// applyGeneratedIntakeValues mints values for the requested keys and merges them
+// into updates. Generated values are returned to nobody: they go into the Vault
+// merge map and the key NAMES come back for the audit record.
+func applyGeneratedIntakeValues(target secretsintake.Target, generate []string, updates map[string]interface{}) ([]string, error) {
+	if len(generate) == 0 {
+		return nil, nil
+	}
+	allowed := make(map[string]struct{}, len(target.Keys))
+	for _, k := range target.Keys {
+		allowed[strings.ToUpper(strings.TrimSpace(k))] = struct{}{}
+	}
+	var keysGenerated []string
+	seen := make(map[string]struct{}, len(generate))
+	for _, rawKey := range generate {
+		key := strings.ToUpper(strings.TrimSpace(rawKey))
+		if key == "" {
+			return nil, fmt.Errorf("empty key in generate list")
+		}
+		if _, ok := allowed[key]; !ok {
+			return nil, fmt.Errorf("key %q is not allowed for target %q (allowed: %v)", key, target.ID, target.Keys)
+		}
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("key %q requested twice in generate", key)
+		}
+		seen[key] = struct{}{}
+		normalized := normalizeVaultSecretKey(key)
+		if normalized == "" {
+			return nil, fmt.Errorf("key %q normalizes to empty Vault key", key)
+		}
+		// A key cannot be both supplied and generated: silently preferring one
+		// would leave the operator unsure which value actually landed in Vault.
+		if _, exists := updates[normalized]; exists {
+			return nil, fmt.Errorf("key %q was both supplied and requested for generation", key)
+		}
+		value, err := generateSecretValue(target.GenerateBytes())
+		if err != nil {
+			return nil, fmt.Errorf("generate value for %q: %w", key, err)
+		}
+		updates[normalized] = value
+		keysGenerated = append(keysGenerated, key)
+	}
+	sort.Strings(keysGenerated)
+	return keysGenerated, nil
+}
+
+// generateSecretValue returns n bytes of crypto/rand as unpadded base64url —
+// URL- and env-var-safe, so a generated key can travel in a feed URL or a
+// container environment without re-encoding.
+func generateSecretValue(n int) (string, error) {
+	if n <= 0 {
+		n = secretsintake.DefaultGenerateBytes
+	}
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func (h *Handler) saveIntakeStatus(ctx context.Context, status secretIntakeStatus) error {
@@ -253,4 +338,25 @@ func (h *Handler) loadIntakeStatus(ctx context.Context, id string) (secretIntake
 		return zero, err
 	}
 	return status, nil
+}
+
+// intakeSourceLabel describes, for the audit annotation, whether the keys in
+// this intake were supplied by the operator, generated by Switchyard, or both.
+// It records key PROVENANCE, never key values.
+func intakeSourceLabel(keysWritten, keysGenerated []string) string {
+	switch {
+	case len(keysGenerated) == 0:
+		return "supplied"
+	case len(keysGenerated) == len(keysWritten):
+		return "generated"
+	default:
+		return "mixed"
+	}
+}
+
+func intakeStatusMessage(keysGenerated []string) string {
+	if len(keysGenerated) > 0 {
+		return fmt.Sprintf("Secret merged into Vault; %d key(s) generated server-side and never returned by this API", len(keysGenerated))
+	}
+	return "Secret merged into Vault; values are not retrievable via this API"
 }

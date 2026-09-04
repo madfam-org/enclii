@@ -49,40 +49,21 @@ path "secret/metadata/*" {
 }
 EOF
 
-log "Write switchyard-secret-writer policy (also done by provision script)..."
-vault_exec policy write switchyard-secret-writer - <<'EOF'
-path "secret/data/ceq" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/ceq/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/dhanam" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/dhanam/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/enclii" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/enclii/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/comms" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/comms/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/pgbackrest-r2" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/pgbackrest-r2/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/karafiel" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/karafiel/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/phynd-crm" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/phynd-crm/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/coupler" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/data/coupler/*" { capabilities = ["create", "update", "patch", "read"] }
-path "secret/metadata/ceq" { capabilities = ["read", "list"] }
-path "secret/metadata/ceq/*" { capabilities = ["read", "list"] }
-path "secret/metadata/dhanam" { capabilities = ["read", "list"] }
-path "secret/metadata/dhanam/*" { capabilities = ["read", "list"] }
-path "secret/metadata/enclii" { capabilities = ["read", "list"] }
-path "secret/metadata/enclii/*" { capabilities = ["read", "list"] }
-path "secret/metadata/comms" { capabilities = ["read", "list"] }
-path "secret/metadata/comms/*" { capabilities = ["read", "list"] }
-path "secret/metadata/pgbackrest-r2" { capabilities = ["read", "list"] }
-path "secret/metadata/pgbackrest-r2/*" { capabilities = ["read", "list"] }
-path "secret/metadata/karafiel" { capabilities = ["read", "list"] }
-path "secret/metadata/karafiel/*" { capabilities = ["read", "list"] }
-path "secret/metadata/phynd-crm" { capabilities = ["read", "list"] }
-path "secret/metadata/phynd-crm/*" { capabilities = ["read", "list"] }
-path "secret/metadata/coupler" { capabilities = ["read", "list"] }
-path "secret/metadata/coupler/*" { capabilities = ["read", "list"] }
-EOF
+# The switchyard-secret-writer policy is NOT re-inlined here.
+#
+# It used to be: this script kept a third copy of the policy alongside
+# scripts/provision-switchyard-vault-writer.sh and the intake registry. Copies
+# drift, and this one had — by 2026-09-03 it was missing janua, lexidrop,
+# madfam-site, nauta and phynd-crm-staging, every one of which the provision
+# script already granted. A stale copy is worse than no copy: it looks like the
+# policy is handled while quietly under-granting, and the failure surfaces days
+# later as an opaque "500: failed to write to Vault" on first live use.
+#
+# scripts/check-intake-policy-parity.sh guards the registry against the
+# provision script. It cannot guard a copy it does not know about, so the copy
+# is gone and the provision script is the single source.
+log "Write switchyard-secret-writer policy (delegating to the provision script)..."
+POLICY_ONLY=1 VAULT_TOKEN="$VAULT_TOKEN" \
+  "$(dirname "${BASH_SOURCE[0]}")/provision-switchyard-vault-writer.sh"
 
 log "Bootstrap complete (enable kubernetes auth via repair-vault-eso-auth.sh next)"

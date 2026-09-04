@@ -11,15 +11,43 @@ import (
 //go:embed registry.yaml
 var registryYAML []byte
 
+// DefaultGenerateBytes is the entropy used when a target declares no generate
+// policy. 32 bytes of crypto/rand is the same strength the CLI already uses for
+// dhanam/session-auth, expressed once here so every generated key inherits it.
+const DefaultGenerateBytes = 32
+
+// MinGenerateBytes floors the per-target policy. A registry typo (`bytes: 4`)
+// must not be able to quietly mint a weak shared key — LoadRegistry rejects it
+// rather than silently rounding up, so the weakening is visible at PR review.
+const MinGenerateBytes = 16
+
+// MaxGenerateBytes caps the policy so a typo cannot mint a multi-kilobyte value
+// that no consumer can carry in an environment variable.
+const MaxGenerateBytes = 128
+
+// GeneratePolicy tunes server-side value generation for a target.
+type GeneratePolicy struct {
+	Bytes int `yaml:"bytes" json:"bytes,omitempty"`
+}
+
 // Target describes where an intake writes and what to sync afterward.
 type Target struct {
-	ID             string   `yaml:"-" json:"id"`
-	Label          string   `yaml:"label" json:"label"`
-	Description    string   `yaml:"description" json:"description"`
-	VaultPath      string   `yaml:"vault_path" json:"vault_path"`
-	Namespace      string   `yaml:"namespace" json:"namespace"`
-	ExternalSecret string   `yaml:"external_secret" json:"external_secret,omitempty"`
-	Keys           []string `yaml:"keys" json:"keys"`
+	ID             string          `yaml:"-" json:"id"`
+	Label          string          `yaml:"label" json:"label"`
+	Description    string          `yaml:"description" json:"description"`
+	VaultPath      string          `yaml:"vault_path" json:"vault_path"`
+	Namespace      string          `yaml:"namespace" json:"namespace"`
+	ExternalSecret string          `yaml:"external_secret" json:"external_secret,omitempty"`
+	Keys           []string        `yaml:"keys" json:"keys"`
+	Generate       *GeneratePolicy `yaml:"generate" json:"generate,omitempty"`
+}
+
+// GenerateBytes returns the entropy this target's generated values should carry.
+func (t Target) GenerateBytes() int {
+	if t.Generate != nil && t.Generate.Bytes > 0 {
+		return t.Generate.Bytes
+	}
+	return DefaultGenerateBytes
 }
 
 type file struct {
@@ -44,6 +72,12 @@ func LoadRegistry() (map[string]Target, error) {
 		}
 		if len(t.Keys) == 0 {
 			return nil, fmt.Errorf("target %q missing keys", id)
+		}
+		if t.Generate != nil && t.Generate.Bytes != 0 {
+			if t.Generate.Bytes < MinGenerateBytes || t.Generate.Bytes > MaxGenerateBytes {
+				return nil, fmt.Errorf("target %q generate.bytes must be between %d and %d, got %d",
+					id, MinGenerateBytes, MaxGenerateBytes, t.Generate.Bytes)
+			}
 		}
 		out[id] = t
 	}
