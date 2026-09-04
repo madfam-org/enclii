@@ -14,9 +14,15 @@ ENV COSIGN_VERSION=v3.1.3
 # Built from a clone, not `go install`, because upstream cosign v3.1.3 still
 # pins three dependencies below their fixed versions — golang.org/x/text
 # v0.38.0 (CVE-2026-56852, fixed 0.39.0), google.golang.org/grpc v1.82.0
-# (GHSA-hrxh-6v49-42gf, fixed 1.82.1), and golang.org/x/mod v0.37.0
+# (CVE-2026-84304, fixed 1.83.1), and golang.org/x/mod v0.37.0
 # (CVE-2026-56864 + CVE-2026-56865, fixed 0.40.0 — the 2026-08-21 findings
 # that failed `Scan: switchyard-api` and blocked digest pinning).
+# 2026-09-04: the grpc floor was raised v1.82.1 -> v1.83.1. v1.82.1 cleared
+# the older GHSA-hrxh-6v49-42gf but is itself vulnerable to CVE-2026-84304
+# (unbounded recvBuffer growth from fragmented HTTP/2 DATA frames, fixed in
+# 1.83.1), which failed `Scan: switchyard-api` from run 33843611930 onward.
+# cosign v3.1.3 is still the latest release and still pins grpc v1.82.0, so
+# there is no release to upgrade to — the floor stays here.
 # `go install pkg@version` builds in module-authoritative mode and offers no
 # way to raise them, so the scan fails on a binary we compile ourselves. A
 # clone lets us `go get` exactly those three and nothing else. The x/text
@@ -26,7 +32,7 @@ ENV COSIGN_VERSION=v3.1.3
 # three fixes.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.82.1 golang.org/x/mod@v0.40.0 && \
+    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.83.1 golang.org/x/mod@v0.40.0 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
@@ -90,8 +96,24 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # publishes a fix — the scan then fails on a CVE the base already patched.
 # Bump this date to force the upgrade to re-run against the current repo.
 # 2026-08-29: CVE-2026-14456 (libssl3/libcrypto3 3.5.7-r0, fixed 3.5.8-r0).
-ARG APK_SECURITY_REFRESH=2026-08-29
-RUN apk --no-cache upgrade && apk --no-cache add ca-certificates tzdata wget git curl bash
+# 2026-09-04: CVE-2026-66046 + CVE-2026-76641 (libexpat 2.8.3-r0, fixed
+# 2.8.4-r0). libexpat is pulled in transitively by `git`.
+#
+# 2026-09-04: the ARG was declared but NEVER expanded in the RUN below, so it
+# busted nothing — BuildKit keys the layer on the literal command string, and
+# a bare `ARG` that the command does not reference leaves that string
+# unchanged. Every bump since the mechanism was introduced was a no-op, which
+# is how 2.8.3-r0 kept shipping after v3.24 published 2.8.4-r0 and failed
+# `Scan: switchyard-api` from run 33843611930 onward. The value is now echoed
+# into the command so it genuinely participates in the cache key.
+#
+# The `libexpat>=2.8.4-r0` constraint is a belt-and-braces assertion: if the
+# mirror ever serves a package set older than the fix, the build fails loudly
+# here instead of silently producing an image the scan gate later rejects.
+ARG APK_SECURITY_REFRESH=2026-09-04
+RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
+    apk --no-cache upgrade && \
+    apk --no-cache add ca-certificates tzdata wget git curl bash 'libexpat>=2.8.4-r0'
 
 # Copy cosign (built from source in the builder stage) so the API can verify
 # signed image digests before committing production GitOps pins from platform
