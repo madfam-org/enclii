@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-06-15
+# Last Updated: 2026-09-04 (metadata paths for nauta + lexidrop)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -227,6 +227,18 @@ path "secret/metadata/phynd-crm-staging" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/phynd-crm-staging/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/nauta" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/nauta/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/lexidrop" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/lexidrop/*" {
   capabilities = ["read", "list"]
 }
 EOF
