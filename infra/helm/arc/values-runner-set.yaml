@@ -42,7 +42,8 @@ template:
     imagePullSecrets:
       - name: ghcr-credentials
     terminationGracePeriodSeconds: 300
-    # Target the builder node "The Forge" (foundry-builder-01)
+    # Target builder nodes by LABEL, not by hostname: every builder carries
+    # `role=builder` and the `builder=true:NoSchedule` taint tolerated below.
     nodeSelector:
       role: builder
     # Tolerate the builder taint
