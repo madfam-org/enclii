@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-06-19
+**Last Updated:** 2026-09-03
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -56,8 +56,74 @@ After `platform/comms-resend-api-key` intake, fan-out to all consumers:
 ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-crm-secrets` (and staging) read `secret/comms.resend_api_key`.
 | `enclii/internal-api-key` | `secret/enclii` | `INTERNAL_API_KEY` |
 | `coupler/janua-service-token` | `secret/coupler` | `JANUA_SERVICE_TOKEN` |
+| `janua/internal-api-key` | `secret/janua` | `internal_api_key` |
+| `crea-map/internal-api-key` | `secret/crea-map` | `internal_api_key` |
+| `crea-map/kalya-feeds` | `secret/crea-map` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
+| `symbiosis-hcm/map-absence-feed` | `secret/symbiosis-hcm` | `map_absence_feed_url`, `map_absence_feed_key` |
+| `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
+| `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
 
-Add targets via PR to the registry — do not hardcode paths in runbooks.
+`symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
+`map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
+producer's path, read by both — not two copies that drift on rotation.
+
+Add targets via PR to the registry — do not hardcode paths in runbooks. A new
+`vault_path` also needs its block in `scripts/provision-switchyard-vault-writer.sh`;
+`scripts/check-intake-policy-parity.sh` fails CI if you forget, because the
+failure otherwise surfaces days later as an opaque `500: failed to write to Vault`.
+
+## Server-side generation
+
+For a shared internal key that **no human needs to read** — a smoke-gate key, a
+service-to-service token — do not generate it yourself and paste it. Ask
+Switchyard to mint it:
+
+```bash
+enclii secrets intake submit crea-map/internal-api-key \
+  --generate internal_api_key \
+  --reason "MAP smoke gate bootstrap"
+```
+
+The value is drawn from `crypto/rand` inside Switchyard (32 bytes, unpadded
+base64url), merged into Vault on the same path as a supplied value, and **never
+returned by any endpoint** — not by submit, not by status, not in logs. The
+intake record names the key in `keys_generated` and the ESO annotation records
+`enclii.dev/secret-intake-source: generated`; the value exists only in Vault.
+
+Because nothing outside Vault ever holds a copy, rotation is a re-run of the same
+command, and there is no scrollback, clipboard, or password manager to clean up.
+
+Mix generated and supplied keys on one target when only some values are secrets
+nobody should see:
+
+```bash
+enclii secrets intake submit symbiosis-hcm/map-absence-feed \
+  --generate map_absence_feed_key \
+  --reason "HCM absence feed bootstrap"
+# prompts (masked) for map_absence_feed_url only
+```
+
+A key cannot be both generated and supplied — that is a `400`, not a silent
+preference for one of them. `--generate` rejects any key the target does not
+declare. Entropy defaults to 32 bytes and can be raised per target with a
+`generate: {bytes: N}` block in the registry (16–128).
+
+### After intake: ESO → reloader
+
+Vault is written; the running pods are not. The rest of the chain is:
+
+1. **Switchyard** annotates the target's ExternalSecret with `force-sync`, so
+   External Secrets Operator re-reads Vault. Check `external_secret_refreshed`
+   in the intake status — `false` means the annotation was skipped (no
+   `external_secret` in the registry, or the name does not resolve) and ESO will
+   only pick the value up on its own refresh interval.
+2. **ESO** projects the Vault properties into the Kubernetes Secret. Remember it
+   is all-or-nothing per ExternalSecret: one `property:` it cannot find syncs
+   **zero** keys.
+3. **Reloader** restarts the workloads that mount the Secret, so the new value
+   reaches the process environment.
+
+Until step 3 lands, the pods still hold the previous value.
 
 ## Operator flow
 
@@ -95,11 +161,12 @@ Tell agents only the `intake_id` — never the secret value.
 | Method | Path | Notes |
 |--------|------|-------|
 | `GET` | `/v1/secrets/intake/targets` | Public-safe target metadata |
-| `POST` | `/v1/secrets/intake` | Write-only; body has values once |
+| `POST` | `/v1/secrets/intake` | Write-only; body has values once, or `generate: ["key"]` for server-side minting |
 | `GET` | `/v1/secrets/intake/:id` | Status/metadata only |
 
 Errors: `503 vault_writer_disabled` (no `vault-credentials`), `404 unknown_target`,
-`400 invalid_values`.
+`400 invalid_values`, `400 invalid_generate` (key not declared by the target, or
+listed both in `values` and `generate`).
 
 ## Agent flow
 

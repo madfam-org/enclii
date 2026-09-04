@@ -162,3 +162,78 @@ targets:
     keys:
       - janua_portal_client_id
       - janua_portal_client_secret
+
+  # crea-map, symbiosis-hcm and the nauta feed tokens below were added after the
+  # operator had to fall back to break-glass `vault kv patch` inside vault-0 on
+  # 2026-09-03: the secrets these apps needed that night had no intake target,
+  # so the only route into Vault was the one route intake exists to replace.
+  # Like nauta above, these write LOWERCASE Vault properties to match the
+  # `property:` fields their ExternalSecrets reference.
+  #
+  # crea-map and symbiosis-hcm are deployed through Enclii, not from this repo's
+  # infra/ tree, so their ExternalSecret names are not verifiable here. The names
+  # below follow the convention in docs/rfcs/2026-09-01-client-in-a-day.md
+  # (`<app>-secrets`). If one is wrong the Vault merge still succeeds and
+  # `external_secret_refreshed: false` comes back in the intake status — the
+  # force-sync is skipped, not silently reported as done. Fix the name here, do
+  # not paper over it by dropping the field.
+  crea-map/internal-api-key:
+    label: crea-map clave interna (compuerta de humo)
+    description: Clave interna compartida que resguarda la compuerta de humo del MAP — el llamador la envía y crea-map la coteja
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - internal_api_key
+
+  crea-map/kalya-feeds:
+    label: crea-map feeds de kalya (ocupación y capacidad)
+    description: URLs de los feeds de kalya que crea-map consume; el token del feed viaja dentro de la URL, por eso el valor completo es secreto
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - kalya_occupancy_feed_url
+      - kalya_capacity_feed_url
+
+  # symbiosis-hcm is the PRODUCER of the absence feed; crea-map cross-reads
+  # map_absence_feed_key and consumes it as HCM_FEED_API_KEY. Intaking both keys
+  # at the producer's path keeps one copy of the truth — the consumer's
+  # ExternalSecret points back at secret/symbiosis-hcm rather than holding a
+  # second copy that can drift on rotation.
+  symbiosis-hcm/map-absence-feed:
+    label: symbiosis-hcm feed de ausencias hacia el MAP
+    description: URL y llave del feed de ausencias que symbiosis-hcm publica y crea-map consume como HCM_FEED_API_KEY
+    vault_path: secret/symbiosis-hcm
+    namespace: symbiosis-hcm
+    external_secret: symbiosis-hcm-secrets
+    keys:
+      - map_absence_feed_url
+      - map_absence_feed_key
+
+  nauta/kalya-feed-tokens:
+    label: Nauta tokens de feeds de kalya
+    description: Tokens con los que nauta lee los feeds de kalya para las superficies de cliente
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-web-secrets
+    keys:
+      - kalya_feed_tokens
+
+  nauta/symbiosis-hcm-token:
+    label: Nauta token de symbiosis-hcm
+    description: Token con el que nauta llama a symbiosis-hcm para las superficies de RH del portal
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-web-secrets
+    keys:
+      - symbiosis_hcm_token
+
+  janua/internal-api-key:
+    label: Janua internal API key
+    description: Shared internal key for service-to-service calls into janua-api (peer of enclii/internal-api-key)
+    vault_path: secret/janua
+    namespace: janua
+    external_secret: janua-secrets
+    keys:
+      - internal_api_key

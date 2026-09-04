@@ -128,6 +128,23 @@ path "secret/data/madfam-site" {
 path "secret/data/madfam-site/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# crea-map + symbiosis-hcm — added 2026-09-03 alongside the intake targets for
+# the MAP smoke gate, the kalya feeds and the HCM absence feed. Both apps are
+# deployed through Enclii rather than this repo's infra/ tree, but the writer
+# policy is what Switchyard's own token carries, so their paths belong here or
+# the very first intake 403s exactly the way nauta did in enclii#379.
+path "secret/data/crea-map" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/crea-map/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/symbiosis-hcm" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/symbiosis-hcm/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/data/phynd-crm-staging" {
   capabilities = ["create", "update", "patch", "read"]
 }
@@ -192,6 +209,18 @@ path "secret/metadata/madfam-site" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/madfam-site/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/crea-map" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/crea-map/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/symbiosis-hcm" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/symbiosis-hcm/*" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/phynd-crm-staging" {

@@ -46,3 +46,38 @@ func TestParseKeyValueLines(t *testing.T) {
 	_, err = parseKeyValueLines([]string{"", "# only comments"})
 	require.Error(t, err)
 }
+
+func TestParseGenerateKeys(t *testing.T) {
+	out, err := parseGenerateKeys("internal_api_key")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"internal_api_key"}, out)
+
+	out, err = parseGenerateKeys(" map_absence_feed_key , map_absence_feed_url ")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"map_absence_feed_key", "map_absence_feed_url"}, out)
+
+	// Unset is not an error — it just means "generate nothing".
+	out, err = parseGenerateKeys("")
+	require.NoError(t, err)
+	assert.Nil(t, out)
+
+	// Duplicates are rejected case-insensitively: the server would 400 anyway,
+	// and failing here happens before any secret is prompted for.
+	_, err = parseGenerateKeys("internal_api_key,INTERNAL_API_KEY")
+	require.Error(t, err)
+
+	// A flag that was set but names nothing is a typo, not a no-op.
+	_, err = parseGenerateKeys(" , ")
+	require.Error(t, err)
+}
+
+func TestSecretsIntakeSubmit_HasGenerateFlag(t *testing.T) {
+	cfg := &config.Config{APIEndpoint: "https://api.test.dev", APIToken: "tok"}
+	submit := findSubcommand(findSubcommand(NewSecretsCommand(cfg), "intake"), "submit")
+	require.NotNil(t, submit)
+
+	flag := submit.Flags().Lookup("generate")
+	require.NotNil(t, flag, "submit must expose --generate")
+	assert.Equal(t, "", flag.DefValue)
+	assert.Contains(t, submit.Long, "--generate")
+}

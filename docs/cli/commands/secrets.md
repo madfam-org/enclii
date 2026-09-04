@@ -260,16 +260,50 @@ Chat-safe credential handoff into Vault — values never appear in agent transcr
 enclii secrets intake targets
 enclii secrets intake submit ceq/vast-api-key --reason "orchestrator bootstrap"
 enclii secrets intake submit ceq/vast-api-key --value-file ~/.config/madfam/vast.key --reason "orchestrator bootstrap"
+enclii secrets intake submit crea-map/internal-api-key --generate internal_api_key --reason "MAP smoke gate"
 enclii secrets intake status int_1234567890
 ```
 
 | Subcommand | Description |
 |------------|-------------|
 | `targets` | List registered intake targets (Vault path, keys, namespace) |
-| `submit TARGET` | Send secret value(s) once; masked prompt, `--value-file`, or `--stdin` |
+| `submit TARGET` | Send secret value(s) once; masked prompt, `--value-file`, `--stdin`, or `--generate` |
 | `status INTAKE_ID` | Poll metadata only — safe for agents (no values returned) |
 
+**`submit` flags**
+
+| Flag | Description |
+|------|-------------|
+| `--reason` | Required audit reason |
+| `--value-file` | Read `KEY=VALUE` lines from a file |
+| `--stdin` | Read `KEY=VALUE` lines from stdin |
+| `--generate KEY[,KEY…]` | Switchyard mints these keys with `crypto/rand`; the value is never returned |
+| `--json` | JSON output |
+
 `--reason` is required on submit. After submit, tell your agent the `intake_id` only — never paste the secret into chat.
+
+### `--generate` (server-side minting)
+
+For shared internal keys nobody should ever read, skip generating and pasting a
+value: name the key and Switchyard mints it.
+
+```bash
+enclii secrets intake submit crea-map/internal-api-key \
+  --generate internal_api_key --reason "MAP smoke gate bootstrap"
+```
+
+- 32 bytes of `crypto/rand`, unpadded base64url (URL- and env-var-safe).
+- Merged into Vault exactly like a supplied value; **never** returned by submit
+  or status, and never logged. `keys_generated` in the response names the key.
+- Other keys of the same target are still prompted (or read from
+  `--value-file` / `--stdin`) — a key listed in `--generate` is skipped at the
+  prompt.
+- A key cannot be both supplied and generated, and a key the target does not
+  declare is rejected before anything is written.
+- Per-target entropy is tunable in the registry with `generate: {bytes: N}` (16–128).
+
+Nothing outside Vault ever holds a copy, so rotation is a re-run of the same
+command with no scrollback or clipboard to clean up.
 
 Requires Switchyard Vault writer enabled (`ENCLII_SECRET_ROTATION_ENABLED` + `vault-credentials` secret). Until then, submit returns `503 vault_writer_disabled`.
 
