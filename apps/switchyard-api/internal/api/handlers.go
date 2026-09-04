@@ -53,13 +53,17 @@ type Handler struct {
 	emailService           *notifications.EmailService
 
 	// Infrastructure
-	config             *config.Config
-	auth               auth.AuthManager // Interface supporting both JWTManager and OIDCManager
-	auditMiddleware    *audit.Middleware
-	cache              cache.CacheService
-	builder            *builder.Service
-	k8sClient          *k8s.Client
-	vaultClient        VaultSecretWriter
+	config          *config.Config
+	auth            auth.AuthManager // Interface supporting both JWTManager and OIDCManager
+	auditMiddleware *audit.Middleware
+	cache           cache.CacheService
+	builder         *builder.Service
+	k8sClient       *k8s.Client
+	vaultClient     VaultSecretWriter
+
+	// kalyaFeedMinter overrides the live kalya internal feed-token client.
+	// Nil uses the real HTTP client; tests substitute a fake endpoint.
+	kalyaFeedMinter    kalyaFeedTokenMinter
 	reconciler         *reconciler.Controller
 	serviceReconciler  *reconciler.ServiceReconciler
 	metrics            *monitoring.MetricsCollector

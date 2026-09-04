@@ -242,6 +242,13 @@ func (h *Handler) provisionDomainEdge(
 		return result
 	}
 
+	// Record the junction before the route is written. The junction is what
+	// makes this hostname visible to tunnels-apply and to the project
+	// reconcilers; without it the hostname routes once and is never re-asserted,
+	// which is precisely how crea-erp.madfam.io ended up with a DNS record, no
+	// ingress rule, and a reconciler that reported "no junction domains found".
+	h.ensureJunctionForDomain(ctx, domain, service)
+
 	if err := h.zonePathHostnameConflict(ctx, domain, owner); err != nil {
 		h.logger.Warn(ctx, "Leaving the tunnel ingress rule untouched: another project holds this hostname",
 			logging.String("domain", domain),
@@ -411,7 +418,8 @@ func (h *Handler) ensureJunctionInfrastructure(ctx context.Context, domain strin
 		return summary
 	}
 
-	result := h.provisionDomainEdge(ctx, domain, service, defaultProductionEnvironmentName, 80, nil)
+	// Port 0 = "ask the live Service"; see ensureTunnelRoute.
+	result := h.provisionDomainEdge(ctx, domain, service, defaultProductionEnvironmentName, 0, nil)
 	if h.tunnelRoutesService != nil {
 		ready, err := h.tunnelRoutesService.RouteExists(ctx, domain)
 		if err != nil {
@@ -467,7 +475,7 @@ func (h *Handler) reconcileJunctionTunnelRoutesForProject(ctx context.Context, p
 			continue
 		}
 
-		h.provisionDomainEdge(ctx, junction.Domain, service, defaultProductionEnvironmentName, 80, nil)
+		h.provisionDomainEdge(ctx, junction.Domain, service, defaultProductionEnvironmentName, 0, nil)
 
 		if h.tunnelRoutesService == nil {
 			continue

@@ -86,6 +86,63 @@ without direct `kubectl` access:
 | `--idempotency-key` | Optional retry key for safely repeating an operation |
 | `--namespace`, `--project`, `--service` | Scope selectors passed to the operation contract |
 
+## `ops domains reconcile`
+
+Provisions every hostname a service declares in its `enclii.yaml`: the proxied
+DNS record, the junction, the tunnel ingress rule, and TLS. Idempotent — an
+already-provisioned hostname is re-asserted, never duplicated.
+
+Every credential is held server-side. You supply a service name and a reason;
+you never supply a Cloudflare token, a zone id, or a tunnel id, and none is
+returned.
+
+```bash
+# Plan: what is declared but not provisioned
+enclii ops domains reconcile nauta-web
+
+# Provision everything the manifest declares
+enclii ops domains reconcile nauta-web \
+  --apply --reason "crea-erp.madfam.io declared but never provisioned"
+
+# Provision ONE hostname, leaving every other declared hostname untouched
+enclii ops domains reconcile nauta-web --domain crea-erp.madfam.io \
+  --apply --reason "route the declared ERP host"
+```
+
+`--domain` is the safe form when only one hostname needs attention. Unlike
+`providers cloudflare tunnels-apply --project X`, which reconciles every
+junction in the project and can rewrite unrelated backends, a scoped reconcile
+touches exactly the hostname named. A hostname the manifest does not declare
+plans nothing rather than falling back to all of them.
+
+`enclii domains reconcile` is an alias for the same operation.
+
+## `ops secrets provision-kalya-feed`
+
+Mints a kalya standing-feed token and files it into its consumers' Vault paths,
+entirely server-side.
+
+```bash
+enclii ops secrets provision-kalya-feed --tenant crea --consumers crea-map,nauta
+enclii ops secrets provision-kalya-feed --tenant crea --consumers crea-map,nauta \
+  --apply --reason "wire the crea standing feed"
+```
+
+Switchyard reads kalya's internal API key from `secret/kalya`, asks kalya to
+mint the token, and writes:
+
+| Consumer | Vault path | Properties |
+|----------|-----------|------------|
+| `crea-map` | `secret/crea-map` | `kalya_occupancy_feed_url`, `kalya_capacity_feed_url` |
+| `nauta` | `secret/nauta` | `kalya_feed_tokens` (merged, so other tenants survive) |
+
+The token is never returned by the API, never logged, and never reaches the
+machine running the CLI. Idempotent: consumers already carrying this tenant's
+properties are skipped and nothing is minted. `--rotate` is the explicit opt-in
+to replace a live token.
+
+`enclii secrets provision kalya-feed` is an alias for the same operation.
+
 ## Remaining Adapter Work
 
 - `apps rollback`, `pods restart`, `storage repair-plan`, `secrets refresh`,

@@ -256,6 +256,23 @@ func (v *VaultClient) MergeSecretData(ctx context.Context, path string, updates 
 	return writeResp.Data.Version, nil
 }
 
+// GetSecretData returns EVERY key at a KV v2 path.
+//
+// Distinct from GetSecret, which returns whichever single key the map iteration
+// happened to yield first — unusable when a path holds several fields and you
+// need one named field (e.g. `internal_api_key` at `secret/kalya`). A missing
+// path is an empty map, not an error, so a caller can treat "not provisioned
+// yet" and "provisioned with nothing in it" the same way.
+func (v *VaultClient) GetSecretData(ctx context.Context, path string) (map[string]interface{}, error) {
+	if !v.enabled {
+		return nil, fmt.Errorf("Vault client is disabled")
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("Vault path is required")
+	}
+	return v.readSecretData(ctx, path)
+}
+
 func (v *VaultClient) readSecretData(ctx context.Context, path string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("%s/v1/%s", v.address, vaultKVv2DataPath(path))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

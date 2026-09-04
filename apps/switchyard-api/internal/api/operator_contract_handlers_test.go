@@ -30,6 +30,10 @@ func TestOperatorCapabilitiesIncludeCoreSurfaces(t *testing.T) {
 	require.True(t, operationSupported("apps", "sync-sweep", opsCapabilities))
 	require.True(t, operationSupported("secrets", "sync-sweep", opsCapabilities))
 	require.True(t, operationSupported("secrets", "vault-backfill", opsCapabilities))
+	// Registered like the other provisioners, so `enclii ops capabilities`
+	// advertises them and the dispatch cannot 404 on a wired adapter.
+	require.True(t, operationSupported("secrets", "provision-kalya-feed", opsCapabilities))
+	require.True(t, operationSupported("domains", "reconcile", opsCapabilities))
 	require.True(t, operationSupported("jobs", "trigger", opsCapabilities))
 	require.True(t, operationSupported("storage", "repair-plan", opsCapabilities))
 	require.True(t, operationSupported("storage", "settings-apply", opsCapabilities))
