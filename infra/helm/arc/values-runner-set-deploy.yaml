@@ -1,0 +1,58 @@
+# Deploy runner scale set (ADR-010a)
+#
+# A small, dedicated pool that exists for one reason: a deploy must not have
+# to win a first-come race against a ten-shard browser matrix. Deploy run
+# #540's Build Studio job queued ~30 minutes behind ~100 PR shard jobs, and
+# #542 then queued behind #540 under a serial concurrency group — about an
+# hour of shipping latency created entirely by elastic PR work.
+#
+# This is a PRIORITY RULE, NOT A PARTITION. Nothing here reserves the shared
+# pool for CI, and nothing stops an operator pointing other workflows at this
+# label later.
+#
+# Usage: helm upgrade --install madfam-runners-deploy \
+#          oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+#          --namespace arc-runners \
+#          --values values-runner-set.yaml \
+#          --values values-runner-set-deploy.yaml
+#
+# As with blue, the cluster reads the rendered manifest
+# (infra/k8s/production/arc/runner-deploy/rendered.yaml), not this file. Keep
+# BOTH in agreement — blue's own header records what it cost the last time
+# they drifted.
+
+runnerScaleSetName: "madfam-runners-deploy"
+
+# Deliberately small. Deploy jobs are short and mostly I/O-bound (buildx,
+# registry push, cosign, a kustomize commit, a health probe); capacity is not
+# the point, not queueing is. Two runners keep the serial deploy group moving.
+# This is a floor to size against measured deploy queue time, not a growth
+# target — and the builder nodes already sit at 94-95% CPU, so every warm
+# runner here is 400m/2Gi taken from the shared pool's headroom.
+#
+# minRunners: 1 buys a warm runner, because a cold start is exactly the
+# latency this scale set exists to remove (the record holds a job that waited
+# six minutes for a runner). If scheduling pressure on the builders shows up
+# as Pending EphemeralRunners in blue, drop this to 0 first and accept the
+# start-up cost — that trade is cheaper than starving the main pool.
+minRunners: 1
+maxRunners: 2
+
+template:
+  metadata:
+    labels:
+      arc.enclii.dev/pool: deploy
+      arc.enclii.dev/active: "true"
+    annotations:
+      arc.enclii.dev/deployed-at: ""  # Will be set by Helm
+  spec:
+    # Same builder nodes as blue: this is a scheduling-priority change, not a
+    # hardware change. A second node class would be a different decision with
+    # a different price.
+    nodeSelector:
+      role: builder
+    tolerations:
+      - key: "builder"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"

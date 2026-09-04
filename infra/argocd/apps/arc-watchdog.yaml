@@ -1,6 +1,6 @@
 # ARC platform watchdogs
 #
-# Two things, both plain YAML in infra/k8s/production/arc:
+# Three things, all plain YAML in infra/k8s/production/arc:
 #
 #   stuck-runner-watchdog.yaml — auto-purges EphemeralRunner CRs stuck in
 #     Running against already-completed workflow runs, the root cause of the
@@ -9,6 +9,12 @@
 #   pool-health-alert.yaml — pages a human when the pool stops serving jobs
 #     at all. Added 2026-08-10, when org-wide CI was down for hours and the
 #     only detector that noticed was a person going to look.
+#   priority-classes.yaml — the runner PriorityClass set (ADR-010a). Not a
+#     watchdog; it is here because this is the app that syncs plain YAML from
+#     this directory. Nothing references the classes yet, so applying them has
+#     no runtime effect — but they are applied rather than left as unreachable
+#     files, because "committed and never deployed" is the exact state that
+#     made monitoring.yaml read as coverage for 82 days.
 #
 # Separate ArgoCD app because the main arc-runners/arc-runners-blue apps are
 # Helm-chart-based and won't auto-sync plain Kubernetes YAML from this repo.
@@ -37,7 +43,7 @@ spec:
     targetRevision: main
     path: infra/k8s/production/arc
     directory:
-      include: "{stuck-runner-watchdog.yaml,pool-health-alert.yaml}"
+      include: "{stuck-runner-watchdog.yaml,pool-health-alert.yaml,priority-classes.yaml}"
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-runners
