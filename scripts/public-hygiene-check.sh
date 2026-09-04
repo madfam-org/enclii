@@ -39,7 +39,10 @@ set -euo pipefail
 ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$ROOT"
 
+# The guard and its own test fixtures necessarily contain the shapes they look
+# for; excluding them is not an allowlist for anything else.
 SELF='scripts/public-hygiene-check.sh'
+SELF_TEST='scripts/tests/test-public-hygiene.sh'
 status=0
 classes_skipped=0
 
@@ -47,7 +50,7 @@ classes_skipped=0
 # over *.md/*.mdx/*.txt/README*, which is why .yml, .sh, .ts and .json were
 # never read at all.
 scan_files() {
-  git ls-files -z -- ":(exclude)${SELF}" |
+  git ls-files -z -- ":(exclude)${SELF}" ":(exclude)${SELF_TEST}" |
     xargs -0 -r grep -IlZ '' 2>/dev/null | tr '\0' '\n'
 }
 
@@ -104,7 +107,8 @@ check_pattern 'Server hardware SKU (use a hardware class instead)' '\b(EX44|AX41
 # broadcast/unspecified ranges plus the well-known public resolvers documented
 # in networking guides are excluded — none of those are node identity.
 OPS_FILES="$(git ls-files -z -- '*.md' '*.mdx' '*.txt' '*.yml' '*.yaml' '*.sh' \
-    '*.tf' '*.conf' '*.env*' '.npmrc' '*/.npmrc' |
+    '*.tf' '*.conf' '*.env*' '.npmrc' '*/.npmrc' \
+    ":(exclude)${SELF}" ":(exclude)${SELF_TEST}" |
   xargs -0 -r grep -IlZ '' 2>/dev/null | tr '\0' '\n' |
   grep -vE '(^|/)(tests?|__tests__|e2e)/' || true)"
 OCTET='(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])'

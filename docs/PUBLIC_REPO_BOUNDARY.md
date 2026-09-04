@@ -82,7 +82,7 @@ of them), not the ~doc-only `find` it used before — `.yml`, `.sh`, `.ts`,
 |---|---|
 | Stripe / GitHub / AWS key shapes, PEM private-key markers | covered, whole tree |
 | npm registry `_auth` with a concrete value | covered, whole tree (placeholder forms `${VAR}`, `%s`, `YOUR_`, `<REDACTED>` excluded) |
-| Unresolved secret placeholders (`CHANGEME`, `REPLACE_WITH_*`) | covered, whole tree |
+| Unresolved secret placeholders (the `CHANGE`/`REPLACE_WITH_` marker forms) | covered, whole tree |
 | Server hardware SKUs | covered, whole tree |
 | Public IPv4 literals | covered over the OPS file set (docs, manifests, workflows, scripts, env samples; not application source or tests). Octet-range checked; private/loopback/link-local/TEST-NET and documented public resolvers excluded. Measured 0 findings, 0 false positives |
 | **Node hostnames** | **not covered by this file, by design.** The needles are the exact strings that must not appear here, so shipping them would publish the answer key, and hashing them buys obfuscation while implying secrecy. They are read from a private file via `MADFAM_HYGIENE_PATTERNS`; when it is unreadable the run prints `node-identity class SKIPPED` and `classes_skipped=1`. The enforcing run is `internal-devops/scripts/check-public-repo-node-identity.py` |
