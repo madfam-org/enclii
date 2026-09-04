@@ -1,5 +1,13 @@
 # Vault Operations Runbook
 
+> **Boundary checkpoint (2026-09-04, platform on-call):** Public-safe runbook —
+> Vault path names, policy capability sets and command shapes are routing and
+> access contracts, never values. No token, unseal key or secret value appears
+> here. The verbatim `500` quoted under the Switchyard writer section is an
+> error string only; the operator token custody, the break-glass admin token
+> location and the per-app secret inventory live in `internal-devops`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
