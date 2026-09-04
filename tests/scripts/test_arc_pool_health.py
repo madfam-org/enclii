@@ -43,8 +43,15 @@ case "$args" in
     cat "$FIXTURE_DIR/ars.txt"; exit 0 ;;
   *"get --raw"*ephemeralrunners*)
     cat "$FIXTURE_DIR/er_page.json"; exit 0 ;;
+  *"get configmap"*selftest*)
+    cat "$FIXTURE_DIR/selftest.txt" 2>/dev/null || exit 1
+    exit 0 ;;
   *"get configmap"*)
     cat "$FIXTURE_DIR/state.txt" 2>/dev/null || exit 1
+    exit 0 ;;
+  *"patch configmap"*)
+    echo "patched" > "$FIXTURE_DIR/selftest_cleared.txt"
+    if [ -f "$FIXTURE_DIR/patch_fail" ]; then exit 1; fi
     exit 0 ;;
   *"create configmap"*)
     for a in "$@"; do
@@ -61,21 +68,33 @@ exit 1
 
 FAKE_CURL = """\
 #!/bin/bash
-# Stub curl. Records the posted alert payload and returns a canned HTTP code so
-# tests can assert both what was sent and how a rejection is handled.
+# Stub curl. Records the posted alert payload and the pushed metrics body
+# separately, and returns a canned HTTP code per destination so tests can
+# assert what was sent, and that a failure of one destination does not take
+# the other down with it.
 set -uo pipefail
 payload=""
+metrics=""
 outfile=""
+url=""
 prev=""
 for a in "$@"; do
   case "$prev" in
     -d) payload="$a" ;;
+    --data-binary) metrics="$a" ;;
     -o) outfile="$a" ;;
   esac
+  case "$a" in http*) url="$a" ;; esac
   prev="$a"
 done
-[ -n "$payload" ] && printf '%s' "$payload" > "$FIXTURE_DIR/posted.json"
 [ -n "$outfile" ] && echo "stub-response" > "$outfile"
+case "$url" in
+  *"/metrics/job/"*)
+    [ -n "$metrics" ] && printf '%s' "$metrics" > "$FIXTURE_DIR/pushed.txt"
+    printf '%s' "$(cat "$FIXTURE_DIR/pg_http_code.txt" 2>/dev/null || echo 200)"
+    exit 0 ;;
+esac
+[ -n "$payload" ] && printf '%s' "$payload" > "$FIXTURE_DIR/posted.json"
 printf '%s' "$(cat "$FIXTURE_DIR/http_code.txt" 2>/dev/null || echo 200)"
 exit 0
 """
@@ -153,6 +172,31 @@ class Harness:
 
     def set_http_code(self, code: str):
         (self.fixtures / "http_code.txt").write_text(code)
+
+    def set_pg_http_code(self, code: str):
+        (self.fixtures / "pg_http_code.txt").write_text(code)
+
+    def request_selftest(self, value: str = "fire"):
+        (self.fixtures / "selftest.txt").write_text(value)
+
+    def fail_selftest_clear(self):
+        (self.fixtures / "patch_fail").touch()
+
+    def pushed(self) -> dict[str, float]:
+        """Parse the pushgateway exposition body into {metric: value}."""
+        p = self.fixtures / "pushed.txt"
+        if not p.exists():
+            return {}
+        out: dict[str, float] = {}
+        for line in p.read_text().splitlines():
+            if not line or line.startswith("#"):
+                continue
+            name, _, value = line.partition(" ")
+            out[name] = float(value)
+        return out
+
+    def selftest_cleared(self) -> bool:
+        return (self.fixtures / "selftest_cleared.txt").exists()
 
     def fail_pool_read(self):
         (self.fixtures / "ars_fail").touch()
@@ -374,3 +418,99 @@ def test_rbac_covers_every_resource_the_script_reads():
     verbs = {v for r in state["rules"] for v in r["verbs"]}
     assert {"get", "create"} <= verbs
     assert "update" in verbs or "patch" in verbs
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat + live self-test (added 2026-09-04, arming this detector)
+# ---------------------------------------------------------------------------
+# Two gaps stayed open after the detector shipped: it emitted NOTHING when
+# healthy, so a CronJob that stopped running looked exactly like a fleet that
+# was fine; and there was no way to prove the path to a human short of an
+# outage. The heartbeat closes the first, the self-test flag closes the second.
+
+
+def test_healthy_cycle_still_pushes_a_heartbeat(h):
+    """Silence toward Alertmanager, not silence toward Prometheus."""
+    result = h.run()
+    assert result.returncode == 0, result.stderr
+    assert h.posted() == []
+    pushed = h.pushed()
+    assert pushed["arc_pool_health_last_run_timestamp_seconds"] > 1_700_000_000
+    assert pushed["arc_pool_health_alerts_firing"] == 0
+    assert pushed["arc_pool_max_runners"] == 20
+    assert pushed["arc_pool_running_runners"] == 5
+
+
+def test_heartbeat_carries_the_outage_shape(h):
+    """The 2026-08-10 numbers must be legible in the gauges too, so the
+    Prometheus path can re-derive the alert independently of the POST."""
+    h.set_pool(max_runners=20, running=0, pending=20, current=20)
+    h.set_runners(total=400, outdated=400)
+    h.set_prev_streak(2)
+    h.run()
+    pushed = h.pushed()
+    assert pushed["arc_pool_outdated_runners"] == 400
+    assert pushed["arc_pool_running_runners"] == 0
+    assert pushed["arc_pool_pending_runners"] == 20
+    assert pushed["arc_pool_health_breach_streak"] == 3
+    assert pushed["arc_pool_health_alerts_firing"] >= 2
+
+
+def test_pushgateway_failure_does_not_stop_the_page(h):
+    """The POST is the part that reaches a human. A dead gateway must not
+    take it down — that would be a monitoring dependency inverting into an
+    alerting outage."""
+    h.set_runners(total=5, outdated=5)
+    h.set_pg_http_code("503")
+    result = h.run()
+    assert result.returncode == 0, result.stderr
+    assert "ARCRunnersDeprecated" in h.alertnames()
+    assert "warn: pushgateway heartbeat not accepted" in result.stderr
+
+
+def test_selftest_flag_fires_one_alert_through_the_real_path(h):
+    h.request_selftest("fire")
+    result = h.run()
+    assert result.returncode == 0, result.stderr
+    posted = h.posted()
+    assert [a["labels"]["alertname"] for a in posted] == ["ARCPoolHealthSelfTest"]
+    # Critical on purpose: the path being proven is the one a real runner
+    # deprecation takes. A test that exercises the warning receiver proves
+    # nothing about the receiver that matters.
+    assert posted[0]["labels"]["severity"] == "critical"
+    assert posted[0]["labels"]["service"] == "arc"
+    assert "not an incident" in posted[0]["annotations"]["summary"]
+    assert h.selftest_cleared()
+
+
+def test_selftest_flag_is_cleared_so_it_cannot_page_forever(h):
+    """Cleared in the same cycle it fires. If the clear itself fails, the run
+    still succeeds and says so — endsAt bounds the alert either way."""
+    h.request_selftest("fire")
+    h.fail_selftest_clear()
+    result = h.run()
+    assert result.returncode == 0, result.stderr
+    assert "ARCPoolHealthSelfTest" in h.alertnames()
+    assert "could not clear the selftest flag" in result.stderr
+
+
+def test_any_other_selftest_value_is_inert(h):
+    """Including the value the flag is left at after firing."""
+    for value in ("fired", "", "true", "1"):
+        h.request_selftest(value)
+        result = h.run()
+        assert result.returncode == 0, result.stderr
+        assert "ARCPoolHealthSelfTest" not in h.alertnames()
+
+
+def test_selftest_read_does_not_disturb_the_breach_counter(h):
+    """The two ConfigMap keys are read separately on purpose: a combined read
+    that mis-split would let a self-test request reset the streak, or a
+    streak value trigger a self-test."""
+    h.set_pool(max_runners=20, running=0, pending=20, current=20)
+    h.set_prev_streak(2)
+    h.request_selftest("fire")
+    h.run()
+    assert h.written_streak() == "3"
+    assert "ARCPoolServingNoJobs" in h.alertnames()
+    assert "ARCPoolHealthSelfTest" in h.alertnames()
