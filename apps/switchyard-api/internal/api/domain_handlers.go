@@ -94,7 +94,12 @@ func (h *Handler) AddCustomDomain(c *gin.Context) {
 				return
 			}
 
-			h.ensureTunnelRoute(ctx, req.Domain, service, req.Environment, 80, ownerFromService(service))
+			h.ensureJunctionForDomain(ctx, req.Domain, service)
+			// Port 0 = "ask the live Service". Hardcoding 80 here is what made
+			// `domains add` write a route at a port nothing listens on, which
+			// resolveTunnelBackend then correctly refused — DNS created, no
+			// ingress rule, hostname on cloudflared's 404 catch-all.
+			h.ensureTunnelRoute(ctx, req.Domain, service, req.Environment, 0, ownerFromService(service))
 			ready := false
 			if h.tunnelRoutesService != nil {
 				ready, _ = h.tunnelRoutesService.RouteExists(ctx, req.Domain)

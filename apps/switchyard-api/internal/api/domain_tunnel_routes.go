@@ -60,6 +60,17 @@ func (h *Handler) ensureTunnelRoute(
 	// Determine namespace from the service's project record
 	namespace := h.resolveServiceNamespace(ctx, service, envName)
 
+	// servicePort == 0 means "the caller does not know; ask the cluster". Five
+	// call sites used to hardcode 80 instead, and a Service that publishes on
+	// 3000 (nauta-web) got a route spec naming :80. resolveTunnelBackend below
+	// then refused the write — correctly, since nothing listens there — so the
+	// hostname got a DNS record and no ingress rule and served cloudflared's
+	// 404 catch-all. Resolved HERE because the namespace this needs has just
+	// been computed; doing it in the caller would repeat that lookup.
+	if servicePort <= 0 {
+		servicePort = h.resolveTunnelBackendPort(ctx, service, namespace, 0)
+	}
+
 	// Connect/keepAlive timeouts intentionally omitted: Cloudflare's
 	// Configuration API rejects them as quoted strings (`Bad Configuration:
 	// strconv.ParseInt: parsing "30s": invalid syntax`). Cloudflare's

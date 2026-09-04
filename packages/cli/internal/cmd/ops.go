@@ -30,6 +30,65 @@ once the server-side adapter supports the operation.`,
 	cmd.AddCommand(newOpsSecretsCommand(cfg))
 	cmd.AddCommand(newOpsPolicyCommand(cfg))
 	cmd.AddCommand(newOpsRunnersCommand(cfg))
+	cmd.AddCommand(newOpsDomainsCommand(cfg))
+	return cmd
+}
+
+func newOpsDomainsCommand(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{Use: "domains", Short: "Reconcile the hostnames a service declares in enclii.yaml"}
+	cmd.AddCommand(newOpsDomainsReconcileCommand(cfg))
+	return cmd
+}
+
+func newOpsDomainsReconcileCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	var ref string
+	var domain string
+	cmd := &cobra.Command{
+		Use:   "reconcile [service]",
+		Short: "Provision every hostname declared in a service's enclii.yaml",
+		Long: `Reconcile declared-vs-live hostnames for a service, server-side.
+
+Reads the service's enclii.yaml from GitHub and, for each hostname it declares,
+establishes the proxied DNS record, the tunnel route, and TLS. Idempotent: a
+hostname that is already provisioned is re-asserted, not duplicated.
+
+Every credential this needs is already held by the control plane. You supply a
+service name and a reason; you never supply a Cloudflare token, a zone id, or a
+tunnel id, and none is ever returned.
+
+Examples:
+  # See what is declared but not provisioned
+  enclii ops domains reconcile nauta-web
+
+  # Provision it
+  enclii ops domains reconcile nauta-web \
+    --apply --reason "crea-erp.madfam.io declared but never provisioned"
+
+  # Reconcile ONE hostname, leaving every other declared hostname untouched
+  enclii ops domains reconcile nauta-web --domain crea-erp.madfam.io \
+    --apply --reason "route the declared but unprovisioned ERP host"
+
+  # Reconcile against a specific commit rather than the default branch head
+  enclii ops domains reconcile nauta-web --ref 1a2b3c4 --apply --reason "..."`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			extra := map[string]string{}
+			if len(args) == 1 {
+				extra["target"] = args[0]
+			}
+			if strings.TrimSpace(ref) != "" {
+				extra["ref"] = strings.TrimSpace(ref)
+			}
+			if strings.TrimSpace(domain) != "" {
+				extra["domain"] = strings.TrimSpace(domain)
+			}
+			return runOperation(cmd, cfg, opsPath("domains", "reconcile"), "ops.domains.reconcile", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
+	cmd.Flags().StringVar(&ref, "ref", "", "Git ref to read enclii.yaml from (default: the repository's default branch head)")
+	cmd.Flags().StringVar(&domain, "domain", "", "Reconcile only this hostname; every other declared hostname is left untouched")
 	return cmd
 }
 
@@ -128,6 +187,54 @@ func newOpsSecretsCommand(cfg *config.Config) *cobra.Command {
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "sync-sweep", "Batch refresh not-ready ExternalSecrets in GA namespaces (O-10)"))
 	cmd.AddCommand(newOpsActionCommand(cfg, "secrets", "rotate", "Request an ExternalSecret rotation cutover"))
 	cmd.AddCommand(newOpsSecretsVaultBackfillCommand(cfg))
+	cmd.AddCommand(newOpsSecretsProvisionKalyaFeedCommand(cfg))
+	return cmd
+}
+
+func newOpsSecretsProvisionKalyaFeedCommand(cfg *config.Config) *cobra.Command {
+	var flags operationFlags
+	var tenant string
+	var consumers []string
+	var kalyaOrigin string
+	var rotate bool
+	cmd := &cobra.Command{
+		Use:   "provision-kalya-feed",
+		Short: "Mint a kalya standing-feed token and file it into its consumers' Vault paths",
+		Long: `Provision the kalya occupancy/capacity standing-feed credential, server-side.
+
+Switchyard reads kalya's internal API key from Vault, asks kalya to mint a feed
+token for the tenant, and writes the consumer properties into Vault. The token
+is never returned by the API, never logged, and never printed here.
+
+Idempotent: a consumer that already carries this tenant's properties is skipped
+and nothing is minted. Pass --rotate to deliberately replace a live token.
+
+Examples:
+  enclii ops secrets provision-kalya-feed --tenant crea --consumers crea-map,nauta
+  enclii ops secrets provision-kalya-feed --tenant crea --consumers crea-map,nauta \
+    --apply --reason "wire the crea standing feed without a human handling the token"`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			extra := map[string]string{}
+			if strings.TrimSpace(tenant) != "" {
+				extra["tenant"] = strings.TrimSpace(tenant)
+			}
+			if len(consumers) > 0 {
+				extra["consumers"] = strings.Join(consumers, ",")
+			}
+			if strings.TrimSpace(kalyaOrigin) != "" {
+				extra["kalya_origin"] = strings.TrimSpace(kalyaOrigin)
+			}
+			if rotate {
+				extra["rotate"] = "true"
+			}
+			return runOperation(cmd, cfg, opsPath("secrets", "provision-kalya-feed"), "ops.secrets.provision-kalya-feed", flags, extra)
+		},
+	}
+	addOperationFlags(cmd, &flags)
+	cmd.Flags().StringVar(&tenant, "tenant", "", "kalya tenant slug (e.g. crea); required")
+	cmd.Flags().StringSliceVar(&consumers, "consumers", nil, "Consumers to provision: crea-map, nauta")
+	cmd.Flags().StringVar(&kalyaOrigin, "kalya-origin", "", "kalya origin (default: kalya's verified service domain, else https://kalya.app)")
+	cmd.Flags().BoolVar(&rotate, "rotate", false, "Mint a replacement token even when the consumers are already provisioned")
 	return cmd
 }
 

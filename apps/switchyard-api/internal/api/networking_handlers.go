@@ -303,7 +303,8 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 			// nauta on 2026-08-16, both hand-fixed under break-glass). The
 			// deploy path already had provisionDomainEdge; the CLI path now
 			// takes the same door.
-			edge := h.provisionDomainEdge(ctx, domainName, service, env.Name, 80, nil)
+			// Port 0 = "ask the live Service"; see ensureTunnelRoute.
+			edge := h.provisionDomainEdge(ctx, domainName, service, env.Name, 0, nil)
 			ready := false
 			if h.tunnelRoutesService != nil {
 				ready, _ = h.tunnelRoutesService.RouteExists(ctx, domainName)
@@ -400,7 +401,7 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 	// deploy path has taken this exact door all along; the mechanism decision
 	// (zone vs SaaS) and the zone RESOLUTION-BY-HOSTNAME both live inside it,
 	// so a madfam.io host can never be written into the enclii.dev zone.
-	edge := h.provisionDomainEdge(ctx, domainName, service, env.Name, 80, nil)
+	edge := h.provisionDomainEdge(ctx, domainName, service, env.Name, 0, nil)
 
 	// Build response
 	response := gin.H{

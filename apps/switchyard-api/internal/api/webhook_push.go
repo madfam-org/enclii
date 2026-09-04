@@ -139,6 +139,20 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		logging.String("pusher", event.Pusher.Name),
 		logging.String("commit_message", truncateString(event.HeadCommit.Message, 100)))
 
+	// Domain reconciliation is NOT a build concern, and must not sit behind the
+	// build gate.
+	//
+	// It did, and that is why a hostname added to an already-onboarded service's
+	// enclii.yaml was never provisioned. `github-webhook-builds-enabled` defaults
+	// to false (Roundhouse push-builds are opt-in, and services deployed through
+	// ArgoCD digest pinning never turn it on), so this handler returned below
+	// with "auto-builds are disabled" and the provisioning call further down was
+	// unreachable for exactly the services that most need it. A manifest is the
+	// declaration of intent for DNS/TLS/tunnel routing whether or not this
+	// platform also builds the image, so it is reconciled on every push to the
+	// default branch.
+	h.reconcileDeclaredDomainsFromPush(ctx, services, encliiConfig)
+
 	if h.config == nil || !h.config.GitHubWebhookBuildsEnabled {
 		h.logger.Warn(ctx, "GitHub push auto-builds disabled; acknowledging without creating releases",
 			logging.Int("service_count", len(services)),
@@ -191,12 +205,6 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 	}
 	var results []buildResult
 	var skippedCount int
-
-	// Auto-provision domains from enclii.yaml (non-blocking, best-effort)
-	// This runs once per push, not per service — domains apply to the first matching service
-	if encliiConfig != nil && len(encliiConfig.Spec.Domains) > 0 && len(services) > 0 {
-		go h.provisionDomainsFromYAML(context.Background(), services[0], encliiConfig)
-	}
 
 	// Sync custom response headers from enclii.yaml to service record
 	if encliiConfig != nil && len(encliiConfig.Spec.Headers) > 0 {

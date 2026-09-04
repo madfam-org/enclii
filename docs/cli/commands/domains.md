@@ -223,6 +223,20 @@ enclii domains status
 | `30` | Operation failed (API error, domain not found) |
 | `50` | Authentication error |
 
+## `domains reconcile`
+
+Alias of [`enclii ops domains reconcile`](./ops.md). Provisions every hostname
+declared in a service's `enclii.yaml` — DNS record, junction, tunnel route, TLS
+— server-side and idempotently.
+
+```bash
+enclii domains reconcile nauta-web
+enclii domains reconcile nauta-web --domain crea-erp.madfam.io \
+  --apply --reason "route the declared ERP host"
+```
+
+Use this when a hostname was added to `enclii.yaml` and never became live.
+
 ## See Also
 
 - [`enclii deploy`](./deploy.md) - Deploy a service (auto-provisions domains from `enclii.yaml`)

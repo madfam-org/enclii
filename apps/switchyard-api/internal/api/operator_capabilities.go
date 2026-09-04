@@ -38,9 +38,9 @@ var opsCapabilities = []operatorCapability{
 	{
 		Name:        "secrets",
 		Status:      "partial",
-		Description: "ExternalSecrets and Vault readiness reads plus audited sync, rotation cutover, and Vault backfill contracts",
-		Actions:     []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate", "vault-backfill"},
-		Scopes:      []string{"namespace", "project", "service", "target"},
+		Description: "ExternalSecrets and Vault readiness reads plus audited sync, rotation cutover, Vault backfill, and server-side ecosystem credential provisioning (kalya feed tokens)",
+		Actions:     []string{"external", "vault", "refresh", "sync", "sync-sweep", "rotate", "vault-backfill", "provision-kalya-feed"},
+		Scopes:      []string{"namespace", "project", "service", "target", "tenant"},
 	},
 	{
 		Name:        "policy",
@@ -55,6 +55,13 @@ var opsCapabilities = []operatorCapability{
 		Description: "ARC runner scale-set reads plus runner drain contracts",
 		Actions:     []string{"arc", "drain"},
 		Scopes:      []string{"namespace", "target"},
+	},
+	{
+		Name:        "domains",
+		Status:      "partial",
+		Description: "Reconcile the hostnames a service declares in enclii.yaml: DNS record, tunnel route, and TLS, idempotently and server-side with the control plane's own Cloudflare credentials",
+		Actions:     []string{"reconcile"},
+		Scopes:      []string{"project", "service", "target"},
 	},
 	{
 		Name:        "quote-flow",

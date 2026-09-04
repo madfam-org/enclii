@@ -47,8 +47,21 @@ Examples:
 	cmd.AddCommand(newDomainsRemoveCommand(cfg))
 	cmd.AddCommand(newDomainsVerifyCommand(cfg))
 	cmd.AddCommand(newDomainsStatusCommand(cfg))
+	// Alias of `enclii ops domains reconcile`. An operator looking for "make my
+	// declared domain real" reaches for `enclii domains` first, so the verb
+	// lives in both places and routes to the one server-side operation.
+	cmd.AddCommand(newDomainsReconcileCommand(cfg))
 
 	return cmd
+}
+
+// newDomainsReconcileCommand is the domains-tree alias of
+// ops.domains.reconcile. Same request, same server handler, same audit.
+func newDomainsReconcileCommand(cfg *config.Config) *cobra.Command {
+	reconcile := newOpsDomainsReconcileCommand(cfg)
+	reconcile.Use = "reconcile [service]"
+	reconcile.Short = "Provision every hostname declared in a service's enclii.yaml"
+	return reconcile
 }
 
 // newDomainsListCommand creates the 'domains list' subcommand
