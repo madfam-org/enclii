@@ -353,8 +353,9 @@ jobs:
   intake-policy-parity:
     name: Intake/Vault-policy parity
     runs-on: ubuntu-latest
-    # Cheap (sub-second). Every secrets-intake vault_path must be writable
-    # under the switchyard-secret-writer policy — they drifted once (nauta,
+    # Cheap (sub-second). Every secrets-intake vault_path — and every Vault
+    # path a switchyard-api provisioner holds as a Go literal — must be covered
+    # by the switchyard-secret-writer policy. They drifted once (nauta,
     # enclii#379) and the first live use failed with an opaque 500 days after
     # the green merge. See scripts/check-intake-policy-parity.sh.
     steps:

@@ -80,6 +80,20 @@ Add targets via PR to the registry — do not hardcode paths in runbooks. A new
 `scripts/check-intake-policy-parity.sh` fails CI if you forget, because the
 failure otherwise surfaces days later as an opaque `500: failed to write to Vault`.
 
+Merging the policy block is only half of it: the running Vault changes when an
+operator re-applies the policy with
+`POLICY_ONLY=1 scripts/provision-switchyard-vault-writer.sh` (Vault admin token,
+in-cluster against `vault-0`). A path in git but not re-applied 403s exactly like
+a path that was never added. See
+[Vault Operations](./VAULT_OPERATIONS.md#switchyard-vault-writer-secret-intake--vault-backfill).
+
+Not every policy path has a target. `secret/kalya` is **policy-only**: nothing
+intakes it, but `enclii secrets provision kalya-feed` reads
+`secret/kalya:internal_api_key` to authorize minting the feed token before
+writing `secret/crea-map` and `secret/nauta`. The parity check scans
+switchyard-api Go sources too, so a provisioner's Vault literal cannot drift out
+of the policy either.
+
 ## Server-side generation
 
 For a shared internal key that **no human needs to read** — a smoke-gate key, a
