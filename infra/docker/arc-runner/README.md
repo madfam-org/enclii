@@ -36,7 +36,9 @@ upstream base.
   - `:<git-sha>` — immutable, used for provenance and pre-merge testing
   - `:stable` — moved to point at the latest `main` build
 - Base image (pinned in [`Dockerfile`](./Dockerfile)):
-  `ghcr.io/actions/actions-runner:2.334.0`
+  `ghcr.io/actions/actions-runner:2.337.0` (upstream release published
+  2026-08-27). The `Dockerfile` is the source of truth for this value; this
+  line and the comment in `infra/helm/arc/values-runner-set.yaml` track it.
 
 ## Rebuild cadence
 

@@ -25,8 +25,20 @@
 # ecosystem on 2026-08-10 — 3,149 EphemeralRunners, all "Outdated /
 # Runner is deprecated", zero jobs served. Honour the 30-day bump
 # cadence in the runbook; the deprecation is silent until it isn't.
+#
+# 2026-09-04 bump: 2.336.0 (published 2026-07-20) → 2.337.0 (published
+# 2026-08-27), the newest upstream release at the time of writing. 2.336.0
+# was 46 days old and the runbook's next-bump date was 2026-09-19, i.e.
+# inside the window that ends in a registration outage.
+#
+# BUMPING THIS LINE DOES NOT DEPLOY ANYTHING. The pool runs a digest pin
+# (Kyverno `require-image-digest`), so the new agent only reaches runners
+# once the overlay digest produced by .github/workflows/arc-runner-image.yml
+# on merge is repinned in BOTH image references in
+# infra/k8s/production/arc/runner-blue/rendered.yaml. That repin is a
+# second PR, by design — the digest does not exist until this one merges.
 ARG BASE_IMAGE=ghcr.io/actions/actions-runner
-ARG BASE_TAG=2.336.0
+ARG BASE_TAG=2.337.0
 FROM ${BASE_IMAGE}:${BASE_TAG}
 ARG BASE_IMAGE
 ARG BASE_TAG
