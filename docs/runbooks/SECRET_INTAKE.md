@@ -2,6 +2,14 @@
 
 **Last Updated:** 2026-09-03
 
+> **Boundary checkpoint (2026-09-03, platform on-call):** Public-safe runbook —
+> target ids, Vault paths and key NAMES are routing contracts, never values. No
+> secret value appears here, and none is retrievable through the intake API by
+> design. Private operational detail (the 2026-09-03 break-glass fallback that
+> motivated the new targets, and the per-app secret custody notes) lives in
+> `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary
+> contract).
+
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
 status only.
