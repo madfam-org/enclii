@@ -247,7 +247,10 @@ docker run --rm --entrypoint bash arc-runner:dev -c '
 mkdir -p /tmp/oscad-libs /tmp/oscad-smoke
 git clone --filter=blob:none --no-checkout \
   https://github.com/BelfrySCAD/BOSL2 /tmp/oscad-libs/BOSL2
-git -C /tmp/oscad-libs/BOSL2 fetch --depth 1 origin fcfce7c7
+# Full sha: `git fetch <remote> <sha>` resolves its argument as a ref on the
+# SERVER, which cannot expand an abbreviation ("couldn't find remote ref").
+git -C /tmp/oscad-libs/BOSL2 fetch --depth 1 origin \
+  fcfce7c763863d8e66d5f36a551d11129ec1a607
 git -C /tmp/oscad-libs/BOSL2 checkout FETCH_HEAD
 printf '%s\n' 'include <BOSL2/std.scad>' 'cube([1,1,1], anchor=[-1,-1,-1]);' \
   > /tmp/oscad-smoke/smoke.scad

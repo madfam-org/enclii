@@ -171,7 +171,12 @@ jobs:
           # The platform's pinned BOSL2. Must match yantra4d's submodule commit
           # (v2.0.753) — rendering against a DIFFERENT BOSL2 than production
           # uses would make this check theatre.
-          BOSL2_COMMIT: "fcfce7c7"
+          #
+          # FULL sha, not the abbreviated fcfce7c7: `git fetch <remote> <sha>`
+          # resolves the argument as a REF on the server, and the server cannot
+          # expand an abbreviation — an abbreviated sha fails with
+          # "fatal: couldn't find remote ref fcfce7c7".
+          BOSL2_COMMIT: "fcfce7c763863d8e66d5f36a551d11129ec1a607"
         run: |
           set -euo pipefail
           run() { docker run --rm --entrypoint bash "${SMOKE_IMAGE}" -c "$1"; }
@@ -226,7 +231,7 @@ jobs:
           # and mounted read-only. Ownership does not matter for a read-only
           # bind, and OPENSCADPATH points at the PARENT directory because
           # `include <BOSL2/std.scad>` resolves BOSL2 as a subdirectory.
-          echo "::group::BOSL2 ${BOSL2_COMMIT} renders (the G31 incompatibility)"
+          echo "::group::BOSL2 ${BOSL2_COMMIT:0:8} renders (the G31 incompatibility)"
           BOSL2_DIR="${RUNNER_TEMP}/oscad-libs"
           mkdir -p "${BOSL2_DIR}"
           git clone --quiet --filter=blob:none --no-checkout \
