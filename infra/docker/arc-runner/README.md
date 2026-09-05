@@ -36,7 +36,9 @@ upstream base.
   - `:<git-sha>` — immutable, used for provenance and pre-merge testing
   - `:stable` — moved to point at the latest `main` build
 - Base image (pinned in [`Dockerfile`](./Dockerfile)):
-  `ghcr.io/actions/actions-runner:2.334.0`
+  `ghcr.io/actions/actions-runner:2.337.0` (upstream release published
+  2026-08-27). The `Dockerfile` is the source of truth for this value; this
+  line and the comment in `infra/helm/arc/values-runner-set.yaml` track it.
 
 ## Rebuild cadence
 
@@ -49,10 +51,29 @@ In addition, schedule a deliberate bump in two cases:
    security patches transparently — `apt-get update` in the build runs
    on the upstream cache state at build time.
 2. **When `actions/runner` ships a new release.** Track
-   <https://github.com/actions/runner/releases>. Bump the `BASE_TAG`
-   build arg in the `Dockerfile`, open a PR, and follow the verification
-   procedure in
+   <https://github.com/actions/runner/releases>. Bump the `BASE_TAG` **and
+   `BASE_TAG_DATE`** build args in the `Dockerfile`, open a PR, and follow
+   the verification procedure in
    [`internal-devops/runbooks/arc-runner-image-rebuild.md`](https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md).
+
+This cadence is **enforced in CI**, not merely documented. The `Image Age
+Ratchet` job (`scripts/check-image-age.py`) fails the build when:
+
+- a newer upstream release has been published for more than 30 days;
+- `BASE_TAG_DATE` disagrees with the tag's actual publish date in the
+  registry (a date field that drifts from reality is worse than none);
+- upstream is unreachable *and* `BASE_TAG_DATE` is more than 55 days old —
+  inside GitHub's ~60-day deprecation window.
+
+Between a release and our bump the job warns rather than fails, which is the
+30 days the cadence allows. `AGE_RATCHET_EXEMPT_ACTIONS_RUNNER=<reason>` in
+the job's env downgrades the failure to a warning; use it only while a bump
+PR is open, and delete it in that PR.
+
+Remember that bumping the tag deploys nothing on its own: the pool runs a
+digest pin, so the overlay digest in
+`infra/k8s/production/arc/runner-blue/rendered.yaml` must be repinned (both
+occurrences) after the image build runs on `main`.
 
 ## Base-image bump policy
 

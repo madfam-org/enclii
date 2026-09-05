@@ -44,6 +44,26 @@
 #
 # Lives in `monitoring`, not `arc-runners`, because arc-runners carries a
 # blanket default-deny-egress and could never reach Alertmanager from there.
+#
+# WHAT IT EMITS WHEN NOTHING IS WRONG (added 2026-09-04)
+# A detector that is silent on the happy path is indistinguishable from one
+# that has stopped running — which is the same class of failure it exists to
+# catch, one level up. Every cycle therefore also pushes a heartbeat and the
+# pool gauges to the pushgateway, which the primary Prometheus has scraped
+# since 2026-08-11. `arc-pool-health-rules.yml` in the prometheus-rules
+# ConfigMap alerts on that heartbeat going stale, so the detector's own death
+# is detected, and re-derives ARCRunnersDeprecated from the pushed gauge —
+# a second, independent path to the same fact. The push is best-effort: a
+# pushgateway outage must never stop the Alertmanager POST, because the POST
+# is the part that pages a human.
+#
+# HOW TO SEND A LIVE TEST ALERT
+# Set `selftest: fire` in the `arc-pool-health-state` ConfigMap. The next
+# cycle (<=5 min) emits ARCPoolHealthSelfTest through the exact production
+# path — same ServiceAccount, same NetworkPolicy, same Alertmanager route,
+# same receiver — then clears the key so it fires once. That is the only
+# honest way to arm this: a curl from a laptop proves nothing about the path
+# the CronJob actually takes.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -147,6 +167,19 @@ spec:
       ports:
         - port: 9093
           protocol: TCP
+    # Pushgateway (heartbeat + pool gauges). The ipBlock is the same
+    # workaround deploy-pipeline-monitor-egress carries: some CNIs do not
+    # treat Service IPs as ordinary in-namespace pod traffic, and a silently
+    # dropped push looks exactly like a healthy one from in here.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        - ipBlock:
+            cidr: 10.43.0.0/16
+      ports:
+        - port: 9091
+          protocol: TCP
     # Kubernetes API
     - ports:
         - port: 443
@@ -223,6 +256,13 @@ spec:
                   value: arc-runners
                 - name: ALERTMANAGER_URL
                   value: http://alertmanager.monitoring.svc.cluster.local:9093
+                # Headless, like deploy-pipeline-monitor: it resolves to the
+                # gateway pod directly, so the NetworkPolicy's
+                # namespaceSelector matches without depending on how the CNI
+                # treats a ClusterIP. Prometheus scrapes the stable
+                # `pushgateway` Service; both address the same pod.
+                - name: PUSHGATEWAY_URL
+                  value: http://pushgateway-headless.monitoring.svc.cluster.local:9091
                 - name: STATE_CONFIGMAP
                   value: arc-pool-health-state
                 # Consecutive breaching cycles before ARCPoolServingNoJobs
@@ -284,6 +324,13 @@ spec:
                     breach=1
                   fi
 
+                  # Read as a separate call, not a second jsonpath field on
+                  # the read below: a combined read that mis-splits would make
+                  # the breach counter and the self-test flag able to trigger
+                  # each other.
+                  selftest="$($KUBECTL --request-timeout=20s -n monitoring get configmap "$STATE_CONFIGMAP" \
+                             -o jsonpath='{.data.selftest}' 2>/dev/null || true)"
+
                   prev="$($KUBECTL --request-timeout=20s -n monitoring get configmap "$STATE_CONFIGMAP" \
                          -o jsonpath='{.data.consecutive_breaches}' 2>/dev/null || true)"
                   prev=${prev:-0}
@@ -308,8 +355,10 @@ spec:
                   ends_at="$(date -u -d '@'"$(( $(date +%s) + 900 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
                             || date -u -r "$(( $(date +%s) + 900 ))" +%Y-%m-%dT%H:%M:%SZ)"
                   alerts=""
+                  alert_count=0
                   add_alert() {
                     [ -n "$alerts" ] && alerts="$alerts,"
+                    alert_count=$((alert_count + 1))
                     alerts="$alerts{\"labels\":{\"alertname\":\"$1\",\"severity\":\"$2\",\"service\":\"arc\",\"category\":\"ci-capacity\",\"scale_set\":\"$SCALE_SET\"},\"annotations\":{\"summary\":\"$3\",\"description\":\"$4\",\"runbook_url\":\"https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md\"},\"endsAt\":\"$ends_at\"}"
                   }
 
@@ -330,6 +379,54 @@ spec:
                       "ARC EphemeralRunner backlog is large" \
                       "At least $total EphemeralRunners exist on $SCALE_SET. Runaway churn; this also starves the stuck-runner watchdog."
                   fi
+
+                  # Operator-requested live test. Deliberately `critical`: the
+                  # path being proven is the one ARCRunnersDeprecated takes,
+                  # and a test that exercises a different receiver proves
+                  # nothing about the receiver that matters. Cleared
+                  # immediately so it fires exactly once; endsAt still bounds
+                  # it if the clear fails.
+                  if [ "$selftest" = "fire" ]; then
+                    add_alert "ARCPoolHealthSelfTest" "critical" \
+                      "ARC pool-health detector test alert (not an incident)" \
+                      "Operator-requested test of the arc-pool-health path: CronJob -> NetworkPolicy -> Alertmanager -> receiver. Pool state at test time: max=$max current=$current running=$running pending=$pending outdated=$outdated. No action needed. If you are reading this and did not request it, someone set selftest=fire on the $STATE_CONFIGMAP ConfigMap."
+                    $KUBECTL --request-timeout=20s -n monitoring patch configmap "$STATE_CONFIGMAP" \
+                      --type merge -p '{"data":{"selftest":"fired"}}' >/dev/null 2>&1 \
+                      || echo "warn: could not clear the selftest flag; it will fire again next cycle" >&2
+                  fi
+
+                  # ---- heartbeat ---------------------------------------------
+                  # Best-effort and last-but-one: a pushgateway outage must
+                  # never stop the Alertmanager POST below, which is the part
+                  # that pages a human. `|| true` around the whole thing is
+                  # load bearing under `sh -e`.
+                  now_s="$(date +%s)"
+                  metrics="$(printf '%s\n' \
+                    "# TYPE arc_pool_health_last_run_timestamp_seconds gauge" \
+                    "arc_pool_health_last_run_timestamp_seconds $now_s" \
+                    "# TYPE arc_pool_max_runners gauge" \
+                    "arc_pool_max_runners $max" \
+                    "# TYPE arc_pool_current_runners gauge" \
+                    "arc_pool_current_runners $current" \
+                    "# TYPE arc_pool_running_runners gauge" \
+                    "arc_pool_running_runners $running" \
+                    "# TYPE arc_pool_pending_runners gauge" \
+                    "arc_pool_pending_runners $pending" \
+                    "# TYPE arc_pool_outdated_runners gauge" \
+                    "arc_pool_outdated_runners $outdated" \
+                    "# TYPE arc_pool_ephemeral_runners gauge" \
+                    "arc_pool_ephemeral_runners $total" \
+                    "# TYPE arc_pool_health_breach_streak gauge" \
+                    "arc_pool_health_breach_streak $streak" \
+                    "# TYPE arc_pool_health_alerts_firing gauge" \
+                    "arc_pool_health_alerts_firing $alert_count")"
+                  pg_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+                             --data-binary "$metrics" \
+                             "$PUSHGATEWAY_URL/metrics/job/arc_pool_health/scale_set/$SCALE_SET" 2>/dev/null || true)"
+                  case "$pg_code" in
+                    2*) echo "pushgateway accepted heartbeat (HTTP $pg_code)" ;;
+                    *)  echo "warn: pushgateway heartbeat not accepted (HTTP ${pg_code:-none}); ARCPoolHealthDetectorStale may fire" >&2 ;;
+                  esac
 
                   if [ -z "$alerts" ]; then
                     echo "ok: no alert conditions"
