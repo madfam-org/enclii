@@ -111,7 +111,7 @@ function fakePod(
 describe('GET /api/topology', () => {
   it('aggregates nodes, pods, services, deployments correctly', async () => {
     mockListNode.mockResolvedValueOnce({ body: {
-      items: [fakeNode('foundry-cp', 'control-plane'), fakeNode('foundry-worker-01', 'worker')],
+      items: [fakeNode('node-a', 'control-plane'), fakeNode('node-b', 'worker')],
     } })
     mockListNamespace.mockResolvedValueOnce({
       items: [
@@ -121,9 +121,9 @@ describe('GET /api/topology', () => {
     })
     mockListPod.mockResolvedValueOnce({
       items: [
-        fakePod('api-1', 'enclii', 'foundry-cp'),
-        fakePod('ui-1', 'enclii', 'foundry-cp'),
-        fakePod('app-controller-1', 'argocd', 'foundry-worker-01'),
+        fakePod('api-1', 'enclii', 'node-a'),
+        fakePod('ui-1', 'enclii', 'node-a'),
+        fakePod('app-controller-1', 'argocd', 'node-b'),
       ],
     })
     mockListService.mockResolvedValueOnce({
@@ -157,8 +157,8 @@ describe('GET /api/topology', () => {
       namespaces: 2,
     })
     const nodes = body.nodes as { name: string; role: string }[]
-    expect(nodes.find((n) => n.name === 'foundry-cp')?.role).toBe('control-plane')
-    expect(nodes.find((n) => n.name === 'foundry-worker-01')?.role).toBe('worker')
+    expect(nodes.find((n) => n.name === 'node-a')?.role).toBe('control-plane')
+    expect(nodes.find((n) => n.name === 'node-b')?.role).toBe('worker')
 
     const namespaces = body.namespaces as {
       name: string
@@ -171,14 +171,14 @@ describe('GET /api/topology', () => {
   })
 
   it('charges pod CPU/memory requests to their host node', async () => {
-    mockListNode.mockResolvedValueOnce({ body: { items: [fakeNode('foundry-cp', 'control-plane')] } })
+    mockListNode.mockResolvedValueOnce({ body: { items: [fakeNode('node-a', 'control-plane')] } })
     mockListNamespace.mockResolvedValueOnce({ body: { items: [{ metadata: { name: 'enclii' } }] } })
     mockListPod.mockResolvedValueOnce({ body: {
       items: [
-        fakePod('api-1', 'enclii', 'foundry-cp', 'Running', '500m', '256Mi'),
-        fakePod('api-2', 'enclii', 'foundry-cp', 'Running', '500m', '256Mi'),
+        fakePod('api-1', 'enclii', 'node-a', 'Running', '500m', '256Mi'),
+        fakePod('api-2', 'enclii', 'node-a', 'Running', '500m', '256Mi'),
         // Pending pods should NOT be counted toward used capacity
-        fakePod('pending-1', 'enclii', 'foundry-cp', 'Pending', '1000m', '1Gi'),
+        fakePod('pending-1', 'enclii', 'node-a', 'Pending', '1000m', '1Gi'),
       ],
     } })
     mockListService.mockResolvedValueOnce({ body: { items: [] } })

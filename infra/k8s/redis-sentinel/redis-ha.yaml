@@ -131,7 +131,7 @@ spec:
           type: RuntimeDefault
 
       # Prefer spreading across nodes; tolerate co-location if the cluster is
-      # short on schedulable nodes (foundry-builder-01 carries NoSchedule).
+      # short on schedulable nodes (builder nodes carry NoSchedule).
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

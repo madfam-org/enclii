@@ -277,7 +277,7 @@ export function ClusterList() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="cluster-name">Name</Label>
-              <Input id="cluster-name" value={clusterForm.name} onChange={(e) => setClusterForm({ ...clusterForm, name: e.target.value })} placeholder="foundry-core" />
+              <Input id="cluster-name" value={clusterForm.name} onChange={(e) => setClusterForm({ ...clusterForm, name: e.target.value })} placeholder="my-cluster" />
             </div>
             <div className="space-y-2">
               <Label>Type</Label>

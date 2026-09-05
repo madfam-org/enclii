@@ -14,6 +14,18 @@ set -euo pipefail
 API_BASE="${API_BASE:-https://api.enclii.dev/v1/admin}"
 BEARER_TOKEN="${AUTH_TOKEN:-}"
 
+# Node identity (hostnames, IPs, hardware SKUs) is private and must not live in
+# this public repo — see docs/PUBLIC_REPO_BOUNDARY.md. The names below are the
+# real cluster/host records this script seeds, so they are REQUIRED inputs:
+# resolve them from internal-devops/infrastructure/nodes.md and export them
+# before running. `:?` makes the script fail loudly rather than seed a wrong
+# entity under a placeholder name.
+#
+#   CONTROL_PLANE_NODE=... BUILDER_NODE=... ./scripts/seed-production-data.sh
+CONTROL_PLANE_NODE="${CONTROL_PLANE_NODE:?set to the control-plane node name (see internal-devops/infrastructure/nodes.md)}"
+BUILDER_NODE="${BUILDER_NODE:?set to the builder node name (see internal-devops/infrastructure/nodes.md)}"
+BUILDER_ENDPOINT="${BUILDER_ENDPOINT:-https://${BUILDER_NODE}:6443}"
+
 auth_header=""
 if [[ -n "$BEARER_TOKEN" ]]; then
   auth_header="Authorization: Bearer $BEARER_TOKEN"
@@ -56,55 +68,55 @@ fi
 
 existing_clusters=$(echo "$body" | jq -r '.clusters[]?.name // empty' 2>/dev/null || true)
 
-# Cluster: foundry-cp
-if echo "$existing_clusters" | grep -qx "foundry-cp"; then
-  echo "  foundry-cp: already exists"
-  CORE_CLUSTER_ID=$(echo "$body" | jq -r '.clusters[] | select(.name=="foundry-cp") | .id')
+# Cluster: control-plane node
+if echo "$existing_clusters" | grep -qx "$CONTROL_PLANE_NODE"; then
+  echo "  $CONTROL_PLANE_NODE: already exists"
+  CORE_CLUSTER_ID=$(echo "$body" | jq -r --arg n "$CONTROL_PLANE_NODE" '.clusters[] | select(.name==$n) | .id')
 else
-  echo "  Creating foundry-cp..."
-  resp=$(api POST /clusters -d '{
-    "name": "foundry-cp",
-    "slug": "foundry-cp",
-    "type": "k3s",
-    "endpoint": "https://<CONTROL_PLANE_IP>:6443",
-    "region": "eu-central",
-    "status": "ready",
-    "metadata": {"k3s_version":"v1.33.7+k3s3","role":"control-plane","node_count":3}
-  }')
+  echo "  Creating $CONTROL_PLANE_NODE..."
+  resp=$(api POST /clusters -d "{
+    \"name\": \"${CONTROL_PLANE_NODE}\",
+    \"slug\": \"${CONTROL_PLANE_NODE}\",
+    \"type\": \"k3s\",
+    \"endpoint\": \"${CONTROL_PLANE_ENDPOINT:-https://<CONTROL_PLANE_IP>:6443}\",
+    \"region\": \"eu-central\",
+    \"status\": \"ready\",
+    \"metadata\": {\"k3s_version\":\"v1.33.7+k3s3\",\"role\":\"control-plane\",\"node_count\":3}
+  }")
   parsed=$(parse_response "$resp")
   code=${parsed%%|*}
   body_c=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
     CORE_CLUSTER_ID=$(echo "$body_c" | jq -r '.id')
-    echo "  foundry-cp: created ($CORE_CLUSTER_ID)"
+    echo "  $CONTROL_PLANE_NODE: created ($CORE_CLUSTER_ID)"
   else
-    echo "  ERROR creating foundry-cp (HTTP $code): $body_c"
+    echo "  ERROR creating $CONTROL_PLANE_NODE (HTTP $code): $body_c"
   fi
 fi
 
-# Cluster: foundry-builder-01
-if echo "$existing_clusters" | grep -qx "foundry-builder-01"; then
-  echo "  foundry-builder-01: already exists"
-  BUILDER_CLUSTER_ID=$(echo "$body" | jq -r '.clusters[] | select(.name=="foundry-builder-01") | .id')
+# Cluster: builder node
+if echo "$existing_clusters" | grep -qx "$BUILDER_NODE"; then
+  echo "  $BUILDER_NODE: already exists"
+  BUILDER_CLUSTER_ID=$(echo "$body" | jq -r --arg n "$BUILDER_NODE" '.clusters[] | select(.name==$n) | .id')
 else
-  echo "  Creating foundry-builder-01..."
-  resp=$(api POST /clusters -d '{
-    "name": "foundry-builder-01",
-    "slug": "foundry-builder-01",
-    "type": "k3s",
-    "endpoint": "https://foundry-builder-01:6443",
-    "region": "eu-central",
-    "status": "ready",
-    "metadata": {"k3s_version":"v1.33.7+k3s3","role":"worker","taints":["builder=true:NoSchedule"],"purpose":"CI builds + ARC runners"}
-  }')
+  echo "  Creating $BUILDER_NODE..."
+  resp=$(api POST /clusters -d "{
+    \"name\": \"${BUILDER_NODE}\",
+    \"slug\": \"${BUILDER_NODE}\",
+    \"type\": \"k3s\",
+    \"endpoint\": \"${BUILDER_ENDPOINT}\",
+    \"region\": \"eu-central\",
+    \"status\": \"ready\",
+    \"metadata\": {\"k3s_version\":\"v1.33.7+k3s3\",\"role\":\"worker\",\"taints\":[\"builder=true:NoSchedule\"],\"purpose\":\"CI builds + ARC runners\"}
+  }")
   parsed=$(parse_response "$resp")
   code=${parsed%%|*}
   body_c=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
     BUILDER_CLUSTER_ID=$(echo "$body_c" | jq -r '.id')
-    echo "  foundry-builder-01: created ($BUILDER_CLUSTER_ID)"
+    echo "  $BUILDER_NODE: created ($BUILDER_CLUSTER_ID)"
   else
-    echo "  ERROR creating foundry-builder-01 (HTTP $code): $body_c"
+    echo "  ERROR creating $BUILDER_NODE (HTTP $code): $body_c"
   fi
 fi
 
@@ -120,14 +132,14 @@ body=${parsed#*|}
 
 existing_hosts=$(echo "$body" | jq -r '.hosts[]?.name // empty' 2>/dev/null || true)
 
-# Host: foundry-cp
-if echo "$existing_hosts" | grep -qx "foundry-cp"; then
-  echo "  foundry-cp: already exists"
-  CORE_BMH_ID=$(echo "$body" | jq -r '.hosts[] | select(.name=="foundry-cp") | .id')
+# Host: control-plane node
+if echo "$existing_hosts" | grep -qx "$CONTROL_PLANE_NODE"; then
+  echo "  $CONTROL_PLANE_NODE: already exists"
+  CORE_BMH_ID=$(echo "$body" | jq -r --arg n "$CONTROL_PLANE_NODE" '.hosts[] | select(.name==$n) | .id')
 else
-  echo "  Registering foundry-cp..."
+  echo "  Registering $CONTROL_PLANE_NODE..."
   resp=$(api POST /fleet -d "{
-    \"name\": \"foundry-cp\",
+    \"name\": \"${CONTROL_PLANE_NODE}\",
     \"cluster_id\": \"${CORE_CLUSTER_ID:-}\",
     \"bmc_address\": \"https://robot.hetzner.com\",
     \"boot_mode\": \"UEFI\",
@@ -141,9 +153,9 @@ else
   body_h=${parsed#*|}
   if [[ "$code" == "201" || "$code" == "200" ]]; then
     CORE_BMH_ID=$(echo "$body_h" | jq -r '.id')
-    echo "  foundry-cp: registered ($CORE_BMH_ID)"
+    echo "  $CONTROL_PLANE_NODE: registered ($CORE_BMH_ID)"
   else
-    echo "  ERROR registering foundry-cp (HTTP $code): $body_h"
+    echo "  ERROR registering $CONTROL_PLANE_NODE (HTTP $code): $body_h"
   fi
 fi
 
@@ -160,7 +172,7 @@ else
     \"boot_mode\": \"UEFI\",
     \"state\": \"provisioned\",
     \"power_state\": \"on\",
-    \"hardware_profile\": {\"cpu\":\"Shared vCPU\",\"cores\":2,\"threads\":2,\"ram_gb\":4,\"storage\":[{\"type\":\"SSD\",\"size_gb\":40}],\"network\":\"20TB traffic\",\"type\":\"VPS (CX22)\"},
+    \"hardware_profile\": {\"cpu\":\"Shared vCPU\",\"cores\":2,\"threads\":2,\"ram_gb\":4,\"storage\":[{\"type\":\"SSD\",\"size_gb\":40}],\"network\":\"20TB traffic\",\"type\":\"cloud compute instance\"},
     \"cost_per_hour_cents\": 1
   }")
   parsed=$(parse_response "$resp")
@@ -223,7 +235,7 @@ resp=$(api POST /costs/allocate -d "{
 }")
 parsed=$(parse_response "$resp")
 code=${parsed%%|*}
-echo "  foundry-cp cost: HTTP $code"
+echo "  $CONTROL_PLANE_NODE cost: HTTP $code"
 
 resp=$(api POST /costs/allocate -d "{
   \"bare_metal_host_id\": \"${FORGE_BMH_ID:-}\",

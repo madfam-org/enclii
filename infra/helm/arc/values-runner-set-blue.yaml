@@ -14,7 +14,7 @@ runnerScaleSetName: "madfam-runners-blue"
 # at 400m so 12 runners remain schedulable on the 8 vCPU builder without
 # creating Pending EphemeralRunner capacity starvation.
 #
-# 2026-08-27 reconcile: the second builder node EXISTS (foundry-builder-03),
+# 2026-08-27 reconcile: a second builder node EXISTS,
 # and commit b6352294 raised blue to 20 for it — but only in
 # infra/k8s/production/arc/runner-blue/rendered.yaml, not here. The cluster
 # has run maxRunners=20 since; this file lagging at 12 meant the next
@@ -32,7 +32,8 @@ template:
     annotations:
       arc.enclii.dev/deployed-at: ""  # Will be set by Helm
   spec:
-    # Target the builder node "The Forge" (foundry-builder-01)
+    # Target builder nodes by LABEL, not by hostname: every builder carries
+    # `role=builder` and the `builder=true:NoSchedule` taint tolerated below.
     nodeSelector:
       role: builder
     # Tolerate the builder taint
