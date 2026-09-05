@@ -57,7 +57,7 @@ or a production database. Run them in order.
 
 ### The 23 routes that had no check at all
 
-R21 PR 2 switched these onto the guard. Until stage 3 they behave exactly as
+R21 PR 2 (#504) switched these onto the guard. Until stage 3 they behave exactly as
 they do today; at stage 3 a tenant administrator is refused `404` on any of
 them that addresses another tenant's resource.
 

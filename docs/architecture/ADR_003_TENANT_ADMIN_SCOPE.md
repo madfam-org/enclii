@@ -1,6 +1,6 @@
 # ADR-003: `platform_admin` is strictly above `tenant_admin`
 
-> **Status**: Accepted — enforcement landed PR #499 and PR #PRNUM (2026-09-05)
+> **Status**: Accepted — enforcement landed PR #499 and PR #504 (2026-09-05)
 > **Decision id**: `decision.tenant-admin-scope`
 > **Date**: 2026-09-05
 > **Authors**: Platform / control-plane
@@ -140,7 +140,7 @@ service-addressed verbs (`DELETE /services/:id`,
 `POST /services/:id/exec|scale|restart|migrate`, the domain verbs under a
 service) and a group of resources addressed by their own id outside any
 `/projects/:slug` group (cron jobs, tenant exports, template deployments,
-secret-intake status). PR #PRNUM switched all 23 onto the guard at the target and
+secret-intake status). PR #504 switched all 23 onto the guard at the target and
 deleted their entries; `TestTenantScope_BacklogIsEmpty` asserts the map is
 empty, and the derivation test remains as the tripwire for the next route
 somebody adds.
@@ -169,7 +169,7 @@ because each is a judgement rather than a mechanical edit:
 PR #499 moved only the tenant switcher and the dry-run report to
 `RequirePlatformAdmin`, and left the rest of the subtree gated on the `admin`
 role — i.e. on `tenant_admin` — with the judgement per route explicitly
-deferred. PR #PRNUM made it: every `/v1/admin/*` route is platform-only, except
+deferred. PR #504 made it: every `/v1/admin/*` route is platform-only, except
 `POST /v1/admin/projects/:slug/reconcile-services`, which is addressed by a
 project slug, belongs to the tenant that owns it, and stays on the
 tenant-scoped guard. The per-route table is in
@@ -180,7 +180,7 @@ tenant-scoped guard. The per-route table is in
 **Production is in stage 1.** Nothing in this section is refusing anything
 there yet, and that is the only remaining gap — but it is the one that matters.
 
-The gates PR #PRNUM added are inert while `ENCLII_TENANT_SCOPE_ENFORCE=false`,
+The gates PR #504 added are inert while `ENCLII_TENANT_SCOPE_ENFORCE=false`,
 deliberately and by a different mechanism than PR #499's. The routes PR #499
 touched already called the guard, so for them "the flag off" and "the guard
 minus the tenant comparison" are the same thing. These 23 performed no
@@ -198,7 +198,7 @@ discharged; the rollout condition is not.
 - **It gates tenant #2.** No second Enclii Depot or Publica tenant is onboarded
   before the enforcement lands, because onboarding one is what turns the
   conflation into a live cross-tenant write. The route backlog condition is
-  discharged (PR #PRNUM); the remaining condition is the rollout reaching stage
+  discharged (PR #504); the remaining condition is the rollout reaching stage
   3 in production.
 - **Tests, not review, are the evidence.** The follow-up is complete when a
   `tenant_admin` of tenant A is refused, at the API, on every tenant-scoped
