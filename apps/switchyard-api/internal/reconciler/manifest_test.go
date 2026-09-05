@@ -528,9 +528,9 @@ func TestNodeNames(t *testing.T) {
 		{
 			name: "multiple nodes",
 			nodes: map[string]corev1.Node{
-				"node-a":       {},
-				"node-c": {},
-				"foundry-gpu-01":     {},
+				"node-a":         {},
+				"node-c":         {},
+				"foundry-gpu-01": {},
 			},
 			wantLen: 3,
 		},
