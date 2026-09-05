@@ -17,10 +17,13 @@ name: Build ARC Runner Image
 # rebuild cadence policy.
 #
 # Since G16 the image also carries the commons render environment
-# (libGL/X, Liberation fonts, OpenSCAD 2026.02.01). The "Smoke-check the
+# (libGL/X, Liberation fonts, OpenSCAD 2026.02.13). The "Smoke-check the
 # render environment" step below gates every build on it, because a runner
 # image that has drifted from yantra4d's platform image renders geometry
-# that does not match production.
+# that does not match production. Since G31 that step also RENDERS a BOSL2
+# part in the built image: version strings and library presence are not
+# enough — 2026.02.01 satisfied both and still could not render the
+# platform's pinned BOSL2.
 
 on:
   push:
@@ -164,7 +167,11 @@ jobs:
       - name: Smoke-check the render environment
         env:
           SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
-          EXPECTED_OPENSCAD: "2026.02.01"
+          EXPECTED_OPENSCAD: "2026.02.13"
+          # The platform's pinned BOSL2. Must match yantra4d's submodule commit
+          # (v2.0.753) — rendering against a DIFFERENT BOSL2 than production
+          # uses would make this check theatre.
+          BOSL2_COMMIT: "fcfce7c7"
         run: |
           set -euo pipefail
           run() { docker run --rm --entrypoint bash "${SMOKE_IMAGE}" -c "$1"; }
@@ -202,6 +209,84 @@ jobs:
             exit 1
           fi
           echo "::endgroup::"
+
+          # ---------------------------------------------------------------
+          # BOSL2 render (G31). The three checks above all PASSED on the
+          # 2026.02.01 image that could not render a single anchored BOSL2
+          # primitive: `openscad --version` was right, fonts were there, libGL
+          # loaded — and `include <BOSL2/std.scad>; cube(..., anchor=...)`
+          # still died with
+          #   Assertion '(is_list($tags_shown) || ($tags_shown == "ALL"))'
+          #   failed in libs/BOSL2/attachments.scad, line 3809
+          # leaving an empty top-level object. Presence checks cannot see that;
+          # only an actual render can. So the image build now renders one.
+          #
+          # BOSL2 is cloned on the HOST (the image has git, but keeping the
+          # network out of the container makes the failure mode unambiguous)
+          # and mounted read-only. Ownership does not matter for a read-only
+          # bind, and OPENSCADPATH points at the PARENT directory because
+          # `include <BOSL2/std.scad>` resolves BOSL2 as a subdirectory.
+          echo "::group::BOSL2 ${BOSL2_COMMIT} renders (the G31 incompatibility)"
+          BOSL2_DIR="${RUNNER_TEMP}/oscad-libs"
+          mkdir -p "${BOSL2_DIR}"
+          git clone --quiet --filter=blob:none --no-checkout \
+            https://github.com/BelfrySCAD/BOSL2 "${BOSL2_DIR}/BOSL2"
+          git -C "${BOSL2_DIR}/BOSL2" fetch --quiet --depth 1 origin "${BOSL2_COMMIT}"
+          git -C "${BOSL2_DIR}/BOSL2" checkout --quiet FETCH_HEAD
+          echo "BOSL2 at $(git -C "${BOSL2_DIR}/BOSL2" rev-parse --short HEAD)"
+
+          SMOKE_DIR="${RUNNER_TEMP}/oscad-smoke"
+          mkdir -p "${SMOKE_DIR}"
+          # The image runs as `runner` (uid 1001), which happens to match the
+          # host runner uid on ubuntu-latest — but do not rely on that: a uid
+          # mismatch would fail the write and read as "OpenSCAD cannot render
+          # BOSL2", which is exactly the wrong conclusion.
+          chmod 777 "${SMOKE_DIR}"
+          # printf, not a heredoc: a heredoc terminator has to sit at column
+          # zero, which would break out of this YAML block scalar.
+          # These are verbatim the two lines from ruling G31.
+          printf '%s\n' \
+            'include <BOSL2/std.scad>' \
+            'cube([1,1,1], anchor=[-1,-1,-1]);' \
+            > "${SMOKE_DIR}/smoke.scad"
+          cat "${SMOKE_DIR}/smoke.scad"
+
+          render_rc=0
+          docker run --rm \
+            -v "${BOSL2_DIR}:/opt/oscad-libs:ro" \
+            -v "${SMOKE_DIR}:/work" \
+            -e OPENSCADPATH=/opt/oscad-libs \
+            --entrypoint bash "${SMOKE_IMAGE}" -c \
+            'cd /work && xvfb-run -a openscad -o /work/smoke.stl smoke.scad 2>&1' \
+            || render_rc=$?
+          echo "::endgroup::"
+
+          if [ "${render_rc}" -ne 0 ]; then
+            echo "::error::openscad ${EXPECTED_OPENSCAD} failed to render BOSL2 ${BOSL2_COMMIT} (exit ${render_rc})."
+            echo "::error::This is the G31 incompatibility: the snapshot is too old for BOSL2 v2.0.753."
+            echo "::error::Try the next files.openscad.org/snapshots build and bump both ARGs."
+            exit 1
+          fi
+          # Exit 0 is NOT sufficient: the 2026.02.01 failure printed "Current
+          # top level object is empty" and could still leave a stub file, so
+          # assert real geometry came out.
+          if [ ! -s "${SMOKE_DIR}/smoke.stl" ]; then
+            echo "::error::openscad exited 0 but produced no/empty STL for the BOSL2 smoke part."
+            exit 1
+          fi
+          STL_BYTES="$(wc -c < "${SMOKE_DIR}/smoke.stl" | tr -d ' ')"
+          echo "BOSL2 smoke STL: ${STL_BYTES} bytes"
+          if [ "${STL_BYTES}" -lt 200 ]; then
+            echo "::error::BOSL2 smoke STL is ${STL_BYTES} bytes — too small to be a rendered cube."
+            exit 1
+          fi
+
+          {
+            echo "## Render environment smoke"
+            echo ""
+            echo "- OpenSCAD: \`$(tr -d '\r' <<<"${version_out}" | head -1)\`"
+            echo "- BOSL2 \`${BOSL2_COMMIT}\` render: \`${STL_BYTES}\` byte STL"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           echo "Render environment smoke check passed."
 

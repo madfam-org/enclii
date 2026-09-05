@@ -7,7 +7,7 @@
 # self-hosted runner image.
 #
 # Since 2026-09-05 it also bakes the commons RENDER environment (G16):
-# libGL/X, Liberation fonts, and the OpenSCAD 2026.02.01 snapshot,
+# libGL/X, Liberation fonts, and the OpenSCAD 2026.02.13 snapshot,
 # mirroring yantra4d's platform image so cartridges render in CI the way
 # they render in production instead of apt-installing per job.
 #
@@ -187,6 +187,30 @@ RUN apt-get update \
 # Gridfinity extended syntax; the Ubuntu archive's openscad is older and
 # would silently render different geometry.
 #
+# 2026-09-05 bump, 2026.02.01 -> 2026.02.13: 2026.02.01 CANNOT RENDER the
+# platform's pinned BOSL2 v2.0.753 (fcfce7c7). A two-line file —
+#
+#     include <BOSL2/std.scad>
+#     cube([1,1,1], anchor=[-1,-1,-1]);
+#
+# — aborts with
+#
+#     ERROR: Assertion '(is_list($tags_shown) || ($tags_shown == "ALL"))'
+#     failed in libs/BOSL2/attachments.scad, line 3809
+#     Current top level object is empty.
+#
+# i.e. every anchored BOSL2 primitive, which is most of the library, and the
+# STL comes out empty. That is how it surfaced: yantra4d PR #125's backend job,
+# tests/integration/test_submodule_smoke.py::TestBOSL2Smoke.
+# The same file with the same BOSL2 commit renders a 1443-byte STL under
+# 2026.02.13 on macOS. This is not a BOSL2 bug to pin around — BOSL2 v2.0.753
+# requires a newer snapshot than 2026.02.01, so the snapshot moves.
+#
+# The `Smoke-check the render environment` step in
+# .github/workflows/arc-runner-image.yml now renders exactly that file against
+# BOSL2 fcfce7c7 inside the built image, so this class of incompatibility
+# fails the IMAGE build instead of every downstream render job.
+#
 # AppImages need FUSE, which containers do not have, so the image is
 # extracted at build time and the AppRun binary linked onto PATH — the same
 # trick the platform image uses.
@@ -199,8 +223,8 @@ RUN apt-get update \
 #
 # To bump: download the AppImage, `sha256sum` it, update both ARGs here AND
 # in yantra4d (or, once L-G31 lands, in hyperobjects-spec, which both read).
-ARG OPENSCAD_VERSION=2026.02.01
-ARG OPENSCAD_SHA256=dad3a8d19e63c543129eabef314676ac9348ffcab727544f4283b2ae9000277c
+ARG OPENSCAD_VERSION=2026.02.13
+ARG OPENSCAD_SHA256=01e4bdeb00518b20ba00d5acc1d3df9c62813d9f64bb68a1fd0a546c7e46ab28
 # curl, not wget: the upstream base ships curl (and jq/unzip) but NOT wget,
 # and adding a package just to fetch one file is surface area we do not need.
 # `--fail` matters — without it curl writes the 404 body to the output file
@@ -234,7 +258,7 @@ USER runner
 
 # Image metadata (consumed by GHCR + provenance tooling).
 LABEL org.opencontainers.image.source="https://github.com/madfam-org/enclii"
-LABEL org.opencontainers.image.description="MADFAM hardened ARC runner image — adds Playwright + pnpm system deps and the commons render environment (libGL/X, Liberation fonts, OpenSCAD 2026.02.01) to the upstream actions/actions-runner base."
+LABEL org.opencontainers.image.description="MADFAM hardened ARC runner image — adds Playwright + pnpm system deps and the commons render environment (libGL/X, Liberation fonts, OpenSCAD 2026.02.13) to the upstream actions/actions-runner base."
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.title="enclii arc-runner"
 LABEL enclii.dev/component="arc-runner"
