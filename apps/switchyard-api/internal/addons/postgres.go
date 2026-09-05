@@ -189,6 +189,15 @@ func (p *PostgresProvisioner) Provision(ctx context.Context, req *ProvisionReque
 		logger.Error("ENCLII_ADDON_BACKUP_DESTINATION_BASE is not set — this cluster is being provisioned WITHOUT backups")
 	}
 
+	// Per-addon observability: exporter, PodMonitor and the two NetworkPolicies
+	// the scrape has to cross. Same non-fatal posture as the netpol and backup
+	// wiring above — an unmonitored database beats no database — but the gap is
+	// logged at ERROR so "this addon is invisible to Prometheus" is a sentence
+	// somebody can read, rather than a silence.
+	if obsErr := p.EnsureObservability(ctx, req, resourceName); obsErr != nil {
+		logger.WithError(obsErr).Error("Failed to wire per-addon observability — this database's metrics may not be scraped")
+	}
+
 	// Connection secret name follows CloudNativePG naming convention
 	connectionSecret := fmt.Sprintf("%s-app", resourceName)
 
@@ -288,16 +297,25 @@ func (p *PostgresProvisioner) buildClusterManifest(req *ProvisionRequest, resour
 		spec["resources"] = resources
 	}
 
-	// Add monitoring if available
+	// Per-addon observability. `enablePodMonitor: true` makes the CNPG operator
+	// publish a PodMonitor for this cluster's instance pods, which is where
+	// cnpg_collector_last_available_backup_timestamp and the WAL-archiver
+	// counters come from — the two series the addon backup alerts read.
+	//
+	// This flag was `false` with a comment calling the Prometheus-side wiring a
+	// tracked follow-up (2026-08-17 audit #4). The follow-up is this change:
+	// the `rules-eval` Prometheus CR now reconciles every PodMonitor in every
+	// namespace (podMonitorSelector: {} / podMonitorNamespaceSelector: {}), the
+	// monitoring namespace's egress reaches stamped addon namespaces, the addon
+	// namespace admits the monitoring namespace on the metrics port, and
+	// infra/k8s/production/monitoring/addon-db-rules.yaml routes the result to
+	// the existing Alertmanager. Flipping this flag alone would have produced a
+	// healthy-looking PodMonitor nobody scrapes, so it lands with all four.
+	//
+	// See EnsureObservability in observability.go for the rest, and note in
+	// particular why these are PodMonitors and not ServiceMonitors.
 	spec["monitoring"] = map[string]interface{}{
-		// Deep DB metrics (pg_up, connections, replication lag) need a PodMonitor
-		// selector that covers project-* namespaces plus a postgres-exporter per
-		// addon; that Prometheus-side wiring is a tracked follow-up (2026-08-17
-		// audit #4). Until it lands, pod/deploy/backup ALERTS for client DBs come
-		// from the cluster-wide kube-state-metrics rules (rescoped in
-		// prometheus-platform-rules.yaml), so a crashlooping/failed-backup client
-		// DB now pages even without the exporter.
-		"enablePodMonitor": false,
+		"enablePodMonitor": true,
 	}
 
 	// Backups: barman object store, per-cluster path, retention. Absent when

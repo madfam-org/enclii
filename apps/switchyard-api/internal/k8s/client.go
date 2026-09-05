@@ -1082,3 +1082,61 @@ func secretDataDigest(data map[string][]byte) []byte {
 	}
 	return h.Sum(nil)
 }
+
+// LabelNamespace stamps a single label on a namespace, idempotently. Split
+// from LabelProjectOnNamespace (which owns the project key specifically) so a
+// caller can mark a namespace for a policy class — e.g. "this namespace holds
+// a managed database whose metrics port monitoring may reach" — without
+// duplicating the read/compare/patch dance.
+//
+// Fail-closed by design: a namespace that never gets the label is simply not
+// selected by the policy that reads it. Nothing is opened by accident.
+func (c *Client) LabelNamespace(ctx context.Context, namespace, key, value string) error {
+	ns, err := c.kubeClient().CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("read namespace %s: %w", namespace, err)
+	}
+	if ns.Labels[key] == value {
+		return nil
+	}
+	if ns.Labels == nil {
+		ns.Labels = map[string]string{}
+	}
+	ns.Labels[key] = value
+	if _, err := c.kubeClient().CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("label %s on namespace %s: %w", key, namespace, err)
+	}
+	return nil
+}
+
+// EnsureNetworkPolicy creates or updates a fully-built NetworkPolicy.
+//
+// The Ensure* helpers above each build one fixed shape; this one takes the
+// object so callers with several distinct shapes (the per-addon metrics
+// scrape rules) do not each reimplement create-or-update. Update rather than
+// skip-if-exists on purpose: a policy whose shape changed in code must
+// converge, which is how the flat data-access ingress policies were upgraded
+// in place to the project-scoped shape.
+func (c *Client) EnsureNetworkPolicy(ctx context.Context, desired *networkingv1.NetworkPolicy) error {
+	if desired == nil {
+		return fmt.Errorf("nil NetworkPolicy")
+	}
+	npClient := c.kubeClient().NetworkingV1().NetworkPolicies(desired.Namespace)
+
+	existing, err := npClient.Get(ctx, desired.Name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		if _, cErr := npClient.Create(ctx, desired, metav1.CreateOptions{}); cErr != nil && !k8serrors.IsAlreadyExists(cErr) {
+			return fmt.Errorf("create NetworkPolicy %s in %s: %w", desired.Name, desired.Namespace, cErr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get NetworkPolicy %s in %s: %w", desired.Name, desired.Namespace, err)
+	}
+	updated := desired.DeepCopy()
+	updated.ResourceVersion = existing.ResourceVersion
+	if _, err := npClient.Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update NetworkPolicy %s in %s: %w", desired.Name, desired.Namespace, err)
+	}
+	return nil
+}
