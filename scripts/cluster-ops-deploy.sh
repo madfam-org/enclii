@@ -16,7 +16,9 @@
 #   verify-all         Final end-to-end verification
 #
 # Prerequisites:
-#   - SSH tunnel to foundry-cp (port 55323 → 6443)
+#   - SSH tunnel to the control-plane node (port 55323 → 6443)
+#     Node identity is private: resolve the host from
+#     internal-devops/infrastructure/nodes.md and export CONTROL_PLANE_HOST.
 #   - kubectl context set to 'foundry'
 #   - Cloudflare Zero Trust dashboard access (for tunnel routes)
 #
@@ -101,7 +103,7 @@ phase_preflight() {
   log "Checking cluster access..."
   if ! kubectl cluster-info &>/dev/null; then
     err "Cannot reach cluster. Is the SSH tunnel running?"
-    echo "  ssh -L 55323:127.0.0.1:6443 root@<foundry-cp-ip>"
+    echo "  ssh -L 55323:127.0.0.1:6443 root@\${CONTROL_PLANE_HOST:?}"
     exit 1
   fi
   ok "Cluster reachable"

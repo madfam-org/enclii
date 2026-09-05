@@ -1,5 +1,14 @@
 # enclii — Ecosystem Context
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -106,11 +115,14 @@ below is embedded here so this document stands alone.
 
 ### Production topology
 
-Bare-metal k3s (v1.33+) on Hetzner, 3 nodes:
+Bare-metal k3s (v1.33+), 3 nodes. Roles only — this file is generated and
+copied into every public repo, so it carries node ROLES and never node
+hostnames, IPs or hardware SKUs. Node identity lives only in
+`madfam-org/internal-devops`.
 
-- `foundry-cp` (Hetzner EX44, 14C/20T, 128 GB) — control-plane + primary workload
-- `foundry-worker-01` (Hetzner AX41-NVMe, Ryzen 5 3600, 64 GB) — worker + Longhorn 2nd replica
-- `foundry-builder-01` (Hetzner VPS, 2 vCPU, 4 GB, tainted `builder=true:NoSchedule`) — ARC runners only
+- control-plane node (dedicated bare-metal) — control-plane + primary workload
+- worker node (dedicated bare-metal) — worker + Longhorn 2nd replica
+- builder node (cloud compute instance, labelled `role=builder`, tainted `builder=true:NoSchedule`) — ARC runners only
 
 **Ingress**: Cloudflare Tunnel → 2× cloudflared pods → K8s ClusterIP → container port.
 Zero exposed node ports. TLS terminated at Cloudflare edge.
@@ -122,7 +134,8 @@ Object storage: Cloudflare R2 (zero egress).
 Push to `main` → CI builds → GHCR → `kustomize edit set image` commits digest →
 ArgoCD syncs → Switchyard tracks lifecycle events.
 
-**Operational access** (SSH, kubeconfigs, server IPs, cost ledger): private repo
+**Operational access** (SSH, kubeconfigs, node hostnames, server IPs, hardware
+SKUs, cost ledger): private repo
 `madfam-org/internal-devops`. Not in any public repo.
 
 ---

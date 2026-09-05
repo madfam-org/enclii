@@ -164,6 +164,20 @@ path "secret/data/phynd-crm-staging" {
 path "secret/data/phynd-crm-staging/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# angelia — added 2026-09-05 with the three Courier intake targets
+# (angelia/courier-producer-keys, angelia/courier-channel-tokens,
+# angelia/courier-alertmanager). Angelia VERIFIES every Courier credential, so
+# secret/angelia is their one writable home and every consumer — enclii's
+# Alertmanager, tulana, the ops scripts — reads that single copy cross-path
+# through ESO instead of holding its own. Without this block the very first
+# `enclii secrets intake angelia/courier-alertmanager` 403s the way nauta did
+# in enclii#379, days after a green merge.
+path "secret/data/angelia" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/angelia/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -258,6 +272,12 @@ path "secret/metadata/lexidrop" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/lexidrop/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/angelia" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/angelia/*" {
   capabilities = ["read", "list"]
 }
 EOF

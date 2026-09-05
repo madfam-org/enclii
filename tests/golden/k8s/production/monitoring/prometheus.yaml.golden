@@ -86,6 +86,36 @@ data:
         static_configs:
           - targets: ['localhost:9090']
 
+      # Alertmanager self-monitoring. Added 2026-09-05 with the Courier last
+      # mile: `alertmanager_notifications_failed_total` is what the
+      # CourierReceiverDown rule reads, and until this job existed nothing in
+      # this cluster scraped Alertmanager at all — the rule would have
+      # evaluated over an empty series forever and reported a healthy pager
+      # while the pager was dead. That is the "probe that passes while
+      # measuring nothing" failure this repo's other detectors are written
+      # against, so the scrape ships in the same commit as the rule.
+      #
+      # The headless per-peer Service is the target, not the load-balanced
+      # `alertmanager` Service: notification counters are PER PEER, and
+      # scraping through a round-robin Service would attribute one peer's
+      # failures to whichever pod answered.
+      - job_name: 'alertmanager'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - monitoring
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: alertmanager;http
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+
       # Kubernetes API server
       - job_name: 'kubernetes-apiservers'
         kubernetes_sd_configs:
@@ -1914,6 +1944,58 @@ data:
                 fired, the detector's direct POST to Alertmanager is broken
                 and that is a second incident.
               runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+  # The messaging last mile watching itself. Migration item M1 / required
+  # mitigation 2 of internal-devops
+  # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 4:
+  # every third-party message this estate sends now goes through Angelia
+  # Courier, which means angelia-api down is the pager down. That cost is
+  # accepted and it is mitigated here.
+  #
+  # CourierReceiverDown is routed by alertname to `default-receiver` — EMAIL —
+  # by the first route in alertmanager.yaml, above the severity routes, with
+  # continue: false. The failure of the messaging path must be reported on a
+  # path that does not use it; routing it by severity would send the alert
+  # about the broken receiver to the broken receiver.
+  courier-receiver-rules.yml: |
+    groups:
+      - name: courier-receiver
+        interval: 1m
+        rules:
+          - alert: CourierReceiverDown
+            expr: increase(alertmanager_notifications_failed_total{integration="webhook"}[15m]) > 0
+            for: 5m
+            labels:
+              severity: critical
+              service: alertmanager
+              category: alerting-last-mile
+            annotations:
+              summary: "Alertmanager cannot deliver to the Courier receiver"
+              description: |
+                Alertmanager has failed at least one `webhook` notification in
+                the last 15 minutes. The only webhook receiver configured is
+                Angelia Courier
+                (`/v1/courier/alertmanager`), so every critical page is
+                currently reaching people by EMAIL ONLY.
+
+                Three causes, in the order they are worth checking:
+                  1. NOT PROVISIONED — the intake target
+                     `angelia/courier-alertmanager` has never been populated,
+                     so the receiver answers 503 not_provisioned. This is the
+                     expected state before the operator arms it, and it is
+                     what this alert reads as on day one.
+                  2. UNAUTHORIZED — 401. The mounted credential and the value
+                     angelia-api holds have diverged; re-run the intake target
+                     so both sides re-sync from the one copy in Vault.
+                  3. UNREACHABLE — angelia-api is down, or the alertmanager
+                     egress rule to the `angelia` namespace on TCP 8787 was
+                     changed. A combined namespaceSelector+podSelector in that
+                     rule silently denies on k3s.
+
+                This alert is deliberately routed to the email receiver and
+                never to the webhook. If you are reading it in a chat message,
+                the routing is wrong.
+              runbook_url: "https://github.com/madfam-org/angelia/blob/main/docs/runbooks/courier-provisioning.md"
 ---
 # Prometheus PVC
 apiVersion: v1

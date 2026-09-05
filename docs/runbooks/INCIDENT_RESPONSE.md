@@ -15,13 +15,22 @@ tags: [operations, runbook, incident-response, on-call]
 
 # Incident Response Runbook
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 **Purpose:** Defines severity classifications, escalation paths, communication protocols, failure mode playbooks, and postmortem processes for production incidents on the Enclii platform.
 
 **Last Updated:** March 2026
 
 **Prerequisites:**
 - `kubectl` access to enclii-production cluster (`KUBECONFIG=~/.kube/enclii-production`)
-- SSH access to foundry-cp (control plane) via `ssh ssh.madfam.io`
+- SSH access to the control-plane node (control plane) via `ssh ssh.madfam.io`
 - `enclii` CLI authenticated and configured
 - Access to Cloudflare dashboard (dash.cloudflare.com)
 - Access to Grafana dashboards (port-forward or tunnel)
@@ -206,11 +215,11 @@ for domain in api.enclii.dev app.enclii.dev admin.enclii.dev auth.madfam.io stat
 done
 ```
 
-**Escalation:** If not resolved within 15 minutes, SSH into foundry-cp to verify node-level network connectivity:
+**Escalation:** If not resolved within 15 minutes, SSH into the control-plane node to verify node-level network connectivity:
 
 ```bash
 ssh ssh.madfam.io
-# Once on foundry-cp:
+# Once on <CONTROL_PLANE_NODE>:
 systemctl status k3s
 crictl pods | grep cloudflared
 ```
@@ -483,8 +492,8 @@ kubectl exec -n data deploy/redis -- redis-cli llen build:processing
 enclii logs switchyard-api --tail=100 | grep "webhook"
 
 # Step 6: Check for resource pressure on builder node
-kubectl top node foundry-builder-01
-kubectl describe node foundry-builder-01 | grep -A5 "Allocated resources"
+kubectl top node <BUILDER_NODE>
+kubectl describe node <BUILDER_NODE> | grep -A5 "Allocated resources"
 ```
 
 **Resolution steps:**
@@ -507,8 +516,8 @@ kubectl exec -n data deploy/redis -- redis-cli del build:processing
 # Option D: If builder node is resource-exhausted
 # Clear dangling images and build cache
 ssh ssh.madfam.io
-# On foundry-builder-01 (via kubectl or SSH):
-kubectl debug node/foundry-builder-01 -it --image=busybox -- sh -c "crictl rmi --prune"
+# On <BUILDER_NODE> (via kubectl or SSH):
+kubectl debug node/<BUILDER_NODE> -it --image=busybox -- sh -c "crictl rmi --prune"
 
 # Option E: If webhook delivery failed, retrigger builds
 # Push an empty commit to the affected repo, or use GitHub UI to redeliver the webhook

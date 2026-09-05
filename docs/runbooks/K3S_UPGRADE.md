@@ -15,7 +15,16 @@ tags: [operations, runbook, k3s, upgrade, cluster]
 
 # k3s Cluster Upgrade
 
-**Purpose:** Step-by-step procedure for upgrading k3s on the enclii production cluster (3-node: foundry-cp server + foundry-worker-01 agent + foundry-builder-01 agent). The server node is upgraded first, then agent nodes one at a time, ensuring all nodes end at the same k3s version.
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
+**Purpose:** Step-by-step procedure for upgrading k3s on the enclii production cluster (3-node: control-plane server + worker agent + builder agent). The server node is upgraded first, then agent nodes one at a time, ensuring all nodes end at the same k3s version.
 
 **Last Updated:** April 2026
 
@@ -25,13 +34,13 @@ tags: [operations, runbook, k3s, upgrade, cluster]
 
 | Node | Role | Notes |
 |------|------|-------|
-| foundry-cp | Server (control plane) | EX44, i5-13500, 128GB. K3s API: <CONTROL_PLANE_IP>:6443 |
-| foundry-worker-01 | Agent (worker) | AX41, Ryzen 5 3600, 64GB. Runs platform workloads + Longhorn storage |
-| foundry-builder-01 | Agent (builder) | Builder-only agent. Taint `builder=true:NoSchedule` -- runs only ARC GitHub Actions runners and build executors. Hardware/IP inventory lives in `internal-devops`. |
+| control-plane | Server (control plane) | dedicated bare-metal. K3s API: <CONTROL_PLANE_IP>:6443 |
+| worker | Agent (worker) | dedicated bare-metal. Runs platform workloads + Longhorn storage |
+| builder | Agent (builder) | Builder-only agent. Taint `builder=true:NoSchedule` -- runs only ARC GitHub Actions runners and build executors. Hardware/IP inventory lives in `internal-devops`. |
 
 **SSH Access:** `ssh ssh.madfam.io` (the ONLY authorized method -- never use direct IP)
 
-**Builder isolation invariant:** `foundry-builder-01` must keep label `role=builder`
+**Builder isolation invariant:** every builder node must keep label `role=builder`
 and taint `builder=true:NoSchedule`. Core Enclii services also carry
 node-affinity guardrails that reject `role=builder`, so if the taint drifts,
 new control-plane pods still avoid the builder node.
@@ -58,12 +67,12 @@ ssh ssh.madfam.io
 k3s --version
 # Expected: k3s version v1.33.7+k3s3
 
-# On the worker node (from foundry-cp)
-ssh foundry-builder-01 k3s --version
+# On the worker node (from <CONTROL_PLANE_NODE>)
+ssh <BUILDER_NODE> k3s --version
 # Expected: same version as server
 
 # Confirm builder isolation is intact before draining anything
-kubectl get node foundry-builder-01 \
+kubectl get node <BUILDER_NODE> \
   -o jsonpath='{.metadata.labels.role}{" "}{.spec.taints[*].key}{"="}{.spec.taints[*].value}{":"}{.spec.taints[*].effect}{"\n"}'
 # Expected: builder builder=true:NoSchedule
 ```
@@ -137,7 +146,7 @@ df -h /var/lib/rancher
 # Expected: >5 GB available
 
 # Check worker node
-ssh foundry-builder-01 df -h /var/lib/rancher
+ssh <BUILDER_NODE> df -h /var/lib/rancher
 # Expected: >5 GB available
 ```
 
@@ -170,16 +179,16 @@ Set the target version as a variable for use throughout:
 export K3S_TARGET="v1.XX.Y+k3s1"  # Replace with actual target version
 ```
 
-### Step 1 -- Upgrade Server Node (foundry-cp)
+### Step 1 -- Upgrade Server Node (control plane)
 
 #### 1A. Cordon the Server Node
 
 Prevent new pods from being scheduled on the node being upgraded.
 
 ```bash
-kubectl cordon foundry-cp
+kubectl cordon <CONTROL_PLANE_NODE>
 kubectl get nodes
-# Expected: foundry-cp shows SchedulingDisabled
+# Expected: <CONTROL_PLANE_NODE> shows SchedulingDisabled
 ```
 
 #### 1B. Drain the Server Node
@@ -187,20 +196,20 @@ kubectl get nodes
 Evict all non-DaemonSet pods. The 120-second grace period allows in-flight requests to complete.
 
 ```bash
-kubectl drain foundry-cp \
+kubectl drain <CONTROL_PLANE_NODE> \
   --ignore-daemonsets \
   --delete-emptydir-data \
   --grace-period=120 \
   --timeout=300s
 ```
 
-**Note:** When draining foundry-cp, pods can reschedule to foundry-worker-01 (the general-purpose worker). foundry-builder-01 has the `builder=true:NoSchedule` taint and only accepts ARC runner pods. If draining foundry-worker-01, pods may go Pending until it is uncordoned since foundry-cp is the server node and foundry-builder-01 only accepts builder workloads.
+**Note:** When draining the control-plane node, pods can reschedule to the Longhorn replica worker (the general-purpose worker). The cloud builder has the `builder=true:NoSchedule` taint and only accepts ARC runner pods. If draining the Longhorn replica worker, pods may go Pending until it is uncordoned since the control-plane node is the server node and the cloud builder only accepts builder workloads.
 
 If drain times out or a PodDisruptionBudget blocks eviction:
 
 ```bash
 # Identify stuck pods
-kubectl get pods -A --field-selector spec.nodeName=foundry-cp | grep -v Running
+kubectl get pods -A --field-selector spec.nodeName=<CONTROL_PLANE_NODE> | grep -v Running
 
 # If safe, force delete the stuck pod (use with caution)
 kubectl delete pod <pod-name> -n <namespace> --grace-period=0 --force
@@ -220,13 +229,13 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_TARGET}" sh -s - serve
 #### 1D. Verify Server Upgrade
 
 ```bash
-# Still on foundry-cp via SSH
+# Still on <CONTROL_PLANE_NODE> via SSH
 k3s --version
 # Expected: k3s version <K3S_TARGET>
 
 # Check that the node is Ready (may take 30-60 seconds)
 kubectl get nodes
-# Expected: foundry-cp shows Ready,SchedulingDisabled with the new version
+# Expected: <CONTROL_PLANE_NODE> shows Ready,SchedulingDisabled with the new version
 
 # Check k3s service status
 sudo systemctl status k3s
@@ -236,9 +245,9 @@ sudo systemctl status k3s
 #### 1E. Uncordon the Server Node
 
 ```bash
-kubectl uncordon foundry-cp
+kubectl uncordon <CONTROL_PLANE_NODE>
 kubectl get nodes
-# Expected: foundry-cp shows Ready (no SchedulingDisabled)
+# Expected: <CONTROL_PLANE_NODE> shows Ready (no SchedulingDisabled)
 ```
 
 #### 1F. Wait for Pod Recovery
@@ -258,35 +267,35 @@ Allow up to 5 minutes for all pods to return to Running. Longhorn and ArgoCD pod
 
 ---
 
-### Step 2 -- Upgrade Worker Node (foundry-worker-01)
+### Step 2 -- Upgrade Worker Node (worker)
 
 #### 2A. Cordon the Worker Node
 
 ```bash
-kubectl cordon foundry-worker-01
+kubectl cordon <WORKER_NODE>
 kubectl get nodes
-# Expected: foundry-worker-01 shows SchedulingDisabled
+# Expected: <WORKER_NODE> shows SchedulingDisabled
 ```
 
 #### 2B. Drain the Worker Node
 
-foundry-worker-01 runs platform workloads and Longhorn storage. Drained pods will reschedule to foundry-cp (server node). Longhorn volumes will be served from the remaining replica.
+The Longhorn replica worker runs platform workloads and Longhorn storage. Drained pods will reschedule to the control-plane node (server node). Longhorn volumes will be served from the remaining replica.
 
 ```bash
-kubectl drain foundry-worker-01 \
+kubectl drain <WORKER_NODE> \
   --ignore-daemonsets \
   --delete-emptydir-data \
   --grace-period=120 \
   --timeout=300s
 ```
 
-#### 2C. Upgrade k3s Agent on foundry-worker-01
+#### 2C. Upgrade k3s Agent on the Longhorn replica worker
 
 ```bash
 ssh ssh.madfam.io
 
-# From foundry-cp, SSH to the worker
-ssh foundry-worker-01
+# From <CONTROL_PLANE_NODE>, SSH to the worker
+ssh <WORKER_NODE>
 
 # Install the target version as an agent
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_TARGET}" sh -s - agent
@@ -297,15 +306,15 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_TARGET}" sh -s - agent
 #### 2D. Verify Worker Upgrade
 
 ```bash
-# On foundry-worker-01
+# On <WORKER_NODE>
 k3s --version
 # Expected: k3s version <K3S_TARGET>
 
-# Back on foundry-cp (or any machine with kubectl)
+# Back on <CONTROL_PLANE_NODE> (or any machine with kubectl)
 kubectl get nodes
-# Expected: foundry-worker-01 shows Ready,SchedulingDisabled with the new version
+# Expected: <WORKER_NODE> shows Ready,SchedulingDisabled with the new version
 
-# Check agent service status (on foundry-worker-01)
+# Check agent service status (on <WORKER_NODE>)
 sudo systemctl status k3s-agent
 # Expected: active (running)
 ```
@@ -313,9 +322,9 @@ sudo systemctl status k3s-agent
 #### 2E. Uncordon the Worker Node
 
 ```bash
-kubectl uncordon foundry-worker-01
+kubectl uncordon <WORKER_NODE>
 kubectl get nodes
-# Expected: foundry-worker-01 shows Ready (no SchedulingDisabled)
+# Expected: <WORKER_NODE> shows Ready (no SchedulingDisabled)
 ```
 
 #### 2F. Wait for Pod Recovery
@@ -329,14 +338,14 @@ kubectl get pods -A --no-headers | grep -v Running | grep -v Completed
 
 ---
 
-### Step 3 -- Upgrade Agent Node (foundry-builder-01)
+### Step 3 -- Upgrade Agent Node (builder)
 
 #### 3A. Cordon the Builder Node
 
 ```bash
-kubectl cordon foundry-builder-01
+kubectl cordon <BUILDER_NODE>
 kubectl get nodes
-# Expected: foundry-builder-01 shows SchedulingDisabled
+# Expected: <BUILDER_NODE> shows SchedulingDisabled
 ```
 
 #### 3B. Drain the Builder Node
@@ -344,20 +353,20 @@ kubectl get nodes
 Because of the `builder=true:NoSchedule` taint, only ARC runner pods and DaemonSets run here. The drain is typically fast.
 
 ```bash
-kubectl drain foundry-builder-01 \
+kubectl drain <BUILDER_NODE> \
   --ignore-daemonsets \
   --delete-emptydir-data \
   --grace-period=120 \
   --timeout=300s
 ```
 
-#### 3C. Upgrade k3s Agent on foundry-builder-01
+#### 3C. Upgrade k3s Agent on the cloud builder
 
 ```bash
 ssh ssh.madfam.io
 
-# From foundry-cp, SSH to the builder
-ssh foundry-builder-01
+# From <CONTROL_PLANE_NODE>, SSH to the builder
+ssh <BUILDER_NODE>
 
 # Install the target version as an agent
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_TARGET}" sh -s - agent
@@ -368,15 +377,15 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_TARGET}" sh -s - agent
 #### 3D. Verify Builder Upgrade
 
 ```bash
-# On foundry-builder-01
+# On <BUILDER_NODE>
 k3s --version
 # Expected: k3s version <K3S_TARGET>
 
-# Back on foundry-cp (or any machine with kubectl)
+# Back on <CONTROL_PLANE_NODE> (or any machine with kubectl)
 kubectl get nodes
-# Expected: foundry-builder-01 shows Ready,SchedulingDisabled with the new version
+# Expected: <BUILDER_NODE> shows Ready,SchedulingDisabled with the new version
 
-# Check agent service status (on foundry-builder-01)
+# Check agent service status (on <BUILDER_NODE>)
 sudo systemctl status k3s-agent
 # Expected: active (running)
 ```
@@ -384,7 +393,7 @@ sudo systemctl status k3s-agent
 #### 3E. Uncordon the Builder Node
 
 ```bash
-kubectl uncordon foundry-builder-01
+kubectl uncordon <BUILDER_NODE>
 kubectl get nodes
 # Expected: all 3 nodes Ready, all showing the same new version
 ```
@@ -574,7 +583,7 @@ If only the agent upgrade failed and the server is healthy:
 
 ```bash
 ssh ssh.madfam.io
-ssh foundry-builder-01
+ssh <BUILDER_NODE>
 
 # 1. Stop k3s-agent
 sudo systemctl stop k3s-agent
@@ -585,7 +594,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.33.7+k3s3" sh -s - agent
 # 3. Verify
 k3s --version
 kubectl get nodes
-# Expected: foundry-builder-01 shows previous version and Ready
+# Expected: <BUILDER_NODE> shows previous version and Ready
 ```
 
 ### Post-Rollback Verification
@@ -663,7 +672,7 @@ Copy this template for each upgrade and fill it in as you go. Store completed lo
 - [ ] Disk space verified (server: __GB, worker: __GB)
 - [ ] Baseline pod count: __
 
-### Server Upgrade (foundry-cp)
+### Server Upgrade (<CONTROL_PLANE_NODE>)
 - [ ] Cordoned
 - [ ] Drained (duration: __)
 - [ ] k3s upgraded
@@ -671,7 +680,7 @@ Copy this template for each upgrade and fill it in as you go. Store completed lo
 - [ ] Uncordoned
 - [ ] Pods recovered
 
-### Worker Upgrade (foundry-worker-01)
+### Worker Upgrade (<WORKER_NODE>)
 - [ ] Cordoned
 - [ ] Drained (duration: __)
 - [ ] k3s upgraded
@@ -679,7 +688,7 @@ Copy this template for each upgrade and fill it in as you go. Store completed lo
 - [ ] Uncordoned
 - [ ] Pods recovered
 
-### Builder Upgrade (foundry-builder-01)
+### Builder Upgrade (<BUILDER_NODE>)
 - [ ] Cordoned
 - [ ] Drained (duration: __)
 - [ ] k3s upgraded

@@ -51,7 +51,7 @@ const mockFleetApi = fleetApi as jest.Mocked<typeof fleetApi>
 function createHost(overrides: Partial<BareMetalHost> = {}): BareMetalHost {
   return {
     id: 'host-1',
-    name: 'foundry-core',
+    name: 'node-a',
     bmc_address: '10.0.0.1',
     bmc_credentials_ref: 'secret/bmc',
     mac_address: 'AA:BB:CC:DD:EE:FF',
@@ -164,7 +164,7 @@ describe('FleetGrid error state', () => {
 describe('FleetGrid host rendering', () => {
   it('renders host cards with name and state', async () => {
     const hosts = [
-      createHost({ id: 'h1', name: 'foundry-core', state: 'provisioned' }),
+      createHost({ id: 'h1', name: 'node-a', state: 'provisioned' }),
       createHost({ id: 'h2', name: 'builder-01', state: 'available' }),
     ]
     mockFleetApi.list.mockResolvedValueOnce({ hosts })
@@ -172,7 +172,7 @@ describe('FleetGrid host rendering', () => {
     render(<FleetGrid />)
 
     await waitFor(() => {
-      expect(screen.getByText('foundry-core')).toBeInTheDocument()
+      expect(screen.getByText('node-a')).toBeInTheDocument()
     })
     expect(screen.getByText('builder-01')).toBeInTheDocument()
     expect(screen.getByText('provisioned')).toBeInTheDocument()
@@ -217,12 +217,12 @@ describe('FleetGrid host detail dialog', () => {
     render(<FleetGrid />)
 
     await waitFor(() => {
-      expect(screen.getByText('foundry-core')).toBeInTheDocument()
+      expect(screen.getByText('node-a')).toBeInTheDocument()
     })
 
     // Click the host card (the card is the div containing the name)
     await act(async () => {
-      screen.getByText('foundry-core').closest('[class*="rounded-lg"]')?.dispatchEvent(
+      screen.getByText('node-a').closest('[class*="rounded-lg"]')?.dispatchEvent(
         new MouseEvent('click', { bubbles: true })
       )
     })

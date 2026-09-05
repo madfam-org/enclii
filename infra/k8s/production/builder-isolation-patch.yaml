@@ -1,7 +1,7 @@
 # =============================================================================
 # Builder Node Isolation Patch
 # =============================================================================
-# Production control-plane workloads must not schedule on foundry-builder-01.
+# Production control-plane workloads must not schedule on builder nodes.
 #
 # The builder node is reserved for ARC runner and build-executor workloads.
 # It carries label `role=builder` and should carry taint

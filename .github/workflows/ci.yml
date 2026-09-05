@@ -350,6 +350,22 @@ jobs:
             check-config /w/{name}
         run: python3 scripts/check-alertmanager-config.py infra/k8s/
 
+  courier-envelope-lint:
+    name: Courier envelope shape (ops scripts)
+    runs-on: ubuntu-latest
+    # Cheap (sub-second), no network. The ops health-check scripts reach people
+    # only through Angelia Courier (internal-devops
+    # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M3), and
+    # Courier validates the envelope at the edge — a malformed one is a 400 at
+    # the exact moment production is on fire. This pins the envelope field by
+    # field against a stub `curl`, and asserts the producer key never reaches
+    # stdout or argv.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run Courier envelope tests
+        run: bash ./scripts/tests/test-courier-envelope.sh
+
   intake-policy-parity:
     name: Intake/Vault-policy parity
     runs-on: ubuntu-latest
@@ -427,6 +443,16 @@ jobs:
     # older than 30 days. Catches the 2026-05-04 selva-office class of
     # outage: CI failed for 3+h, no image rebuild, ArgoCD silently kept
     # serving 8h-old pods. See scripts/check-image-age.py for rationale.
+    #
+    # The same script also runs the ARC runner BASE TAG ratchet: it fails
+    # when infra/docker/arc-runner/Dockerfile's `ARG BASE_TAG` is more than
+    # 30 days behind the newest upstream actions/actions-runner release, or
+    # when its `ARG BASE_TAG_DATE` disagrees with the registry. That closes
+    # the 2026-08-10 org-wide CI outage's own action item — "automate the
+    # cadence so this is prevented, not merely detected" — where a 111-day-old
+    # runner agent was rejected at GitHub's registration layer and every
+    # private repo sat QUEUED. Its exemption key is
+    # AGE_RATCHET_EXEMPT_ACTIONS_RUNNER (use only while a bump PR is open).
     permissions:
       contents: read
       packages: read  # required so GITHUB_TOKEN can pull GHCR manifests
@@ -1989,7 +2015,7 @@ jobs:
             exit 1
           fi
           if [ "${{ needs.image-age-ratchet.result }}" != "success" ]; then
-            echo "❌ Image Age Ratchet failed (digest >30d behind main — see scripts/check-image-age.py)"
+            echo "❌ Image Age Ratchet failed (digest >30d behind main, or ARC runner BASE_TAG >30d behind upstream — see scripts/check-image-age.py)"
             exit 1
           fi
           # Ecosystem E2E is only required on main branch pushes

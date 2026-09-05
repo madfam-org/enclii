@@ -15,7 +15,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Public hygiene guard self-test
+        run: bash ./scripts/tests/test-public-hygiene.sh
       - name: Check public repository hygiene
+        # The node-identity class needs needles from the private
+        # internal-devops checkout, which a public runner does not have. The
+        # guard therefore reports `classes_skipped=1` here instead of implying
+        # it checked a class it could not check; the enforcing run for that
+        # class is internal-devops/scripts/check-public-repo-node-identity.py.
+        # Set MADFAM_HYGIENE_PATTERNS locally to check it before pushing.
         run: bash ./scripts/public-hygiene-check.sh
       - name: Check boundary checkpoints
         run: bash ./scripts/boundary-checkpoint-check.sh

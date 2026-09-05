@@ -9,9 +9,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/logging.sh
 source "$SCRIPT_DIR/lib/logging.sh"
+# shellcheck source=lib/courier.sh
+source "$SCRIPT_DIR/lib/courier.sh"
 
 # Configuration
-SLACK_WEBHOOK="${ENCLII_SLACK_WEBHOOK:-}"
+#
+# ALERTS GO THROUGH ANGELIA COURIER, and through nothing else. The direct
+# chat-webhook POST this script used to make was removed 2026-09-05 by
+# internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md
+# (item M3): no script in this estate holds a webhook URL or a bot token for a
+# messaging network, and its env var is gone with it. Courier owns the adapter
+# and the delivery ledger; the envelope this script sends is channel-agnostic,
+# so the day the estate moves from Telegram to Matrix nothing here changes.
+#
+# COURIER_API_KEY is `courier_producer_key_enclii_ops` from `secret/angelia`
+# (intake target `angelia/courier-producer-keys`), read cross-path. With it
+# unset the script still runs and still prints its alerts — it just does not
+# send them, which is exactly what it did before with no webhook configured.
+# See scripts/lib/courier.sh for the full env contract.
+COURIER_SCRIPT_ID="health-check"
 ENDPOINTS=(
     "https://enclii.dev|Landing Page"
     "https://app.enclii.dev|Dashboard"
@@ -43,15 +59,16 @@ check_endpoint() {
 }
 
 send_alert() {
-    local message="$1"
+    local check="$1"
+    local message="$2"
 
-    if [[ -n "$SLACK_WEBHOOK" ]]; then
-        curl -s -X POST "$SLACK_WEBHOOK" \
-            -H 'Content-type: application/json' \
-            -d "{\"text\": \"$message\"}" > /dev/null
-    fi
-
+    # Print FIRST, send second. The printed alert is the record that survives a
+    # Courier outage, and this script's own stdout is what the cron mail and
+    # the log file carry. `|| true`: whether a delivery succeeded must never
+    # change this script's exit code — that code answers "is production
+    # healthy", not "did the notification arrive".
     echo -e "${RED}ALERT:${NC} $message"
+    courier_send "$check" "$message" || true
 }
 
 main() {
@@ -70,11 +87,16 @@ main() {
     echo "=========================================="
 
     if [[ ${#FAILED[@]} -gt 0 ]]; then
-        local alert_msg="PRODUCTION ALERT: ${#FAILED[@]} service(s) failing\n"
+        # Real newlines, not literal backslash-n: the envelope builder escapes
+        # them into the JSON body, so what arrives is a multi-line message
+        # rather than the two characters `\n`.
+        local alert_msg="PRODUCTION ALERT: ${#FAILED[@]} service(s) failing"
         for failure in "${FAILED[@]}"; do
-            alert_msg+="- $failure\n"
+            alert_msg+=$'\n'"- $failure"
         done
-        send_alert "$alert_msg"
+        # One idempotency key per hour per check name, so a persistent outage
+        # messages once an hour instead of twelve times.
+        send_alert "endpoints" "$alert_msg"
         exit 1
     fi
 

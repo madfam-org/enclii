@@ -8,10 +8,15 @@
 
 set -euo pipefail
 
+# Shared Angelia Courier sender — the estate's ONE door for third-party
+# messaging. See scripts/lib/courier.sh for the full env contract.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/courier.sh
+source "$SCRIPT_DIR/../lib/courier.sh"
+
 # Configuration
 SSH_HOST="${JANUA_SSH_HOST:?Set JANUA_SSH_HOST (e.g. user@host)}"
 NAMESPACE="janua"
-SLACK_WEBHOOK="${JANUA_SLACK_WEBHOOK:-}"
 MAX_RESTART_ATTEMPTS=3
 RESTART_COOLDOWN=300  # seconds between restart attempts
 
@@ -57,21 +62,44 @@ verbose() {
   fi
 }
 
-send_alert() {
-  local message="$1"
-  local severity="${2:-warning}"
+# ALERTS GO THROUGH ANGELIA COURIER, and through nothing else. The direct
+# chat-webhook POST this function used to make was removed 2026-09-05 by
+# internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md
+# (item M3): no script in this estate holds a webhook URL or a bot token for a
+# messaging network, and its env var is gone with it.
+#
+# The chat-platform attachment colour that used to encode severity has no
+# equivalent in Courier's envelope, and inventing one would be a per-channel
+# special case inside a deliberately channel-agnostic contract. Severity is
+# carried in the message TEXT instead, which renders identically on every
+# channel Courier can serve.
+#
+# COURIER_API_KEY is `courier_producer_key_enclii_ops` from `secret/angelia`
+# (intake target `angelia/courier-producer-keys`), read cross-path. Unset, this
+# still logs every alert and simply does not send it — the same behaviour the
+# old path had with no webhook configured.
+COURIER_SCRIPT_ID="janua-healthcheck"
 
+# send_alert <check> <message> [severity]
+#
+# <check> is part of Courier's idempotency key
+# (`healthcheck:janua-healthcheck:<check>:<hour>`), so it must be SPECIFIC to
+# the condition — one key per service per failure mode. Keying on severity
+# alone would make the second distinct critical of the hour a replay of the
+# first, and Courier would correctly send nothing.
+send_alert() {
+  local check="$1"
+  local message="$2"
+  local severity="${3:-warning}"
+
+  # Log FIRST. The log line is the record that survives a Courier outage, and
+  # `--notify` only ever controlled whether a message was also SENT.
   log "[ALERT:$severity] $message"
 
-  if $NOTIFY && [[ -n "$SLACK_WEBHOOK" ]]; then
-    local color="warning"
-    [[ "$severity" == "critical" ]] && color="danger"
-    [[ "$severity" == "ok" ]] && color="good"
-
-    curl -s -X POST "$SLACK_WEBHOOK" \
-      -H 'Content-Type: application/json' \
-      -d "{\"attachments\":[{\"color\":\"$color\",\"title\":\"Janua Health Alert\",\"text\":\"$message\",\"footer\":\"janua-healthcheck\",\"ts\":$(date +%s)}]}" \
-      >/dev/null 2>&1 || true
+  if $NOTIFY; then
+    # `|| true`: a failed delivery must never change this script's exit code,
+    # which answers "is Janua healthy", not "did the notification arrive".
+    courier_send "$check" "[$severity] Janua Health Alert: $message" || true
   fi
 }
 
@@ -216,12 +244,12 @@ main() {
           if restart_service "$service"; then
             increment_restart_count "$service"
             healed_services+=("$service")
-            send_alert "$service was unhealthy and has been restarted" "warning"
+            send_alert "$service-restarted" "$service was unhealthy and has been restarted" "warning"
           else
-            send_alert "$service restart failed after attempt $((restart_count + 1))" "critical"
+            send_alert "$service-restart-failed" "$service restart failed after attempt $((restart_count + 1))" "critical"
           fi
         else
-          send_alert "$service has been restarted $restart_count times in the last $RESTART_COOLDOWN seconds - manual intervention required" "critical"
+          send_alert "$service-restart-exhausted" "$service has been restarted $restart_count times in the last $RESTART_COOLDOWN seconds - manual intervention required" "critical"
         fi
       fi
     else

@@ -15,6 +15,15 @@ tags: [runbook, longhorn, storage, recovery, incident-response]
 
 # Longhorn Volume Recovery
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 **Purpose:** Step-by-step recovery for Longhorn EXT4 filesystem corruption incidents.
 **Last Updated:** March 2026
 **Incidents Covered:** 5 occurrences across Redis, Prometheus, Verdaccio, and PostHog volumes.
@@ -121,7 +130,7 @@ kubectl get volume.longhorn.io -n longhorn-system <volume> \
 ```
 
 For `npm-registry/verdaccio`, this path recovered `npm.madfam.io` on
-June 3, 2026 by moving the pod from `foundry-worker-01` to `foundry-cp`;
+June 3, 2026 by moving the pod from `<WORKER_NODE>` to `<CONTROL_PLANE_NODE>`;
 the volume returned to `attached` / `healthy` with both replicas in RW mode.
 Record the placement override in Git before the next ArgoCD sync.
 
@@ -245,4 +254,4 @@ Record each incident for pattern tracking:
 | 3 | 2026-03 | data | Redis (yantra4d) | pvc-5c623a32 → pvc-b36cb15c | stop-writes-on-bgsave-error → flask-limiter crash |
 | 4 | 2026-03 | verdaccio | Verdaccio (npm.madfam.io) | pvc-fb3f0c06 → pvc-4190cec8 | Registry 500s, had to republish packages |
 | 5 | 2026-03 | posthog | ClickHouse/PostHog | Multiple | PostHog deployment paused (unrelated chart issues) |
-| 6 | 2026-06-03 | npm-registry | Verdaccio (npm.madfam.io) | pvc-4190cec8 | foundry-worker-01 iSCSI frontend/logout failure; patched placement away from worker, volume attached healthy on foundry-cp, no PVC replacement |
+| 6 | 2026-06-03 | npm-registry | Verdaccio (npm.madfam.io) | pvc-4190cec8 | worker-node iSCSI frontend/logout failure; patched placement away from worker, volume attached healthy on the control-plane node, no PVC replacement |

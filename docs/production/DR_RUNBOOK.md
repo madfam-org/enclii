@@ -1,5 +1,14 @@
 # Disaster Recovery Runbook
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -8,7 +17,7 @@
 > missing Enclii adapter gap.
 
 
-**Cluster:** 3-node k3s (foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder])
+**Cluster:** 3-node k3s (1 control-plane + 1 worker + 1 builder)
 **RPO:** 24 hours (daily PostgreSQL backup to R2)
 **RTO:** 2 hours (manual rebuild)
 **Last Updated:** Feb 23, 2026 (Production Audit — Session 37)

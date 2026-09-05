@@ -253,7 +253,7 @@ spec:
             # eviction threshold (~12Gi free). Every runner exceeds zero, so
             # every runner is a candidate.
             #
-            # Measured 2026-08-07: four runners evicted from foundry-builder-01
+            # Measured 2026-08-07: four runners evicted from a builder node
             # inside 20 minutes, each reported by kubelet as
             # "Container runner was using ~3073816Ki, request is 0".
             #
@@ -264,7 +264,7 @@ spec:
             # and it was misdiagnosed as one across several repositories.
             #
             # RAISED 6Gi -> 10Gi on 2026-08-07 after E2E runners kept dying while
-            # every other job type survived. Measured live on foundry-builder-01
+            # every other job type survived. Measured live on that builder
             # through the kubelet summary API: concurrent runners were using 8.11,
             # 7.14, 6.81, 5.06, 2.69 and 0.90 Gi. The heavy ones EXCEED a 6Gi
             # request, and kubelet evicts pods over their request first — so the
@@ -274,7 +274,7 @@ spec:
             #
             # That node was at 184/225Gi used with 31.8Gi free — near the 10% hard
             # eviction threshold — with nine runners packed on it while
-            # foundry-worker-01 sat at 31% with 62Gi free. A 10Gi request covers
+            # the general-purpose worker sat at 31% with 62Gi free. A 10Gi request covers
             # real peak usage AND thins packing density (~22 slots instead of 37),
             # so the node stops being driven into its own threshold.
             ephemeral-storage: 10Gi

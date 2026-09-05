@@ -252,6 +252,105 @@ def test_live_config_has_no_telegram_configs():
         )
 
 
+def _live_alertmanager_config() -> dict:
+    """The parsed `alertmanager.yml` out of the live ConfigMap.
+
+    Asserting on the PARSED config rather than the file text, for the same
+    reason the telegram test above does: the surrounding YAML comments
+    deliberately say "slack_configs" and "Slack" to explain why they are gone,
+    and a text grep would trip over its own documentation.
+    """
+    import yaml
+
+    docs = yaml.safe_load_all((LIVE_CONFIG / "alertmanager.yaml").read_text())
+    cms = [
+        d
+        for d in docs
+        if isinstance(d, dict)
+        and d.get("kind") == "ConfigMap"
+        and (d.get("metadata") or {}).get("name") == "alertmanager-config"
+    ]
+    assert len(cms) == 1, "expected exactly one alertmanager-config ConfigMap"
+    return yaml.safe_load(cms[0]["data"]["alertmanager.yml"])
+
+
+COURIER_WEBHOOK_URL = (
+    "http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager"
+)
+COURIER_CREDENTIALS_FILE = "/etc/alertmanager/courier-alertmanager-secret"
+
+
+def test_live_config_has_no_slack_configs():
+    """Third-party messaging goes through Angelia Courier and nothing else.
+
+    internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md
+    § 2: the `slack_configs` receivers are non-compliant and are REMOVED, not
+    left inert. A re-added block is a message that leaves the estate with no
+    ledger row, which is a policy violation and not merely a duplicate page.
+    """
+    cfg = _live_alertmanager_config()
+    for recv in cfg.get("receivers") or []:
+        assert "slack_configs" not in recv, (
+            f"receiver {recv.get('name')!r} has slack_configs; third-party "
+            "messaging must go through Angelia Courier's webhook receiver"
+        )
+
+
+def test_live_config_pages_through_courier():
+    """Both severity receivers POST to the Courier receiver, authenticated.
+
+    A missing `credentials_file` would not fail config load — Alertmanager
+    would send an unauthenticated webhook, Courier would answer 401, and the
+    page would be lost with the config looking correct. That is exactly the
+    "configured, healthy-looking, and dead" shape, so it is pinned here.
+    """
+    cfg = _live_alertmanager_config()
+    by_name = {r.get("name"): r for r in (cfg.get("receivers") or [])}
+    for name in ("critical-receiver", "warning-receiver"):
+        recv = by_name.get(name)
+        assert recv is not None, f"receiver {name!r} is missing"
+        hooks = recv.get("webhook_configs") or []
+        assert len(hooks) == 1, f"receiver {name!r} should have one webhook_config"
+        hook = hooks[0]
+        assert hook["url"] == COURIER_WEBHOOK_URL
+        auth = hook["http_config"]["authorization"]
+        assert auth["type"] == "Bearer"
+        assert auth["credentials_file"] == COURIER_CREDENTIALS_FILE
+        # The email fallback is what carries alerts when angelia-api is down.
+        assert recv.get("email_configs"), (
+            f"receiver {name!r} lost its email_configs; email is the fallback "
+            "that does not depend on the messaging path"
+        )
+
+
+def test_courier_receiver_down_is_routed_to_email_first():
+    """The failure of the messaging path must not use the messaging path.
+
+    CourierReceiverDown is `severity: critical`. If its route were below the
+    severity routes, or carried `continue: true`, the alert about the dead
+    pager would be delivered through the dead pager.
+    """
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    assert routes, "root route has no child routes"
+    first = routes[0]
+    matchers = first.get("matchers") or []
+    assert any("CourierReceiverDown" in str(m) for m in matchers), (
+        "the FIRST child route must match alertname=CourierReceiverDown; "
+        f"got {first!r}"
+    )
+    assert first.get("receiver") == "default-receiver"
+    assert first.get("continue") is False
+    default = next(
+        r for r in cfg["receivers"] if r.get("name") == "default-receiver"
+    )
+    assert default.get("email_configs"), "default-receiver must be email"
+    assert "webhook_configs" not in default, (
+        "default-receiver carries the CourierReceiverDown alert and must not "
+        "depend on the receiver that alert reports as broken"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Other load-time rejections
 # ---------------------------------------------------------------------------
