@@ -24,7 +24,15 @@ test.describe('Landing Page — Pricing Visibility', () => {
     // Hero content visible (text split by <br>, use locator)
     await expect(page.locator('h1')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('h1')).toContainText('Bill Shock');
-    await expect(page.getByRole('link', { name: /Start Deploying/ })).toBeVisible();
+    // The hero CTA. #494 (2026-09-05) rewrote the landing as a product-line
+    // page and renamed this from "Start Deploying" to "Create your account",
+    // pointing at the signup route. This job asserts against the DEPLOYED
+    // page, so it went red on the first main push after that deploy landed,
+    // not on the PR that changed the copy. Assert the route, which is the
+    // contract, and the current label, which is the copy.
+    const heroCta = page.getByRole('link', { name: /Create your account/ });
+    await expect(heroCta).toBeVisible();
+    await expect(heroCta).toHaveAttribute('href', /app\.enclii\.dev\/signup/);
   });
 
   test('pricing section shows Sovereign tier at $20 with Start Building CTA', async ({ page }) => {
