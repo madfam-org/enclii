@@ -64,6 +64,12 @@ func (h *Handler) ListPreviews(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceUUID) {
+		return
+	}
+
 	var previews []*types.PreviewEnvironment
 
 	prNumberStr := c.Query("pr_number")
@@ -571,6 +577,20 @@ func (h *Handler) ResolvePreviewComment(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid comment_id format"})
 		return
+	}
+
+	// ADR-003: the sibling preview-comment routes load the preview through
+	// loadPreviewWithAccess; this one resolved nothing. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	previewUUID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid preview_id format"})
+		return
+	}
+	if !h.stagedGateSkipped(c) {
+		if _, ok := h.loadPreviewWithAccess(c, previewUUID); !ok {
+			return
+		}
 	}
 
 	// Get user from context

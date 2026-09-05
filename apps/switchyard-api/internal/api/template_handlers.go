@@ -324,6 +324,12 @@ func (h *Handler) GetTemplateDeployment(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: a template deployment carries the project it created into.
+	// Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedProjectAccess(c, deployment.ProjectID) {
+		return
+	}
+
 	c.JSON(http.StatusOK, deployment)
 }
 

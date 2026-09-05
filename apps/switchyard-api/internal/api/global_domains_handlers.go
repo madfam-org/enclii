@@ -759,6 +759,13 @@ func (h *Handler) SyncDomainFromCloudflare(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: a domain id alone reached the provider for any tenant's domain.
+	// Resolve it to its service and compare tenants at the target. Staged
+	// behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedDomainAccess(c, domainID) {
+		return
+	}
+
 	// Sync the domain
 	result, err := h.domainSyncService.SyncDomain(ctx, id)
 	if err != nil {

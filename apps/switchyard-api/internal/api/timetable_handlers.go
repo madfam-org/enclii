@@ -310,6 +310,24 @@ func (h *Handler) DeleteCronJob(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: a delete addressed by cron job id alone never resolved the
+	// owning project. Load the row first — the tenant is a property of the
+	// resource, so the resource has to exist before the comparison can be
+	// made. Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	job, err := h.repos.CronJobs.GetByID(ctx, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "cron job not found"})
+			return
+		}
+		h.logger.Error(ctx, "Failed to get cron job", logging.Error("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get cron job"})
+		return
+	}
+	if !h.enforceStagedProjectAccess(c, job.ProjectID) {
+		return
+	}
+
 	if err := h.repos.CronJobs.Delete(ctx, id); err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "cron job not found"})
@@ -336,13 +354,20 @@ func (h *Handler) ListCronJobRuns(c *gin.Context) {
 	}
 
 	// Verify cron job exists
-	if _, err := h.repos.CronJobs.GetByID(ctx, id); err != nil {
+	job, err := h.repos.CronJobs.GetByID(ctx, id)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "cron job not found"})
 			return
 		}
 		h.logger.Error(ctx, "Failed to get cron job", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get cron job"})
+		return
+	}
+
+	// ADR-003: run history is the job's data. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedProjectAccess(c, job.ProjectID) {
 		return
 	}
 

@@ -145,6 +145,12 @@ func (h *Handler) DeleteService(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceUUID) {
+		return
+	}
+
 	// Verify service exists
 	service, err := h.repos.Services.GetByID(serviceUUID)
 	if err != nil {

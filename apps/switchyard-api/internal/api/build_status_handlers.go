@@ -79,6 +79,12 @@ func (h *Handler) GetUnifiedBuildStatus(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceUUID) {
+		return
+	}
+
 	// Get service info
 	service, err := h.repos.Services.GetByID(serviceUUID)
 	if err != nil {
@@ -293,10 +299,40 @@ func (h *Handler) GetBuildStatusByCommit(c *gin.Context) {
 			logging.Error("error", err))
 	}
 
-	// Group by service
+	// Group by service.
+	//
+	// ADR-003: this route is keyed by a git sha, not by a tenant-owned id, so
+	// there is no single target to compare — every service that built the sha
+	// is a target, and they can belong to different tenants. The guard's
+	// question is therefore asked per service and answered by DROPPING the
+	// row rather than refusing the request: the shape of the response is the
+	// same 200 either way, it just stops carrying other tenants' service ids
+	// and names. callerMayReachProject is the read-only sibling of the guard
+	// (access_staged.go) and is kept in step with it by an agreement test.
+	//
+	// The route is registered outside the authenticated group, so an
+	// anonymous caller resolves to no principal and reaches nothing: at stage
+	// 3 this endpoint answers `services: []` to callers that present no
+	// credential. That is a real break for any unauthenticated consumer and
+	// it is listed in the stage-3 verification steps in the rollout runbook.
+	//
+	// Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	filterByReach := !h.stagedGateSkipped(c)
+	reachable := make(map[uuid.UUID]bool)
+
 	serviceStatuses := make(map[uuid.UUID]*UnifiedBuildStatus)
 
 	for _, run := range ciRuns {
+		if filterByReach {
+			allowed, known := reachable[run.ServiceID]
+			if !known {
+				allowed = h.callerMayReachService(c, run.ServiceID)
+				reachable[run.ServiceID] = allowed
+			}
+			if !allowed {
+				continue
+			}
+		}
 		if _, exists := serviceStatuses[run.ServiceID]; !exists {
 			service, err := h.repos.Services.GetByID(run.ServiceID)
 			serviceName := ""

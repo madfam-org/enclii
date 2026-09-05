@@ -77,12 +77,22 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 	domainID := uuid.New()
 	now := time.Now().Truncate(time.Microsecond)
 
-	mock.ExpectQuery(`SELECT id, project_id, name, git_repo, COALESCE\(app_path`).
-		WithArgs(serviceID).
-		WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
-			serviceID, projectID, "dhanam-api", "https://github.com/madfam-org/dhanam",
-			"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us", nil,
-		))
+	serviceRow := func() {
+		mock.ExpectQuery(`SELECT id, project_id, name, git_repo, COALESCE\(app_path`).
+			WithArgs(serviceID).
+			WillReturnRows(sqlmock.NewRows(serviceGetByIDColumns).AddRow(
+				serviceID, projectID, "dhanam-api", "https://github.com/madfam-org/dhanam",
+				"", []byte(`{}`), []byte(`[]`), false, "", "", now, now, []byte(`[]`), "api", "us", nil,
+			))
+	}
+
+	// ADR-003 (R21 PR 2): AddServiceDomain resolves the service to its owning
+	// project and compares tenants before it does anything else, so the
+	// service row is read twice — once by the guard, once by the handler. The
+	// caller below carries the platform rank, so the comparison itself costs
+	// no further query.
+	serviceRow()
+	serviceRow()
 
 	mock.ExpectQuery(`SELECT id, project_id, name, kube_namespace, created_at, updated_at FROM environments WHERE id = \$1`).
 		WithArgs(envID).
@@ -143,6 +153,9 @@ func TestAddServiceDomain_ReconcilesExistingDomainRoute(t *testing.T) {
 	c.Params = gin.Params{{Key: "id", Value: serviceID.String()}}
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/services/"+serviceID.String()+"/domains", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("user_id", uuid.New().String())
+	c.Set("user_roles", []string{"admin"})
+	c.Set("is_platform_admin", true)
 
 	h.AddServiceDomain(c)
 

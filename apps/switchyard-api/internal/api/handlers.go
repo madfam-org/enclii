@@ -709,9 +709,21 @@ func SetupRoutes(router *gin.Engine, h *Handler) {
 			protected.GET("/ops/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetOpsCapabilities)
 			protected.POST("/ops/:domain/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleOpsOperation)
 			// Chat-safe secret intake: write-only values path; agents poll status by intake_id.
-			protected.GET("/secrets/intake/targets", h.auth.RequireRole(string(types.RoleAdmin)), h.ListSecretIntakeTargets)
-			protected.POST("/secrets/intake", h.auth.RequireRole(string(types.RoleAdmin)), h.SubmitSecretIntake)
-			protected.GET("/secrets/intake/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.GetSecretIntakeStatus)
+			//
+			// ADR-003 (R21 PR 2): PLATFORM-ONLY. An intake target is a Vault
+			// path and a Kubernetes namespace in the platform's own secret
+			// plumbing (internal/secretsintake) — it is not parented to a
+			// project and there is no tenant to compare an intake id against,
+			// so the tenant-scoped guard has nothing to guard with. The
+			// correct gate is the rank: these three routes were reachable by
+			// any `admin`, i.e. post-ADR-003 by any tenant administrator, and
+			// GET /secrets/intake/:id returned the Vault path, namespace and
+			// written key names for an intake id belonging to anybody.
+			// Gated as one unit: a submit path a tenant admin can reach and a
+			// status path it cannot would be incoherent.
+			protected.GET("/secrets/intake/targets", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.ListSecretIntakeTargets)
+			protected.POST("/secrets/intake", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.SubmitSecretIntake)
+			protected.GET("/secrets/intake/:id", h.auth.RequireRole(string(types.RoleAdmin)), h.RequirePlatformAdmin(), h.GetSecretIntakeStatus)
 			protected.GET("/providers/capabilities", h.auth.RequireRole(string(types.RoleAdmin)), h.GetProviderCapabilities)
 			protected.POST("/providers/:provider/:action", h.auth.RequireRole(string(types.RoleAdmin)), h.HandleProviderOperation)
 

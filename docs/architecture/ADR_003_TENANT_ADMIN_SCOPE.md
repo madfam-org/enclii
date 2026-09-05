@@ -1,6 +1,6 @@
 # ADR-003: `platform_admin` is strictly above `tenant_admin`
 
-> **Status**: Accepted — enforcement landed PR #499 (2026-09-05)
+> **Status**: Accepted — enforcement landed PR #499 and PR #504 (2026-09-05)
 > **Decision id**: `decision.tenant-admin-scope`
 > **Date**: 2026-09-05
 > **Authors**: Platform / control-plane
@@ -19,7 +19,7 @@ touch another tenant. The rule is enforced at the target of every call, not in
 the UI.**
 
 This ADR recorded the ruling. The enforcement has since landed — see
-[Enforcement](#enforcement) for what is enforced, where, and what is not yet.
+[Enforcement](#enforcement) for what is enforced, where, and what remains.
 
 ---
 
@@ -129,28 +129,77 @@ routes, the flag covers that gate too: with it off they gate on the
 tenant-admin rank, exactly as they did before this change. A hard rank gate
 there would have put the only key to the rollout behind the lock it opens.
 
-### Not yet enforced
-
-Two things, and they compound: production is in stage 1 above, so nothing in
-this section is enforced there yet.
+### Every tenant-owned route reaches the guard
 
 `apps/switchyard-api/internal/api/tenant_scope_route_coverage_test.go` derives,
 from the source on every run, the set of tenant-owned routes that never reach
-the guard, and fails when one appears that is not named in its backlog. That
-backlog is currently non-empty: a group of service-addressed verbs
-(`DELETE /services/:id`, `POST /services/:id/exec|scale|restart|migrate`, the
-domain verbs under a service) and a group of resources addressed by their own
-id outside any `/projects/:slug` group (cron jobs, tenant exports, template
-deployments, secret-intake status). Each is listed with its reason. **Tenant #2
-is gated on that backlog being empty, not merely on this ADR's status line** —
-the ADR's own test is that a tenant admin is refused on every tenant-scoped
-verb, and these verbs are not refused yet.
+the guard, and fails when one appears that is not named in its backlog.
+
+**That backlog is empty.** PR #499 left 23 entries in it — a group of
+service-addressed verbs (`DELETE /services/:id`,
+`POST /services/:id/exec|scale|restart|migrate`, the domain verbs under a
+service) and a group of resources addressed by their own id outside any
+`/projects/:slug` group (cron jobs, tenant exports, template deployments,
+secret-intake status). PR #504 switched all 23 onto the guard at the target and
+deleted their entries; `TestTenantScope_BacklogIsEmpty` asserts the map is
+empty, and the derivation test remains as the tripwire for the next route
+somebody adds.
+
+Three of the 23 did not take the same shape as the rest, and are recorded here
+because each is a judgement rather than a mechanical edit:
+
+- **`GET /v1/builds/:commit_sha/status`** is keyed by a git sha, so several
+  services in several tenants answer it at once. It **filters** rather than
+  refuses: rows the caller cannot reach are dropped from a `200`. The route is
+  unauthenticated, so an anonymous caller now reaches no service at all.
+- **`GET /v1/secrets/intake/:id`** addresses a Vault path and a namespace in
+  the platform's own secret plumbing, parented to no project. There is nothing
+  for a tenant comparison to compare, so the correct gate is the rank:
+  `/v1/secrets/intake/*` is platform-only.
+- **The tenant-export verbs** already refused a caller that is not a project
+  admin, but that check opens with a role-string test that waves a tenant
+  administrator past it — the same rank-comparison defect, one layer down. The
+  guard now runs at the handler, before the service is called at all. The
+  service's own string test is a smaller, still-open item: it no longer grants
+  cross-tenant reach, but it still lets a tenant admin bypass the project-admin
+  requirement *inside its own tenant*.
+
+### `/v1/admin/*` is platform-only
+
+PR #499 moved only the tenant switcher and the dry-run report to
+`RequirePlatformAdmin`, and left the rest of the subtree gated on the `admin`
+role — i.e. on `tenant_admin` — with the judgement per route explicitly
+deferred. PR #504 made it: every `/v1/admin/*` route is platform-only, except
+`POST /v1/admin/projects/:slug/reconcile-services`, which is addressed by a
+project slug, belongs to the tenant that owns it, and stays on the
+tenant-scoped guard. The per-route table is in
+[the rollout runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md).
+
+### What is still not enforced in production
+
+**Production is in stage 1.** Nothing in this section is refusing anything
+there yet, and that is the only remaining gap — but it is the one that matters.
+
+The gates PR #504 added are inert while `ENCLII_TENANT_SCOPE_ENFORCE=false`,
+deliberately and by a different mechanism than PR #499's. The routes PR #499
+touched already called the guard, so for them "the flag off" and "the guard
+minus the tenant comparison" are the same thing. These 23 performed no
+target-side check at all, so a gate that merely restored the rank bypass would
+still be a new refusal for every caller below the admin rank — a developer with
+no per-project grant, or the anonymous caller of the commit-status route. The
+flag therefore stands those gates down entirely, and stage 1 remains
+byte-for-byte pre-ADR-003 `main` on all of them.
+
+**Tenant #2 is now gated on stage 3 alone.** The backlog condition is
+discharged; the rollout condition is not.
 
 ## Consequences
 
 - **It gates tenant #2.** No second Enclii Depot or Publica tenant is onboarded
   before the enforcement lands, because onboarding one is what turns the
-  conflation into a live cross-tenant write.
+  conflation into a live cross-tenant write. The route backlog condition is
+  discharged (PR #504); the remaining condition is the rollout reaching stage
+  3 in production.
 - **Tests, not review, are the evidence.** The follow-up is complete when a
   `tenant_admin` of tenant A is refused, at the API, on every tenant-scoped
   verb against tenant B — and a test says so for each verb. A route inventory

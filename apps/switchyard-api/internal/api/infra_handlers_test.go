@@ -19,8 +19,22 @@ import (
 // the infra handler validation paths (bad UUID, bad JSON, etc.)
 // without a real DB or K8s client.
 // Uses newNopLogger() defined in domain_provisioner_test.go (same package).
+//
+// ADR-003 (R21 PR 2): every infra verb now runs the tenant comparison at the
+// target before it validates anything, and the comparison needs a database to
+// resolve the service's owning project. These tests carry no database, so the
+// staged gate is stood down for them with the same flag production uses in
+// stage 1 — they are validation tests and that is all they claim to be.
+//
+// The two properties this stops them from covering are covered on purpose
+// elsewhere: that the gate refuses a foreign tenant is
+// TestStagedGate_TenantAdminOfACannotReachTenantB, and that it runs BEFORE the
+// command allowlist (so a foreign caller cannot probe which commands are
+// permitted on somebody else's service) is
+// TestStagedGate_RunsBeforeTheExecAllowlist.
 func setupInfraHandler(t *testing.T) *Handler {
 	t.Helper()
+	t.Setenv("ENCLII_TENANT_SCOPE_ENFORCE", "false")
 	return &Handler{
 		logger: newNopLogger(),
 	}

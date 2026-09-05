@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -250,4 +251,45 @@ func TestAdminCommand_RegisteredOnRoot(t *testing.T) {
 
 	admin := findSubcommand(root, "admin")
 	require.NotNil(t, admin, "admin command must be registered on root")
+}
+
+// TestIsPlatformRankPath_ADR003 pins the CLI's idea of "this 403 is a rank
+// problem" to the API's route gating. ADR-003 made /v1/admin/* and the
+// secret-intake routes require the platform_admin rank; the one exception is
+// the slug-addressed reconcile route, which stays gated on the caller's own
+// tenant, so a 403 there means something else entirely.
+func TestIsPlatformRankPath_ADR003(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"/v1/admin/fleet", true},
+		{"/v1/admin/clusters/abc", true},
+		{"/v1/admin/costs?tenant_id=x", true},
+		{"/v1/admin/tenants", true},
+		{"/v1/admin/tenant-scope/dry-run", true},
+		{"/v1/secrets/intake/targets", true},
+		{"/v1/secrets/intake/abc123", true},
+		{"/v1/admin/projects/acme/reconcile-services", false},
+		{"/v1/projects/acme", false},
+		{"/v1/services/abc/exec", false},
+	} {
+		if got := isPlatformRankPath(tc.path); got != tc.want {
+			t.Errorf("isPlatformRankPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestForbiddenReason_NamesTheRankNotARole: the old message sent an operator
+// looking for a role to grant. Post-ADR-003 no role grants this, so the
+// message has to name the allow-list instead.
+func TestForbiddenReason_NamesTheRankNotARole(t *testing.T) {
+	rank := forbiddenReason("/v1/admin/fleet")
+	if !strings.Contains(rank, "platform_admin") || !strings.Contains(rank, "ENCLII_PLATFORM_ADMIN_EMAILS") {
+		t.Errorf("platform-rank 403 must name the rank and the allow-list, got: %s", rank)
+	}
+	tenant := forbiddenReason("/v1/projects/acme")
+	if strings.Contains(tenant, "platform_admin") {
+		t.Errorf("a tenant-scoped 403 must not be explained as a rank problem, got: %s", tenant)
+	}
 }
