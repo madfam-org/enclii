@@ -1,6 +1,6 @@
 # ADR-003: `platform_admin` is strictly above `tenant_admin`
 
-> **Status**: Accepted — enforcement landed PR #__PR__ (2026-09-05)
+> **Status**: Accepted — enforcement landed PR #499 (2026-09-05)
 > **Decision id**: `decision.tenant-admin-scope`
 > **Date**: 2026-09-05
 > **Authors**: Platform / control-plane
@@ -72,7 +72,7 @@ tenant, the defect becomes a live cross-tenant write.
 
 ## Enforcement
 
-Landed in PR #__PR__. The shape, for a reader who needs to know what is true
+Landed in PR #499. The shape, for a reader who needs to know what is true
 today rather than what was ruled:
 
 - **The rank split is a database column, not a role string.**
