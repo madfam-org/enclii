@@ -129,6 +129,12 @@ func (h *Handler) ExecService(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceID) {
+		return
+	}
+
 	var req ExecRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -224,6 +230,12 @@ func (h *Handler) RestartService(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceID) {
+		return
+	}
+
 	var req RestartRequest
 	_ = c.ShouldBindJSON(&req) // optional body
 
@@ -278,6 +290,12 @@ func (h *Handler) ScaleService(c *gin.Context) {
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
+		return
+	}
+
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceID) {
 		return
 	}
 
@@ -374,6 +392,12 @@ func (h *Handler) MigrateService(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceID) {
+		return
+	}
+
 	var req MigrateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -461,6 +485,12 @@ func (h *Handler) GetDetailedHealth(c *gin.Context) {
 	serviceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service ID"})
+		return
+	}
+
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceID) {
 		return
 	}
 

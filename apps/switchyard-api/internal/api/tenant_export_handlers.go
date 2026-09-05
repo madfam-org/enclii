@@ -110,6 +110,10 @@ func (h *Handler) GetTenantExport(c *gin.Context) {
 		return
 	}
 
+	if !h.enforceStagedExportAccess(c, id) {
+		return
+	}
+
 	req, err := buildInitiateRequest(c, "")
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -148,6 +152,10 @@ func (h *Handler) ApproveTenantExport(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("export_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid export id"})
+		return
+	}
+
+	if !h.enforceStagedExportAccess(c, id) {
 		return
 	}
 
@@ -194,6 +202,10 @@ func (h *Handler) DeleteTenantExport(c *gin.Context) {
 		return
 	}
 
+	if !h.enforceStagedExportAccess(c, id) {
+		return
+	}
+
 	req, err := buildInitiateRequest(c, "")
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -214,6 +226,34 @@ func (h *Handler) DeleteTenantExport(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "export deleted"})
+}
+
+// enforceStagedExportAccess resolves an export id to its project and applies
+// the ADR-003 tenant comparison at the target.
+//
+// The export service already refuses a caller that is not a project admin, and
+// that check stays. It is not the ADR-003 check: it opens with a role-STRING
+// test (export.Service.isPlatformAdmin, `role == "admin"`) that waves a tenant
+// administrator straight past it — the same rank-comparison defect ADR-003
+// records, one layer down. Refusing here, before the service is called at all,
+// makes the tenant comparison happen at the target regardless of what the
+// service decides afterwards.
+//
+// Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+func (h *Handler) enforceStagedExportAccess(c *gin.Context, exportID uuid.UUID) bool {
+	if h.stagedGateSkipped(c) {
+		return true
+	}
+	if h.repos == nil || h.repos.TenantExports == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "tenant export service not configured"})
+		return false
+	}
+	row, err := h.repos.TenantExports.GetByID(c.Request.Context(), exportID)
+	if err != nil || row == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "export not found"})
+		return false
+	}
+	return h.enforceUserProjectAccess(c, row.ProjectID)
 }
 
 // buildInitiateRequest constructs the service-layer auth/context struct

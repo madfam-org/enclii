@@ -291,6 +291,12 @@ func (h *Handler) UpdateCustomDomain(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: resolve the domain's owning service and compare tenants at the
+	// target. Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, domain.ServiceID) {
+		return
+	}
+
 	// Update fields
 	if req.TLSEnabled != nil {
 		domain.TLSEnabled = *req.TLSEnabled
@@ -326,6 +332,12 @@ func (h *Handler) DeleteCustomDomain(c *gin.Context) {
 	domain, err := h.repos.CustomDomains.GetByID(ctx, domainID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "custom domain not found"})
+		return
+	}
+
+	// ADR-003: resolve the domain's owning service and compare tenants at the
+	// target. Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, domain.ServiceID) {
 		return
 	}
 
@@ -396,6 +408,12 @@ func (h *Handler) VerifyCustomDomain(c *gin.Context) {
 	domain, err := h.repos.CustomDomains.GetByID(ctx, domainID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "custom domain not found"})
+		return
+	}
+
+	// ADR-003: resolve the domain's owning service and compare tenants at the
+	// target. Staged behind ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, domain.ServiceID) {
 		return
 	}
 

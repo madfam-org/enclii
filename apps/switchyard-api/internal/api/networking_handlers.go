@@ -30,6 +30,12 @@ func (h *Handler) GetServiceNetworking(c *gin.Context) {
 		return
 	}
 
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceUUID) {
+		return
+	}
+
 	// Get service
 	service, err := h.repos.Services.GetByID(serviceUUID)
 	if err != nil {
@@ -224,6 +230,12 @@ func (h *Handler) AddServiceDomain(c *gin.Context) {
 	serviceUUID, err := uuid.Parse(serviceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service_id"})
+		return
+	}
+
+	// ADR-003: the tenant comparison at the target. Staged behind
+	// ENCLII_TENANT_SCOPE_ENFORCE — see access_staged.go.
+	if !h.enforceStagedServiceAccess(c, serviceUUID) {
 		return
 	}
 
