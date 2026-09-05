@@ -366,6 +366,22 @@ jobs:
       - name: Run Courier envelope tests
         run: bash ./scripts/tests/test-courier-envelope.sh
 
+  restore-drill-lint:
+    name: Addon restore drill (safety + drill row)
+    runs-on: ubuntu-latest
+    # Cheap (sub-second), no cluster. scripts/restore-addon.sh is the only
+    # thing that turns "every addon has a backup" from a statement about a
+    # CronJob into evidence about recoverable data, and it is a script that
+    # writes to a cluster — so the guard that keeps it off a production target,
+    # the refusal that even --i-understand-production cannot lift, the absence
+    # of any credential from its output, and the exact shape of the drill row
+    # are all pinned here against stub kubectl/psql.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run addon restore drill tests
+        run: bash ./scripts/tests/test-restore-addon.sh
+
   intake-policy-parity:
     name: Intake/Vault-policy parity
     runs-on: ubuntu-latest

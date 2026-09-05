@@ -88,5 +88,49 @@ that column from the CNPG Backup status is a tracked follow-up).
 - **A tenant-facing restore path** — restore is currently an operator action
   via CNPG `Backup`/`Recovery` CRs; the client-self-service restore is part of
   the dignified-exit surface, not shipped.
-- **Automated restore drill for addons** — the platform has
-  `postgres-restore-drill`; an addon equivalent should follow.
+- **Automated restore drill for addons** — a drill now EXISTS as an operator
+  command (`scripts/restore-addon.sh`, below); scheduling it is the remaining
+  step.
+
+## Restore drill for one addon
+
+`scripts/restore-addon.sh` restores a single addon from its own barman backup
+into a scratch CloudNativePG cluster and compares row counts against the
+source.
+
+```bash
+scripts/restore-addon.sh \
+  --namespace project-<id> \
+  --cluster pg-<addon>-<id8> \
+  --addon <addon-name> \
+  --operator "$USER"
+```
+
+It restores into `enclii-restore-<cluster>` and tears that namespace down
+afterwards (`--keep` to inspect it). Preview everything it would do without
+touching anything with `--dry-run`.
+
+**Safety.** Any target that is not a scratch namespace is refused unless
+`--i-understand-production` is passed deliberately; restoring into the addon's
+own namespace is refused unconditionally, flag or not. Row counts run inside
+the database pods over the local socket via `kubectl exec`, so no password,
+DSN or connection URI is ever assembled on the operator's machine.
+
+**The output of record** is the single line beginning `DR-LOG-ROW`. Paste it
+verbatim into the private drill log:
+
+```
+DR-LOG-ROW | run_ts=… | addon=… | namespace=… | cluster=… | backup=… | backup_started=… | scope=… | rows_source=… | rows_restored=… | verdict=match | elapsed_s=… | operator=…
+```
+
+**What a passing drill proves, and what it does not.** It proves that the named
+backup of the named addon can be recovered into a fresh cluster and that the
+restored database holds the same number of rows the source held when the drill
+started. It is not a recovery-point or recovery-time figure, not an
+availability claim, and not evidence that point-in-time recovery works —
+`elapsed_s` is the wall clock of one drill on one cluster under one load. A
+row-count match is also not a content match: a restore can preserve counts and
+lose column values. A mismatch, however, proves inequality.
+
+Exit codes: `0` verified, `10` preflight or refused target, `20` no usable
+backup, `30` restore failed, `40` verification failed.
