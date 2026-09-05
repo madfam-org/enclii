@@ -326,11 +326,30 @@ func main() {
 	addonService := addons.NewAddonService(repos, k8sClient, logrus.StandardLogger())
 	logrus.Info("✓ AddonService initialized (PostgreSQL, Redis, MySQL add-ons)")
 
+	// addon.* lifecycle events into Waybill. Returns nil when no Waybill base
+	// URL is configured, and every consumer treats nil as "no usage pipeline",
+	// so an environment without Waybill behaves exactly as it did before.
+	// Reuses the SAME base URL and internal key the billing proxy already
+	// uses — one piece of configuration, not two that can disagree.
+	addonUsageEmitter := addons.NewWaybillUsageEmitter(cfg.WaybillBaseURL, cfg.WaybillInternalAPIKey)
+	if addonUsageEmitter != nil {
+		addonService.SetUsageEmitter(addonUsageEmitter)
+		logrus.Info("✓ Addon usage events → Waybill enabled")
+	} else {
+		logrus.Warn("Waybill base URL not configured — addon lifecycle events will NOT be recorded as usage")
+	}
+
 	// Initialize and start addon reconciler (syncs database addon status from K8s)
 	addonReconciler := reconciler.NewAddonReconciler(repos, k8sClient, logrus.StandardLogger())
 	// Wire the retention finalizer so the reconciler can tear down retention-hold
 	// addons once their grace window elapses (2026-08-17 audit #10).
 	addonReconciler.SetRetentionFinalizer(addonService)
+	// addon.backup.completed is observed from CNPG cluster status, not
+	// commanded, so it is reported from the reconciler rather than the
+	// service. See internal/reconciler/addon_backup_events.go.
+	if addonUsageEmitter != nil {
+		addonReconciler.SetUsageEmitter(addonUsageEmitter)
+	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

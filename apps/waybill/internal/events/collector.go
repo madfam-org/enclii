@@ -44,16 +44,17 @@ func (c *Collector) Record(ctx context.Context, req *EventRequest) (*UsageEvent,
 	)
 
 	event := &UsageEvent{
-		ID:           uuid.New(),
-		ProjectID:    req.ProjectID,
-		TeamID:       req.TeamID,
-		EventType:    req.EventType,
-		ResourceType: req.ResourceType,
-		ResourceID:   req.ResourceID,
-		ResourceName: req.ResourceName,
-		Metrics:      req.Metrics,
-		Metadata:     req.Metadata,
-		CreatedAt:    time.Now(),
+		ID:             uuid.New(),
+		ProjectID:      req.ProjectID,
+		TeamID:         req.TeamID,
+		EventType:      req.EventType,
+		ResourceType:   req.ResourceType,
+		ResourceID:     req.ResourceID,
+		ResourceName:   req.ResourceName,
+		Metrics:        req.Metrics,
+		Metadata:       req.Metadata,
+		IdempotencyKey: req.IdempotencyKey,
+		CreatedAt:      time.Now(),
 	}
 
 	if req.Timestamp != nil {
@@ -72,14 +73,25 @@ func (c *Collector) Record(ctx context.Context, req *EventRequest) (*UsageEvent,
 		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
+	// ON CONFLICT DO NOTHING is what makes a retried delivery safe.
+	//
+	// The partial unique index (migration 040) covers idempotency_key WHERE
+	// NOT NULL, so an emitter that sends no key still inserts unconditionally
+	// — NULLs do not collide — and every pre-existing caller keeps its exact
+	// behaviour. `idempotencyKey()` below is what turns "" into NULL; writing
+	// the empty string instead would make the FIRST keyless event claim the
+	// index and silently swallow every keyless event after it, which is the
+	// bug this shape is written to avoid.
 	query := `
 		INSERT INTO usage_events (
 			id, project_id, team_id, event_type, resource_type,
-			resource_id, resource_name, metrics, metadata, timestamp, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			resource_id, resource_name, metrics, metadata, timestamp, created_at,
+			idempotency_key
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
 	`
 
-	_, err = c.db.ExecContext(ctx, query,
+	res, err := c.db.ExecContext(ctx, query,
 		event.ID,
 		event.ProjectID,
 		event.TeamID,
@@ -91,10 +103,27 @@ func (c *Collector) Record(ctx context.Context, req *EventRequest) (*UsageEvent,
 		metadataJSON,
 		event.Timestamp,
 		event.CreatedAt,
+		idempotencyKey(event.IdempotencyKey),
 	)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert event: %w", err)
+	}
+
+	// A conflict is a SUCCESS, not an error: the transition is already
+	// recorded, and the caller's retry has achieved what it wanted. Reported
+	// separately so a flood of duplicates is visible rather than looking like
+	// healthy traffic. RowsAffected is advisory (some drivers do not implement
+	// it); an error there is treated as "inserted", because guessing
+	// "duplicate" would hide a real write.
+	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+		c.logger.Info("event already recorded, ignoring duplicate delivery",
+			zap.String("event_type", string(event.EventType)),
+			zap.String("idempotency_key", event.IdempotencyKey),
+			zap.String("project_id", event.ProjectID.String()),
+		)
+		span.SetAttributes(attribute.Bool("event.duplicate", true))
+		return event, nil
 	}
 
 	c.logger.Info("event recorded",
@@ -118,8 +147,10 @@ func (c *Collector) RecordBatch(ctx context.Context, events []*EventRequest) err
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO usage_events (
 			id, project_id, team_id, event_type, resource_type,
-			resource_id, resource_name, metrics, metadata, timestamp, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			resource_id, resource_name, metrics, metadata, timestamp, created_at,
+			idempotency_key
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
@@ -148,6 +179,7 @@ func (c *Collector) RecordBatch(ctx context.Context, events []*EventRequest) err
 			metadataJSON,
 			timestamp,
 			now,
+			idempotencyKey(req.IdempotencyKey),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert event: %w", err)
@@ -276,4 +308,18 @@ func (c *Collector) GetEventsByProject(ctx context.Context, projectID uuid.UUID,
 	}
 
 	return events, nil
+}
+
+// idempotencyKey maps the empty string to a SQL NULL.
+//
+// This is the whole reason keyless emitters are unaffected by the unique
+// index: NULLs never collide. Writing "" instead would let the first keyless
+// event take the index and cause every keyless event afterwards to be
+// silently discarded as a duplicate — a data-loss bug that would look exactly
+// like "billing events stopped arriving" and nothing else.
+func idempotencyKey(key string) interface{} {
+	if key == "" {
+		return nil
+	}
+	return key
 }
