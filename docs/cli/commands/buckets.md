@@ -145,6 +145,56 @@ switchyard-api's `CLOUDFLARE_API_TOKEN` must hold, on the enclii account:
 Without these, provisioning fails with an explicit error naming the missing
 permission rather than emitting `STORAGE_BACKEND=r2` with no keys.
 
+## Cloudflare wire contract
+
+Every Cloudflare call `apps/switchyard-api/internal/provisioning/r2.go` makes,
+with the endpoint that defines it. Change one of these only against the current
+Cloudflare reference — an unrouted method fails at the edge, not in review.
+
+| Call | Method | Path | Reference |
+|------|--------|------|-----------|
+| `EnsureBucket` | `POST` | `/accounts/{account_id}/r2/buckets` | [r2/buckets create](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create/) |
+| `BucketExists` | `GET` | `/accounts/{account_id}/r2/buckets/{bucket_name}` | [r2/buckets get](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/get/) |
+| `DeleteBucket` | `DELETE` | `/accounts/{account_id}/r2/buckets/{bucket_name}` | [r2/buckets delete](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/delete/) |
+| `MintBucketToken` | `POST` | `/accounts/{account_id}/tokens` | [accounts/tokens create](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/create/) |
+| `lookupPermissionGroup` | `GET` | `/accounts/{account_id}/tokens/permission_groups` | [tokens/permission_groups list](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/subresources/permission_groups/methods/list/) |
+| `RevokeToken` | `DELETE` | `/accounts/{account_id}/tokens/{token_id}` | [accounts/tokens delete](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/delete/) |
+
+### 2026-09-05: `buckets create` was sending PUT — and the mock agreed
+
+`enclii buckets create madfam-hcm-expediente --project symbiosis-hcm` failed in
+production against a fully-permissioned token:
+
+```
+HTTP 500 {"error":"cloudflare create R2 bucket failed: No route matches this url. (code 10015)"}
+```
+
+Cloudflare creates buckets with `POST`. `EnsureBucket` sent `PUT`, which matches
+no route on that path — so the request never reached bucket creation at all.
+Code `10015` means the *method and path pair* is unrouted; it is not a
+permission error, and no amount of re-granting the token would have moved it.
+Confirmed at the time by hand: `POST` to the same path with an empty body
+returned `10040 JSON not well formed` (the route exists), and `GET
+/r2/buckets` returned `success`.
+
+The method had been wrong since the provisioner's first commit (`144b6c23`), and
+the test suite was green the whole time — **because the mock reproduced the
+wrong method.** `r2_test.go` matched `PUT /r2/buckets` and answered it with a
+success body, so the test asserted that the code did what the code did. Two
+artifacts of the same misreading cannot check each other; the only thing that
+could have caught it was the real API, and the first call to the real API was
+in production.
+
+The stub now answers any non-`POST` on `/r2/buckets` with Cloudflare's own
+`500` / code `10015`, so the mock disagrees with the bug instead of confirming
+it. `TestEnsureBucket_UsesPOST` fails on the pre-fix provisioner with the
+production error text verbatim.
+
+Adoption of an existing bucket also no longer keys on HTTP `409` alone:
+Cloudflare reports "already exists" as error code `10004`, and that code is
+adopted whatever status accompanies it, so a re-run cannot be turned into a
+hard failure by a status-line change.
+
 ## API
 
 ### Bucket lifecycle
