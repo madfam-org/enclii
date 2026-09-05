@@ -76,12 +76,18 @@ the `Dockerfile` currently carries copies of yantra4d's values. **The next
 bump of the render block must read from the spec rather than re-copying** —
 and must move in lockstep with `yantra4d/apps/api/Dockerfile` until it does.
 
-**Size.** The render environment adds roughly **250–350 MiB** uncompressed:
-the extracted OpenSCAD squashfs (~84 MiB download, a few hundred MiB on disk)
-dominates, with the GL/X/font packages a few tens of MiB. The repo has no
-image-size budget for this image; the build prints the measured size to the
-job summary on every run so an unexpected jump is visible in review. The
-runner pods' 6 GiB memory limit is unaffected — this is disk/registry, not
+**Size.** Measured on the 2026-09-05 build: **1971 MiB** total uncompressed,
+against a **1470 MiB** upstream base — so the whole overlay (the pre-existing
+CI packages plus this render environment) is **501 MiB**, with the extracted
+OpenSCAD squashfs the largest single contributor (~84 MiB download, a few
+hundred MiB on disk).
+
+The repo has no image-size budget for this image. Instead the build prints
+the total *and* the delta against the base to the job summary on every run —
+the base reference is read from the `Dockerfile`'s own `ARG`s so it cannot
+drift from the pin — which is what makes an unexpected jump visible in review.
+
+The runner pods' 6 GiB memory limit is unaffected: this is disk/registry, not
 RSS, and the pods pull by digest onto a warm node cache.
 
 **Smoke check.** Every build of this image runs the final artifact through
