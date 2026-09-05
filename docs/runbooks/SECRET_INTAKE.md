@@ -1,14 +1,17 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-09-03
+**Last Updated:** 2026-09-05
 
-> **Boundary checkpoint (2026-09-03, platform on-call):** Public-safe runbook —
+> **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No
 > secret value appears here, and none is retrievable through the intake API by
 > design. Private operational detail (the 2026-09-03 break-glass fallback that
-> motivated the new targets, and the per-app secret custody notes) lives in
-> `internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary
-> contract).
+> motivated the earlier targets, the messaging-migration decision that motivated
+> the 2026-09-05 Courier targets, and the per-app secret custody notes) lives in
+> `internal-devops` — the decision is
+> `decisions/2026-09-05-third-party-messaging-via-angelia-courier.md` there. No
+> recipient id, chat id or channel id appears here or anywhere in this repo.
+> Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -70,6 +73,20 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `symbiosis-hcm/map-absence-feed` | `secret/symbiosis-hcm` | `map_absence_feed_url`, `map_absence_feed_key` |
 | `nauta/kalya-feed-tokens` | `secret/nauta` | `kalya_feed_tokens` |
 | `nauta/symbiosis-hcm-token` | `secret/nauta` | `symbiosis_hcm_token` |
+| `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
+| `angelia/courier-channel-tokens` | `secret/angelia` | `courier_telegram_bot_token`, `courier_slack_bot_token` |
+| `angelia/courier-alertmanager` | `secret/angelia` | `courier_alertmanager_secret` |
+
+**Angelia OWNS all three Courier targets** (verifier-owns): Angelia verifies every
+one of these credentials, so `secret/angelia` is their single writable home, and
+producers read their own `courier_producer_key_<producer>` cross-path through
+their own ExternalSecret rather than holding a second copy that drifts on
+rotation. Same shape as the `symbiosis-hcm` note below. `courier_alertmanager_secret` is
+read cross-path by this repo's Alertmanager in the `monitoring` namespace
+(`infra/k8s/production/monitoring/alertmanager-courier-secret.externalsecret.yaml`).
+Until the targets are populated every Courier route answers `503
+not_provisioned` and Alertmanager's `email_configs` carry alerts on their own,
+which is what happens today.
 
 `symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the

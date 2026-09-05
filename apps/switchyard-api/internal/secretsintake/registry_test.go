@@ -10,7 +10,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 21)
+	assert.Len(t, reg, 24)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -31,7 +31,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 21)
+	require.Len(t, list, 24)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -40,6 +40,9 @@ func TestListTargetsSorted(t *testing.T) {
 		ids[i] = t.ID
 	}
 	assert.Equal(t, []string{
+		"angelia/courier-alertmanager",
+		"angelia/courier-channel-tokens",
+		"angelia/courier-producer-keys",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
 		"coupler/janua-service-token",
@@ -88,6 +91,43 @@ func TestSeptember2026Targets(t *testing.T) {
 			assert.Equal(t, tc.keys, tgt.Keys)
 			assert.NotEmpty(t, tgt.Label)
 			assert.NotEmpty(t, tgt.Namespace)
+		})
+	}
+}
+
+// The 2026-09-05 Courier batch. Angelia OWNS these three targets: it verifies
+// every one of the credentials, so secret/angelia is the single writable home
+// and every consumer reads that copy cross-path. Pinning the routing here makes
+// a rename a test failure rather than a silent write to the wrong Vault path —
+// and a wrong path is invisible until a page fails to reach a person.
+func TestCourierTargets(t *testing.T) {
+	cases := []struct {
+		id   string
+		keys []string
+	}{
+		{"angelia/courier-producer-keys", []string{
+			"courier_producer_key_alarms",
+			"courier_producer_key_enclii_ops",
+			"courier_producer_key_tulana",
+			"courier_producer_key_madfam_site",
+		}},
+		{"angelia/courier-channel-tokens", []string{
+			"courier_telegram_bot_token",
+			"courier_slack_bot_token",
+		}},
+		{"angelia/courier-alertmanager", []string{
+			"courier_alertmanager_secret",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/angelia", tgt.VaultPath)
+			assert.Equal(t, "angelia", tgt.Namespace)
+			assert.Equal(t, "angelia-courier-secrets", tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			assert.NotEmpty(t, tgt.Label)
 		})
 	}
 }
