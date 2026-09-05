@@ -1,17 +1,34 @@
-import { dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { FlatCompat } from '@eslint/eslintrc'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-})
+// Flat config, loaded natively.
+//
+// This file used to route `next/core-web-vitals`, `next/typescript` and
+// `plugin:tailwindcss/recommended` through `FlatCompat` from
+// `@eslint/eslintrc`. That translation layer exists to consume *eslintrc*
+// shareable configs — and as of eslint-config-next 16 and
+// eslint-plugin-tailwindcss 3.18 none of the three is one any more: each
+// already exports a flat-config array. Handing a flat config to the eslintrc
+// loader fails schema validation (a flat config's `plugins` is an object of
+// plugin instances; eslintrc requires an array of names), and eslintrc then
+// tries to `JSON.stringify` the offending value to build the error message.
+// That value contains `eslint-plugin-react`, whose `configs.flat.plugins.react`
+// points back at the plugin, so the *error formatter itself* threw
+//
+//   TypeError: Converting circular structure to JSON
+//     property 'configs' -> 'flat' -> ... -> 'plugins' -> 'react' closes the circle
+//
+// and `eslint .` never got as far as linting a single file. Importing the flat
+// configs directly is both the fix and the supported path; `FlatCompat` is no
+// longer needed here at all.
+import nextCoreWebVitals from 'eslint-config-next/core-web-vitals'
+import nextTypeScript from 'eslint-config-next/typescript'
+import tailwindcss from 'eslint-plugin-tailwindcss'
 
 const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
-  ...compat.extends('plugin:tailwindcss/recommended'),
+  {
+    ignores: ['.next/**', 'out/**', 'next-env.d.ts'],
+  },
+  ...nextCoreWebVitals,
+  ...nextTypeScript,
+  ...tailwindcss.configs['flat/recommended'],
   {
     settings: {
       tailwindcss: {
