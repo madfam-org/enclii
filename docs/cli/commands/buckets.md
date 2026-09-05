@@ -190,6 +190,24 @@ The stub now answers any non-`POST` on `/r2/buckets` with Cloudflare's own
 it. `TestEnsureBucket_UsesPOST` fails on the pre-fix provisioner with the
 production error text verbatim.
 
+**A wrong method is never pinned in one place.** Fixing it surfaced *three*
+stubs that had each copied the `PUT`, and every copy made the next one look
+corroborated:
+
+1. `internal/provisioning/r2_test.go` — answered `PUT` with a success body.
+2. `internal/api/storage_r2_test.go` (`cloudflareStub`) — the same pattern; it
+   went red the moment the provisioner switched to `POST`, which is the correct
+   signal, not a regression.
+3. `internal/api/storage_r2_test.go`
+   (`TestEnsureProjectR2Bucket_FailsWhenTokenCannotBeMinted`) — **passed for the
+   wrong reason.** With an unrouted `PUT`, bucket creation fell through to the
+   handler's catch-all `403`, so the test reached `TokenMintForbiddenError` by
+   failing at the *bucket* step rather than at the token mint it is named for.
+
+When a stub encodes a wire detail, it is a second copy of a claim about someone
+else's API — not an independent check of it. Only the live endpoint, or a
+citation to its reference, can settle which copy is right.
+
 Adoption of an existing bucket also no longer keys on HTTP `409` alone:
 Cloudflare reports "already exists" as error code `10004`, and that code is
 adopted whatever status accompanies it, so a re-run cannot be turned into a
