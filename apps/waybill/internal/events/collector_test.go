@@ -35,6 +35,7 @@ func TestRecord(t *testing.T) {
 			sqlmock.AnyArg(), // metadata json
 			sqlmock.AnyArg(), // timestamp
 			sqlmock.AnyArg(), // created_at
+			nil,              // idempotency_key — keyless emitters insert unconditionally
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -81,6 +82,7 @@ func TestRecordWithTimestamp(t *testing.T) {
 			sqlmock.AnyArg(), sqlmock.AnyArg(),
 			ts,               // explicit timestamp
 			sqlmock.AnyArg(), // created_at
+			nil,              // idempotency_key
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -116,10 +118,10 @@ func TestRecordBatch(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectPrepare("INSERT INTO usage_events")
 	mock.ExpectExec("INSERT INTO usage_events").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, EventBuildStarted, "build", sqlmock.AnyArg(), "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, EventBuildStarted, "build", sqlmock.AnyArg(), "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), nil).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO usage_events").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, EventBuildCompleted, "build", sqlmock.AnyArg(), "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, EventBuildCompleted, "build", sqlmock.AnyArg(), "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), nil).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -200,5 +202,109 @@ func TestDeploymentMetricsCalculateGBEquivalentCollector(t *testing.T) {
 				t.Errorf("CalculateGBEquivalent() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+// The idempotency contract, pinned. See migration 040 for why it is enforced
+// in the table rather than by careful emitters.
+
+func TestRecordSendsIdempotencyKeyWhenGiven(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	collector := NewCollector(db, zap.NewNop())
+
+	mock.ExpectExec("INSERT INTO usage_events").
+		WithArgs(
+			sqlmock.AnyArg(), sqlmock.AnyArg(), nil,
+			EventAddonReady, "database_addon", sqlmock.AnyArg(), "map-db",
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			"ledger-event-1",
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	event, err := collector.Record(context.Background(), &EventRequest{
+		EventType:      EventAddonReady,
+		ProjectID:      uuid.New(),
+		ResourceType:   "database_addon",
+		ResourceID:     uuid.New(),
+		ResourceName:   "map-db",
+		Metrics:        map[string]float64{"storage_gb": 10},
+		IdempotencyKey: "ledger-event-1",
+	})
+	if err != nil {
+		t.Fatalf("Record() error: %v", err)
+	}
+	if event.IdempotencyKey != "ledger-event-1" {
+		t.Errorf("IdempotencyKey = %q, want %q", event.IdempotencyKey, "ledger-event-1")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %v", err)
+	}
+}
+
+// A conflict means the transition was already recorded. That is the retry
+// succeeding, not failing: returning an error here would make every emitter
+// retry forever against a row that already exists.
+func TestRecordTreatsADuplicateAsSuccess(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	collector := NewCollector(db, zap.NewNop())
+
+	// ON CONFLICT DO NOTHING reports zero rows affected.
+	mock.ExpectExec("INSERT INTO usage_events").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	event, err := collector.Record(context.Background(), &EventRequest{
+		EventType:      EventAddonDestroyed,
+		ProjectID:      uuid.New(),
+		ResourceType:   "database_addon",
+		ResourceID:     uuid.New(),
+		Metrics:        map[string]float64{"storage_gb": 10},
+		IdempotencyKey: "ledger-event-2",
+	})
+	if err != nil {
+		t.Fatalf("a duplicate delivery must not be an error, got: %v", err)
+	}
+	if event == nil {
+		t.Fatal("Record() returned no event for a duplicate delivery")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %v", err)
+	}
+}
+
+// Empty must reach the driver as NULL. Writing "" would let the first keyless
+// event claim the unique index and silently discard every keyless event after
+// it — data loss that would look like "events stopped arriving".
+func TestKeylessEventsWriteNullNotEmptyString(t *testing.T) {
+	if got := idempotencyKey(""); got != nil {
+		t.Errorf("idempotencyKey(\"\") = %v, want nil (SQL NULL)", got)
+	}
+	if got := idempotencyKey("k"); got != "k" {
+		t.Errorf("idempotencyKey(\"k\") = %v, want \"k\"", got)
+	}
+}
+
+func TestAddonEventTypesMatchTheLedgerVocabulary(t *testing.T) {
+	// These strings are written by switchyard-api's managed_db_addon_events
+	// ledger. If one drifts, the meter reads a vocabulary nothing emits.
+	want := map[EventType]string{
+		EventAddonReady:           "addon.ready",
+		EventAddonPlanChanged:     "addon.plan.changed",
+		EventAddonDestroyed:       "addon.destroyed",
+		EventAddonBackupCompleted: "addon.backup.completed",
+	}
+	for got, expected := range want {
+		if string(got) != expected {
+			t.Errorf("event type = %q, want %q", got, expected)
+		}
 	}
 }

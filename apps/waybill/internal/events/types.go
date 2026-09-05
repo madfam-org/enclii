@@ -31,6 +31,31 @@ const (
 	// Domain events
 	EventDomainAdded   EventType = "domain.added"
 	EventDomainRemoved EventType = "domain.removed"
+
+	// Managed-database addon events.
+	//
+	// THE STRINGS ARE THE VOCABULARY THE PLATFORM ALREADY SPEAKS. They are
+	// copied verbatim from the append-only lifecycle ledger in switchyard-api
+	// (internal/db/managed_db_addon_event_repository.go), which has written
+	// these exact values on every addon transition since migration 014. A
+	// second, prettier vocabulary here — `addon.created`, `addon.deleted` —
+	// would mean two names for one transition and a translation table that
+	// eventually disagrees with itself.
+	//
+	// These are RECORDS OF TRANSITIONS, not meter readings. Nothing in this
+	// package aggregates them, no MetricType is defined for a database, and
+	// no price is attached anywhere: metering DB usage needs an hourly sampler
+	// over CNPG volume usage that does not exist yet. Emitting the events
+	// first is what makes that sampler possible to write and to check.
+	EventAddonReady       EventType = "addon.ready"
+	EventAddonPlanChanged EventType = "addon.plan.changed"
+	EventAddonDestroyed   EventType = "addon.destroyed"
+
+	// Emitted by the addon reconciler when CloudNativePG reports a newly
+	// completed backup. Not part of the ledger vocabulary (the ledger records
+	// operator- and API-initiated transitions; this one is observed from
+	// cluster status), so it is named to sit alongside it.
+	EventAddonBackupCompleted EventType = "addon.backup.completed"
 )
 
 // MetricType represents billable metric types
@@ -55,9 +80,18 @@ type UsageEvent struct {
 	ResourceName string             `json:"resource_name,omitempty" db:"resource_name"`
 	Metrics      map[string]float64 `json:"metrics" db:"metrics"`
 	Metadata     map[string]string  `json:"metadata,omitempty" db:"metadata"`
-	Timestamp    time.Time          `json:"timestamp" db:"timestamp"`
-	ProcessedAt  *time.Time         `json:"processed_at,omitempty" db:"processed_at"`
-	CreatedAt    time.Time          `json:"created_at" db:"created_at"`
+	// IdempotencyKey names the real-world transition this event records.
+	// Empty means the emitter opted out of dedup. See migration 040.
+	//
+	// Write path only today: the read helpers below (GetUnprocessedEvents,
+	// GetEventsByProject) do not select the column, because nothing downstream
+	// reads it and widening their SELECT would change every caller's row
+	// shape for no gain. It is therefore zero on any event loaded from the
+	// database — do not branch on it after a read.
+	IdempotencyKey string     `json:"idempotency_key,omitempty" db:"idempotency_key"`
+	Timestamp      time.Time  `json:"timestamp" db:"timestamp"`
+	ProcessedAt    *time.Time `json:"processed_at,omitempty" db:"processed_at"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
 }
 
 // EventRequest is the request to record an event
@@ -70,7 +104,12 @@ type EventRequest struct {
 	ResourceName string             `json:"resource_name,omitempty"`
 	Metrics      map[string]float64 `json:"metrics" binding:"required"`
 	Metadata     map[string]string  `json:"metadata,omitempty"`
-	Timestamp    *time.Time         `json:"timestamp,omitempty"`
+	// IdempotencyKey, when set, makes this request safe to retry: a second
+	// POST carrying the same key records nothing and reports the event that
+	// already exists. Optional — omitting it preserves the historical
+	// insert-always behaviour for every emitter that predates it.
+	IdempotencyKey string     `json:"idempotency_key,omitempty"`
+	Timestamp      *time.Time `json:"timestamp,omitempty"`
 }
 
 // HourlyUsage represents aggregated hourly usage

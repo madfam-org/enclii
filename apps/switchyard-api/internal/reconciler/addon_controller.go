@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/addons"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/db"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
@@ -36,6 +37,20 @@ type AddonReconciler struct {
 	// finalizer tears down retention-hold addons past their window. May be nil
 	// (older wiring) — the sweep is skipped in that case rather than panicking.
 	finalizer RetentionFinalizer
+
+	// usage forwards observed addon.backup.completed events to Waybill. May be
+	// nil (no usage pipeline configured); the observation is then skipped.
+	usage AddonUsageEmitter
+	// backups remembers the last backup timestamp reported per addon so a
+	// steady state is quiet. See addon_backup_events.go.
+	backups *backupObserver
+}
+
+// AddonUsageEmitter is the narrow slice of the usage pipeline this reconciler
+// needs. Declared here rather than imported wholesale for the same reason
+// RetentionFinalizer is: the reconciler stays decoupled and fakeable.
+type AddonUsageEmitter interface {
+	EmitAddonEvent(ctx context.Context, ev addons.AddonUsageEvent) error
 }
 
 // CloudNativePG Group Version Resource
@@ -59,7 +74,14 @@ func NewAddonReconciler(repos *db.Repositories, k8sClient *k8s.Client, logger *l
 		dynamicClient: dynamicClient,
 		logger:        logger,
 		stopCh:        make(chan struct{}),
+		backups:       newBackupObserver(),
 	}
+}
+
+// SetUsageEmitter wires the Waybill usage emitter used to report observed
+// backups. Called from main after the emitter is built; safe to leave unset.
+func (r *AddonReconciler) SetUsageEmitter(e AddonUsageEmitter) {
+	r.usage = e
 }
 
 // SetRetentionFinalizer wires the finalizer used by the retention sweep. Called
@@ -219,6 +241,10 @@ func (r *AddonReconciler) reconcilePostgresAddon(ctx context.Context, addon *typ
 	if r.shouldUpdateAddon(addon, status) {
 		r.updateAddonFromStatus(ctx, addon, status, logger)
 	}
+
+	// A completed backup leaves no trace on this side except this field
+	// changing, so the poll that is already happening is where it is noticed.
+	r.emitBackupCompleted(ctx, addon, lastSuccessfulBackup(cluster), logger)
 }
 
 // parseClusterStatus extracts status from a CloudNativePG Cluster
@@ -374,6 +400,12 @@ func (r *AddonReconciler) markAddonDeleted(ctx context.Context, addon *types.Dat
 	if err := r.repos.DatabaseAddons.SoftDelete(ctx, addon.ID); err != nil {
 		logger.WithError(err).Error("Failed to mark addon as deleted")
 		return
+	}
+	// Drop the backup-observation entry: a deleted addon will never report
+	// another backup, and leaving the key would leak one map slot per addon
+	// for the lifetime of the process.
+	if r.backups != nil {
+		r.backups.forget(addon.ID.String())
 	}
 	logger.Info("Addon marked as deleted")
 }

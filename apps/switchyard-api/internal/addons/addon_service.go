@@ -19,6 +19,10 @@ type AddonService struct {
 	k8sClient    *k8s.Client
 	logger       *logrus.Logger
 	provisioners map[types.DatabaseAddonType]AddonProvisioner
+	// usage forwards lifecycle transitions to Waybill. Optional: nil means
+	// no usage pipeline is configured and the service behaves exactly as it
+	// did before the emitter existed.
+	usage UsageEmitter
 }
 
 // NewAddonService creates a new addon service
@@ -36,6 +40,14 @@ func NewAddonService(repos *db.Repositories, k8sClient *k8s.Client, logger *logr
 	svc.provisioners[types.DatabaseAddonTypeMySQL] = NewMySQLProvisioner(k8sClient, logger)
 
 	return svc
+}
+
+// SetUsageEmitter wires the Waybill usage emitter. A setter rather than a
+// constructor argument for the same reason SetRetentionFinalizer is one: the
+// emitter is configuration-dependent and every existing caller of
+// NewAddonService (tests included) must keep working without it.
+func (s *AddonService) SetUsageEmitter(e UsageEmitter) {
+	s.usage = e
 }
 
 // CreateAddonRequest represents a request to create a database addon.
@@ -741,7 +753,7 @@ func (s *AddonService) emitEventWithActor(ctx context.Context, addon *types.Data
 	if s.repos == nil || s.repos.ManagedDBAddonEvents == nil {
 		return
 	}
-	_, err := s.repos.ManagedDBAddonEvents.Insert(ctx, db.InsertEventParams{
+	eventID, err := s.repos.ManagedDBAddonEvents.Insert(ctx, db.InsertEventParams{
 		AddonID:        addon.ID,
 		ProjectID:      addon.ProjectID,
 		EventType:      eventType,
@@ -754,6 +766,48 @@ func (s *AddonService) emitEventWithActor(ctx context.Context, addon *types.Data
 			"addon_id":   addon.ID,
 			"event_type": eventType,
 		}).Warn("Failed to write addon event")
+		// No ledger row means no idempotency key, and a usage event keyed on
+		// nothing is a duplicate waiting to happen. The ledger is the
+		// authority; if it did not record the transition, the usage stream
+		// does not either.
+		return
+	}
+	s.forwardUsageEvent(ctx, addon, eventType, eventID)
+}
+
+// forwardUsageEvent mirrors a ledger transition into Waybill.
+//
+// The ledger row's id is the idempotency key. That is the whole design: it is
+// minted exactly once per transition, inside the same call that recorded it,
+// so a retried or repeated delivery — a timeout after the server committed, a
+// process restart mid-flight — cannot produce a second usage event for one
+// real-world change.
+//
+// Best-effort and non-blocking by contract, like the ledger write above it: a
+// usage-pipeline outage must never stop a customer from creating or deleting
+// a database. Failures are logged at WARN with the key, so a gap in the usage
+// stream can be traced back to the exact ledger row it should have mirrored.
+func (s *AddonService) forwardUsageEvent(
+	ctx context.Context, addon *types.DatabaseAddon, eventType db.ManagedDBAddonEventType, eventID uuid.UUID,
+) {
+	if s.usage == nil {
+		return
+	}
+	usageType := ledgerEventToUsageEvent(eventType)
+	if usageType == "" {
+		return // not a transition the usage stream cares about
+	}
+	if err := s.usage.EmitAddonEvent(ctx, AddonUsageEvent{
+		IdempotencyKey: eventID.String(),
+		EventType:      usageType,
+		Addon:          addon,
+		OccurredAt:     time.Now().UTC(),
+	}); err != nil {
+		s.logger.WithError(err).WithFields(logrus.Fields{
+			"addon_id":        addon.ID,
+			"event_type":      usageType,
+			"idempotency_key": eventID,
+		}).Warn("Failed to forward addon usage event to Waybill")
 	}
 }
 
