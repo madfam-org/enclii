@@ -76,8 +76,9 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `angelia/courier-producer-keys` | `secret/angelia` | `courier_producer_key_alarms`, `courier_producer_key_enclii_ops`, `courier_producer_key_tulana`, `courier_producer_key_madfam_site` |
 | `angelia/courier-channel-tokens` | `secret/angelia` | `courier_telegram_bot_token`, `courier_slack_bot_token` |
 | `angelia/courier-alertmanager` | `secret/angelia` | `courier_alertmanager_secret` |
+| `angelia/courier-webhook-signing-keys` | `secret/angelia` | `courier_webhook_signing_key_alarms`, `courier_webhook_signing_key_enclii_ops`, `courier_webhook_signing_key_tulana`, `courier_webhook_signing_key_madfam_site` |
 
-**Angelia OWNS all three Courier targets** (verifier-owns): Angelia verifies every
+**Angelia OWNS all four Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
 producers read their own `courier_producer_key_<producer>` cross-path through
 their own ExternalSecret rather than holding a second copy that drifts on
@@ -87,6 +88,16 @@ read cross-path by this repo's Alertmanager in the `monitoring` namespace
 Until the targets are populated every Courier route answers `503
 not_provisioned` and Alertmanager's `email_configs` carry alerts on their own,
 which is what happens today.
+
+`angelia/courier-webhook-signing-keys` (R23, ruled 2026-09-05) is the arming step
+for Courier's `webhook` channel — customer-supplied HTTPS targets, signed
+HMAC-SHA256 per producer. The property **suffix is the pairing mechanism**:
+`courier_webhook_signing_key_<suffix>` pairs with the same producer's
+`courier_producer_key_<suffix>`, and angelia assembles the set by prefix into
+`COURIER_WEBHOOK_SIGNING_KEYS`. A producer with no signing key still
+authenticates and is refused `503 not_provisioned` on that channel alone. **Run
+this target only after O21** (one real page delivered through Courier) — R23 is
+sequenced behind it, and running it earlier arms a channel nothing has verified.
 
 `symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
