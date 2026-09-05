@@ -6,6 +6,7 @@
 > `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
 > access as platform bootstrap or documented break-glass only, and record any
 > missing Enclii adapter gap.
+> Last Updated: 2026-09-04
 
 
 <!-- MADFAM-AGENTS-CANONICAL v1 -->
@@ -47,6 +48,15 @@ redirect and should not become the source of truth again.
 
 ## Repo-boundary contract
 
+- **No node identity in this repo, in any file type.** Hostnames, IP addresses
+  and hardware SKUs are private. Public docs name a ROLE (control-plane,
+  worker, builder) or use a `<TOKEN>` placeholder; manifests select nodes by
+  LABEL (`role=builder`) and never by `kubernetes.io/hostname`; scripts read
+  `${NODE_HOST:?}`-style required variables; tests use fixture names such as
+  `node-a`. Resolve real values from `internal-devops/infrastructure/nodes.md`.
+  Enforced by `scripts/public-hygiene-check.sh` (which reads its needles from
+  a private pattern file via `MADFAM_HYGIENE_PATTERNS` and reports
+  `classes_skipped=1` when that file is absent).
 - `solarpunk-foundry` is the public ecosystem contract hub.
 - `internal-devops` stores private operational details, raw topology, secrets, and sensitive runbook internals.
 - Keep `enclii` docs focused on public-safe architecture and implementation.
