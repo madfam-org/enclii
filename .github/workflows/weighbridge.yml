@@ -1,0 +1,212 @@
+name: Build — weighbridge
+
+# Standalone build pipeline for the CI runner meter.
+#
+# Mirrors .github/workflows/deploy-pipeline-monitor.yml, for the same reason
+# that workflow exists: weighbridge's manifest lives in
+# infra/k8s/production/monitoring/ and is synced by its own directory-mode
+# ArgoCD Application, so it is NOT covered by the shared build-publish pin job
+# (which writes digests into a single kustomization at
+# infra/k8s/production/kustomization.yaml — a weighbridge entry there would be
+# dead config, exactly the state the `dispatch` note in that file warns about).
+#
+#   - PR touching apps/waybill/** → test + build (no push)
+#   - main push touching apps/waybill/** → test, build, sign, push, pin digest
+#   - workflow_dispatch → same as a main push
+#
+# THE FIRST RUN IS LOAD-BEARING. The manifest ships with an all-zero sentinel
+# digest, so until this workflow has run once on main the Deployment is in
+# ImagePullBackOff. The pin step below is what ends that state.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/waybill/**'
+      - 'packages/otel-go/**'
+      - '.github/workflows/weighbridge.yml'
+  pull_request:
+    paths:
+      - 'apps/waybill/**'
+      - '.github/workflows/weighbridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write # cosign keyless
+
+env:
+  IMAGE: ghcr.io/madfam-org/enclii/weighbridge
+  MANIFEST: infra/k8s/production/monitoring/weighbridge.yaml
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/waybill/go.mod
+          check-latest: true
+          cache: true
+
+      # Scoped to the meter's own packages. The whole waybill module is
+      # already covered by ci.yml's auto-discovered test job; this is the gate
+      # that must be green before an IMAGE is published, not a second full run.
+      - name: Test the meter
+        working-directory: apps/waybill
+        run: go test ./internal/weighbridge/... ./cmd/weighbridge/...
+
+  build:
+    name: Build & publish image
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+        with:
+          cosign-release: v2.4.3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          # Repo root context: the Dockerfile copies packages/otel-go too.
+          context: .
+          file: apps/waybill/Dockerfile
+          target: weighbridge
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          # No :latest — Kyverno's disallow-latest-tag policy rejects it.
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=weighbridge
+          cache-to: type=gha,mode=max,scope=weighbridge
+
+      # Keyless signing needs GitHub's ambient OIDC endpoint, Fulcio and Rekor
+      # all at once, and a transient hiccup fails AFTER the image is pushed.
+      # Retry the sign call only; the push above never repeats.
+      - name: Sign image (keyless, Fulcio/Rekor)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+          IMAGE_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          signed=0
+          for wait in 0 20 60; do
+            if [ "$wait" -gt 0 ]; then
+              echo "::warning::cosign sign failed for ${IMAGE_REF} (transient OIDC/Fulcio/Rekor?); retrying in ${wait}s..."
+              sleep "$wait"
+            fi
+            if cosign sign --yes "${IMAGE_REF}"; then
+              signed=1
+              break
+            fi
+          done
+          if [ "$signed" -ne 1 ]; then
+            echo "::error::cosign sign failed 3 times for ${IMAGE_REF}."
+            echo "::error::The image was BUILT AND PUSHED but is NOT signed, so it must not be pinned."
+            exit 1
+          fi
+
+      - name: Commit digest pin
+        id: pin_commit
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Matches both the all-zero sentinel and any previously pinned digest.
+          sed -E -i "s#${IMAGE}(@sha256:[a-f0-9]{64}|:[A-Za-z0-9._-]+)#${IMAGE}@${DIGEST}#g" "${MANIFEST}"
+          git add "${MANIFEST}"
+          git diff --cached --quiet && echo "Digest already pinned" && exit 0
+          git commit -m "build: pin weighbridge image"
+          git push origin HEAD:main
+
+      - name: Surface digest in run summary
+        run: |
+          {
+            echo "## weighbridge build"
+            echo ""
+            echo "**Image:** \`${IMAGE}@${{ steps.build.outputs.digest }}\`"
+            echo ""
+            echo "Pinned into \`${MANIFEST}\` on main pushes; the \`weighbridge\` ArgoCD Application reconciles within ~3m."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The silent-stale-deploy guard, copied from deploy-pipeline-monitor.yml
+      # because the failure is identical: the dangerous state is not "a step
+      # failed" but "the image was pushed and the digest pin never landed" —
+      # GHCR has the image, the run looks like an ordinary failure, ArgoCD was
+      # never handed a new digest, and the meter quietly keeps running the
+      # previous build (or, on the very first run, never starts at all).
+      - name: Guard against silent stale deploy
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PIN_OUTCOME: ${{ steps.pin_commit.outcome }}
+        run: |
+          set -euo pipefail
+          echo "build=${BUILD_OUTCOME} pin=${PIN_OUTCOME}"
+          if [ "${BUILD_OUTCOME}" != "success" ]; then
+            echo "No image was pushed; nothing to guard."
+            exit 0
+          fi
+          if [ "${PIN_OUTCOME}" = "success" ]; then
+            echo "Digest pin completed; the deployed digest matches this run."
+            exit 0
+          fi
+          echo "::error title=Image pushed but NOT pinned/deployed::The weighbridge image for this"
+          echo "::error::commit was built and pushed to GHCR, but the digest pin did not complete"
+          echo "::error::(build=${BUILD_OUTCOME}, pin=${PIN_OUTCOME})."
+          echo "::error::"
+          echo "::error::ArgoCD was never handed a new digest. THE METER IS STILL RUNNING THE"
+          echo "::error::PREVIOUS BUILD, or has never started, and CI minutes are going unrecorded."
+          echo "::error::"
+          echo "::error::Fix: rerun the failed jobs (gh run rerun <run-id> --failed)."
+          exit 1
+
+  build-pr:
+    name: Build (PR verify)
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/waybill/Dockerfile
+          target: weighbridge
+          platforms: linux/amd64
+          push: false
+          load: false
+          cache-from: type=gha,scope=weighbridge
+          cache-to: type=gha,mode=max,scope=weighbridge

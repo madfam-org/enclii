@@ -1,0 +1,75 @@
+# Weighbridge — the CI runner meter. ArgoCD wrapper.
+#
+# Why a dedicated Application rather than folding the manifest into the
+# `monitoring` app: Weighbridge needs objects in TWO namespaces — its
+# Deployment, NetworkPolicy, ExternalSecret, PodMonitor and PrometheusRule in
+# `monitoring`, and a read-only Role/RoleBinding in `arc-runners`. The
+# `monitoring` kustomization sets `namespace: monitoring`, and kustomize's
+# namespace transformer OVERRIDES the namespace on every resource it renders,
+# so the arc-runners Role would silently be created in `monitoring` and the
+# meter would get 403s on every list. Directory mode applies each manifest
+# as written.
+#
+# Same shape and same reasoning as `deploy-pipeline-monitor` beside it, which
+# uses an `include` to sync exactly one file out of a path the `monitoring`
+# app also renders. The include is load-bearing: without it this Application
+# would double-sync every other manifest in that directory and fight the
+# `monitoring` app for ownership.
+#
+# Operator actions after this Application appears:
+#   1. The image line in the manifest ships as an all-zero SENTINEL digest.
+#      Merging to main triggers .github/workflows/weighbridge.yml, which
+#      builds, signs, pushes, and commits the real digest into the manifest.
+#      Until that commit lands the pod is in ImagePullBackOff and this app
+#      reports Degraded — deliberately visible rather than quietly inert.
+#   2. Confirm `weighbridge_runners_unattributed_total` is not climbing. If it
+#      is, runner pods carry no `enclii.dev/project-id` and their minutes are
+#      being dropped rather than misfiled; see the runbook.
+#   3. Runbook: docs/runbooks/WEIGHBRIDGE.md
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: weighbridge
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: metering
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/monitoring
+    directory:
+      recurse: false
+      # Only this manifest. Everything else in the path belongs to the
+      # `monitoring` Application's kustomize render.
+      include: 'weighbridge.yaml'
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Fallback namespace only — every resource in the manifest carries its own
+    # `metadata.namespace`, including the two that must land in `arc-runners`.
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+
+  info:
+    - name: "Runbook"
+      value: "docs/runbooks/WEIGHBRIDGE.md"
+    - name: "What it claims"
+      value: "A tenant's minute count is measured, not constructed."
+    - name: "What it does not claim"
+      value: "Cache bytes, egress bytes, or minutes burned while it was down."
