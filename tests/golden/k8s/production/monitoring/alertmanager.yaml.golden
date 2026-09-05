@@ -26,11 +26,35 @@ data:
       repeat_interval: 4h
       receiver: 'default-receiver'
       routes:
+        # THE MESSAGING PATH'S OWN FAILURE MUST NOT USE THE MESSAGING PATH.
+        # CourierReceiverDown fires when Alertmanager cannot deliver to
+        # angelia-api's Courier receiver. It is `severity: critical`, so
+        # without this route it would match the critical route below and be
+        # sent to the receiver that is broken — an alert about a dead pager,
+        # delivered through the dead pager. FIRST in the list and
+        # `continue: false` so it stops here and reaches the email-only
+        # default-receiver. Required mitigation 2 of internal-devops
+        # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 4.
+        #
+        # `matchers` rather than the deprecated `match` below: this route's
+        # correctness is load-bearing and the modern form is the one upstream
+        # keeps.
+        - matchers:
+            - alertname="CourierReceiverDown"
+          receiver: 'default-receiver'
+          continue: false
+          group_wait: 10s
+          repeat_interval: 1h
+
         # Critical alerts - immediate notification
         - match:
             severity: critical
           receiver: 'critical-receiver'
           group_wait: 10s
+          # Matches Courier's hourly idempotency window
+          # (`alarm:<alertname>:<hour>`): a repeat inside the hour collapses to
+          # one delivery in the ledger, so a shorter interval would only add
+          # POSTs, not pages.
           repeat_interval: 1h
 
         # Warning alerts - grouped notifications
@@ -46,24 +70,53 @@ data:
           - to: 'admin@madfam.io'
             send_resolved: true
 
-      # Telegram receivers return in ONE commit when BOTH prerequisites exist:
-      # a real chat_id (v0.26.0 rejects chat_id: 0 at config LOAD time with
-      # "missing chat_id on telegram_config" — there is no valid inert
-      # placeholder) and a populated Vault secret/alertmanager
-      # telegram_bot_token. Tracker: internal-devops issue #496 era
-      # roadmaps/2026-08-26-availability-remediation-9999.md Tier 0.1/0.2.
+      # THE LAST MILE IS ANGELIA COURIER, and nothing else.
+      # internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md
+      # (item M1) rules that every message this estate sends to a person on a
+      # third-party messaging network goes through one door:
+      # POST /v1/courier/alertmanager, which takes Alertmanager's schema-4
+      # webhook verbatim and normalises it into Courier's envelope. Both
+      # slack_configs blocks that used to live in these two receivers were
+      # DELETED, not left inert — a direct last mile that still works is the
+      # thing the decision removes.
+      #
+      # email_configs STAY, on purpose. They are the fallback that does not
+      # depend on angelia-api (policy § 4): angelia-api down means the webhook
+      # last mile is down, and the pager must not have a single point of
+      # failure. The CourierReceiverDown rule in prometheus.yaml is routed to
+      # the email receiver above for exactly that reason.
+      #
+      # WARNINGS ARE INERT HERE, deliberately. Courier's receiver filters by
+      # severity (COURIER_ALERTMANAGER_SEVERITIES, default `critical` only), so
+      # a warning POSTed to it is counted as `skipped` with reason `severity`
+      # and no message is sent. Routing warnings to the webhook now costs
+      # nothing and means the day Angelia widens that env var, warnings arrive
+      # with no change here. Until then warnings reach people by email only,
+      # exactly as they do today.
+      #
+      # repeat_interval: 1h on the critical route is not arbitrary: Courier
+      # dedups on `alarm:<alertname>:<hour>`, an hourly idempotency window, so
+      # every repeat inside the hour collapses to one delivery. A shorter
+      # repeat_interval would not page more often, it would just POST more.
+      #
+      # Until the operator populates `secret/angelia:courier_alertmanager_secret`
+      # (intake target `angelia/courier-alertmanager`), the receiver answers
+      # 503 not_provisioned, Alertmanager records a failed webhook notification,
+      # CourierReceiverDown fires, and email carries the page — which is the
+      # same behaviour as today, when there was no working last mile at all.
       - name: 'critical-receiver'
         email_configs:
           - to: 'admin@madfam.io'
             send_resolved: true
             headers:
               Subject: '[CRITICAL] {{ .CommonLabels.alertname }} - Enclii'
-        slack_configs:
-          - api_url_file: '/etc/alertmanager/slack-webhook-url'
-            channel: '#alerts-critical'
-            title: '[CRITICAL] {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.description }}'
+        webhook_configs:
+          - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
             send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/courier-alertmanager-secret
 
       - name: 'warning-receiver'
         email_configs:
@@ -71,12 +124,13 @@ data:
             send_resolved: true
             headers:
               Subject: '[WARNING] {{ .CommonLabels.alertname }} - Enclii'
-        slack_configs:
-          - api_url_file: '/etc/alertmanager/slack-webhook-url'
-            channel: '#alerts-warning'
-            title: '[WARNING] {{ .CommonLabels.alertname }}'
-            text: '{{ .CommonAnnotations.description }}'
+        webhook_configs:
+          - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
             send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/courier-alertmanager-secret
 
     inhibit_rules:
       # If a critical alert is firing, inhibit warnings for the same service
@@ -171,13 +225,16 @@ spec:
               mountPath: /etc/alertmanager/smtp-password
               subPath: smtp-password
               readOnly: true
-            - name: slack-secret
-              mountPath: /etc/alertmanager/slack-webhook-url
-              subPath: slack-webhook-url
-              readOnly: true
-            - name: telegram-secret
-              mountPath: /etc/alertmanager/telegram-bot-token
-              subPath: bot-token
+            # The Courier receiver's shared secret, read by
+            # `http_config.authorization.credentials_file` in both
+            # webhook_configs. Replaces the slack-webhook-url mount, which went
+            # with the slack_configs blocks. The telegram-bot-token mount went
+            # too: nothing referenced it, and re-adding telegram_configs — the
+            # only thing it existed for — is now forbidden by
+            # internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 2.
+            - name: courier-secret
+              mountPath: /etc/alertmanager/courier-alertmanager-secret
+              subPath: courier-alertmanager-secret
               readOnly: true
             - name: data
               mountPath: /alertmanager
@@ -208,18 +265,21 @@ spec:
         - name: smtp-secret
           secret:
             secretName: alertmanager-smtp-secret
-        - name: slack-secret
+        - name: courier-secret
           secret:
-            secretName: alertmanager-slack-secret
-        - name: telegram-secret
-          secret:
-            # Populated by alertmanager-telegram-credentials.externalsecret.yaml.
-            # INERT: no telegram_configs consume it yet, and the Secret does
-            # not exist until the operator completes Tier 0.1. `optional: true`
-            # keeps a missing Secret from blocking startup. Mount kept so
-            # re-enabling Telegram is a config-only change — see the
-            # ExternalSecret's header for the sequence.
-            secretName: alertmanager-telegram-secret
+            # Populated by alertmanager-courier-secret.externalsecret.yaml,
+            # which reads secret/angelia:courier_alertmanager_secret CROSS-PATH
+            # through the shared vault-store. Angelia owns that property; this
+            # namespace projects it, it does not hold a second copy.
+            #
+            # `optional: true` on purpose: until the operator runs
+            # `enclii secrets intake angelia/courier-alertmanager` the Secret
+            # does not exist, and a required mount would leave alertmanager
+            # Pending — i.e. the whole estate's alerting down waiting on a
+            # credential whose absence is supposed to be merely inert. With
+            # optional, the webhook POSTs with no credential, the receiver
+            # answers 503, and email keeps carrying alerts.
+            secretName: alertmanager-courier-secret
             optional: true
         - name: data
           persistentVolumeClaim:

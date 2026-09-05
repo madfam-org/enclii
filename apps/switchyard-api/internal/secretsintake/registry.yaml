@@ -237,3 +237,55 @@ targets:
     external_secret: janua-secrets
     keys:
       - internal_api_key
+
+  # Angelia Courier — third-party messaging goes through one door
+  # (internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md,
+  # angelia docs/adr/0010-courier-outbound-comms-substrate.md).
+  #
+  # ANGELIA OWNS ALL THREE. The "verifier-owns, cross-path read" pattern the
+  # estate already uses for phynd ↔ selva: the platform that VERIFIES a
+  # credential owns its canonical property, and every consumer reads that one
+  # copy cross-path through its own ExternalSecret rather than holding a second
+  # copy that drifts on rotation. Angelia verifies every one of these — the
+  # producer keys against COURIER_PRODUCER_KEYS, the bot tokens against the
+  # channel adapters, the receiver secret against the Alertmanager route — so
+  # secret/angelia is the single writable home for all of them.
+  #
+  # These are LOWERCASE Vault properties, matching angelia's ExternalSecret
+  # `property:` fields. ESO is all-or-nothing per ExternalSecret: a case
+  # mismatch here syncs ZERO keys and angelia-api starts with courier
+  # armed=false, which looks exactly like "not provisioned yet".
+  #
+  # Everything Courier ships with is INERT until these are populated: with no
+  # key the routes answer 503 not_provisioned. Intaking a target does not arm
+  # anything by itself — the operator still runs the target with a real value.
+  angelia/courier-producer-keys:
+    label: Angelia Courier producer keys
+    description: Per-producer keys for POST /v1/courier/send. One property per calling system so a single producer can be revoked without touching the others; angelia's ExternalSecret template assembles them into COURIER_PRODUCER_KEYS. Producers read only their OWN key cross-path.
+    vault_path: secret/angelia
+    namespace: angelia
+    external_secret: angelia-courier-secrets
+    keys:
+      - courier_producer_key_alarms
+      - courier_producer_key_enclii_ops
+      - courier_producer_key_tulana
+      - courier_producer_key_madfam_site
+
+  angelia/courier-channel-tokens:
+    label: Angelia Courier channel bot tokens
+    description: Bot tokens for Courier's direct channel adapters. Bot tokens only — never an incoming webhook URL, which is bound to one channel at creation and cannot serve an envelope whose recipient varies. Read own-path by angelia-api and by nothing else.
+    vault_path: secret/angelia
+    namespace: angelia
+    external_secret: angelia-courier-secrets
+    keys:
+      - courier_telegram_bot_token
+      - courier_slack_bot_token
+
+  angelia/courier-alertmanager:
+    label: Angelia Courier Alertmanager receiver secret
+    description: Shared secret for POST /v1/courier/alertmanager. Deliberately NOT a producer key — a producer key authorises arbitrary envelopes to arbitrary recipients, this one authorises exactly one thing. Read own-path by angelia-api, cross-path by enclii's Alertmanager in the monitoring namespace.
+    vault_path: secret/angelia
+    namespace: angelia
+    external_secret: angelia-courier-secrets
+    keys:
+      - courier_alertmanager_secret
