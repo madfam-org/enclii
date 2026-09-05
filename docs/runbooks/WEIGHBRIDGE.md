@@ -123,7 +123,11 @@ A missing Deployment is an ArgoCD health problem and shows there.
 
 Waybill is unreachable or refusing. In order:
 
-1. Is Waybill serving? The meter posts to `waybill.enclii.svc.cluster.local:8080`.
+1. Is Waybill serving? The meter posts to `http://waybill.enclii.svc.cluster.local`
+   — the Service's port 80, the same address `switchyard-api` uses. The
+   NetworkPolicies name **8080**, the pod's container port, which is what the
+   CNI evaluates after kube-proxy has translated the Service port. The two
+   numbers are supposed to differ.
 2. **Does the `waybill` Service exist?** It is *not* in this repo's manifests —
    it is created by the switchyard reconciler for the Deployment it manages
    (`enclii.dev/managed-by: switchyard`). If the reconciler ever stops creating

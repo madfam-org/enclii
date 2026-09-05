@@ -273,13 +273,20 @@ spec:
             - name: WEIGHBRIDGE_NAMESPACE
               value: arc-runners
             - name: WEIGHBRIDGE_WAYBILL_BASE_URL
-              # Cross-namespace, fully qualified. NOTE: the `waybill` Service
-              # is not in this repo's manifests — it is created by the
-              # switchyard reconciler for the Deployment it manages
-              # (`enclii.dev/managed-by: switchyard`). If that Service ever
-              # stops existing, this URL stops resolving and every event is
-              # counted in weighbridge_events_rejected_total.
-              value: http://waybill.enclii.svc.cluster.local:8080
+              # Cross-namespace, fully qualified, and DELIBERATELY WITHOUT AN
+              # EXPLICIT PORT. switchyard-api reaches the same service as
+              # `http://waybill` (ENCLII_WAYBILL_BASE_URL), i.e. the Service's
+              # port 80, while the NetworkPolicy above names 8080 — the POD's
+              # container port, which is what a CNI evaluates after kube-proxy
+              # has translated the Service port. Naming 8080 in the URL as
+              # well would look symmetrical and connect to nothing.
+              #
+              # NOTE: the `waybill` Service is not in this repo's manifests —
+              # it is created by the switchyard reconciler for the Deployment
+              # it manages (`enclii.dev/managed-by: switchyard`). If that
+              # Service ever stops existing, this URL stops resolving and
+              # every event is counted in weighbridge_events_rejected_total.
+              value: http://waybill.enclii.svc.cluster.local
             - name: WEIGHBRIDGE_WAYBILL_API_KEY
               valueFrom:
                 secretKeyRef:
