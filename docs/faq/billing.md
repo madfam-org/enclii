@@ -96,7 +96,7 @@ The entry rung of each of the other product lines is granted with a Sovereign su
 
 ### Coming soon: the other product lines
 
-These are planned, not on sale. There is no checkout for them, the names are provisional, and the prices below are planned list prices in USD:
+These are planned, not on sale. There is no checkout for them, and the prices below are planned list prices in USD. The line names were ruled on 2026-09-05: **Fragua** (runners), **Enclii Depot** (data), **Publica** (content):
 
 | Line | Planned tiers | Planned price |
 |------|---------------|---------------|

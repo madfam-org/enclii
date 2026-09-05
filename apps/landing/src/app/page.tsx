@@ -31,8 +31,10 @@ import {
 } from '@/components/cards'
 import { SiteFooter, SiteNav } from '@/components/site-chrome'
 
-// Proposed names pending owner ruling R16. Nothing below hard-codes a product
-// name: change it here once and the whole page follows.
+// Product line names, ruled by the owner on 2026-09-05 (R16): Fragua for the
+// runners line, Enclii Depot for the data line, Publica for the content line.
+// Nothing below hard-codes a product name: change it here once and the whole
+// page follows.
 const NAMES = {
   runners: 'Fragua',
   data: 'Enclii Depot',
