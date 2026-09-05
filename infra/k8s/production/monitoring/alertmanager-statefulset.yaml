@@ -31,8 +31,15 @@
 #   - `alertmanager-cluster` headless Service (defined in alertmanager.yaml,
 #     selectors stay compatible — both old Deployment and new StatefulSet
 #     pods carry `app: alertmanager`).
-#   - `alertmanager-config`, `alertmanager-smtp-secret`, `alertmanager-slack-
-#     secret` ConfigMap+Secrets (already exist).
+#   - `alertmanager-config` + `alertmanager-smtp-secret` (already exist).
+#   - `alertmanager-courier-secret`, projected by
+#     alertmanager-courier-secret.externalsecret.yaml from
+#     secret/angelia:courier_alertmanager_secret. Mounted `optional: true`, so
+#     the peers start without it; the Courier receiver simply answers 503 and
+#     email carries alerts until the intake target is populated. The
+#     `alertmanager-slack-secret` this file used to name went with the
+#     slack_configs blocks (internal-devops
+#     decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M1).
 #
 # After cutover, edit `prometheus.yaml` to point Prometheus' alerting target
 # at the headless Service (`alertmanager-cluster.monitoring.svc:9093`) so
@@ -143,13 +150,16 @@ spec:
               mountPath: /etc/alertmanager/smtp-password
               subPath: smtp-password
               readOnly: true
-            - name: slack-secret
-              mountPath: /etc/alertmanager/slack-webhook-url
-              subPath: slack-webhook-url
-              readOnly: true
-            - name: telegram-secret
-              mountPath: /etc/alertmanager/telegram-bot-token
-              subPath: bot-token
+            # The Courier receiver's shared secret, read by
+            # `http_config.authorization.credentials_file` in both
+            # webhook_configs. Replaces the slack-webhook-url mount, which went
+            # with the slack_configs blocks. The telegram-bot-token mount went
+            # too: nothing referenced it, and re-adding telegram_configs — the
+            # only thing it existed for — is now forbidden by
+            # internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 2.
+            - name: courier-secret
+              mountPath: /etc/alertmanager/courier-alertmanager-secret
+              subPath: courier-alertmanager-secret
               readOnly: true
             - name: data
               mountPath: /alertmanager
@@ -191,20 +201,22 @@ spec:
           secret:
             defaultMode: 420
             secretName: alertmanager-smtp-secret
-        - name: slack-secret
+        - name: courier-secret
           secret:
             defaultMode: 420
-            secretName: alertmanager-slack-secret
-        - name: telegram-secret
-          secret:
-            defaultMode: 420
-            # Populated by alertmanager-telegram-credentials.externalsecret.yaml.
-            # INERT: no telegram_configs consume it yet, and the Secret does
-            # not exist until the operator completes Tier 0.1. `optional: true`
-            # keeps a missing Secret from blocking startup. Mount kept so
-            # re-enabling Telegram is a config-only change — see the
-            # ExternalSecret's header for the sequence.
-            secretName: alertmanager-telegram-secret
+            # Populated by alertmanager-courier-secret.externalsecret.yaml,
+            # which reads secret/angelia:courier_alertmanager_secret CROSS-PATH
+            # through the shared vault-store. Angelia owns that property; this
+            # namespace projects it, it does not hold a second copy.
+            #
+            # `optional: true` on purpose: until the operator runs
+            # `enclii secrets intake angelia/courier-alertmanager` the Secret
+            # does not exist, and a required mount would leave every
+            # alertmanager peer Pending — i.e. the whole estate's alerting down
+            # waiting on a credential whose absence is supposed to be merely
+            # inert. With optional, the webhook POSTs with no credential, the
+            # receiver answers 503, and email keeps carrying alerts.
+            secretName: alertmanager-courier-secret
             optional: true
   # Each pod gets its own 1Gi PVC. RWO is fine because each pod owns its own
   # volume — no Multi-Attach errors. Longhorn handles per-pod replication

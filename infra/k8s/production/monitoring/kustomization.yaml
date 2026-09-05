@@ -14,11 +14,16 @@ resources:
   # cutover window. See alertmanager-statefulset.yaml header comment
   # for the migration sequence.
   - alertmanager-statefulset.yaml
-  # Sources the Telegram bot token from Vault (availability remediation
-  # Tier 0.3). INERT until Tier 0.1 populates secret/alertmanager in Vault.
-  # Kept deliberately with no telegram_configs consuming it — see the
-  # file's own header for the two-part re-enablement sequence.
-  - alertmanager-telegram-credentials.externalsecret.yaml
+  # Projects Angelia's courier_alertmanager_secret into the monitoring
+  # namespace for Alertmanager's webhook_configs credentials_file. Cross-path
+  # read of secret/angelia — Angelia owns the property, this namespace does not
+  # hold a second copy. See the file's header for the inert-until-provisioned
+  # behaviour. Replaces alertmanager-telegram-credentials.externalsecret.yaml,
+  # deleted 2026-09-05: nothing consumed it, and the telegram_configs it was
+  # kept for are now forbidden by internal-devops
+  # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 2 — no
+  # platform in this estate holds a messaging-network bot token any more.
+  - alertmanager-courier-secret.externalsecret.yaml
   # Object-state exporter (kube_job_*, kube_pod_*, kube_deployment_*).
   # WITHOUT this line the manifest file still sits in this directory,
   # kustomize never renders it, and Argo reports Synced/Healthy for a

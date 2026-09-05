@@ -180,7 +180,7 @@ spec:
     - protocol: TCP
       port: 6443
 ---
-# AlertManager egress — DNS, SMTP, Prometheus
+# AlertManager egress — DNS, SMTP, the Angelia Courier receiver, Prometheus
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -207,24 +207,34 @@ spec:
     ports:
     - protocol: TCP
       port: 587
-  # HTTPS, for webhook receivers.
+  # The Angelia Courier receiver — the estate's ONE last mile for third-party
+  # messaging (internal-devops
+  # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M1).
+  # Both `critical-receiver` and `warning-receiver` POST to
+  # http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager. That
+  # Service listens on 80 and targets CONTAINER port 8787, and a NetworkPolicy
+  # matches the container port, not the Service port: writing 80 here would be
+  # a rule that permits nothing while reading as though it permits the traffic.
   #
-  # Added 2026-09-04 while arming arc-pool-health end to end. Both
-  # `critical-receiver` and `warning-receiver` in alertmanager.yaml carry a
-  # `slack_configs` block with `api_url_file`, and this policy allowed DNS,
-  # SMTP and gossip but never 443 — so every Slack notification failed at the
-  # CNI with a connection timeout while the email half delivered and the
-  # config looked, and validated, perfectly correct. That is the same shape as
-  # the alerts this file's neighbours exist to catch: a delivery path that is
-  # configured, healthy-looking, and dead.
+  # ONE SELECTOR SHAPE per `to:` item, and nothing else in it. k3s's netpol
+  # controller renders a combined namespaceSelector+podSelector entry as
+  # deny-everything — the estate has already paid for that lesson twice
+  # (angelia PR #9, and the gossip rule below carries the same warning). A
+  # namespace-wide allow to `angelia` on one port is the shape that works.
   #
-  # `to: []` (anywhere) rather than an ipBlock: Slack's webhook edge is a
-  # CDN with no stable published range, and pinning a stale range fails
-  # closed on exactly the page that matters. Mirrors the SMTP rule above.
-  - to: []
+  # This REPLACES the blanket `to: []` port-443 egress added 2026-09-04 for the
+  # slack_configs blocks. Those blocks are gone, so the estate's alerting no
+  # longer needs to reach the public internet at all on 443: the last mile is
+  # an in-cluster Service. Keeping the rule would leave alertmanager able to
+  # POST anywhere on the internet for no configured reason, which is exactly
+  # the direct last mile the decision removes.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: angelia
     ports:
     - protocol: TCP
-      port: 443
+      port: 8787
   # Prometheus (for silences API etc.)
   - to:
     - podSelector:
