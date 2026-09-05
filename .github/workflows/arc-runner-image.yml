@@ -210,20 +210,39 @@ jobs:
           SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
         run: |
           set -euo pipefail
-          # Informational, not a gate: the repo has no image-size budget, and
-          # the OpenSCAD AppImage extraction is a known ~200-300 MB. Printing it
-          # every build is what makes an unexpected jump visible in review.
+          # Informational, not a gate: the repo has no image-size budget for
+          # this image. Reporting the total AND the delta against the upstream
+          # base on every build is what makes an unexpected jump visible in
+          # review — the extracted OpenSCAD squashfs dominates the overlay, so
+          # a bad bump shows up here first.
           SIZE_BYTES="$(docker image inspect "${SMOKE_IMAGE}" --format '{{.Size}}')"
           SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
           echo "arc-runner image size: ${SIZE_MB} MiB"
+
+          # The base is already in the local daemon as a build parent; pull is
+          # a no-op if so. Non-fatal — a registry hiccup must not fail a build
+          # over a number we only print.
+          BASE_REF="$(awk -F= '/^ARG BASE_IMAGE=/{i=$2} /^ARG BASE_TAG=/{t=$2} END{print i":"t}' \
+            infra/docker/arc-runner/Dockerfile)"
+          DELTA_LINE="base \`${BASE_REF}\` size unavailable (registry not reachable); delta not computed."
+          if docker pull -q "${BASE_REF}" >/dev/null 2>&1; then
+            BASE_BYTES="$(docker image inspect "${BASE_REF}" --format '{{.Size}}')"
+            BASE_MB=$(( BASE_BYTES / 1024 / 1024 ))
+            DELTA_MB=$(( SIZE_MB - BASE_MB ))
+            echo "base ${BASE_REF}: ${BASE_MB} MiB; overlay adds ${DELTA_MB} MiB"
+            DELTA_LINE="Base \`${BASE_REF}\` is \`${BASE_MB} MiB\`, so this overlay (CI deps + the G16 render environment) adds \`${DELTA_MB} MiB\`."
+          fi
+
           {
             echo "## Image size"
             echo ""
-            echo "\`${SIZE_MB} MiB\` (uncompressed, local daemon view)."
+            echo "\`${SIZE_MB} MiB\` total, uncompressed (local daemon view)."
             echo ""
-            echo "The render environment (G16) adds roughly 250-350 MiB over the"
-            echo "pre-G16 image: the extracted OpenSCAD AppImage dominates, with"
-            echo "libGL/X + Liberation fonts + xvfb making up the rest."
+            echo "${DELTA_LINE}"
+            echo ""
+            echo "Within the overlay, the extracted OpenSCAD AppImage dominates"
+            echo "(~84 MiB download, a few hundred MiB on disk); libGL/X,"
+            echo "Liberation fonts and xvfb are a few tens of MiB."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install cosign
