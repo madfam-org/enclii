@@ -15,6 +15,12 @@ name: Build ARC Runner Image
 #
 # See infra/docker/arc-runner/README.md for image rationale and the
 # rebuild cadence policy.
+#
+# Since G16 the image also carries the commons render environment
+# (libGL/X, Liberation fonts, OpenSCAD 2026.02.01). The "Smoke-check the
+# render environment" step below gates every build on it, because a runner
+# image that has drifted from yantra4d's platform image renders geometry
+# that does not match production.
 
 on:
   push:
@@ -51,7 +57,10 @@ jobs:
   build:
     name: Build + push arc-runner image
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Raised from 20 with G16: the OpenSCAD AppImage is ~84 MB to download and
+    # extracts to a few hundred MB, and the smoke check runs the image after.
+    # Cached layers make the steady state fast; this covers a cold cache.
+    timeout-minutes: 35
 
     outputs:
       digest: ${{ steps.build.outputs.digest }}
@@ -116,6 +125,11 @@ jobs:
           context: infra/docker/arc-runner
           file: infra/docker/arc-runner/Dockerfile
           push: ${{ steps.meta.outputs.push_image == 'true' }}
+          # Also load into the local daemon so the smoke check below can run
+          # the image we just built. On PRs (push=false) this is the ONLY copy
+          # that exists; on main it costs one extra local export and means the
+          # smoke check gates the same bits that were pushed.
+          load: true
           tags: ${{ steps.tags.outputs.tags }}
           # Buildx cache via GHA cache backend — keeps rebuilds fast
           # when only the Dockerfile changes but the base image is hot.
@@ -126,6 +140,91 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             enclii.dev/component=arc-runner
+
+      # The render environment (G16) is the reason commons cartridges can build
+      # on this pool at all, and every one of these three assertions maps to a
+      # failure we have actually seen:
+      #   - `openscad --version` pinned to the exact snapshot: the Ubuntu
+      #     archive's openscad is older and silently renders DIFFERENT geometry
+      #     for Gridfinity extended syntax, so "openscad exists" is not enough.
+      #   - Liberation fonts: a missing font does not error, it renders boxes,
+      #     and the part ships with unreadable labels.
+      #   - libGL.so.1 loadable from Python: this is precisely how OCP
+      #     (CadQuery's kernel) fails — `ctypes.CDLL` at import time, with the
+      #     misleading message "CadQuery is not installed".
+      # The Dockerfile checks the same things at build time; this re-checks
+      # them through `docker run` on the final image, which is what the pool
+      # actually executes (build-layer state and final-image state can differ).
+      #
+      # The distinction is load-bearing for the OpenSCAD payload specifically:
+      # the build-time check runs as root (the image is still in its `USER
+      # root` section there), while this one inherits the final image's `USER
+      # runner`. A squashfs tree extracted root-only would sail through the
+      # build and fail every real job; only this step sees that.
+      - name: Smoke-check the render environment
+        env:
+          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
+          EXPECTED_OPENSCAD: "2026.02.01"
+        run: |
+          set -euo pipefail
+          run() { docker run --rm --entrypoint bash "${SMOKE_IMAGE}" -c "$1"; }
+
+          echo "::group::openscad --version"
+          # OpenSCAD prints its version to stderr; xvfb-run because it is a Qt app.
+          version_out="$(run 'xvfb-run -a openscad --version 2>&1' || true)"
+          echo "${version_out}"
+          echo "::endgroup::"
+          if ! grep -q "${EXPECTED_OPENSCAD}" <<<"${version_out}"; then
+            echo "::error::openscad did not report ${EXPECTED_OPENSCAD}. Got: ${version_out}"
+            echo "::error::The image MUST match yantra4d apps/api/Dockerfile's OpenSCAD snapshot."
+            exit 1
+          fi
+
+          echo "::group::fonts"
+          # `|| true` so a missing font reaches the explicit check below with a
+          # useful message, instead of `set -e` killing the step on the listing.
+          run 'fc-list | grep -i liberation | head -5' || true
+          echo "::endgroup::"
+          if ! run 'fc-list | grep -qi liberation'; then
+            echo "::error::Liberation fonts are missing (fc-list has no match)."
+            echo "::error::Cartridges label parts with them; without them renders show boxes."
+            exit 1
+          fi
+
+          echo "::group::libGL loadable from Python (OCP import path)"
+          # Held in a variable so the python source uses double quotes and the
+          # shell layer uses single ones — no nested-quote escaping to get wrong
+          # on the next edit of this step.
+          libgl_probe='import ctypes; ctypes.CDLL("libGL.so.1"); print("libGL.so.1 OK")'
+          if ! run "python3 -c '${libgl_probe}'"; then
+            echo "::error::libGL.so.1 is not loadable. OCP/CadQuery will die at import with"
+            echo "::error::'CadQuery is not installed (libGL.so.1: cannot open shared object file)'."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "Render environment smoke check passed."
+
+      - name: Report image size
+        env:
+          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          # Informational, not a gate: the repo has no image-size budget, and
+          # the OpenSCAD AppImage extraction is a known ~200-300 MB. Printing it
+          # every build is what makes an unexpected jump visible in review.
+          SIZE_BYTES="$(docker image inspect "${SMOKE_IMAGE}" --format '{{.Size}}')"
+          SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
+          echo "arc-runner image size: ${SIZE_MB} MiB"
+          {
+            echo "## Image size"
+            echo ""
+            echo "\`${SIZE_MB} MiB\` (uncompressed, local daemon view)."
+            echo ""
+            echo "The render environment (G16) adds roughly 250-350 MiB over the"
+            echo "pre-G16 image: the extracted OpenSCAD AppImage dominates, with"
+            echo "libGL/X + Liberation fonts + xvfb making up the rest."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install cosign
         if: steps.meta.outputs.push_image == 'true'
