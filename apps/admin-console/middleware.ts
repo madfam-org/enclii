@@ -6,6 +6,7 @@ import {
   hasAllowedRole as _hasAllowedRole,
   isPublicPath as _isPublicPath,
   extractRoles as _extractRoles,
+  platformRankFromClaims as _platformRankFromClaims,
 } from './lib/auth-helpers'
 
 /**
@@ -18,6 +19,31 @@ import {
  * 1. JWT is verified against Janua JWKS endpoint
  * 2. Email domain must be from an allowed domain (configurable via env)
  * 3. User role must be an operator-level role (superadmin, admin, operator)
+ * 4. ADR-003: if the token STATES the platform rank, it must not state false
+ *
+ * ADR-003 AND WHY STEP 4 IS SHAPED THE WAY IT IS
+ * ----------------------------------------------
+ * Every route this console drives (/v1/admin/*) now requires the
+ * `platform_admin` rank at the API. That rank is a column in the API's
+ * database, reconciled from an operator allow-list — it is deliberately not a
+ * role string, because an API token's scopes are copied into the caller's
+ * roles and a rank assertable by string is a rank a tenant administrator can
+ * mint for itself. So the role list below CANNOT be made to mean the same
+ * thing as the API's gate, and narrowing it to a `platform_admin` role would
+ * be theatre: it would deny on a string the API refuses to trust.
+ *
+ * What the console does instead is the honest half. When the verified token
+ * states the rank, a stated `false` is a denial — a principal the API will
+ * refuse on every call has no reason to be handed the portal. When the token
+ * says nothing (today's Janua tokens do not carry the claim), the legacy role
+ * list still admits, and the console logs that it is doing so. It does NOT
+ * fail closed on a missing claim: that would lock every operator out of the
+ * console the day this deploys, in service of a check that is not the
+ * enforcement point anyway.
+ *
+ * ADR-003 §5 is explicit that the UI is not an enforcement point. This
+ * middleware is an affordance: the API refuses the call regardless of what
+ * happens here, and nothing here may be relied on for tenant isolation.
  *
  * Configure via environment variables:
  * - JANUA_ISSUER: OIDC issuer URL (e.g., https://auth.madfam.io)
@@ -74,6 +100,14 @@ function extractRoles(payload: Record<string, unknown>): string[] {
   return _extractRoles(payload)
 }
 
+/**
+ * Read the ADR-003 platform rank from the verified payload.
+ * `null` means the token does not carry the claim at all.
+ */
+function platformRankFromClaims(payload: Record<string, unknown>): boolean | null {
+  return _platformRankFromClaims(payload)
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -99,6 +133,7 @@ export async function middleware(request: NextRequest) {
   // We no longer trust client-writable cookies for email/roles.
   let email: string | undefined
   let roles: string[] = []
+  let platformRank: boolean | null = null
 
   try {
     const { payload } = await jwtVerify(token, jwks, {
@@ -107,6 +142,7 @@ export async function middleware(request: NextRequest) {
 
     email = payload.email as string | undefined
     roles = extractRoles(payload as Record<string, unknown>)
+    platformRank = platformRankFromClaims(payload as Record<string, unknown>)
   } catch (err) {
     console.warn(`[DISPATCH SECURITY] JWT verification failed: ${err}`)
 
@@ -127,17 +163,32 @@ export async function middleware(request: NextRequest) {
   const domainAllowed = email ? isAllowedDomain(email) : false
   const roleAllowed = hasAllowedRole(roles)
 
-  if (!domainAllowed || !roleAllowed) {
+  // ADR-003: a token that STATES the platform rank as false names a principal
+  // the API will refuse on every /v1/admin/* call. A token that says nothing
+  // about the rank is not a denial — see the note at the top of this file.
+  const rankDenied = platformRank === false
+  if (platformRank === null && domainAllowed && roleAllowed) {
+    console.warn(
+      '[DISPATCH SECURITY] token carries no ADR-003 platform-rank claim; admitting on the legacy role list. ' +
+        'The API is the enforcement point and will refuse /v1/admin/* without the platform_admin rank.'
+    )
+  }
+
+  if (!domainAllowed || !roleAllowed || rankDenied) {
     const reason = !domainAllowed
       ? `email domain not allowed: ${email}`
-      : `insufficient role: ${roles.join(',') || 'none'}`
+      : rankDenied
+        ? 'token states is_platform_admin=false (ADR-003); tenant administrators are scoped to their own tenant'
+        : `insufficient role: ${roles.join(',') || 'none'}`
     console.warn(`[DISPATCH SECURITY] Unauthorized access attempt - ${reason}`)
 
     if (pathname.startsWith('/api/')) {
       return new NextResponse(
         JSON.stringify({
           error: 'Forbidden',
-          message: 'Dispatch access is restricted to authorized infrastructure operators.',
+          message: rankDenied
+            ? 'Dispatch requires the platform_admin rank (ADR-003). Tenant administrators are scoped to their own tenant.'
+            : 'Dispatch access is restricted to authorized infrastructure operators.',
         }),
         {
           status: 403,

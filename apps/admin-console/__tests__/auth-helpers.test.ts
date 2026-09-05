@@ -3,6 +3,7 @@ import {
   hasAllowedRole,
   isPublicPath,
   extractRoles,
+  platformRankFromClaims,
 } from '@/lib/auth-helpers'
 
 // =============================================================================
@@ -191,5 +192,41 @@ describe('extractRoles', () => {
     const payload = { roles: ['admin'], role: ['viewer'] }
     // The implementation uses || so "roles" is truthy and wins
     expect(extractRoles(payload)).toEqual(['admin'])
+  })
+})
+
+// =============================================================================
+// platformRankFromClaims (ADR-003)
+// =============================================================================
+
+describe('platformRankFromClaims (ADR-003)', () => {
+  it('reads a boolean claim', () => {
+    expect(platformRankFromClaims({ is_platform_admin: true })).toBe(true)
+    expect(platformRankFromClaims({ is_platform_admin: false })).toBe(false)
+  })
+
+  it('reads the namespaced claim', () => {
+    expect(platformRankFromClaims({ enclii_is_platform_admin: true })).toBe(true)
+  })
+
+  it('accepts the string form some issuers emit', () => {
+    expect(platformRankFromClaims({ is_platform_admin: 'true' })).toBe(true)
+    expect(platformRankFromClaims({ is_platform_admin: 'false' })).toBe(false)
+  })
+
+  // The three-way answer is the point: a token minted before the issuer knew
+  // about the claim must not read as a denial, or this deploy locks every
+  // operator out of the console on the day it ships.
+  it('returns null when the token says nothing about the rank', () => {
+    expect(platformRankFromClaims({})).toBeNull()
+    expect(platformRankFromClaims({ roles: ['admin'] })).toBeNull()
+  })
+
+  // ADR-003 normalises the string down to tenant_admin at the API because an
+  // API token's scopes become the caller's roles. Honouring it here would let
+  // a tenant administrator assert the very rank the console is checking for.
+  it('never accepts platform_admin as a role string', () => {
+    expect(platformRankFromClaims({ roles: ['platform_admin'] })).toBeNull()
+    expect(platformRankFromClaims({ role: 'platform_admin' })).toBeNull()
   })
 })

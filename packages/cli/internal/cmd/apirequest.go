@@ -62,7 +62,7 @@ func apiRequest(ctx context.Context, cfg *config.Config, method, path string, pa
 		return fmt.Errorf("unauthorized — run `enclii login` to refresh credentials")
 	}
 	if resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("forbidden — your account lacks permission for %s", path)
+		return fmt.Errorf("forbidden — %s", forbiddenReason(path))
 	}
 	if resp.StatusCode >= 400 {
 		fmt.Fprintf(os.Stderr, "API %s %s → HTTP %d\n", method, path, resp.StatusCode)
@@ -74,6 +74,51 @@ func apiRequest(ctx context.Context, cfg *config.Config, method, path string, pa
 		}
 	}
 	return nil
+}
+
+// forbiddenReason explains a 403 in the vocabulary the API now uses.
+//
+// ADR-003 (see docs/architecture/ADR_003_TENANT_ADMIN_SCOPE.md in the enclii
+// repo) split the old single `admin` rank in two: `platform_admin` is strictly
+// above `tenant_admin`, and it is a property of the principal in the API's
+// database — never a role string, because an API token's scopes are copied
+// verbatim into the caller's roles and a rank assertable by string is a rank
+// any tenant administrator could mint for itself.
+//
+// Every /v1/admin/* route and the secret-intake routes now require that rank.
+// The old message ("your account lacks permission") sent an operator looking
+// for a role to grant themselves, which is exactly the thing that no longer
+// exists. This one says what actually has to change and who can change it.
+//
+// The CLI is an affordance, not an enforcement point (ADR-003 §5): it never
+// decides that a caller holds the rank, it only explains the API's refusal.
+func forbiddenReason(path string) string {
+	if isPlatformRankPath(path) {
+		return fmt.Sprintf(
+			"%s requires the platform_admin rank (ADR-003).\n"+
+				"Tenant administrators are scoped to their own tenant; the rank is granted by a\n"+
+				"platform operator adding your address to ENCLII_PLATFORM_ADMIN_EMAILS on the API,\n"+
+				"and cannot be obtained from a role or an API-token scope.", path)
+	}
+	return fmt.Sprintf("your account lacks permission for %s", path)
+}
+
+// isPlatformRankPath reports whether a path is one the API gates on the
+// ADR-003 platform rank.
+func isPlatformRankPath(path string) bool {
+	trimmed := path
+	if i := strings.Index(trimmed, "?"); i >= 0 {
+		trimmed = trimmed[:i]
+	}
+	// /v1/admin/projects/:slug/reconcile-services is the one tenant-visible
+	// route in the admin subtree — it is gated on the caller's tenant, not on
+	// the rank, so a 403 there is not a rank problem.
+	if strings.HasPrefix(trimmed, "/v1/admin/projects/") {
+		return false
+	}
+	return strings.HasPrefix(trimmed, "/v1/admin/") ||
+		trimmed == "/v1/admin" ||
+		strings.HasPrefix(trimmed, "/v1/secrets/intake")
 }
 
 // apiRequestResponse is like apiRequest but returns the raw *http.Response.
