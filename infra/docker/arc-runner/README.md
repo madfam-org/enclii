@@ -48,10 +48,35 @@ already installed and returns immediately.
 `apps/api/Dockerfile`, package for package, plus the OCP runtime libraries
 that repo's CI installs separately. "It renders in CI" is only a meaningful
 statement if CI renders with the same libraries and the same OpenSCAD binary
-as production does. In particular the OpenSCAD **2026.02.01 snapshot** is
+as production does. In particular the OpenSCAD **2026.02.13 snapshot** is
 pinned by SHA-256 and installed from `files.openscad.org`, not from the Ubuntu
 archive — the archive's `openscad` is older and silently renders *different
 geometry* for Gridfinity extended syntax.
+
+**Why 2026.02.13 and not 2026.02.01** (bumped 2026-09-05, ruling G31). The
+2026.02.01 snapshot **cannot render the platform's pinned BOSL2 v2.0.753**
+(`fcfce7c7`). Two lines are enough to break it:
+
+```openscad
+include <BOSL2/std.scad>
+cube([1,1,1], anchor=[-1,-1,-1]);
+```
+
+```
+ERROR: Assertion '(is_list($tags_shown) || ($tags_shown == "ALL"))' failed
+       in libs/BOSL2/attachments.scad, line 3809
+Current top level object is empty.
+```
+
+That is every *anchored* BOSL2 primitive — most of the library — and the STL
+comes out empty. It surfaced in yantra4d PR #125's backend job
+(`tests/integration/test_submodule_smoke.py::TestBOSL2Smoke`). The identical
+file and BOSL2 commit render a 1443-byte STL under 2026.02.13. BOSL2 v2.0.753
+simply requires a snapshot newer than 2026.02.01, so the snapshot moves rather
+than the library pin. This bump must land in lockstep with
+`yantra4d/apps/api/Dockerfile` (which renders cartridges server-side with the
+same broken snapshot today) and `hyperobjects-spec`
+`y4d_spec.render_environment`.
 
 AppImages need FUSE, which containers do not have, so the AppImage is
 extracted at build time (`--appimage-extract`) and `AppRun` is symlinked to
@@ -61,7 +86,7 @@ What the image provides:
 
 | Component | Value |
 |---|---|
-| OpenSCAD | snapshot `2026.02.01`, sha256-verified, at `/usr/local/bin/openscad` |
+| OpenSCAD | snapshot `2026.02.13`, sha256-verified, at `/usr/local/bin/openscad` |
 | OpenGL / EGL | `libgl1`, `libglu1-mesa`, `libegl1` |
 | X / Qt link deps | `libxrender1`, `libxcursor1`, `libxft2`, `libxinerama1`, `libxext6`, `libwayland-client0` |
 | Text / fonts | `fonts-liberation`, `fontconfig` (`fc-cache -f` run at build), `libharfbuzz0b` |
@@ -91,16 +116,22 @@ The runner pods' 6 GiB memory limit is unaffected: this is disk/registry, not
 RSS, and the pods pull by digest onto a warm node cache.
 
 **Smoke check.** Every build of this image runs the final artifact through
-`docker run` and asserts three things, each mapping to a failure mode that
+`docker run` and asserts four things, each mapping to a failure mode that
 does not announce itself:
 
-1. `openscad --version` reports exactly `2026.02.01` — "openscad exists" is
+1. `openscad --version` reports exactly `2026.02.13` — "openscad exists" is
    not enough, since the wrong version renders different geometry.
 2. `fc-list` matches `liberation` — a missing font does not error, it renders
    boxes, and the part ships with unreadable labels.
 3. `python3 -c "import ctypes; ctypes.CDLL('libGL.so.1')"` succeeds — this is
    precisely how OCP fails, at import, behind the misleading message
    "CadQuery is not installed".
+4. **A BOSL2 part actually renders** (added with the G31 bump): the workflow
+   clones BOSL2 at the platform's pinned `fcfce7c7`, mounts it read-only with
+   `OPENSCADPATH`, renders the two-line file above, and requires exit 0 *and*
+   a non-trivial STL. Checks 1–3 all passed on the 2026.02.01 image that could
+   not render a single anchored BOSL2 primitive — version strings and library
+   presence cannot see a semantic incompatibility, only a render can.
 
 The `Dockerfile` asserts the same things at build time, but that layer runs as
 `root`; the `docker run` check inherits the image's `USER runner`, which is
@@ -203,13 +234,32 @@ docker run --rm --entrypoint bash arc-runner:dev -c '
   xz --version
 '
 
-# Sanity-check the render environment (G16) — the same three assertions the
+# Sanity-check the render environment (G16) — the same presence assertions the
 # image build workflow gates on. Note this runs as `runner`, not root.
 docker run --rm --entrypoint bash arc-runner:dev -c '
-  xvfb-run -a openscad --version 2>&1 | grep 2026.02.01
+  xvfb-run -a openscad --version 2>&1 | grep 2026.02.13
   fc-list | grep -i liberation | head -3
   python3 -c "import ctypes; ctypes.CDLL(\"libGL.so.1\"); print(\"libGL OK\")"
 '
+
+# Render a real BOSL2 part (G31) — the check that would have caught the
+# 2026.02.01 / BOSL2 v2.0.753 incompatibility. Expect exit 0 and ~1.4 KB.
+mkdir -p /tmp/oscad-libs /tmp/oscad-smoke
+git clone --filter=blob:none --no-checkout \
+  https://github.com/BelfrySCAD/BOSL2 /tmp/oscad-libs/BOSL2
+# Full sha: `git fetch <remote> <sha>` resolves its argument as a ref on the
+# SERVER, which cannot expand an abbreviation ("couldn't find remote ref").
+git -C /tmp/oscad-libs/BOSL2 fetch --depth 1 origin \
+  fcfce7c763863d8e66d5f36a551d11129ec1a607
+git -C /tmp/oscad-libs/BOSL2 checkout FETCH_HEAD
+printf '%s\n' 'include <BOSL2/std.scad>' 'cube([1,1,1], anchor=[-1,-1,-1]);' \
+  > /tmp/oscad-smoke/smoke.scad
+chmod 777 /tmp/oscad-smoke
+docker run --rm \
+  -v /tmp/oscad-libs:/opt/oscad-libs:ro -v /tmp/oscad-smoke:/work \
+  -e OPENSCADPATH=/opt/oscad-libs --entrypoint bash arc-runner:dev -c \
+  'cd /work && xvfb-run -a openscad -o /work/smoke.stl smoke.scad'
+wc -c /tmp/oscad-smoke/smoke.stl
 ```
 
 ## Operational links
