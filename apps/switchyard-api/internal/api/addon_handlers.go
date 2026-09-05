@@ -361,7 +361,7 @@ func (h *Handler) DeleteAddon(c *gin.Context) {
 	// retention hold, never nuke a production DB instantly. Checked up front so
 	// an unauthorized force fails fast, before any addon lookup.
 	force := isTruthyQueryParam(c.Query("force"))
-	if force && !callerIsPlatformAdmin(c) {
+	if force && !h.callerIsPlatformAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "force delete requires platform admin; a standard delete schedules a retention hold instead",
 		})

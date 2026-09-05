@@ -1,6 +1,6 @@
 # ADR-003: `platform_admin` is strictly above `tenant_admin`
 
-> **Status**: Accepted — owner ruling, 2026-09-05
+> **Status**: Accepted — enforcement landed PR #499 (2026-09-05)
 > **Decision id**: `decision.tenant-admin-scope`
 > **Date**: 2026-09-05
 > **Authors**: Platform / control-plane
@@ -18,8 +18,8 @@
 touch another tenant. The rule is enforced at the target of every call, not in
 the UI.**
 
-This ADR records the ruling. It does **not** implement it — see
-[Consequences](#consequences).
+This ADR recorded the ruling. The enforcement has since landed — see
+[Enforcement](#enforcement) for what is enforced, where, and what is not yet.
 
 ---
 
@@ -70,13 +70,84 @@ tenant, the defect becomes a live cross-tenant write.
    any part of this rule. Those are affordances; the API must refuse the call
    even when it is made directly.
 
+## Enforcement
+
+Landed in PR #499. The shape, for a reader who needs to know what is true
+today rather than what was ruled:
+
+- **The rank split is a database column, not a role string.**
+  `users.is_platform_admin` (migration `039_platform_admin_rank`) is the only
+  thing that grants cross-tenant reach. `admin`, `superadmin` and even a
+  literal `platform_admin` presented in a claim all normalize to
+  `tenant_admin` (`auth.NormalizeRole`). This is not belt-and-braces: an API
+  token's `scopes` list is copied verbatim into the caller's roles, so a rank
+  assertable by string would be a rank a tenant admin could mint for itself.
+- **Existing `admin` principals were not promoted**, exactly as this ADR
+  requires. The column defaults to `false` and is reconciled at each API start
+  against an explicit operator allow-list (`ENCLII_PLATFORM_ADMIN_EMAILS`,
+  falling back to the existing `ENCLII_ADMIN_EMAILS`). No email domain, no
+  pattern, and nothing named in this public repository.
+- **The comparison happens at the target.**
+  `Handler.enforceUserProjectAccess` resolves the resource's owning tenant and
+  compares it with the caller's, on every call. Every `loadXWithAccess` helper
+  routes through it, so the resource kind does not matter.
+- **List endpoints filter.** `GET /v1/projects` and `GET /v1/deployments`
+  return the caller's tenants, not the table; the unfiltered view is reachable
+  from the platform rank alone.
+- **Refusal is `404`**, following this API's existing convention for a resource
+  the caller may not see. A `403` on another tenant's project slug would itself
+  confirm that project exists.
+- **Rollback is `ENCLII_TENANT_SCOPE_ENFORCE=false`**, default on in code
+  (unset = enforce). It restores the pre-ADR-003 bypass in full, including the
+  defect. See [the rollout runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md).
+
+### The rollout is staged, and production starts with the flag off
+
+Merging to `main` deploys immediately, so the enforcing build reaches
+production before any operator can run the pre-deploy report against it —
+the report is an endpoint in that build. Production therefore ships the flag
+explicitly off (`infra/k8s/components/environment/production.env`,
+`infra/k8s/production/environment-patch.yaml`), overriding the code default:
+
+1. **Stage 1** — deploy with `ENCLII_TENANT_SCOPE_ENFORCE=false`. Behaviour is
+   identical to pre-ADR-003 `main`. The migration runs and the startup
+   reconcile still populates `users.is_platform_admin` from the allow-list,
+   because neither consults the flag — that is what makes the next stage's
+   numbers real.
+2. **Stage 2** — the operator runs `GET /v1/admin/tenant-scope/dry-run`,
+   resolves every principal it reports losing reach, and sets
+   `ENCLII_PLATFORM_ADMIN_EMAILS`.
+3. **Stage 3** — a one-line change flips the flag to `true`.
+
+**Stage 3 is the point of the work, and stages 1-2 are not a resting place.**
+While the flag reads false, every tenant admin reaches every tenant. The API
+logs at ERROR on each boot in that state, and each bypass it grants is logged
+at WARN with the project id.
+
+Because the report and the tenant switcher are themselves platform-only
+routes, the flag covers that gate too: with it off they gate on the
+tenant-admin rank, exactly as they did before this change. A hard rank gate
+there would have put the only key to the rollout behind the lock it opens.
+
+### Not yet enforced
+
+Two things, and they compound: production is in stage 1 above, so nothing in
+this section is enforced there yet.
+
+`apps/switchyard-api/internal/api/tenant_scope_route_coverage_test.go` derives,
+from the source on every run, the set of tenant-owned routes that never reach
+the guard, and fails when one appears that is not named in its backlog. That
+backlog is currently non-empty: a group of service-addressed verbs
+(`DELETE /services/:id`, `POST /services/:id/exec|scale|restart|migrate`, the
+domain verbs under a service) and a group of resources addressed by their own
+id outside any `/projects/:slug` group (cron jobs, tenant exports, template
+deployments, secret-intake status). Each is listed with its reason. **Tenant #2
+is gated on that backlog being empty, not merely on this ADR's status line** —
+the ADR's own test is that a tenant admin is refused on every tenant-scoped
+verb, and these verbs are not refused yet.
+
 ## Consequences
 
-- **The enforcement implementation is a follow-up wave item, not this PR.**
-  This ADR is the record of the ruling. Splitting `auth.Role`, adding the
-  target-side tenant comparison to every tenant-scoped handler, and the tests
-  that prove a `tenant_admin` cannot reach another tenant, all land in their own
-  changes. Nothing in this PR changes runtime behaviour.
 - **It gates tenant #2.** No second Enclii Depot or Publica tenant is onboarded
   before the enforcement lands, because onboarding one is what turns the
   conflation into a live cross-tenant write.

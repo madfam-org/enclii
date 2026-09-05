@@ -81,6 +81,25 @@ spec:
         # Admin email mapping for OIDC providers that don't include roles in JWT
         - name: ENCLII_ADMIN_EMAILS
           value: "admin@madfam.io"
+        # ADR-003 tenant scope — STAGED ROLLOUT STATE (2026-09-05).
+        # The code default is ON (unset = enforce); this overrides it to OFF
+        # because merging to main deploys immediately, so the enforcing build
+        # lands in production before the pre-deploy dry-run report can be run
+        # against it. Off reproduces pre-ADR-003 behaviour exactly.
+        #   stage 1 (now) deploy with false — behaviour unchanged
+        #   stage 2       operator runs GET /v1/admin/tenant-scope/dry-run and
+        #                 sets ENCLII_PLATFORM_ADMIN_EMAILS
+        #   stage 3       a one-line PR flips this to "true"
+        # While this reads false every tenant admin reaches every tenant, which
+        # is the defect ADR-003 records — an open item, not a resting state.
+        # Procedure: docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md
+        - name: ENCLII_TENANT_SCOPE_ENFORCE
+          value: "false"
+        # Set in stage 2 from the dry-run report. Until then the API falls back
+        # to ENCLII_ADMIN_EMAILS, so users.is_platform_admin is still populated
+        # at stage 1 and the report is meaningful.
+        # - name: ENCLII_PLATFORM_ADMIN_EMAILS
+        #   value: ""
         # Container Registry Credentials (for pushing built images)
         - name: ENCLII_REGISTRY
           value: "ghcr.io/madfam-org"

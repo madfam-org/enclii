@@ -31,6 +31,7 @@ func setupAuthzHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 			Functions:           db.NewFunctionRepository(database),
 			PreviewEnvironments: db.NewPreviewEnvironmentRepository(database),
 			ProjectAccess:       db.NewProjectAccessRepository(database),
+			TenantScope:         db.NewTenantScopeRepository(database),
 		},
 		logger: testLogger(t),
 	}
@@ -41,6 +42,19 @@ func withUserContext(userID uuid.UUID, roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("user_id", userID.String())
 		c.Set("user_roles", roles)
+		c.Next()
+	}
+}
+
+// withPlatformAdminContext is withUserContext plus the ADR-003 platform rank
+// already resolved by the auth layer. Tests that only need "this caller may
+// see everything" use this; tests about the rank itself set the pieces
+// themselves.
+func withPlatformAdminContext(userID uuid.UUID) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("user_id", userID.String())
+		c.Set("user_roles", []string{"admin"})
+		c.Set("is_platform_admin", true)
 		c.Next()
 	}
 }
@@ -63,21 +77,67 @@ func TestAuthZMatrix_EnforceUserProjectAccess(t *testing.T) {
 	projectOwned := uuid.New()
 	projectOther := uuid.New()
 
+	teamA := uuid.New()
+	teamB := uuid.New()
+
 	cases := []struct {
-		name       string
-		roles      []string
-		userID     uuid.UUID
-		projectID  uuid.UUID
-		accessRows int
-		wantOK     bool
-		wantCode   string
+		name string
+		// platformRank is the ADR-003 platform rank as the auth layer would
+		// have resolved it. It is deliberately NOT a role string: no string a
+		// caller can present sets it.
+		platformRank bool
+		roles        []string
+		userID       uuid.UUID
+		projectID    uuid.UUID
+		accessRows   int
+		// ownerTeam / callerTeams drive the tenant comparison. Set ownerTeam
+		// to uuid.Nil to model an untenanted ("personal") project.
+		ownerTeam   uuid.UUID
+		callerTeams []uuid.UUID
+		wantOK      bool
+		wantCode    string
 	}{
 		{
-			name:      "admin bypass",
-			roles:     []string{"admin"},
-			userID:    userA,
-			projectID: projectOther,
-			wantOK:    true,
+			name:         "platform rank reaches another tenant",
+			platformRank: true,
+			roles:        []string{"admin"},
+			userID:       userA,
+			projectID:    projectOther,
+			wantOK:       true,
+		},
+		{
+			// The case ADR-003 exists for. Before the split this row read
+			// "admin bypass" and expected true with no query at all.
+			name:        "tenant admin cannot reach another tenant",
+			roles:       []string{"admin"},
+			userID:      userA,
+			projectID:   projectOther,
+			accessRows:  0,
+			ownerTeam:   teamB,
+			callerTeams: []uuid.UUID{teamA},
+			wantOK:      false,
+			wantCode:    "NOT_FOUND",
+		},
+		{
+			name:        "tenant admin reaches its own tenant without a per-project grant",
+			roles:       []string{"admin"},
+			userID:      userA,
+			projectID:   projectOwned,
+			accessRows:  0,
+			ownerTeam:   teamA,
+			callerTeams: []uuid.UUID{teamA},
+			wantOK:      true,
+		},
+		{
+			name:        "tenant admin cannot reach an untenanted project it was not granted",
+			roles:       []string{"admin"},
+			userID:      userA,
+			projectID:   projectOther,
+			accessRows:  0,
+			ownerTeam:   uuid.Nil,
+			callerTeams: []uuid.UUID{teamA},
+			wantOK:      false,
+			wantCode:    "NOT_FOUND",
 		},
 		{
 			name:       "member with access",
@@ -111,10 +171,43 @@ func TestAuthZMatrix_EnforceUserProjectAccess(t *testing.T) {
 			h, mock, cleanup := setupAuthzHandler(t)
 			defer cleanup()
 
-			if tc.userID != uuid.Nil && tc.roles != nil && tc.roles[0] != "admin" {
+			expectsQueries := tc.userID != uuid.Nil && tc.roles != nil && !tc.platformRank
+			if expectsQueries {
 				mock.ExpectQuery(`SELECT COUNT\(\*\) FROM project_access`).
 					WithArgs(tc.userID, tc.projectID).
 					WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.accessRows))
+			}
+			// The tenant comparison only runs for a caller holding the
+			// tenant-admin rank and only when the cheaper grant check missed.
+			tenantCompared := expectsQueries && tc.accessRows == 0 && tc.roles[0] == "admin"
+			if tenantCompared {
+				ownerRows := sqlmock.NewRows([]string{"team_id"})
+				if tc.ownerTeam == uuid.Nil {
+					ownerRows.AddRow(nil)
+				} else {
+					ownerRows.AddRow(tc.ownerTeam)
+				}
+				mock.ExpectQuery(`SELECT team_id FROM projects WHERE id`).
+					WithArgs(tc.projectID).
+					WillReturnRows(ownerRows)
+
+				if tc.ownerTeam != uuid.Nil {
+					callerRows := sqlmock.NewRows([]string{"team_id"})
+					for _, id := range tc.callerTeams {
+						callerRows.AddRow(id)
+					}
+					mock.ExpectQuery(`SELECT team_id FROM team_members WHERE user_id`).
+						WithArgs(tc.userID).
+						WillReturnRows(callerRows)
+				}
+
+				if !tc.wantOK {
+					// Guard falls through to the database-backed platform-rank
+					// read only on the path that would otherwise refuse.
+					mock.ExpectQuery(`SELECT is_platform_admin FROM users WHERE id`).
+						WithArgs(tc.userID).
+						WillReturnRows(sqlmock.NewRows([]string{"is_platform_admin"}).AddRow(false))
+				}
 			}
 
 			w := httptest.NewRecorder()
@@ -126,13 +219,16 @@ func TestAuthZMatrix_EnforceUserProjectAccess(t *testing.T) {
 			if tc.roles != nil {
 				c.Set("user_roles", tc.roles)
 			}
+			if tc.platformRank {
+				c.Set("is_platform_admin", true)
+			}
 
 			ok := h.enforceUserProjectAccess(c, tc.projectID)
 			assert.Equal(t, tc.wantOK, ok)
 			if !tc.wantOK {
 				assertErrorCode(t, w, tc.wantCode)
 			}
-			if tc.userID != uuid.Nil && tc.roles != nil && tc.roles[0] != "admin" {
+			if expectsQueries {
 				assert.NoError(t, mock.ExpectationsWereMet())
 			}
 		})

@@ -8,15 +8,18 @@ import (
 
 // Repositories provides access to all repository types
 type Repositories struct {
-	db                        *sql.DB // Keep reference for transaction support
-	Projects                  *ProjectRepository
-	Environments              *EnvironmentRepository
-	Services                  *ServiceRepository
-	Releases                  *ReleaseRepository
-	Deployments               *DeploymentRepository
-	CanaryRollouts            *CanaryRolloutRepository
-	Users                     *UserRepository
-	ProjectAccess             *ProjectAccessRepository
+	db             *sql.DB // Keep reference for transaction support
+	Projects       *ProjectRepository
+	Environments   *EnvironmentRepository
+	Services       *ServiceRepository
+	Releases       *ReleaseRepository
+	Deployments    *DeploymentRepository
+	CanaryRollouts *CanaryRolloutRepository
+	Users          *UserRepository
+	ProjectAccess  *ProjectAccessRepository
+	// TenantScope backs the ADR-003 tenant-scope guard (platform rank lookup,
+	// tenant membership) and the pre-deploy dry-run reach report.
+	TenantScope               *TenantScopeRepository
 	AuditLogs                 *AuditLogRepository
 	ApprovalRecords           *ApprovalRecordRepository
 	RotationAuditLogs         *RotationAuditLogRepository
@@ -154,6 +157,7 @@ func newTxRepositories(db *sql.DB, tx *sql.Tx) *Repositories {
 		PreviewEnvironments:       NewPreviewEnvironmentRepositoryWithTx(tx),
 		PreviewComments:           NewPreviewCommentRepositoryWithTx(tx),
 		PreviewAccessLogs:         NewPreviewAccessLogRepositoryWithTx(tx),
+		TenantScope:               NewTenantScopeRepository(tx),
 		Teams:                     NewTeamRepositoryWithTx(tx),
 		TeamMembers:               NewTeamMemberRepositoryWithTx(tx),
 		TeamInvitations:           NewTeamInvitationRepositoryWithTx(tx),
@@ -225,6 +229,7 @@ func NewRepositories(db *sql.DB) *Repositories {
 		PreviewEnvironments:       NewPreviewEnvironmentRepository(db),
 		PreviewComments:           NewPreviewCommentRepository(db),
 		PreviewAccessLogs:         NewPreviewAccessLogRepository(db),
+		TenantScope:               NewTenantScopeRepository(db),
 		Teams:                     NewTeamRepository(db),
 		TeamMembers:               NewTeamMemberRepository(db),
 		TeamInvitations:           NewTeamInvitationRepository(db),

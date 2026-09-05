@@ -98,7 +98,7 @@ func TestPreviewLifecycle_APICreateGetClose(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	_, engine := gin.CreateTestContext(w)
-	engine.Use(withUserContext(uuid.New(), "admin"))
+	engine.Use(withPlatformAdminContext(uuid.New()))
 	engine.POST("/v1/previews", h.CreatePreview)
 	engine.GET("/v1/previews/:id", h.GetPreview)
 	engine.POST("/v1/previews/:id/close", h.ClosePreview)
