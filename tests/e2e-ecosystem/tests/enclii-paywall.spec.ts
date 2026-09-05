@@ -30,7 +30,11 @@ test.describe('Landing Page — Pricing Visibility', () => {
     // page, so it went red on the first main push after that deploy landed,
     // not on the PR that changed the copy. Assert the route, which is the
     // contract, and the current label, which is the copy.
-    const heroCta = page.getByRole('link', { name: /Create your account/ });
+    // The same label appears twice on the page — the hero and the closing
+    // CTA both link to signup — and getByRole is strict, so a bare locator
+    // resolves to 2 elements and fails before it checks visibility. The
+    // hero is the first in document order.
+    const heroCta = page.getByRole('link', { name: /Create your account/ }).first();
     await expect(heroCta).toBeVisible();
     await expect(heroCta).toHaveAttribute('href', /app\.enclii\.dev\/signup/);
   });

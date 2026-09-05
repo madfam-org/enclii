@@ -19,3 +19,25 @@
 # Docusaurus upgrade, and no later than 2026-10-01.
 CVE-2025-71329
 CVE-2025-71330
+
+# CVE-2026-53612, CVE-2026-53613, CVE-2026-53614, CVE-2026-76642,
+# CVE-2026-78408, CVE-2026-78409, CVE-2026-78410 — util-linux 2.42.1-r0,
+# reported against `libuuid` in the docs-site image (runner stage is
+# nginx:alpine on Alpine 3.24.1). Every one of the seven is a defect in
+# mount(8)/nsenter(1) — TOCTOU in the mount program, LIBMOUNT_FORCE_MOUNT2,
+# X-mount post-hooks, --join-cgroup, X-mount.subdir, restricted bind mounts.
+# The docs-site image carries NEITHER binary: only libuuid.so (UUID
+# generation for nginx) is installed from the util-linux source package, and
+# the image runs a static nginx behind the tunnel with no mount namespace to
+# escape. Trivy names the fix as 2.42.3-r0, but as of 2026-09-05 the Alpine
+# v3.24 main index still publishes 2.42.1-r0, so `apk upgrade --no-cache`
+# (already in the Dockerfile) cannot pull it. Rotation condition: remove the
+# moment Alpine 3.24 ships util-linux >= 2.42.3-r0 — check on every docs-site
+# rebuild, and no later than 2026-10-01.
+CVE-2026-53612
+CVE-2026-53613
+CVE-2026-53614
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410

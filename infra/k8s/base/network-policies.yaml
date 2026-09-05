@@ -548,3 +548,49 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
+---
+# Additive ingress for Weighbridge → Waybill.
+#
+# `waybill-ingress` above admits switchyard-api pods and, from `monitoring`,
+# pods labelled `app: prometheus`. Weighbridge runs in `monitoring` with
+# `app: weighbridge`, which that selector does not match — so without this rule
+# every metering POST would be dropped at the CNI and the meter would report
+# HTTP timeouts that look exactly like a Waybill outage.
+#
+# A SEPARATE OBJECT, not an edit to `waybill-ingress`. Kubernetes
+# NetworkPolicies are additive: several policies selecting the same pods have
+# their rules unioned, so this grants one flow without reopening a policy that
+# guards a billing service. Same pattern as `alertmanager-ingress-rules-eval`
+# in the monitoring overlay.
+#
+# ONE SELECTOR SHAPE. This peer names the namespace only, with no podSelector
+# beside it: k3s's NetworkPolicy controller renders a combined
+# namespaceSelector+podSelector peer as deny-everything, which is precisely how
+# the `app: prometheus` rule above manages to look correct and admit nothing.
+# The grant is therefore "any pod in `monitoring` may reach waybill:8080",
+# which is wider than weighbridge alone — and is the honest trade, because the
+# narrower-looking version does not work on this cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: waybill-ingress-weighbridge
+  labels:
+    app.kubernetes.io/name: waybill
+    app.kubernetes.io/component: billing
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: waybill
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    # Matches waybill's containerPort 8080 (named "metrics"); the historical
+    # 4290 in this file's older rules was a silent CNI drop.
+    - protocol: TCP
+      port: 8080

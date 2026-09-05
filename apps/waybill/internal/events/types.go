@@ -69,6 +69,63 @@ const (
 	MetricCustomDomains  MetricType = "custom_domains"
 )
 
+// Metric types for the runner, database and content surfaces.
+//
+// A METRIC TYPE IS A UNIT, NOT A PRICE. Nothing in this package, and nothing
+// in internal/metering, attaches a rate, a tier or a currency to any of the
+// names below. The metering calculator's rate table is unchanged and none of
+// these appears in it, so each one costs exactly zero until somebody writes a
+// rate and says so in a reviewable diff — which is the point of naming the
+// units before anyone can bill them. metering.TestNewMetricTypesAreNotPriced
+// pins that.
+//
+// THREE OF THEM HAVE NO PRODUCER AND NO AGGREGATION CASE. They are declared
+// here so the vocabulary is settled in one place instead of being invented
+// twice; see the aggregation package for exactly which ones aggregate and
+// which deliberately aggregate to nothing.
+const (
+	// MetricRunnerSlotMinutes is wall-clock minutes during which a CI runner
+	// slot was held by a job. Derived from the `slot_seconds` metric on a
+	// build.completed event. Distinct from MetricBuildMinutes, which measures
+	// the build itself: a job that holds a slot for 10 minutes and spends 6 of
+	// them building consumes 10 slot-minutes and 6 build-minutes, and the pool
+	// capacity that has to be paid for is the former.
+	MetricRunnerSlotMinutes MetricType = "runner_slot_minutes"
+
+	// MetricCacheGBHours is build-cache residency. See the aggregation
+	// package for the exact unit convention used to derive it — bytes are not
+	// GB-hours on their own and the conversion is a stated convention, not a
+	// measurement.
+	MetricCacheGBHours MetricType = "cache_gb_hours"
+
+	// MetricDBStorageGBHours and MetricDBComputeGBHours are managed-database
+	// footprint over time. DERIVED FROM DECLARED SIZE, NOT FROM A READING:
+	// the addon lifecycle events carry the plan's declared storage and
+	// compute at the moment of a transition, so these say "a database of this
+	// declared shape existed for this long" and never "this much disk was
+	// actually occupied". A measured reading needs an hourly sampler over
+	// CNPG volume usage, which does not exist.
+	MetricDBStorageGBHours MetricType = "db_storage_gb_hours"
+	MetricDBComputeGBHours MetricType = "db_compute_gb_hours"
+
+	// MetricDBEgressGB is egress attributed to a managed database rather than
+	// to the project's general bandwidth. Kept separate from
+	// MetricBandwidthGB on purpose: folding a database's egress into the
+	// project total makes the two impossible to tell apart afterwards.
+	MetricDBEgressGB MetricType = "db_egress_gb"
+
+	// NO PRODUCER TODAY. Named so the three surfaces the roadmap describes
+	// have one agreed unit each before anything starts emitting, and so a
+	// second, differently-spelled name cannot appear alongside them later.
+	// None of these has an aggregation case, and
+	// aggregation.TestCalculateMetrics_TypesWithoutProducersAggregateToNothing
+	// asserts they stay at nothing rather than quietly acquiring a wrong
+	// number from a lookalike field.
+	MetricDataAPIRequests     MetricType = "data_api_requests"
+	MetricRealtimeSocketHours MetricType = "realtime_socket_hours"
+	MetricCMSSites            MetricType = "cms_sites"
+)
+
 // UsageEvent represents a single usage event
 type UsageEvent struct {
 	ID           uuid.UUID          `json:"id" db:"id"`

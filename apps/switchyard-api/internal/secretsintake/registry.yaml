@@ -289,3 +289,28 @@ targets:
     external_secret: angelia-courier-secrets
     keys:
       - courier_alertmanager_secret
+
+  # R23 (internal-devops docket, ruled 2026-09-05, sequenced AFTER O21):
+  # customer-facing notification webhooks go through Courier's `webhook`
+  # channel (angelia #23). Each producer that sends to customer-supplied HTTPS
+  # targets signs its payloads with ITS OWN key, so a customer's receiver can
+  # tell which MADFAM service the delivery came from and one producer's key can
+  # be revoked without silencing the others. The property SUFFIX is the pairing
+  # mechanism: `courier_webhook_signing_key_<suffix>` pairs with that producer's
+  # `courier_producer_key_<suffix>` on the same path; angelia's ExternalSecret
+  # assembles them by prefix into COURIER_WEBHOOK_SIGNING_KEYS. A suffix that
+  # matches no producer key is a signing key nobody can use; a producer with no
+  # signing key authenticates normally and is refused 503 not_provisioned on the
+  # webhook channel alone. Running this target is the arming step for the
+  # channel — do not run it before O21 (one real page delivered) is accepted.
+  angelia/courier-webhook-signing-keys:
+    label: Angelia Courier webhook signing keys
+    description: Per-producer HMAC-SHA256 signing keys for Courier's `webhook` channel (customer-supplied HTTPS targets, R23). One property per producer, suffix-paired with that producer's courier_producer_key_<suffix>; angelia's ExternalSecret template assembles them by prefix into COURIER_WEBHOOK_SIGNING_KEYS. Read own-path by angelia-api only — a producer never holds its own signing key. Inert until run; run only after O21.
+    vault_path: secret/angelia
+    namespace: angelia
+    external_secret: angelia-courier-secrets
+    keys:
+      - courier_webhook_signing_key_alarms
+      - courier_webhook_signing_key_enclii_ops
+      - courier_webhook_signing_key_tulana
+      - courier_webhook_signing_key_madfam_site

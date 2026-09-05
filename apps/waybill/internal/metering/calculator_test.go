@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -492,4 +493,57 @@ func TestCalculateUsageSummary_QueryError(t *testing.T) {
 // floatEqual compares two floats within a small epsilon for floating-point precision.
 func floatEqual(a, b float64) bool {
 	return math.Abs(a-b) < 1e-9
+}
+
+// --- The new metric types must not become charges by accident --------------
+
+// TestNewMetricTypesAreNotPriced pins the one property that matters about the
+// runner/database/content metric types added for SKU roadmap Wave 1: naming a
+// unit did not start a charge.
+//
+// The calculator's rate table has four entries and its cost switch falls
+// through to 0 for anything else. That is easy to change by adding one case,
+// and a rate added without a decision is exactly the failure this test exists
+// to make loud: if someone prices runner slot-minutes, this test goes red and
+// the diff has to say so out loud instead of arriving as a side effect.
+func TestNewMetricTypesAreNotPriced(t *testing.T) {
+	calc := NewCalculator(nil, DefaultPricing(), zap.NewNop())
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+
+	for _, mt := range []events.MetricType{
+		events.MetricRunnerSlotMinutes,
+		events.MetricCacheGBHours,
+		events.MetricDBStorageGBHours,
+		events.MetricDBComputeGBHours,
+		events.MetricDBEgressGB,
+		events.MetricDataAPIRequests,
+		events.MetricRealtimeSocketHours,
+		events.MetricCMSSites,
+	} {
+		t.Run(string(mt), func(t *testing.T) {
+			// A deliberately large quantity: a rate of any size would show.
+			assert.Zerof(t, calc.calculateCost(mt, 1_000_000, start, end),
+				"%s must not be charged for; it has no rate and must not acquire one silently", mt)
+		})
+	}
+}
+
+// TestPricingCarriesNoRateForNewMetricTypes reads the rate struct itself
+// rather than its behaviour, so a rate FIELD added without a switch case (or
+// with one that is wired up later) is caught at the moment it appears.
+func TestPricingCarriesNoRateForNewMetricTypes(t *testing.T) {
+	fields := reflect.VisibleFields(reflect.TypeOf(Pricing{}))
+
+	names := make([]string, 0, len(fields))
+	for _, f := range fields {
+		names = append(names, f.Name)
+	}
+
+	assert.ElementsMatch(t,
+		[]string{"ComputePerGBHour", "BuildPerMinute", "StoragePerGBMonth", "BandwidthPerGB"},
+		names,
+		"the rate table gained or lost a field; pricing a metric type is a decision, not a refactor",
+	)
 }

@@ -10,7 +10,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 24)
+	assert.Len(t, reg, 25)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -31,7 +31,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 24)
+	require.Len(t, list, 25)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -43,6 +43,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"angelia/courier-alertmanager",
 		"angelia/courier-channel-tokens",
 		"angelia/courier-producer-keys",
+		"angelia/courier-webhook-signing-keys",
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
 		"coupler/janua-service-token",
@@ -95,7 +96,7 @@ func TestSeptember2026Targets(t *testing.T) {
 	}
 }
 
-// The 2026-09-05 Courier batch. Angelia OWNS these three targets: it verifies
+// The 2026-09-05 Courier batch. Angelia OWNS these four targets: it verifies
 // every one of the credentials, so secret/angelia is the single writable home
 // and every consumer reads that copy cross-path. Pinning the routing here makes
 // a rename a test failure rather than a silent write to the wrong Vault path —
@@ -117,6 +118,15 @@ func TestCourierTargets(t *testing.T) {
 		}},
 		{"angelia/courier-alertmanager", []string{
 			"courier_alertmanager_secret",
+		}},
+		// R23 (2026-09-05): the webhook channel's signing keys. One per producer,
+		// suffix-paired with the producer key above — pinned side by side so a
+		// renamed producer breaks here, not as a 503 on a customer's receiver.
+		{"angelia/courier-webhook-signing-keys", []string{
+			"courier_webhook_signing_key_alarms",
+			"courier_webhook_signing_key_enclii_ops",
+			"courier_webhook_signing_key_tulana",
+			"courier_webhook_signing_key_madfam_site",
 		}},
 	}
 	for _, tc := range cases {
