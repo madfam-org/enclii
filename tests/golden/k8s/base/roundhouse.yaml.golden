@@ -173,6 +173,26 @@ spec:
                   name: enclii-secrets
                   key: internal-api-key
                   optional: true
+            # Usage CROSS-CHECK to Waybill. The worker reports the build
+            # duration it measured about itself, tagged `source: roundhouse`.
+            # It is NOT the meter of record — that is Weighbridge, which
+            # watches the runner pods and therefore sees every job, not only
+            # the T3 builds that come through here. The two streams are
+            # compared, never summed: every build both observe appears in
+            # both. See docs/runbooks/WEIGHBRIDGE.md.
+            #
+            # Unset disables the stream entirely (the client is nil and
+            # nothing is sent), which is exactly the behaviour before it
+            # existed. Only the WORKER carries it: roundhouse-api never runs
+            # a build and has no duration to report.
+            - name: WAYBILL_BASE_URL
+              value: "http://waybill"
+            - name: WAYBILL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: enclii-secrets
+                  key: internal-api-key
+                  optional: true
             # Build settings
             - name: MAX_CONCURRENT_BUILDS
               value: "3"

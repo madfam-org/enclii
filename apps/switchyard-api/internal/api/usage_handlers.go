@@ -49,6 +49,22 @@ type UsageMetric struct {
 	Included float64 `json:"included"` // -1 for unlimited
 	Unit     string  `json:"unit"`
 	Cost     float64 `json:"cost"`
+
+	// Unavailable reports that the meter behind this number could not be
+	// read. `Used` is then 0 and MEANS NOTHING — it is not a claim that no
+	// usage occurred. Omitted from the JSON when false, so the shape is
+	// unchanged for every metric that is actually measured.
+	//
+	// This field exists because the alternative is worse in a specific way:
+	// a failed read that reports 0.0 is indistinguishable from a quiet month
+	// on every dashboard and in every invoice review, and it is the one wrong
+	// answer nobody goes looking for.
+	Unavailable bool `json:"unavailable,omitempty"`
+	// Note explains an Unavailable reading in one non-sensitive line.
+	Note string `json:"note,omitempty"`
+	// Source names where the number came from, for the metrics that read a
+	// meter rather than counting rows locally.
+	Source string `json:"source,omitempty"`
 }
 
 // UsageSummary represents infrastructure usage metering data.
@@ -158,13 +174,22 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 		return nil, err
 	}
 
-	// Count releases for build minutes — fan out per-service queries with
-	// a concurrency cap. Sequential N+1 was producing ~N×DB-RTT latency
-	// on the dashboard's poll path; this collapses it to ~ceil(N/cap).
+	// Count releases in the period — fan out per-service queries with a
+	// concurrency cap. Sequential N+1 was producing ~N×DB-RTT latency on the
+	// dashboard's poll path; this collapses it to ~ceil(N/cap).
+	//
+	// THIS LOOP NO LONGER PRODUCES BUILD MINUTES. It used to credit
+	// `localMinutes += 3.0` per release and bill overage against the total at
+	// a per-minute rate. Three was a literal — not an average, not an
+	// estimate, not anything anybody had measured — and every runner-SKU and
+	// per-product cost figure downstream inherited it. Minutes now come from
+	// Waybill, which has aggregated real `build_minutes` from
+	// `build.completed` events since it was written and was never asked.
+	// The release COUNT stays: it is a genuine local fact and it is what the
+	// Waybill total gets cross-checked against.
 	var (
-		buildMu           sync.Mutex
-		totalBuilds       int
-		totalBuildMinutes float64
+		buildMu     sync.Mutex
+		totalBuilds int
 	)
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(usageFanoutConcurrency)
@@ -179,22 +204,32 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 				return nil
 			}
 			var localBuilds int
-			var localMinutes float64
 			for _, rel := range releases {
 				if rel.CreatedAt.After(periodStart) && rel.CreatedAt.Before(periodEnd) {
 					localBuilds++
-					localMinutes += 3.0
 				}
 			}
 			buildMu.Lock()
 			totalBuilds += localBuilds
-			totalBuildMinutes += localMinutes
 			buildMu.Unlock()
 			return nil
 		})
 	}
 	_ = g.Wait()
 	_ = totalBuilds // tracked but not currently surfaced
+
+	// Read the meter. Same fan-out shape, one request per PROJECT rather than
+	// per service, because Waybill aggregates per project.
+	projectIDs := make([]uuid.UUID, 0, len(services))
+	for _, svc := range services {
+		projectIDs = append(projectIDs, svc.ProjectID)
+	}
+	buildMinutes := h.fetchBuildMinutes(ctx, distinctProjectIDs(projectIDs))
+	if !buildMinutes.Known {
+		h.logger.Warn(ctx, "build minutes unavailable; reporting unknown rather than zero",
+			logging.String("reason", buildMinutes.Reason),
+		)
+	}
 
 	// Count custom domains via a single COUNT(*) on the platform table.
 	// Per-service iteration was missing orphan rows whose service_id no
@@ -223,11 +258,15 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 
 	// Calculate overage costs
 	computeCost := calculateOverage(computeUsed, includedCompute, computePerGBHour)
-	buildCost := calculateOverage(totalBuildMinutes, includedBuild, buildPerMinute)
 	storageCost := calculateOverage(storageUsed, includedStorage, storagePerGB)
 	bandwidthCost := calculateOverage(bandwidthUsed, includedBandwidth, bandwidthPerGB)
 
-	totalCost := computeCost + buildCost + storageCost + bandwidthCost
+	// buildMetric carries its own cost, which is zero when the meter could not
+	// be read. Charging an unread meter is the failure this whole change is
+	// about, so the cost comes from the same place as the flag.
+	buildMetric := buildMinutesMetric(buildMinutes)
+
+	totalCost := computeCost + buildMetric.Cost + storageCost + bandwidthCost
 
 	metrics := []UsageMetric{
 		{
@@ -238,14 +277,7 @@ func (h *Handler) calculateUsage(ctx context.Context, periodStart, periodEnd tim
 			Unit:     "GB-hours",
 			Cost:     roundToTwoDecimals(computeCost),
 		},
-		{
-			Type:     "build",
-			Label:    "Build Minutes",
-			Used:     roundToTwoDecimals(totalBuildMinutes),
-			Included: includedBuild,
-			Unit:     "minutes",
-			Cost:     roundToTwoDecimals(buildCost),
-		},
+		buildMetric,
 		{
 			Type:     "storage",
 			Label:    "Storage",

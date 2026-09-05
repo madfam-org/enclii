@@ -485,6 +485,70 @@ spec:
     - protocol: TCP
       port: 4203
 ---
+# Additive egress for the Roundhouse usage cross-check.
+#
+# `roundhouse-switchyard-callback-egress` above lets the worker reach
+# switchyard-api and nothing else. Reporting a build's duration to Waybill is a
+# second destination, and without this rule every report is dropped at the CNI
+# — which would look exactly like Waybill being down, on a stream whose whole
+# purpose is to be trustworthy enough to disagree with the meter of record.
+#
+# A separate object rather than an edit: Kubernetes NetworkPolicies are
+# additive, and one new flow does not justify reopening a policy that guards
+# the build system. One selector per peer; both pods are in this namespace, so
+# a podSelector alone is the single shape (a namespaceSelector beside it would
+# render as deny-everything on k3s).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: roundhouse-waybill-egress
+  labels:
+    app.kubernetes.io/name: roundhouse
+    app.kubernetes.io/component: build-system
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: roundhouse
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: waybill
+    ports:
+    # waybill's containerPort 8080 (named "metrics"); the historical 4290 in
+    # this file's older rules was a silent CNI drop.
+    - protocol: TCP
+      port: 8080
+---
+# The ingress half of the same flow. `waybill-ingress` admits switchyard-api
+# pods only; the Roundhouse worker carries `app: roundhouse`, which that
+# selector does not match.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: waybill-ingress-roundhouse
+  labels:
+    app.kubernetes.io/name: waybill
+    app.kubernetes.io/component: billing
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: waybill
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: roundhouse
+    ports:
+    - protocol: TCP
+      port: 8080
+---
 # Additive ingress for Weighbridge → Waybill.
 #
 # `waybill-ingress` above admits switchyard-api pods and, from `monitoring`,
