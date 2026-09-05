@@ -9,6 +9,7 @@ Usage (from labspace root):
     python3 docs/templates/ecosystem/generator.py                 # regenerate everything
     python3 docs/templates/ecosystem/generator.py enclii janua    # regenerate specific repos
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -22,6 +23,97 @@ except ImportError:
     from metadata import REPOS_FULL  # type: ignore
 
 LABSPACE = Path(os.environ.get("MADFAM_LABSPACE", "/Users/aldoruizluna/labspace"))
+
+# ---------------------------------------------------------------------------
+# Private metadata overlays
+#
+# This generator lives in a PUBLIC repo, and `ECOSYSTEM.md` is rendered into
+# public and private repos alike. Some private repos carry curated material in
+# their ECOSYSTEM.md that must never be published here: a sensitivity banner, a
+# repo-boundary checkpoint, an operator "current production truth" baseline,
+# real internal service domains and env-var names, repo-specific CLI examples.
+# Before this overlay existed the only way to make such a repo re-renderable
+# was to move that material into these metadata modules — i.e. to publish it.
+# So each re-render dropped it instead, and it was re-added by hand downstream.
+#
+# An overlay is a JSON file, kept in the private repo it describes, mapping
+# repo name to the same metadata keys these modules use. Point the generator at
+# one (or several, os.pathsep-separated) with:
+#
+#     MADFAM_ECOSYSTEM_METADATA_OVERLAY=/path/to/private/ecosystem-metadata.json
+#
+# Data only — never code — so rendering never executes a private file. Repos
+# with no overlay entry render exactly as before, byte for byte.
+# ---------------------------------------------------------------------------
+
+OVERLAY_ENV = "MADFAM_ECOSYSTEM_METADATA_OVERLAY"
+
+
+def _merge_repo_meta(base: dict, overlay: dict) -> dict:
+    """Overlay one repo's metadata over its public base entry.
+
+    Top-level keys are replaced; `production` is merged one level deep so an
+    overlay can correct `services` without restating `namespace`.
+    """
+    merged = dict(base)
+    for key, value in overlay.items():
+        if key == "production" and isinstance(value, dict):
+            merged["production"] = {**base.get("production", {}), **value}
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_repos(overlay_paths: str | None = None) -> dict:
+    """`REPOS_FULL`, with any private overlays applied."""
+    repos = {repo: dict(meta) for repo, meta in REPOS_FULL.items()}
+    raw = overlay_paths if overlay_paths is not None else os.environ.get(OVERLAY_ENV, "")
+    for entry in raw.split(os.pathsep):
+        path = entry.strip()
+        if not path:
+            continue
+        overlay = json.loads(Path(path).read_text())
+        for repo, meta in overlay.items():
+            if not isinstance(meta, dict):
+                raise SystemExit(f"{path}: overlay entry for {repo!r} must be an object")
+            repos[repo] = _merge_repo_meta(repos.get(repo, {}), meta)
+    return repos
+
+
+def apply_boilerplate_overrides(repo: str, blocks: dict, overrides) -> dict:
+    """Apply a repo's `boilerplate_overrides` to the shared blocks.
+
+    Each override is `{"find": ..., "replace": ..., "why": ...}` and must match
+    EXACTLY ONCE across the shared boilerplate. A repo that deliberately keeps
+    its own version of a shared paragraph (a repo-specific CLI example, a local
+    caveat) declares it here instead of hand-editing the rendered file. When the
+    shared text later changes, the override stops matching and the render FAILS
+    — loudly, at the moment the drift appears — rather than silently dropping
+    the curated line the way a hand-edited copy did.
+    """
+    patched = dict(blocks)
+    for index, override in enumerate(overrides or []):
+        try:
+            find = override["find"]
+            replace = override["replace"]
+        except (TypeError, KeyError) as error:
+            raise SystemExit(
+                f"{repo}: boilerplate_overrides[{index}] needs 'find' and 'replace' keys"
+            ) from error
+        total = sum(block.count(find) for block in patched.values())
+        if total != 1:
+            raise SystemExit(
+                f"{repo}: boilerplate_overrides[{index}] matched {total} times, expected 1.\n"
+                f"  why: {override.get('why', '(no reason recorded)')}\n"
+                f"  find: {find[:120]!r}\n"
+                "  The shared boilerplate has drifted. Re-read the current template block "
+                "and update the override (or drop it if the shared text now says the same "
+                "thing)."
+            )
+        for key, block in patched.items():
+            if find in block:
+                patched[key] = block.replace(find, replace)
+    return patched
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +366,14 @@ ENCLII_CLI_REF = dedent("""
 """).strip()
 
 
+PROVENANCE = dedent("""
+    Generated 2026-04-23 as part of the "each repo stands alone" docs sweep. The
+    generator and per-repo metadata live at `madfam-org/enclii/docs/templates/ecosystem/`.
+    Re-render (don't hand-edit per-repo copies) when the ecosystem map or CLI
+    reference needs to update across the fleet.
+""").strip()
+
+
 # ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
@@ -302,13 +402,42 @@ def render(repo: str, meta: dict) -> str:
     consumers_md = "\n".join(f"- {c}" for c in consumers) if consumers else "_(none)_"
     env_md = "\n".join(f"- `{e}`" for e in env_vars) if env_vars else "_(see repo README / .env.example)_"
 
-    cli_ref = ENCLII_CLI_REF.replace("{SERVICE}", service_for_ops)
+    blocks = apply_boilerplate_overrides(
+        repo,
+        {
+            "map": ECOSYSTEM_MAP,
+            "cli": ENCLII_CLI_REF.replace("{SERVICE}", service_for_ops),
+        },
+        meta.get("boilerplate_overrides"),
+    )
+    ecosystem_map = blocks["map"]
+    cli_ref = blocks["cli"]
 
-    return f"""# {repo} — Ecosystem Context
+    # Optional curated slots. Every one of them is empty by default, and an
+    # empty slot contributes nothing to the output — a repo that declares none
+    # renders byte-identically to a render from before they existed.
+    header = [f"# {repo} — Ecosystem Context"]
+    sensitivity_banner = (meta.get("sensitivity_banner") or "").strip()
+    if sensitivity_banner:
+        header.append(sensitivity_banner)
+    header.append(LEGACY_RAW_BANNER)
+    boundary_checkpoint = (meta.get("boundary_checkpoint") or "").strip()
+    if boundary_checkpoint:
+        header.append(boundary_checkpoint)
+    header.append(f"> **{meta.get('tagline', '').strip()}**")
+    header_md = "\n\n".join(header)
 
-{LEGACY_RAW_BANNER}
+    cluster = "**Cluster**: bare-metal k3s on Hetzner (see topology section below)."
+    production_truth = (meta.get("production_truth") or "").strip()
+    if production_truth:
+        cluster = f"{cluster}\n\n{production_truth}"
 
-> **{meta.get("tagline", "").strip()}**
+    provenance = PROVENANCE
+    provenance_note = (meta.get("provenance_note") or "").strip()
+    if provenance_note:
+        provenance = f"{provenance}\n\n{provenance_note}"
+
+    return f"""{header_md}
 
 This file is self-contained: a Claude session on a fresh machine can operate
 this service by reading only this one document. No external links are
@@ -329,7 +458,7 @@ embedded below.
 
 {svc_table}
 **Kubernetes namespace**: `{ns}`
-**Cluster**: bare-metal k3s on Hetzner (see topology section below).
+{cluster}
 
 ### Upstream dependencies (this repo consumes)
 
@@ -345,7 +474,7 @@ embedded below.
 
 ---
 
-{ECOSYSTEM_MAP}
+{ecosystem_map}
 
 ---
 
@@ -355,10 +484,7 @@ embedded below.
 
 ## Document provenance
 
-Generated 2026-04-23 as part of the "each repo stands alone" docs sweep. The
-generator and per-repo metadata live at `madfam-org/enclii/docs/templates/ecosystem/`.
-Re-render (don't hand-edit per-repo copies) when the ecosystem map or CLI
-reference needs to update across the fleet.
+{provenance}
 """
 
 
@@ -367,11 +493,12 @@ reference needs to update across the fleet.
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    targets = sys.argv[1:] or list(REPOS_FULL.keys())
+    repos = load_repos()
+    targets = sys.argv[1:] or list(repos.keys())
     for repo in targets:
-        if repo not in REPOS_FULL:
+        if repo not in repos:
             print(f"SKIP {repo} — no metadata defined")
             continue
         out = LABSPACE / repo / "ECOSYSTEM.md"
-        out.write_text(render(repo, REPOS_FULL[repo]))
+        out.write_text(render(repo, repos[repo]))
         print(f"WROTE {out} ({len(out.read_text()):,} bytes)")
