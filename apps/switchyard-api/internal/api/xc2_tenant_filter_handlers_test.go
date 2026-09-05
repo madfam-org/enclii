@@ -70,6 +70,7 @@ func newXc2TestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func()) {
 		CustomDomains:  db.NewCustomDomainRepository(mockDB),
 		DatabaseAddons: db.NewDatabaseAddonRepository(mockDB),
 		Releases:       db.NewReleaseRepository(mockDB),
+		TenantScope:    db.NewTenantScopeRepository(mockDB),
 	}
 	h := &Handler{
 		repos:  repos,
@@ -118,7 +119,11 @@ func TestListAllDeployments_ActingAs_FiltersByTeam(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestListAllDeployments_Admin_UsesUnscopedQuery(t *testing.T) {
+// TestListAllDeployments_PlatformAdmin_UsesUnscopedQuery: the unfiltered feed
+// is reachable from the ADR-003 platform rank and from nothing else. This test
+// used to pass the role string "admin", which is now a tenant administrator —
+// see the sibling test below for what that principal gets instead.
+func TestListAllDeployments_PlatformAdmin_UsesUnscopedQuery(t *testing.T) {
 	h, mock, cleanup := newXc2TestHandler(t)
 	defer cleanup()
 
@@ -129,6 +134,39 @@ func TestListAllDeployments_Admin_UsesUnscopedQuery(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/deployments", nil)
 	c.Set("user_id", uuid.New().String())
+	c.Set("user_roles", []string{"admin"})
+	c.Set("is_platform_admin", true)
+
+	h.ListAllDeployments(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestListAllDeployments_TenantAdmin_IsTenantFiltered pins the ADR-003 list
+// rule: a tenant administrator's feed is its own grants merged with its own
+// tenants' deployments. The unscoped query must never run for it — sqlmock
+// fails the test if it does, because no expectation matches it.
+func TestListAllDeployments_TenantAdmin_IsTenantFiltered(t *testing.T) {
+	h, mock, cleanup := newXc2TestHandler(t)
+	defer cleanup()
+
+	userID := uuid.New()
+	teamID := uuid.New()
+
+	mock.ExpectQuery(`JOIN project_access pa ON pa\.project_id = p\.id AND pa\.user_id`).
+		WithArgs(userID, 50).
+		WillReturnRows(sqlmock.NewRows(xc2EnrichedColumns))
+	mock.ExpectQuery(`SELECT team_id FROM team_members WHERE user_id`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"team_id"}).AddRow(teamID))
+	mock.ExpectQuery(`(?s)JOIN projects p ON p\.id = s\.project_id`).
+		WillReturnRows(sqlmock.NewRows(xc2EnrichedColumns))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/deployments", nil)
+	c.Set("user_id", userID.String())
 	c.Set("user_roles", []string{"admin"})
 
 	h.ListAllDeployments(c)

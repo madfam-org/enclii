@@ -43,12 +43,15 @@ func (h *Handler) ListAllDeployments(c *gin.Context) {
 		deployments []*types.DeploymentEnriched
 		err         error
 	)
+	// ADR-003: same rule as ListProjects — the unfiltered feed belongs to the
+	// platform rank; a tenant admin gets its own tenants' deployments merged
+	// with the ones it was explicitly granted.
 	if teamID, ok := middleware.ActingTeamID(c); ok {
 		deployments, err = h.repos.Deployments.ListAllEnrichedByTeam(ctx, teamID, since, limit)
-	} else if callerIsPlatformAdmin(c) {
+	} else if h.callerIsPlatformAdmin(c) {
 		deployments, err = h.repos.Deployments.ListAllEnriched(ctx, since, limit)
 	} else if userID, ok := authenticatedUserID(c); ok {
-		deployments, err = h.repos.Deployments.ListAllEnrichedForUser(ctx, userID, since, limit)
+		deployments, err = h.listDeploymentsForCaller(ctx, c, userID, since, limit)
 	} else {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return

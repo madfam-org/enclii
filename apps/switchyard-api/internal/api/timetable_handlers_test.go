@@ -63,9 +63,15 @@ func setupTimetableTestHandler(t *testing.T) (*Handler, sqlmock.Sqlmock, func())
 }
 
 // withTestAdminContext marks the request as a platform admin (unit tests skip real JWT).
+//
+// ADR-003: the role STRING no longer carries the platform rank — these tests
+// exercise handler behaviour, not authorization, so they set the rank the auth
+// layer would have resolved. Cross-tenant refusal is covered by
+// tenant_scope_guard_test.go.
 func withTestAdminContext(router *gin.Engine) {
 	router.Use(func(c *gin.Context) {
 		c.Set("user_roles", []string{"admin"})
+		c.Set("is_platform_admin", true)
 		c.Set("user_id", uuid.New().String())
 		c.Next()
 	})

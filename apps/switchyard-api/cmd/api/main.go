@@ -156,6 +156,19 @@ func main() {
 	// Initialize repositories
 	repos := db.NewRepositories(database)
 
+	// ADR-003 (ruling R21): reconcile the platform-admin rank from the
+	// operator allow-list before the server accepts traffic. This is the only
+	// way users.is_platform_admin is ever set — no role string, JWT claim or
+	// API-token scope grants it. See internal/auth/platform_admin.go.
+	if err := auth.ReconcilePlatformAdmins(context.Background(), repos.TenantScope); err != nil {
+		logrus.Fatal("Failed to reconcile platform-admin allow-list: ", err)
+	}
+	if !auth.TenantScopeEnforced() {
+		logrus.WithField("adr", "ADR-003").Error(
+			"ENCLII_TENANT_SCOPE_ENFORCE is OFF — tenant admins can reach every tenant. " +
+				"This is a rollback lever, not a mode: see docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md")
+	}
+
 	// Initialize cache service with retry (handles K8s startup timing)
 	// Supports both standalone Redis and Redis Sentinel (HA mode)
 	// Uses exponential backoff to wait for Redis to become available

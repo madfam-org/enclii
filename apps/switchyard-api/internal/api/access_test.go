@@ -12,7 +12,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEnforceUserProjectAccess_AdminBypass(t *testing.T) {
+// TestEnforceUserProjectAccess_PlatformRankBypass is the descendant of a test
+// named ...AdminBypass, which asserted that the `admin` role STRING — in
+// either claim shape — waved a caller through to any project without a single
+// lookup. ADR-003 rules that shape a defect: a rank comparison says nothing
+// about which tenant the caller is senior in.
+//
+// What survives is the bypass for the PLATFORM rank, which the auth layer
+// resolves from the principal record and no tenant can assert.
+func TestEnforceUserProjectAccess_PlatformRankBypass(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &Handler{}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_id", uuid.New().String())
+	c.Set("user_roles", []string{"admin"})
+	c.Set("is_platform_admin", true)
+
+	ok := h.enforceUserProjectAccess(c, uuid.New())
+	assert.True(t, ok)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestEnforceUserProjectAccess_TenantAdminRoleIsNotAPlatformBypass pins the
+// half of the old test that ADR-003 inverts: the role string alone, in either
+// claim shape, must NOT reach a project the caller has no relationship to.
+//
+// The Handler here has no repositories, so the guard cannot consult
+// project_access and answers 500 "authorization unavailable" rather than 404 —
+// the assertion that matters is that it does not return true. A wired guard
+// answering 404 across every resource kind is covered in
+// tenant_scope_guard_test.go.
+func TestEnforceUserProjectAccess_TenantAdminRoleIsNotAPlatformBypass(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := &Handler{}
 
@@ -32,6 +64,20 @@ func TestEnforceUserProjectAccess_AdminBypass(t *testing.T) {
 				c.Set("user_role", "admin")
 			},
 		},
+		{
+			name: "legacy superadmin string",
+			set: func(c *gin.Context) {
+				c.Set("user_roles", []string{"superadmin"})
+			},
+		},
+		{
+			name: "self-asserted platform_admin string",
+			set: func(c *gin.Context) {
+				// Reachable today: an API token's `scopes` list is copied
+				// verbatim into user_roles by internal/middleware/auth.go.
+				c.Set("user_roles", []string{"platform_admin"})
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -40,8 +86,8 @@ func TestEnforceUserProjectAccess_AdminBypass(t *testing.T) {
 			tc.set(c)
 
 			ok := h.enforceUserProjectAccess(c, uuid.New())
-			assert.True(t, ok)
-			assert.Equal(t, http.StatusOK, w.Code)
+			assert.False(t, ok, "a role string must never grant cross-tenant reach")
+			assert.NotEqual(t, http.StatusOK, w.Code)
 		})
 	}
 }

@@ -109,12 +109,16 @@ func (h *Handler) ListProjects(c *gin.Context) {
 		projects []*types.Project
 		err      error
 	)
+	// ADR-003: the platform-wide listing is reachable from the platform rank
+	// only. A tenant admin sees its OWN tenants' projects plus anything it was
+	// explicitly granted — never the whole table, which is what the old
+	// `admin` rank returned here.
 	if teamID != nil {
 		projects, err = h.projectService.ListProjectsScoped(ctx, teamID)
-	} else if callerIsPlatformAdmin(c) {
+	} else if h.callerIsPlatformAdmin(c) {
 		projects, err = h.projectService.ListProjectsScoped(ctx, nil)
 	} else if userID, ok := authenticatedUserID(c); ok {
-		projects, err = h.projectService.ListProjectsForUser(ctx, userID)
+		projects, err = h.listProjectsForCaller(ctx, c, userID)
 	} else {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return

@@ -64,10 +64,22 @@ func (h *Handler) registerAdminRoutes(protected *gin.RouterGroup) {
 	// XC-2 master-admin tenant switching: list every team, enter/exit
 	// an "acting as <tenant>" session, query the active session.
 	// See claudedocs/master-admin-tenant-switching.md.
-	admin.GET("/tenants", h.ListTenants)
-	admin.GET("/tenants/active", h.ActiveTenant)
-	admin.POST("/tenants/exit", h.ExitTenant)
-	admin.POST("/tenants/:slug/enter", h.EnterTenant)
+	//
+	// ADR-003: these four routes ARE the cross-tenant surface — listing every
+	// tenant and assuming one — so they carry the platform rank on top of the
+	// group's role gate. The group gate alone is `admin`, which post-ADR-003
+	// means tenant_admin: without this line a customer administrator could
+	// enumerate every tenant on the platform and act as any of them.
+	tenants := admin.Group("", h.RequirePlatformAdmin())
+	tenants.GET("/tenants", h.ListTenants)
+	tenants.GET("/tenants/active", h.ActiveTenant)
+	tenants.POST("/tenants/exit", h.ExitTenant)
+	tenants.POST("/tenants/:slug/enter", h.EnterTenant)
+
+	// ADR-003 pre-deploy dry-run: which principals lose cross-tenant reach
+	// when the tenant-scope guard is enforced. Read-only; see
+	// docs/runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md.
+	tenants.GET("/tenant-scope/dry-run", h.TenantScopeDryRun)
 
 	// Repo Onboarding (self-service)
 	admin.POST("/onboard", h.OnboardRepo)

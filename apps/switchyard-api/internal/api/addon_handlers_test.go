@@ -160,14 +160,37 @@ func TestForceDeleteRequiresPlatformAdmin(t *testing.T) {
 // the guard itself does not 403 the admin — downstream behavior needs a wired
 // service and is covered at the service layer.
 func TestForceDeleteAdminPassesGuard(t *testing.T) {
-	assert.True(t, callerIsPlatformAdmin(adminCtx(t)), "admin role must be recognized as platform admin")
+	h := &Handler{}
+	assert.True(t, h.callerIsPlatformAdmin(platformAdminCtx(t)),
+		"a principal carrying the resolved platform rank must clear the force guard")
 }
 
-// adminCtx builds a gin context carrying the admin role.
+// TestForceDeleteTenantAdminIsRefused is the ADR-003 half of the pair: the
+// `admin` role string is a TENANT administrator and must not reach the
+// unrecoverable teardown. Before ADR-003 this string alone cleared the guard.
+func TestForceDeleteTenantAdminIsRefused(t *testing.T) {
+	h := &Handler{}
+	assert.False(t, h.callerIsPlatformAdmin(adminCtx(t)),
+		"the admin role string is tenant_admin (ADR-003) and must not be read as the platform rank")
+}
+
+// adminCtx builds a gin context carrying the legacy admin role string, which
+// ADR-003 reads as tenant_admin.
 func adminCtx(t *testing.T) *gin.Context {
 	t.Helper()
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Set("user_role", "admin")
+	return c
+}
+
+// platformAdminCtx builds a gin context whose principal has been resolved to
+// the ADR-003 platform rank by the auth layer.
+func platformAdminCtx(t *testing.T) *gin.Context {
+	t.Helper()
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user_role", "admin")
+	c.Set("is_platform_admin", true)
 	return c
 }
