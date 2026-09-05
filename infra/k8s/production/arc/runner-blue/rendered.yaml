@@ -178,7 +178,7 @@ spec:
       initContainers:
       - name: init-dind-externals
         
-        image: ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:24b1412af84eded8696b94730ad76a0fb07588cb19342bd2975d0154d9105650
+        image: ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:ac3d33fd3c065b9b1c090011945af7e2b4a65dd94ddce8d087a99a8ab38ef139
         command: ["cp"]
         args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
         volumeMounts:
@@ -230,7 +230,7 @@ spec:
         command: 
           - /home/runner/run.sh
         image: 
-          ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:24b1412af84eded8696b94730ad76a0fb07588cb19342bd2975d0154d9105650
+          ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:ac3d33fd3c065b9b1c090011945af7e2b4a65dd94ddce8d087a99a8ab38ef139
         imagePullPolicy: 
           Always
         resources:
