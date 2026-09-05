@@ -14,6 +14,7 @@ package api
 // tenant_scope_route_coverage_test.go.
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -352,5 +353,170 @@ func TestTenantScope_KillSwitchDoesNotWaveThroughNonAdmins(t *testing.T) {
 
 	assert.False(t, h.enforceUserProjectAccess(c, projectOfB))
 	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// ---------------------------------------------------------------------------
+// Staged-rollout parity.
+//
+// Merging main deploys immediately, so the enforcing build reaches production
+// before any operator can run the dry-run report against it. The rollout is
+// therefore staged: production ships with ENCLII_TENANT_SCOPE_ENFORCE=false,
+// the operator runs the report and sets the allow-list, and a one-line change
+// flips the flag.
+//
+// That plan is only safe if the flag-off build is behaviourally identical to
+// main. These tests assert that identity on each surface the change touches,
+// so a later edit cannot quietly make "off" mean something narrower than
+// "what main did" while production is sitting in that state.
+// ---------------------------------------------------------------------------
+
+// TestStagedRollout_FlagOffMatchesMain_TenantAdminReachesAnyProject: main's
+// behaviour was an unconditional rank bypass with no query. Asserted for both
+// claim shapes and both legacy strings, since main honoured all four.
+func TestStagedRollout_FlagOffMatchesMain_TenantAdminReachesAnyProject(t *testing.T) {
+	t.Setenv("ENCLII_TENANT_SCOPE_ENFORCE", "false")
+
+	for _, tc := range []struct {
+		name string
+		set  func(*gin.Context)
+	}{
+		{"plural roles claim", func(c *gin.Context) { c.Set("user_roles", []string{"admin"}) }},
+		{"singular role claim", func(c *gin.Context) { c.Set("user_role", "admin") }},
+		{"legacy superadmin", func(c *gin.Context) { c.Set("user_roles", []string{"superadmin"}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, mock, cleanup := setupTenantScopeHandler(t)
+			defer cleanup()
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+			c.Set("user_id", uuid.New().String())
+			tc.set(c)
+
+			assert.True(t, h.enforceUserProjectAccess(c, uuid.New()))
+			assert.NoError(t, mock.ExpectationsWereMet(), "main performed no query on this path either")
+		})
+	}
+}
+
+// TestStagedRollout_FlagOffMatchesMain_AdminReachesThePlatformRoutes: on main
+// the tenant switcher gated on the `admin` role. With the flag off it must
+// still do so — this is the route family the operator needs in order to RUN
+// the dry-run report, so a hard platform-rank gate here would make the staged
+// rollout impossible to execute.
+func TestStagedRollout_FlagOffMatchesMain_AdminReachesThePlatformRoutes(t *testing.T) {
+	t.Setenv("ENCLII_TENANT_SCOPE_ENFORCE", "false")
+
+	h, _, cleanup := setupTenantScopeHandler(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.Use(withUserContext(uuid.New(), "admin"))
+	engine.GET("/v1/admin/tenant-scope/dry-run", h.RequirePlatformAdmin(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req, _ := http.NewRequest(http.MethodGet, "/v1/admin/tenant-scope/dry-run", nil)
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code,
+		"with enforcement off the operator must still be able to reach the report that tells them what to configure")
+}
+
+// TestStagedRollout_FlagOnClosesThePlatformRoutes is the other end of the
+// staged rollout: once the flag flips, the same caller is refused.
+func TestStagedRollout_FlagOnClosesThePlatformRoutes(t *testing.T) {
+	t.Setenv("ENCLII_TENANT_SCOPE_ENFORCE", "true")
+
+	h, mock, cleanup := setupTenantScopeHandler(t)
+	defer cleanup()
+
+	userID := uuid.New()
+	mock.ExpectQuery(`SELECT is_platform_admin FROM users WHERE id`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"is_platform_admin"}).AddRow(false))
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.Use(withUserContext(userID, "admin"))
+	engine.GET("/v1/admin/tenants", h.RequirePlatformAdmin(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req, _ := http.NewRequest(http.MethodGet, "/v1/admin/tenants", nil)
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestStagedRollout_FlagOffStillRefusesANonAdmin: the lever restores main, and
+// main refused a developer here too. It is not an "allow everything" switch.
+func TestStagedRollout_FlagOffStillRefusesANonAdmin(t *testing.T) {
+	t.Setenv("ENCLII_TENANT_SCOPE_ENFORCE", "false")
+
+	h, mock, cleanup := setupTenantScopeHandler(t)
+	defer cleanup()
+
+	userID := uuid.New()
+	mock.ExpectQuery(`SELECT is_platform_admin FROM users WHERE id`).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"is_platform_admin"}).AddRow(false))
+
+	w := httptest.NewRecorder()
+	_, engine := gin.CreateTestContext(w)
+	engine.Use(withUserContext(userID, "developer"))
+	engine.GET("/v1/admin/tenants", h.RequirePlatformAdmin(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req, _ := http.NewRequest(http.MethodGet, "/v1/admin/tenants", nil)
+	engine.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// TestStagedRollout_DryRunReportWorksWithTheFlagOff is the property the whole
+// staged plan rests on: the report is computed from live data and does not
+// consult the flag except to state it, so its numbers are the numbers that
+// will apply once the flag flips.
+func TestStagedRollout_DryRunReportWorksWithTheFlagOff(t *testing.T) {
+	t.Setenv("ENCLII_TENANT_SCOPE_ENFORCE", "false")
+	t.Setenv("ENCLII_PLATFORM_ADMIN_EMAILS", "")
+	t.Setenv("ENCLII_ADMIN_EMAILS", "operator@example.org")
+
+	h, mock, cleanup := setupTenantScopeHandler(t)
+	defer cleanup()
+
+	tenantAdmin := uuid.New()
+	operator := uuid.New()
+	mock.ExpectQuery(`(?s)WITH total AS`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "email", "role", "is_platform_admin", "team_n", "total", "after",
+		}).
+			AddRow(operator, "operator@example.org", "admin", true, 1, 12, 12).
+			AddRow(tenantAdmin, "admin@tenant-a.example.org", "admin", false, 1, 12, 3))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/admin/tenant-scope/dry-run", nil)
+
+	h.TenantScopeDryRun(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var body TenantScopeDryRunResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+
+	assert.False(t, body.EnforcementActive, "the report states the flag rather than depending on it")
+	assert.Equal(t, 1, body.AllowListSize, "and reads the allow-list through the ENCLII_ADMIN_EMAILS fallback")
+	assert.Equal(t, 1, body.PlatformAdmins, "the startup reconcile ran regardless of the flag, so the column is populated")
+	assert.Equal(t, 1, body.PrincipalsLosingReach)
+	assert.Equal(t, 9, body.Principals[1].ProjectsLost, "12 today, 3 after")
+	require.Len(t, body.Warnings, 1, "an allow-list that covers every operator leaves exactly the reach-loss warning")
+	assert.Contains(t, body.Warnings[0], "lose reach")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

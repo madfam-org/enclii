@@ -30,19 +30,40 @@ import (
 // so it is not mistaken for having been reviewed and left alone.
 func (h *Handler) RequirePlatformAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !h.callerIsPlatformAdmin(c) {
-			// 403 rather than this repository's usual 404: the existence of
-			// the platform control plane is not a tenant's secret, and a
-			// tenant admin who lands here needs to be told the rank is the
-			// problem rather than hunt a missing route.
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "Forbidden",
-				"message": "platform_admin rank required (ADR-003); tenant administrators are scoped to their own tenant",
-			})
-			c.Abort()
+		if h.callerIsPlatformAdmin(c) {
+			c.Next()
 			return
 		}
-		c.Next()
+
+		// The rollback lever covers this gate too, and it has to. These routes
+		// are how an operator RUNS the dry-run report and enters a tenant, and
+		// the staged rollout deploys with enforcement off precisely so the
+		// report can be run before the allow-list is set. A platform-rank gate
+		// that stayed hard while the flag was off would be a lock the only key
+		// to which is behind the lock.
+		//
+		// With the flag off these routes gate on the tenant-admin rank —
+		// exactly what they gated on before ADR-003 — and say so at WARN.
+		if !auth.TenantScopeEnforced() && callerHasTenantAdminRank(c) {
+			if h.logger != nil {
+				h.logger.Warn(c.Request.Context(),
+					"ADR-003 tenant-scope enforcement is DISABLED: admin rank reached a platform-only route",
+					logging.String("path", c.FullPath()),
+					logging.String("user_id", c.GetString("user_id")))
+			}
+			c.Next()
+			return
+		}
+
+		// 403 rather than this repository's usual 404: the existence of the
+		// platform control plane is not a tenant's secret, and a tenant admin
+		// who lands here needs to be told the rank is the problem rather than
+		// hunt a missing route.
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "Forbidden",
+			"message": "platform_admin rank required (ADR-003); tenant administrators are scoped to their own tenant",
+		})
+		c.Abort()
 	}
 }
 

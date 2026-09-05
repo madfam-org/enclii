@@ -97,12 +97,42 @@ today rather than what was ruled:
 - **Refusal is `404`**, following this API's existing convention for a resource
   the caller may not see. A `403` on another tenant's project slug would itself
   confirm that project exists.
-- **Rollback is `ENCLII_TENANT_SCOPE_ENFORCE=false`**, default on. It restores
-  the pre-ADR-003 bypass in full, including the defect, and is a lever for the
-  minutes before a revert — not a supported mode. See
-  [the rollout runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md).
+- **Rollback is `ENCLII_TENANT_SCOPE_ENFORCE=false`**, default on in code
+  (unset = enforce). It restores the pre-ADR-003 bypass in full, including the
+  defect. See [the rollout runbook](../runbooks/TENANT_SCOPE_ENFORCEMENT_ROLLOUT.md).
+
+### The rollout is staged, and production starts with the flag off
+
+Merging to `main` deploys immediately, so the enforcing build reaches
+production before any operator can run the pre-deploy report against it —
+the report is an endpoint in that build. Production therefore ships the flag
+explicitly off (`infra/k8s/components/environment/production.env`,
+`infra/k8s/production/environment-patch.yaml`), overriding the code default:
+
+1. **Stage 1** — deploy with `ENCLII_TENANT_SCOPE_ENFORCE=false`. Behaviour is
+   identical to pre-ADR-003 `main`. The migration runs and the startup
+   reconcile still populates `users.is_platform_admin` from the allow-list,
+   because neither consults the flag — that is what makes the next stage's
+   numbers real.
+2. **Stage 2** — the operator runs `GET /v1/admin/tenant-scope/dry-run`,
+   resolves every principal it reports losing reach, and sets
+   `ENCLII_PLATFORM_ADMIN_EMAILS`.
+3. **Stage 3** — a one-line change flips the flag to `true`.
+
+**Stage 3 is the point of the work, and stages 1-2 are not a resting place.**
+While the flag reads false, every tenant admin reaches every tenant. The API
+logs at ERROR on each boot in that state, and each bypass it grants is logged
+at WARN with the project id.
+
+Because the report and the tenant switcher are themselves platform-only
+routes, the flag covers that gate too: with it off they gate on the
+tenant-admin rank, exactly as they did before this change. A hard rank gate
+there would have put the only key to the rollout behind the lock it opens.
 
 ### Not yet enforced
+
+Two things, and they compound: production is in stage 1 above, so nothing in
+this section is enforced there yet.
 
 `apps/switchyard-api/internal/api/tenant_scope_route_coverage_test.go` derives,
 from the source on every run, the set of tenant-owned routes that never reach
