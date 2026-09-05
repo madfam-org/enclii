@@ -1,5 +1,13 @@
 # Runbook: rolling out ADR-003 tenant-scope enforcement
 
+> **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
+> the enforcement's own behaviour, its environment variables and its verify
+> steps, with every operator identity, tenant name, hostname and token value
+> left as a `<placeholder>`. The allow-list's actual contents, the principals
+> the dry-run report names, and the sequencing against live tenants belong to
+> `internal-devops` (the 2026-08-05 control-plane review that raised R21).
+> Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 Decision: [`ADR-003 — platform_admin is strictly above tenant_admin`](../architecture/ADR_003_TENANT_ADMIN_SCOPE.md) (ruling R21).
 
 This is a **behaviour-removing** deploy. Before it, any principal holding the
