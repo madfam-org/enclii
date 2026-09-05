@@ -303,7 +303,12 @@ func TestEnsureProjectR2Bucket_RefusesSilentRebind(t *testing.T) {
 // 503, and must not write a partial credential set.
 func TestEnsureProjectR2Bucket_FailsWhenTokenCannotBeMinted(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/r2/buckets") {
+		// POST — the method Cloudflare actually routes for bucket creation.
+		// While this read `MethodPut`, bucket creation fell through to the 403
+		// below, so the test reached TokenMintForbiddenError by failing at the
+		// bucket step rather than at the token mint it names. It passed, for
+		// the wrong reason.
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/r2/buckets") {
 			_, _ = w.Write([]byte(`{"success":true,"errors":[],"result":{}}`))
 			return
 		}
