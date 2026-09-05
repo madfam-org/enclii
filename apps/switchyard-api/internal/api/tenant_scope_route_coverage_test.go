@@ -42,8 +42,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// tenantScopeGuardEntrypoint is the one function that performs the ADR-003
-// tenant comparison. Everything else is guarded by reaching it.
+// tenantScopeGuardEntrypoints are the functions that perform the ADR-003
+// tenant comparison. Everything else is guarded by reaching one of them.
+//
+// enforceUserProjectAccess is the guard: it decides, and it writes the refusal.
+// callerMayReachProject is its read-only sibling, added by R21 PR 2 for the
+// one route that must FILTER instead of refusing (GET /v1/builds/:commit_sha/
+// status answers about every service that built a sha, and those services can
+// belong to different tenants). It makes the same decision by delegating to
+// the same helpers, and TestStagedGate_ReadOnlyPredicateAgreesWithTheGuard
+// drives both over one matrix so it cannot drift into a weaker answer.
+var tenantScopeGuardEntrypoints = map[string]bool{
+	"enforceUserProjectAccess": true,
+	"callerMayReachProject":    true,
+}
+
+// tenantScopeGuardEntrypoint names the guard proper, for failure messages.
 const tenantScopeGuardEntrypoint = "enforceUserProjectAccess"
 
 // tenantOwnedSegments are the path segments that name a resource owned by a
@@ -73,52 +87,27 @@ var tenantOwnedSegments = map[string]bool{
 	"buckets":           true,
 }
 
-// tenantScopeUnguardedBacklog names the routes that touch a tenant-owned path
-// and do NOT reach the guard today, each with why it is still here.
+// tenantScopeUnguardedBacklog is the list of tenant-owned routes that do NOT
+// reach the guard, each with why it is still here.
 //
-// This list is the scope of the follow-up change, written down so it cannot be
-// mistaken for a set of routes somebody reviewed and cleared. Entries are
-// "METHOD path". Removing an entry is the follow-up's definition of done;
-// adding one requires a reason a reviewer accepts.
-var tenantScopeUnguardedBacklog = map[string]string{
-	// SERVICE-ADDRESSED VERBS. Each parses :id, loads the service and acts on
-	// it without resolving the owning project — the exact shape ADR-003 calls
-	// a defect. They are one-line fixes (h.mustServiceAccess(c) at the top),
-	// but they are 23 handler edits across nine files and they change the
-	// failure mode of live endpoints, so they land as their own reviewable
-	// change rather than riding along with the role model.
-	"DELETE /services/:id":                      "loads the service and deletes it; no project resolution (service_handlers.go)",
-	"POST /services/:id/exec":                   "command allowlist only; no tenant comparison (infra_handlers.go)",
-	"POST /services/:id/migrate":                "same shape as exec (infra_handlers.go)",
-	"POST /services/:id/restart":                "same shape as exec (infra_handlers.go)",
-	"POST /services/:id/scale":                  "same shape as exec (infra_handlers.go)",
-	"GET /services/:id/health/detailed":         "reads live health for any service id",
-	"GET /services/:id/networking":              "reads network policy for any service id",
-	"GET /services/:id/previews":                "lists previews by service id",
-	"GET /services/:id/builds/:build_id/status": "reads build status by service id",
-
-	// DOMAIN VERBS under a service. loadCustomDomainWithAccess exists and is
-	// guarded; these three do not use it.
-	"POST /services/:id/domains":                   "creates a domain against any service id",
-	"PATCH /services/:id/domains/:domain_id":       "mutates a domain without the guarded loader",
-	"DELETE /services/:id/domains/:domain_id":      "deletes a domain without the guarded loader",
-	"POST /services/:id/domains/:domain_id/verify": "verifies a domain without the guarded loader",
-	"POST /domains/:domain_id/sync":                "resyncs a domain from the provider by domain id alone",
-
-	// RESOURCES ADDRESSED BY THEIR OWN ID, outside any :slug group.
-	"DELETE /cron-jobs/:id":                           "cron job addressed directly; the guarded path is /projects/:slug/cron-jobs",
-	"GET /cron-jobs/:id/runs":                         "run history for a cron job addressed directly",
-	"GET /exports/:export_id":                         "tenant export addressed directly (tenant_export_handlers.go)",
-	"DELETE /exports/:export_id":                      "same",
-	"POST /exports/:export_id/approve":                "same, and it is the approval step",
-	"GET /templates/deployments/:id":                  "template deployment addressed directly",
-	"GET /secrets/intake/:id":                         "secret-intake status by intake id",
-	"POST /previews/:id/comments/:comment_id/resolve": "preview comment resolve; the sibling preview routes are guarded",
-
-	// COMMIT-ADDRESSED BUILD STATUS. Keyed by git sha rather than by a
-	// tenant-owned id, so the fix is a lookup change, not a guard call.
-	"GET /v1/builds/:commit_sha/status": "addressed by commit sha; needs the sha resolved to a service first",
-}
+// IT IS EMPTY, AND THAT IS THE POINT.
+//
+// PR #499 landed the guard and left this map holding 23 entries — the routes
+// that never called the guard at all, so that fixing the guard did not fix
+// them. ADR-003 states that tenant #2 is gated on this map being empty, not on
+// the ADR's status line, because the ADR's own test is that a tenant admin is
+// refused on every tenant-scoped verb and those 23 verbs were not refused.
+// R21 PR 2 switched all 23 onto the guard at the target and deleted their
+// entries.
+//
+// Keep the map. It is now a tripwire rather than a backlog: the test above
+// derives the unguarded set from the source on every run, so a tenant-owned
+// route added tomorrow without a guard fails on the day it is written, and the
+// only ways to make that failure go away are to guard the route or to argue an
+// entry back into this map in front of a reviewer.
+//
+// Entries are "METHOD path".
+var tenantScopeUnguardedBacklog = map[string]string{}
 
 type routeRegistration struct {
 	method  string
@@ -180,7 +169,7 @@ func parseAPIPackage(t *testing.T) apiPackageFacts {
 					// A call on the handler receiver: h.Something(...)
 					if ident, ok := sel.X.(*ast.Ident); ok && recv != "" && ident.Name == recv {
 						facts.calls[name] = append(facts.calls[name], sel.Sel.Name)
-						if sel.Sel.Name == tenantScopeGuardEntrypoint {
+						if tenantScopeGuardEntrypoints[sel.Sel.Name] {
 							facts.guardsDirectly[name] = true
 						}
 					}
@@ -214,12 +203,29 @@ func parseAPIPackage(t *testing.T) apiPackageFacts {
 // without a :slug parameter, which is why it only counts for those.
 const slugGuardMiddleware = "RequireProjectAccessBySlug"
 
+// platformRankMiddleware refuses every caller below the ADR-003 platform rank.
+// A route carrying it cannot be reached by a tenant administrator AT ALL, so it
+// cannot be reached cross-tenant either — it is a strictly stronger answer than
+// the tenant comparison, not a way around it.
+//
+// It counts as guarded only where it is the RIGHT answer: a resource that has
+// no owning tenant to compare against, so that the tenant-scoped guard would
+// have nothing to resolve. R21 PR 2 uses it for exactly one route family,
+// /v1/secrets/intake/* (Vault paths and namespaces in the platform's own
+// secret plumbing, parented to no project). Reaching for it on a route that
+// DOES have an owning tenant would be a mis-gate: it locks the tenant out of
+// its own resource instead of scoping it, and a reviewer should refuse it.
+const platformRankMiddleware = "RequirePlatformAdmin"
+
 // isGuarded answers the question this file exists to ask, for one route.
 func (f apiPackageFacts) isGuarded(r routeRegistration) bool {
 	if f.reachesGuard(r.handler) {
 		return true
 	}
 	for _, mw := range r.middleware {
+		if mw == platformRankMiddleware {
+			return true
+		}
 		if f.reachesGuard(mw) {
 			return true
 		}
@@ -331,6 +337,25 @@ func TestTenantScope_EveryTenantOwnedRouteReachesTheGuard(t *testing.T) {
 			"every call, so either route the handler through a loader in access_resource.go, or add the route to "+
 			"tenantScopeUnguardedBacklog with a reason:\n  %s",
 		tenantScopeGuardEntrypoint, strings.Join(unguarded, "\n  "))
+}
+
+// TestTenantScope_BacklogIsEmpty is the R21 PR 2 definition of done, asserted
+// rather than described.
+//
+// The test above passes whether the backlog holds 23 entries or none — an
+// entry is an accepted exemption there. This one says the exemption list is
+// exhausted, which is the condition ADR-003 puts on onboarding a second
+// tenant. It fails loudly if anyone re-populates the map, which is the only
+// way an unguarded tenant-owned route can reach main again.
+func TestTenantScope_BacklogIsEmpty(t *testing.T) {
+	var remaining []string
+	for key, reason := range tenantScopeUnguardedBacklog {
+		remaining = append(remaining, key+"  ("+reason+")")
+	}
+	sort.Strings(remaining)
+	require.Emptyf(t, remaining,
+		"ADR-003 gates tenant #2 on this backlog being empty. These routes are tenant-owned and unguarded:\n  %s",
+		strings.Join(remaining, "\n  "))
 }
 
 // TestTenantScope_BacklogHasNoStaleEntries keeps the backlog honest in the

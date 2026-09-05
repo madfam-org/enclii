@@ -445,6 +445,17 @@ func TestDeleteCronJob_Success(t *testing.T) {
 	defer cleanup()
 
 	cronJobID := uuid.New()
+	projectID := uuid.New()
+
+	// ADR-003 (R21 PR 2): the delete resolves the row first so there is an
+	// owning project to compare tenants against. The caller here carries the
+	// platform rank, so the comparison is answered without a query.
+	mock.ExpectQuery(`FROM cron_jobs WHERE id`).
+		WithArgs(cronJobID).
+		WillReturnRows(sqlmock.NewRows(cronJobSelectColumns).AddRow(
+			cronJobID, projectID, nil, "nightly", "0 3 * * *", "echo hi", "alpine",
+			300, 0, false, "Forbid", time.Now(), time.Now(), nil, nil,
+		))
 
 	mock.ExpectExec(`DELETE FROM cron_jobs WHERE id`).
 		WithArgs(cronJobID).
@@ -469,9 +480,11 @@ func TestDeleteCronJob_NotFound(t *testing.T) {
 
 	cronJobID := uuid.New()
 
-	mock.ExpectExec(`DELETE FROM cron_jobs WHERE id`).
+	// The row is resolved before the delete now, so a missing cron job is a
+	// 404 from that lookup rather than from the DELETE's rows-affected count.
+	mock.ExpectQuery(`FROM cron_jobs WHERE id`).
 		WithArgs(cronJobID).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+		WillReturnError(sql.ErrNoRows)
 
 	router := gin.New()
 	withTestAdminContext(router)
