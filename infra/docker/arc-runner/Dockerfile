@@ -31,11 +31,12 @@
 # was 46 days old and the runbook's next-bump date was 2026-09-19, i.e.
 # inside the window that ends in a registration outage.
 #
-# BUMPING THIS LINE DOES NOT DEPLOY ANYTHING. The pool runs a digest pin
+# BUMPING THIS LINE DOES NOT DEPLOY ANYTHING. The pools run a digest pin
 # (Kyverno `require-image-digest`), so the new agent only reaches runners
 # once the overlay digest produced by .github/workflows/arc-runner-image.yml
-# on merge is repinned in BOTH image references in
-# infra/k8s/production/arc/runner-blue/rendered.yaml. That repin is a
+# on merge is repinned in BOTH image references of BOTH rendered scale sets,
+# infra/k8s/production/arc/runner-blue/rendered.yaml and
+# infra/k8s/production/arc/runner-deploy/rendered.yaml. That repin is a
 # second PR, by design — the digest does not exist until this one merges.
 #
 # BASE_TAG_DATE is the upstream publish date of BASE_TAG (the `created`
