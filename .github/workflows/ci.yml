@@ -350,6 +350,22 @@ jobs:
             check-config /w/{name}
         run: python3 scripts/check-alertmanager-config.py infra/k8s/
 
+  courier-envelope-lint:
+    name: Courier envelope shape (ops scripts)
+    runs-on: ubuntu-latest
+    # Cheap (sub-second), no network. The ops health-check scripts reach people
+    # only through Angelia Courier (internal-devops
+    # decisions/2026-09-05-third-party-messaging-via-angelia-courier.md M3), and
+    # Courier validates the envelope at the edge — a malformed one is a 400 at
+    # the exact moment production is on fire. This pins the envelope field by
+    # field against a stub `curl`, and asserts the producer key never reaches
+    # stdout or argv.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run Courier envelope tests
+        run: bash ./scripts/tests/test-courier-envelope.sh
+
   intake-policy-parity:
     name: Intake/Vault-policy parity
     runs-on: ubuntu-latest
