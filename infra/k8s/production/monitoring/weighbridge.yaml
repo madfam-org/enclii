@@ -1,0 +1,428 @@
+---
+# Weighbridge — the CI runner meter.
+#
+# WHAT IT IS
+# ==========
+# A small controller that watches the runner pods ARC creates and posts one
+# `build.completed` event per finished pod to Waybill's `/internal/events`,
+# stamped with the platform's own timestamps. It is the answer to "how many CI
+# minutes did this tenant use", which nothing in this estate could answer
+# before: switchyard-api credited a flat 3.0 minutes per release and billed
+# overage against that fiction.
+#
+# WHY IT IS IN `monitoring` AND NOT IN `arc-runners`
+# ==================================================
+# `arc-runners` carries a blanket default-deny-egress policy
+# (../arc/arc-default-deny.yaml). A meter deployed beside the runners could
+# never reach the biller, and the drop would be silent at the CNI with no error
+# object anywhere. This is the same reason the ARC pool-health detector lives
+# here (../arc/pool-health-alert.yaml), and the reason its RBAC is a Role in
+# `arc-runners` bound to a subject in `monitoring`.
+#
+# ORDER OF OPERATIONS ON FIRST DEPLOY — READ THIS BEFORE PANICKING
+# ================================================================
+# The `image:` line below ships as an ALL-ZERO SENTINEL DIGEST. There is no
+# weighbridge image in GHCR until this commit lands on main, and an all-zero
+# digest can never resolve to anything, so it fails closed rather than
+# silently pulling something else.
+#
+#   1. Merge to main.
+#   2. `.github/workflows/weighbridge.yml` fires on the `apps/waybill/**`
+#      path, builds, cosign-signs, pushes, and commits the real digest into
+#      THIS FILE. That commit is what ArgoCD rolls.
+#   3. Until step 2 lands (~5 minutes) the pod is in ImagePullBackOff and
+#      ArgoCD reports Degraded. That is deliberate: a Deployment that reports
+#      Synced/Healthy while doing nothing is the exact failure mode
+#      kube-state-metrics shipped with in #388, and a meter is the last thing
+#      that should be able to look fine while measuring nothing.
+#
+# WHAT IT DOES NOT MEASURE
+# ========================
+# Cache bytes and egress bytes. Nothing in a runner pod's status reports
+# either, so those fields are absent from the event rather than sent as zero.
+# And a pod that finishes AND is deleted while this Deployment is down is never
+# metered — there is no replay. That gap is why the roundhouse stream exists as
+# a cross-check, and why this is an always-on Deployment rather than a CronJob.
+#
+# Boundary checkpoint (2026-09-05, platform ops): no node identity, IP,
+# hardware SKU, tunnel id or secret value appears here. The Waybill API key is
+# referenced by SECRET NAME only, through the existing ExternalSecret path.
+# Policy: docs/PUBLIC_REPO_BOUNDARY.md and the repo-boundary contract in
+# madfam-org/internal-devops.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: weighbridge
+  namespace: monitoring
+  labels:
+    app: weighbridge
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/managed-by: enclii
+
+---
+# Read-only access to the runner artefacts, granted in `arc-runners` to a
+# subject in `monitoring`. A namespaced Role rather than a ClusterRole: a meter
+# has no business reading pods anywhere else in the estate, and no business
+# writing anything at all.
+#
+# `pods` is the primary source (it carries the two real timestamps and the
+# outcome); `ephemeralrunners` is read only to enrich each event with the
+# repository, workflow and job, which live nowhere else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: weighbridge-runner-reader
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["actions.github.com"]
+    resources: ["ephemeralrunners"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: weighbridge-runner-reader
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+subjects:
+  - kind: ServiceAccount
+    name: weighbridge
+    namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: weighbridge-runner-reader
+
+---
+# The Waybill internal API key, by NAME. No value appears in this repo.
+#
+# Sourced through the same interim path as `enclii-internal-api-key` in
+# ../../production/: the `kubernetes-store` ClusterSecretStore reads the
+# canonical source Secret until `secret/enclii/internal_api_key` is backfilled
+# into Vault (`enclii secrets vault-backfill`), at which point this switches to
+# `vault-store` alongside the others.
+#
+# The Deployment marks the key OPTIONAL. Waybill only enforces `X-API-Key` when
+# its own `INTERNAL_API_KEY` is set, and it is not set on the running
+# Deployment today — so requiring the secret here would stop the meter from
+# starting in order to satisfy a check that is not being made. When the key is
+# turned on at the Waybill end, this ExternalSecret is already delivering it.
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: weighbridge-waybill-key
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/managed-by: enclii
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: kubernetes-store
+    kind: ClusterSecretStore
+  target:
+    name: weighbridge-waybill-key
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: WAYBILL_INTERNAL_API_KEY
+      remoteRef:
+        key: enclii-internal-api-key-source
+        property: internal-api-key
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
+
+---
+# `monitoring` runs default-deny-all (../network-policies.yaml), so every flow
+# is denied until it is named here.
+#
+# ONE SELECTOR SHAPE PER PEER. k3s's NetworkPolicy controller renders a peer
+# that combines `namespaceSelector` AND `podSelector` as deny-everything, so a
+# rule written that way looks correct in review, applies cleanly, and drops
+# every packet. Each peer below therefore carries exactly one selector — the
+# same discipline #500 applied to `rules-eval-egress`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: weighbridge-egress
+  namespace: monitoring
+  labels:
+    app: weighbridge
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+spec:
+  podSelector:
+    matchLabels:
+      app: weighbridge
+  policyTypes:
+    - Egress
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Waybill's ingest, in the `enclii` namespace, on the container port
+    # (8080 — the Service's own port, see the waybill Deployment).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: enclii
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Kubernetes API server — the pod and EphemeralRunner watches.
+    # No destination selector: some CNIs do not treat the apiserver Service IP
+    # as ordinary in-namespace traffic, and a silently dropped watch looks
+    # exactly like an idle runner pool from in here. Same workaround the
+    # neighbouring monitoring policies already carry.
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weighbridge
+  namespace: monitoring
+  labels:
+    app: weighbridge
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/managed-by: enclii
+spec:
+  # ONE replica, and not more. Two replicas both observe every pod and both
+  # POST; the idempotency key means Waybill records one event either way, but
+  # the second copy is pure waste and it makes the rejected/duplicate counters
+  # unreadable. A meter does not need to be highly available — it needs to be
+  # honest about the minutes it missed, which the alert below reports.
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    # Recreate, not RollingUpdate: two controllers overlapping during a rollout
+    # is the same double-observation as two replicas.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: weighbridge
+  template:
+    metadata:
+      labels:
+        app: weighbridge
+        app.kubernetes.io/name: weighbridge
+        app.kubernetes.io/component: metering
+        app.kubernetes.io/part-of: enclii
+    spec:
+      serviceAccountName: weighbridge
+      automountServiceAccountToken: true
+      imagePullSecrets:
+        - name: ghcr-credentials
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: weighbridge
+          # SENTINEL — NOT A REAL DIGEST. Rewritten by
+          # .github/workflows/weighbridge.yml on the first push to main that
+          # touches apps/waybill/**. See "ORDER OF OPERATIONS" at the top of
+          # this file. An all-zero digest cannot resolve, so this fails closed.
+          image: ghcr.io/madfam-org/enclii/weighbridge@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: metrics
+              containerPort: 9102
+              protocol: TCP
+          env:
+            - name: WEIGHBRIDGE_NAMESPACE
+              value: arc-runners
+            - name: WEIGHBRIDGE_WAYBILL_BASE_URL
+              # Cross-namespace, fully qualified. NOTE: the `waybill` Service
+              # is not in this repo's manifests — it is created by the
+              # switchyard reconciler for the Deployment it manages
+              # (`enclii.dev/managed-by: switchyard`). If that Service ever
+              # stops existing, this URL stops resolving and every event is
+              # counted in weighbridge_events_rejected_total.
+              value: http://waybill.enclii.svc.cluster.local:8080
+            - name: WEIGHBRIDGE_WAYBILL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: weighbridge-waybill-key
+                  key: WAYBILL_INTERNAL_API_KEY
+                  # See the ExternalSecret above for why this is optional.
+                  optional: true
+            # Attribution for the shared pool. DELIBERATELY UNSET: there is one
+            # org-wide scale set today and no tenant→project mapping for it, so
+            # setting a value here would file every tenant's minutes under one
+            # project and look entirely normal on the invoice. Unset means
+            # unlabelled runners are counted in
+            # weighbridge_runners_unattributed_total and dropped, which is the
+            # honest state and the thing to watch until per-tenant scale sets
+            # land in Wave 2.
+            # - name: WEIGHBRIDGE_DEFAULT_PROJECT_ID
+            #   value: "<project uuid>"
+            - name: WEIGHBRIDGE_METRICS_PORT
+              value: "9102"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+---
+# Scraped by the `rules-eval` Prometheus, whose podMonitorSelector and
+# podMonitorNamespaceSelector are both empty (they match everything) — see
+# prometheus-operator/rules-eval-prometheus.yaml. That instance already has
+# namespace-wide egress into `monitoring`, so no NetworkPolicy change is needed
+# for the scrape to land.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: weighbridge
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+spec:
+  selector:
+    matchLabels:
+      app: weighbridge
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+
+---
+# Evaluated by the `rules-eval` Prometheus (prometheus-operator/), whose
+# ruleSelector and ruleNamespaceSelector are both empty and therefore match
+# every PrometheusRule in every namespace, and whose alerting target is the
+# SAME, EXISTING Alertmanager the primary Prometheus uses. NO RECEIVER IS ADDED
+# OR EDITED: `severity: critical` already routes to `critical-receiver` in
+# alertmanager.yaml, which carries the Courier + email last mile.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: weighbridge-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: weighbridge
+    app.kubernetes.io/component: metering
+    app.kubernetes.io/part-of: enclii
+    # Matches the discovery label the other rule sets in this estate carry.
+    # rules-eval's ruleSelector is empty, so this is descriptive rather than
+    # load-bearing — but a future scoped selector must not silently drop it.
+    enclii.dev/prometheus-rules: "true"
+spec:
+  groups:
+    - name: enclii-weighbridge
+      interval: 60s
+      rules:
+        # THE FAILURE THIS EXISTS FOR: the meter is up, the pool is working,
+        # and nothing is being recorded. That state is invisible from every
+        # other angle — CI stays green, runners keep finishing, and the only
+        # symptom is an invoice that is quietly too small.
+        #
+        # Three conjuncts, each load-bearing:
+        #
+        #  1. no events emitted in two hours;
+        #  2. runners were actually running in that window — read from
+        #     `arc_pool_running_runners`, which the arc-pool-health detector
+        #     pushes to the pushgateway every 5 minutes and which rules-eval
+        #     scrapes under its `pushgateway` job. Without this, a genuinely
+        #     idle weekend would page somebody;
+        #  3. weighbridge is UP and being scraped. Without this, the alert
+        #     fires continuously between the merge of this manifest and the
+        #     first image build, which teaches people to ignore it.
+        #
+        # WHAT IT DOES NOT COVER, stated so nobody assumes otherwise:
+        # weighbridge being absent, crash-looping or unscraped. Conjunct 3
+        # deliberately silences this rule in exactly that state. The Deployment
+        # not existing is an ArgoCD health problem and shows there; a rule that
+        # tried to cover both would need `absent()` over a target that has
+        # never existed, which cannot distinguish "removed" from "never
+        # deployed".
+        - alert: WeighbridgeNoEventsWhileRunnersActive
+          expr: |
+            (
+              sum(increase(weighbridge_events_emitted_total[2h])) == 0
+            )
+            and
+            (
+              max_over_time(arc_pool_running_runners[2h]) > 0
+            )
+            and
+            (
+              max_over_time(up{job=~".*weighbridge.*"}[10m]) == 1
+            )
+          for: 30m
+          labels:
+            severity: critical
+            component: metering
+          annotations:
+            summary: "Weighbridge is up but has metered no CI minutes for 2h while runners were active"
+            description: |
+              weighbridge_events_emitted_total has not moved in two hours, but
+              arc_pool_running_runners shows the pool served jobs in the same
+              window. Build minutes are being consumed and not recorded, so
+              every consumer of Waybill's build_minutes is reading low.
+              Check weighbridge_events_rejected_total (waybill unreachable or
+              refusing) and weighbridge_runners_unattributed_total (runners
+              with no project attribution) first — they distinguish "could not
+              deliver" from "delivered nowhere to file it".
+              Runbook: docs/runbooks/WEIGHBRIDGE.md
