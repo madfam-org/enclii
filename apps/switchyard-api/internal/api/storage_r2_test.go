@@ -41,7 +41,18 @@ func newCloudflareStub(t *testing.T) *cloudflareStub {
 	s := &cloudflareStub{}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/r2/buckets"):
+		// Cloudflare routes bucket creation at POST only; any other method on
+		// this path is unrouted and comes back as HTTP 500 / code 10015. This
+		// stub used to answer PUT with a success body — the same way
+		// provisioning/r2_test.go did — which is why a provisioner that had
+		// sent PUT since its first commit kept a green suite until it reached
+		// production. Rejecting non-POST here keeps the mock from agreeing
+		// with a bug a second time.
+		case r.Method != http.MethodPost && strings.HasSuffix(r.URL.Path, "/r2/buckets"):
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(
+				`{"success":false,"errors":[{"code":10015,"message":"No route matches this url."}],"result":null}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/r2/buckets"):
 			_, _ = w.Write([]byte(`{"success":true,"errors":[],"result":{}}`))
 		case strings.HasSuffix(r.URL.Path, "/tokens/permission_groups"):
 			_, _ = fmt.Fprintf(w, `{"success":true,"errors":[],"result":[{"id":"pg-write","name":%q,"scopes":["com.cloudflare.edge.r2.bucket"]}]}`,
