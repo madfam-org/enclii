@@ -521,16 +521,16 @@ func TestNodeNames(t *testing.T) {
 		{
 			name: "single node",
 			nodes: map[string]corev1.Node{
-				"foundry-core": {},
+				"node-a": {},
 			},
 			wantLen: 1,
 		},
 		{
 			name: "multiple nodes",
 			nodes: map[string]corev1.Node{
-				"foundry-core":       {},
-				"foundry-builder-01": {},
-				"foundry-gpu-01":     {},
+				"node-a":         {},
+				"node-c":         {},
+				"foundry-gpu-01": {},
 			},
 			wantLen: 3,
 		},

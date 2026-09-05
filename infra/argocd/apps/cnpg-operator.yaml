@@ -108,7 +108,7 @@ spec:
 
         # Anti-affinity for HA: prefer different nodes for the 2 operator
         # replicas. `preferred` not `required` because today's cluster has
-        # tight scheduling (see RFC 0012 §3.1 — `foundry-builder-01` taint).
+        # tight scheduling (see RFC 0012 §3.1 — the `builder=true` taint).
         affinity:
           podAntiAffinity:
             preferredDuringSchedulingIgnoredDuringExecution:

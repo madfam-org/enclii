@@ -1,18 +1,41 @@
+# madfam-runners-deploy — the ADR-010a dedicated deploy scale set.
+#
+# HOW THIS FILE WAS PRODUCED (reproduce it the same way):
+#   helm template arc-runner-deploy \
+#     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+#     --namespace arc-runners --version 0.14.0 \
+#     -f infra/helm/arc/values-runner-set.yaml \
+#     -f infra/helm/arc/values-runner-set-deploy.yaml
+#
+# then the three hand-edits runner-blue/rendered.yaml also carries, which are
+# NOT expressible in the values files as they stand today:
+#   1. ephemeral-storage requests/limits on the runner and dind containers —
+#      without a request the scheduler scores a runner's disk as zero and
+#      kubelet evicts whatever exceeds it once the node crosses its threshold;
+#   2. the dind startupProbe timeoutSeconds;
+#   3. the image DIGEST pin, twice (the runner container and the
+#      init-dind-externals initContainer), because Kyverno's
+#      require-image-digest rejects a floating tag.
+#
+# THE DIGEST PIN IS NOW IN TWO DIRECTORIES. Every base-image bump must repin
+# runner-blue/rendered.yaml AND this file, or the deploy pool quietly keeps
+# running the old agent and starts failing registration ~60 days later while
+# blue looks healthy. It is pinned here at the same digest blue runs today.
 ---
 # Source: gha-runner-scale-set/templates/manager_role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: madfam-runners-blue-gha-rs-manager
+  name: madfam-runners-deploy-gha-rs-manager
   namespace: arc-runners
   labels:
     helm.sh/chart: gha-rs-0.14.0
-    app.kubernetes.io/name: madfam-runners-blue
-    app.kubernetes.io/instance: madfam-runners-blue
+    app.kubernetes.io/name: madfam-runners-deploy
+    app.kubernetes.io/instance: madfam-runners-deploy
     app.kubernetes.io/version: "0.14.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: gha-rs
-    actions.github.com/scale-set-name: madfam-runners-blue
+    actions.github.com/scale-set-name: madfam-runners-deploy
     actions.github.com/scale-set-namespace: arc-runners
     app.kubernetes.io/component: manager-role
   annotations:
@@ -80,16 +103,16 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: madfam-runners-blue-gha-rs-manager
+  name: madfam-runners-deploy-gha-rs-manager
   namespace: arc-runners
   labels:
     helm.sh/chart: gha-rs-0.14.0
-    app.kubernetes.io/name: madfam-runners-blue
-    app.kubernetes.io/instance: madfam-runners-blue
+    app.kubernetes.io/name: madfam-runners-deploy
+    app.kubernetes.io/instance: madfam-runners-deploy
     app.kubernetes.io/version: "0.14.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: gha-rs
-    actions.github.com/scale-set-name: madfam-runners-blue
+    actions.github.com/scale-set-name: madfam-runners-deploy
     actions.github.com/scale-set-namespace: arc-runners
     app.kubernetes.io/component: manager-role-binding
   annotations:
@@ -98,7 +121,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: madfam-runners-blue-gha-rs-manager
+  name: madfam-runners-deploy-gha-rs-manager
 subjects:
 - kind: ServiceAccount
   name: 
@@ -110,28 +133,28 @@ subjects:
 apiVersion: actions.github.com/v1alpha1
 kind: AutoscalingRunnerSet
 metadata:
-  name: madfam-runners-blue
+  name: madfam-runners-deploy
   namespace: arc-runners
   labels:
     app.kubernetes.io/component: "autoscaling-runner-set"
     helm.sh/chart: gha-rs-0.14.0
-    app.kubernetes.io/name: madfam-runners-blue
-    app.kubernetes.io/instance: madfam-runners-blue
+    app.kubernetes.io/name: madfam-runners-deploy
+    app.kubernetes.io/instance: madfam-runners-deploy
     app.kubernetes.io/version: "0.14.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: gha-rs
-    actions.github.com/scale-set-name: madfam-runners-blue
+    actions.github.com/scale-set-name: madfam-runners-deploy
     actions.github.com/scale-set-namespace: arc-runners
   annotations:
-    actions.github.com/values-hash: 0d1e35d3aeb08226581d53f64236ad81fae07dcd90f75dd8cd8c5a597f79990
-    actions.github.com/cleanup-manager-role-binding: madfam-runners-blue-gha-rs-manager
-    actions.github.com/cleanup-manager-role-name: madfam-runners-blue-gha-rs-manager
+    actions.github.com/values-hash: 33c1e3d4755e587270abd872742e0f9ffaf2df085ab9e638bc66adf2a1c3874
+    actions.github.com/cleanup-manager-role-binding: madfam-runners-deploy-gha-rs-manager
+    actions.github.com/cleanup-manager-role-name: madfam-runners-deploy-gha-rs-manager
 
 spec:
   githubConfigUrl: https://github.com/madfam-org
   githubConfigSecret: github-app-secret
-  runnerScaleSetName: madfam-runners-blue
-  maxRunners: 20
+  runnerScaleSetName: madfam-runners-deploy
+  maxRunners: 2
   minRunners: 1
   listenerTemplate:
     spec:
@@ -158,7 +181,7 @@ spec:
     metadata:
       labels:
         arc.enclii.dev/active: "true"
-        arc.enclii.dev/color: blue
+        arc.enclii.dev/pool: deploy
       annotations:
         arc.enclii.dev/deployed-at: ""
     spec:
@@ -253,7 +276,7 @@ spec:
             # eviction threshold (~12Gi free). Every runner exceeds zero, so
             # every runner is a candidate.
             #
-            # Measured 2026-08-07: four runners evicted from a builder node
+            # Measured 2026-08-07: four runners evicted from foundry-builder-01
             # inside 20 minutes, each reported by kubelet as
             # "Container runner was using ~3073816Ki, request is 0".
             #
@@ -264,7 +287,7 @@ spec:
             # and it was misdiagnosed as one across several repositories.
             #
             # RAISED 6Gi -> 10Gi on 2026-08-07 after E2E runners kept dying while
-            # every other job type survived. Measured live on that builder
+            # every other job type survived. Measured live on foundry-builder-01
             # through the kubelet summary API: concurrent runners were using 8.11,
             # 7.14, 6.81, 5.06, 2.69 and 0.90 Gi. The heavy ones EXCEED a 6Gi
             # request, and kubelet evicts pods over their request first — so the
@@ -274,7 +297,7 @@ spec:
             #
             # That node was at 184/225Gi used with 31.8Gi free — near the 10% hard
             # eviction threshold — with nine runners packed on it while
-            # the general-purpose worker sat at 31% with 62Gi free. A 10Gi request covers
+            # foundry-worker-01 sat at 31% with 62Gi free. A 10Gi request covers
             # real peak usage AND thins packing density (~22 slots instead of 37),
             # so the node stops being driven into its own threshold.
             ephemeral-storage: 10Gi

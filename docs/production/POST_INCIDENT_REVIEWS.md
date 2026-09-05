@@ -1,5 +1,14 @@
 # Post-Incident Reviews
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -59,7 +68,7 @@ During iterative debugging of connectivity issues, multiple tunnel deployments w
 **Status:** Resolved
 
 ### Summary
-The foundry-builder-01 worker node was running a different k3s version than foundry-core control plane, causing intermittent scheduling failures and pod evictions.
+The builder node was running a different k3s version than the control-plane node, causing intermittent scheduling failures and pod evictions.
 
 ### Root Cause
 Manual node addition without version pinning. Control plane was upgraded but worker node retained older version.

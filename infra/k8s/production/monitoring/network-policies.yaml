@@ -207,6 +207,24 @@ spec:
     ports:
     - protocol: TCP
       port: 587
+  # HTTPS, for webhook receivers.
+  #
+  # Added 2026-09-04 while arming arc-pool-health end to end. Both
+  # `critical-receiver` and `warning-receiver` in alertmanager.yaml carry a
+  # `slack_configs` block with `api_url_file`, and this policy allowed DNS,
+  # SMTP and gossip but never 443 — so every Slack notification failed at the
+  # CNI with a connection timeout while the email half delivered and the
+  # config looked, and validated, perfectly correct. That is the same shape as
+  # the alerts this file's neighbours exist to catch: a delivery path that is
+  # configured, healthy-looking, and dead.
+  #
+  # `to: []` (anywhere) rather than an ipBlock: Slack's webhook edge is a
+  # CDN with no stable published range, and pinning a stale range fails
+  # closed on exactly the page that matters. Mirrors the SMTP rule above.
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
   # Prometheus (for silences API etc.)
   - to:
     - podSelector:

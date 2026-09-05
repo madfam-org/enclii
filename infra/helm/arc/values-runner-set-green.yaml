@@ -22,7 +22,8 @@ template:
     annotations:
       arc.enclii.dev/deployed-at: ""  # Will be set by Helm
   spec:
-    # Target the builder node "The Forge" (foundry-builder-01)
+    # Target builder nodes by LABEL, not by hostname: every builder carries
+    # `role=builder` and the `builder=true:NoSchedule` taint tolerated below.
     nodeSelector:
       role: builder
     # Tolerate the builder taint

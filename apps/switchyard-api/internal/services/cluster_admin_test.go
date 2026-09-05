@@ -24,7 +24,7 @@ func TestClusterSlugValidation(t *testing.T) {
 		slug  string
 		valid bool
 	}{
-		{"simple slug", "foundry-core", true},
+		{"simple slug", "node-a", true},
 		{"with numbers", "cluster-01", true},
 		{"single word", "production", true},
 		{"empty slug", "", false},

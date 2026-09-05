@@ -47,7 +47,7 @@ beforeEach(() => {
 
 describe('fleetApi', () => {
   it('list fetches GET /api/admin/fleet', async () => {
-    const hosts = [{ id: 'h1', name: 'foundry-core' }]
+    const hosts = [{ id: 'h1', name: 'node-a' }]
     mockFetchSuccess({ hosts })
 
     const result = await fleetApi.list()
@@ -59,7 +59,7 @@ describe('fleetApi', () => {
   })
 
   it('get fetches GET /api/admin/fleet/:id', async () => {
-    const host = { id: 'h1', name: 'foundry-core' }
+    const host = { id: 'h1', name: 'node-a' }
     mockFetchSuccess(host)
 
     const result = await fleetApi.get('h1')

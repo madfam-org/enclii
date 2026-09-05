@@ -1,5 +1,14 @@
 # Vendor Risk Assessment
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 Risk assessment of third-party vendors integrated into the Enclii platform.
 
 **Last reviewed:** 2026-02-01
@@ -24,8 +33,8 @@ Risk assessment of third-party vendors integrated into the Enclii platform.
 
 | Service | Purpose | Enclii Component |
 |---------|---------|-----------------|
-| Dedicated Server | foundry-core control plane node | k3s control plane, PostgreSQL, Redis, ArgoCD |
-| Cloud VPS (The Forge) | foundry-builder-01 worker node | GitHub Actions runners, CI builds |
+| Dedicated bare-metal | control-plane node | k3s control plane, PostgreSQL, Redis, ArgoCD |
+| Cloud compute instance | builder node | GitHub Actions runners, CI builds |
 
 ### Data Shared with Vendor
 

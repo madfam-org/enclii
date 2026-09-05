@@ -1826,6 +1826,94 @@ data:
                 `{{ $labels.repo }}` for 30+ minutes. Likely causes: PAT scope
                 missing the repo, repo renamed, or branch deleted. The monitor
                 keeps running for the other repos.
+
+  # =========================================================================
+  # ARC pool health (added 2026-09-04)
+  # -------------------------------------------------------------------------
+  # These evaluate the gauges that infra/k8s/production/arc/pool-health-alert.yaml
+  # pushes to the pushgateway every 5 minutes. They are NOT a replacement for
+  # that detector's direct POST to Alertmanager — they are the half of the
+  # problem the POST cannot solve, plus one deliberate redundancy:
+  #
+  #   ARCPoolHealthDetectorStale / Missing — the detector's own death. A
+  #     CronJob that stops scheduling is silent in exactly the way a healthy
+  #     fleet is silent. That is the shape of the 82-day-dead
+  #     ARCNoRunnersAvailable rule and of the OOMKilled stuck-runner watchdog,
+  #     and it is why the detector now emits a heartbeat at all.
+  #
+  #   ARCRunnersOutdatedGauge — the same fact ARCRunnersDeprecated pages on,
+  #     reached by a different path (API read -> pushgateway -> scrape ->
+  #     rule) instead of (API read -> POST -> Alertmanager). Deliberate
+  #     double-paging on one condition, because on 2026-08-10 the alert that
+  #     should have caught this was dead four independent ways at once and
+  #     each one of them was individually sufficient. Two paths that fail
+  #     differently beat one path that looks healthy.
+  #
+  # Pushgateway values are sticky: if the CronJob dies mid-outage, the last
+  # gauge persists and ARCRunnersOutdatedGauge keeps firing. That is the
+  # correct direction to be wrong in, and DetectorStale fires alongside it to
+  # say the numbers are frozen.
+  # =========================================================================
+  arc-pool-health-rules.yml: |
+    groups:
+      - name: arc-pool-health
+        interval: 1m
+        rules:
+          - alert: ARCPoolHealthDetectorStale
+            expr: time() - arc_pool_health_last_run_timestamp_seconds > 1200
+            for: 5m
+            labels:
+              severity: critical
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC pool-health detector has not run in >20 min"
+              description: |
+                The `arc-pool-health` CronJob in `monitoring` pushes a
+                heartbeat every 5 minutes. It has not. Until it runs again the
+                runner pool has NO detector: a total CI outage would look
+                exactly like this does. Check the CronJob's last jobs and the
+                CronJobFailed alert for the same namespace.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+          - alert: ARCPoolHealthDetectorMissing
+            expr: absent(arc_pool_health_last_run_timestamp_seconds)
+            for: 30m
+            labels:
+              severity: warning
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC pool-health detector has never pushed a heartbeat"
+              description: |
+                No `arc_pool_health_last_run_timestamp_seconds` series exists
+                at all. Either the CronJob has never run since this rule
+                landed, its egress to the pushgateway is blocked, or the
+                pushgateway lost its state. This is the "applied and healthy
+                but never actually running" failure the detector itself was
+                written to end.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
+
+          - alert: ARCRunnersOutdatedGauge
+            expr: arc_pool_outdated_runners > 0
+            for: 5m
+            labels:
+              severity: critical
+              service: arc
+              category: ci-capacity
+            annotations:
+              summary: "ARC runners are being rejected at registration (metrics path)"
+              description: |
+                {{ $value }} EphemeralRunner(s) are in phase=Outdated. GitHub
+                is refusing the runner agent — typically the pinned
+                actions/runner base has aged past the ~60-day deprecation
+                window. Every private repo's CI will sit QUEUED until the base
+                image is bumped AND the overlay digest is repinned in
+                infra/k8s/production/arc/runner-blue/rendered.yaml.
+                ARCRunnersDeprecated normally pages first; if only this one
+                fired, the detector's direct POST to Alertmanager is broken
+                and that is a second incident.
+              runbook_url: "https://github.com/madfam-org/internal-devops/blob/main/runbooks/arc-runner-image-rebuild.md"
 ---
 # Prometheus PVC
 apiVersion: v1

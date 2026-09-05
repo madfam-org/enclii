@@ -37,11 +37,20 @@
 # on merge is repinned in BOTH image references in
 # infra/k8s/production/arc/runner-blue/rendered.yaml. That repin is a
 # second PR, by design — the digest does not exist until this one merges.
+#
+# BASE_TAG_DATE is the upstream publish date of BASE_TAG (the `created`
+# timestamp on the base image's linux/amd64 config blob). It is not
+# decoration: `scripts/check-image-age.py` reads it, and it is the ONLY
+# thing standing between this pin and a silent 111-day drift when the
+# registry is unreachable from CI. Update it in the same edit as BASE_TAG —
+# the ratchet fails the build if the two disagree.
 ARG BASE_IMAGE=ghcr.io/actions/actions-runner
 ARG BASE_TAG=2.337.0
+ARG BASE_TAG_DATE=2026-08-27
 FROM ${BASE_IMAGE}:${BASE_TAG}
 ARG BASE_IMAGE
 ARG BASE_TAG
+ARG BASE_TAG_DATE
 
 # Switch to root for apt operations; the upstream image switches back to
 # the unprivileged `runner` user via its ENTRYPOINT.
@@ -109,3 +118,4 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 LABEL org.opencontainers.image.title="enclii arc-runner"
 LABEL enclii.dev/component="arc-runner"
 LABEL enclii.dev/base-image="${BASE_IMAGE}:${BASE_TAG}"
+LABEL enclii.dev/base-image-published="${BASE_TAG_DATE}"

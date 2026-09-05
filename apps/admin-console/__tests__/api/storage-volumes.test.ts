@@ -58,7 +58,7 @@ function makeVolume(name: string, robustness: string, state: string, size = '10G
     status: {
       state,
       robustness,
-      currentNodeID: state === 'attached' ? 'foundry-cp' : null,
+      currentNodeID: state === 'attached' ? 'node-a' : null,
       kubernetesStatus: { pvcName: `${name}-pvc`, namespace: 'enclii' },
     },
   }
@@ -96,12 +96,12 @@ describe('GET /api/storage/volumes', () => {
           items: [
             {
               metadata: { name: 'vol-1-r-aaaa' },
-              spec: { volumeName: 'vol-1', nodeID: 'foundry-cp' },
+              spec: { volumeName: 'vol-1', nodeID: 'node-a' },
               status: { currentState: 'running', mode: 'RW' },
             },
             {
               metadata: { name: 'vol-1-r-bbbb' },
-              spec: { volumeName: 'vol-1', nodeID: 'foundry-worker-01' },
+              spec: { volumeName: 'vol-1', nodeID: 'node-b' },
               status: { currentState: 'running', mode: 'RW' },
             },
           ],
@@ -114,8 +114,8 @@ describe('GET /api/storage/volumes', () => {
     }
     expect(body.volumes[0].replicas).toHaveLength(2)
     expect(body.volumes[0].replicas.map((r) => r.node).sort()).toEqual([
-      'foundry-cp',
-      'foundry-worker-01',
+      'node-a',
+      'node-b',
     ])
     expect(body.volumes[0].replicas.every((r) => r.running)).toBe(true)
   })

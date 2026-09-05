@@ -15,13 +15,22 @@ tags: [operations, runbook, cluster, remediation]
 
 # Cluster Remediation Operations
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 **Purpose:** Consolidates all pending cluster-side operations into a single executable runbook. These are operations that cannot be applied through GitOps alone and require direct cluster access.
 
 **Last Updated:** March 2026
 
 **Prerequisites:**
 - `kubectl` access to enclii-production cluster (`KUBECONFIG=~/.kube/enclii-production`)
-- SSH access to foundry-cp (control plane) via `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io`
+- SSH access to the control-plane node (control plane) via `ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io`
 - Credentials for Vault initialization, GitHub PAT, and Cloudflare API token as noted per section
 
 ---
@@ -421,7 +430,7 @@ kubectl get policyreport -A
 
 ## Section 5 -- PostHog Orphaned Volume Cleanup (P0)
 
-**Context:** The PostHog Helm deployment was paused (chart v30.46.0 is fundamentally broken -- unmaintained since May 2023, ClickHouse migrations expect multi-cluster topology + AWS MSK). ArgoCD sync is paused for the PostHog application. Up to 3 Longhorn volumes (~44GB total) may remain detached, consuming disk space on foundry-worker-01.
+**Context:** The PostHog Helm deployment was paused (chart v30.46.0 is fundamentally broken -- unmaintained since May 2023, ClickHouse migrations expect multi-cluster topology + AWS MSK). ArgoCD sync is paused for the PostHog application. Up to 3 Longhorn volumes (~44GB total) may remain detached, consuming disk space on the Longhorn replica worker.
 
 **Pre-conditions:** None. This is a cleanup operation.
 
@@ -474,7 +483,7 @@ kubectl get all -n posthog
 kubectl get volumes.longhorn.io -n longhorn-system | grep -c detached
 # Expected: 0 (or known non-PostHog volumes only)
 
-# Check disk space recovered on foundry-worker-01 (via SSH)
+# Check disk space recovered on <WORKER_NODE> (via SSH)
 ssh -o ProxyCommand="cloudflared access ssh --hostname %h" solarpunk@ssh.madfam.io \
   "df -h / && df -h /var/lib/longhorn"
 ```

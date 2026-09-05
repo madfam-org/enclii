@@ -1,0 +1,89 @@
+# Runner scheduling priority classes (Turntable, ADR-010a §(d))
+#
+# WHAT THESE ARE FOR
+# When the builder nodes are full, the scheduler's tie-break between a deploy
+# job, a paying tenant's job, a trial job and our own CI is currently "whoever
+# asked first". These classes make that ordering explicit and reviewable
+# BEFORE there is a tenant to be unfair to.
+#
+# NOTHING USES THEM YET, ON PURPOSE.
+# No pod spec in this repo sets `priorityClassName`. They are declared now so
+# the ordering is a reviewed artifact rather than a value invented under
+# pressure during the first capacity incident, and so that wiring them later
+# is a one-line change per scale set rather than a design discussion. Creating
+# an unreferenced PriorityClass has no runtime effect whatsoever.
+#
+# WHY preemptionPolicy: Never, ON ALL OF THEM
+# Preemption would EVICT a running job to make room for a higher-priority one.
+# A CI job killed mid-run is a failed check, a re-run, and a developer chasing
+# a phantom flake — and on this fleet a "lost runner pod" already presents as
+# a job that closes at exactly ten minutes with no downloadable log, which is
+# the single hardest failure here to diagnose. So these classes affect QUEUE
+# ORDER ONLY. Turning preemption on for `enclii-deploy` is a separate,
+# deliberate decision with its own evidence, not a default to inherit.
+#
+# WHY THESE NUMBERS
+# Well below `system-cluster-critical` (2000000000) so no runner can ever
+# outrank cluster infrastructure, and spaced widely enough that a future tier
+# can be inserted between two of them without renumbering the set.
+#
+# ORDER (highest first), per the runners SKU plan:
+#   enclii-deploy > fragua-paid > fragua-trial > enclii-internal-ci
+# Our own CI ranks LAST deliberately: it is the workload whose delay costs a
+# customer nothing.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: enclii-deploy
+  labels:
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: runner-priority
+value: 100000
+globalDefault: false
+preemptionPolicy: Never
+description: >-
+  Deploy pipeline jobs. Highest runner priority: a deploy must not have to win
+  a first-come race against elastic PR work (ADR-010a).
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: fragua-paid
+  labels:
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: runner-priority
+value: 50000
+globalDefault: false
+preemptionPolicy: Never
+description: >-
+  Paying Fragua tenants' jobs. Ranks above trial and above our own CI, and
+  below deploys, because a stuck deploy blocks every tenant at once.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: fragua-trial
+  labels:
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: runner-priority
+value: 20000
+globalDefault: false
+preemptionPolicy: Never
+description: >-
+  Trial / free-tier Fragua jobs. Served, but never at the expense of a paying
+  tenant's capacity.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: enclii-internal-ci
+  labels:
+    app.kubernetes.io/part-of: enclii
+    app.kubernetes.io/component: runner-priority
+value: 10000
+globalDefault: false
+preemptionPolicy: Never
+description: >-
+  MADFAM's own CI on the shared pool. Lowest by design: the workload whose
+  delay costs a customer nothing.

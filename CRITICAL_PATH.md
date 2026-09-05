@@ -1,8 +1,17 @@
 # MADFAM Ecosystem — Critical Path to Revenue
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > **Goal:** $0 → first paying customer across the MADFAM product ecosystem
 > **Context:** 31 repos, $55/month infra, $0 revenue, 0 paying customers (as of Feb 25, 2026)
-> **Infra:** 3-node k3s cluster (foundry-cp + foundry-worker-01 + foundry-builder-01, Hetzner + Cloudflare), ArgoCD GitOps, Janua SSO
+> **Infra:** 3-node k3s cluster (control-plane + worker + builder, dedicated bare-metal + Cloudflare), ArgoCD GitOps, Janua SSO
 > **Last updated:** Feb 26, 2026
 
 ---

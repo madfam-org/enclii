@@ -2,13 +2,17 @@
 #
 # join-worker-node.sh - Join a new worker node to the k3s cluster
 #
-# Idempotent script that configures a fresh Hetzner server as a k3s agent
-# and joins it to the existing foundry-cp control plane.
+# Idempotent script that configures a fresh server as a k3s agent and joins it
+# to the existing control plane.
+#
+# Node identity (hostnames, IPs) is private and never hard-coded here: supply
+# CONTROL_PLANE_HOST from internal-devops/infrastructure/nodes.md.
 #
 # Prerequisites:
 #   - Fresh Ubuntu 24.04 LTS server
 #   - SSH access as root
-#   - K3S_TOKEN set (from foundry-cp: sudo cat /var/lib/rancher/k3s/server/node-token)
+#   - K3S_TOKEN set (on the control-plane node:
+#     sudo cat /var/lib/rancher/k3s/server/node-token)
 #
 # Usage:
 #   # From your workstation:
@@ -157,7 +161,7 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${GREEN}Node ${HOSTNAME} joined the cluster successfully!${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════${NC}"
 echo ""
-echo "Next steps (run from your workstation or foundry-cp):"
+echo "Next steps (run from your workstation or the control-plane node):"
 echo ""
 echo "  # Verify node is Ready"
 echo "  kubectl get nodes -o wide"

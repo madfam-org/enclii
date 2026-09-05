@@ -289,3 +289,196 @@ def test_parse_iso8601_handles_nanoseconds_and_z():
     assert dt2 is not None and dt2.tzinfo is timezone.utc
 
     assert mod._parse_iso8601("not-a-timestamp") is None
+
+
+# ---------------------------------------------------------------------------
+# ARC runner base-tag ratchet
+# ---------------------------------------------------------------------------
+# The digest ratchet's failure is one stale service. This one's failure is the
+# 2026-08-10 org-wide CI outage: an `actions/actions-runner` base 111 days old,
+# rejected at GitHub's registration layer, 3,149 EphemeralRunners in
+# phase=Outdated, zero jobs served. So the bar for these tests is the same as
+# for the pool-health detector's: given the state the repo was actually in,
+# does the check fail — and given a healthy pin, does it stay quiet.
+
+DOCKERFILE_BODY = """\
+# comment
+ARG BASE_IMAGE=ghcr.io/actions/actions-runner
+ARG BASE_TAG=2.337.0
+ARG BASE_TAG_DATE=2026-08-27
+FROM ${BASE_IMAGE}:${BASE_TAG}
+USER root
+"""
+
+NOW = datetime(2026, 9, 4, tzinfo=timezone.utc)
+
+
+def _write_dockerfile(root: Path, body: str = DOCKERFILE_BODY) -> Path:
+    d = root / "infra" / "docker" / "arc-runner"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / "Dockerfile"
+    f.write_text(body)
+    return f
+
+
+def _pin(tag: str = "2.337.0", date_raw: str | None = "2026-08-27") -> mod.BaseTagPin:
+    parsed = mod._parse_iso8601(date_raw + "T00:00:00Z") if date_raw else None
+    return mod.BaseTagPin(
+        source_file=Path("/tmp/Dockerfile"),
+        image="ghcr.io/actions/actions-runner",
+        tag=tag,
+        tag_date_raw=date_raw,
+        tag_date=parsed,
+    )
+
+
+def _day(s: str) -> datetime:
+    return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+
+
+def test_parse_base_tag_reads_image_tag_and_date(tmp_path):
+    pin = mod.parse_base_tag(_write_dockerfile(tmp_path))
+    assert pin is not None
+    assert pin.image == "ghcr.io/actions/actions-runner"
+    assert pin.repository == "actions/actions-runner"
+    assert pin.tag == "2.337.0"
+    assert pin.tag_date == _day("2026-08-27")
+    assert pin.exemption_key == "AGE_RATCHET_EXEMPT_ACTIONS_RUNNER"
+
+
+def test_parse_base_tag_without_date_field(tmp_path):
+    body = DOCKERFILE_BODY.replace("ARG BASE_TAG_DATE=2026-08-27\n", "")
+    pin = mod.parse_base_tag(_write_dockerfile(tmp_path, body))
+    assert pin is not None and pin.tag == "2.337.0"
+    assert pin.tag_date is None and pin.tag_date_raw is None
+
+
+def test_missing_base_tag_date_is_a_hard_failure():
+    """The offline half of the ratchet cannot be silently deleted."""
+    failures, _ = mod.evaluate_base_tag(
+        _pin(date_raw=None), NOW, 30, (None, None, None), {})
+    assert len(failures) == 1
+    assert "BASE_TAG_DATE" in failures[0]
+
+
+def test_pin_on_newest_upstream_release_is_silent():
+    failures, warnings = mod.evaluate_base_tag(
+        _pin(), NOW, 30,
+        ("2.337.0", _day("2026-08-27"), _day("2026-08-27")), {})
+    assert failures == [] and warnings == []
+
+
+def test_newer_release_inside_the_cadence_only_warns():
+    """8 days behind is the normal state between a release and our bump."""
+    failures, warnings = mod.evaluate_base_tag(
+        _pin(tag="2.336.0", date_raw="2026-07-20"), NOW, 30,
+        ("2.337.0", _day("2026-08-27"), _day("2026-07-20")), {})
+    assert failures == []
+    assert any(w.startswith("BEHIND") and "2.337.0" in w for w in warnings)
+
+
+def test_newer_release_past_the_cadence_fails():
+    """The 2026-08-10 shape: two releases skipped, well past 30 days."""
+    failures, _ = mod.evaluate_base_tag(
+        _pin(tag="2.334.0", date_raw="2026-04-21"), NOW, 30,
+        ("2.336.0", _day("2026-07-20"), _day("2026-04-21")), {})
+    assert len(failures) == 1
+    assert "2.336.0" in failures[0] and "46 days" in failures[0]
+    # The fix is two edits, and naming only the first is how the pool ends up
+    # running an image nobody deployed.
+    assert "rendered.yaml" in failures[0]
+
+
+def test_stated_date_disagreeing_with_the_registry_fails():
+    """A date field nobody verifies is a date field somebody edits."""
+    failures, _ = mod.evaluate_base_tag(
+        _pin(tag="2.337.0", date_raw="2026-09-01"), NOW, 30,
+        ("2.337.0", _day("2026-08-27"), _day("2026-08-27")), {})
+    assert len(failures) == 1
+    assert "2026-09-01" in failures[0] and "2026-08-27" in failures[0]
+
+
+def test_one_day_of_publish_skew_is_tolerated():
+    """Registries stamp UTC build time; a date field is a date."""
+    failures, warnings = mod.evaluate_base_tag(
+        _pin(tag="2.337.0", date_raw="2026-08-26"), NOW, 30,
+        ("2.337.0", _day("2026-08-27"), _day("2026-08-27")), {})
+    assert failures == [] and warnings == []
+
+
+def test_offline_fallback_warns_past_the_cadence_but_does_not_fail():
+    """Unreachable upstream is not evidence of staleness — only of blindness."""
+    failures, warnings = mod.evaluate_base_tag(
+        _pin(tag="2.336.0", date_raw="2026-07-20"), NOW, 30,
+        (None, None, None), {})
+    assert failures == []
+    assert any(w.startswith("CADENCE") for w in warnings)
+
+
+def test_offline_fallback_fails_inside_the_deprecation_window():
+    failures, _ = mod.evaluate_base_tag(
+        _pin(tag="2.334.0", date_raw="2026-04-21"), NOW, 30,
+        (None, None, None), {})
+    assert len(failures) == 1
+    assert "deprecation window" in failures[0]
+
+
+def test_exemption_downgrades_a_failure_to_a_warning():
+    failures, warnings = mod.evaluate_base_tag(
+        _pin(tag="2.334.0", date_raw="2026-04-21"), NOW, 30,
+        ("2.336.0", _day("2026-07-20"), _day("2026-04-21")),
+        {"AGE_RATCHET_EXEMPT_ACTIONS_RUNNER": "bump PR in flight"})
+    assert failures == []
+    assert warnings and warnings[0].startswith("EXEMPT")
+
+
+def test_newest_semver_sorts_numerically_not_lexically():
+    """`2.9.0 > 2.10.0` under string comparison — that is how a bump gets
+    skipped by a check that thinks it is watching."""
+    assert mod.newest_semver(["2.9.0", "2.10.0", "2.10.1"]) == "2.10.1"
+    assert mod.newest_semver(["2.336.0", "2.337.0", "latest", "ubuntu-22.04"]) == "2.337.0"
+    assert mod.newest_semver([]) is None
+    assert mod.newest_semver(["latest"]) is None
+
+
+def test_check_base_tag_skips_when_dockerfile_is_absent(tmp_path):
+    assert mod.check_base_tag(tmp_path, NOW, 30, None, {}) == ([], [])
+
+
+def test_check_base_tag_falls_back_when_the_registry_is_unreachable(tmp_path, monkeypatch):
+    _write_dockerfile(tmp_path)
+    monkeypatch.setattr(mod, "list_upstream_tags", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "fetch_tag_created", lambda *a, **k: None)
+    failures, warnings = mod.check_base_tag(tmp_path, NOW, 30, None, {})
+    assert failures == [] and warnings == []  # 8 days old, inside the cadence
+
+
+def test_implausible_registry_timestamp_does_not_pass_a_stale_pin(tmp_path, monkeypatch):
+    """An attestation manifest's config blob dates to the epoch. Reading one
+    must degrade to the offline path, never certify freshness."""
+    body = DOCKERFILE_BODY.replace("2.337.0", "2.334.0").replace(
+        "2026-08-27", "2026-04-21")
+    _write_dockerfile(tmp_path, body)
+    monkeypatch.setattr(mod, "list_upstream_tags", lambda *a, **k: ["2.334.0", "2.336.0"])
+    monkeypatch.setattr(mod, "fetch_tag_created",
+                        lambda *a, **k: datetime(1970, 1, 1, tzinfo=timezone.utc))
+    failures, _ = mod.check_base_tag(tmp_path, NOW, 30, None, {})
+    assert len(failures) == 1
+    assert "deprecation window" in failures[0]
+
+
+def test_main_fails_on_base_tag_even_with_no_pinned_digests(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "check_base_tag",
+                        lambda *a, **k: (["stale base tag"], []))
+    assert mod.main(["--repo-root", str(tmp_path)]) == 1
+
+
+def test_repo_dockerfile_carries_a_parseable_pin_and_date():
+    """Guard the real file: both fields present, date parseable, tag semver."""
+    pin = mod.parse_base_tag(REPO_ROOT / mod.ARC_DOCKERFILE)
+    assert pin is not None, "the ARC runner Dockerfile lost its ARG BASE_TAG"
+    assert mod.SEMVER_TAG_RE.match(pin.tag), f"BASE_TAG {pin.tag!r} is not MAJOR.MINOR.PATCH"
+    assert pin.tag_date is not None, (
+        "ARG BASE_TAG_DATE is missing or unparseable — the ratchet's offline "
+        "half depends on it"
+    )

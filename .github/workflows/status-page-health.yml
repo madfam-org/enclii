@@ -84,7 +84,7 @@ jobs:
       # workflow if the secrets are absent.
       #
       # Operator setup (one-time):
-      #   1. Provision an SSH key authorized on foundry-cp via the cloudflared
+      #   1. Provision an SSH key authorized on the control-plane node via the cloudflared
       #      tunnel (see internal-devops/access/ssh-cloudflared.md).
       #   2. Add repo secrets:
       #        STATUS_HEALTH_SSH_KEY     : the private key (PEM)

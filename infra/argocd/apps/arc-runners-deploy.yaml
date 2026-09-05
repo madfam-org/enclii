@@ -1,0 +1,51 @@
+# ARC Runner Scale Set (Deploy) — ADR-010a
+#
+# A separate Application rather than a third block in arc-runners.yaml: the
+# deploy pool must be independently syncable, revertible and prunable from
+# the pool that carries the whole org's CI. If provisioning this goes wrong,
+# rolling it back must not touch `madfam-runners-blue`.
+#
+# To re-render the manifest this app reads, see the header of
+# infra/k8s/production/arc/runner-deploy/rendered.yaml.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runners-deploy
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: arc-runners-deploy
+    app.kubernetes.io/part-of: enclii
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous=true
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/madfam-org/enclii.git
+    targetRevision: main
+    path: infra/k8s/production/arc/runner-deploy
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+  # Identical to arc-runners-blue's: ARC creates listener runtime state
+  # dynamically from the runner set, and those resources inherit Argo tracking
+  # labels while ARC expects the Helm instance label to stay stable.
+  ignoreDifferences:
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/labels/app.kubernetes.io~1instance
+    - group: actions.github.com
+      kind: AutoscalingListener
+      jqPathExpressions:
+        - .
