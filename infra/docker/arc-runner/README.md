@@ -70,10 +70,12 @@ Between a release and our bump the job warns rather than fails, which is the
 the job's env downgrades the failure to a warning; use it only while a bump
 PR is open, and delete it in that PR.
 
-Remember that bumping the tag deploys nothing on its own: the pool runs a
-digest pin, so the overlay digest in
-`infra/k8s/production/arc/runner-blue/rendered.yaml` must be repinned (both
-occurrences) after the image build runs on `main`.
+Remember that bumping the tag deploys nothing on its own: the pools run a
+digest pin, so the overlay digest must be repinned after the image build runs
+on `main` — in every reference of both rendered scale sets,
+`infra/k8s/production/arc/runner-blue/rendered.yaml` and
+`infra/k8s/production/arc/runner-deploy/rendered.yaml` (two references each:
+the `init-dind-externals` init container and the `runner` container).
 
 ## Base-image bump policy
 
