@@ -73,13 +73,47 @@ Enclii offers the following tiers via [Dhanam](https://app.dhan.am) billing. Thi
 |------|-------|----------|----------|-------------|
 | Community | Free | 1 | 3 | Self-hosted open source (AGPL-3.0), community support |
 | Sovereign | $20/mo | 10 | Unlimited | Managed hosting: custom domains, auto SSL, priority support, zero-downtime deploys |
-| Ecosystem | Coming soon | Unlimited | Unlimited | Full MADFAM bundle: team management, SSO (Janua), billing (Dhanam), SLA |
+| Ecosystem | Waitlist, pricing to be announced | Unlimited | Unlimited | Full MADFAM bundle: team management, SSO (Janua), billing (Dhanam). Support and availability terms are published with the tier |
 
 **Naming note:** Sovereign is the public name for the internal tier slug `pro` (entitlement claim `enclii_pro` in Janua tokens). Earlier drafts of this FAQ listed an "Essentials" tier at $20/mo and a separate "Pro" tier at $49/mo — both are superseded by the table above.
 
-The value of Sovereign over Community is the **managed service** (hosting, custom domains, auto SSL, support) plus higher limits. Ecosystem (coming soon) adds team management, SSO integration, and an SLA.
+The value of Sovereign over Community is the **managed service** (hosting, custom domains, auto SSL, support) plus higher limits. Ecosystem (coming soon) adds team management and SSO integration; no availability number or SLA is published for any tier, on the landing page or here, because none has been measured.
+
+Prices are shown in USD. MXN pricing plus IVA is applied at checkout.
 
 Upgrade via Dhanam checkout: `https://app.dhan.am/checkout?plan=enclii_pro&product=enclii`
+
+### Included with Sovereign
+
+The entry rung of each of the other product lines is granted with a Sovereign subscription rather than sold separately:
+
+| Included | What you get |
+|----------|--------------|
+| Managed Postgres | A small managed database with daily backups (the free rung of the data line). Redis and MySQL add-ons run on the same platform |
+| CI capacity | 1 concurrent build slot and 500 build minutes per month on the shared runner pool |
+| Custom domains | Bring your own domains with automatic certificates and zero-trust ingress routing |
+| Preview environments | A disposable environment per pull request — **beta**, not yet generally available |
+
+### Coming soon: the other product lines
+
+These are planned, not on sale. There is no checkout for them, the names are provisional, and the prices below are planned list prices in USD:
+
+| Line | Planned tiers | Planned price |
+|------|---------------|---------------|
+| Runners | Arranque (2 concurrent / 10,000 min) | $49/mo |
+| Runners | Equipo (5 / 40,000) | $149/mo |
+| Runners | Escala (12 / 120,000) | $399/mo |
+| Runners | Dedicada (own scale set and machine) | $449/mo |
+| Runners | Builds add-on (remote cache, multi-arch, SBOM) | +$99/mo |
+| Data | Community (1 GB / 10 connections) | $0, included with Sovereign |
+| Data | Standard (own cluster, 10 GB / 40 connections) | $29/mo |
+| Data | HA (three instances, 50 GB / 100 connections) | $99/mo |
+| Data | Dedicated (500 GB and up, by contract) | from $349/mo |
+| Content (CMS) | Sitio, Multisitio, Dedicado | Priced per site; no price published yet |
+
+Pooled runner tiers are isolated by namespace, quota, rootless execution, and an egress allowlist; the kernel is shared. Only the dedicated runner tier is a machine of its own. Backup, retention, and recovery terms for each data tier are published with that tier when it ships.
+
+Hosting also ships inside MADFAM engagements (vCTO and ERP rungs, dedicated runner, migration and onboarding). Those are scoped and priced case by case — see [madfam.io](https://madfam.io) — and carry no list price here or on the landing page.
 
 ## Billing Details
 
@@ -158,7 +192,7 @@ Budgets apply to resource usage metrics, not actual billing.
 
 Yes. Enterprise features include:
 - Dedicated infrastructure
-- SLA guarantees (99.95%+)
+- Support and availability terms agreed in the contract (no availability number is published)
 - Priority support
 - Custom integrations
 - Compliance certifications
@@ -187,7 +221,7 @@ Enterprise customers receive proper invoicing with:
 Since infrastructure is managed directly:
 - No contracts or commitments
 - Cancel anytime
-- Pay only for what you use
+- Flat monthly subscription, billed per month, not per request
 - No cancellation fees
 
 ### How do I cancel?

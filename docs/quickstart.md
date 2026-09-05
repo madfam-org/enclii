@@ -9,7 +9,12 @@ tags: [quickstart, getting-started, first-deploy]
 
 This is the fastest path from zero to a live URL. You will install the CLI, sign in, scaffold a service, and deploy it.
 
-> **Heads up:** Enclii currently onboards new tenants via an operator handoff. Once your account is provisioned (email `hello@enclii.dev`), the steps below take about 5 minutes. Fully self-serve signup ships with P3.2.
+> **Heads up:** Sign-up is open at [app.enclii.dev/signup](https://app.enclii.dev/signup) — email
+> verification, GitHub authorization, and workspace provisioning all work. New tenants are still
+> finished with an operator in the loop, so email `hello@enclii.dev` if anything stalls. Paid
+> self-serve checkout is still in progress; until it ships, upgrades to Sovereign are arranged
+> with us. Once your account is provisioned, the steps below take about 5 minutes. The
+> [enclii.dev](https://enclii.dev) landing page says the same thing.
 
 ## 0. What you'll need (30 sec)
 

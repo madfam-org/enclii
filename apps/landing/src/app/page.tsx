@@ -1,63 +1,76 @@
-import { ArrowRight, Zap, RefreshCw, BarChart3, GitBranch, Check, ExternalLink, Container, Network, Database, Globe, Sparkles, Crown } from 'lucide-react'
+import {
+  ArrowRight,
+  BarChart3,
+  Boxes,
+  Container,
+  Cpu,
+  Crown,
+  Database,
+  ExternalLink,
+  FileText,
+  GitBranch,
+  Globe,
+  HardDrive,
+  Network,
+  RefreshCw,
+  ServerCog,
+  Sparkles,
+  Wallet,
+  Wrench,
+  Zap,
+} from 'lucide-react'
+
+import {
+  BenefitRow,
+  CapabilityCard,
+  EngagementCard,
+  FeatureCard,
+  IncludedCard,
+  PlannedLineCard,
+  PricingCard,
+} from '@/components/cards'
+import { SiteFooter, SiteNav } from '@/components/site-chrome'
+
+// Proposed names pending owner ruling R16. Nothing below hard-codes a product
+// name: change it here once and the whole page follows.
+const NAMES = {
+  runners: 'Fragua',
+  data: 'Enclii Depot',
+  content: 'Publica',
+} as const
+
+const CONTACT = 'hello@enclii.dev'
+
+function waitlistHref(subject: string) {
+  return `mailto:${CONTACT}?subject=${encodeURIComponent(subject)}`
+}
 
 export default function Home() {
   return (
     <main className="min-h-screen">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-solarpunk-deep rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">E</span>
-              </div>
-              <span className="font-bold text-xl text-gray-900 dark:text-white">Enclii</span>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-              <a
-                href="https://docs.enclii.dev"
-                className="hidden sm:inline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm"
-              >
-                Docs
-              </a>
-              <a
-                href="https://github.com/madfam-org/enclii"
-                className="hidden sm:inline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm"
-              >
-                GitHub
-              </a>
-              <a
-                href="https://app.enclii.dev/signup"
-                className="inline-flex items-center gap-2 bg-solarpunk-green text-solarpunk-slate px-3 py-2 sm:px-4 rounded-lg font-medium hover:bg-solarpunk-green-dim transition-colors text-sm sm:text-base"
-              >
-                Get Started
-                <ArrowRight className="w-4 h-4" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <SiteNav />
 
       {/* Hero Section */}
       <section className="hero-gradient pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-solarpunk-green/10 backdrop-blur-sm px-4 py-2 rounded-full text-solarpunk-green text-sm mb-8 pulse-glow">
             <span className="inline-block w-2 h-2 bg-solarpunk-green rounded-full animate-pulse"></span>
-            Production Ready
+            Open source, AGPL-3.0
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
             Deploy Without<br />the Bill Shock
           </h1>
           <p className="text-xl text-white/80 mb-10 max-w-2xl mx-auto">
-            Open source container deployment platform. Auto-scaling, zero-downtime deployments,
-            and built-in observability on infrastructure you own.
+            An open source container platform you can run yourself, or let us run for you at a flat
+            monthly price. Deploy from Git onto infrastructure you own — no per-request meter, no
+            surprise invoice.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               href="https://app.enclii.dev/signup"
               className="inline-flex items-center justify-center gap-2 bg-solarpunk-green text-solarpunk-slate px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-green-dim transition-colors shadow-lg"
             >
-              Start Deploying
+              Create your account
               <ArrowRight className="w-5 h-5" />
             </a>
             <a
@@ -68,6 +81,14 @@ export default function Home() {
               <ExternalLink className="w-5 h-5" />
             </a>
           </div>
+          <p className="text-sm text-white/60 mt-6 max-w-2xl mx-auto">
+            Sign-up is open, and new tenants are provisioned with an operator in the loop. Paid
+            self-serve checkout is in progress — the{' '}
+            <a href="https://docs.enclii.dev/quickstart" className="underline hover:text-white">
+              quickstart
+            </a>{' '}
+            describes what happens after you sign up.
+          </p>
         </div>
       </section>
 
@@ -79,53 +100,53 @@ export default function Home() {
               Everything You Need to Ship Fast
             </h2>
             <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Enterprise-grade deployment infrastructure without the enterprise price tag.
+              Deployment infrastructure at a price you can predict a year ahead.
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             <FeatureCard
-              icon={<Zap className="w-8 h-8" />}
-              title="Auto-Scaling"
-              description="Scale to zero when idle, scale to millions under load. Pay only for what you use."
+              icon={<Wallet className="w-8 h-8" />}
+              title="Flat Monthly Price"
+              description="One subscription per month, not a usage meter. Usage tracking and budget alerts are built in so you can see where resources go."
             />
             <FeatureCard
               icon={<RefreshCw className="w-8 h-8" />}
               title="Zero-Downtime Deploys"
-              description="Canary and blue-green deployment strategies with automatic rollback on failure."
+              description="Canary and blue-green deployment strategies with automatic rollback on failure, and one-command rollback afterwards."
             />
             <FeatureCard
               icon={<BarChart3 className="w-8 h-8" />}
-              title="Built-in Observability"
-              description="Logs, metrics, and traces included. Know exactly what your services are doing."
+              title="Metrics and Traces"
+              description="Metrics, dashboards, tracing, and status pages included. Log streaming is in beta."
             />
             <FeatureCard
               icon={<GitBranch className="w-8 h-8" />}
               title="Git-Connected CI/CD"
-              description="Push to deploy. Preview environments for every PR. Production from main."
+              description="Push to deploy, on a self-hosted runner pool rather than a rented one. Production from main."
             />
           </div>
         </div>
       </section>
 
-      {/* Pricing Section - 3 Tiers */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8">
+      {/* What you can buy today */}
+      <section id="buy-today" className="py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-              Simple, Transparent Pricing
+              What you can buy today
             </h2>
             <p className="text-lg text-gray-600 dark:text-gray-400">
-              Start free, scale as you grow. No hidden fees, no surprises.
+              One deploy platform, three ways to run it. Everything on this page is either sold
+              today or marked as planned.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {/* Community Tier */}
             <PricingCard
               icon={<Sparkles className="w-6 h-6" />}
               name="Community"
               price="Free"
-              description="Self-host with AGPL-3.0 source"
+              description="Self-host the AGPL-3.0 source on your own infrastructure"
               features={[
                 '1 project',
                 '3 services per project',
@@ -133,10 +154,10 @@ export default function Home() {
                 'Community support',
                 'Self-hosted infrastructure',
               ]}
+              footnote="You run it, you own it. A commercial licence is available separately for embedding."
               cta={{ label: 'View on GitHub', href: 'https://github.com/madfam-org/enclii', external: true }}
             />
 
-            {/* Sovereign Tier */}
             <PricingCard
               icon={<Zap className="w-6 h-6" />}
               name="Sovereign"
@@ -155,33 +176,189 @@ export default function Home() {
               highlighted
             />
 
-            {/* Ecosystem Tier */}
             <PricingCard
               icon={<Crown className="w-6 h-6" />}
               name="Ecosystem"
-              price="Coming Soon"
-              description="Full bundle with team management"
+              price="Waitlist"
+              description="Full bundle with team management. Pricing to be announced."
               features={[
                 'Unlimited projects',
                 'Unlimited services',
                 'Team management',
                 'SSO integration (Janua)',
                 'Billing integration (Dhanam)',
-                'SLA guarantee',
+                'Support and availability terms published with the tier',
               ]}
-              cta={{ label: 'Join Waitlist', href: '#', disabled: true }}
+              cta={{ label: 'Join the waitlist', href: waitlistHref('Enclii Ecosystem waitlist') }}
             />
           </div>
 
-          {/* Cost Comparison Note */}
-          <div className="mt-12 text-center">
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Compare to traditional SaaS: <span className="line-through">Railway Pro $2,000/mo + Auth0 $220/mo</span>
+          <p className="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            All prices on this page are shown in USD; MXN pricing plus IVA at checkout.
+          </p>
+
+          {/* Included with Sovereign */}
+          <div className="mt-16">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 text-center">
+              Included with Sovereign
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-8 text-center">
+              The entry rungs of the other product lines come with the subscription — no separate
+              purchase.
             </p>
-            <p className="text-lg font-semibold text-solarpunk-green-dim dark:text-solarpunk-green">
-              5-year savings: up to $127,200 with zero vendor lock-in
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <IncludedCard
+                icon={<Database className="w-5 h-5" />}
+                title="Managed Postgres"
+                description={`A small managed Postgres database with daily backups — the free rung of the ${NAMES.data} line. Redis and MySQL add-ons run on the same platform.`}
+              />
+              <IncludedCard
+                icon={<Cpu className="w-5 h-5" />}
+                title="1 CI slot, 500 min"
+                description={`One concurrent build slot and 500 build minutes a month on the shared runner pool — the entry rung of the ${NAMES.runners} line.`}
+              />
+              <IncludedCard
+                icon={<Globe className="w-5 h-5" />}
+                title="Custom domains"
+                description="Bring your own domains, with automatic certificates and zero-trust ingress routing, at no extra cost."
+              />
+              <IncludedCard
+                icon={<GitBranch className="w-5 h-5" />}
+                title="Preview environments"
+                description="A disposable environment per pull request. In beta and not yet generally available — ask us to turn it on."
+                badge="Beta"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Inside engagements today */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Inside engagements today
+            </h2>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
+              MADFAM already runs client platforms on Enclii as part of a retainer. Hosting is not
+              billed as a separate SKU there — it is carried by the engagement, together with the
+              people who operate it.
             </p>
           </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <EngagementCard
+              icon={<ServerCog className="w-5 h-5" />}
+              title="vCTO retainer with hosting"
+              description="A fractional CTO engagement where the client's services run on Enclii and MADFAM operates the platform for them."
+            />
+            <EngagementCard
+              icon={<Boxes className="w-5 h-5" />}
+              title="ERP rungs, per seat"
+              description="Business systems delivered per seat, hosted on the same platform, with the operations included rather than resold."
+            />
+            <EngagementCard
+              icon={<Cpu className="w-5 h-5" />}
+              title="Dedicated CI runner"
+              description="Build capacity reserved for one client instead of the shared pool, provisioned inside the retainer."
+            />
+            <EngagementCard
+              icon={<Wrench className="w-5 h-5" />}
+              title="Migration and onboarding"
+              description="Wix to Enclii site migration, and an operator-run onboarding kit that takes a repository from zero to deploying."
+            />
+          </div>
+          <div className="mt-12 text-center">
+            <a
+              href="https://madfam.io"
+              className="inline-flex items-center justify-center gap-2 bg-solarpunk-deep text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-slate transition-colors"
+            >
+              Talk to us
+              <ArrowRight className="w-5 h-5" />
+            </a>
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+              Engagements are scoped and priced case by case — no list price on this page.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Coming soon: the other product lines */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Coming soon
+            </h2>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
+              Three product lines are being built out of what already runs the platform. The
+              ladders and prices below are planned, not on sale: there is no checkout for them
+              yet, and the names are still provisional.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-8">
+            <PlannedLineCard
+              icon={<Cpu className="w-6 h-6" />}
+              line="Runners"
+              name={NAMES.runners}
+              summary="Managed CI runners on infrastructure you can leave. Planned tiers:"
+              tiers={[
+                { name: 'Arranque', detail: '2 concurrent / 10,000 min', price: '$49/mo (planned)' },
+                { name: 'Equipo', detail: '5 concurrent / 40,000 min', price: '$149/mo (planned)' },
+                { name: 'Escala', detail: '12 concurrent / 120,000 min', price: '$399/mo (planned)' },
+                { name: 'Dedicada', detail: 'Your own scale set and machine', price: '$449/mo (planned)' },
+                {
+                  name: `${NAMES.runners} Builds`,
+                  detail: 'Remote build cache, multi-arch, SBOM',
+                  price: '+$99/mo (planned)',
+                },
+              ]}
+              caveat="Pooled tiers are isolated by namespace, quota, rootless execution, and an egress allowlist; the kernel is shared, and we say so. Only the dedicated tier is a machine of its own."
+              cta={{ label: 'Join the waitlist', href: waitlistHref(`${NAMES.runners} runners waitlist`) }}
+            />
+
+            <PlannedLineCard
+              icon={<Database className="w-6 h-6" />}
+              line="Data"
+              name={NAMES.data}
+              summary="Managed Postgres with backups, connection pooling, and a data API. Planned tiers:"
+              tiers={[
+                {
+                  name: 'Community',
+                  detail: '1 GB / 10 connections, daily backups',
+                  price: '$0, included with Sovereign',
+                },
+                { name: 'Standard', detail: 'Own cluster, 10 GB / 40 connections', price: '$29/mo (planned)' },
+                { name: 'HA', detail: 'Three instances, 50 GB / 100 connections', price: '$99/mo (planned)' },
+                { name: 'Dedicated', detail: '500 GB and up, by contract', price: 'from $349/mo (planned)' },
+              ]}
+              caveat="Backup, retention, and recovery terms are published with each tier when it ships. Redis and MySQL add-ons run on the same platform today."
+              cta={{ label: 'Join the waitlist', href: waitlistHref(`${NAMES.data} waitlist`) }}
+            />
+
+            <PlannedLineCard
+              icon={<FileText className="w-6 h-6" />}
+              line="Content"
+              name={NAMES.content}
+              summary="A multi-tenant CMS for the sites Enclii already hosts. Planned tiers:"
+              tiers={[
+                {
+                  name: 'Sitio',
+                  detail: 'One site, own domains, es/en/pt, drafts, media, export',
+                  price: 'Price to be announced',
+                },
+                { name: 'Multisitio', detail: 'Several sites under one organisation', price: 'Price to be announced' },
+                { name: 'Dedicado', detail: 'Your own instance, database, and bucket', price: 'Priced with the engagement' },
+              ]}
+              caveat="Priced per site with seats included. No number is published yet — the price is set before the tier opens."
+              cta={{ label: 'Join the waitlist', href: waitlistHref(`${NAMES.content} CMS waitlist`) }}
+            />
+          </div>
+
+          <p className="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            Product names are provisional and may change before launch.
+          </p>
         </div>
       </section>
 
@@ -196,7 +373,7 @@ export default function Home() {
               Truth-based capabilities. No marketing fluff.
             </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             <CapabilityCard
               icon={<Container className="w-8 h-8" />}
               title="Docker Containers"
@@ -208,7 +385,7 @@ export default function Home() {
               description="Expose any port (4200-8080) for your services. Internal and external routing supported."
             />
             <CapabilityCard
-              icon={<Database className="w-8 h-8" />}
+              icon={<HardDrive className="w-8 h-8" />}
               title="Persistent Volumes"
               description="Longhorn CSI block storage for databases. Data persists across deployments."
             />
@@ -216,6 +393,16 @@ export default function Home() {
               icon={<Globe className="w-8 h-8" />}
               title="Custom Domains"
               description="Zero-trust ingress via Cloudflare Tunnel. Auto SSL certificates included."
+            />
+            <CapabilityCard
+              icon={<Database className="w-8 h-8" />}
+              title="Managed Databases"
+              description="Postgres, Redis, and MySQL add-ons with scheduled backups, retention, and per-tenant network policy. Running in production today."
+            />
+            <CapabilityCard
+              icon={<Cpu className="w-8 h-8" />}
+              title="Self-Hosted CI Runners"
+              description="Enclii's own builds run on a self-hosted GitHub Actions runner pool on this platform, from a signed runner image."
             />
           </div>
         </div>
@@ -232,10 +419,10 @@ export default function Home() {
           <div className="space-y-6">
             <BenefitRow text="Deploy any Dockerfile or use auto-detection with Nixpacks/Buildpacks" />
             <BenefitRow text="Automatic SSL certificates and custom domain routing" />
-            <BenefitRow text="Preview environments for every pull request" />
-            <BenefitRow text="Built-in secrets management with rotation support" />
-            <BenefitRow text="Cost tracking with budget alerts before you overspend" />
-            <BenefitRow text="Open source with AGPL-3.0 license - no vendor lock-in" />
+            <BenefitRow text="Managed Postgres, Redis, and MySQL add-ons with scheduled backups" />
+            <BenefitRow text="Built-in secrets management backed by Vault" />
+            <BenefitRow text="Usage tracking with budget alerts before you overspend" />
+            <BenefitRow text="AGPL-3.0 open source, with a commercial licence for embedding — no vendor lock-in" />
           </div>
         </div>
       </section>
@@ -243,18 +430,16 @@ export default function Home() {
       {/* CTA Section */}
       <section className="py-24 px-4 sm:px-6 lg:px-8 hero-gradient">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
-            Ready to Deploy Smarter?
-          </h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">Ready to Deploy Smarter?</h2>
           <p className="text-lg text-white/80 mb-10 max-w-2xl mx-auto">
-            Join teams who are shipping faster while keeping costs under control.
+            Start free on the self-hosted tier, or sign up and we will help you onboard.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               href="https://app.enclii.dev/signup"
               className="inline-flex items-center justify-center gap-2 bg-solarpunk-green text-solarpunk-slate px-8 py-4 rounded-xl font-semibold text-lg hover:bg-solarpunk-green-dim transition-colors shadow-lg"
             >
-              Start Building Free
+              Create your account
               <ArrowRight className="w-5 h-5" />
             </a>
             <a
@@ -268,189 +453,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 dark:border-gray-800 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-solarpunk-deep rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">E</span>
-                </div>
-                <span className="font-bold text-xl text-gray-900 dark:text-white">Enclii</span>
-              </div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Deploy without the bill shock.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Product</h4>
-              <ul className="space-y-2 text-sm">
-                <FooterLink href="https://app.enclii.dev">Dashboard</FooterLink>
-                <FooterLink href="https://docs.enclii.dev">Documentation</FooterLink>
-                <FooterLink href="https://docs.enclii.dev/changelog">Changelog</FooterLink>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm">
-                <FooterLink href="https://github.com/madfam-org/enclii">GitHub</FooterLink>
-                <FooterLink href="https://docs.enclii.dev/guides">Guides</FooterLink>
-                <FooterLink href="https://docs.enclii.dev/api">API Reference</FooterLink>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Company</h4>
-              <ul className="space-y-2 text-sm">
-                <FooterLink href="https://madfam.io">About</FooterLink>
-                <FooterLink href="https://status.enclii.dev">Status</FooterLink>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-200 dark:border-gray-800 mt-12 pt-8 text-center text-gray-600 dark:text-gray-400 text-sm">
-            <p>&copy; {new Date().getFullYear()} Madfam. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
-  )
-}
-
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return (
-    <div className="feature-card bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-      <div className="w-14 h-14 bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green rounded-xl flex items-center justify-center mb-4">
-        {icon}
-      </div>
-      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{title}</h3>
-      <p className="text-gray-600 dark:text-gray-400">{description}</p>
-    </div>
-  )
-}
-
-function CapabilityCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-      <div className="w-12 h-12 bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green rounded-lg flex items-center justify-center mb-4">
-        {icon}
-      </div>
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{title}</h3>
-      <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
-    </div>
-  )
-}
-
-interface PricingCardProps {
-  icon: React.ReactNode
-  name: string
-  price: string
-  priceNote?: string
-  description: string
-  features: string[]
-  cta: { label: string; href: string; external?: boolean; disabled?: boolean }
-  highlighted?: boolean
-}
-
-function PricingCard({ icon, name, price, priceNote, description, features, cta, highlighted }: PricingCardProps) {
-  return (
-    <div className={`relative rounded-2xl p-8 ${
-      highlighted
-        ? 'bg-solarpunk-deep text-white ring-4 ring-solarpunk-green/20 shadow-xl md:scale-105'
-        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
-    }`}>
-      {highlighted && (
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-          <span className="bg-solarpunk-green text-solarpunk-slate text-sm font-medium px-3 py-1 rounded-full">
-            Most Popular
-          </span>
-        </div>
-      )}
-
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
-        highlighted
-          ? 'bg-solarpunk-green/20 text-solarpunk-green'
-          : 'bg-solarpunk-green-muted text-solarpunk-green-dim dark:text-solarpunk-green'
-      }`}>
-        {icon}
-      </div>
-
-      <h3 className={`text-xl font-bold mb-1 ${highlighted ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
-        {name}
-      </h3>
-
-      <div className="mb-2">
-        <span className={`text-4xl font-bold ${highlighted ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
-          {price}
-        </span>
-        {priceNote && (
-          <span className={`text-sm ${highlighted ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>
-            {priceNote}
-          </span>
-        )}
-      </div>
-
-      <p className={`text-sm mb-6 ${highlighted ? 'text-white/80' : 'text-gray-600 dark:text-gray-400'}`}>
-        {description}
-      </p>
-
-      <ul className="space-y-3 mb-8">
-        {features.map((feature, index) => (
-          <li key={index} className="flex items-center gap-2">
-            <Check className={`w-5 h-5 flex-shrink-0 ${highlighted ? 'text-green-300' : 'text-green-500'}`} />
-            <span className={`text-sm ${highlighted ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
-              {feature}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      {cta.disabled ? (
-        <button
-          disabled
-          className={`w-full py-3 px-4 rounded-xl font-semibold text-center cursor-not-allowed ${
-            highlighted
-              ? 'bg-white/20 text-white/60'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-          }`}
-        >
-          {cta.label}
-        </button>
-      ) : (
-        <a
-          href={cta.href}
-          target={cta.external ? '_blank' : undefined}
-          rel={cta.external ? 'noopener noreferrer' : undefined}
-          className={`block w-full py-3 px-4 rounded-xl font-semibold text-center transition-colors ${
-            highlighted
-              ? 'bg-solarpunk-green text-solarpunk-slate hover:bg-solarpunk-green-dim'
-              : 'bg-solarpunk-deep text-white hover:bg-solarpunk-slate'
-          }`}
-        >
-          {cta.label}
-          {cta.external && <ExternalLink className="w-4 h-4 inline ml-2" />}
-        </a>
-      )}
-    </div>
-  )
-}
-
-function BenefitRow({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-      <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center flex-shrink-0">
-        <Check className="w-5 h-5" />
-      </div>
-      <span className="text-gray-900 dark:text-white">{text}</span>
-    </div>
-  )
-}
-
-function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <li>
-      <a href={href} className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-        {children}
-      </a>
-    </li>
   )
 }
