@@ -1,5 +1,14 @@
 # Infrastructure Anatomy - Production State
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -8,10 +17,10 @@
 > missing Enclii adapter gap.
 
 
-> **Generated**: 2026-01-17 | **Last Updated**: 2026-04-08 | **Host**: foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder] | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
+> **Generated**: 2026-01-17 | **Last Updated**: 2026-04-08 | **Host**: 1 control-plane + 1 worker + 1 builder | **Audit Type**: Full Cluster Audit (Capacity + Auth + Roadmap)
 >
 > **Live Status Check** (2026-04-07):
-> - Nodes: 3/3 Ready (foundry-cp [EX44] + foundry-worker-01 [AX41] + foundry-builder-01 [VPS]), k3s v1.33.7+k3s3
+> - Nodes: 3/3 Ready (1 control-plane + 1 worker + 1 builder), k3s v1.33.7+k3s3
 > - Pods: ~150 total (est. 137 Running/Completed, 13 non-Running)
 > - Disk usage: **83% (77G/98G) — P1, image pruning needed** (+16% in 35 days)
 > - ArgoCD: 28 apps (11 infra + 2 ARC + 15 project-appset) — see ArgoCD table below
@@ -41,7 +50,7 @@
 > 1. Prune container images (`k3s crictl rmi --prune`) — 399 images consuming disk
 > 2. Apply Longhorn CPU fix (1440m→360m) — saves 1080m CPU, drops allocation to 78%
 > 3. Delete 3 detached Longhorn volumes (PostHog) — free ~44G
-> 4. Order EX44 before April 1 price increase
+> 4. Order the dedicated bare-metal replacement before April 1 price increase
 
 ## Executive Summary
 
@@ -160,9 +169,9 @@
 
 | Node | IP | Role | Hardware | k3s | CPU | RAM | Status | Uptime |
 |------|----|------|----------|-----|-----|-----|--------|--------|
-| **foundry-cp** | <CONTROL_PLANE_IP> | control-plane, master | Hetzner EX44 (i5-13500, 128GB, 2x512GB NVMe Gen4) | v1.33.7+k3s3 | — | — | ✅ Ready | new |
-| **foundry-worker-01** | <WORKER_NODE_IP> | worker | Hetzner AX41-NVMe (Ryzen 5 3600, 64GB) | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
-| **foundry-builder-01** | <WORKER_NODE_IP> | worker (role=builder) | VPS ("The Forge") | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
+| **control-plane** | <CONTROL_PLANE_IP> | control-plane, master | dedicated bare-metal | v1.33.7+k3s3 | — | — | ✅ Ready | new |
+| **worker** | <WORKER_NODE_IP> | worker | dedicated bare-metal | v1.33.7+k3s3 | 12% | 27% (17.7GB/64GB) | ✅ Ready | 62 days |
+| **builder** | <BUILDER_NODE_IP> | worker (role=builder) | cloud compute instance | v1.33.7+k3s3 | 1% | 33% (1.2GB/4GB) | ✅ Ready | 18 days |
 
 - **OS**: Ubuntu 24.04.3 LTS (Noble Numbat)
 - **Kernel**: 6.8.0-88-generic
@@ -190,14 +199,14 @@ All services run exclusively in K8s. Docker containers (Verdaccio, registry) run
 ┌─────────────────────────────────────────────────────────────────┐
 │                K8s CLUSTER (K3s, 3 nodes)                       │
 │                                                                 │
-│  foundry-cp (control-plane, EX44):                              │
+│  Control-plane node (dedicated bare-metal):                     │
 │    janua-api.janua.svc (80)       switchyard-api.enclii.svc (80)│
 │    janua-dashboard.janua.svc      dispatch.enclii.svc (80)      │
 │    postgres.enclii.svc (5432)     redis.data.svc (6379)         │
 │    grafana.monitoring.svc (3000)  prometheus.monitoring.svc      │
 │    argocd-server.argocd.svc       dhanam-api.dhanam.svc (80)    │
 │                                                                 │
-│  foundry-builder-01 (worker, builder taint):                    │
+│  Builder node (worker, builder taint):                          │
 │    arc-runner-blue pods (GitHub Actions CI)                     │
 │                                                                 │
 │  Host-level Docker:                                             │
@@ -749,7 +758,7 @@ Single unified tunnel. Routes managed remotely via Cloudflare Tunnel Configurati
 | ~~Standardize 5 registry secrets to madfam-bot~~ | ~~P2~~ | ~~1h~~ | ✅ **DONE** (0 personal creds) |
 | ~~Configure argocd-image-updater for auto-pinning~~ | ~~P2~~ | ~~2h~~ | ✅ **DONE** (janua active) |
 | ~~Disable Image Updater for janua (thrashing)~~ | ~~P0~~ | ~~30min~~ | ✅ **DONE** (Session 6) |
-| ~~Clean containerd image cache on foundry-core (72% disk)~~ | ~~P1~~ | ~~30min~~ | ✅ **DONE** (Session 9, 72% → 67%) |
+| ~~Clean containerd image cache on the former control-plane node (72% disk)~~ | ~~P1~~ | ~~30min~~ | ✅ **DONE** (Session 9, 72% → 67%) |
 | ~~Investigate core-services Progressing status~~ | ~~P1~~ | ~~1h~~ | ✅ **DONE** (now Synced/Healthy) |
 | ~~Clean orphaned janua ReplicaSets (59 → ~5-10)~~ | ~~P2~~ | ~~15min~~ | ✅ **DONE** (28 cleaned, Session 9) |
 | ~~Decide on `janua-proxy` (scaled to 0/0)~~ | ~~P2~~ | ~~30min~~ | ✅ **DONE** (deleted, Session 10) |
@@ -988,7 +997,7 @@ kubectl get nodes -o wide
 - ~~Standardize 5 registry secrets to madfam-bot~~ — **DONE** (Session 3)
 - ~~Pin remaining 6 images (dhanam + janua)~~ — **DONE** (Session 3)
 - ~~dhanam-admin CI workflow (no workflow exists)~~ — **DONE** (Session 5)
-- ~~Clean containerd image cache on foundry-core (72% disk → target <70%)~~ — ✅ **DONE** (Session 9, 72% → 67%)
+- ~~Clean containerd image cache on the former control-plane node (72% disk → target <70%)~~ — ✅ **DONE** (Session 9, 72% → 67%)
 - ~~Investigate core-services Progressing status~~ — ✅ **DONE** (now Synced/Healthy)
 - ~~Clean orphaned janua ReplicaSets (59 → ~5-10)~~ — ✅ **DONE** (28 cleaned, Session 9)
 - Delete orphaned GHCR packages (`dhanam-api`, `dhanam-web`) via GitHub UI — P3

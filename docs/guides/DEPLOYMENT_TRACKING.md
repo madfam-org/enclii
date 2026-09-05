@@ -1,5 +1,14 @@
 # Deployment Lifecycle Tracking
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -222,7 +231,7 @@ The `ENCLII_CALLBACK_TOKEN` secret must be configured in each repo that reports 
 ```bash
 # The token value is the ArgoCD webhook secret from the enclii-argocd-webhook K8s secret.
 # Get the value:
-ssh foundry-core "sudo kubectl get secret enclii-argocd-webhook -n enclii -o jsonpath='{.data.secret}' | base64 -d"
+ssh <FORMER_CONTROL_PLANE_NODE> "sudo kubectl get secret enclii-argocd-webhook -n enclii -o jsonpath='{.data.secret}' | base64 -d"
 
 # Set in each repo:
 gh secret set ENCLII_CALLBACK_TOKEN --repo myorg/myapp --body "<token>"

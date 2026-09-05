@@ -50,7 +50,7 @@ tags: [production, deployment, checklist, operations]
 ## Infrastructure Status
 
 ### Compute & Kubernetes
-- [x] 3-node k3s cluster (foundry-cp [control-plane] + foundry-worker-01 [worker] + foundry-builder-01 [builder])
+- [x] 3-node k3s cluster (1 control-plane + 1 worker + 1 builder)
 - [x] k3s v1.33.7+k3s3 on both nodes
 - [x] Builder node tainted (builder=true:NoSchedule)
 - [x] Cloudflare Tunnel ingress (2 replicas + PDB)

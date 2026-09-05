@@ -1,5 +1,14 @@
 # ADR-001: Network Architecture & Security Laws
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -122,7 +131,7 @@ REDIS_URL: "redis://127.0.0.1:6379"
 # NEVER use these in production
 REDIS_URL: "redis://<HOST_IP>:6379"  # External IP
 REDIS_URL: "redis://0.0.0.0:6379"         # Wildcard bind
-REDIS_URL: "redis://foundry-cp:6379"       # Hostname resolution issues
+REDIS_URL: "redis://<CONTROL_PLANE_NODE>:6379"       # Hostname resolution issues
 ```
 
 **Sentinel Audit Check**:
@@ -285,7 +294,7 @@ gh run list --workflow=docker-build.yml --limit=5
 ```bash
 # NEVER do these for tenant operations
 kubectl exec -it postgres-pod -- psql  # Use API instead
-ssh foundry-cp 'kubectl ...'           # Use enclii CLI instead
+ssh <CONTROL_PLANE_NODE> 'kubectl ...'           # Use enclii CLI instead
 curl -X POST janua-api/internal/...    # Use public API endpoints
 ```
 

@@ -1,5 +1,14 @@
 # Enclii Codebase Audit — January 29, 2026
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 ## 1. Executive Summary
 
 **Overall Score: 7.5/10 — ~85% Production Ready**
@@ -50,7 +59,7 @@ Enclii has undergone a dramatic transformation since the Nov 2025 audit (6.8/10,
 
 ## 3. Infrastructure State (as of Jan 26, 2026 audit)
 
-- **Cluster**: 3-node k3s v1.33.7+k3s3 (foundry-cp + foundry-worker-01 + foundry-builder-01)
+- **Cluster**: 3-node k3s v1.33.7+k3s3 (1 control-plane + 1 worker + 1 builder)
 - **Pods**: 79 running, 0 errors
 - **Domains**: 28 healthy, all via Cloudflare Tunnel (zero exposed ports)
 - **GitOps**: ArgoCD App-of-Apps (13 applications, self-heal enabled)

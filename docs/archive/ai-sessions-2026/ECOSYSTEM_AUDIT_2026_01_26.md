@@ -1,5 +1,14 @@
 # Production Ecosystem Audit Report
 
+> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
+> IP addresses and hardware SKUs — is private and does not appear in this public
+> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
+> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from
+> `internal-devops/infrastructure/nodes.md`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in
+> `madfam-org/internal-devops`.
+
+
 **Date:** January 25-26, 2026
 **Trigger:** Post-credential rotation end-to-end verification
 **Scope:** Full MADFAM production ecosystem (2-node k3s cluster, 19 namespaces, 28 domains, 13 ArgoCD apps)
@@ -11,8 +20,8 @@
 
 | Node | IP | Role | k3s | CPU | RAM | Status |
 |------|----|------|-----|-----|-----|--------|
-| foundry-core | <CONTROL_PLANE_IP> | control-plane | v1.33.6+k3s1 | 5% | 33% (21GB/64GB) | Ready |
-| foundry-builder-01 | <WORKER_NODE_IP> | worker (builder) | v1.33.6+k3s1 | 2% | 23% (916Mi/4GB) | Ready |
+| former control-plane | <CONTROL_PLANE_IP> | control-plane | v1.33.6+k3s1 | 5% | 33% (21GB/64GB) | Ready |
+| builder | <BUILDER_NODE_IP> | worker (builder) | v1.33.6+k3s1 | 2% | 23% (916Mi/4GB) | Ready |
 
 **Pods:** 79 Running, 12 Completed, 0 CrashLoopBackOff, 0 ImagePullBackOff, 0 Error
 
