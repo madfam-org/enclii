@@ -56,6 +56,18 @@ const (
 
 	// cloudflareTimeout bounds every Cloudflare API call.
 	cloudflareTimeout = 30 * time.Second
+
+	// cfErrCodeBucketAlreadyExists is Cloudflare's "The bucket you tried to
+	// create already exists" code. It accompanies an HTTP 409 today, but is
+	// matched independently of the status line so an edge that reports the
+	// same condition with a different status is still adopted.
+	cfErrCodeBucketAlreadyExists = 10004
+
+	// cfErrCodeNoRoute is Cloudflare's "No route matches this url." — the
+	// code returned when a request reaches the API with a method/path pair
+	// that is not routed. It is the exact symptom the PUT-vs-POST bug
+	// produced in production, and the test stub replays it.
+	cfErrCodeNoRoute = 10015
 )
 
 // R2 secret keys written into the service's credential Secret. Exported
@@ -304,15 +316,29 @@ func (p *R2Provisioner) EnsureBucket(ctx context.Context, bucketName string) (bo
 		return false, fmt.Errorf("marshal R2 request: %w", err)
 	}
 
-	status, respBody, err := p.do(ctx, http.MethodPut,
+	// POST, not PUT. Cloudflare routes bucket creation at
+	// POST /accounts/{account_id}/r2/buckets
+	// (https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create/).
+	// A PUT to the same path matches no route at all, so Cloudflare answers
+	// HTTP 500 with code 10015 "No route matches this url." — measured in
+	// production on 2026-09-05 against a fully-permissioned token. The method
+	// had been wrong since the original commit; the test stub mirrored the
+	// same wrong method, so the suite agreed with the bug instead of catching
+	// it. See r2_test.go, where the stub now rejects PUT the way Cloudflare
+	// does.
+	status, respBody, err := p.do(ctx, http.MethodPost,
 		fmt.Sprintf("/accounts/%s/r2/buckets", p.accountID), bytes.NewReader(body))
 	if err != nil {
 		return false, fmt.Errorf("R2 API call failed: %w", err)
 	}
 
-	// 409 = bucket already exists. Adopting is deliberate: re-running
+	// "Bucket already exists" is adoption, not failure: re-running
 	// provisioning for a project that already has its bucket must not fail.
-	if status == http.StatusConflict {
+	//
+	// Cloudflare signals this two ways depending on the edge that answers —
+	// HTTP 409, or a non-409 status carrying error code 10004 — so both are
+	// adopted rather than trusting the status line alone.
+	if status == http.StatusConflict || r2ErrorCodePresent(respBody, cfErrCodeBucketAlreadyExists) {
 		p.logger.Info(ctx, "R2 bucket already exists (adopted)", logging.String("bucket", bucketName))
 		return true, nil
 	}
@@ -525,6 +551,28 @@ func (p *R2Provisioner) do(ctx context.Context, method, path string, body io.Rea
 //	1001/9109 — unauthorized to access the requested resource
 //	10000     — authentication error
 var cloudflareAuthErrorCodes = map[int]bool{1001: true, 9109: true, 10000: true}
+
+// r2ErrorCodePresent reports whether a Cloudflare response body carries the
+// given error code in its `errors` array.
+//
+// It deliberately requires success:false: a successful response has no errors
+// to inspect, and treating a 2xx body as if it did would let an unrelated
+// numeric field masquerade as a Cloudflare error code.
+func r2ErrorCodePresent(body []byte, code int) bool {
+	var resp r2APIResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return false
+	}
+	if resp.Success {
+		return false
+	}
+	for _, e := range resp.Errors {
+		if e.Code == code {
+			return true
+		}
+	}
+	return false
+}
 
 // apiError converts a non-2xx Cloudflare response into an error, promoting
 // authorization failures to TokenMintForbiddenError so the operator is told

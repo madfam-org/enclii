@@ -39,12 +39,18 @@ type cfStub struct {
 	logger logging.Logger
 
 	bucketExists bool
+	// bucketExistsStatus overrides the HTTP status used with the 10004
+	// "already exists" body. Defaults to 409; set it to prove that adoption
+	// keys off the Cloudflare error code and not the status line alone.
+	bucketExistsStatus int
 
 	// captured
 	createdBucket    string
 	tokenBody        cfTokenRequest
 	permGroupQuery   string
 	tokenRequestSeen bool
+	// rejectedBucketMethod records a non-POST method seen on /r2/buckets.
+	rejectedBucketMethod string
 
 	// injected failures
 	permGroupStatus int
@@ -64,13 +70,31 @@ func newCFStub(t *testing.T) *cfStub {
 			t.Errorf("missing/incorrect bearer auth: %q", got)
 		}
 		switch {
-		case r.Method == http.MethodPut && r.URL.Path == "/accounts/"+testAccountID+"/r2/buckets":
+		// Cloudflare routes bucket creation at POST only. Any other method on
+		// this path matches no route and comes back as HTTP 500 / code 10015,
+		// which is exactly what production returned while the provisioner sent
+		// PUT. Replaying that here is the point: the previous stub answered PUT
+		// with a success body, so the suite agreed with the bug.
+		case r.Method != http.MethodPost && r.URL.Path == "/accounts/"+testAccountID+"/r2/buckets":
+			s.rejectedBucketMethod = r.Method
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(w,
+				`{"success":false,"errors":[{"code":%d,"message":"No route matches this url."}],"result":null}`,
+				cfErrCodeNoRoute)
+
+		case r.Method == http.MethodPost && r.URL.Path == "/accounts/"+testAccountID+"/r2/buckets":
 			var body r2BucketRequest
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			s.createdBucket = body.Name
 			if s.bucketExists {
-				w.WriteHeader(http.StatusConflict)
-				_, _ = w.Write([]byte(`{"success":false,"errors":[{"code":10004,"message":"The bucket you tried to create already exists"}]}`))
+				status := s.bucketExistsStatus
+				if status == 0 {
+					status = http.StatusConflict
+				}
+				w.WriteHeader(status)
+				_, _ = fmt.Fprintf(w,
+					`{"success":false,"errors":[{"code":%d,"message":"The bucket you tried to create already exists"}]}`,
+					cfErrCodeBucketAlreadyExists)
 				return
 			}
 			_, _ = w.Write([]byte(`{"success":true,"errors":[],"result":{}}`))
@@ -275,6 +299,54 @@ func TestProvisionBucket_NeverPartialOnMintFailure(t *testing.T) {
 	}
 	if stub.tokenRequestSeen {
 		t.Error("should not attempt a token mint after the permission lookup failed")
+	}
+}
+
+// TestEnsureBucket_UsesPOST is the regression test for the production failure
+// on 2026-09-05:
+//
+//	enclii buckets create madfam-hcm-expediente --project symbiosis-hcm
+//	→ HTTP 500 {"error":"cloudflare create R2 bucket failed:
+//	           No route matches this url. (code 10015)"}
+//
+// Cloudflare creates buckets with POST /accounts/{account_id}/r2/buckets. The
+// provisioner sent PUT, which matches no route. This test fails on main: the
+// stub now answers a non-POST the way Cloudflare does (500 / code 10015)
+// instead of handing PUT a success body, so the bug is visible from the suite
+// for the first time.
+func TestEnsureBucket_UsesPOST(t *testing.T) {
+	stub := newCFStub(t)
+
+	adopted, err := stub.provisioner().EnsureBucket(context.Background(), "karafiel-documents")
+	if err != nil {
+		t.Fatalf("EnsureBucket must create the bucket with POST, got: %v", err)
+	}
+	if adopted {
+		t.Error("a freshly created bucket must not report itself as adopted")
+	}
+	if stub.rejectedBucketMethod != "" {
+		t.Errorf("provisioner used %s on /r2/buckets; Cloudflare only routes POST there",
+			stub.rejectedBucketMethod)
+	}
+	if stub.createdBucket != "karafiel-documents" {
+		t.Errorf("created bucket = %q, want karafiel-documents", stub.createdBucket)
+	}
+}
+
+// TestEnsureBucket_AdoptsOn10004WithoutConflictStatus pins that adoption keys
+// off Cloudflare's error code, not only off HTTP 409 — an "already exists"
+// reported with any other status must still adopt rather than fail a re-run.
+func TestEnsureBucket_AdoptsOn10004WithoutConflictStatus(t *testing.T) {
+	stub := newCFStub(t)
+	stub.bucketExists = true
+	stub.bucketExistsStatus = http.StatusBadRequest
+
+	adopted, err := stub.provisioner().EnsureBucket(context.Background(), "already-there")
+	if err != nil {
+		t.Fatalf("code 10004 must be adopted whatever the status line, got: %v", err)
+	}
+	if !adopted {
+		t.Error("want adopted=true when Cloudflare reports code 10004")
 	}
 }
 
