@@ -26,6 +26,7 @@ import (
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/config"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/queue"
 	"github.com/madfam-org/enclii/apps/roundhouse/internal/telemetry"
+	"github.com/madfam-org/enclii/apps/roundhouse/internal/waybill"
 )
 
 // tracer — worker package emits spans under this name.
@@ -47,6 +48,12 @@ type Processor struct {
 
 	// Callback retry configuration
 	callbackRetry queue.CallbackRetryConfig
+
+	// usage reports each finished build's duration to Waybill as a
+	// CROSS-CHECK stream tagged `source: roundhouse` — never the meter of
+	// record, which is Weighbridge. Nil when WAYBILL_BASE_URL is unset, and a
+	// nil reporter is a silent no-op.
+	usage *waybill.Client
 }
 
 // NewProcessor creates a new job processor
@@ -136,6 +143,12 @@ func NewProcessor(cfg *config.Config, q *queue.RedisQueue, logger *zap.Logger) (
 			MaxInterval:     5 * time.Minute,
 			Multiplier:      2.0,
 		},
+		// Nil when WAYBILL_BASE_URL is unset — one switch for the whole
+		// cross-check stream.
+		usage: waybill.NewClient(cfg.WaybillBaseURL, cfg.WaybillAPIKey),
+	}
+	if p.usage == nil {
+		logger.Info("waybill cross-check disabled; WAYBILL_BASE_URL is unset")
 	}
 
 	return p, nil
@@ -309,6 +322,39 @@ func (p *Processor) processJob(ctx context.Context, job *queue.BuildJob) {
 		if err := p.sendCallbackWithRetry(ctx, job.ID, job.CallbackURL, result); err != nil {
 			logger.Error("failed to send callback, queued for retry", zap.Error(err))
 		}
+	}
+
+	p.reportUsage(ctx, logger, job, result)
+}
+
+// reportUsage sends this build's duration to Waybill as a cross-check.
+//
+// BEST EFFORT, AND LAST. It runs after the status write and the Switchyard
+// callback, and a failure is logged and dropped: this is a comparison stream,
+// and no build outcome may depend on the biller being up. Failing loudly here
+// would make a Waybill outage look like a build failure — the exact inversion
+// of what a cross-check is for.
+//
+// Only SUCCESSFUL builds are reported... no: FAILED BUILDS ARE REPORTED TOO. A
+// failed build consumes the same minutes as a successful one, and a stream
+// that silently omitted them would disagree with Weighbridge on every failure
+// and look like a metering bug.
+func (p *Processor) reportUsage(ctx context.Context, logger *zap.Logger, job *queue.BuildJob, result *queue.BuildResult) {
+	if p.usage == nil || result == nil {
+		return
+	}
+	err := p.usage.ReportBuildCompleted(ctx, waybill.BuildCompleted{
+		JobID:        job.ID,
+		ProjectID:    job.ProjectID,
+		ServiceID:    job.ServiceID,
+		ServiceName:  job.ServiceName,
+		DurationSecs: result.DurationSecs,
+		Success:      result.Success,
+		FinishedAt:   time.Now().UTC(),
+	})
+	if err != nil {
+		logger.Warn("could not report build duration to waybill (cross-check stream only)",
+			zap.Error(err))
 	}
 }
 

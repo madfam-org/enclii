@@ -48,6 +48,13 @@ type Config struct {
 	SwitchyardInternalURL string `mapstructure:"SWITCHYARD_INTERNAL_URL"`
 	SwitchyardAPIKey      string `mapstructure:"SWITCHYARD_API_KEY"`
 
+	// Usage cross-check. When WAYBILL_BASE_URL is empty the reporter is nil
+	// and nothing is sent, which is exactly the behaviour before this existed.
+	// This stream is a CROSS-CHECK against Weighbridge, not the meter of
+	// record — see internal/waybill.
+	WaybillBaseURL string `mapstructure:"WAYBILL_BASE_URL"`
+	WaybillAPIKey  string `mapstructure:"WAYBILL_API_KEY"`
+
 	// Preview Environments
 	PreviewsEnabled bool `mapstructure:"PREVIEWS_ENABLED"`
 
@@ -92,6 +99,8 @@ func Load() (*Config, error) {
 	_ = viper.BindEnv("BITBUCKET_WEBHOOK_SECRET")
 	_ = viper.BindEnv("SWITCHYARD_INTERNAL_URL")
 	_ = viper.BindEnv("SWITCHYARD_API_KEY")
+	_ = viper.BindEnv("WAYBILL_BASE_URL")
+	_ = viper.BindEnv("WAYBILL_API_KEY")
 	_ = viper.BindEnv("PREVIEWS_ENABLED")
 	_ = viper.BindEnv("MAX_CONCURRENT_BUILDS")
 	_ = viper.BindEnv("POLL_INTERVAL")
