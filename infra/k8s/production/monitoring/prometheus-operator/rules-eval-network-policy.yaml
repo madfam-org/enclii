@@ -131,6 +131,41 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: data
+    # Managed-database addon namespaces (`project-*`) — the per-addon CNPG
+    # instance pods and their postgres-exporter, both on 9187.
+    #
+    # This rule is what makes `enablePodMonitor: true` mean anything. A
+    # PodMonitor in a project namespace is discovered by rules-eval regardless
+    # of NetworkPolicy — the object is read through the API server — so without
+    # this egress the target would appear in /api/v1/targets and every scrape
+    # would fail at the CNI with no error object anywhere. That is a Prometheus
+    # showing you a target list while measuring nothing, which is the failure
+    # mode this whole directory exists to end.
+    #
+    # SELECTED BY A DEDICATED LABEL, not by name and not by
+    # `enclii.dev/data-access`. Addon namespaces are named `project-<uuid8>`,
+    # which no namespaceSelector can match (label selectors have no regex), and
+    # `enclii.dev/data-access: true` is worn by every application namespace in
+    # the estate — using it would open monitoring's egress to far more than the
+    # databases. `enclii.dev/addon-metrics` is stamped by the addon provisioner
+    # itself (LabelAddonMetricsNamespace,
+    # apps/switchyard-api/internal/addons/observability.go), so this reaches
+    # exactly the namespaces a provisioner has marked and nothing else. A
+    # namespace that never gets stamped is unreachable and its
+    # AddonMetricsScrapeDown alert says so.
+    #
+    # The port is pinned here even though the other scrape rules in this policy
+    # are namespace-wide: these are TENANT namespaces, and a monitoring
+    # component with blanket egress into tenant space is a larger grant than
+    # the job needs. 9187 is the CNPG metrics port and the exporter's
+    # containerPort (AddonMetricsPort).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              enclii.dev/addon-metrics: "true"
+      ports:
+        - protocol: TCP
+          port: 9187
     # Kubernetes API server — service discovery (kubernetes_sd_configs) for
     # every job in the duplicated scrape config.
     - to: []

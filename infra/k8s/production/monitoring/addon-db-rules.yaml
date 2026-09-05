@@ -1,0 +1,177 @@
+---
+# Per-addon managed-database alerts (Depot Wave 0, Data row).
+#
+# WHAT THESE READ, AND WHY THEY CAN NOW READ IT
+# =============================================
+# Every series below comes from the CNPG instance pods of a per-addon Cluster
+# in a `project-*` namespace. Until this change those pods were not scraped at
+# all: `spec.monitoring.enablePodMonitor` was hardcoded `false`
+# (apps/switchyard-api/internal/addons/postgres.go), so no PodMonitor existed;
+# and even with one, `rules-eval`'s egress policy did not reach `project-*`
+# namespaces, so the scrape would have been dropped by the CNI with no error
+# anywhere. Both are fixed in the same change as this file — see
+# prometheus-operator/rules-eval-network-policy.yaml and
+# internal/addons/observability.go.
+#
+# The evaluator is the `rules-eval` Prometheus CR (prometheus-operator/), whose
+# `ruleSelector: {}` / `ruleNamespaceSelector: {}` match every PrometheusRule in
+# every namespace, and whose `alerting.alertmanagers` points at the SAME,
+# EXISTING Alertmanager the primary Prometheus uses. No receiver is added here:
+# `severity: critical` routes to `critical-receiver` and `severity: warning` to
+# `warning-receiver` in alertmanager.yaml, which already carry the Courier +
+# email last mile.
+#
+# WHAT THESE DO NOT SAY
+# =====================
+# These are FRESHNESS alarms on artefacts that exist, nothing more. None of
+# them is a recovery-point or recovery-time commitment, and none of them is
+# evidence that a restore works — that evidence comes only from an actual
+# restore with a verified row count (scripts/restore-addon.sh). No availability
+# figure is claimed or implied anywhere in this file.
+#
+# THRESHOLD DERIVATION
+# ====================
+# ScheduledBackup runs `0 0 4 * * *` — daily at 04:00 UTC (addons/types.go
+# BackupSchedule). A backup older than 36h therefore means at least one whole
+# scheduled run produced nothing, with 12h of slack for a long backup, a clock
+# skew or a restart. 26h would page on a merely slow night; 48h would let two
+# consecutive silent failures pass unnoticed.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: enclii-addon-db-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: enclii-addon-db
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: enclii
+    # Matches the discovery label the other rule sets in this estate carry.
+    # rules-eval's ruleSelector is empty (matches everything) so this is
+    # descriptive, not load-bearing — but a future scoped selector should not
+    # silently drop these.
+    enclii.dev/prometheus-rules: "true"
+spec:
+  groups:
+    - name: enclii-addon-db.backups
+      interval: 60s
+      rules:
+        # A cluster CNPG has never successfully backed up. The collector
+        # reports 0 for "no available backup", which is why this is `== 0`
+        # rather than an age comparison: `time() - 0` is 56 years and would
+        # also fire, but with an absurd number in the message.
+        - alert: AddonBackupNeverCompleted
+          expr: |
+            min by (namespace, pod) (
+              cnpg_collector_last_available_backup_timestamp{namespace=~"project-.*"}
+            ) == 0
+          for: 2h
+          labels:
+            severity: critical
+            component: managed-db-addon
+          annotations:
+            summary: "Managed database {{ $labels.namespace }}/{{ $labels.pod }} has no completed backup"
+            description: |
+              CloudNativePG reports no available backup for this addon cluster
+              two hours after the condition first held. Provisioning is allowed
+              to proceed without a configured backup store (it is logged at
+              ERROR on every provision), so the most likely causes are an unset
+              ENCLII_ADDON_BACKUP_DESTINATION_BASE or a missing
+              enclii-db-backup-credentials Secret in the addon namespace.
+              Runbook: docs/runbooks/ADDON_BACKUPS.md
+
+        - alert: AddonBackupStale
+          expr: |
+            (
+              time() - max by (namespace, pod) (
+                cnpg_collector_last_available_backup_timestamp{namespace=~"project-.*"}
+              )
+            ) > 129600
+            and
+            max by (namespace, pod) (
+              cnpg_collector_last_available_backup_timestamp{namespace=~"project-.*"}
+            ) > 0
+          for: 30m
+          labels:
+            severity: critical
+            component: managed-db-addon
+          annotations:
+            summary: "Managed database {{ $labels.namespace }}/{{ $labels.pod }} last backed up {{ $value | humanizeDuration }} ago"
+            description: |
+              The most recent available backup is older than 36 hours, so at
+              least one daily scheduled run (04:00 UTC) produced nothing. This
+              is a freshness alarm on the backup artefact; it says nothing about
+              whether a restore would succeed.
+              Runbook: docs/runbooks/ADDON_BACKUPS.md
+
+    - name: enclii-addon-db.wal
+      interval: 60s
+      rules:
+        # WAL archiving is the continuous half of the backup story. It fails
+        # quietly: the database keeps serving, base backups keep succeeding,
+        # and only the archive falls behind. The estate has already measured
+        # this exact condition once at ~23h of staleness.
+        - alert: AddonWALArchiveStale
+          expr: |
+            (
+              time() - max by (namespace, pod) (
+                cnpg_pg_stat_archiver_last_archived_time{namespace=~"project-.*"}
+              )
+            ) > 3600
+            and
+            max by (namespace, pod) (
+              cnpg_pg_stat_archiver_last_archived_time{namespace=~"project-.*"}
+            ) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: managed-db-addon
+          annotations:
+            summary: "WAL archive for {{ $labels.namespace }}/{{ $labels.pod }} is {{ $value | humanizeDuration }} behind"
+            description: |
+              No WAL segment has been archived for over an hour. A low-traffic
+              database can legitimately produce few segments, so this is a
+              warning rather than a page; AddonWALArchiveFailing below is the
+              unambiguous failure.
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md
+
+        - alert: AddonWALArchiveFailing
+          expr: |
+            increase(
+              cnpg_pg_stat_archiver_failed_count{namespace=~"project-.*"}[15m]
+            ) > 0
+          for: 15m
+          labels:
+            severity: critical
+            component: managed-db-addon
+          annotations:
+            summary: "WAL archiver for {{ $labels.namespace }}/{{ $labels.pod }} is failing"
+            description: |
+              The archiver's failure counter increased over the last 15 minutes
+              and has not stopped. Left alone, the primary's pg_wal directory
+              grows until the volume fills, which takes the database down.
+              Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md
+
+    - name: enclii-addon-db.exporters
+      interval: 60s
+      rules:
+        # The detector's own detector. Every rule above is silent when the
+        # scrape stops, which is indistinguishable from healthy — the failure
+        # this whole programme exists to eliminate. `absent()` is deliberately
+        # NOT used: it cannot name which addon disappeared.
+        - alert: AddonMetricsScrapeDown
+          expr: |
+            up{namespace=~"project-.*"} == 0
+          for: 20m
+          labels:
+            severity: warning
+            component: managed-db-addon
+          annotations:
+            summary: "Prometheus cannot scrape {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: |
+              A managed-database metrics target in an addon namespace has been
+              down for 20 minutes, so every backup and WAL alert for that addon
+              is currently evaluating over nothing. Check the addon's
+              -metrics-scrape NetworkPolicy and rules-eval's egress rule for
+              `enclii.dev/addon-metrics` namespaces before assuming the database
+              itself is at fault.
+              Runbook: docs/runbooks/ADDON_BACKUPS.md

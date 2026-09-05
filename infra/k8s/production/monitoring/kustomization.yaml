@@ -31,6 +31,13 @@ resources:
   # attempt (#388) shipped and looked like it had worked.
   - kube-state-metrics.yaml
   - network-policies.yaml
+  # Per-addon managed-database alerts (backup age, WAL archive freshness).
+  # A PrometheusRule, so it is evaluated by the `rules-eval` Prometheus in
+  # prometheus-operator/ — NOT by the flat-file `prometheus-rules` ConfigMap in
+  # prometheus.yaml, which only loads /etc/prometheus/rules/*.yml. Both route to
+  # the same Alertmanager. See the file header for what these alerts do and do
+  # not claim.
+  - addon-db-rules.yaml
   - monitoring-policy-exception.yaml
   - dashboards/
   # prometheus-platform-rules.yaml, pgbackrest-health-rules.yaml, and
