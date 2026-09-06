@@ -92,13 +92,58 @@ What the image provides:
 | Headless display | `xvfb` |
 | GLib | `libglib2.0-0t64` |
 
-**Contract source.** Lane L-G31 is lifting this list into `hyperobjects-spec`
-as `y4d_spec.render_environment` (`APT_PACKAGES`, `OPENSCAD_VERSION`,
-`OPENSCAD_SHA256`) so the platform image, this image, and the render jobs all
-read one definition. That spec had not landed when this image was written, so
-the `Dockerfile` currently carries copies of yantra4d's values. **The next
-bump of the render block must read from the spec rather than re-copying** —
-and must move in lockstep with `yantra4d/apps/api/Dockerfile` until it does.
+**Contract source — now enforced, not merely promised.** The list lives in
+`hyperobjects-spec` as `y4d_spec.render_environment` (`APT_PACKAGES`,
+`CI_EXTRA_APT_PACKAGES`, `OPENSCAD_VERSION`, `OPENSCAD_SHA256`) so the platform
+image, this image and the render jobs read one definition. That contract has
+landed, and since #520 a CI lane holds this `Dockerfile` to it:
+[`arc-runner-render-env-drift.yml`](../../../.github/workflows/arc-runner-render-env-drift.yml)
+installs the spec and fails a PR whose values here have drifted.
+
+Order of operations, and it is not optional: **bump the spec first, re-pin it in
+that workflow, then edit this block.**
+
+### The drift check (#520)
+
+`scripts/check-arc-runner-render-env.py` mirrors yantra4d's
+`scripts/qa/check_render_env.py` — same `ARG` regex, same literal apt parser,
+same build-only ignore set (`wget`, `curl`, `ca-certificates`) — with two
+deliberate differences, both covered by
+`tests/scripts/test_check_arc_runner_render_env.py`:
+
+1. **It reads every `apt-get install`, not the first.** The platform image
+   installs in one `RUN`; this `Dockerfile` deliberately uses two layers so a
+   change in one does not invalidate the other. A first-match parser would read
+   only the CI-deps layer and report every render package as missing.
+2. **Packages are compared as a subset, not as equal sets.** This is a CI
+   runner: it legitimately also carries Playwright deps, `jq`, `python3-venv`
+   and extra X libraries. A package the image has and the contract does not is
+   the runner being a runner. A package **the contract requires and the image
+   lacks** is drift — and that is the direction that breaks renders.
+
+`CI_EXTRA_APT_PACKAGES` counts as required here, because this machine runs the
+`[geometry]` extra's OCP kernel. Ubuntu 24.04's 64-bit `time_t` rename is not
+drift: `libglib2.0-0t64` satisfies the contract's `libglib2.0-0`, as one narrow
+named rule rather than a fuzzy match.
+
+**Why the build's own smoke check is not this check.** `arc-runner-image.yml`
+verifies the built image **against itself** — that OpenSCAD runs and reports the
+version the same `Dockerfile` pinned. A version string agreeing with itself
+proves nothing about whether it agrees with the commons. This drift is silent by
+construction: the image keeps building, the smoke check keeps passing, and the
+first symptom is geometry that differs between CI and production — the one class
+of bug the dual-engine parity lane cannot catch, because both sides of that
+comparison run in the same image.
+
+**It found real drift on the run that introduced it.** `libcomerr2` and
+`libgpg-error0` are in the platform image and in the contract and were missing
+here; pool renders had been running against a different library set than
+production since G16. Both are in the image as of #520, and the pools were
+repinned to the resulting build in #521.
+
+The drift lane runs on GitHub-hosted `ubuntu-latest`, for the same
+chicken-and-egg reason `arc-runner-image.yml` does: it is about the pool's own
+image and must not depend on the pool being healthy.
 
 **Size.** Measured on the 2026-09-05 build: **1971 MiB** total uncompressed,
 against a **1470 MiB** upstream base — so the whole overlay (the pre-existing
@@ -146,6 +191,16 @@ the only place a root-only squashfs tree would be caught.
   `ghcr.io/actions/actions-runner:2.337.0` (upstream release published
   2026-08-27). The `Dockerfile` is the source of truth for this value; this
   line and the comment in `infra/helm/arc/values-runner-set.yaml` track it.
+
+**What the pools run today.** Both `madfam-runners-blue` and
+`madfam-runners-deploy` are pinned to
+`…/arc-runner:stable@sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`
+(#521 — the image built from #520). The pin is the **manifest list** digest from
+the build log's `pushing manifest for …` line, never the single-manifest digest
+the run summary prints; the two differ and only the list digest is what a node
+resolves. See
+[`infra/k8s/production/arc/README.md`](../../k8s/production/arc/README.md) for
+the four references that must move together.
 
 ## Rebuild cadence
 
@@ -212,10 +267,11 @@ version.
 **Render packages are different**: they are not a free choice. They must match
 the platform image (see [The render environment](#the-render-environment-g16)),
 so add them upstream first — in `hyperobjects-spec`'s
-`y4d_spec.render_environment` once L-G31 lands, or in
-`yantra4d/apps/api/Dockerfile` until then — and mirror the change here in the
-same wave. An extra package here that production does not have means CI
-renders something the platform cannot.
+`y4d_spec.render_environment`, which has landed and is now enforced — then
+re-pin the spec in the drift workflow and mirror the change here. A render
+package added here alone does not merely risk drift: the drift gate fails the
+PR. An extra package here that production does not have means CI renders
+something the platform cannot.
 
 ## Verifying the image locally
 
