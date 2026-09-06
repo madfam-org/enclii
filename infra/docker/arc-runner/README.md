@@ -53,29 +53,28 @@ pinned by SHA-256 and installed from `files.openscad.org`, not from the Ubuntu
 archive — the archive's `openscad` is older and silently renders *different
 geometry* for Gridfinity extended syntax.
 
-**Why 2026.02.13 and not 2026.02.01** (bumped 2026-09-05, ruling G31). The
-2026.02.01 snapshot **cannot render the platform's pinned BOSL2 v2.0.753**
-(`fcfce7c7`). Two lines are enough to break it:
+**Why 2026.02.13** (bumped 2026-09-05, rulings G31/G35 — with a correction).
+The bump was made when yantra4d PR #125's backend job hit
+`Assertion '(is_list($tags_shown) || ($tags_shown == "ALL"))'` in BOSL2's
+`attachments.scad` on the first CI runner that ever had an `openscad` binary,
+and the same file rendered on macOS 2026.02.13. **That reading was wrong**: the
+platform's smoke test loaded BOSL2 with `use <BOSL2/std.scad>`, and `use` never
+applies a used file's top-level assignments — BOSL2's `$tags_shown = "ALL"`
+default among them — so every attachable primitive fails BOSL2's own assertion
+on *any* OpenSCAD version. BOSL2 documents `include`-only; every commons
+cartridge does `include <BOSL2/std.scad>`; the test was fixed to match
+(yantra4d #126). Whether 2026.02.01 could render BOSL2 v2.0.753 was therefore
+never actually tested and is not claimed here.
 
-```openscad
-include <BOSL2/std.scad>
-cube([1,1,1], anchor=[-1,-1,-1]);
-```
-
-```
-ERROR: Assertion '(is_list($tags_shown) || ($tags_shown == "ALL"))' failed
-       in libs/BOSL2/attachments.scad, line 3809
-Current top level object is empty.
-```
-
-That is every *anchored* BOSL2 primitive — most of the library — and the STL
-comes out empty. It surfaced in yantra4d PR #125's backend job
-(`tests/integration/test_submodule_smoke.py::TestBOSL2Smoke`). The identical
-file and BOSL2 commit render a 1443-byte STL under 2026.02.13. BOSL2 v2.0.753
-simply requires a snapshot newer than 2026.02.01, so the snapshot moves rather
-than the library pin. This bump must land in lockstep with
-`yantra4d/apps/api/Dockerfile` (which renders cartridges server-side with the
-same broken snapshot today) and `hyperobjects-spec`
+The 2026.02.13 pin **stays**, for the reason that matters: the runner image,
+`yantra4d/apps/api/Dockerfile` (+ `Dockerfile.dev`) and the keystone's
+`y4d_spec.render_environment` contract now all name one snapshot that this
+image's build smoke has rendered BOSL2 with (`include <BOSL2/std.scad>` +
+`cube([1,1,1], anchor=[-1,-1,-1]);` → a 1443-byte STL, byte-identical to
+macOS). The smoke step *renders* rather than inspecting because the three
+presence checks that preceded it all passed on an image that could not have
+rendered a `use`-loaded BOSL2 either way — presence cannot see a
+library/renderer mismatch. The contract source for the next bump is
 `y4d_spec.render_environment`.
 
 AppImages need FUSE, which containers do not have, so the AppImage is
