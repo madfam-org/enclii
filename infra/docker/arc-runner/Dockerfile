@@ -131,12 +131,13 @@ RUN ldconfig -p | grep -q libatomic.so.1 \
 # with the same libraries and the same OpenSCAD as the platform, so this pair
 # must move together.
 #
-# CONTRACT SOURCE: this list is being lifted into hyperobjects-spec as
-# `y4d_spec.render_environment` (`APT_PACKAGES`, `OPENSCAD_VERSION`,
-# `OPENSCAD_SHA256`) by lane L-G31. That spec had not landed when this image
-# was written, so the values here are copied from yantra4d's Dockerfile. The
-# NEXT bump of this block must read them from the spec instead of re-copying,
-# and drop this paragraph when it does.
+# CONTRACT SOURCE: hyperobjects-spec `y4d_spec.render_environment`
+# (`APT_PACKAGES`, `CI_EXTRA_APT_PACKAGES`, `OPENSCAD_VERSION`,
+# `OPENSCAD_SHA256`). These values are no longer merely copied from yantra4d's
+# Dockerfile and trusted: .github/workflows/arc-runner-render-env-drift.yml
+# installs the spec at the SHA the commons pin and fails a PR whose values here
+# have drifted from it. Bump the spec first, re-pin it in that workflow, then
+# edit this block — in that order.
 #
 # Per package:
 #   libgl1            - OCP (CadQuery's kernel) dlopens libGL.so.1 at import;
@@ -154,6 +155,13 @@ RUN ldconfig -p | grep -q libatomic.so.1 \
 #   libxft2             which is why the render jobs' apt step listed them
 #   libxinerama1
 #   libxext6
+#   libcomerr2        - com_err (Kerberos error table), linked transitively by
+#   libgpg-error0       the AppImage payload's crypto stack; both are in the
+#                       platform image and were MISSING here until the drift
+#                       gate (scripts/check-arc-runner-render-env.py) found
+#                       them. That is the whole point of the gate: the image
+#                       built and smoke-tested green while carrying a render
+#                       environment the commons contract does not describe.
 #   fonts-liberation  - the metric-compatible font family cartridges label
 #                       parts with; a missing font silently renders boxes
 #   fontconfig        - fc-cache/fc-list, so installed fonts are findable
@@ -175,6 +183,8 @@ RUN apt-get update \
       libxft2 \
       libxinerama1 \
       libxext6 \
+      libcomerr2 \
+      libgpg-error0 \
       fonts-liberation \
       fontconfig \
       xvfb \
@@ -221,8 +231,10 @@ RUN apt-get update \
 # every render job while the build itself stays green. yantra4d's image does
 # not need this because it runs OpenSCAD as the same user that extracted it.
 #
-# To bump: download the AppImage, `sha256sum` it, update both ARGs here AND
-# in yantra4d (or, once L-G31 lands, in hyperobjects-spec, which both read).
+# To bump: change it in hyperobjects-spec (`y4d_spec.render_environment`),
+# re-pin that SHA in .github/workflows/arc-runner-render-env-drift.yml, then
+# update both ARGs here to match. The drift gate fails the PR until they agree,
+# which is what keeps this image and yantra4d's platform image on one snapshot.
 ARG OPENSCAD_VERSION=2026.02.13
 ARG OPENSCAD_SHA256=01e4bdeb00518b20ba00d5acc1d3df9c62813d9f64bb68a1fd0a546c7e46ab28
 # curl, not wget: the upstream base ships curl (and jq/unzip) but NOT wget,

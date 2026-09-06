@@ -1,0 +1,90 @@
+name: ARC runner render-env drift
+
+# The ARC runner image bakes the commons RENDER environment (G16) — libGL/X,
+# Liberation fonts, and a pinned OpenSCAD snapshot — so a cartridge rendered on
+# `madfam-runners-blue` renders the way it renders on yantra4d's platform image.
+#
+# Nothing kept that promise honest. The values in
+# infra/docker/arc-runner/Dockerfile were COPIED from yantra4d's Dockerfile by
+# hand, and the Dockerfile said so in its own comment: "The NEXT bump of this
+# block must read them from the spec instead of re-copying." The commons
+# contract (`y4d_spec.render_environment`) has since landed; this is that check.
+#
+# Why the existing smoke check is not this check: arc-runner-image.yml verifies
+# the built image against ITSELF — that OpenSCAD runs and reports the version
+# the same Dockerfile pinned. A version string agreeing with itself proves
+# nothing about whether it agrees with the commons. Drift here is silent by
+# construction: the image keeps building, the smoke check keeps passing, and the
+# first symptom is geometry that differs between CI and production — exactly
+# the class of bug the dual-engine parity lane cannot catch, because both sides
+# of that comparison run in the same image.
+#
+# It found real drift on the run that introduced it: `libcomerr2` and
+# `libgpg-error0` are in the platform image and the contract, and were missing
+# here.
+#
+# Runs on github-hosted ubuntu-latest for the same chicken-and-egg reason
+# arc-runner-image.yml does: this lane is about the pool's own image, and must
+# not depend on the pool being healthy.
+
+on:
+  pull_request:
+    paths:
+      - "infra/docker/arc-runner/**"
+      - "scripts/check-arc-runner-render-env.py"
+      - "tests/scripts/test_check_arc_runner_render_env.py"
+      - ".github/workflows/arc-runner-render-env-drift.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/docker/arc-runner/**"
+      - "scripts/check-arc-runner-render-env.py"
+      - "tests/scripts/test_check_arc_runner_render_env.py"
+      - ".github/workflows/arc-runner-render-env-drift.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arc-runner-render-env-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Dockerfile ↔ commons render contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # The self-tests run BEFORE the gate and against a synthetic contract, so
+      # they need neither the network nor the spec: what is under test is our
+      # parser and our subset/t64 rules. Pairing the tests with the lint matches
+      # the other *-lint jobs in ci.yml — a gate whose own parser is untested
+      # can pass by silently reading nothing.
+      - name: Self-tests for the drift gate
+        run: |
+          pip install --quiet pytest
+          pytest tests/scripts/test_check_arc_runner_render_env.py -v
+
+      # The SAME keystone SHA the commons pin (both hyperobjects repos' SPEC_PIN
+      # and yantra4d's spec-nightly) — never a floating tag, or this gate would
+      # start failing on somebody else's release. The repo is public: no token.
+      #
+      # Manifest-only: no `[geometry]` extra. The contract is a handful of
+      # strings; pulling the CAD kernel to read them would add minutes and a
+      # large dependency surface to a lint.
+      - name: Install the commons render contract (manifest only, no kernel)
+        run: pip install "hyperobjects-spec @ git+https://github.com/madfam-org/hyperobjects-spec.git@db65cf1e7a2732d7263efd6eb6ba533640eb536f"
+
+      - name: Show the contract this Dockerfile is held to
+        run: y4d-spec render-env --json
+
+      - name: Check the Dockerfile against the contract
+        run: python3 scripts/check-arc-runner-render-env.py
