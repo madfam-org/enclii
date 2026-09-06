@@ -73,15 +73,32 @@ jobs:
           pip install --quiet pytest
           pytest tests/scripts/test_check_arc_runner_render_env.py -v
 
-      # The SAME keystone SHA the commons pin (both hyperobjects repos' SPEC_PIN
-      # and yantra4d's spec-nightly) — never a floating tag, or this gate would
-      # start failing on somebody else's release. The repo is public: no token.
-      #
+      # The SAME keystone SHA the commons pin — read at run time from
+      # solid-hyperobjects' `SPEC_PIN` (the commons and yantra4d's spec-nightly
+      # move that pin together), never a floating tag, or this gate would start
+      # failing on somebody else's release — and never a hand-copied SHA, or it
+      # silently measures an older contract than the one the runners are held
+      # to (it did: db65cf1e while the commons pinned 3aa57133). Fail closed if
+      # the pin cannot be read. api.github.com, the job's own token: no new
+      # egress, no PAT.
+      - name: Resolve the commons keystone pin (solid-hyperobjects SPEC_PIN)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PIN=$(gh api repos/madfam-org/solid-hyperobjects/contents/.github/workflows/ci.yml --jq .content \
+                | base64 -d | sed -n 's/^  SPEC_PIN: \([0-9a-f]\{40\}\)[[:space:]]*$/\1/p' | head -1)
+          if [ -z "$PIN" ]; then
+            echo "::error title=keystone pin unreadable::could not read a 40-hex SPEC_PIN from solid-hyperobjects/.github/workflows/ci.yml"
+            exit 1
+          fi
+          echo "keystone pin (commons SPEC_PIN): $PIN"
+          echo "SPEC_PIN=$PIN" >> "$GITHUB_ENV"
+
       # Manifest-only: no `[geometry]` extra. The contract is a handful of
       # strings; pulling the CAD kernel to read them would add minutes and a
       # large dependency surface to a lint.
       - name: Install the commons render contract (manifest only, no kernel)
-        run: pip install "hyperobjects-spec @ git+https://github.com/madfam-org/hyperobjects-spec.git@db65cf1e7a2732d7263efd6eb6ba533640eb536f"
+        run: pip install "hyperobjects-spec @ git+https://github.com/madfam-org/hyperobjects-spec.git@${SPEC_PIN}"
 
       - name: Show the contract this Dockerfile is held to
         run: y4d-spec render-env --json
