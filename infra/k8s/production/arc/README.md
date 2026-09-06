@@ -39,8 +39,23 @@ So a base-image bump is **three** steps, not two:
 
 1. bump `BASE_TAG` + `BASE_TAG_DATE` in
    [`../../../docker/arc-runner/Dockerfile`](../../../docker/arc-runner/Dockerfile);
-2. merge, and take the digest from the `arc-runner-image.yml` run;
+2. merge, and take the **manifest list digest** from the `arc-runner-image.yml`
+   build log — the `pushing manifest for …@sha256:…` line, **not** the
+   single-manifest digest the run summary prints. The two differ, and only the
+   list digest is what a node resolves when it pulls;
 3. repin **all four** image references — both files, two each.
+
+Both pools currently run
+`ghcr.io/madfam-org/enclii/arc-runner:stable@sha256:c35966ed277acedf16953c1e8075a2c9d92509be488b4de48b9487605da5a162`
+(#521, from the image built by #520 — the render-library parity fix that added
+`libcomerr2` and `libgpg-error0`). Rollback digest: `sha256:ac3d33fd…`.
+
+Verify what the pools actually run, read-only:
+
+```bash
+kubectl get autoscalingrunnerset -n arc-runners -o jsonpath=\
+'{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[?(@.name=="runner")].image}{"\n"}{end}'
+```
 
 Repinning blue and forgetting deploy leaves a small pool quietly running an
 old agent that starts failing registration ~60 days later while blue looks
