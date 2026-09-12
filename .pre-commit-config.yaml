@@ -9,17 +9,21 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
+        # Keep this in sync with the `should_exclude_file` filter recorded in
+        # `.secrets.baseline` (regenerate with the same --exclude-files regex).
+        # NOTE: the previous form anchored every alternative with a leading `^`,
+        # so nested generated files (apps/status/pnpm-lock.yaml, every non-root
+        # go.sum) were never excluded — that is why an honest baseline used to
+        # mean ~1.7k lockfile hashes.
         exclude: |
-          (?x)^(
-            .*\.md$|
-            .*_test\.go$|
-            .*\.example$|
-            go\.sum$|
-            go\.mod$|
-            package-lock\.json$|
-            yarn\.lock$|
-            pnpm-lock\.yaml$
-          )$
+          (?x)(
+            \.md$|
+            _test\.go$|
+            \.example$|
+            \.tsbuildinfo$|
+            (^|/)go\.(mod|sum)$|
+            (^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$
+          )
 
   # Go formatting and linting
   - repo: https://github.com/dnephin/pre-commit-golang
@@ -46,8 +50,14 @@ repos:
         args: ['--branch', 'main', '--branch', 'master']
 
   # Security scanning
-  - repo: https://github.com/zricethezav/gitleaks
-    rev: v8.18.1
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
     hooks:
+      # No `args:`. The hook entry is already
+      #   `gitleaks git --pre-commit --redact --staged --verbose`
+      # and sets `pass_filenames: false`, so it scans the staged diff itself.
+      # The old `args: ['--no-git']` was appended to `gitleaks protect` (the
+      # v8.18.1 entry), which does not accept that flag: every run printed the
+      # CLI usage and exited non-zero. `protect` was replaced by
+      # `git --pre-commit` upstream, hence the rev bump rather than a rev pin.
       - id: gitleaks
-        args: ['--no-git']
