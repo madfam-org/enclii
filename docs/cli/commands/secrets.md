@@ -313,7 +313,9 @@ Canonical routing: `enclii/apps/switchyard-api/internal/secretsintake/registry.y
 
 Auto-provision Janua OIDC clients and intake credentials into Vault from a single
 `admin@madfam.io` Janua SSO session. Registry:
-`config/ecosystem-oidc-provision.yaml` (embedded in CLI).
+`config/ecosystem-oidc-provision.yaml`, kept byte-identical to the copy the CLI embeds
+(`packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml`) by a Go test —
+edit both in the same commit.
 
 ```bash
 export ENCLII_API_ENDPOINT=https://api.enclii.dev

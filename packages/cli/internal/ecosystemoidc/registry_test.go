@@ -161,3 +161,26 @@ func TestLoadRegistry_nautaSymbiosisHCMMachineClient(t *testing.T) {
 		"symbiosis_hcm_oauth_client_secret": "s3cr3t",
 	}, values)
 }
+
+// TestRegistry_humanCopyMatchesEmbedded fails the build when
+// config/ecosystem-oidc-provision.yaml (what scripts/provision-ecosystem-oidc.sh
+// passes with --registry, and what humans edit) drifts from the copy this package
+// embeds (what a bare `enclii secrets provision oidc` uses). The two diverged for
+// ten weeks — the human copy lacked nauta and nauta-portal (#379, #473) — so a
+// `--all` run from the script would have skipped the cockpit. go:embed cannot
+// reach outside the package, hence two files and one test.
+func TestRegistry_humanCopyMatchesEmbedded(t *testing.T) {
+	human, err := os.ReadFile("../../../../config/ecosystem-oidc-provision.yaml")
+	require.NoError(t, err, "config/ecosystem-oidc-provision.yaml must exist at the repo root")
+	if string(human) != string(embeddedRegistry) {
+		t.Fatalf("config/ecosystem-oidc-provision.yaml differs from packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml — copy one over the other in the same commit (human %d bytes, embedded %d bytes)", len(human), len(embeddedRegistry))
+	}
+	reg, err := LoadRegistry("../../../../config/ecosystem-oidc-provision.yaml")
+	require.NoError(t, err)
+	emb, err := LoadRegistry("")
+	require.NoError(t, err)
+	assert.Equal(t, emb.PlatformIDs(), reg.PlatformIDs())
+	assert.Contains(t, reg.Platforms, "nauta", "the human copy must carry the cockpit client")
+	assert.Contains(t, reg.Platforms, "nauta-portal")
+	assert.Contains(t, reg.Platforms, "nauta-symbiosis-hcm")
+}
