@@ -7,7 +7,8 @@
 #   ./scripts/provision-ecosystem-oidc.sh dhanam
 #   ./scripts/provision-ecosystem-oidc.sh --all
 #
-# Last Updated: 2026-06-16
+# Last Updated: 2026-09-12 (registry: config/ecosystem-oidc-provision.yaml, kept byte-identical
+#   to the CLI-embedded copy by packages/cli/internal/ecosystemoidc/registry_test.go)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

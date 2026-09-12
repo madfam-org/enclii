@@ -1,6 +1,13 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-06-16
+# Last Updated: 2026-09-12
+#
+# TWO COPIES, ONE CONTENT. The CLI embeds
+# packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
+# cannot reach outside its package), and scripts/provision-ecosystem-oidc.sh passes
+# THIS file with --registry. They drifted for 10 weeks (this copy lacked nauta and
+# nauta-portal, #379/#473), so `registry_test.go` now fails the build when the two
+# bytes differ. Edit both in the same commit (`cp` one over the other).
 #
 # Operator flow (single Janua SSO session as admin@madfam.io):
 #   export ENCLII_API_ENDPOINT=https://api.enclii.dev

@@ -1,6 +1,13 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-06-16
+# Last Updated: 2026-09-12
+#
+# TWO COPIES, ONE CONTENT. The CLI embeds
+# packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
+# cannot reach outside its package), and scripts/provision-ecosystem-oidc.sh passes
+# THIS file with --registry. They drifted for 10 weeks (this copy lacked nauta and
+# nauta-portal, #379/#473), so `registry_test.go` now fails the build when the two
+# bytes differ. Edit both in the same commit (`cp` one over the other).
 #
 # Operator flow (single Janua SSO session as admin@madfam.io):
 #   export ENCLII_API_ENDPOINT=https://api.enclii.dev
@@ -94,6 +101,92 @@ platforms:
       website_url: https://ceq.madfam.io
       redirect_uris:
         - https://ceq.madfam.io/api/auth/callback
+        - http://localhost:3000/api/auth/callback
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # Nauta — fractional-CTO platform. TWO clients, two platform keys.
+  #
+  # The audiences differ and must be revocable independently: the cockpit is
+  # MADFAM staff, the portal is a client organisation on its own branded host. A
+  # single client would mean revoking staff access in order to revoke a client's.
+  #
+  # client_id is PINNED on both. That is what makes this reconcile rather than
+  # create: without it, every run registers a fresh client. The Janua client list
+  # currently carries eight duplicate "Voxa" entries, which is what that looks
+  # like in production.
+  #
+  # Both use a lowercase intake_key_map because nauta's ExternalSecrets reference
+  # `property: janua_client_id`. ESO is all-or-nothing per ExternalSecret, so a
+  # case mismatch syncs ZERO keys — pods with no environment, presenting as a
+  # broken image rather than a naming error. Do not "normalise" these to the
+  # UPPER_SNAKE used by dhanam/ceq without changing nauta's manifests in the
+  # same commit. (karafiel is lowercase too, for the same kind of reason.)
+  #
+  # The declaration these mirror lives at nauta:infra/oauth-redirect-uris.json.
+  # Keep the redirect URIs in sync with it — a URI that exists in Janua but not
+  # in that file is invisible to review.
+  # ---------------------------------------------------------------------------
+  nauta:
+    intake_target: nauta/oidc-janua
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret
+    janua_client:
+      name: Nauta Cockpit
+      client_key: nauta-cockpit
+      audience: nauta-api
+      client_id: jnc_43heE7PWV_UxbPGCDUccnMMz4OycY1kw
+      description: MADFAM fractional-CTO operating cockpit (app.nauta.quest). Staff only, OIDC authorization-code flow.
+      is_confidential: true
+      website_url: https://app.nauta.quest
+      # 2026-08-30 apex migration: cockpit moved to app.nauta.quest (hard cutover
+      # from nauta.madfam.io / cto.madfam.io; the nauta.quest apex serves the
+      # public landing). The callback path is /api/auth/callback/janua (Auth.js
+      # provider id 'janua') — the earlier entries here omitted the /janua suffix,
+      # which the live Janua registry never used. Old-host callbacks kept for the
+      # transition window; remove once DNS + config have fully moved. Mirrors
+      # nauta:infra/oauth-redirect-uris.json — keep in sync.
+      redirect_uris:
+        - https://app.nauta.quest/api/auth/callback/janua
+        - https://nauta.madfam.io/api/auth/callback/janua
+        - https://cto.madfam.io/api/auth/callback/janua
+        - http://localhost:3000/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # PARKED: registered and real, but no ExternalSecret projects these two
+  # properties yet. Provisioned anyway because a Janua client_secret is shown
+  # exactly once — capturing it now avoids a rotation on the day the portal
+  # surface is wired.
+  nauta-portal:
+    intake_target: nauta/oidc-janua-portal
+    intake_key_map:
+      janua_portal_client_id: client_id
+      janua_portal_client_secret: client_secret
+    janua_client:
+      name: Nauta Client Workspace
+      client_key: nauta-portal
+      audience: nauta-portal
+      client_id: jnc_0ScgVo7GGbwqD7Sc5C5ScdMnn-zQBT0A
+      description: White-labeled tier-3 client workspace (crea.madfam.io). Clients authenticate by magic link; this OIDC client covers the staff/admin path onto the same surface.
+      is_confidential: true
+      website_url: https://crea.madfam.io
+      redirect_uris:
+        - https://crea.madfam.io/api/auth/callback
         - http://localhost:3000/api/auth/callback
       allowed_scopes:
         - openid
