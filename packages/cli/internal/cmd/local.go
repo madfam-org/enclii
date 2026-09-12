@@ -11,7 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"crypto/rand"
+	"encoding/hex"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"strconv"
 )
 
 // Local development environment configuration
@@ -431,7 +434,7 @@ func startJanua(lcfg *LocalConfig) error {
 	apiCmd.Env = append(os.Environ(),
 		"DATABASE_URL=postgresql://janua:janua_dev@localhost:5432/janua_dev",
 		"REDIS_URL=redis://localhost:6379/0",
-		"ADMIN_BOOTSTRAP_PASSWORD=YS9V9CK!qmR2s&",
+		fmt.Sprintf("ADMIN_BOOTSTRAP_PASSWORD=%s", localAdminBootstrapPassword()),
 	)
 	if err := apiCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start janua api: %w", err)
@@ -492,4 +495,22 @@ func startEnclii(lcfg *LocalConfig) error {
 func checkPort(port string) bool {
 	cmd := exec.Command("lsof", "-i", fmt.Sprintf(":%s", port))
 	return cmd.Run() == nil
+}
+
+// localAdminBootstrapPassword returns the password the LOCAL api bootstraps its
+// admin with. It comes from ENCLII_LOCAL_ADMIN_BOOTSTRAP_PASSWORD when set; otherwise a
+// random one is generated for this run and printed once, so no literal ever lives in
+// this public repository again (a shared literal sat here from 2026-01-22 to
+// 2026-09-12 and was also a production SSO login — enclii #554).
+func localAdminBootstrapPassword() string {
+	if v := os.Getenv("ENCLII_LOCAL_ADMIN_BOOTSTRAP_PASSWORD"); v != "" {
+		return v
+	}
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "local-only-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	pw := hex.EncodeToString(buf)
+	fmt.Printf("Local admin bootstrap password for this run (set ENCLII_LOCAL_ADMIN_BOOTSTRAP_PASSWORD to pin it): %s\n", pw)
+	return pw
 }
