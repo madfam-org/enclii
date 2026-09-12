@@ -17,19 +17,37 @@ RUN apk add --no-cache libc6-compat
 # Do NOT "upgrade" to npm 12.x: 12.0.2 REGRESSES both back to the vulnerable
 # 5.0.7 / 10.2.0. Verify the bundled versions before moving this pin.
 RUN npm install -g npm@11.19.1
-RUN corepack enable pnpm
 ENV npm_config_dangerously_allow_all_builds=true
 WORKDIR /app
 
+# ---------------------------------------------------------------------------
+# build-base stage — base + a corepack-prepared pnpm, for build stages only.
+#
+# pnpm is PINNED. `corepack enable pnpm` only installs a SHIM; with no
+# `packageManager` field to read, corepack resolved it to whatever was newest
+# at build time and floated onto pnpm 12.3.4 on 2026-09-09, breaking this
+# build. The pin is now declared twice on purpose: here, and as
+# `packageManager` in apps/status/package.json, the only manifest this
+# standalone context copies.
+#
+# It lives in its own stage, mirroring apps/switchyard-ui/Dockerfile:
+# `corepack prepare` materialises pnpm (and its bundled glob/minimatch/tar)
+# under /root/.cache/node/corepack, and pnpm 9.x carries HIGH CVEs with no 9.x
+# fix line. Doing it in `base` would push that payload into the runner image
+# and trip the Trivy HIGH/CRITICAL gate. Only the build stages inherit it.
+# ---------------------------------------------------------------------------
+FROM base AS build-base
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
 # Install dependencies
-FROM base AS deps
+FROM build-base AS deps
 WORKDIR /app/status
 COPY apps/status/package.json apps/status/pnpm-lock.yaml ./
 # Use pnpm fetch for better caching
 RUN pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 
 # Build the application
-FROM base AS builder
+FROM build-base AS builder
 WORKDIR /app
 
 # Copy status app

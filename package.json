@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Workspace root manifest. Exists to carry pnpm dependency overrides for CVE remediation; not a publishable package.",
+  "packageManager": "pnpm@9.15.9",
   "pnpm": {
     "overrides": {
       "@types/react": "^18.2.0",

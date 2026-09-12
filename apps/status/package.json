@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Enclii Status Page - Multi-tenant status monitoring",
   "license": "AGPL-3.0",
+  "//packageManager": "apps/status/Dockerfile installs this package STANDALONE (COPY apps/status/package.json pnpm-lock.yaml), so the root package.json pin does not reach that build context. pnpm >=12 also stops reading the \"pnpm\" field below, which is what turned an unpinned corepack into ERR_PNPM_LOCKFILE_CONFIG_MISMATCH. Keep in sync with /package.json.",
+  "packageManager": "pnpm@9.15.9",
   "//pnpm-overrides": "apps/status/Dockerfile installs this package STANDALONE (COPY package.json pnpm-lock.yaml; pnpm install --frozen-lockfile), so the workspace-root overrides in /package.json do not reach the production image. These mirror the root list for the transitives that ship in the status image. Keep the two lists in sync.",
   "pnpm": {
     "overrides": {

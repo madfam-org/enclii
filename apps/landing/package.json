@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Enclii Landing Page",
   "license": "AGPL-3.0",
+  "//packageManager": "apps/landing/Dockerfile installs this package STANDALONE (COPY apps/landing/package.json; no workspace root, no lockfile), so the root package.json pin does not reach that build context. Keep in sync with /package.json.",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

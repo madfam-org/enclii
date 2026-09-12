@@ -30,7 +30,7 @@ WORKDIR /repo
 # `base` (no pnpm payload), only deps/builder inherit `build-base`.
 # ---------------------------------------------------------------------------
 FROM base AS build-base
-RUN corepack enable && corepack prepare pnpm@9 --activate
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # ---------------------------------------------------------------------------
 # deps stage — install workspace deps from the FULL repo root.
@@ -54,7 +54,14 @@ COPY packages/shared-lib/package.json packages/shared-lib/
 COPY packages/ui-components/package.json packages/ui-components/
 COPY packages/config/package.json packages/config/
 COPY packages/sdk-ts/package.json packages/sdk-ts/
-RUN pnpm install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
+# `--no-frozen-lockfile`, not the old `--frozen-lockfile=false`: identical
+# meaning, but pnpm 12 removed the `=false` spelling, so this is the form
+# that survives the next pin bump. Semantics deliberately UNCHANGED — this
+# image was the one Node build still green on 2026-09-09 (it already pinned
+# pnpm@9) and is out of this fix's blast radius. Tightening it to a real
+# --frozen-lockfile is a follow-up: it needs a build that can reach
+# npm.madfam.io for @janua/ui, which a local proof cannot do.
+RUN pnpm install --no-frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 RUN rm -f .npmrc apps/switchyard-ui/.npmrc
 
 # ---------------------------------------------------------------------------
