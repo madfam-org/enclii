@@ -9,6 +9,14 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
+        # REQUIRED, not a tuning knob. pre-commit's xargs splits a run into at
+        # least `target_concurrency` partitions, and detect-secrets-hook trims
+        # the baseline to the file list it was handed and rewrites it. Chunked,
+        # each invocation truncates the baseline to its own subset, so later
+        # chunks report every already-audited finding in the other chunks as a
+        # brand new secret (seen on CI: exit 3 + `The baseline file was
+        # updated` + bogus findings). require_serial forces one invocation.
+        require_serial: true
         # Keep this in sync with the `should_exclude_file` filter recorded in
         # `.secrets.baseline` (regenerate with the same --exclude-files regex).
         # NOTE: the previous form anchored every alternative with a leading `^`,
