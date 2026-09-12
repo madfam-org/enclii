@@ -5,7 +5,7 @@
   "license": "AGPL-3.0",
   "//packageManager": "apps/status/Dockerfile installs this package STANDALONE (COPY apps/status/package.json pnpm-lock.yaml), so the root package.json pin does not reach that build context. pnpm >=12 also stops reading the \"pnpm\" field below, which is what turned an unpinned corepack into ERR_PNPM_LOCKFILE_CONFIG_MISMATCH. Keep in sync with /package.json.",
   "packageManager": "pnpm@9.15.9",
-  "//pnpm-overrides": "apps/status/Dockerfile installs this package STANDALONE (COPY package.json pnpm-lock.yaml; pnpm install --frozen-lockfile), so the workspace-root overrides in /package.json do not reach the production image. These mirror the root list for the transitives that ship in the status image. Keep the two lists in sync.",
+  "//pnpm-overrides": "apps/status/Dockerfile installs this package STANDALONE (COPY package.json pnpm-lock.yaml; pnpm install --frozen-lockfile), so the workspace-root overrides in /package.json do not reach the production image. These mirror the root list for the transitives that ship in the status image. Keep the two lists in sync. EXCEPTION (#549): the sharp entry here is widened to <0.35.4 while /package.json still reads <0.35.0. Next 16.3.3 pulls sharp as an optionalDependency and the old range stopped below the 0.35.x line, so 0.35.3 (GHSA-rgj7-g3m4-5g8c, HIGH) shipped in the standalone runner. Widening /package.json too requires regenerating the workspace lockfile, which cannot resolve @janua/ui without NPM_MADFAM_TOKEN; do that in a follow-up with registry access.",
   "pnpm": {
     "overrides": {
       "nanoid@>=3.0.0 <3.3.18": "^3.3.18",
@@ -13,7 +13,7 @@
       "picomatch@>=2.0.0 <2.3.2": "~2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
       "postcss@>=8.0.0 <8.5.18": "^8.5.18",
-      "sharp@>=0.30.0 <0.35.0": "^0.35.0"
+      "sharp@>=0.30.0 <0.35.4": "^0.35.4"
     }
   },
   "scripts": {
