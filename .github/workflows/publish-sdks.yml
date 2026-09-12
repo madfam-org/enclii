@@ -23,8 +23,12 @@ jobs:
           node-version: "20"
 
       - uses: pnpm/action-setup@v6
-        with:
-          version: 9
+        # No `version:` here on purpose. pnpm/action-setup reads the pnpm
+        # version from the root package.json `packageManager` field, which is
+        # the single source of truth for the pin (shared with the Dockerfiles).
+        # Passing BOTH is a hard error in v4 and v6 unless the strings match
+        # exactly: `version: 9` vs `pnpm@9.15.9` throws "Multiple versions of
+        # pnpm specified".
 
       - name: Extract package name and version
         id: extract

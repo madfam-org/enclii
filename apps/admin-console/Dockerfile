@@ -18,11 +18,28 @@ RUN apk add --no-cache libc6-compat
 # Do NOT "upgrade" to npm 12.x: 12.0.2 REGRESSES both back to the vulnerable
 # 5.0.7 / 10.2.0. Verify the bundled versions before moving this pin.
 RUN npm install -g npm@11.19.1
-RUN corepack enable pnpm
 WORKDIR /app
 
+# ---------------------------------------------------------------------------
+# build-base stage — base + a corepack-prepared pnpm, for build stages only.
+#
+# pnpm is PINNED. `corepack enable pnpm` only installs a SHIM; with no
+# `packageManager` field to read, corepack resolved it to whatever was newest
+# at build time and floated onto pnpm 12.3.4 on 2026-09-09, breaking this
+# build. The pin is now declared twice on purpose: here, and as
+# `packageManager` in the root package.json that this context copies.
+#
+# It lives in its own stage, mirroring apps/switchyard-ui/Dockerfile:
+# `corepack prepare` materialises pnpm (and its bundled glob/minimatch/tar)
+# under /root/.cache/node/corepack, and pnpm 9.x carries HIGH CVEs with no 9.x
+# fix line. Doing it in `base` would push that payload into the runner image
+# and trip the Trivy HIGH/CRITICAL gate. Only the build stages inherit it.
+# ---------------------------------------------------------------------------
+FROM base AS build-base
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
 # Build the application
-FROM base AS builder
+FROM build-base AS builder
 WORKDIR /app
 
 # Copy the workspace root files and packages needed by Dispatch. The app
@@ -32,7 +49,13 @@ ARG NPM_MADFAM_TOKEN
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages ./packages
 COPY apps/admin-console ./apps/admin-console
-RUN pnpm --dir apps/admin-console install --frozen-lockfile=false --config.dangerouslyAllowAllBuilds=true
+# --frozen-lockfile, not the old `--frozen-lockfile=false` (a spelling pnpm 12
+# removed outright). The repo-root pnpm-lock.yaml is copied above and is
+# correct for this context: pnpm tolerates the workspace members that this
+# context deliberately omits (apps/landing, apps/status, apps/switchyard-ui)
+# and still freezes everything it does install. Verified locally against
+# pnpm 9.15.9 — a frozen install of apps/admin-console completes clean.
+RUN pnpm --dir apps/admin-console install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 RUN rm -f .npmrc
 RUN pnpm --dir packages/shared-lib run build
 RUN pnpm --dir packages/ui-components run build
