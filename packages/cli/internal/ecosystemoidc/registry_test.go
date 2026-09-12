@@ -183,6 +183,8 @@ func TestRegistry_humanCopyMatchesEmbedded(t *testing.T) {
 	assert.Contains(t, reg.Platforms, "nauta", "the human copy must carry the cockpit client")
 	assert.Contains(t, reg.Platforms, "nauta-portal")
 	assert.Contains(t, reg.Platforms, "nauta-symbiosis-hcm")
+}
+
 // Telesia (2026-09-12). A confidential authorization_code login client whose
 // minted pair is filed at telesia/oidc-janua as two LOWERCASE properties —
 // telesia's ExternalSecret reads `property: janua_client_id` and ESO is
