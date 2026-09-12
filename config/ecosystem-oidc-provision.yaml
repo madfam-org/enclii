@@ -298,7 +298,7 @@ platforms:
       janua_client_secret: client_secret
     janua_client:
       name: Telesia
-      client_key: telesia-api
+      client_key: telesia-api  # pragma: allowlist secret
       audience: telesia-api
       description: Telesia completionist dashboard (app.telesia.quest) — OIDC authorization-code flow, confidential
       is_confidential: true

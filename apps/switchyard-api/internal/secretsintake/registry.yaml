@@ -385,7 +385,7 @@ targets:
     description: Telesia completionist dashboard (app.telesia.quest) OIDC confidential client — id + secret, filed by `enclii secrets provision oidc --platform telesia`
     vault_path: secret/telesia
     namespace: telesia
-    external_secret: telesia-web-secrets
+    external_secret: telesia-web-secrets  # pragma: allowlist secret
     keys:
       - janua_client_id
       - janua_client_secret
@@ -406,7 +406,7 @@ targets:
     description: Telesia's Postgres and Redis DSNs — pooled database_url for the app, direct_database_url for Prisma migrate (never pooled), redis_url for the quest-sync queue. Read by telesia-api and telesia-worker.
     vault_path: secret/telesia
     namespace: telesia
-    external_secret: telesia-api-secrets
+    external_secret: telesia-api-secrets  # pragma: allowlist secret
     keys:
       - database_url
       - direct_database_url
