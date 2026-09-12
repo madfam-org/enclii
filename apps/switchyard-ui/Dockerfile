@@ -18,7 +18,16 @@ RUN apk add --no-cache libc6-compat
 # Do NOT "upgrade" to npm 12.x: 12.0.2 REGRESSES both back to the vulnerable
 # 5.0.7 / 10.2.0. Verify the bundled versions before moving this pin:
 #   npm view npm@<ver> dist.tarball  # then inspect package/node_modules/
-RUN npm install -g npm@11.19.1
+# `npm install -g` also leaves every tarball it downloaded in the npm cache at
+# /root/.npm/_cacache (~30 MB here). `base` is the stage the RUNNER inherits, so
+# that cache shipped inside the published image: Trivy walks it as node-pkg
+# content and warns "The size of the scanned file is too large ...
+# file_path=root/.npm/_cacache/content-v2/sha...". A cached tarball of any
+# vulnerable package is a finding on its own, independent of what the app
+# installs. Clean it in the SAME layer that creates it so no stage carries it.
+RUN npm install -g npm@11.19.1 \
+  && npm cache clean --force \
+  && rm -rf /root/.npm
 WORKDIR /repo
 
 # ---------------------------------------------------------------------------
@@ -130,7 +139,11 @@ COPY --from=builder --chown=nextjs:nodejs /repo/apps/switchyard-ui/.next/static 
 # apk upgrade first: pull the node:22-alpine base's pending security
 # patches — the trivy gate blocks digest pins on fixable HIGH/CRITICAL
 # CVEs in base packages (same pattern as switchyard-api, PR #311).
-RUN apk upgrade --no-cache && apk add --no-cache wget
+# The `rm -rf` is a backstop, not a duplicate: it is the last layer that touches
+# these paths in the published stage, so the image Trivy scans can never carry a
+# package-manager cache even if `base` or a future COPY reintroduces one.
+RUN apk upgrade --no-cache && apk add --no-cache wget \
+  && rm -rf /root/.npm /root/.cache /root/.local/share/pnpm
 
 USER nextjs
 
