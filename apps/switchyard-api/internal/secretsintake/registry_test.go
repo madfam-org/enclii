@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 27)
+	assert.Len(t, reg, 29)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 27)
+	require.Len(t, list, 29)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -68,6 +68,8 @@ func TestListTargetsSorted(t *testing.T) {
 		"phynd-crm/oidc-janua",
 		"platform/comms-resend-api-key",
 		"symbiosis-hcm/map-absence-feed",
+		"telesia/oidc-janua",
+		"telesia/runtime",
 	}, ids)
 }
 
@@ -167,6 +169,44 @@ func TestCourierTargets(t *testing.T) {
 			assert.Equal(t, "angelia-courier-secrets", tgt.ExternalSecret)
 			assert.Equal(t, tc.keys, tgt.Keys)
 			assert.NotEmpty(t, tgt.Label)
+		})
+	}
+}
+
+// Telesia (2026-09-12). Both targets write to ONE Vault path — the intake write
+// is a merge — and every property is lowercase because telesia's ExternalSecrets
+// reference lowercase `property:` fields and ESO is all-or-nothing per
+// ExternalSecret. Pinning the routing here makes a rename a test failure instead
+// of a silent write to a path nothing reads.
+func TestTelesiaTargets(t *testing.T) {
+	cases := []struct {
+		id             string
+		externalSecret string
+		keys           []string
+	}{
+		{"telesia/oidc-janua", "telesia-web-secrets", []string{
+			"janua_client_id",
+			"janua_client_secret",
+		}},
+		{"telesia/runtime", "telesia-api-secrets", []string{
+			"database_url",
+			"direct_database_url",
+			"redis_url",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/telesia", tgt.VaultPath)
+			assert.Equal(t, "telesia", tgt.Namespace)
+			assert.Equal(t, tc.externalSecret, tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			assert.NotEmpty(t, tgt.Label)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k,
+					"key %q must be lowercase to match telesia's ExternalSecret property", k)
+			}
 		})
 	}
 }

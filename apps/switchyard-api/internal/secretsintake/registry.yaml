@@ -365,3 +365,49 @@ targets:
     keys:
       - porkbun_api_key
       - porkbun_secret_key
+
+  # Telesia (onboarded 2026-09-12, enclii#546). Two targets, one Vault path.
+  #
+  # LOWERCASE properties throughout, matching the `property:` fields telesia's
+  # ExternalSecrets reference. ESO is all-or-nothing per ExternalSecret: one
+  # case mismatch syncs ZERO keys and the pods start with no environment at all,
+  # which presents as a broken image rather than a naming error.
+  #
+  # Telesia's ExternalSecrets are currently GATED OUT of its kustomization and
+  # the namespace runs on plain Secrets (the lexidrop/periplo/eido pattern),
+  # because `secrets vault-backfill` could not write secret/telesia at all — the
+  # Switchyard Vault token's policy covers only paths an intake target already
+  # created (enclii#546, second comment; enclii#383). These targets are the
+  # declaration that closes that loop: the Vault policy for secret/telesia is
+  # the operator's to grant, and it is granted against these ids.
+  telesia/oidc-janua:
+    label: Telesia Janua OAuth client
+    description: Telesia completionist dashboard (app.telesia.quest) OIDC confidential client — id + secret, filed by `enclii secrets provision oidc --platform telesia`
+    vault_path: secret/telesia
+    namespace: telesia
+    external_secret: telesia-web-secrets
+    keys:
+      - janua_client_id
+      - janua_client_secret
+
+  # The runtime datastore triple. telesia-api and telesia-worker read the SAME
+  # three properties from this one path; a Target carries a single
+  # external_secret, so the post-intake force-sync annotates telesia-api-secrets
+  # and telesia-worker-secrets is refreshed on its own refreshInterval. Do not
+  # split this into two targets to work around that — two targets writing the
+  # same three properties to the same path is how a rotation lands on one
+  # consumer and not the other.
+  #
+  # direct_database_url is deliberately alongside database_url: Prisma migrate
+  # must not run through PgBouncer, and telesia's pooled DSN is not available
+  # yet either way (the onboarding PgBouncer step was denied — enclii#546).
+  telesia/runtime:
+    label: Telesia runtime datastores
+    description: Telesia's Postgres and Redis DSNs — pooled database_url for the app, direct_database_url for Prisma migrate (never pooled), redis_url for the quest-sync queue. Read by telesia-api and telesia-worker.
+    vault_path: secret/telesia
+    namespace: telesia
+    external_secret: telesia-api-secrets
+    keys:
+      - database_url
+      - direct_database_url
+      - redis_url
