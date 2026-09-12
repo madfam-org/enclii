@@ -160,7 +160,11 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 
 	var steps []stepResult
 
-	encliiConfig := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, req.RepoFullName, "HEAD")
+	// Every document, not just the first: a multi-document manifest declares
+	// one Service document per surface, and each one carries its own
+	// domains, network entries and status entries (enclii#546).
+	encliiDocs := manifest.FetchAndParseDocuments(ctx, h.logger, h.config.GitHubToken, req.RepoFullName, "HEAD")
+	encliiConfig := manifest.FirstServiceDocument(encliiDocs)
 
 	// A nil config here is NOT benign: every domain, status entry and network
 	// policy the manifest declares is silently dropped, and onboarding still
@@ -198,29 +202,15 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 		}
 	}
 
-	// Step: Create service from enclii.yaml metadata if available
-	var serviceNames []string
-	if encliiConfig != nil && encliiConfig.Metadata.Name != "" {
-		svcName := encliiConfig.Metadata.Name
-		_, lookupErr := h.repos.Services.GetByName(svcName)
-		if lookupErr == nil {
-			serviceNames = append(serviceNames, svcName+" (existing)")
-		} else {
-			newService := &types.Service{
-				ProjectID:  project.ID,
-				Name:       svcName,
-				GitRepo:    "https://github.com/" + req.RepoFullName,
-				AutoDeploy: true,
-			}
-			if createErr := h.repos.Services.Create(newService); createErr != nil {
-				h.logger.Warn(ctx, "Failed to create service during onboarding (non-fatal)",
-					logging.String("service", svcName),
-					logging.Error("db_error", createErr))
-				serviceNames = append(serviceNames, svcName+" (failed)")
-			} else {
-				serviceNames = append(serviceNames, svcName+" (created)")
-			}
-		}
+	// Step: Create a service from every Service document the manifest declares.
+	// One record per surface, so each document has a service of its own to bind
+	// its hostnames to instead of borrowing another surface's.
+	serviceRegistration := h.registerManifestServices(ctx, project, req.RepoFullName, encliiDocs)
+	serviceNames := serviceRegistration.Names
+	if serviceRegistration.Err != nil {
+		h.logger.Warn(ctx, "Failed to create service during onboarding (non-fatal)",
+			logging.String("repo", req.RepoFullName),
+			logging.Error("db_error", serviceRegistration.Err))
 	}
 
 	// Generate config.json for the ApplicationSet generator
@@ -253,8 +243,8 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	h.recordStep(ctx, &steps, "argocd_config", true, argocdRegistrationErr)
 
 	// Step: Generate and apply NetworkPolicies via K8s API (non-critical)
-	if encliiConfig != nil && encliiConfig.Spec.Network != nil {
-		npSpec := convertNetworkSpec(encliiConfig.Spec.Network)
+	if mergedNetwork := manifest.MergedNetwork(encliiDocs); mergedNetwork != nil {
+		npSpec := convertNetworkSpec(mergedNetwork)
 		npYAML, npGenErr := netpolicy.GeneratePolicies(namespace, req.ProjectName, npSpec)
 		if npGenErr != nil {
 			h.recordStep(ctx, &steps, "network_policies", false, npGenErr)
@@ -275,9 +265,9 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 
 	// Step: Register status page entries (non-critical)
 	var statusEntries []statusServiceEntry
-	if encliiConfig != nil && encliiConfig.Spec.Status != nil {
+	if manifest.HasStatusDeclaration(encliiDocs) {
 		var statusErr error
-		statusEntries, statusErr = h.registerStatusEntries(ctx, req.ProjectName, encliiConfig)
+		statusEntries, statusErr = h.registerStatusEntriesForDocuments(ctx, req.ProjectName, encliiDocs)
 		h.recordStep(ctx, &steps, "status_registration", false, statusErr)
 	}
 
@@ -286,26 +276,10 @@ func (h *Handler) OnboardRepo(c *gin.Context) {
 	// copyRegistryCredentials logs internally; record as non-critical ok
 	h.recordStep(ctx, &steps, "registry_credentials", false, nil)
 
-	// Step: Provision domains from enclii.yaml (if available)
-	var domainResults []string
-	if encliiConfig != nil && len(encliiConfig.Spec.Domains) > 0 {
-		svcList, _ := h.repos.Services.ListByProject(project.ID)
-		var captureService *types.Service
-		if len(svcList) > 0 {
-			captureService = svcList[0]
-		}
-		// Capture-time dead-name guard (2026-08-27 janua outage). See
-		// onboarding_manifest_workload_guard.go.
-		if h.guardManifestDomainCapture(ctx, &steps, namespace, captureService, encliiConfig) {
-			if captureService != nil {
-				go h.provisionDomainsFromYAML(context.Background(), captureService, encliiConfig)
-				for _, d := range encliiConfig.Spec.Domains {
-					domainResults = append(domainResults, d.Name+" (provisioning)")
-				}
-			}
-			h.recordStep(ctx, &steps, "domain_provisioning", false, nil)
-		}
-	}
+	// Step: Provision domains from enclii.yaml (if available). Each Service
+	// document's hostnames bind to the service that document names; see
+	// onboarding_manifest_documents.go.
+	domainResults := h.provisionDomainsFromManifest(ctx, &steps, project, namespace, req.RepoFullName, encliiDocs)
 
 	// Step: Provision Postgres database + PgBouncer (optional, important)
 	if req.ProvisionPostgres != nil {

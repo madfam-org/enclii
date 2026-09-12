@@ -244,7 +244,7 @@ func validateEncliiYAMLHeader(config *EncliiYAML) error {
 		return fmt.Errorf("unsupported apiVersion: %s (expected enclii.dev/v1 or enclii.madfam.io/v1)", config.APIVersion)
 	}
 	switch config.Kind {
-	case "Service", "Project":
+	case KindService, KindProject:
 	default:
 		return fmt.Errorf("unsupported kind: %s (expected Service or Project)", config.Kind)
 	}
@@ -313,16 +313,42 @@ func normalizeProjectSpec(config *EncliiYAML, projectSpec encliiYAMLProjectSpec)
 	}
 }
 
-// ParseEncliiYAML parses an enclii.yaml file content
+// ParseEncliiYAML parses an enclii.yaml file and returns the single document a
+// whole-manifest caller should read.
+//
+// For a single-document file that is the document, unchanged. For a
+// multi-document file it is the first `kind: Service` document, falling back to
+// the first document when the file declares none: a Service document is where
+// domains, the network block and status entries live, and returning the Project
+// document (which is what a single yaml.Unmarshal used to return for the house
+// manifest shape) meant every one of those was invisible.
+//
+// Callers that need per-service truth must use ParseEncliiYAMLDocuments or
+// DocumentForService instead — this function cannot express a manifest that
+// declares two surfaces.
 func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
+	documents, err := ParseEncliiYAMLDocuments(content)
+	if err != nil {
+		return nil, err
+	}
+	if len(documents) == 0 {
+		// An empty file used to reach validateEncliiYAMLHeader with a
+		// zero-valued config and fail on its apiVersion. Keep that answer.
+		return nil, validateEncliiYAMLHeader(&EncliiYAML{})
+	}
+	return FirstServiceDocument(documents), nil
+}
+
+// parseEncliiYAMLDocument parses one decoded YAML document into an EncliiYAML.
+func parseEncliiYAMLDocument(node *yaml.Node) (*EncliiYAML, error) {
 	var header struct {
 		APIVersion string         `yaml:"apiVersion"`
 		Kind       string         `yaml:"kind"`
 		Metadata   EncliiYAMLMeta `yaml:"metadata"`
 		Spec       yaml.Node      `yaml:"spec"`
 	}
-	if err := yaml.Unmarshal(content, &header); err != nil {
-		return nil, fmt.Errorf("failed to parse enclii.yaml: %w", err)
+	if err := node.Decode(&header); err != nil {
+		return nil, err
 	}
 
 	config := EncliiYAML{
@@ -334,7 +360,7 @@ func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
 		return nil, err
 	}
 
-	if header.Kind == "Project" {
+	if header.Kind == KindProject {
 		var projectSpec encliiYAMLProjectSpec
 		if err := header.Spec.Decode(&projectSpec); err != nil {
 			return nil, fmt.Errorf("failed to parse Project spec: %w", err)
@@ -351,39 +377,17 @@ func ParseEncliiYAML(content []byte) (*EncliiYAML, error) {
 	return &config, nil
 }
 
-// FetchAndParse fetches enclii.yaml from a GitHub repo and parses domains.
-// Returns nil (not error) if the file doesn't exist — it's optional.
+// FetchAndParse fetches enclii.yaml from a GitHub repo and returns the single
+// document ParseEncliiYAML would pick. Returns nil (not error) if the file
+// doesn't exist — it's optional.
+//
+// Prefer FetchAndParseDocuments (every document) or FetchAndParseForService
+// (the document that declares one named service) for anything that acts per
+// service; this function can only ever describe one surface.
 func FetchAndParse(ctx context.Context, logger logging.Logger, githubToken, repoFullName, gitSHA string) *EncliiYAML {
-	// Parse owner/repo from full name (e.g., "madfam-org/qubic")
-	parts := strings.SplitN(repoFullName, "/", 2)
-	if len(parts) != 2 {
-		logger.Warn(ctx, "Invalid repository full name for enclii.yaml fetch",
-			logging.String("repo", repoFullName))
-		return nil
-	}
-	owner, repo := parts[0], parts[1]
-
-	content, err := fetchGitHubRawFile(ctx, githubToken, owner, repo, "enclii.yaml", gitSHA)
-	if err != nil {
-		logger.Warn(ctx, "Failed to fetch enclii.yaml from repo",
-			logging.String("repo", repoFullName),
-			logging.Error("error", err))
-		return nil
-	}
-
-	if content == nil {
-		return nil // File doesn't exist — that's fine
-	}
-
-	config, err := ParseEncliiYAML(content)
-	if err != nil {
-		// Error, not Warn: this discards every domain and every header the
-		// manifest declared, which is a deploy-affecting outcome and not a
-		// diagnostic curiosity.
-		logger.Error(ctx, "Failed to parse enclii.yaml; every domain and header it declares is being ignored for this deploy",
-			logging.String("repo", repoFullName),
-			logging.String("git_sha", gitSHA),
-			logging.Error("error", err))
+	documents := FetchAndParseDocuments(ctx, logger, githubToken, repoFullName, gitSHA)
+	config := FirstServiceDocument(documents)
+	if config == nil {
 		return nil
 	}
 

@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -140,7 +139,10 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	}
 
 	var steps []stepResult
-	encliiConfig := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, req.RepoFullName, "HEAD")
+	// Every document, not just the first (enclii#546): each Service document
+	// declares its own domains, network entries and status entries.
+	encliiDocs := manifest.FetchAndParseDocuments(ctx, h.logger, h.config.GitHubToken, req.RepoFullName, "HEAD")
+	encliiConfig := manifest.FirstServiceDocument(encliiDocs)
 
 	// A nil config here is NOT benign: every domain, status entry and network
 	// policy the manifest declares is silently dropped, and onboarding still
@@ -173,26 +175,14 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 		h.recordStep(ctx, &steps, "project", true, nil)
 	}
 
+	// One service record per Service document, so every surface the manifest
+	// declares has a service of its own to bind its hostnames to.
 	var serviceNames []string
-	if project != nil && encliiConfig != nil && encliiConfig.Metadata.Name != "" {
-		svcName := encliiConfig.Metadata.Name
-		_, lookupErr := h.repos.Services.GetByName(svcName)
-		if lookupErr == nil {
-			serviceNames = append(serviceNames, svcName+" (existing)")
-		} else {
-			newService := &types.Service{
-				ProjectID:  project.ID,
-				Name:       svcName,
-				GitRepo:    "https://github.com/" + req.RepoFullName,
-				AutoDeploy: true,
-			}
-			if createErr := h.repos.Services.Create(newService); createErr != nil {
-				h.recordStep(ctx, &steps, "service", false, createErr)
-				serviceNames = append(serviceNames, svcName+" (failed)")
-			} else {
-				h.recordStep(ctx, &steps, "service", false, nil)
-				serviceNames = append(serviceNames, svcName+" (created)")
-			}
+	if project != nil {
+		registration := h.registerManifestServices(ctx, project, req.RepoFullName, encliiDocs)
+		serviceNames = registration.Names
+		if registration.Attempted > 0 {
+			h.recordStep(ctx, &steps, "service", false, registration.Err)
 		}
 	}
 
@@ -220,8 +210,8 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	argocdCommitSHA := argocdRegistration.CommitSHA
 	h.recordStep(ctx, &steps, "argocd_config", true, argocdRegistrationErr)
 
-	if encliiConfig != nil && encliiConfig.Spec.Network != nil {
-		npSpec := convertNetworkSpec(encliiConfig.Spec.Network)
+	if mergedNetwork := manifest.MergedNetwork(encliiDocs); mergedNetwork != nil {
+		npSpec := convertNetworkSpec(mergedNetwork)
 		npYAML, npGenErr := netpolicy.GeneratePolicies(namespace, req.ProjectName, npSpec)
 		if npGenErr != nil {
 			h.recordStep(ctx, &steps, "network_policies", false, npGenErr)
@@ -238,36 +228,18 @@ func (h *Handler) EnsureOnboarding(c *gin.Context) {
 	}
 
 	var statusEntries []statusServiceEntry
-	if encliiConfig != nil && encliiConfig.Spec.Status != nil {
+	if manifest.HasStatusDeclaration(encliiDocs) {
 		var statusErr error
-		statusEntries, statusErr = h.registerStatusEntries(ctx, req.ProjectName, encliiConfig)
+		statusEntries, statusErr = h.registerStatusEntriesForDocuments(ctx, req.ProjectName, encliiDocs)
 		h.recordStep(ctx, &steps, "status_registration", false, statusErr)
 	}
 
 	h.copyRegistryCredentials(ctx, namespace)
 	h.recordStep(ctx, &steps, "registry_credentials", false, nil)
 
-	var domainResults []string
-	if project != nil && encliiConfig != nil && len(encliiConfig.Spec.Domains) > 0 {
-		svcList, _ := h.repos.Services.ListByProject(project.ID)
-		var captureService *types.Service
-		if len(svcList) > 0 {
-			captureService = svcList[0]
-		}
-		// Capture-time dead-name guard (2026-08-27 janua outage). A manifest doc
-		// whose metadata.name serves nothing gets a loud step failure here and
-		// its domains are never captured. See
-		// onboarding_manifest_workload_guard.go.
-		if h.guardManifestDomainCapture(ctx, &steps, namespace, captureService, encliiConfig) {
-			if captureService != nil {
-				go h.provisionDomainsFromYAML(context.Background(), captureService, encliiConfig)
-				for _, d := range encliiConfig.Spec.Domains {
-					domainResults = append(domainResults, d.Name+" (provisioning)")
-				}
-			}
-			h.recordStep(ctx, &steps, "domain_provisioning", false, nil)
-		}
-	}
+	// Each Service document's hostnames bind to the service that document
+	// names; see onboarding_manifest_documents.go.
+	domainResults := h.provisionDomainsFromManifest(ctx, &steps, project, namespace, req.RepoFullName, encliiDocs)
 
 	if req.ProvisionPostgres != nil {
 		var pgErr error
