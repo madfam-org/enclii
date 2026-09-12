@@ -70,13 +70,21 @@ func (h *Handler) resolveDeclaredDomainSource(ctx context.Context, req operatorO
 		token = h.config.GitHubToken
 	}
 
-	parsed := manifest.FetchAndParse(ctx, h.logger, token, repoFullName, ref)
+	// The document that declares THIS service, not whichever document happens
+	// to be first. `ops domains reconcile telesia-web` read telesia's first
+	// document and reported "enclii.yaml declares no domains for this service"
+	// while the web document declared three hostnames (enclii#546). A
+	// single-document manifest still answers for whatever service asks, so
+	// legacy repos (janua, tezca) reconcile exactly as they did.
+	parsed := manifest.FetchAndParseForService(ctx, h.logger, token, repoFullName, ref, service.Name)
 	if parsed == nil {
 		return declaredDomainSource{
 			Service: service,
 			Ref:     ref,
 			Err: fmt.Errorf(
-				"could not read a usable enclii.yaml from %s: the file is missing, unreadable, or failed to parse", repoFullName),
+				"could not read a usable enclii.yaml Service document for %q from %s: the file is missing, unreadable, failed to parse, "+
+					"or declares no `kind: Service` document whose metadata.name is %q (the switchyard-api log line lists the documents it did find)",
+				name, repoFullName, service.Name),
 		}
 	}
 

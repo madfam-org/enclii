@@ -123,9 +123,13 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 		return
 	}
 
-	// Fetch and parse enclii.yaml from the repo for domain auto-provisioning
-	// This is non-blocking — if the file doesn't exist or can't be parsed, we continue
-	encliiConfig := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, event.Repository.FullName, gitSHA)
+	// Fetch and parse enclii.yaml from the repo for domain auto-provisioning.
+	// This is non-blocking — if the file doesn't exist or can't be parsed, we
+	// continue. Every document is read: a manifest declaring a web surface and
+	// an API surface declares each one's hostnames in its own document
+	// (enclii#546).
+	encliiDocs := manifest.FetchAndParseDocuments(ctx, h.logger, h.config.GitHubToken, event.Repository.FullName, gitSHA)
+	encliiConfig := manifest.FirstServiceDocument(encliiDocs)
 
 	// Extract all changed files from the push event for monorepo path filtering
 	changedFiles := extractChangedFiles(&event)
@@ -151,7 +155,7 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 	// declaration of intent for DNS/TLS/tunnel routing whether or not this
 	// platform also builds the image, so it is reconciled on every push to the
 	// default branch.
-	h.reconcileDeclaredDomainsFromPush(ctx, services, encliiConfig)
+	h.reconcileDeclaredDomainsFromPush(ctx, services, encliiDocs)
 
 	if h.config == nil || !h.config.GitHubWebhookBuildsEnabled {
 		h.logger.Warn(ctx, "GitHub push auto-builds disabled; acknowledging without creating releases",
@@ -206,10 +210,17 @@ func (h *Handler) handleGitHubPush(c *gin.Context, ctx context.Context, body []b
 	var results []buildResult
 	var skippedCount int
 
-	// Sync custom response headers from enclii.yaml to service record
-	if encliiConfig != nil && len(encliiConfig.Spec.Headers) > 0 {
-		for i := range services {
-			services[i].Headers = encliiConfig.Spec.Headers
+	// Sync custom response headers from enclii.yaml to service record. A
+	// service whose own document declares headers gets THOSE headers; anything
+	// else keeps reading the primary document, which is what a single-document
+	// manifest has always done.
+	for i := range services {
+		headerSource := manifest.DocumentForService(encliiDocs, services[i].Name)
+		if headerSource == nil {
+			headerSource = encliiConfig
+		}
+		if headerSource != nil && len(headerSource.Spec.Headers) > 0 {
+			services[i].Headers = headerSource.Spec.Headers
 		}
 	}
 
