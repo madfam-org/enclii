@@ -271,3 +271,46 @@ platforms:
         - hcm:hr
       grant_types:
         - client_credentials
+
+  # ---------------------------------------------------------------------------
+  # Telesia — completionist dashboard (app.telesia.quest), onboarded 2026-09-12.
+  #
+  # Modelled on nauta: one confidential authorization_code LOGIN client, with the
+  # minted pair filed at a LOWERCASE intake target because telesia's
+  # ExternalSecret references `property: janua_client_id` and ESO is
+  # all-or-nothing per ExternalSecret — a case mismatch syncs ZERO keys and the
+  # pods start with no environment at all.
+  #
+  # NOT pinned with a client_id: this client is not registered on Janua yet, so
+  # the first provision run CREATES it (reconcile-by-name/key/audience on later
+  # runs), the same shape phynd-crm, ceq and nauta-symbiosis-hcm are in. Pin its
+  # jnc_… id here the moment it exists — an unpinned re-run is what produced the
+  # eight duplicate "Voxa" entries in Janua's client list.
+  #
+  # The callback path is /api/auth/callback/janua (Auth.js provider id 'janua').
+  # audience `telesia-api` is what telesia-api validates RS256 bearers against,
+  # so the browser login and the API audience are one identity.
+  # ---------------------------------------------------------------------------
+  telesia:
+    intake_target: telesia/oidc-janua
+    intake_key_map:
+      janua_client_id: client_id
+      janua_client_secret: client_secret
+    janua_client:
+      name: Telesia
+      client_key: telesia-api
+      audience: telesia-api
+      description: Telesia completionist dashboard (app.telesia.quest) — OIDC authorization-code flow, confidential
+      is_confidential: true
+      website_url: https://app.telesia.quest
+      redirect_uris:
+        - https://app.telesia.quest/api/auth/callback/janua
+        - http://localhost:3000/api/auth/callback/janua
+      allowed_scopes:
+        - openid
+        - profile
+        - email
+        - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token

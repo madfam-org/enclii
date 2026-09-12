@@ -184,3 +184,48 @@ func TestRegistry_humanCopyMatchesEmbedded(t *testing.T) {
 	assert.Contains(t, reg.Platforms, "nauta-portal")
 	assert.Contains(t, reg.Platforms, "nauta-symbiosis-hcm")
 }
+
+// Telesia (2026-09-12). A confidential authorization_code login client whose
+// minted pair is filed at telesia/oidc-janua as two LOWERCASE properties —
+// telesia's ExternalSecret reads `property: janua_client_id` and ESO is
+// all-or-nothing per ExternalSecret, so a case drift here syncs zero keys and
+// telesia-web starts with no environment at all.
+//
+// client_id is deliberately NOT asserted: the client is not registered on Janua
+// yet, and pinning its jnc_… id here later must not break this test.
+func TestLoadRegistry_telesiaLoginClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["telesia"]
+	require.True(t, ok, "telesia platform missing")
+
+	assert.Equal(t, "telesia/oidc-janua", p.IntakeTarget)
+	require.Equal(t, map[string]string{
+		"janua_client_id":     "client_id",
+		"janua_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+	for k := range p.IntakeKeyMap {
+		assert.Equal(t, strings.ToLower(k), k,
+			"intake key %q must be lowercase to match telesia's ExternalSecret property", k)
+	}
+
+	jc := p.JanuaClient
+	assert.Equal(t, "Telesia", jc.Name)
+	assert.Equal(t, "telesia-api", jc.ClientKey)
+	assert.Equal(t, "telesia-api", jc.Audience)
+	assert.Equal(t, "https://app.telesia.quest", jc.WebsiteURL)
+	assert.True(t, jc.confidential(), "the dashboard client must be confidential")
+	assert.Equal(t, []string{
+		"https://app.telesia.quest/api/auth/callback/janua",
+		"http://localhost:3000/api/auth/callback/janua",
+	}, jc.RedirectURIs)
+	assert.Equal(t, []string{"openid", "profile", "email", "offline_access"}, jc.AllowedScopes)
+	assert.Equal(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
+
+	// The minted pair maps to exactly those two lowercase properties.
+	assert.Equal(t, map[string]string{
+		"janua_client_id":     "jnc_telesia",
+		"janua_client_secret": "s3cr3t",
+	}, buildIntakeValues(reg.Issuer, "jnc_telesia", "s3cr3t", p))
+}

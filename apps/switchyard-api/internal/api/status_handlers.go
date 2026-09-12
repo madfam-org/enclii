@@ -457,9 +457,39 @@ func countStatusConfigmapServices(existing []byte) (int, error) {
 	return len(services), nil
 }
 
-// fetchStatusEntriesForProject reads a project's enclii.yaml and extracts status entries.
+// fetchStatusEntriesForProject reads a project's enclii.yaml and extracts status
+// entries from EVERY document it declares.
+//
+// One document was read before, so a repo declaring a web surface and an API
+// surface published only the first one's entries — and a repo whose Project
+// document came first published none at all (enclii#546). Entries are
+// de-duplicated on name+url, so a hostname declared by two documents during a
+// migration is published once.
 func (h *Handler) fetchStatusEntriesForProject(ctx context.Context, repoFullName string) []statusServiceEntry {
-	config := manifest.FetchAndParse(ctx, h.logger, h.config.GitHubToken, repoFullName, "HEAD")
+	documents := manifest.FetchAndParseDocuments(ctx, h.logger, h.config.GitHubToken, repoFullName, "HEAD")
+	if len(documents) == 0 {
+		return nil
+	}
+
+	var entries []statusServiceEntry
+	seen := make(map[string]bool)
+	for _, document := range documents {
+		for _, entry := range statusEntriesForDocument(document, repoFullName) {
+			key := strings.ToLower(entry.Name) + "\x00" + strings.ToLower(entry.URL)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+// statusEntriesForDocument projects one manifest document's status entries,
+// falling back to its declared domains when it has no `status:` block — the
+// rule this function has always applied, now applied per document.
+func statusEntriesForDocument(config *manifest.EncliiYAML, repoFullName string) []statusServiceEntry {
 	if config == nil || config.Spec.Status == nil {
 		// Auto-derive from domains if no explicit status section
 		if config != nil && len(config.Spec.Domains) > 0 {

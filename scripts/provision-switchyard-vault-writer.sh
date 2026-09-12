@@ -113,6 +113,15 @@ path "secret/data/nauta" {
 path "secret/data/nauta/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# telesia (2026-09-12, enclii#546): the intake registry writes secret/telesia
+# (targets telesia/oidc-janua and telesia/runtime); without this path the
+# vault-backfill dry-run reads ready_to_apply and the apply returns 403.
+path "secret/data/telesia" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/telesia/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/data/coupler/*" {
   capabilities = ["create", "update", "patch", "read"]
 }

@@ -252,12 +252,33 @@ func selectDomainHostService(services []*types.Service, envConfig *manifest.Encl
 //
 // Non-blocking and best-effort, matching the call it replaces: a Cloudflare
 // hiccup must not fail a webhook GitHub will retry anyway.
+//
+// A manifest declaring MORE THAN ONE Service document reconciles each
+// document's hostnames against the service that document names — the third
+// defect on enclii#546: telesia's web hostnames were bound to telesia-api
+// because one document was all any caller could see. A manifest with one
+// surface keeps selectDomainHostService, which is what makes a headless worker
+// lose to a web service in an unordered SQL result.
+//
+// The webhook never REGISTERS a service. A push is not an onboarding, and a
+// hostname whose service has no record is left for `enclii onboard ensure`
+// rather than bound to a service that did not declare it.
 func (h *Handler) reconcileDeclaredDomainsFromPush(
 	ctx context.Context,
 	services []*types.Service,
-	envConfig *manifest.EncliiYAML,
+	documents []*manifest.EncliiYAML,
 ) {
-	if h == nil || envConfig == nil || len(envConfig.Spec.Domains) == 0 || len(services) == 0 {
+	if h == nil || len(documents) == 0 || len(services) == 0 {
+		return
+	}
+
+	if len(manifest.ServiceDocuments(documents)) > 1 {
+		h.reconcileDeclaredDomainsPerDocument(ctx, services, documents)
+		return
+	}
+
+	envConfig := manifest.FirstServiceDocument(documents)
+	if envConfig == nil || len(envConfig.Spec.Domains) == 0 {
 		return
 	}
 
@@ -271,4 +292,41 @@ func (h *Handler) reconcileDeclaredDomainsFromPush(
 		logging.Int("declared_domains", len(envConfig.Spec.Domains)))
 
 	go h.provisionDomainsFromYAML(context.Background(), host, envConfig)
+}
+
+// reconcileDeclaredDomainsPerDocument reconciles a multi-surface manifest, one
+// Service document at a time, against the registered service each document
+// names.
+func (h *Handler) reconcileDeclaredDomainsPerDocument(
+	ctx context.Context,
+	services []*types.Service,
+	documents []*manifest.EncliiYAML,
+) {
+	registered := make(map[string]*types.Service, len(services))
+	for _, service := range services {
+		if service != nil {
+			registered[strings.ToLower(strings.TrimSpace(service.Name))] = service
+		}
+	}
+
+	lookup := func(_ context.Context, name string) (*types.Service, error) {
+		if service, ok := registered[strings.ToLower(strings.TrimSpace(name))]; ok {
+			return service, nil
+		}
+		return nil, fmt.Errorf("no service named %q is registered for this repository, so a push cannot provision its hostnames (run `enclii onboard ensure` to register it)", name)
+	}
+
+	bindings, skipped := bindManifestDomainDocuments(ctx, documents, nil, lookup)
+
+	for _, binding := range bindings {
+		h.logger.Info(ctx, "Reconciling domains declared in enclii.yaml",
+			logging.String("service", binding.Service.Name),
+			logging.Int("declared_domains", len(binding.Document.Spec.Domains)))
+		go h.provisionDomainsFromYAML(context.Background(), binding.Service, binding.Document)
+	}
+
+	for _, message := range skipped {
+		h.logger.Warn(ctx, "Declared hostnames left unprovisioned by this push",
+			logging.String("detail", message))
+	}
 }
