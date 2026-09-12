@@ -1,9 +1,15 @@
 import { test, expect, Page } from '@playwright/test';
 
+// The audit signs into PRODUCTION. Credentials come from the environment and
+// are never written here: this file lives in a public repository, and a literal
+// committed on 2026-01-22 was found by detect-secrets on 2026-09-12 (enclii #554).
 const CREDENTIALS = {
-  email: 'admin@madfam.io',
-  password: 'YS9V9CK!qmR2s&'
+  email: process.env.SSO_AUDIT_EMAIL ?? '',
+  password: process.env.SSO_AUDIT_PASSWORD ?? ''
 };
+if (!CREDENTIALS.email || !CREDENTIALS.password) {
+  throw new Error('SSO audit: set SSO_AUDIT_EMAIL and SSO_AUDIT_PASSWORD in the environment');
+}
 
 const SSO_PROVIDER = 'auth.madfam.io';
 

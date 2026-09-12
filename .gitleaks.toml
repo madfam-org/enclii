@@ -1,0 +1,24 @@
+# gitleaks configuration for enclii
+#
+# Picked up automatically by the gitleaks pre-commit hook (it scans with the
+# default source ".", and gitleaks loads ./.gitleaks.toml from there) and by any
+# `gitleaks` invocation run from the repo root.
+#
+# Keep this file minimal: it exists to stop gitleaks from flagging artefacts that
+# contain *digests of* secrets rather than secrets. It must never be used to
+# allowlist a real credential — remove and rotate the credential instead.
+
+title = "enclii"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+.secrets.baseline is the detect-secrets baseline. Every "hashed_secret" value in
+it is a SHA1 digest of a finding, never the finding itself, but the digests are
+40-char high-entropy hex and so trip gitleaks' generic-api-key rule. Without this
+the two secret-scanning hooks deadlock: committing the baseline that makes
+detect-secrets work is blocked by gitleaks.
+"""
+paths = ['''(^|/)\.secrets\.baseline$''']
