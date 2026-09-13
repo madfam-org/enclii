@@ -58,9 +58,15 @@ ENV COSIGN_VERSION=v3.1.3
 # stops the next CVE from being fixed in one and forgotten in the other.
 # Drop this back to `go install` the moment a cosign release carries all
 # three fixes.
+# 2026-09-13: grpc floor raised v1.83.1 -> v1.83.2. v1.83.1 is vulnerable to
+# CVE-2026-84445 (fixed 1.82.2 / 1.83.2), which failed `Scan: switchyard-api`
+# on run 34736136791 at /usr/local/bin/cosign right after #555 raised the
+# repo's own modules to 1.83.2 — the bundled cosign carries its own copy.
+# cosign v3.1.3 (2026-08-06) is still the latest release and still pins
+# grpc v1.82.0, so the clone-and-`go get` pattern stays.
 RUN git clone --depth 1 -b "${COSIGN_VERSION}" https://github.com/sigstore/cosign /tmp/cosign-src && \
     cd /tmp/cosign-src && \
-    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.83.1 golang.org/x/mod@v0.40.0 && \
+    go get golang.org/x/text@v0.41.0 google.golang.org/grpc@v1.83.2 golang.org/x/mod@v0.40.0 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -o /usr/local/bin/cosign ./cmd/cosign && \
     rm -rf /tmp/cosign-src
