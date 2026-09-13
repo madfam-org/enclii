@@ -1,10 +1,14 @@
 # Trivy ignore list — every entry needs a justification and a rotation
 # condition. Remove entries as soon as the upstream fix ships.
 #
-# Currently empty. The previous three entries (CVE-2026-41567,
-# CVE-2026-42306, CVE-2026-34040 — docker/docker v28.5.2 embedded in pack
-# 0.40.7) were rotated out on 2026-07-11: pack (and the docker CLI) are no
-# longer present in any published/scanned image. They now live only in the
+# Nine entries are live, all of them docs-site findings: see the two blocks
+# below. (This header read "Currently empty" until 2026-09-12, four weeks
+# after the docs-site entries were added — it was stale, and it reads as a
+# claim that the whole file is inert, which it is not.)
+#
+# Rotated out on 2026-07-11: CVE-2026-41567, CVE-2026-42306, CVE-2026-34040
+# (docker/docker v28.5.2 embedded in pack 0.40.7). pack and the docker CLI are
+# no longer present in any published/scanned image; they now live only in the
 # unpublished dev-only stages (apps/switchyard-api/Dockerfile `dev`,
 # apps/roundhouse/Dockerfile `worker-dev`), which CI does not scan.
 

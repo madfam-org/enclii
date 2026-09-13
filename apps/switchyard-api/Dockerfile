@@ -21,6 +21,14 @@ ENV COSIGN_VERSION=v3.1.3
 # the older GHSA-hrxh-6v49-42gf but is itself vulnerable to CVE-2026-84304
 # (unbounded recvBuffer growth from fragmented HTTP/2 DATA frames, fixed in
 # 1.83.1), which failed `Scan: switchyard-api` from run 33843611930 onward.
+# 2026-09-12: raised again v1.83.1 -> v1.83.2 for CVE-2026-84445 /
+# GHSA-2v4p-qf9q-27wj (HIGH — a gRPC-Go xDS server crashes on a request that
+# carries neither `:authority` nor `Host`; vulnerable >= 1.83.0 < 1.83.2).
+# #555 bumped the four workspace modules that pin grpc, but the cosign floor
+# here is a SECOND, independent pin: the published image carries two Go
+# binaries (/app/switchyard-api and /usr/local/bin/cosign) and Trivy reads the
+# build info of both, so the module bump alone left `Scan: switchyard-api` red
+# on the cosign binary.
 # cosign v3.1.3 is still the latest release and still pins grpc v1.82.0, so
 # there is no release to upgrade to — the floor stays here.
 # `go install pkg@version` builds in module-authoritative mode and offers no
