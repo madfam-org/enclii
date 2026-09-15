@@ -180,3 +180,5 @@ This is not a full repository ingest. It is a compact context pointer; task-spec
 These files are maintained by `internal-devops/scripts/sync-agent-docs.py`.
 If repo-specific long-form agent guidance is needed, put it in `AGENTS.md`,
 not `CLAUDE.md`.
+
+- `docs/runbooks/ARGO_SYNC_MIGRATION_SAFETY.md` — atomic full-sync submission, conflict handling, and selective self-heal migration limitations.

@@ -174,3 +174,5 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - Janua blocker: ConnectedAccount / ADR-002 (`janua/docs/COUPLER_PROGRAM.md`)
 - Zero Composio spend; sovereign `madfam-org/coupler` (AGPL-3.0)
 - Session wrap (2026-05-30): `claudedocs/session-2026-05-30-summary.md`
+
+- `docs/runbooks/ARGO_SYNC_MIGRATION_SAFETY.md` — atomic full-sync submission, conflict handling, and selective self-heal migration limitations.
