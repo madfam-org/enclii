@@ -193,7 +193,7 @@ targets:
     description: Clave entrante para aprovisionar tenants y tokens de feeds; generada y custodiada en el servidor
     vault_path: secret/kalya
     namespace: kalya
-    external_secret: kalya-internal-api-key
+    external_secret: kalya-internal-api-key # pragma: allowlist secret — Kubernetes object name, not a credential
     keys:
       - internal_api_key
 
@@ -227,7 +227,7 @@ targets:
     description: Tokens con los que nauta lee los feeds de kalya para las superficies de cliente
     vault_path: secret/nauta
     namespace: nauta
-    external_secret: nauta-kalya-feeds
+    external_secret: nauta-kalya-feeds # pragma: allowlist secret — Kubernetes object name, not a credential
     keys:
       - kalya_feed_tokens
 
