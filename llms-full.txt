@@ -190,3 +190,7 @@ Consumer Vault paths and optional ESO objects are separate. Use a protected OIDC
 registry override, native Janua provisioning and native Dhanam grants; never
 reuse an audience-matching login client or infer a merchant Space from a retainer.
 No target declaration itself provisions a client, grant, charge or invoice.
+
+## Argo migration safety
+
+- `docs/runbooks/ARGO_SYNC_MIGRATION_SAFETY.md` — atomic full-sync submission, conflict handling, and selective self-heal migration limitations.

@@ -116,8 +116,9 @@ func TestHandleOpsAppsSyncApplyUsesDynamicAdapter(t *testing.T) {
 			"apiVersion": "argoproj.io/v1alpha1",
 			"kind":       "Application",
 			"metadata": map[string]any{
-				"name":      "monitoring",
-				"namespace": "argocd",
+				"name":            "monitoring",
+				"namespace":       "argocd",
+				"resourceVersion": "1",
 			},
 			"status": map[string]any{
 				"sync":   map[string]any{"status": "OutOfSync", "revision": "abc123"},
