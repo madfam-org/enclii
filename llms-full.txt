@@ -180,3 +180,9 @@ This is not a full repository ingest. It is a compact context pointer; task-spec
 These files are maintained by `internal-devops/scripts/sync-agent-docs.py`.
 If repo-specific long-form agent guidance is needed, put it in `AGENTS.md`,
 not `CLAUDE.md`.
+
+## Native scheduling credential custody (2026-09-14)
+
+- `docs/runbooks/KALYA_FEED_CUSTODY.md` — Vault-first per-consumer preparation, finalize, retry and safe rotation.
+- `packages/cli/internal/ecosystemoidc/` — dry plans do not mutate Janua/Vault; org-bound consumers match exact identity and privileges before reuse.
+- Verify deployed revision and registered intake target before live execution. A merged implementation is not proof that credentials exist.

@@ -174,3 +174,9 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 - Janua blocker: ConnectedAccount / ADR-002 (`janua/docs/COUPLER_PROGRAM.md`)
 - Zero Composio spend; sovereign `madfam-org/coupler` (AGPL-3.0)
 - Session wrap (2026-05-30): `claudedocs/session-2026-05-30-summary.md`
+
+## Native scheduling credential custody (2026-09-14)
+
+- `docs/runbooks/KALYA_FEED_CUSTODY.md` — Vault-first per-consumer preparation, finalize, retry and safe rotation.
+- `packages/cli/internal/ecosystemoidc/` — dry plans do not mutate Janua/Vault; org-bound consumers match exact identity and privileges before reuse.
+- Verify deployed revision and registered intake target before live execution. A merged implementation is not proof that credentials exist.
