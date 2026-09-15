@@ -51,3 +51,10 @@ Use the same key on retries. Reusing a completed key performs no generation.
 A new key requests a new rotation. Other consumers and tenant map entries are
 preserved. Legacy credentials outside the provisioner's distinct consumer label
 are not revoked implicitly; their ownership must be established separately.
+
+## Boundary checkpoint
+
+2026-09-14 · Owner: platform operations. This document describes the public-safe
+custody protocol and release ordering. Actual tenant identities, intake receipts
+and deployment evidence remain in the private internal-devops operational
+records. Repository policy: [Public repository boundary](../PUBLIC_REPO_BOUNDARY.md).
