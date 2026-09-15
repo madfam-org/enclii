@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -15,11 +17,13 @@ import (
 // fakeVault is an in-memory KV v2 with the same merge semantics the real client
 // has: a write preserves keys it was not asked to change.
 type fakeVault struct {
-	data     map[string]map[string]interface{}
-	disabled bool
-	readErr  map[string]error
-	writeErr map[string]error
-	writes   int
+	data          map[string]map[string]interface{}
+	disabled      bool
+	readErr       map[string]error
+	writeErr      map[string]error
+	writes        int
+	mutationCalls int
+	failMutation  int
 }
 
 func newFakeVault() *fakeVault {
@@ -57,6 +61,25 @@ func (f *fakeVault) MergeSecretData(_ context.Context, path string, updates map[
 	return len(f.data[path]), nil
 }
 
+func (f *fakeVault) MutateSecretData(ctx context.Context, path string, update func(map[string]interface{}) (map[string]interface{}, error)) (int, error) {
+	f.mutationCalls++
+	if f.mutationCalls == f.failMutation {
+		return 0, errors.New("injected custody failure")
+	}
+	data, err := f.GetSecretData(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	changes, err := update(data)
+	if err != nil {
+		return 0, err
+	}
+	if changes == nil {
+		return f.writes, nil
+	}
+	return f.MergeSecretData(ctx, path, changes)
+}
+
 func (f *fakeVault) str(t *testing.T, path, key string) string {
 	t.Helper()
 	value, _ := f.data[path][key].(string)
@@ -68,11 +91,12 @@ func (f *fakeVault) str(t *testing.T, path, key string) string {
 type fakeKalya struct {
 	server *httptest.Server
 	// byLabel makes the fake idempotent the way the real endpoint is.
-	byLabel  map[string]string
-	requests []map[string]string
-	keys     []string
-	status   int
-	mints    int
+	byLabel      map[string]string
+	requests     []map[string]string
+	keys         []string
+	status       int
+	mints        int
+	failFinalize bool
 }
 
 func newFakeKalya(t *testing.T) *fakeKalya {
@@ -85,27 +109,31 @@ func newFakeKalya(t *testing.T) *fakeKalya {
 		}
 		k.keys = append(k.keys, r.Header.Get("X-Internal-API-Key"))
 
-		var body map[string]string
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		var raw map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		body := map[string]string{}
+		for key, value := range raw {
+			body[key] = fmt.Sprint(value)
+		}
 		k.requests = append(k.requests, body)
-
 		if k.status != http.StatusOK {
 			w.WriteHeader(k.status)
-			// A failing endpoint that still leaks a token in its body: the
-			// client must not echo this anywhere.
 			_, _ = w.Write([]byte(`{"plaintext":"leaked-tok-from-error-body"}`))
 			return
 		}
-
+		if k.failFinalize && body["finalize"] == "true" {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
 		label := body["label"]
-		token, seen := k.byLabel[label]
-		if !seen {
+		hash := body["tokenHash"]
+		created := k.byLabel[label] != hash && body["finalize"] == "false"
+		if created {
 			k.mints++
-			token = "tok-" + body["tenantSlug"] + "-secret"
-			k.byLabel[label] = token
+			k.byLabel[label] = hash
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"plaintext": token})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "created": created, "retired": 0})
 	}))
 	t.Cleanup(k.server.Close)
 	return k
@@ -150,13 +178,13 @@ func TestProvisionKalyaFeedTokenWritesBothConsumers(t *testing.T) {
 		t.Fatalf("capacity URL wrong shape: %q", capacity)
 	}
 
-	if got := vault.str(t, "secret/nauta", "kalya_feed_tokens"); got != "crea=tok-crea-secret" {
+	if got := vault.str(t, "secret/nauta", "kalya_feed_tokens"); !strings.HasPrefix(got, "crea=") || len(strings.TrimPrefix(got, "crea=")) != 43 {
 		t.Fatalf("nauta feed token map: got %q", got)
 	}
 
 	// kalya was authorized with the key from Vault, not with anything supplied
 	// by the caller.
-	if len(kalya.keys) != 1 || kalya.keys[0] != "internal-key" {
+	if len(kalya.keys) != 4 || kalya.keys[0] != "internal-key" {
 		t.Fatalf("kalya must be called with the Vault-held internal key, got %v", kalya.keys)
 	}
 	if kalya.requests[0]["tenantSlug"] != "crea" {
@@ -179,7 +207,8 @@ func TestProvisionKalyaFeedTokenNeverReturnsTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal outcome: %v", err)
 	}
-	if strings.Contains(string(rendered), "tok-crea-secret") {
+	u, _ := url.Parse(vault.str(t, "secret/crea-map", "kalya_capacity_feed_url"))
+	if strings.Contains(string(rendered), u.Query().Get("token")) {
 		t.Fatalf("the outcome leaks the token: %s", rendered)
 	}
 	// Nor may a rendered feed URL (which embeds the token) appear.
@@ -210,8 +239,8 @@ func TestProvisionKalyaFeedTokenIsIdempotent(t *testing.T) {
 	if vault.writes != writesAfterFirst {
 		t.Fatalf("a rerun must not write to Vault: %d -> %d", writesAfterFirst, vault.writes)
 	}
-	if kalya.mints != 1 {
-		t.Fatalf("kalya must be asked to mint exactly once, got %d", kalya.mints)
+	if kalya.mints != 2 {
+		t.Fatalf("kalya must be asked to mint once per consumer, got %d", kalya.mints)
 	}
 	for _, entry := range second.Consumers {
 		if entry.Action != "skip" {
@@ -263,7 +292,7 @@ func TestProvisionKalyaFeedTokenMergesNautaTokenMap(t *testing.T) {
 	}
 
 	got := vault.str(t, "secret/nauta", "kalya_feed_tokens")
-	for _, want := range []string{"otro=tok-otro", "tercero=tok-tercero", "crea=tok-crea-secret"} {
+	for _, want := range []string{"otro=tok-otro", "tercero=tok-tercero", "crea="} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("merged map lost %q: %q", want, got)
 		}
@@ -326,20 +355,26 @@ func TestProvisionKalyaFeedTokenDoesNotEchoAFailingKalyaBody(t *testing.T) {
 	kalya.status = http.StatusInternalServerError
 	vault := vaultWithKalyaKey()
 
-	_, err := provisionKalyaFeedToken(context.Background(), vault, newHTTPKalyaMinter(),
-		kalyaRequest(t, kalya.origin(), false))
-	if err == nil {
-		t.Fatal("a failing kalya must be an error")
+	outcome, err := provisionKalyaFeedToken(context.Background(), vault, newHTTPKalyaMinter(), kalyaRequest(t, kalya.origin(), false))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(err.Error(), "leaked-tok-from-error-body") {
-		t.Fatalf("the error echoes kalya's response body: %v", err)
+	for _, entry := range outcome.Consumers {
+		if entry.Action != "error" {
+			t.Fatal("failing Kalya must report per-consumer failure")
+		}
 	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Fatalf("the error should name the status code: %v", err)
+	encoded, _ := json.Marshal(outcome)
+	if strings.Contains(string(encoded), "leaked-tok-from-error-body") {
+		t.Fatal("upstream response leaked")
 	}
-	if vault.writes != 0 {
-		t.Fatal("a failed mint must write nothing")
+	if vault.str(t, "secret/crea-map", "kalya_capacity_feed_url") != "" {
+		t.Fatal("failed preparation must not publish a consumer credential")
 	}
+	if vault.writes != 2 {
+		t.Fatal("each consumer must retain durable pending custody for retry")
+	}
+
 }
 
 func TestProvisionKalyaFeedTokenRequiresTheInternalKey(t *testing.T) {
@@ -459,5 +494,156 @@ func TestKalyaMintingCredentialIntakeContract(t *testing.T) {
 	}
 	if target.ExternalSecret != "kalya-internal-api-key" {
 		t.Fatal("inbound provisioning must use the isolated ExternalSecret")
+	}
+}
+
+func TestKalyaCustodyDistinctConsumersAndLateAddition(t *testing.T) {
+	k := newFakeKalya(t)
+	v := vaultWithKalyaKey()
+	req, _ := resolveKalyaFeedRequest("crea", []string{"crea-map"}, k.origin(), false)
+	first, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Minted {
+		t.Fatal("first consumer not registered")
+	}
+	original := v.str(t, "secret/crea-map", "kalya_capacity_feed_url")
+	req.Consumers = []string{"nauta"}
+	second, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Minted || k.mints != 2 {
+		t.Fatal("late consumer must receive its own credential")
+	}
+	parsed, _ := url.Parse(original)
+	if parsed.Query().Get("token") == strings.TrimPrefix(v.str(t, "secret/nauta", "kalya_feed_tokens"), "crea=") {
+		t.Fatal("consumer credentials must differ")
+	}
+	if v.str(t, "secret/crea-map", "kalya_capacity_feed_url") != original {
+		t.Fatal("late consumer changed existing feed")
+	}
+}
+
+func TestKalyaCustodyRetriesEveryVaultFailureWithoutReminting(t *testing.T) {
+	for _, failAt := range []int{1, 2, 3} {
+		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
+			k := newFakeKalya(t)
+			v := vaultWithKalyaKey()
+			v.failMutation = failAt
+			req, _ := resolveKalyaFeedRequest("crea", []string{"nauta"}, k.origin(), false)
+			first, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first.Consumers[0].Action != "error" {
+				t.Fatal("injected failure was hidden")
+			}
+			if failAt == 1 && k.mints != 0 {
+				t.Fatal("must not register before custody is durable")
+			}
+			var hashBefore string
+			for _, hash := range k.byLabel {
+				hashBefore = hash
+			}
+			v.failMutation = 0
+			second, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if second.Consumers[0].Action == "error" || k.mints != 1 {
+				t.Fatal("retry did not converge to one credential")
+			}
+			for _, hash := range k.byLabel {
+				if hashBefore != "" && hash != hashBefore {
+					t.Fatal("retry lost the pending credential")
+				}
+			}
+			state, err := readKalyaCustody(v.data["secret/nauta"], "crea")
+			if err != nil || state.Phase != "active" {
+				t.Fatal("custody not finalized")
+			}
+			before := v.writes
+			third, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+			if err != nil || third.Minted || v.writes != before {
+				t.Fatal("completed retry is not a no-op")
+			}
+		})
+	}
+}
+
+func TestKalyaRotationIsDistinctAndRetryKeyIsIdempotent(t *testing.T) {
+	k := newFakeKalya(t)
+	v := vaultWithKalyaKey()
+	req := kalyaRequest(t, k.origin(), false)
+	if _, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req); err != nil {
+		t.Fatal(err)
+	}
+	oldMap := v.str(t, "secret/crea-map", "kalya_capacity_feed_url")
+	oldNauta := v.str(t, "secret/nauta", "kalya_feed_tokens")
+	req.Consumers = []string{"nauta"}
+	req.Rotate = true
+	req.OperationKey = "rotation-request-one"
+	if _, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req); err != nil {
+		t.Fatal(err)
+	}
+	if v.str(t, "secret/nauta", "kalya_feed_tokens") == oldNauta {
+		t.Fatal("rotation did not change credential")
+	}
+	if v.str(t, "secret/crea-map", "kalya_capacity_feed_url") != oldMap {
+		t.Fatal("rotation changed another consumer")
+	}
+	before := k.mints
+	outcome, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+	if err != nil || outcome.Minted || k.mints != before || outcome.Consumers[0].Action != "skip" {
+		t.Fatal("rotation retry reminted")
+	}
+}
+
+func TestKalyaCustodyResumesRetirementAfterPublication(t *testing.T) {
+	k := newFakeKalya(t)
+	k.failFinalize = true
+	v := vaultWithKalyaKey()
+	req, _ := resolveKalyaFeedRequest("crea", []string{"nauta"}, k.origin(), false)
+	first, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+	if err != nil || first.Consumers[0].Action != "error" {
+		t.Fatal("retirement failure was hidden")
+	}
+	state, err := readKalyaCustody(v.data["secret/nauta"], "crea")
+	if err != nil || state.Phase != "published" {
+		t.Fatal("published custody not retained")
+	}
+	token := v.str(t, "secret/nauta", "kalya_feed_tokens")
+	k.failFinalize = false
+	second, err := provisionKalyaFeedToken(context.Background(), v, newHTTPKalyaMinter(), req)
+	if err != nil || second.Consumers[0].Action == "error" || k.mints != 1 || v.str(t, "secret/nauta", "kalya_feed_tokens") != token {
+		t.Fatal("retirement retry changed the credential")
+	}
+}
+func TestKalyaRotationRequiresStableOperationKey(t *testing.T) {
+	req := operatorOperationRequest{Args: map[string]string{"tenant": "crea", "consumers": "nauta", "rotate": "true"}}
+	h := &Handler{}
+	if _, err := h.kalyaFeedRequestFromOperation(req); err == nil {
+		t.Fatal("rotation without retry key accepted")
+	}
+	req.IdempotencyKey = "stable-rotation"
+	resolved, err := h.kalyaFeedRequestFromOperation(req)
+	if err != nil || resolved.OperationKey != req.IdempotencyKey {
+		t.Fatal("retry key not preserved")
+	}
+}
+
+func TestKalyaCustodyDoesNotForwardInternalKeyOnRedirect(t *testing.T) {
+	reached := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true; w.WriteHeader(200) }))
+	defer other.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	_, err := newHTTPKalyaMinter().ReconcileFeedToken(context.Background(), redirect.URL, "fixture-internal-key", "fixture", "enclii-standing-feed-fixture-nauta", strings.Repeat("a", 64), "", false)
+	if err == nil || reached {
+		t.Fatal("internal key followed redirect")
 	}
 }
