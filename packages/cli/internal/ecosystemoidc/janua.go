@@ -35,18 +35,23 @@ func NewJanuaClient(adminToken, internalAPIKey string) *JanuaClient {
 		BaseURL:        base,
 		AdminToken:     strings.TrimSpace(adminToken),
 		InternalAPIKey: strings.TrimSpace(internalAPIKey),
-		HTTP:           &http.Client{Timeout: 30 * time.Second},
+		HTTP:           &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 }
 
 type remoteOAuthClient struct {
-	ID           string   `json:"id"`
-	ClientID     string   `json:"client_id"`
-	ClientSecret *string  `json:"client_secret"`
-	Name         string   `json:"name"`
-	Audience     *string  `json:"audience"`
-	ClientKey    *string  `json:"client_key"`
-	RedirectURIs []string `json:"redirect_uris"`
+	ID             string   `json:"id"`
+	ClientID       string   `json:"client_id"`
+	ClientSecret   *string  `json:"client_secret"`
+	Name           string   `json:"name"`
+	Audience       *string  `json:"audience"`
+	ClientKey      *string  `json:"client_key"`
+	RedirectURIs   []string `json:"redirect_uris"`
+	OrganizationID *string  `json:"organization_id"`
+	AllowedScopes  []string `json:"allowed_scopes"`
+	GrantTypes     []string `json:"grant_types"`
+	IsConfidential bool     `json:"is_confidential"`
+	IsActive       bool     `json:"is_active"`
 }
 
 type rotateSecretResponse struct {
@@ -55,6 +60,21 @@ type rotateSecretResponse struct {
 }
 
 func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientSpec) (remoteOAuthClient, bool, error) {
+	// Org-bound machine clients are distinct consumers even when they share an
+	// API audience. Check identity and privileges before any registration/rotation.
+	if spec.OrganizationID != "" {
+		existing, err := c.findExisting(ctx, spec)
+		if err != nil {
+			return remoteOAuthClient{}, false, err
+		}
+		if existing != nil {
+			if err := validateMachineClient(*existing, spec); err != nil {
+				return remoteOAuthClient{}, false, err
+			}
+			return *existing, false, nil
+		}
+	}
+
 	body := map[string]interface{}{
 		"name":            spec.Name,
 		"description":     spec.Description,
@@ -87,6 +107,11 @@ func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientS
 		if err != nil {
 			return remoteOAuthClient{}, false, err
 		}
+		if spec.OrganizationID != "" {
+			if err := validateMachineClient(out, spec); err != nil {
+				return remoteOAuthClient{}, false, err
+			}
+		}
 		return out, status == http.StatusCreated, nil
 	}
 	if c.AdminToken == "" {
@@ -98,6 +123,11 @@ func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientS
 		return remoteOAuthClient{}, false, err
 	}
 	if existing != nil {
+		if spec.OrganizationID != "" {
+			if err := validateMachineClient(*existing, spec); err != nil {
+				return remoteOAuthClient{}, false, err
+			}
+		}
 		return *existing, false, nil
 	}
 
@@ -105,6 +135,11 @@ func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientS
 	status, err := c.doJSON(ctx, http.MethodPost, "/api/v1/oauth/clients", body, &created, false)
 	if err != nil {
 		return remoteOAuthClient{}, false, err
+	}
+	if spec.OrganizationID != "" {
+		if err := validateMachineClient(created, spec); err != nil {
+			return remoteOAuthClient{}, false, err
+		}
 	}
 	return created, status == http.StatusCreated, nil
 }
@@ -116,13 +151,20 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 		status, err := c.doJSON(ctx, http.MethodGet, path, nil, &out, true)
 		if err != nil {
 			if status == http.StatusNotFound {
+				if spec.ClientID != "" {
+					return nil, fmt.Errorf("pinned Janua client was not found")
+				}
 				return nil, nil
 			}
 			return nil, err
 		}
+		if spec.ClientID != "" && out.ClientID != spec.ClientID {
+			return nil, fmt.Errorf("Janua client name does not match pinned identity")
+		}
 		return &out, nil
 	}
 
+	var match *remoteOAuthClient
 	for pageNum := 1; pageNum <= 20; pageNum++ {
 		var page struct {
 			Clients []remoteOAuthClient `json:"clients"`
@@ -134,24 +176,57 @@ func (c *JanuaClient) findExisting(ctx context.Context, spec JanuaClientSpec) (*
 		}
 		for i := range page.Clients {
 			item := page.Clients[i]
-			if spec.ClientID != "" && item.ClientID == spec.ClientID {
-				return &item, nil
+			// A pin is exclusive. A name/key collision may not override it.
+			selected := spec.ClientID != "" && item.ClientID == spec.ClientID
+			if spec.ClientID == "" {
+				// Janua currently aliases client_key to audience; it is not an identity.
+				selected = item.Name == spec.Name
 			}
-			if item.Name == spec.Name {
-				return &item, nil
-			}
-			if spec.ClientKey != "" && item.ClientKey != nil && *item.ClientKey == spec.ClientKey {
-				return &item, nil
-			}
-			if item.Audience != nil && *item.Audience == spec.Audience {
-				return &item, nil
+			if selected {
+				if match != nil && match.ClientID != item.ClientID {
+					return nil, fmt.Errorf("ambiguous Janua client identity; pin the reviewed client_id")
+				}
+				candidate := item
+				match = &candidate
 			}
 		}
 		if len(page.Clients) == 0 || pageNum*100 >= page.Total {
-			break
+			if match == nil && spec.ClientID != "" {
+				return nil, fmt.Errorf("pinned Janua client was not found; refusing duplicate creation")
+			}
+			return match, nil
 		}
 	}
-	return nil, nil
+	return nil, fmt.Errorf("Janua client inventory exceeded page limit; identity could not be established")
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aa, bb := append([]string(nil), a...), append([]string(nil), b...)
+	sortStrings(aa)
+	sortStrings(bb)
+	for i := range aa {
+		if aa[i] != bb[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func validateMachineClient(remote remoteOAuthClient, spec JanuaClientSpec) error {
+	if !remote.IsActive || remote.ClientID == "" || remote.ID == "" || remote.Name != spec.Name || remote.OrganizationID == nil || *remote.OrganizationID != spec.OrganizationID ||
+		remote.Audience == nil || *remote.Audience != spec.Audience ||
+		remote.IsConfidential != spec.confidential() ||
+		!sameStrings(remote.AllowedScopes, spec.AllowedScopes) ||
+		!sameStrings(remote.GrantTypes, spec.GrantTypes) || len(remote.RedirectURIs) != 0 {
+		return fmt.Errorf("existing Janua machine client differs from reviewed organization, audience, scope or grant; refusing credential reuse or rotation")
+	}
+	if spec.ClientID != "" && remote.ClientID != spec.ClientID {
+		return fmt.Errorf("Janua client differs from pinned identity")
+	}
+	return nil
 }
 
 func (c *JanuaClient) rotateSecret(ctx context.Context, internalUUID string) (string, error) {
@@ -200,7 +275,7 @@ func (c *JanuaClient) doJSON(ctx context.Context, method, path string, body inte
 	if err != nil {
 		return resp.StatusCode, err
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg := strings.TrimSpace(string(data))
 		if msg == "" {
 			msg = resp.Status

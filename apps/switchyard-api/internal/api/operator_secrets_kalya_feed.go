@@ -37,7 +37,12 @@ func (h *Handler) kalyaFeedRequestFromOperation(req operatorOperationRequest) (k
 
 	rotate := strings.EqualFold(operationArg(req, "rotate"), "true")
 
-	return resolveKalyaFeedRequest(tenant, consumers, origin, rotate)
+	resolved, err := resolveKalyaFeedRequest(tenant, consumers, origin, rotate)
+	resolved.OperationKey = req.IdempotencyKey
+	if err == nil && rotate && strings.TrimSpace(req.IdempotencyKey) == "" {
+		return resolved, fmt.Errorf("rotation requires an idempotency_key for safe retries")
+	}
+	return resolved, err
 }
 
 // resolveKalyaOrigin prefers kalya's own service record over the compiled-in
@@ -191,7 +196,7 @@ func (h *Handler) handleOpsSecretsProvisionKalyaFeedApply(ctx context.Context, o
 
 	writes, skips, failures := summarizeKalyaFeedPlan(outcome.Consumers)
 	warnings := []string{
-		"the feed token was minted by kalya and written directly to Vault; it is not returned by this API, not logged, and not recorded in the audit trail",
+		"credentials were generated into Vault custody and registered as hashes in Kalya; plaintext is never returned, logged, or recorded in the audit trail",
 		"kalya's internal API key was read server-side from " + kalyaVaultPath + " and never left the control plane",
 	}
 	for _, entry := range outcome.Consumers {
@@ -227,7 +232,7 @@ func (h *Handler) handleOpsSecretsProvisionKalyaFeedApply(ctx context.Context, o
 			{Name: "authorize", Status: "completed", Detail: "reason supplied and caller passed endpoint authorization"},
 			{Name: "load-state", Status: "completed", Detail: "read the consumer Vault paths"},
 			{Name: "diff", Status: "completed", Detail: "decided per consumer whether the properties were already present"},
-			{Name: "mint", Status: stepStatus(!outcome.Minted, outcome.Minted), Detail: "kalya minted a feed token, authorized by the internal API key read from Vault"},
+			{Name: "mint", Status: stepStatus(!outcome.Minted, outcome.Minted), Detail: "Kalya reconciled consumer-specific credential hashes using its Vault-held inbound key"},
 			{Name: "vault-write", Status: stepStatus(writes == 0, writes > 0), Detail: "consumer properties merged into Vault without exposing values"},
 			{Name: "audit", Status: "completed", Detail: "operation reason recorded; no secret value in the audit record"},
 		},
@@ -268,7 +273,7 @@ func kalyaFeedPlanData(req kalyaFeedProvisionRequest, outcomes []kalyaFeedConsum
 func summarizeKalyaFeedPlan(outcomes []kalyaFeedConsumerOutcome) (writes, skips, failures int) {
 	for _, entry := range outcomes {
 		switch entry.Action {
-		case "write", "rotate":
+		case "write", "rotate", "resume":
 			writes++
 		case "skip":
 			skips++

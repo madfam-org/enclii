@@ -145,15 +145,17 @@ func newSecretsProvisionKalyaFeedCommand(cfg *config.Config) *cobra.Command {
 		Short: "Mint a kalya standing-feed token and file it into its consumers' Vault paths",
 		Long: `Provision the kalya occupancy/capacity standing-feed credential.
 
-Switchyard reads kalya's internal API key from Vault, asks kalya to mint an
-unscoped feed token for the tenant, and writes the consumer properties:
+Switchyard generates independent 256-bit consumer credentials into Vault,
+registers their hashes through kalya's native custody endpoint, and publishes:
 
   secret/crea-map  kalya_occupancy_feed_url, kalya_capacity_feed_url
   secret/nauta     kalya_feed_tokens (merged, so other tenants survive)
 
 The token is never returned, never logged, and never reaches this machine.
 Idempotent: consumers that already carry this tenant's properties are skipped
-and nothing is minted. Pass --rotate to replace a live token deliberately.
+and nothing is generated. Pass --rotate with --idempotency-key to replace a
+consumer credential deliberately. Failed phases resume from durable custody;
+rotation retires the predecessor after the replacement has been observed.
 
 Examples:
   # Plan

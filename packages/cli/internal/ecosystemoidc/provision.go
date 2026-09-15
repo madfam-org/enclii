@@ -26,6 +26,7 @@ type ProvisionOptions struct {
 // ProvisionResult is safe to print — no secret values.
 type ProvisionResult struct {
 	PlatformID      string   `json:"platform_id"`
+	DryRun          bool     `json:"dry_run,omitempty"`
 	JanuaClientID   string   `json:"janua_client_id"`
 	Created         bool     `json:"created"`
 	RotatedSecret   bool     `json:"rotated_secret"`
@@ -52,6 +53,22 @@ func ProvisionPlatform(
 		return ProvisionResult{}, fmt.Errorf("platform %q has no intake_target", opts.PlatformID)
 	}
 
+	// A plan is entirely local: reconciliation can CREATE a Janua client, and
+	// resolving an existing secret can ROTATE it. Neither belongs in a dry run.
+	if opts.DryRun {
+		result := ProvisionResult{
+			PlatformID:    opts.PlatformID,
+			DryRun:        true,
+			JanuaClientID: platform.JanuaClient.ClientID,
+			IntakeTarget:  platform.IntakeTarget,
+			KeysWritten:   mapKeys(buildIntakeValues(reg.Issuer, "", "", platform)),
+		}
+		if platform.SessionIntakeTarget != "" {
+			result.SessionKeys = []string{"NEXTAUTH_SECRET", "SESSION_SECRET"}
+		}
+		return result, nil
+	}
+
 	remote, created, err := janua.registerOrReconcile(ctx, platform.JanuaClient)
 	if err != nil {
 		return ProvisionResult{}, fmt.Errorf("janua provision %s: %w", opts.PlatformID, err)
@@ -64,21 +81,6 @@ func ProvisionPlatform(
 	}
 
 	values := buildIntakeValues(reg.Issuer, remote.ClientID, secret, platform)
-	if opts.DryRun {
-		keys := make([]string, 0, len(values))
-		for k := range values {
-			keys = append(keys, k)
-		}
-		sortStrings(keys)
-		return ProvisionResult{
-			PlatformID:    opts.PlatformID,
-			JanuaClientID: remote.ClientID,
-			Created:       created,
-			RotatedSecret: rotated,
-			IntakeTarget:  platform.IntakeTarget,
-			KeysWritten:   keys,
-		}, nil
-	}
 
 	intakeID, err := submitter.SubmitIntake(ctx, platform.IntakeTarget, opts.Reason, values)
 	if err != nil {

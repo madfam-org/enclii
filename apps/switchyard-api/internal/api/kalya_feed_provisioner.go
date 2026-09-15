@@ -12,11 +12,10 @@ package api
 //
 //   - kalya's internal API key is READ from Vault by the control plane. It is
 //     never a request parameter and never appears in a response.
-//   - the feed token is MINTED by kalya and written straight to the consumers'
-//     Vault paths. It is never returned to the caller, never logged, and never
-//     put in an audit field. It exists in one local variable inside
-//     provisionKalyaFeedToken and leaves it only as a Vault write, so there is
-//     no rendering path for it to escape through at all.
+//   - independent 256-bit consumer credentials enter Vault custody BEFORE
+//     Kalya sees their hashes. Plaintext never reaches Kalya or the caller.
+//   - compare-and-set pending state survives every partial failure. Publishing
+//     a consumer precedes retirement of its explicitly recorded predecessor.
 //   - idempotency is decided by reading the CONSUMER paths first. A rerun with
 //     the properties already present mints nothing at all, so a nervous operator
 //     re-running the command cannot churn a live token. `--rotate` is the
@@ -148,10 +147,8 @@ func mergeFeedTokenMap(existing, tenant, token string) string {
 // kalyaFeedTokenMinter is kalya's internal feed-token endpoint. An interface so
 // the provisioner can be tested against a fake kalya without a network.
 type kalyaFeedTokenMinter interface {
-	// MintFeedToken returns the plaintext token for a tenant. kalya is
-	// idempotent by label, so calling twice with the same label returns the
-	// same token rather than minting a second one.
-	MintFeedToken(ctx context.Context, origin, internalAPIKey, tenantSlug, label string) (string, error)
+	// Reconcile registers a Vault-custodied hash; finalize retires older same-label hashes.
+	ReconcileFeedToken(ctx context.Context, origin, internalAPIKey, tenantSlug, label, tokenHash, retireHash string, finalize bool) (bool, error)
 }
 
 // httpKalyaMinter is the real client.
@@ -160,62 +157,50 @@ type httpKalyaMinter struct {
 }
 
 func newHTTPKalyaMinter() *httpKalyaMinter {
-	return &httpKalyaMinter{client: &http.Client{Timeout: 20 * time.Second}}
+	return &httpKalyaMinter{client: &http.Client{
+		Timeout: 20 * time.Second,
+		// An internal key must never follow a redirect to another origin.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
-func (m *httpKalyaMinter) MintFeedToken(ctx context.Context, origin, internalAPIKey, tenantSlug, label string) (string, error) {
-	payload, err := json.Marshal(map[string]string{
-		"tenantSlug": tenantSlug,
-		"label":      label,
-	})
+func (m *httpKalyaMinter) ReconcileFeedToken(ctx context.Context, origin, internalAPIKey, tenantSlug, label, tokenHash, retireHash string, finalize bool) (bool, error) {
+	payload, err := json.Marshal(map[string]interface{}{"tenantSlug": tenantSlug, "label": label, "tokenHash": tokenHash, "retireHash": retireHash, "finalize": finalize})
 	if err != nil {
-		return "", fmt.Errorf("encode kalya feed-token request: %w", err)
+		return false, fmt.Errorf("encode Kalya custody request")
 	}
-
-	endpoint := strings.TrimSuffix(origin, "/") + kalyaInternalFeedTokenPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, strings.TrimSuffix(origin, "/")+kalyaInternalFeedTokenPath, bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("build kalya feed-token request: %w", err)
+		return false, fmt.Errorf("build Kalya custody request")
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Internal-API-Key", internalAPIKey)
-
-	resp, err := m.client.Do(req)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Internal-API-Key", internalAPIKey)
+	response, err := m.client.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("call kalya feed-token endpoint: %w", err)
+		return false, fmt.Errorf("Kalya custody endpoint unavailable")
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		// The body is NOT echoed. A failing mint endpoint can still have put a
-		// token in its response (a partial success, a retry that raced), and
-		// this error string reaches logs and an operator's terminal.
-		return "", fmt.Errorf("kalya feed-token endpoint returned status %d", resp.StatusCode)
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return false, fmt.Errorf("Kalya custody endpoint returned status %d", response.StatusCode)
 	}
-	if readErr != nil {
-		return "", fmt.Errorf("read kalya feed-token response: %w", readErr)
+	var result struct {
+		OK      bool `json:"ok"`
+		Created bool `json:"created"`
 	}
-
-	var decoded struct {
-		Plaintext string `json:"plaintext"`
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil || !result.OK {
+		return false, fmt.Errorf("Kalya custody acknowledgement invalid")
 	}
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return "", fmt.Errorf("decode kalya feed-token response: %w", err)
-	}
-	if strings.TrimSpace(decoded.Plaintext) == "" {
-		return "", fmt.Errorf("kalya feed-token endpoint returned no plaintext token")
-	}
-	return decoded.Plaintext, nil
+	return result.Created, nil
 }
 
 // kalyaFeedProvisionRequest is one provisioning run's decided inputs.
 type kalyaFeedProvisionRequest struct {
-	Tenant    string
-	Consumers []string
-	Origin    string
-	Rotate    bool
-	Label     string
+	Tenant       string
+	Consumers    []string
+	Origin       string
+	Rotate       bool
+	Label        string
+	OperationKey string
 }
 
 // kalyaFeedConsumerOutcome is what happened for one consumer. Deliberately
@@ -245,7 +230,7 @@ func resolveKalyaFeedRequest(tenant string, consumers []string, origin string, r
 		Origin: strings.TrimSpace(origin),
 		Rotate: rotate,
 	}
-	if resolved.Tenant == "" {
+	if !kalyaTenantPattern.MatchString(resolved.Tenant) {
 		return resolved, fmt.Errorf("a tenant slug is required (e.g. --tenant crea)")
 	}
 	if resolved.Origin == "" {
@@ -275,8 +260,8 @@ func resolveKalyaFeedRequest(tenant string, consumers []string, origin string, r
 	}
 	sort.Strings(resolved.Consumers)
 
-	// Deterministic, because kalya is idempotent BY LABEL. A timestamped label
-	// would mint a fresh token on every run and defeat both sides' idempotency.
+	// Stable tenant prefix; custody adds the consumer to isolate rotation and
+	// revocation. Credential generations are persisted in Vault, not labels.
 	resolved.Label = fmt.Sprintf("enclii-standing-feed-%s", resolved.Tenant)
 	return resolved, nil
 }
@@ -319,13 +304,17 @@ func planKalyaFeedProvision(
 		existing, err := vault.GetSecretData(ctx, consumer.VaultPath)
 		if err != nil {
 			outcome.Action = "error"
-			outcome.Error = fmt.Sprintf("could not read %s: %v", consumer.VaultPath, err)
+			outcome.Error = fmt.Sprintf("could not read %s", consumer.VaultPath)
 			outcomes = append(outcomes, outcome)
 			continue
 		}
 		existingByConsumer[name] = existing
 
 		switch {
+		case pendingKalyaCustody(existing, req.Tenant) || kalyaCustodyProjectionDrift(existing, consumer, req):
+			outcome.Action = "resume"
+		case completedKalyaRotation(existing, req):
+			outcome.Action = "skip"
 		case req.Rotate:
 			outcome.Action = "rotate"
 		case hasAllKalyaProperties(existing, consumer, req.Tenant):
@@ -375,8 +364,8 @@ func feedTokenMapHasTenant(mapping, tenant string) bool {
 
 // provisionKalyaFeedToken is the whole operation: plan, mint if needed, write.
 //
-// The token exists in exactly one variable, for the duration of this function,
-// and leaves it only as a Vault write. Nothing about it is returned.
+// Durable pending custody and native hash reconciliation form the retry boundary.
+// Only status, identifiers and counts are returned.
 func provisionKalyaFeedToken(
 	ctx context.Context,
 	vault VaultSecretWriter,
@@ -389,7 +378,7 @@ func provisionKalyaFeedToken(
 		Label:  req.Label,
 	}
 
-	planned, existingByConsumer, err := planKalyaFeedProvision(ctx, vault, req)
+	planned, _, err := planKalyaFeedProvision(ctx, vault, req)
 	if err != nil {
 		return outcome, err
 	}
@@ -397,7 +386,7 @@ func provisionKalyaFeedToken(
 
 	needsToken := false
 	for _, entry := range planned {
-		if entry.Action == "write" || entry.Action == "rotate" {
+		if entry.Action == "write" || entry.Action == "rotate" || entry.Action == "resume" {
 			needsToken = true
 			break
 		}
@@ -410,7 +399,7 @@ func provisionKalyaFeedToken(
 
 	kalyaSecrets, err := vault.GetSecretData(ctx, kalyaVaultPath)
 	if err != nil {
-		return outcome, fmt.Errorf("could not read kalya's internal API key from %s: %w", kalyaVaultPath, err)
+		return outcome, fmt.Errorf("could not read Kalya inbound key custody at %s", kalyaVaultPath)
 	}
 	internalAPIKey, _ := kalyaSecrets[kalyaInternalAPIKeyField].(string)
 	if strings.TrimSpace(internalAPIKey) == "" {
@@ -419,30 +408,5 @@ func provisionKalyaFeedToken(
 			kalyaVaultPath, kalyaInternalAPIKeyField)
 	}
 
-	token, err := minter.MintFeedToken(ctx, req.Origin, internalAPIKey, req.Tenant, req.Label)
-	if err != nil {
-		return outcome, fmt.Errorf("kalya declined to mint a feed token for tenant %s: %w", req.Tenant, err)
-	}
-	outcome.Minted = true
-
-	for i := range outcome.Consumers {
-		entry := &outcome.Consumers[i]
-		if entry.Action != "write" && entry.Action != "rotate" {
-			continue
-		}
-		consumer := kalyaFeedConsumers[entry.Consumer]
-		updates := consumer.Build(req.Origin, req.Tenant, token, existingByConsumer[entry.Consumer])
-
-		version, writeErr := vault.MergeSecretData(ctx, consumer.VaultPath, updates)
-		if writeErr != nil {
-			entry.Action = "error"
-			// The error is wrapped, not echoed: a Vault error body can contain
-			// the payload it rejected, and that payload is the token.
-			entry.Error = fmt.Sprintf("failed to write %s", consumer.VaultPath)
-			continue
-		}
-		entry.Version = version
-	}
-
-	return outcome, nil
+	return reconcileKalyaFeedConsumers(ctx, vault, minter, req, outcome, internalAPIKey)
 }
