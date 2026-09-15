@@ -186,6 +186,17 @@ targets:
     keys:
       - internal_api_key
 
+  # The inbound provisioner key is isolated from Kalya's database/login secret.
+  # This exact property is also read by the native Kalya feed provisioner.
+  kalya/internal-api-key:
+    label: Kalya clave interna de aprovisionamiento
+    description: Clave entrante para aprovisionar tenants y tokens de feeds; generada y custodiada en el servidor
+    vault_path: secret/kalya
+    namespace: kalya
+    external_secret: kalya-internal-api-key
+    keys:
+      - internal_api_key
+
   crea-map/kalya-feeds:
     label: crea-map feeds de kalya (ocupación y capacidad)
     description: URLs de los feeds de kalya que crea-map consume; el token del feed viaja dentro de la URL, por eso el valor completo es secreto
@@ -216,7 +227,7 @@ targets:
     description: Tokens con los que nauta lee los feeds de kalya para las superficies de cliente
     vault_path: secret/nauta
     namespace: nauta
-    external_secret: nauta-web-secrets
+    external_secret: nauta-kalya-feeds
     keys:
       - kalya_feed_tokens
 

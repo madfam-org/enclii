@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 29)
+	assert.Len(t, reg, 30)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 29)
+	require.Len(t, list, 30)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -57,6 +57,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"dhanam/stripe-mx-live",
 		"enclii/internal-api-key",
 		"janua/internal-api-key",
+		"kalya/internal-api-key",
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
@@ -209,4 +210,21 @@ func TestTelesiaTargets(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Optional scheduling credentials must never share the database/login projection.
+func TestKalyaProvisioningCustody(t *testing.T) {
+	key, err := GetTarget("kalya/internal-api-key")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/kalya", key.VaultPath)
+	assert.Equal(t, "kalya", key.Namespace)
+	assert.Equal(t, "kalya-internal-api-key", key.ExternalSecret)
+	assert.Equal(t, []string{"internal_api_key"}, key.Keys)
+	assert.Equal(t, 32, key.GenerateBytes())
+
+	feed, err := GetTarget("nauta/kalya-feed-tokens")
+	require.NoError(t, err)
+	assert.Equal(t, "nauta-kalya-feeds", feed.ExternalSecret)
+	assert.Equal(t, "secret/nauta", feed.VaultPath)
+	assert.Equal(t, []string{"kalya_feed_tokens"}, feed.Keys)
 }

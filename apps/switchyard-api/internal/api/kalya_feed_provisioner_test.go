@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/secretsintake"
 )
 
 // fakeVault is an in-memory KV v2 with the same merge semantics the real client
@@ -443,5 +445,19 @@ func TestMergeFeedTokenMapIsStableAndSorted(t *testing.T) {
 	// Junk entries are dropped rather than propagated.
 	if got := mergeFeedTokenMap(" , ,=orphan,crea=c", "otro", "o"); got != "crea=c,otro=o" {
 		t.Fatalf("junk handling produced %q", got)
+	}
+}
+
+// Intake must provision exactly the path/property the native minter reads.
+func TestKalyaMintingCredentialIntakeContract(t *testing.T) {
+	target, err := secretsintake.GetTarget("kalya/internal-api-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.VaultPath != kalyaVaultPath || len(target.Keys) != 1 || target.Keys[0] != kalyaInternalAPIKeyField {
+		t.Fatal("Kalya intake and native minting credential locations disagree")
+	}
+	if target.ExternalSecret != "kalya-internal-api-key" {
+		t.Fatal("inbound provisioning must use the isolated ExternalSecret")
 	}
 }
