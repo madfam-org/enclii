@@ -155,6 +155,7 @@ before raw infrastructure tools. Direct `kubectl`, `helm`, SSH, provider CLIs,
 
 ## Secret intake + Vault bridge (Jun 2026)
 
+- `docs/runbooks/MERCHANT_OAUTH_CUSTODY.md` — separate Nauta/MAP merchant-read clients, five-key binding custody and activation sequence.
 - `docs/runbooks/SECRET_INTAKE.md` — chat-safe operator credential handoff
 - `docs/cli/commands/secrets.md` — `enclii secrets intake` + `provision oidc` CLI
 - `config/ecosystem-oidc-provision.yaml` — OIDC auto-provision registry

@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 30)
+	assert.Len(t, reg, 32)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 30)
+	require.Len(t, list, 32)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -48,6 +48,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"ceq/janua-client-secret",
 		"ceq/vast-api-key",
 		"coupler/janua-service-token",
+		"crea-map/dhanam-merchant-oauth",
 		"crea-map/internal-api-key",
 		"crea-map/kalya-feeds",
 		"crea/porkbun-registrar",
@@ -61,6 +62,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
+		"nauta/dhanam-merchant-oauth",
 		"nauta/kalya-feed-tokens",
 		"nauta/oidc-janua",
 		"nauta/oidc-janua-portal",
@@ -227,4 +229,23 @@ func TestKalyaProvisioningCustody(t *testing.T) {
 	assert.Equal(t, "nauta-kalya-feeds", feed.ExternalSecret)
 	assert.Equal(t, "secret/nauta", feed.VaultPath)
 	assert.Equal(t, []string{"kalya_feed_tokens"}, feed.Keys)
+}
+
+// Both consumers hold separate credentials. The same property vocabulary does
+// not imply a shared Vault path, ESO object, or OAuth client identity.
+func TestMerchantOAuthCustodyTargets(t *testing.T) {
+	keys := []string{"dhanam_merchant_client_id", "dhanam_merchant_client_secret", "dhanam_merchant_workspace_id", "dhanam_merchant_organization_id", "dhanam_merchant_space_id"}
+	targets := make([]Target, 0, 2)
+	for _, consumer := range []string{"nauta", "crea-map"} {
+		target, err := GetTarget(consumer + "/dhanam-merchant-oauth")
+		require.NoError(t, err)
+		assert.Equal(t, "secret/"+consumer, target.VaultPath)
+		assert.Equal(t, consumer, target.Namespace)
+		assert.Equal(t, consumer+"-merchant-oauth", target.ExternalSecret)
+		assert.Equal(t, keys, target.Keys, "custody must contain both credentials and all three source-binding fields")
+		assert.Nil(t, target.Generate, "OAuth credentials originate in Janua, not random value generation")
+		targets = append(targets, target)
+	}
+	assert.NotEqual(t, targets[0].VaultPath, targets[1].VaultPath)
+	assert.NotEqual(t, targets[0].ExternalSecret, targets[1].ExternalSecret)
 }

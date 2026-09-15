@@ -180,3 +180,13 @@ This is not a full repository ingest. It is a compact context pointer; task-spec
 These files are maintained by `internal-devops/scripts/sync-agent-docs.py`.
 If repo-specific long-form agent guidance is needed, put it in `AGENTS.md`,
 not `CLAUDE.md`.
+
+## Merchant payment projection custody
+
+`docs/runbooks/MERCHANT_OAUTH_CUSTODY.md` defines separate Nauta and MAP Janua
+machine clients for Dhanam's monthly read projection. Five-key intake targets
+bind each credential to its reviewed workspace, organization and merchant Space.
+Consumer Vault paths and optional ESO objects are separate. Use a protected OIDC
+registry override, native Janua provisioning and native Dhanam grants; never
+reuse an audience-matching login client or infer a merchant Space from a retainer.
+No target declaration itself provisions a client, grant, charge or invoice.

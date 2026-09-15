@@ -107,6 +107,7 @@ path "secret/data/coupler" {
 # policy are two copies of one truth; scripts/check-intake-policy-parity.sh now
 # fails CI when they drift, so the next platform added to the registry cannot
 # ship without its policy path.
+# Merchant OAuth intake uses this existing consumer path; no extra policy reach.
 path "secret/data/nauta" {
   capabilities = ["create", "update", "patch", "read"]
 }
@@ -155,6 +156,7 @@ path "secret/data/kalya/*" {
 # deployed through Enclii rather than this repo's infra/ tree, but the writer
 # policy is what Switchyard's own token carries, so their paths belong here or
 # the very first intake 403s exactly the way nauta did in enclii#379.
+# Its merchant OAuth client stays independent of the Nauta consumer credential.
 path "secret/data/crea-map" {
   capabilities = ["create", "update", "patch", "read"]
 }
