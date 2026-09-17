@@ -39,7 +39,7 @@ infra/k8s/
 ├── platform-infra/     # Infrastructure umbrella (ArgoCD visibility)
 │   ├── kustomization.yaml
 │   ├── postgres.yaml          # → data namespace postgres (not base/postgres.yaml)
-│   ├── redis.yaml             # → symlink to production/data/redis.yaml
+│   ├── redis.yaml             # copy of production/data/redis.yaml — keep in sync (ArgoCD won't follow an out-of-path symlink)
 │   ├── postgres-backup.yaml   # → symlink to production/backup/
 │   ├── backup-verify-cronjob.yaml
 │   ├── postgres-restore-drill.yaml

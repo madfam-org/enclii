@@ -72,6 +72,8 @@ spec:
                 --save "900 1" \
                 --save "300 10" \
                 --save "60 10000" \
+                --maxmemory 200mb \
+                --maxmemory-policy allkeys-lru \
                 --requirepass "$(REDIS_PASSWORD)"
           env:
             - name: REDIS_PASSWORD
@@ -87,7 +89,7 @@ spec:
               memory: "64Mi"
               cpu: "50m"
             limits:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "200m"
           startupProbe:
             exec:
