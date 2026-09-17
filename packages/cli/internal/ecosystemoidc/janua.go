@@ -52,6 +52,9 @@ type remoteOAuthClient struct {
 	GrantTypes     []string `json:"grant_types"`
 	IsConfidential bool     `json:"is_confidential"`
 	IsActive       bool     `json:"is_active"`
+	// reconciled names the fields the admin path PATCHed to match the registry.
+	// Not part of Janua's wire shape.
+	reconciled []string
 }
 
 type rotateSecretResponse struct {
@@ -127,8 +130,18 @@ func (c *JanuaClient) registerOrReconcile(ctx context.Context, spec JanuaClientS
 			if err := validateMachineClient(*existing, spec); err != nil {
 				return remoteOAuthClient{}, false, err
 			}
+			return *existing, false, nil
 		}
-		return *existing, false, nil
+		// The internal-key register path reconciles an existing client
+		// server-side; the admin path used to return it untouched, so a login
+		// client whose redirect URIs had gone stale stayed stale no matter how
+		// often the registry was applied (the yantra4d-studio client,
+		// 2026-09-17). Reconcile through the admin PATCH instead.
+		reconciled, err := c.reconcileLoginClient(ctx, existing, spec)
+		if err != nil {
+			return remoteOAuthClient{}, false, err
+		}
+		return *reconciled, false, nil
 	}
 
 	var created remoteOAuthClient
@@ -213,6 +226,63 @@ func sameStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// reconcileLoginClient brings an existing LOGIN client in line with the
+// reviewed spec through Janua's admin API (PATCH /api/v1/oauth/clients/{uuid}),
+// the way the internal-key register path already does server-side. Only the
+// fields Janua's OAuthClientUpdate accepts and that decide what the client may
+// do are reconciled: redirect_uris, allowed_scopes, grant_types and audience.
+// Two things are refused rather than reconciled: a pinned-id mismatch (the
+// row found by name is not the reviewed client) and a confidentiality flip
+// (a public and a confidential client are different clients, and the update
+// schema cannot express the flip anyway). An inactive client is refused too —
+// re-enabling a disabled client is a decision, not drift.
+func (c *JanuaClient) reconcileLoginClient(ctx context.Context, existing *remoteOAuthClient, spec JanuaClientSpec) (*remoteOAuthClient, error) {
+	if spec.ClientID != "" && existing.ClientID != spec.ClientID {
+		return nil, fmt.Errorf("Janua client differs from pinned identity")
+	}
+	if existing.IsConfidential != spec.confidential() {
+		return nil, fmt.Errorf("existing Janua client %s is confidential=%t but the registry declares confidential=%t; a confidentiality flip is a different client, not a reconcile", existing.ClientID, existing.IsConfidential, spec.confidential())
+	}
+	if !existing.IsActive {
+		return nil, fmt.Errorf("existing Janua client %s is inactive; refusing to reconcile a disabled client", existing.ClientID)
+	}
+	patch := map[string]interface{}{}
+	var fields []string
+	if !sameStrings(existing.RedirectURIs, spec.RedirectURIs) {
+		patch["redirect_uris"] = spec.RedirectURIs
+		fields = append(fields, "redirect_uris")
+	}
+	if !sameStrings(existing.AllowedScopes, spec.AllowedScopes) {
+		patch["allowed_scopes"] = spec.AllowedScopes
+		fields = append(fields, "allowed_scopes")
+	}
+	if !sameStrings(existing.GrantTypes, spec.GrantTypes) {
+		patch["grant_types"] = spec.GrantTypes
+		fields = append(fields, "grant_types")
+	}
+	if spec.Audience != "" && (existing.Audience == nil || *existing.Audience != spec.Audience) {
+		patch["audience"] = spec.Audience
+		fields = append(fields, "audience")
+	}
+	if len(patch) == 0 {
+		return existing, nil
+	}
+	if strings.TrimSpace(existing.ID) == "" {
+		return nil, fmt.Errorf("cannot reconcile Janua client %s: missing internal client UUID", existing.ClientID)
+	}
+	var updated remoteOAuthClient
+	if _, err := c.doJSON(ctx, http.MethodPatch, "/api/v1/oauth/clients/"+url.PathEscape(existing.ID), patch, &updated, false); err != nil {
+		return nil, fmt.Errorf("reconcile Janua client %s: %w", existing.ClientID, err)
+	}
+	if strings.TrimSpace(updated.ClientID) == "" {
+		// A terse PATCH response; the identity is the one we looked up.
+		updated = *existing
+	}
+	sortStrings(fields)
+	updated.reconciled = fields
+	return &updated, nil
 }
 
 func validateMachineClient(remote remoteOAuthClient, spec JanuaClientSpec) error {

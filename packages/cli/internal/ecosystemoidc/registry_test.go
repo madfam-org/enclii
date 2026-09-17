@@ -78,6 +78,11 @@ func TestEveryPlatformIntakeTargetExistsInSwitchyardRegistry(t *testing.T) {
 
 	for _, id := range reg.PlatformIDs() {
 		p := reg.Platforms[id]
+		if p.IntakeTarget == "" && p.publicLogin() {
+			// A public login client has no secret to deliver; the provisioner
+			// prints its client_id and the consumer pins it. Nothing to join.
+			continue
+		}
 		require.NotEmpty(t, p.IntakeTarget, "platform %q has no intake_target; provisioning it errors at run time", id)
 		assert.Contains(t, intake.Targets, p.IntakeTarget,
 			"platform %q points at intake target %q, which switchyard does not define — "+
@@ -228,4 +233,35 @@ func TestLoadRegistry_telesiaLoginClient(t *testing.T) {
 		"janua_client_id":     "jnc_telesia",
 		"janua_client_secret": "s3cr3t",
 	}, buildIntakeValues(reg.Issuer, "jnc_telesia", "s3cr3t", p))
+}
+
+func TestLoadRegistry_yantra4dStudioPublicLoginClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+	p, ok := reg.Platforms["yantra4d-studio"]
+	require.True(t, ok, "yantra4d-studio must be in the registry")
+
+	// A browser SPA: PKCE, no secret, no org binding, no Vault target.
+	require.NotNil(t, p.JanuaClient.IsConfidential)
+	assert.False(t, *p.JanuaClient.IsConfidential, "the Studio holds no secret")
+	assert.Empty(t, p.JanuaClient.OrganizationID)
+	assert.True(t, p.publicLogin())
+	assert.Empty(t, p.IntakeTarget, "nothing about a public client is secret; no intake target")
+	assert.Empty(t, p.SessionIntakeTarget)
+
+	// The redirect URI is the Studio ORIGIN, byte for byte — no path, no slash.
+	assert.Equal(t, []string{"https://app.yantra4d.com", "http://localhost:5173"}, p.JanuaClient.RedirectURIs)
+	assert.Equal(t, "yantra4d-api", p.JanuaClient.Audience)
+	assert.Equal(t, "yantra4d-studio", p.JanuaClient.Name)
+	assert.Regexp(t, `^jnc_[A-Za-z0-9_-]{8,56}$`, p.JanuaClient.ClientID, "the Studio client must stay pinned so a re-run reconciles instead of duplicating")
+	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, p.JanuaClient.GrantTypes)
+	assert.ElementsMatch(t, []string{"openid", "profile", "email"}, p.JanuaClient.AllowedScopes)
+
+	// Every confidential platform still needs somewhere for its secret to go.
+	for _, id := range reg.PlatformIDs() {
+		q := reg.Platforms[id]
+		if !q.publicLogin() {
+			assert.NotEmpty(t, q.IntakeTarget, "confidential platform %q has no intake_target", id)
+		}
+	}
 }
