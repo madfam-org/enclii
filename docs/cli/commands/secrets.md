@@ -336,4 +336,17 @@ For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` 
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
 Dhanam ExternalSecrets — see [SECRET_INTAKE runbook](../../runbooks/SECRET_INTAKE.md).
 
+**Public login clients.** A registry entry with `is_confidential: false` and no
+`organization_id` is a browser/device app that signs in with authorization_code +
+PKCE and holds no secret (`yantra4d-studio` is the first). For these the provisioner
+registers or reconciles the Janua client and prints its `client_id`, and that is the
+whole job: no secret is resolved or rotated, and `intake_target` is optional (set one
+only when a consumer wants the id delivered through Vault/ESO as well). The consumer
+pins the `jnc_…` id in its own `janua.client.yaml` and reads it at build time.
+
+**Reconcile on the admin path.** When the existing client is found by name (or by its
+pinned id), `redirect_uris`, `allowed_scopes`, `grant_types` and `audience` are
+PATCHed to match the registry and reported as `reconciled=…`. A confidentiality flip,
+a pinned-id mismatch or an inactive client is refused rather than reconciled.
+
 Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii ./cmd/enclii/`

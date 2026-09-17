@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-09-12
+# Last Updated: 2026-09-17
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -13,6 +13,12 @@
 #   export ENCLII_API_ENDPOINT=https://api.enclii.dev
 #   enclii login
 #   enclii secrets provision oidc --platform dhanam
+#
+# PUBLIC LOGIN CLIENTS (`is_confidential: false`, no organization_id) are
+# browser/device apps that sign in with PKCE and hold no secret. They need no
+# intake_target: the provisioner registers or reconciles the client and prints
+# the client_id, which the consumer pins in its own janua.client.yaml. It never
+# resolves, rotates or intakes a secret for them.
 
 issuer: https://auth.madfam.io
 
@@ -311,6 +317,45 @@ platforms:
         - profile
         - email
         - offline_access
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # yantra4d-studio — the Yantra4D Studio at app.yantra4d.com. A PUBLIC login
+  # client: the Studio is a browser SPA that runs authorization_code + PKCE
+  # (S256) and holds no secret (yantra4d apps/studio/src/lib/januaSso.ts), so
+  # there is NO intake_target — nothing about it is secret, and the client_id
+  # is pinned in the consumer's own janua.client.yaml, which deploy.yml reads at
+  # build time (VITE_JANUA_CLIENT_ID). Registered 2026-09-17 after the id the
+  # Studio had shipped with since 2026-04-09 turned out to be unknown to Janua.
+  #
+  # The redirect URI is the Studio ORIGIN, byte for byte: the SDK sends no
+  # path and no trailing slash, Janua matches literally at authorize and token,
+  # and Janua derives its CORS allow-list from active clients' redirect URIs —
+  # so this one line is also what lets the browser read the token response.
+  # The audience is shared with the machine clients that call the same API
+  # (Fashion Cabinet render, the licence server, Selva's quote client); Janua
+  # keys registration by NAME, so that is fine.
+  # ---------------------------------------------------------------------------
+  yantra4d-studio:
+    janua_client:
+      name: yantra4d-studio
+      client_key: yantra4d-api  # pragma: allowlist secret
+      audience: yantra4d-api
+      # Pinned 2026-09-17 from the first provision run (created=true). A pin
+      # is what makes a re-run reconcile this row instead of creating a twin.
+      client_id: jnc_eu9wVVAZZlxWPVa4FICFSVoBb-hrSVVH
+      description: Yantra4D Studio (app.yantra4d.com) — public PKCE login client, no secret
+      is_confidential: false
+      website_url: https://app.yantra4d.com
+      redirect_uris:
+        - https://app.yantra4d.com
+        - http://localhost:5173
+      allowed_scopes:
+        - openid
+        - profile
+        - email
       grant_types:
         - authorization_code
         - refresh_token

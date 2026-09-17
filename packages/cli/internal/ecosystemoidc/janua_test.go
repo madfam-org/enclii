@@ -77,3 +77,92 @@ func TestMatchingMachineReusesOnlyReviewedIdentity(t *testing.T) {
 		t.Fatalf("unexpected: %v %v %v", got, created, err)
 	}
 }
+
+func loginSpec() JanuaClientSpec {
+	return JanuaClientSpec{Name: "studio", ClientKey: "studio-api", Audience: "studio-api", IsConfidential: falsePtr(), RedirectURIs: []string{"https://studio.example.test", "http://localhost:5173"}, AllowedScopes: []string{"openid", "profile", "email"}, GrantTypes: []string{"authorization_code", "refresh_token"}}
+}
+
+func loginRemote() remoteOAuthClient {
+	return remoteOAuthClient{ID: "uuid-studio", ClientID: "jnc_studio", Name: "studio", ClientKey: pointer("studio-api"), Audience: pointer("studio-api"), IsConfidential: false, IsActive: true, RedirectURIs: []string{"https://studio.example.test", "http://localhost:5173"}, AllowedScopes: []string{"openid", "profile", "email"}, GrantTypes: []string{"authorization_code", "refresh_token"}}
+}
+
+// adminServer serves the inventory and records PATCHes; any other mutation fails the test.
+func adminServer(t *testing.T, clients []remoteOAuthClient, patches *[]map[string]interface{}) *JanuaClient {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/oauth/clients/admin/all":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"clients": clients, "total": len(clients)})
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/oauth/clients/uuid-studio":
+			var body map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			*patches = append(*patches, body)
+			updated := clients[0]
+			if v, ok := body["redirect_uris"].([]interface{}); ok {
+				updated.RedirectURIs = nil
+				for _, u := range v {
+					updated.RedirectURIs = append(updated.RedirectURIs, u.(string))
+				}
+			}
+			_ = json.NewEncoder(w).Encode(updated)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return &JanuaClient{BaseURL: server.URL, AdminToken: "fixture", HTTP: server.Client()}
+}
+
+func TestAdminPathReconcilesDriftedLoginClient(t *testing.T) {
+	stale := loginRemote()
+	stale.RedirectURIs = []string{"https://old.example.test/auth/callback"}
+	stale.AllowedScopes = []string{"openid"}
+	var patches []map[string]interface{}
+	remote, created, err := adminServer(t, []remoteOAuthClient{stale}, &patches).registerOrReconcile(context.Background(), loginSpec())
+	if err != nil || created {
+		t.Fatalf("reconcile failed: %v created=%t", err, created)
+	}
+	if len(patches) != 1 {
+		t.Fatalf("expected one PATCH, got %d", len(patches))
+	}
+	if _, ok := patches[0]["redirect_uris"]; !ok {
+		t.Fatalf("redirect_uris not reconciled: %v", patches[0])
+	}
+	if _, ok := patches[0]["allowed_scopes"]; !ok {
+		t.Fatalf("allowed_scopes not reconciled: %v", patches[0])
+	}
+	if _, ok := patches[0]["grant_types"]; ok {
+		t.Fatalf("grant_types were in sync and must not be patched: %v", patches[0])
+	}
+	if !sameStrings(remote.reconciled, []string{"allowed_scopes", "redirect_uris"}) {
+		t.Fatalf("reconciled fields not reported: %v", remote.reconciled)
+	}
+	if !sameStrings(remote.RedirectURIs, loginSpec().RedirectURIs) {
+		t.Fatalf("returned client still stale: %v", remote.RedirectURIs)
+	}
+}
+
+func TestAdminPathLeavesInSyncLoginClientAlone(t *testing.T) {
+	var patches []map[string]interface{}
+	remote, created, err := adminServer(t, []remoteOAuthClient{loginRemote()}, &patches).registerOrReconcile(context.Background(), loginSpec())
+	if err != nil || created || len(patches) != 0 || len(remote.reconciled) != 0 {
+		t.Fatalf("in-sync client was touched: err=%v created=%t patches=%v reconciled=%v", err, created, patches, remote.reconciled)
+	}
+}
+
+func TestAdminPathRefusesConfidentialityFlipAndInactiveClients(t *testing.T) {
+	flipped := loginRemote()
+	flipped.IsConfidential = true
+	inactive := loginRemote()
+	inactive.IsActive = false
+	for _, remote := range []remoteOAuthClient{flipped, inactive} {
+		var patches []map[string]interface{}
+		if _, _, err := adminServer(t, []remoteOAuthClient{remote}, &patches).registerOrReconcile(context.Background(), loginSpec()); err == nil {
+			t.Fatal("refusal expected")
+		}
+		if len(patches) != 0 {
+			t.Fatalf("refused client was patched: %v", patches)
+		}
+	}
+}

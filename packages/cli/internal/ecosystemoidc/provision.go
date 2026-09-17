@@ -35,6 +35,12 @@ type ProvisionResult struct {
 	SessionIntakeID string   `json:"session_intake_id,omitempty"`
 	KeysWritten     []string `json:"keys_written,omitempty"`
 	SessionKeys     []string `json:"session_keys_written,omitempty"`
+	// Reconciled names the fields the admin path PATCHed on an existing login
+	// client so it matches the registry (see JanuaClient.reconcileLoginClient).
+	Reconciled []string `json:"reconciled_fields,omitempty"`
+	// PublicLogin marks a client that holds no secret; nothing was resolved,
+	// rotated or intaken on its behalf beyond what KeysWritten lists.
+	PublicLogin bool `json:"public_login,omitempty"`
 }
 
 // ProvisionPlatform registers/reconciles Janua OAuth client and intakes OIDC material.
@@ -49,10 +55,15 @@ func ProvisionPlatform(
 	if !ok {
 		return ProvisionResult{}, fmt.Errorf("unknown platform %q", opts.PlatformID)
 	}
-	if strings.TrimSpace(platform.IntakeTarget) == "" {
+	public := platform.publicLogin()
+	// A confidential client's credential has to land somewhere the consumer
+	// can read it, so an intake target is mandatory. A public login client
+	// holds none. Its client_id is a public identifier the consumer pins in
+	// its own repository, and Vault intake is optional (set a target only when
+	// a consumer wants the id delivered through ESO as well).
+	if strings.TrimSpace(platform.IntakeTarget) == "" && !public {
 		return ProvisionResult{}, fmt.Errorf("platform %q has no intake_target", opts.PlatformID)
 	}
-
 	// A plan is entirely local: reconciliation can CREATE a Janua client, and
 	// resolving an existing secret can ROTATE it. Neither belongs in a dry run.
 	if opts.DryRun {
@@ -61,41 +72,54 @@ func ProvisionPlatform(
 			DryRun:        true,
 			JanuaClientID: platform.JanuaClient.ClientID,
 			IntakeTarget:  platform.IntakeTarget,
-			KeysWritten:   mapKeys(buildIntakeValues(reg.Issuer, "", "", platform)),
+			PublicLogin:   public,
+		}
+		if strings.TrimSpace(platform.IntakeTarget) != "" {
+			result.KeysWritten = mapKeys(buildIntakeValues(reg.Issuer, "", "", platform))
 		}
 		if platform.SessionIntakeTarget != "" {
 			result.SessionKeys = []string{"NEXTAUTH_SECRET", "SESSION_SECRET"}
 		}
 		return result, nil
 	}
-
 	remote, created, err := janua.registerOrReconcile(ctx, platform.JanuaClient)
 	if err != nil {
 		return ProvisionResult{}, fmt.Errorf("janua provision %s: %w", opts.PlatformID, err)
 	}
-
-	secret, err := janua.ResolveClientSecret(ctx, remote, created, opts.RotateIfMissing)
-	rotated := err == nil && remote.ClientSecret == nil && !created
-	if err != nil {
-		return ProvisionResult{}, err
+	// Never resolve — and therefore never ROTATE — a secret for a public
+	// client. Janua's rotate endpoint would happily mint one, and a public
+	// client carrying an unused secret is exactly the kind of credential that
+	// gets copied somewhere it should not be.
+	secret := ""
+	rotated := false
+	if !public {
+		secret, err = janua.ResolveClientSecret(ctx, remote, created, opts.RotateIfMissing)
+		rotated = err == nil && remote.ClientSecret == nil && !created
+		if err != nil {
+			return ProvisionResult{}, err
+		}
 	}
-
-	values := buildIntakeValues(reg.Issuer, remote.ClientID, secret, platform)
-
-	intakeID, err := submitter.SubmitIntake(ctx, platform.IntakeTarget, opts.Reason, values)
-	if err != nil {
-		return ProvisionResult{}, fmt.Errorf("vault intake %s: %w", platform.IntakeTarget, err)
-	}
-
 	result := ProvisionResult{
 		PlatformID:    opts.PlatformID,
 		JanuaClientID: remote.ClientID,
 		Created:       created,
 		RotatedSecret: rotated || (remote.ClientSecret == nil && secret != ""),
 		IntakeTarget:  platform.IntakeTarget,
-		IntakeID:      intakeID,
-		KeysWritten:   mapKeys(values),
+		Reconciled:    remote.reconciled,
+		PublicLogin:   public,
 	}
+	if strings.TrimSpace(platform.IntakeTarget) == "" {
+		// Public login client with nothing to deliver through Vault: the
+		// registration (or reconcile) above was the whole job.
+		return result, nil
+	}
+	values := buildIntakeValues(reg.Issuer, remote.ClientID, secret, platform)
+	intakeID, err := submitter.SubmitIntake(ctx, platform.IntakeTarget, opts.Reason, values)
+	if err != nil {
+		return ProvisionResult{}, fmt.Errorf("vault intake %s: %w", platform.IntakeTarget, err)
+	}
+	result.IntakeID = intakeID
+	result.KeysWritten = mapKeys(values)
 
 	if platform.SessionIntakeTarget != "" {
 		sessionValues, serr := generateSessionAuthValues()
@@ -114,6 +138,10 @@ func ProvisionPlatform(
 }
 
 func buildIntakeValues(issuer, clientID, clientSecret string, platform Platform) map[string]string {
+	// A public login client has no secret, so a secret-sourced key is never
+	// written — not even as an empty string, which a consumer would read as
+	// "configured" and then fail to authenticate with.
+	public := platform.publicLogin()
 	if len(platform.IntakeKeyMap) > 0 {
 		out := map[string]string{}
 		for intakeKey, source := range platform.IntakeKeyMap {
@@ -121,6 +149,9 @@ func buildIntakeValues(issuer, clientID, clientSecret string, platform Platform)
 			case "client_id":
 				out[intakeKey] = clientID
 			case "client_secret":
+				if public {
+					continue
+				}
 				out[intakeKey] = clientSecret
 			case "issuer":
 				out[intakeKey] = issuer
@@ -130,11 +161,14 @@ func buildIntakeValues(issuer, clientID, clientSecret string, platform Platform)
 		}
 		return out
 	}
-	return map[string]string{
-		"OIDC_CLIENT_ID":     clientID,
-		"OIDC_CLIENT_SECRET": clientSecret,
-		"OIDC_ISSUER":        issuer,
+	out := map[string]string{
+		"OIDC_CLIENT_ID": clientID,
+		"OIDC_ISSUER":    issuer,
 	}
+	if !public {
+		out["OIDC_CLIENT_SECRET"] = clientSecret
+	}
+	return out
 }
 
 func generateSessionAuthValues() (map[string]string, error) {

@@ -94,7 +94,14 @@ Examples:
 				if jsonOut {
 					continue
 				}
-				fmt.Fprintf(os.Stderr, "✓ %s client_id=%s intake=%s", id, result.JanuaClientID, result.IntakeID)
+				intake := result.IntakeID
+				if intake == "" && result.PublicLogin && result.IntakeTarget == "" {
+					intake = "none (public login client — no secret to deliver)"
+				}
+				fmt.Fprintf(os.Stderr, "✓ %s client_id=%s created=%t intake=%s", id, result.JanuaClientID, result.Created, intake)
+				if len(result.Reconciled) > 0 {
+					fmt.Fprintf(os.Stderr, " reconciled=%s", strings.Join(result.Reconciled, ","))
+				}
 				if result.SessionIntakeID != "" {
 					fmt.Fprintf(os.Stderr, " session_intake=%s", result.SessionIntakeID)
 				}
@@ -105,9 +112,18 @@ Examples:
 				fmt.Println(ecosystemoidc.FormatResultsJSON(results))
 				return nil
 			}
-			if dryRun {
+			intakes := 0
+			for _, r := range results {
+				if r.IntakeID != "" {
+					intakes++
+				}
+			}
+			switch {
+			case dryRun:
 				fmt.Fprintln(os.Stderr, "dry-run only — no Vault writes")
-			} else {
+			case intakes == 0:
+				fmt.Fprintln(os.Stderr, "no Vault intake — public login client(s) only; pin the client_id in the consumer's manifest")
+			default:
 				fmt.Fprintln(os.Stderr, "Vault intake complete — poll with: enclii secrets intake status <intake_id>")
 			}
 			return nil
