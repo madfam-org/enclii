@@ -56,11 +56,11 @@ func ProvisionPlatform(
 		return ProvisionResult{}, fmt.Errorf("unknown platform %q", opts.PlatformID)
 	}
 	public := platform.publicLogin()
-	// A confidential client's secret has to land somewhere the consumer can
-	// read it, so an intake target is mandatory. A public login client has no
-	// secret: its client_id is a public identifier the consumer pins in its
-	// own repository, and Vault intake is optional (set a target only when a
-	// consumer wants the id delivered through ESO as well).
+	// A confidential client's credential has to land somewhere the consumer
+	// can read it, so an intake target is mandatory. A public login client
+	// holds none. Its client_id is a public identifier the consumer pins in
+	// its own repository, and Vault intake is optional (set a target only when
+	// a consumer wants the id delivered through ESO as well).
 	if strings.TrimSpace(platform.IntakeTarget) == "" && !public {
 		return ProvisionResult{}, fmt.Errorf("platform %q has no intake_target", opts.PlatformID)
 	}
