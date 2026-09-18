@@ -98,6 +98,11 @@ metadata:
     app.kubernetes.io/name: redis-ha-proxy
     app.kubernetes.io/part-of: enclii-infrastructure
     app.kubernetes.io/component: redis-master-proxy
+  annotations:
+    # Reloader runs cluster-wide (infra/k8s/production/reloader). This rolls the
+    # Deployment whenever the haproxy.cfg ConfigMap or the redis-auth Secret
+    # changes, so config/password edits take effect without a manual restart.
+    reloader.stakater.com/auto: "true"
 spec:
   # Two replicas so the proxy is not itself a new single point of failure.
   replicas: 2
@@ -110,6 +115,13 @@ spec:
       maxUnavailable: 1
   template:
     metadata:
+      annotations:
+        # One-time bump to force a roll onto the resolvers config: that config
+        # landed in the ConfigMap before the reloader.stakater.com/auto
+        # annotation existed, so Reloader did not see the change. Reloader
+        # handles every subsequent config/secret change automatically, so this
+        # marker does not need bumping again.
+        redis-ha-proxy/config-revision: "2-dns-resolvers"
       labels:
         app.kubernetes.io/name: redis-ha-proxy
         app.kubernetes.io/part-of: enclii-infrastructure
