@@ -85,9 +85,14 @@ data:
       tcp-check expect string role:master
       tcp-check send QUIT\r\n
       tcp-check expect string +OK
-      server redis-ha-0 redis-ha-0.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr last,libc,none
-      server redis-ha-1 redis-ha-1.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr last,libc,none
-      server redis-ha-2 redis-ha-2.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr last,libc,none
+      # Resolve backends from the HEADLESS service's A records (the live pod IPs
+      # in the EndpointSlice) rather than per-pod names. Per-pod-name resolution
+      # left redis-ha-1 pinned to a dead address (instant "connection refused"),
+      # whereas the service's A-record set is always the current endpoint IPs.
+      # server-template fills N slots from those records and re-resolves at
+      # runtime via the resolvers section; only the master passes the role:master
+      # check, so only it is ever selected.
+      server-template redis 3 redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr none
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -121,7 +126,7 @@ spec:
         # annotation existed, so Reloader did not see the change. Reloader
         # handles every subsequent config/secret change automatically, so this
         # marker does not need bumping again.
-        redis-ha-proxy/config-revision: "2-dns-resolvers"
+        redis-ha-proxy/config-revision: "3-server-template"
       labels:
         app.kubernetes.io/name: redis-ha-proxy
         app.kubernetes.io/part-of: enclii-infrastructure
