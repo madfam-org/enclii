@@ -5,6 +5,7 @@ namespace: data
 
 resources:
   - redis-ha.yaml
+  - redis-ha-proxy.yaml
 
 commonAnnotations:
   enclii.dev/component: redis-ha
