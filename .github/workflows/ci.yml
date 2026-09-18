@@ -455,6 +455,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test deps
+        run: pip install --quiet pytest
+
+      - name: Run copy-drift script self-tests
+        run: pytest tests/scripts/test_check_platform_infra_copies.py -v
+
       - name: Check platform-infra copies are in sync with canonical
         run: ./scripts/check-platform-infra-copies.sh
 
