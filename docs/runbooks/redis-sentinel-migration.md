@@ -1,5 +1,13 @@
 # Redis Sentinel Migration Runbook
 
+> **Boundary checkpoint (2026-09-18, platform-infra):** public-safe. This runbook
+> names in-cluster Service DNS, namespaces and `redis-cli`/`kubectl` command
+> shapes, but no secret VALUES (only `PASSWORD` placeholders), node identities,
+> IPs or tunnel ids. Omitted operational detail and the canonical cross-repo plan
+> live in `madfam-org/internal-devops`. Policy:
+> [`PUBLIC_REPO_BOUNDARY.md`](../PUBLIC_REPO_BOUNDARY.md) and the repo-boundary
+> contract in `madfam-org/internal-devops`.
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -8,7 +16,7 @@
 > missing Enclii adapter gap.
 
 
-> Last Updated: 2026-04-17
+> Last Updated: 2026-09-18 (status + strategy revision; original 2026-04-17)
 > Owner: Platform Infra
 > Related: [P1.3 in 2026-04 Enclii remediation plan](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 
@@ -33,14 +41,87 @@ separate operation (see `runbooks/secret-rotation.md`).
 
 ---
 
+## Status and strategy (revised 2026-09-18)
+
+> [!WARNING]
+> **This migration has been stalled since it began.** `redis-ha-0/1/2` has run
+> healthy for ~5 months, but **zero consumers have cut over** — nothing outside
+> this runbook references `redis-sentinel.data`. The reason is the plan itself:
+> it asks eight services across three client languages to each ship and validate
+> a Sentinel-aware client change, and the "route a plain URL to the current
+> master" gap it defers to a `redis-failover-operator` (see *Non-Sentinel
+> clients* below) was never closed. So every remaining consumer was blocked on
+> either a client rewrite or an operator nobody installed.
+
+**The urgency is gone.** The single-instance `data/redis` used to be OOMKilled
+about every 37 minutes (no `--maxmemory`, 256Mi limit); **enclii#563**
+(2026-09-17) capped it (`--maxmemory 200mb`, `allkeys-lru`, 512Mi) and it has
+since held at 0 restarts. Sentinel HA is therefore now a **reliability upgrade**
+(survive a node/pod loss), not an incident remedy — do it deliberately, not
+reactively.
+
+### Recommended approach — a master-routing layer, then URL-swap every consumer
+
+Instead of making eight mixed-language clients Sentinel-aware one by one, close
+the gap the original plan deferred: put a **master-routing proxy in front of
+redis-ha** so a single plain `redis://…:6379` endpoint always reaches the
+current master. Then every consumer — whatever its client library — migrates by
+a one-line `REDIS_URL` swap, with instant rollback to the single instance. This
+is the lower-risk, lower-effort path, and it makes the client-inventory table
+below moot.
+
+Two ways to build it:
+
+1. **HAProxy Deployment (recommended).** A small HAProxy in `data` whose backend
+   health-check is `AUTH` → `PING` → `INFO replication` → expect `role:master`,
+   so it forwards only to the master; on a Sentinel failover the promoted replica
+   starts answering `role:master` and HAProxy re-routes. This is the
+   DandyDeveloper/redis-ha chart's own `haproxy` pattern, written as raw
+   manifests to match this repo (redis-ha here is raw manifests, not the chart).
+   It needs the `redis-auth` password mounted for the check and a NetworkPolicy
+   allowing consumer namespaces → the proxy. New endpoint:
+   `redis-ha-proxy.data.svc.cluster.local:6379`.
+2. **A redis operator that rewrites a Service selector on failover** (the
+   `spec.io/redis-operator` the original plan named). Same outcome, but a
+   cluster-wide operator is more moving parts. Prefer option 1 unless an operator
+   is wanted for other reasons.
+
+### Corrected cutover plan
+
+0. **Build + chaos-test the master-routing proxy** — the gated first PR, and the
+   only genuinely new work. Acceptance: `redis-ha-proxy` serves writes;
+   `./scripts/redis-failover-chaos.sh` shows the proxy following the master
+   inside the failover window; a test client survives a `SENTINEL failover`.
+1. **Canary the URL swap** on the lowest-traffic service (forgesight-api):
+   `REDIS_URL` → `redis://:PASSWORD@redis-ha-proxy.data.svc.cluster.local:6379/0`;
+   24h soak; rollback = revert the URL to `redis.data…`.
+2. Proceed in the [cutover order](#cutover-order) — **janua stays #6** (ecosystem
+   SSO, the highest blast radius after billing; never the pioneer), **dhanam
+   last**.
+
+With the proxy, **no consumer needs a client change** — including janua, whose
+`redis.asyncio.from_url(REDIS_URL)` (corrected below) is *not* Sentinel-URL
+capable and would otherwise need code. Per-client Sentinel wiring (the
+[Connection strings](#connection-strings) section) stays documented as the
+fallback for any consumer that would rather adopt Sentinel directly.
+
+---
+
 ## Consumer inventory
+
+> [!NOTE]
+> The "client library" column below is the original **grep-based assumptions**
+> and is only partly verified. It was wrong for janua (listed as ioredis/Node;
+> it is actually Python `redis-py`). The recommended proxy approach above makes
+> this column irrelevant to the cutover — verify a row only if you migrate that
+> consumer via Sentinel directly instead of the proxy.
 
 Grep-based inventory from `infra/k8s/base/external-secrets/vault-secrets/`:
 
 | Service | Namespace | Client library (known/assumed) | Sentinel-capable? |
 |---|---|---|---|
-| dhanam-api / web / admin | `dhanam` | ioredis (Node) | Yes |
-| janua | `janua` | ioredis (Node) | Yes |
+| dhanam-api / web / admin | `dhanam` | ioredis (Node) — *unverified* | Yes |
+| janua | `janua` | **redis-py** — `redis.asyncio.from_url` (`app/core/redis.py`), NOT ioredis (verified, corrected 2026-09-18) | Not via a URL — needs `redis.asyncio.Sentinel`; **moot with the proxy** |
 | enclii (switchyard-api) | `enclii` | go-redis/v9 | Yes — but uses its own `redis.enclii.svc.cluster.local`, NOT migrated in P1.3 |
 | karafiel-api | `karafiel` | django-redis (redis-py) | Yes |
 | tezca-api | `tezca` | redis-py | Yes |
