@@ -41,6 +41,22 @@ data:
       timeout check 2s
       retries 3
 
+    # Runtime DNS so the per-pod headless records are re-resolved (StatefulSet
+    # pods can restart with new IPs, and one-shot startup resolution races the
+    # pod DNS records — which left redis-ha-1/2 stuck unresolved). Uses the pod's
+    # own /etc/resolv.conf (kube-dns), no hard-coded cluster DNS IP.
+    resolvers kube-dns
+      parse-resolv-conf
+      resolve_retries 3
+      timeout resolve 1s
+      timeout retry 1s
+      hold valid 10s
+      hold other 10s
+      hold refused 10s
+      hold nx 10s
+      hold timeout 10s
+      hold obsolete 10s
+
     # HTTP surface on 8404: /healthz for probes, /stats for debugging. Cluster-
     # internal only (NetworkPolicy). monitor-uri answers 200 while HAProxy is up.
     frontend stats
@@ -69,9 +85,9 @@ data:
       tcp-check expect string role:master
       tcp-check send QUIT\r\n
       tcp-check expect string +OK
-      server redis-ha-0 redis-ha-0.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2
-      server redis-ha-1 redis-ha-1.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2
-      server redis-ha-2 redis-ha-2.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2
+      server redis-ha-0 redis-ha-0.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr last,libc,none
+      server redis-ha-1 redis-ha-1.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr last,libc,none
+      server redis-ha-2 redis-ha-2.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr last,libc,none
 ---
 apiVersion: apps/v1
 kind: Deployment
