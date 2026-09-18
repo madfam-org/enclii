@@ -463,6 +463,15 @@ spec:
           port: 6379
         - protocol: TCP
           port: 26379
+    # The master-routing proxy (redis-ha-proxy.yaml) forwards client traffic to
+    # whichever pod is currently master; it runs in this namespace.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-ha-proxy
+      ports:
+        - protocol: TCP
+          port: 6379
     # Prometheus scraping of the exporter sidecar.
     - from:
         - namespaceSelector:

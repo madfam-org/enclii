@@ -1,0 +1,251 @@
+# Redis-HA master-routing proxy (HAProxy) — P1.3 step 0.
+#
+# Purpose: present ONE plain endpoint, redis-ha-proxy.data.svc.cluster.local:6379,
+# that always forwards to the CURRENT Sentinel master. Consumers then migrate off
+# the single-instance `redis` by a one-line REDIS_URL swap — no client change and
+# no Sentinel awareness — with instant rollback to `redis.data…`.
+# See docs/runbooks/redis-sentinel-migration.md (revised 2026-09-18, enclii#566).
+#
+# How it finds the master: the backend health-check AUTHs, PINGs, then runs
+# `INFO replication` and expects `role:master`. Only the master answers that;
+# replicas answer `role:slave`, fail the check and are marked DOWN — so traffic
+# only ever lands on the master. On a Sentinel failover the promoted replica
+# starts answering role:master and HAProxy re-routes within inter*rise.
+#
+# This is idle until a consumer's REDIS_URL points at it, so it is safe to deploy
+# and observe first (HAProxy logs each backend UP/DOWN — validate from the logs).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-ha-proxy-config
+  namespace: data
+  labels:
+    app.kubernetes.io/name: redis-ha-proxy
+    app.kubernetes.io/part-of: enclii-infrastructure
+data:
+  haproxy.cfg: |
+    global
+      log stdout format raw local0 info
+      maxconn 4096
+      hard-stop-after 30s
+
+    defaults
+      mode tcp
+      log global
+      option tcplog
+      option dontlognull
+      timeout connect 3s
+      timeout client 6m
+      timeout server 6m
+      timeout check 2s
+      retries 3
+
+    # HTTP surface on 8404: /healthz for probes, /stats for debugging. Cluster-
+    # internal only (NetworkPolicy). monitor-uri answers 200 while HAProxy is up.
+    frontend stats
+      mode http
+      bind :8404
+      monitor-uri /healthz
+      stats enable
+      stats uri /stats
+      stats refresh 10s
+
+    frontend redis_master_fe
+      bind :6379
+      default_backend redis_master
+
+    backend redis_master
+      option tcp-check
+      tcp-check connect
+      # ${REDIS_PASSWORD} is expanded by HAProxy from the env at config load
+      # (mounted from the shared redis-auth Secret). The password never appears
+      # in this ConfigMap.
+      tcp-check send AUTH\ "${REDIS_PASSWORD}"\r\n
+      tcp-check expect string +OK
+      tcp-check send PING\r\n
+      tcp-check expect string +PONG
+      tcp-check send info\ replication\r\n
+      tcp-check expect string role:master
+      tcp-check send QUIT\r\n
+      tcp-check expect string +OK
+      server redis-ha-0 redis-ha-0.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2
+      server redis-ha-1 redis-ha-1.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2
+      server redis-ha-2 redis-ha-2.redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-ha-proxy
+  namespace: data
+  labels:
+    app.kubernetes.io/name: redis-ha-proxy
+    app.kubernetes.io/part-of: enclii-infrastructure
+    app.kubernetes.io/component: redis-master-proxy
+spec:
+  # Two replicas so the proxy is not itself a new single point of failure.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-ha-proxy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-ha-proxy
+        app.kubernetes.io/part-of: enclii-infrastructure
+        app.kubernetes.io/component: redis-master-proxy
+    spec:
+      # Spread the two replicas across nodes where possible.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: redis-ha-proxy
+                topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 99      # the haproxy image's built-in `haproxy` user
+        runAsGroup: 99
+        fsGroup: 99
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: haproxy
+          image: docker.io/library/haproxy:3.0-alpine@sha256:6587be25151544c83d6507c460ea097d68bb2aa5cc2aa00137babaa52208d019
+          env:
+            # HAProxy reads ${REDIS_PASSWORD} from here at config load.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: redis-password
+          ports:
+            - name: redis
+              containerPort: 6379
+            - name: stats
+              containerPort: 8404
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8404
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "64Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/haproxy
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: redis-ha-proxy-config
+            items:
+              - key: haproxy.cfg
+                path: haproxy.cfg
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-proxy
+  namespace: data
+  labels:
+    app.kubernetes.io/name: redis-ha-proxy
+    app.kubernetes.io/part-of: enclii-infrastructure
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: redis-ha-proxy
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-ha-proxy-pdb
+  namespace: data
+  labels:
+    app.kubernetes.io/name: redis-ha-proxy
+    app.kubernetes.io/part-of: enclii-infrastructure
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-ha-proxy
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ha-proxy-network-policy
+  namespace: data
+  labels:
+    app.kubernetes.io/name: redis-ha-proxy
+    app.kubernetes.io/part-of: enclii-infrastructure
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis-ha-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Consumers reach the proxy exactly as they reach redis-ha: a namespace that
+    # declares redis egress via enclii.yaml (label enclii.dev/redis-consumer).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              enclii.dev/redis-consumer: "true"
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Prometheus / debugging of the HAProxy stats surface.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8404
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Forward to the redis-ha pods (same namespace) on the data port.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-ha
+      ports:
+        - protocol: TCP
+          port: 6379
