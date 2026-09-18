@@ -52,8 +52,12 @@
 
 set -euo pipefail
 
-# Resolve repo root regardless of where the script is invoked from.
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve repo root regardless of where the script is invoked from. The
+# PLATFORM_INFRA_COPIES_REPO_ROOT override lets the self-test
+# (tests/scripts/test_check_platform_infra_copies.py) point the check at a
+# throwaway tree — mirrors ZERO_TOUCH_REPO_ROOT in check-zero-touch-boundaries.sh.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${PLATFORM_INFRA_COPIES_REPO_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
 # "<argocd-synced copy>|<canonical source>" — paths relative to repo root.
 COPY_PAIRS=(
