@@ -443,6 +443,21 @@ jobs:
       - name: Run status configmap drift check
         run: ./scripts/check-status-configmaps.sh
 
+  platform-infra-copy-drift:
+    name: Platform-infra copy drift
+    runs-on: ubuntu-latest
+    # Cheap (<1s). The `platform-infra-services` ArgoCD app applies
+    # infra/k8s/platform-infra/*, some of which are maintained COPIES of a
+    # canonical source (redis.yaml ← production/data/redis.yaml). ArgoCD cannot
+    # follow an out-of-path symlink, so the copy can drift — which took prod
+    # down on 2026-09-17 (the redis OOMKill loop, enclii#563). This fails the
+    # build on any divergence. See scripts/check-platform-infra-copies.sh.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check platform-infra copies are in sync with canonical
+        run: ./scripts/check-platform-infra-copies.sh
+
   zero-touch-boundary:
     name: Zero-Touch Boundary Check
     runs-on: ubuntu-latest
