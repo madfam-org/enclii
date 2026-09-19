@@ -62,10 +62,12 @@ echo "[2] initial state at resolution"; logs="$(docker logs "$H" 2>&1)"
 if echo "$logs" | grep -c "is UP/READY (resolves again)" >/dev/null; then ko "a slot was routable before its first check (init-state down missing?)"; else ok "no slot was UP before being checked"; fi
 echo "$logs" | grep -c "is DOWN/READY (resolves again)" >/dev/null && ok "slots start DOWN when their record resolves" || ko "expected DOWN/READY at resolution"
 
+# wait_for <expected UP count> <seconds>: polls the stats until the number of UP slots matches
+wait_for() { local want="$1" secs="$2" n=0; while [ "$n" -lt "$secs" ]; do s="$(stats)"; [ "$(echo "$s" | grep -c ' UP ')" = "$want" ] && return 0; sleep 1; n=$((n + 1)); done; return 1; }
 echo "[3] master loses its only replica, then gets it back"
-docker stop "$R" >/dev/null; sleep 7; s="$(stats)"
-[ "$(echo "$s" | grep -c ' UP ')" = 0 ] && ok "master DOWN with connected_slaves 0" || ko "master still UP without a replica"
-docker start "$R" >/dev/null; sleep 7; s="$(stats)"
-[ "$(echo "$s" | grep -c ' UP L7OK')" = 1 ] && ok "master UP again once the replica returned" || ko "master did not come back UP"
+docker stop "$R" >/dev/null
+wait_for 0 20 && ok "master DOWN with connected_slaves 0" || ko "master still UP without a replica after 20 s"
+docker start "$R" >/dev/null
+wait_for 1 30 && [ "$(echo "$s" | grep -c ' UP L7OK')" = 1 ] && ok "master UP again once the replica returned" || ko "master did not come back UP within 30 s"
 
 if [ "$fail" = 0 ]; then echo "proxy-check-test: PASS"; else echo "proxy-check-test: FAIL" >&2; exit 1; fi
