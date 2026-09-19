@@ -143,8 +143,9 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
      Pod IPs are recycled, so this can recur until the stale entries are
      purged: run `SENTINEL RESET mymaster` on each Sentinel, one at a time,
      30 s apart, then `SENTINEL CKQUORUM mymaster` on each (commands in the
-     pre-cutover checks). Longer term, persist Sentinel state (`myid` and the
-     known instances) on the PVC so restarts stop minting new runids.
+     pre-cutover checks). ✅ Closed at the root by the *persisted Sentinel
+     state* change below: restarts keep their runid, so no stale entries are
+     minted any more and no reset is needed after a roll.
    - *The Sentinel-aware path never ran in-cluster.* All three inits logged
      `no Sentinel reachable` and fell back to the bootstrap order, because a
      brand-new pod's connections are refused for minutes on two older nodes
@@ -171,6 +172,28 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
 4. `monitoring/prometheus` was down during the first drill (fixed by enclii#572,
    which also revealed it is now OOMKilled at its 2Gi limit every 30–45 min —
    tracked in enclii#580); read nothing into "no alerts fired".
+5. **Sentinel state persists on the PVC** (2026-09-19, the last wave of step 0).
+   Sentinel rewrites the file it was started with, so the live file now lives at
+   `/data/sentinel/sentinel.conf` and `config-init` keeps the *state* lines
+   across restarts — `sentinel myid`, the learned replicas and Sentinels, the
+   epochs and the **current master** (`sentinel monitor`, which Sentinel updates
+   on every switch) — while re-applying every *tunable* from the ConfigMap on
+   each boot (`port`, `dir`, `down-after-milliseconds`, `failover-timeout`,
+   `parallel-syncs`, `resolve-hostnames`, `announce-hostnames`, `announce-port`)
+   plus the volatile lines (`announce-ip`, `auth-pass`, `requirepass`). Effects:
+   a restarted Sentinel comes back with the same runid (peers log `-sdown`, never
+   a second identity), and on a **cold start with no Sentinel reachable** each pod
+   follows the master its own persisted state last recorded instead of the
+   ordinal-0 rule (which still applies when there is no state at all). To reset a
+   Sentinel's memory on purpose, delete its `/data/sentinel/sentinel.conf` and
+   restart the pod; an incomplete file (no `myid`/`monitor`) is re-rendered
+   automatically and kept as `sentinel.conf.bad`. Changing the master name or
+   quorum in the ConfigMap does **not** reach pods that already have state — use
+   `SENTINEL SET` / `SENTINEL MONITOR` or delete the file. Both `redis-ha` and the
+   proxy also carry a preferred `nodeAffinity` away from nodes labelled
+   `role=builder` (the CI pool), so the master stops sharing a node with runners
+   unless the cluster is short on nodes. Offline coverage: scenarios S9/S10 in
+   `tests/redis-sentinel/config-init-test.sh`.
 
 ### Recommended approach — a master-routing layer, then URL-swap every consumer
 

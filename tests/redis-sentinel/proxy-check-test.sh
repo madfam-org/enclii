@@ -10,6 +10,8 @@
 # Needs docker, kustomize, python3 (+PyYAML). About one minute. Cleans up after itself.
 # shellcheck disable=SC2015  # `check && ok || ko`: ok() never fails, so ko() runs only on a failed check
 set -euo pipefail
+# Pipelines that test docker logs use `grep -c … >/dev/null`, never `grep -q`: with pipefail, grep -q
+# exiting early gives `docker logs` a SIGPIPE and the pipeline fails even though the line was there.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"; NET="rsproxy-$$"; M="rs-m-$$"; R="rs-r-$$"; L="rs-l-$$"; H="rs-h-$$"
 cleanup() { docker rm -f "$M" "$R" "$L" "$H" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "$TMP"; }
@@ -57,8 +59,8 @@ echo "[1] steady state"; s="$(stats)"; echo "$s" | awk '{print "      "$0}'
 [ "$(echo "$s" | grep -c 'DOWN')" = 2 ] && ok "replica and standalone are DOWN" || ko "expected two DOWN slots"
 
 echo "[2] initial state at resolution"; logs="$(docker logs "$H" 2>&1)"
-if echo "$logs" | grep -q "is UP/READY (resolves again)"; then ko "a slot was routable before its first check (init-state down missing?)"; else ok "no slot was UP before being checked"; fi
-echo "$logs" | grep -q "is DOWN/READY (resolves again)" && ok "slots start DOWN when their record resolves" || ko "expected DOWN/READY at resolution"
+if echo "$logs" | grep -c "is UP/READY (resolves again)" >/dev/null; then ko "a slot was routable before its first check (init-state down missing?)"; else ok "no slot was UP before being checked"; fi
+echo "$logs" | grep -c "is DOWN/READY (resolves again)" >/dev/null && ok "slots start DOWN when their record resolves" || ko "expected DOWN/READY at resolution"
 
 echo "[3] master loses its only replica, then gets it back"
 docker stop "$R" >/dev/null; sleep 7; s="$(stats)"

@@ -11,12 +11,17 @@
 #   S6    healthy master restart (SELF_GRACE=3)      -> waits the grace, stays master
 #   S7    master dies; its replacement asks mid-failover -> follows the promoted replica
 #   S8    Sentinel names a dead master that is not me    -> waits for the switch, then follows
+#   S9    Sentinel state persisted on /data: a restart keeps the runid, refreshes the tunables,
+#         and the peer never learns a second identity
+#   S10   cold start with persisted state -> follows the last recorded master (or leads if it was me)
 # Needs docker, kustomize, python3 (+PyYAML). About two minutes. Cleans up after itself.
 # shellcheck disable=SC2015  # `check && ok || ko`: ok() never fails, so ko() runs only on a failed check
 set -euo pipefail
+# Pipelines that test docker logs use `grep -c … >/dev/null`, never `grep -q`: with pipefail, grep -q
+# exiting early gives `docker logs` a SIGPIPE and the pipeline fails even though the line was there.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"; NET="rsinit-$$"; P="$$"
-cleanup() { docker rm -f "s-master-$P" "s-replica-$P" "s-sentinel-$P" "s-peer-$P" "s-late-$P" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "$TMP"; }
+cleanup() { docker rm -f "s-master-$P" "s-replica-$P" "s-sentinel-$P" "s-peer-$P" "s-late-$P" "s-persist-$P" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "$TMP"; }
 trap cleanup EXIT
 for t in docker kustomize python3; do command -v "$t" >/dev/null || { echo "missing dependency: $t" >&2; exit 2; }; done
 
@@ -58,9 +63,12 @@ docker run -d --name "s-peer-$P" --network "$NET" "$RIMG" sleep 900 >/dev/null  
 sleep 4
 
 # run_init <hostname> [ENV=VALUE ...] -> sets DECISION, CONF (replicaof line or empty), TOOK
+STATE_DIR=""   # when set, mounted at /data so the init sees persisted Sentinel state
 run_init() {
   local hn="$1"; shift; local envs=(); for e in "$@"; do envs+=(-e "$e"); done
-  local out; out="$(docker run --rm --network "$NET" --hostname "$hn" -e REDIS_PASSWORD=pw -e POD_IP=10.0.0.9 "${envs[@]}" \
+  local vols=(); [ -n "$STATE_DIR" ] && vols=(-v "$STATE_DIR:/data")
+  # ${vols[@]+"${vols[@]}"}: an empty array is an unbound variable under set -u in bash 3.2 (macOS)
+  local out; out="$(docker run --rm --network "$NET" --hostname "$hn" -e REDIS_PASSWORD=pw -e POD_IP=10.0.0.9 "${envs[@]}" ${vols[@]+"${vols[@]}"} \
       -v "$TMP/init.sh:/init.sh:ro" -v "$TMP/redis.conf:/tmp/redis.conf:ro" -v "$TMP/sentinel.conf:/tmp/sentinel.conf:ro" "$RIMG" \
       sh -c 'mkdir -p /etc/redis; t0=$(date +%s); sh /init.sh 2>&1 | grep "config-init:" | tail -1; echo "TOOK=$(( $(date +%s) - t0 ))"; echo "CONF=$(grep -E "^replicaof" /etc/redis/redis.conf || true)"')"
   DECISION="$(echo "$out" | grep 'config-init:' | sed 's/.*config-init: //')"; TOOK="$(echo "$out" | sed -n 's/^TOOK=//p')"; CONF="$(echo "$out" | sed -n 's/^CONF=//p')"
@@ -88,5 +96,34 @@ run_init s-master SELF_FQDN="s-master-$P" SENTINEL_HOSTS="s-sentinel-$P" SELF_GR
 echo "[S8] Sentinel names a dead master that is not me"; docker start "s-master-$P" >/dev/null; sleep 9; docker stop "s-replica-$P" >/dev/null
 run_init s-third SELF_FQDN="s-third-$P" SENTINEL_HOSTS="s-sentinel-$P"
 [[ "$CONF" == "replicaof s-master-$P 6379" && "$TOOK" -le 30 ]] && ok "waited for the switch, then followed" || ko "S8"
+
+
+echo "[S9] persisted Sentinel state survives a restart"
+mkdir -p "$TMP/state"; chmod 777 "$TMP/state"
+# boot 1 inside one container, like a pod: init (renders into /data), then Sentinel on the persisted file.
+# The template's master name does not resolve in docker, so point the persisted file at the docker master.
+docker run -d --name "s-persist-$P" --network "$NET" --hostname s-persist -e REDIS_PASSWORD=pw -e SELF_FQDN="s-persist-$P" -e SENTINEL_HOSTS="s-sentinel-$P" \
+  -v "$TMP/state:/data" -v "$TMP/init.sh:/init.sh:ro" -v "$TMP/redis.conf:/tmp/redis.conf:ro" -v "$TMP/sentinel.conf:/tmp/sentinel.conf:ro" "$RIMG" \
+  sh -c "mkdir -p /etc/redis; export POD_IP=\$(hostname -i); sh /init.sh; sed -i 's|^sentinel monitor mymaster .*|sentinel monitor mymaster s-master-$P 6379 1|' /data/sentinel/sentinel.conf; exec redis-sentinel /data/sentinel/sentinel.conf" >/dev/null
+sleep 5
+myid1="$(docker exec "s-persist-$P" redis-cli -p 26379 -a pw --no-auth-warning SENTINEL MYID)"; ip1="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "s-persist-$P")"
+docker logs "s-persist-$P" 2>&1 | grep -c "no persisted Sentinel state — rendering" >/dev/null && ok "first boot rendered from the template" || ko "S9 first boot did not render"
+[ -n "$myid1" ] && grep -q "^sentinel myid $myid1" "$TMP/state/sentinel/sentinel.conf" && ok "Sentinel wrote its runid into the persisted file" || ko "S9 no myid persisted"
+docker restart "s-persist-$P" >/dev/null; sleep 5
+myid2="$(docker exec "s-persist-$P" redis-cli -p 26379 -a pw --no-auth-warning SENTINEL MYID)"
+[ -n "$myid2" ] && [ "$myid1" = "$myid2" ] && ok "same runid after the restart ($myid1)" || ko "S9 runid changed: $myid1 -> $myid2"
+docker logs "s-persist-$P" 2>&1 | grep -c "persisted Sentinel state found" >/dev/null && ok "second boot kept the persisted state" || ko "S9 second boot did not detect persisted state"
+[ "$(grep -c '^sentinel announce-ip ' "$TMP/state/sentinel/sentinel.conf")" = 1 ] && [ "$(grep -c '^sentinel down-after-milliseconds mymaster ' "$TMP/state/sentinel/sentinel.conf")" = 1 ] && ok "tunables re-applied exactly once" || ko "S9 duplicated or missing tunables"
+grep -q "^sentinel monitor mymaster s-master-$P 6379 1" "$TMP/state/sentinel/sentinel.conf" && ok "the master line (state) was kept" || ko "S9 master line lost"
+peer_ids="$(docker logs "s-sentinel-$P" 2>&1 | grep -E "\+sentinel sentinel [0-9a-f]+ $ip1 26379" | sed -E 's/.*\+sentinel sentinel ([0-9a-f]+) .*/\1/' | sort -u)"
+[ "$(echo "$peer_ids" | grep -c .)" = 1 ] && [ "$peer_ids" = "$myid1" ] && ok "the peer knows exactly one identity for that address" || ko "S9 peer saw identities: $peer_ids"
+docker stop "s-persist-$P" >/dev/null
+
+echo "[S10] cold start with persisted state: no Sentinel reachable"
+STATE_DIR="$TMP/state"; run_init s-third SELF_FQDN="s-third-$P" SENTINEL_HOSTS="no-such-x-$P"
+[[ "$DECISION" == *bootstrap* && "$CONF" == "replicaof s-master-$P 6379" && "$TOOK" -le 5 ]] && ok "follows the last recorded master" || ko "S10a"
+run_init s-master SELF_FQDN="s-master-$P" SENTINEL_HOSTS="no-such-x-$P"
+[[ "$DECISION" == *bootstrap* && -z "$CONF" && "$TOOK" -le 5 ]] && ok "leads when it was the last recorded master" || ko "S10b"
+STATE_DIR=""
 
 if [ "$fail" = 0 ]; then echo "config-init-test: PASS"; else echo "config-init-test: FAIL" >&2; exit 1; fi
