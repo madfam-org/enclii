@@ -115,34 +115,38 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
    the proxy too (reads included), consistent with `min-replicas-to-write 1`,
    which already refuses writes in that state. Re-route after a promotion is
    ~1 s later than before.
-2. ✅ 2026-09-19, enclii#575 (**merge while watching: it rolls `redis-ha` and
-   will fail over up to three times**) — **`config-init` asks Sentinel who the
-   master is** instead of assuming ordinal 0, and every pod now announces its
-   stable headless DNS name (`replica-announce-ip redis-ha-N.redis-ha-headless…`)
-   so Sentinel tracks pods by a name it can re-resolve (a restarted pod, whose
-   IP changes, is never an orphan; after a promotion
-   `SENTINEL get-master-addr-by-name` answers with that name). The boot
-   decision, from the first Sentinel that answers (`redis-sentinel` Service,
-   then the three pod names):
-   - Sentinel names **another** pod and it answers `PING` → `replicaof` it;
-   - Sentinel names **this** pod → wait ~10 s (down-after 5 s + an election) and
-     ask again, so a fast restart never races a promotion; still this pod →
-     start as master;
-   - Sentinel names a master that does **not** answer (mid-failover, or this
-     pod's own pre-#575 IP) → wait up to 20 s for the switch, then follow
-     whatever Sentinel says (harmless: Sentinel re-points a known pod);
-   - no Sentinel reachable → the old bootstrap order (ordinal 0 leads).
-   Verified offline in docker (`redis:7-alpine`, one Sentinel, quorum 1,
-   down-after 2 s) for all four branches plus the transition case; the decision
-   is printed by the init container: `kubectl logs -n data redis-ha-N -c config-init`.
-   **What the roll does:** pods restart `2 → 1 → 0`; the master is `redis-ha-2`
-   today, so the first restart already causes a failover, and each pod that is
-   master when its turn comes causes another (up to three, ~6 s each, all
-   idle). After the roll every pod is known by hostname, which completes the
-   transition. **Known gap (not in #575):** Sentinel state lives in the
-   rendered `sentinel.conf` (emptyDir), so after a *cold start of all three
-   pods* the set forgets who was master and ordinal 0 leads with whatever data
-   it has — persist `sentinel.conf` on the PVC to close it.
+2. ✅ 2026-09-19, enclii#575 — **`config-init` asks Sentinel who the master is**
+   and every pod announces its stable headless DNS name
+   (`replica-announce-ip redis-ha-N.redis-ha-headless…`), so Sentinel tracks
+   pods by a name it can re-resolve. Boot decision, from the first Sentinel that
+   answers: another live pod → `replicaof` it; this pod → wait ~10 s and re-ask
+   before starting as master; an unreachable named master → wait up to 20 s;
+   no Sentinel → the old bootstrap order (ordinal 0 leads). The decision is
+   printed by the init container (`kubectl logs -n data redis-ha-N -c config-init`).
+   **The 02:02 roll (2026-09-19, UTC 08:06–08:08) converged healthy — every pod
+   is now known by hostname — but exposed three defects, so it counts as a
+   failed drill: backend gap 64 s (target < 20 s).**
+   - *Stale Sentinel entries bite.* A slave entry by old IP left from the first
+     drill (next to the same pod's hostname entry) made Sentinel send the
+     just-promoted master `REPLICAOF` **itself** one second after promoting it;
+     a second failover attempt then aborted (`-failover-abort-no-good-slave`).
+     Pod IPs are recycled, so this can recur until the stale entries are
+     purged: run `SENTINEL RESET mymaster` on each Sentinel, one at a time,
+     30 s apart, then `SENTINEL CKQUORUM mymaster` on each (commands in the
+     pre-cutover checks). Longer term, persist Sentinel state (`myid` and the
+     known instances) on the PVC so restarts stop minting new runids.
+   - *The Sentinel-aware path never ran in-cluster.* All three inits logged
+     `no Sentinel reachable` and fell back to the bootstrap order, because a
+     brand-new pod's connections are refused for minutes on two older nodes
+     (see *Proxy backend unreachable*). Follow-up: retry the lookup for up to
+     ~150 s before falling back; the node-level fix stands.
+   - *A freshly resolved slot is routable before its first check.* HAProxy
+     marks a server `UP/READY` when its DNS record (re)appears and only marks
+     it DOWN after `fall` failed checks (~2 s for a replica). Follow-up:
+     `init-state down` on the `server-template` (HAProxy 3.0) so a new record
+     needs `rise` passing checks first.
+   Also seen: the leader election took 10 s (0.15 s in the first drill) with a
+   dead Sentinel runid still counted as a voter — the reset above clears it.
 3. **Node placement.** One pod landed on an untainted CI builder node (the
    manifest's "builder nodes carry NoSchedule" comment does not hold for every
    builder); prefer non-builder nodes with `nodeAffinity`, or taint the node.
