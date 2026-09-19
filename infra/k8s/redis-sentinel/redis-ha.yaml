@@ -182,7 +182,7 @@ spec:
               # so after a failover a restarting redis-ha-0 booted as a SECOND master until
               # Sentinel converted it (~15 s; the first drill showed the proxy with two UP
               # backends for ~13 s). Now each pod asks a live Sentinel who the master is.
-              # SELF_FQDN / SENTINEL_HOSTS / SELF_GRACE exist only so this script can be
+              # SELF_FQDN / SENTINEL_HOSTS / SELF_GRACE / LOOKUP_WAIT exist only so this script can be
               # exercised outside the cluster (docs/runbooks/redis-sentinel-migration.md).
               HEADLESS="redis-ha-headless.data.svc.cluster.local"
               ME="${SELF_FQDN:-$(hostname).${HEADLESS}}"
@@ -197,25 +197,37 @@ spec:
               echo "replica-announce-port 6379"              >> /etc/redis/redis.conf
 
               rcli() { timeout 3 redis-cli -a "${REDIS_PASSWORD}" --no-auth-warning "$@" 2>/dev/null; }
-              # Prints "<host> <port>" from the first Sentinel that answers.
+              SERVICE="redis-sentinel.data.svc.cluster.local"
+              # Sets MASTER_HOST/MASTER_PORT from the first Sentinel that answers and returns 0.
+              # Returns 1 otherwise, with PEER_SEEN=1 when at least one peer pod NAME resolved
+              # (a refused or hanging connection to an existing peer is the new-pod
+              # NetworkPolicy admission lag seen on 2026-09-19, not a cold start).
               sentinel_master() {
+                MASTER_HOST=""; MASTER_PORT=""; PEER_SEEN=0
                 for h in ${SENTINELS}; do
                   [ "$h" = "${ME}" ] && continue
-                  reply="$(rcli -h "$h" -p 26379 SENTINEL get-master-addr-by-name mymaster || true)"
-                  host="$(printf '%s\n' "${reply}" | sed -n 1p)"
-                  port="$(printf '%s\n' "${reply}" | sed -n 2p)"
+                  out="$(timeout 3 redis-cli -h "$h" -p 26379 -a "${REDIS_PASSWORD}" --no-auth-warning SENTINEL get-master-addr-by-name mymaster 2>&1 || true)"
+                  case "${out}" in
+                    *"does not resolve"*|*"no usable address"*|*"not known"*) continue;;   # musl: "Name has no usable address"
+                    *"Could not connect"*|*"Connection refused"*|*"timed out"*|"") [ "$h" = "${SERVICE}" ] || PEER_SEEN=1; continue;;
+                  esac
+                  [ "$h" = "${SERVICE}" ] || PEER_SEEN=1
+                  host="$(printf '%s\n' "${out}" | sed -n 1p)"
+                  port="$(printf '%s\n' "${out}" | sed -n 2p)"
                   case "${host}" in ''|'(nil)'|*empty*|*ERR*|*NOAUTH*) continue;; esac
                   [ -n "${port}" ] || continue
-                  echo "${host} ${port}"; return 0
+                  MASTER_HOST="${host}"; MASTER_PORT="${port}"; return 0
                 done
                 return 1
               }
               alive() { rcli -h "$1" -p "$2" PING | grep -qE 'PONG|LOADING'; }
 
-              decision=""; self_seen=0; deadline=$(( $(date +%s) + 20 ))
+              decision=""; self_seen=0; waited=0
+              deadline=$(( $(date +%s) + 20 ))                             # unreachable named master
+              lookup_deadline=$(( $(date +%s) + ${LOOKUP_WAIT:-150} ))     # peers exist but none answers
               while [ -z "${decision}" ]; do
-                if m="$(sentinel_master)"; then
-                  host="${m% *}"; port="${m#* }"
+                if sentinel_master; then
+                  host="${MASTER_HOST}"; port="${MASTER_PORT}"
                   if [ "${host}" = "${ME}" ] || [ "${host}" = "${POD_IP}" ]; then
                     # Sentinel still names this pod. Its previous incarnation may have just
                     # died: give Sentinel down-after (5 s) plus an election to fail over
@@ -225,13 +237,22 @@ spec:
                   elif alive "${host}" "${port}"; then
                     decision="replica ${host} ${port}"
                   elif [ "$(date +%s)" -ge "${deadline}" ]; then
-                    # Sentinel keeps naming an unreachable master (mid-failover, or this
-                    # pod's own pre-2026-09-19 IP): following it is harmless, Sentinel
-                    # re-points us the moment it switches.
+                    # Sentinel keeps naming an unreachable master (mid-failover): following
+                    # it is harmless, Sentinel re-points us the moment it switches.
                     decision="replica ${host} ${port}"
                   fi
-                else
+                elif [ "${PEER_SEEN}" = "0" ]; then
+                  # No peer pod name resolves: cold start of the whole set, nobody to ask.
                   decision="bootstrap"
+                elif [ "$(date +%s)" -ge "${lookup_deadline}" ]; then
+                  echo "config-init: peers exist but no Sentinel answered in ${LOOKUP_WAIT:-150}s — falling back"
+                  decision="bootstrap"
+                else
+                  # Peers exist but refuse or hang: in the 2026-09-19 roll every new pod hit
+                  # this (its IP not yet admitted by NetworkPolicy enforcement on two nodes)
+                  # and fell back at once, which is how the Sentinel-aware path never ran.
+                  waited=$(( waited + 1 ))
+                  [ $(( waited % 10 )) -eq 0 ] && echo "config-init: peers exist but no Sentinel answers yet (${waited}s) — retrying"
                 fi
                 [ -n "${decision}" ] || sleep 1
               done
