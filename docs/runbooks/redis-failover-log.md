@@ -1,5 +1,11 @@
 # Redis Sentinel Failover Drill Log
 
+> **Boundary checkpoint (2026-09-19, platform-infra):** public-safe. This log
+> names pod ordinals, timings and Sentinel event names only — no pod IPs, node
+> identities, secret values or tunnel ids. Operator detail per drill lives in
+> `madfam-org/internal-devops` (`runbooks/redis-failover-log.md`). Policy:
+> [`PUBLIC_REPO_BOUNDARY.md`](../PUBLIC_REPO_BOUNDARY.md).
+
 > Last Updated: 2026-09-19
 > Owner: Platform Infra
 
