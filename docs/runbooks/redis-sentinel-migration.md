@@ -16,7 +16,7 @@
 > missing Enclii adapter gap.
 
 
-> Last Updated: 2026-09-18 (status + strategy revision; original 2026-04-17)
+> Last Updated: 2026-09-18 evening (proxy deployed; Sentinel quorum defect + fix; original 2026-04-17)
 > Owner: Platform Infra
 > Related: [P1.3 in 2026-04 Enclii remediation plan](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 
@@ -60,6 +60,60 @@ since held at 0 restarts. Sentinel HA is therefore now a **reliability upgrade**
 (survive a node/pod loss), not an incident remedy — do it deliberately, not
 reactively.
 
+### Where step 0 stands (2026-09-18, end of day)
+
+The proxy is **deployed and idle**: `redis-ha-proxy.data.svc.cluster.local:6379`,
+two HAProxy pods, ArgoCD Synced/Healthy (enclii#567 → #570), nothing routes
+through it yet. Its state is readable from its own logs, no exec needed:
+
+```bash
+kubectl logs -n data deploy/redis-ha-proxy --all-pods --tail=300 | grep -E 'is (UP|DOWN)|no server available'
+```
+
+| HAProxy log line | Meaning | Seen on 2026-09-18 |
+|---|---|---|
+| `redisN is UP, reason: Layer7 check passed` | that slot is the current master: AUTH, PING and `role:master` all passed, so the `${REDIS_PASSWORD}` expansion works | ✅ from both proxy pods, stable |
+| `redisN is DOWN, reason: Layer7 timeout … expect string 'role:master'` | the slot answered as a **replica** (`role:slave` never matches; HAProxy waits out `timeout check`). This is the *correct* verdict for a replica | ✅ for one replica, from one proxy pod only |
+| `redisN is DOWN, reason: Layer4 connection problem … Connection refused` | the proxy could not open TCP to that pod at all | ❌ both replicas from one proxy pod; one replica from the other |
+
+**Gate A — backend reachability: BLOCKED, needs node access.** Both replicas
+answer on 6379 inside their own network namespace (`kubectl port-forward` to
+each pod returns `NOAUTH`, i.e. Redis is listening), so the `Connection refused`
+is produced on the network path, not by Redis. NetworkPolicy here is enforced by
+k3s's embedded kube-router, which *rejects* (rather than drops) denied traffic,
+which is exactly a `Connection refused`. The two policies are correct and
+identical for all three pods (`redis-ha-network-policy` ingress from
+`app.kubernetes.io/name=redis-ha-proxy`; `redis-ha-proxy-network-policy` egress
+to `app.kubernetes.io/name=redis-ha`), the proxy resolves the right pod IPs
+(`server-template` logs them), and the master, under the same rules, is allowed.
+What remains is stale or partial kube-router ipset/chain state on the nodes,
+which can only be read and reset on the node itself; see
+[Proxy backend unreachable](#proxy-backend-unreachable-layer4-connection-refused).
+Until **every** replica shows the *Layer7* verdict from **both** proxy pods, a
+failover could promote a pod the proxy cannot reach, so no consumer may be
+pointed at the proxy.
+
+**Gate B — Sentinel quorum: DEFECT FOUND, fix in this PR, roll pending.** The
+Sentinels have never been able to see each other. `sentinel.conf` carried
+`sentinel announce-ip ${POD_IP}`, but `config-init` only copied the file and
+redis-sentinel does not expand environment variables, so every Sentinel
+announced the literal string `${POD_IP}`. Each peer logs
+`Failed to resolve hostname '${POD_IP}'` and cycles `+sentinel` /
+`+sentinel-invalid-addr` about once a second. With no Sentinel-to-Sentinel
+link the quorum of 2 is unreachable: **automatic failover has been impossible
+for the cluster's whole life.** (A manual `SENTINEL failover` would still have
+worked, which is why the acceptance criterion below now demands a pod kill, not
+a manual failover.) The fix renders `announce-ip` in `config-init` from the
+downward-API pod IP. Merging it rolls the StatefulSet (`redis-ha-2`, then `-1`,
+then `-0`); the last step restarts the current master while two repaired
+Sentinels are already up, so **the merge is itself the first real failover
+drill: do it while watching**, with the proxy logs and Sentinel logs open.
+
+**Also found:** `monitoring/prometheus` is in CrashLoopBackOff
+(`error loading config from /etc/prometheus/prometheus.yml`, thousands of
+restarts), so `RedisSentinelDown` / `RedisMasterDown` / `RedisReplicationLag`
+cannot fire today. Tracked separately; do not rely on alerts during the drill.
+
 ### Recommended approach — a master-routing layer, then URL-swap every consumer
 
 Instead of making eight mixed-language clients Sentinel-aware one by one, close
@@ -89,9 +143,14 @@ Two ways to build it:
 ### Corrected cutover plan
 
 0. **Build + chaos-test the master-routing proxy** — the gated first PR, and the
-   only genuinely new work. Acceptance: `redis-ha-proxy` serves writes;
-   `./scripts/redis-failover-chaos.sh` shows the proxy following the master
-   inside the failover window; a test client survives a `SENTINEL failover`.
+   only genuinely new work. Acceptance, in order (status above):
+   1. `SENTINEL CKQUORUM mymaster` answers `OK 3 usable Sentinels` from every pod;
+   2. both proxy pods log the master `UP` and **every** replica
+      `DOWN … Layer7 timeout` — never `Layer4`;
+   3. `./scripts/redis-failover-chaos.sh` (kills the master pod; it now
+      authenticates and understands hostname answers) passes, and the proxy logs
+      the promoted pod `UP` inside the failover window;
+   4. a test client connected through `redis-ha-proxy` survives that drill.
 1. **Canary the URL swap** on the lowest-traffic service (forgesight-api):
    `REDIS_URL` → `redis://:PASSWORD@redis-ha-proxy.data.svc.cluster.local:6379/0`;
    24h soak; rollback = revert the URL to `redis.data…`.
@@ -250,18 +309,35 @@ Repeat for each service in the [cutover order](#cutover-order) above.
 
 ### 1. Pre-cutover checks
 
+Sentinel has `requirepass`, so every `redis-cli` call needs `-a`. Use the
+container's own `$REDIS_PASSWORD` through `sh -c` so the secret is expanded
+inside the pod, never on the operator's machine.
+
 ```bash
-# Sentinel sees 3 Sentinels + 2 replicas + 1 master
+# Quorum — the only check that proves a failover CAN happen
+for i in 0 1 2; do
+  kubectl exec -n data redis-ha-$i -c sentinel -- \
+    sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning SENTINEL CKQUORUM mymaster'
+done
+# Expect from every pod: OK 3 usable Sentinels. Quorum and failover authorization can be reached
+
+# Sentinel sees 2 other Sentinels + 2 replicas
 kubectl exec -n data redis-ha-0 -c sentinel -- \
-    redis-cli -p 26379 SENTINEL master mymaster | grep -E 'num-other-sentinels|num-slaves'
+    sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning SENTINEL master mymaster' \
+  | grep -A1 -E '^(num-other-sentinels|num-slaves)$'
 # Expect: num-other-sentinels = 2, num-slaves = 2
+
+# Proxy view: master UP, replicas DOWN for Layer7 reasons only (see status above)
+kubectl logs -n data deploy/redis-ha-proxy --all-pods --tail=300 | grep -E 'is (UP|DOWN)'
 
 # Verify password works from outside the StatefulSet
 kubectl run -n data redis-test --rm -it --restart=Never \
     --image=docker.io/library/redis:7-alpine -- \
-    redis-cli -h redis-sentinel.data.svc.cluster.local -p 26379 \
+    redis-cli -h redis-sentinel.data.svc.cluster.local -p 26379 -a PASSWORD \
     SENTINEL get-master-addr-by-name mymaster
-# Expect: returns [IP, 6379]
+# Expect: the master's address and 6379. With `announce-hostnames yes` that is
+# the pod's headless DNS name for the configured master, or a pod IP after a
+# promotion — either is fine.
 ```
 
 ### 2. Update the service's secret
@@ -333,12 +409,20 @@ Symptom: alert `RedisSentinelDown` firing.
 # Check pod health
 kubectl get pods -n data -l app=redis-ha
 
-# Check Sentinel state on each pod
+# Check Sentinel state on each pod (authenticated: Sentinel has requirepass)
 for i in 0 1 2; do
   echo "--- redis-ha-$i ---"
   kubectl exec -n data redis-ha-$i -c sentinel -- \
-    redis-cli -p 26379 SENTINEL master mymaster | head -10
+    sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning SENTINEL CKQUORUM mymaster'
+  kubectl exec -n data redis-ha-$i -c sentinel -- \
+    sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning SENTINEL master mymaster' | head -10
 done
+
+# Peers announced as the literal string `${POD_IP}` (config-init did not render
+# announce-ip before 2026-09-18) can never be reached — fix the manifest, roll.
+kubectl logs -n data redis-ha-0 -c sentinel --tail=200 | grep -c 'sentinel-invalid-addr'
+# Expect: 0. Stale `${POD_IP}` peer entries left after the roll can be dropped
+# with `SENTINEL RESET mymaster`, one pod at a time, 30 s apart.
 ```
 
 ### Master loss recovery
@@ -348,17 +432,60 @@ Symptom: alert `RedisMasterDown` firing for > 30s.
 Sentinel should failover automatically. If it hasn't:
 
 ```bash
-# Force failover from any Sentinel
+# Force failover from any Sentinel (works without quorum — it does not prove
+# automatic failover works; CKQUORUM does)
 kubectl exec -n data redis-ha-0 -c sentinel -- \
-    redis-cli -p 26379 SENTINEL failover mymaster
+    sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning SENTINEL failover mymaster'
 
 # Verify new master
 kubectl exec -n data redis-ha-0 -c sentinel -- \
-    redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+    sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" --no-auth-warning SENTINEL get-master-addr-by-name mymaster'
 ```
 
 If forced failover fails, the cluster may be split-brained. Page platform-infra
 on-call; recovery may require manual reset-master + resync.
+
+### Proxy backend unreachable (Layer4 connection refused)
+
+Symptom: `kubectl logs -n data deploy/redis-ha-proxy` shows a slot
+`DOWN, reason: Layer4 connection problem, info: "Connection refused …"` for a
+pod that is `3/3 Running`.
+
+1. **Prove Redis is listening.** A port-forward enters the pod's own network
+   namespace and bypasses NetworkPolicy entirely:
+
+   ```bash
+   kubectl port-forward -n data pod/redis-ha-<n> 16379:6379 &
+   redis-cli -p 16379 PING        # NOAUTH = listening; "Connection refused" = the pod is the problem
+   ```
+
+2. **If it listens, the refusal is NetworkPolicy enforcement.** k3s's embedded
+   kube-router REJECTs denied traffic (ICMP port-unreachable, which clients
+   report as "Connection refused"). First diff the live policies against the
+   manifests:
+
+   ```bash
+   kubectl get netpol -n data redis-ha-network-policy redis-ha-proxy-network-policy -o yaml
+   ```
+
+   If they match, the per-node iptables/ipset state is stale. On the node that
+   hosts the *proxy* pod and on the node that hosts the *refused* pod
+   (break-glass; record it in `internal-devops`):
+
+   ```bash
+   sudo iptables-save | grep -E 'KUBE-(POD-FW|NWPLCY)' | grep -iE 'redis-ha'    # the pod chains
+   sudo iptables -t filter -nvL KUBE-POD-FW-<hash> --line-numbers              # policy jumps, then the final REJECT
+   sudo ipset list | grep -A15 -E 'KUBE-(SRC|DST)-'                            # expect all redis-ha pod IPs / both proxy pod IPs
+   sudo journalctl -u k3s -u k3s-agent --since '2 hours ago' | grep -iE 'network.?polic|ipset|iptables'
+   ```
+
+   An IP missing from a set, or sync errors in the journal, confirms it.
+   `systemctl restart k3s` (control plane) or `k3s-agent` (worker) rebuilds
+   kube-router's state without touching pods. Re-read the proxy logs: the slot
+   must move from `Layer4` to `Layer7 timeout` (replica) or `UP` (master).
+
+3. Rolling `redis-ha` (fresh pod IPs, fresh ipset entries) is the cheaper
+   experiment; the announce-ip fix roll doubles as it.
 
 ### Replication lag
 
@@ -379,14 +506,19 @@ during a large write burst.
 
 ## Validation — post-deploy
 
-Run the chaos script:
+Only after `SENTINEL CKQUORUM mymaster` is OK on every pod and the proxy shows
+no `Layer4` verdict (gates A and B above). Then run the chaos script, which
+kills the current master pod and polls Sentinel for the promotion:
 
 ```bash
+./scripts/redis-failover-chaos.sh --dry-run   # proves Sentinel auth + address mapping, deletes nothing
 ./scripts/redis-failover-chaos.sh
 ```
 
-Expected: failover completes in < 20s, master re-elects, exit code 0.
-Result appended to `docs/runbooks/redis-failover-log.md`.
+Expected: failover completes in < 20s, a *different* pod is master, the write
+probe succeeds, exit code 0, and `kubectl logs -n data deploy/redis-ha-proxy`
+shows the promoted slot `UP` within the same window. Result appended to
+`docs/runbooks/redis-failover-log.md`.
 
 ## See also
 

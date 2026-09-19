@@ -14,7 +14,13 @@
 # Prerequisites:
 #   - kubectl context points at the target cluster (production by default)
 #   - The `redis-ha` StatefulSet in namespace `data` is Synced+Healthy in ArgoCD
+#   - `SENTINEL CKQUORUM mymaster` answers OK from every pod (otherwise no
+#     automatic failover can happen and this drill fails by design)
 #   - jq, date (GNU or BSD), timeout
+#
+# Sentinel and Redis are password-protected (requirepass injected by
+# config-init). The script authenticates with the containers' OWN
+# $REDIS_PASSWORD env var, so the secret never leaves the cluster.
 #
 # The script:
 #   1. Asks Sentinel who the current master is.
@@ -68,16 +74,19 @@ require jq
 # ---------------------------------------------------------------------------
 # Helper: run a redis-cli command inside the sentinel container of a given pod.
 # Falls back across all 3 pods in case the target pod is the one being killed.
+# Sentinel has `requirepass`, so authenticate with the container's own
+# REDIS_PASSWORD (expanded INSIDE the container by `sh -c`, never locally).
 # ---------------------------------------------------------------------------
 sentinel_cmd() {
-  local -r args=("$@")
   local pod
   for i in 0 1 2; do
     pod="${STATEFULSET}-${i}"
     if kubectl -n "${NAMESPACE}" get pod "${pod}" \
          -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running; then
+      # shellcheck disable=SC2016  # $0/$@/$REDIS_PASSWORD expand INSIDE the container, on purpose
       if result="$(kubectl -n "${NAMESPACE}" exec "${pod}" -c sentinel -- \
-                    redis-cli -p "${SENTINEL_PORT}" "${args[@]}" 2>/dev/null)"; then
+                    sh -c 'exec redis-cli -p "$0" -a "$REDIS_PASSWORD" --no-auth-warning "$@"' \
+                    "${SENTINEL_PORT}" "$@" 2>/dev/null)"; then
         printf '%s' "${result}"
         return 0
       fi
@@ -87,26 +96,41 @@ sentinel_cmd() {
 }
 
 # ---------------------------------------------------------------------------
+# Helper: map a Sentinel-reported master address to a pod name. With
+# `sentinel announce-hostnames yes` Sentinel answers with the pod's headless
+# DNS name (redis-ha-N.redis-ha-headless...) for the configured master and
+# with a pod IP for a promoted replica, so accept either form.
+# ---------------------------------------------------------------------------
+addr_to_pod() {
+  local -r addr="$1"
+  local pod pod_ip
+  if [[ "${addr}" =~ ^(${STATEFULSET}-[0-9]+)\. ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  for i in 0 1 2; do
+    pod="${STATEFULSET}-${i}"
+    pod_ip="$(kubectl -n "${NAMESPACE}" get pod "${pod}" \
+                -o jsonpath='{.status.podIP}' 2>/dev/null || true)"
+    if [[ -n "${pod_ip}" && "${pod_ip}" == "${addr}" ]]; then
+      printf '%s' "${pod}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # 1. Who's the master right now?
 # ---------------------------------------------------------------------------
 log "Querying Sentinel for current master of '${MASTER_NAME}'..."
 master_info="$(sentinel_cmd SENTINEL get-master-addr-by-name "${MASTER_NAME}")"
-master_ip="$(printf '%s\n' "${master_info}" | head -1)"
-[[ -n "${master_ip}" ]] || die "Sentinel returned empty master address"
-log "Current master IP: ${master_ip}"
+master_addr="$(printf '%s\n' "${master_info}" | head -1)"
+[[ -n "${master_addr}" ]] || die "Sentinel returned empty master address"
+log "Current master address: ${master_addr}"
 
-# Map IP -> pod name by listing all redis-ha pods and finding the match.
-old_master=""
-for i in 0 1 2; do
-  pod="${STATEFULSET}-${i}"
-  pod_ip="$(kubectl -n "${NAMESPACE}" get pod "${pod}" \
-              -o jsonpath='{.status.podIP}' 2>/dev/null || true)"
-  if [[ "${pod_ip}" == "${master_ip}" ]]; then
-    old_master="${pod}"
-    break
-  fi
-done
-[[ -n "${old_master}" ]] || die "could not map master IP ${master_ip} to a pod"
+old_master="$(addr_to_pod "${master_addr}")" \
+  || die "could not map master address '${master_addr}' to a pod (Sentinel answered: ${master_info})"
 log "Current master pod: ${old_master}"
 
 if [[ "${DRY_RUN}" == "true" ]]; then
@@ -133,21 +157,15 @@ while (( elapsed < MAX_WAIT_SECONDS )); do
   sleep 1
   elapsed=$(( $(date +%s) - start_epoch ))
 
-  # Query any surviving Sentinel.
+  # Query any surviving Sentinel. Compare POD NAMES, not addresses: the answer
+  # switches from hostname to IP on promotion, and the killed master comes back
+  # under the same hostname.
   if new_info="$(sentinel_cmd SENTINEL get-master-addr-by-name "${MASTER_NAME}" 2>/dev/null)"; then
-    new_ip="$(printf '%s\n' "${new_info}" | head -1)"
-    if [[ -n "${new_ip}" && "${new_ip}" != "${master_ip}" ]]; then
-      # Map new IP back to pod name.
-      for i in 0 1 2; do
-        pod="${STATEFULSET}-${i}"
-        pod_ip="$(kubectl -n "${NAMESPACE}" get pod "${pod}" \
-                    -o jsonpath='{.status.podIP}' 2>/dev/null || true)"
-        if [[ "${pod_ip}" == "${new_ip}" ]]; then
-          new_master="${pod}"
-          break
-        fi
-      done
-      [[ -n "${new_master}" ]] && break
+    new_addr="$(printf '%s\n' "${new_info}" | head -1)"
+    if [[ -n "${new_addr}" ]] && candidate="$(addr_to_pod "${new_addr}")" \
+       && [[ "${candidate}" != "${old_master}" ]]; then
+      new_master="${candidate}"
+      break
     fi
   fi
 
@@ -171,17 +189,16 @@ else
   probe_key="chaos-probe-$(date +%s)"
   probe_val="ok-${RANDOM}"
 
-  # Pull password from the redis-auth secret.
-  redis_auth="$(kubectl -n "${NAMESPACE}" get secret redis-auth \
-                      -o jsonpath='{.data.redis-password}' | base64 -d)"
-
+  # Authenticate with the redis container's own REDIS_PASSWORD (no secret read).
   write_ok="false"
+  # shellcheck disable=SC2016  # $0/$@/$REDIS_PASSWORD expand INSIDE the container, on purpose
   if kubectl -n "${NAMESPACE}" exec "${new_master}" -c redis -- \
-       redis-cli -a "${redis_auth}" -p "${REDIS_PORT}" \
-       SET "${probe_key}" "${probe_val}" EX 60 >/dev/null 2>&1; then
+       sh -c 'exec redis-cli -p "$0" -a "$REDIS_PASSWORD" --no-auth-warning SET "$1" "$2" EX 60' \
+       "${REDIS_PORT}" "${probe_key}" "${probe_val}" >/dev/null 2>&1; then
+    # shellcheck disable=SC2016  # $0/$@/$REDIS_PASSWORD expand INSIDE the container, on purpose
     read_val="$(kubectl -n "${NAMESPACE}" exec "${new_master}" -c redis -- \
-                  redis-cli -a "${redis_auth}" -p "${REDIS_PORT}" \
-                  GET "${probe_key}" 2>/dev/null || true)"
+                  sh -c 'exec redis-cli -p "$0" -a "$REDIS_PASSWORD" --no-auth-warning GET "$1"' \
+                  "${REDIS_PORT}" "${probe_key}" 2>/dev/null || true)"
     [[ "${read_val}" == "${probe_val}" ]] && write_ok="true"
   fi
 

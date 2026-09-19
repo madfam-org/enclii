@@ -75,9 +75,15 @@ data:
     sentinel failover-timeout mymaster 18000
     sentinel parallel-syncs mymaster 1
 
-    # Auth is injected at pod startup by the init container (sentinel auth-pass).
-    # Announce pod IP so other Sentinels can reach us on the pod network.
-    sentinel announce-ip ${POD_IP}
+    # Auth (sentinel auth-pass / requirepass) AND `sentinel announce-ip <pod IP>`
+    # are appended at pod startup by the config-init container. announce-ip
+    # cannot live in this file: redis-sentinel does not expand environment
+    # variables in its config, so the literal `${POD_IP}` this file carried from
+    # 2026-04 to 2026-09-18 was announced verbatim. Every peer then logged
+    # `Failed to resolve hostname '${POD_IP}'` and cycled
+    # `+sentinel` / `+sentinel-invalid-addr`, no Sentinel could reach another,
+    # and the quorum of 2 (hence automatic failover) was unreachable for the
+    # cluster's whole life. See docs/runbooks/redis-sentinel-migration.md.
     sentinel announce-port 26379
 
     # Resolve hostnames (Sentinel hands these to clients on failover discovery).
@@ -164,6 +170,12 @@ spec:
               echo "sentinel auth-pass mymaster ${REDIS_PASSWORD}" >> /etc/redis/sentinel.conf
               echo "requirepass ${REDIS_PASSWORD}"           >> /etc/redis/sentinel.conf
 
+              # Announce this pod's IP to the peer Sentinels. POD_IP comes from
+              # the downward API (status.podIP); redis-sentinel does not expand
+              # env vars in its config file, so it has to be rendered here.
+              [ -n "${POD_IP:-}" ] || { echo "config-init: POD_IP is empty" >&2; exit 1; }
+              echo "sentinel announce-ip ${POD_IP}"          >> /etc/redis/sentinel.conf
+
               # Replicas follow redis-ha-0 on start. Sentinel will re-configure
               # `replicaof` dynamically after the first failover.
               if [ "$(hostname)" != "redis-ha-0" ]; then
@@ -171,6 +183,10 @@ spec:
                   >> /etc/redis/redis.conf
               fi
           env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
