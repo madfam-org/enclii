@@ -75,6 +75,7 @@ kubectl logs -n data deploy/redis-ha-proxy --all-pods --tail=300 | grep -E 'is (
 | `redisN is UP, reason: Layer7 check passed` | that slot is the current master: AUTH, PING and `role:master` all passed, so the `${REDIS_PASSWORD}` expansion works | ✅ from both proxy pods, stable |
 | `redisN is DOWN, reason: Layer7 timeout … expect string 'role:master'` | the slot answered as a **replica** (`role:slave` never matches; HAProxy waits out `timeout check`). This is the *correct* verdict for a replica | ✅ for one replica, from one proxy pod only |
 | `redisN is DOWN, reason: Layer4 connection problem … Connection refused` | the proxy could not open TCP to that pod at all | ❌ both replicas from one proxy pod; one replica from the other |
+| `redisN is DOWN, reason: Layer7 timeout … at step 8 of tcp-check (expect regex)` | the slot answered `role:master` but has **no connected replica**: the previous master booting again after a failover, or a set that lost both replicas. Redis refuses writes there anyway (`min-replicas-to-write 1`) | since enclii#574 |
 
 **2026-09-19 00:24–00:31 (Mexico City) — the drill happened; gates A and B PASS.**
 The owner merged enclii#571 while watching and ArgoCD rolled
@@ -102,11 +103,18 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
 
 **Follow-ups before the canary (small, in priority order):**
 
-1. **Close the dual-master window in the proxy check.** Add
-   `tcp-check expect rstring connected_slaves:[1-9]` after the `role:master`
-   expect: a just-restarted stale master has 0 replicas (and already refuses
-   writes through `min-replicas-to-write 1`), while the real master gains its
-   first replica within ~1 s of promotion. Cost: ~1 s later re-route.
+1. ✅ 2026-09-19, enclii#574 — **the proxy also requires `connected_slaves` ≥ 1**
+   (`tcp-check expect rstring connected_slaves:[1-9]` right after the
+   `role:master` expect; consecutive expects match the same `INFO replication`
+   answer). A just-restarted stale master has 0 replicas, the real master
+   gains its first within ~1 s of promotion, so the proxy never has two `UP`
+   backends. Verified offline against a real master, replica and standalone
+   Redis in docker (`haproxy:3.0-alpine`): the standalone fails at step 8, the
+   master goes DOWN when its only replica stops and UP again when it returns.
+   **Consequence to know:** losing *both* replicas now takes the master DOWN in
+   the proxy too (reads included), consistent with `min-replicas-to-write 1`,
+   which already refuses writes in that state. Re-route after a promotion is
+   ~1 s later than before.
 2. ✅ 2026-09-19, enclii#575 (**merge while watching: it rolls `redis-ha` and
    will fail over up to three times**) — **`config-init` asks Sentinel who the
    master is** instead of assuming ordinal 0, and every pod now announces its
