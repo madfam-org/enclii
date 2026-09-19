@@ -16,7 +16,7 @@
 > missing Enclii adapter gap.
 
 
-> Last Updated: 2026-09-18 evening (proxy deployed; Sentinel quorum defect + fix; original 2026-04-17)
+> Last Updated: 2026-09-19 (first automatic failover drill PASSED; gates A + B closed; original 2026-04-17)
 > Owner: Platform Infra
 > Related: [P1.3 in 2026-04 Enclii remediation plan](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 
@@ -76,43 +76,46 @@ kubectl logs -n data deploy/redis-ha-proxy --all-pods --tail=300 | grep -E 'is (
 | `redisN is DOWN, reason: Layer7 timeout … expect string 'role:master'` | the slot answered as a **replica** (`role:slave` never matches; HAProxy waits out `timeout check`). This is the *correct* verdict for a replica | ✅ for one replica, from one proxy pod only |
 | `redisN is DOWN, reason: Layer4 connection problem … Connection refused` | the proxy could not open TCP to that pod at all | ❌ both replicas from one proxy pod; one replica from the other |
 
-**Gate A — backend reachability: BLOCKED, needs node access.** Both replicas
-answer on 6379 inside their own network namespace (`kubectl port-forward` to
-each pod returns `NOAUTH`, i.e. Redis is listening), so the `Connection refused`
-is produced on the network path, not by Redis. NetworkPolicy here is enforced by
-k3s's embedded kube-router, which *rejects* (rather than drops) denied traffic,
-which is exactly a `Connection refused`. The two policies are correct and
-identical for all three pods (`redis-ha-network-policy` ingress from
-`app.kubernetes.io/name=redis-ha-proxy`; `redis-ha-proxy-network-policy` egress
-to `app.kubernetes.io/name=redis-ha`), the proxy resolves the right pod IPs
-(`server-template` logs them), and the master, under the same rules, is allowed.
-What remains is stale or partial kube-router ipset/chain state on the nodes,
-which can only be read and reset on the node itself; see
-[Proxy backend unreachable](#proxy-backend-unreachable-layer4-connection-refused).
-Until **every** replica shows the *Layer7* verdict from **both** proxy pods, a
-failover could promote a pod the proxy cannot reach, so no consumer may be
-pointed at the proxy.
+**2026-09-19 00:24–00:31 (Mexico City) — the drill happened; gates A and B PASS.**
+The owner merged enclii#571 while watching and ArgoCD rolled
+`redis-ha-2 → -1 → -0`. Timeline (UTC, from the Sentinel, Redis and HAProxy logs):
 
-**Gate B — Sentinel quorum: DEFECT FOUND, fix in this PR, roll pending.** The
-Sentinels have never been able to see each other. `sentinel.conf` carried
-`sentinel announce-ip ${POD_IP}`, but `config-init` only copied the file and
-redis-sentinel does not expand environment variables, so every Sentinel
-announced the literal string `${POD_IP}`. Each peer logs
-`Failed to resolve hostname '${POD_IP}'` and cycles `+sentinel` /
-`+sentinel-invalid-addr` about once a second. With no Sentinel-to-Sentinel
-link the quorum of 2 is unreachable: **automatic failover has been impossible
-for the cluster's whole life.** (A manual `SENTINEL failover` would still have
-worked, which is why the acceptance criterion below now demands a pod kill, not
-a manual failover.) The fix renders `announce-ip` in `config-init` from the
-downward-API pod IP. Merging it rolls the StatefulSet (`redis-ha-2`, then `-1`,
-then `-0`); the last step restarts the current master while two repaired
-Sentinels are already up, so **the merge is itself the first real failover
-drill: do it while watching**, with the proxy logs and Sentinel logs open.
+| t | event |
+|---|---|
+| 06:28:22 | `redis-ha-2` restarts; its Sentinel announces a real IP; peers log `+sentinel … 26379` with no `invalid-addr` |
+| 06:28:57 | `redis-ha-1` restarts, same |
+| 06:29:11 | the roll terminates `redis-ha-0` (master); replicas log `Reconnecting to MASTER` |
+| 06:29:16.3 | both repaired Sentinels: `+sdown master`; 06:29:16.43 `+odown master … #quorum 2/2` → `+try-failover` → `+vote-for-leader` → `+elected-leader` |
+| 06:29:16.7 | `redis-ha-2`: `MASTER MODE enabled` (promoted) |
+| 06:29:17.4 | `+switch-master mymaster` published; `redis-ha-1` reconfigured (`REPLICAOF`) with a **partial** resync (158 bytes of backlog, no data loss) |
+| 06:29:18.7 | **both proxy pods mark the promoted slot `UP`** (Layer7 check passed). Backend gap 06:29:13 → 06:29:18.7 ≈ 5 s |
+| 06:29:16.7 → 06:29:31.7 | the restarted `redis-ha-0` boots as a *second master* (config-init writes no `replicaof` for ordinal 0) until Sentinel's `+convert-to-slave`; the proxy had two `UP` backends for ~13 s (follow-up 1) |
+| 06:29:36.9 | `redis-ha-0` full resync done; the master reports 2 connected replicas |
 
-**Also found:** `monitoring/prometheus` is in CrashLoopBackOff
-(`error loading config from /etc/prometheus/prometheus.yml`, thousands of
-restarts), so `RedisSentinelDown` / `RedisMasterDown` / `RedisReplicationLag`
-cannot fire today. Tracked separately; do not rely on alerts during the drill.
+Result: **automatic failover in ≈6 s from master loss to `+switch-master`, ≈7.5 s
+to proxy re-route** (target < 20 s). After the roll the proxy reaches **all
+three** pods from **both** proxy pods (master `UP`, both replicas
+`Layer7 timeout`, no `Layer4`), so gate A closed as well: the refusals were
+per-node NetworkPolicy enforcement state tied to the old pod IPs, and fresh
+pods cleared it. Sentinels: 0 `invalid-addr`, each knows its two peers by IP.
+Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
+
+**Follow-ups before the canary (small, in priority order):**
+
+1. **Close the dual-master window in the proxy check.** Add
+   `tcp-check expect rstring connected_slaves:[1-9]` after the `role:master`
+   expect: a just-restarted stale master has 0 replicas (and already refuses
+   writes through `min-replicas-to-write 1`), while the real master gains its
+   first replica within ~1 s of promotion. Cost: ~1 s later re-route.
+2. **Stop ordinal 0 from booting as a master after a failover.** `config-init`
+   should ask a Sentinel for the current master
+   (`SENTINEL get-master-addr-by-name mymaster`) and write `replicaof <master>`
+   unless the pod *is* the master (the DandyDeveloper chart's approach).
+3. **Node placement.** One pod landed on an untainted CI builder node (the
+   manifest's "builder nodes carry NoSchedule" comment does not hold for every
+   builder); prefer non-builder nodes with `nodeAffinity`, or taint the node.
+4. `monitoring/prometheus` was down during the drill (fix: enclii#572); read
+   nothing into "no alerts fired".
 
 ### Recommended approach — a master-routing layer, then URL-swap every consumer
 
@@ -144,13 +147,16 @@ Two ways to build it:
 
 0. **Build + chaos-test the master-routing proxy** — the gated first PR, and the
    only genuinely new work. Acceptance, in order (status above):
-   1. `SENTINEL CKQUORUM mymaster` answers `OK 3 usable Sentinels` from every pod;
-   2. both proxy pods log the master `UP` and **every** replica
-      `DOWN … Layer7 timeout` — never `Layer4`;
-   3. `./scripts/redis-failover-chaos.sh` (kills the master pod; it now
-      authenticates and understands hostname answers) passes, and the proxy logs
-      the promoted pod `UP` inside the failover window;
-   4. a test client connected through `redis-ha-proxy` survives that drill.
+   1. ✅ 2026-09-19 — Sentinel quorum: an automatic failover reached
+      `+odown … #quorum 2/2` and elected a leader (confirm with
+      `SENTINEL CKQUORUM mymaster` before each cutover);
+   2. ✅ 2026-09-19 — both proxy pods log the master `UP` and **every** replica
+      `DOWN … Layer7 timeout`, never `Layer4`;
+   3. ✅ 2026-09-19 — a master kill (the #571 roll) failed over in ≈6 s and the
+      proxy re-routed in ≈7.5 s. `./scripts/redis-failover-chaos.sh` itself is
+      still unexercised: run it once during the canary soak;
+   4. ⏳ a test client connected through `redis-ha-proxy` survives a drill —
+      do this with the forgesight-api canary (step 1) plus one chaos-script run.
 1. **Canary the URL swap** on the lowest-traffic service (forgesight-api):
    `REDIS_URL` → `redis://:PASSWORD@redis-ha-proxy.data.svc.cluster.local:6379/0`;
    24h soak; rollback = revert the URL to `redis.data…`.

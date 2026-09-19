@@ -1,6 +1,6 @@
 # Redis Sentinel Failover Drill Log
 
-> Last Updated: 2026-04-17
+> Last Updated: 2026-09-19
 > Owner: Platform Infra
 
 Log of every Redis Sentinel failover — both planned (chaos drills) and
@@ -30,4 +30,4 @@ Each row is one failover event.
 
 | date | kind | old_master | new_master | failover_s | client_errors | result | notes |
 |---|---|---|---|---|---|---|---|
-| TBD (first drill) | drill | redis-ha-0 | — | — | — | — | Schedule immediately after ArgoCD reports Sentinel app Synced + Healthy. |
+| 2026-09-19T06:29:11Z | drill | redis-ha-0 | redis-ha-2 | 6 | 0 | pass | Roll-induced (enclii#571 merged with the owner watching; the StatefulSet roll restarted the master): `+odown #quorum 2/2` → `+switch-master` in ≈6 s; both proxy pods `UP` on the new master at ≈7.5 s; `redis-ha-1` partial resync (no data loss); `redis-ha-0` booted as a second master for ~15 s until `+convert-to-slave`. Zero consumers, so client_errors is n/a. First automatic failover ever — the Sentinels had no quorum before #571 (`announce-ip` unrendered). Observed from logs, not via the chaos script. |
