@@ -1528,6 +1528,13 @@ data:
   # PostgresBackupCheckFailed from the source file is skipped here: it
   # duplicates PgBackRestCheckUnhealthy above (same pgbackrest_check_healthy
   # condition) at a weaker, non-absent-guarded warning severity.
+  #
+  # 2026-09-19: PostgresBackupJobsStale's description said
+  # `pgbackrest-backup-{{full|diff}}` as prose, but `{{ }}` opens a Go
+  # template action, so Prometheus saw a call to an undefined function
+  # `full`, refused the whole rule set and crash-looped (exit 1 on every
+  # start) from 2026-08-26 (enclii#440). Annotations are templates: keep `{{` out of
+  # them unless it is a real expression, and run `promtool check rules`.
   # =========================================================================
   postgres-wal-archive-rules.yml: |
     groups:
@@ -1605,7 +1612,7 @@ data:
             annotations:
               summary: "No successful pgBackRest full/diff backup in >36h"
               description: |
-                Last successful pgbackrest-backup-{{full|diff}} Job completion is
+                Last successful pgbackrest-backup-(full|diff) Job completion is
                 over 36 hours ago. Expected cadence: full weekly, diff daily.
                 Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#backup-cadence
 
