@@ -7,10 +7,11 @@
 # See docs/runbooks/redis-sentinel-migration.md (revised 2026-09-18, enclii#566).
 #
 # How it finds the master: the backend health-check AUTHs, PINGs, then runs
-# `INFO replication` and expects `role:master`. Only the master answers that;
-# replicas answer `role:slave`, fail the check and are marked DOWN — so traffic
+# `INFO replication` and expects `role:master` AND `connected_slaves` >= 1.
+# Replicas answer `role:slave`, fail the check and are marked DOWN, so traffic
 # only ever lands on the master. On a Sentinel failover the promoted replica
-# starts answering role:master and HAProxy re-routes within inter*rise.
+# starts answering role:master, gains its first replica within about a second
+# (Sentinel re-points the others), and HAProxy re-routes within inter*rise.
 #
 # This is idle until a consumer's REDIS_URL points at it, so it is safe to deploy
 # and observe first (HAProxy logs each backend UP/DOWN — validate from the logs).
@@ -83,6 +84,16 @@ data:
       tcp-check expect string +PONG
       tcp-check send info\ replication\r\n
       tcp-check expect string role:master
+      # A master with NO replica is either the previous master booting again
+      # after a failover (it is a second master until Sentinel converts it,
+      # ~15 s — the 2026-09-19 drill showed the proxy with two UP backends for
+      # ~13 s) or a set that lost both replicas. In both cases Redis already
+      # refuses writes there (min-replicas-to-write 1). Requiring at least one
+      # connected replica keeps the proxy on the master Sentinel actually
+      # promoted, at the price of the master going DOWN here too when every
+      # replica is lost (reads included — consistent with the write policy).
+      # Consecutive expects are matched against the same INFO response.
+      tcp-check expect rstring connected_slaves:[1-9]
       tcp-check send QUIT\r\n
       tcp-check expect string +OK
       # Resolve backends from the HEADLESS service's A records (the live pod IPs
