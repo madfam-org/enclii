@@ -193,7 +193,7 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
    proxy also carry a preferred `nodeAffinity` away from nodes labelled
    `role=builder` (the CI pool), so the master stops sharing a node with runners
    unless the cluster is short on nodes. Offline coverage: scenarios S9/S10 in
-   `tests/redis-sentinel/config-init-test.sh`.
+   `tests/redis-sentinel/config-init-test.sh`. **Caveat from the #582 roll (2026-09-19):** persistence removes new stale runids from *future* restarts, but the roll that introduces it still mints them (the Sentinels restart before the file exists), so run the single-shot `SENTINEL RESET` once more after that roll. And rolling **all three** pods is not a clean failover test: if the master restarts last while its peers are still resyncing, Sentinel finds no good slave and waits for the old master to reboot (~23 s backendless in that roll), a whole-StatefulSet-roll artifact, not a failover defect (single-node failover stayed ~8.5 s). Follow-up in enclii#580: gate the redis readiness probe on `master_link_status:up` so a rolling update waits for a real resync.
 
 ### Recommended approach — a master-routing layer, then URL-swap every consumer
 
