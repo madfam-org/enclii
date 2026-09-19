@@ -519,8 +519,22 @@ pod that is `3/3 Running`.
 
    An IP missing from a set, or sync errors in the journal, confirms it.
    `systemctl restart k3s` (control plane) or `k3s-agent` (worker) rebuilds
-   kube-router's state without touching pods. Re-read the proxy logs: the slot
-   must move from `Layer4` to `Layer7 timeout` (replica) or `UP` (master).
+   kube-router's state without touching pods. Then read the **stats socket**,
+   not the log: HAProxy logs UP/DOWN transitions only, never a change of the
+   DOWN *reason*, so a slot that went from refused to "reached, replica" stays
+   silent. Expected: master `UP`/`L7OK`, replicas `DOWN`/`L7TOUT at step 7`.
+
+   ```bash
+   kubectl port-forward -n data pod/<proxy pod> 18404:8404 &
+   curl -s 'http://127.0.0.1:18404/stats;csv' | cut -d, -f1,2,18,37,56   # pxname,svname,status,check_status,last_chk
+   ```
+
+   Observed 2026-09-19: freshly created proxy pods were refused by the redis
+   pods on two older nodes for ≈3 min, then admitted without any action, while
+   the pod on a newer node admitted them at once. So the admission of a *new*
+   pod's IP by NetworkPolicy enforcement is eventually consistent (minutes) on
+   those nodes: after any proxy (re)creation, wait ~5 min before trusting
+   failover routing.
 
 3. Rolling `redis-ha` (fresh pod IPs, fresh ipset entries) is the cheaper
    experiment; the announce-ip fix roll doubles as it.
