@@ -103,7 +103,12 @@ data:
       # server-template fills N slots from those records and re-resolves at
       # runtime via the resolvers section; only the master passes the role:master
       # check, so only it is ever selected.
-      server-template redis 3 redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr none
+      # init-state down (HAProxy >= 3.1; image bumped to 3.2 LTS): a slot whose DNS record (re)appears starts
+      # DOWN and needs `rise` passing checks before it can receive traffic. By
+      # default HAProxy marks it UP/READY at resolution and only takes it DOWN
+      # after `fall` failed checks, which in the 2026-09-19 roll made each
+      # freshly created replica routable for ~2 s (READONLY for writers).
+      server-template redis 3 redis-ha-headless.data.svc.cluster.local:6379 check inter 1s fall 2 rise 2 resolvers kube-dns init-addr none init-state down
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -162,7 +167,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: haproxy
-          image: docker.io/library/haproxy:3.0-alpine@sha256:6587be25151544c83d6507c460ea097d68bb2aa5cc2aa00137babaa52208d019
+          # 3.2 LTS: `init-state` (below) needs HAProxy >= 3.1.
+          image: docker.io/library/haproxy:3.2-alpine@sha256:57b361f7e5cec8279a5d82ea4d4941936d12cf35305146383b9cb01200017a40
           env:
             # HAProxy reads ${REDIS_PASSWORD} from here at config load.
             - name: REDIS_PASSWORD
