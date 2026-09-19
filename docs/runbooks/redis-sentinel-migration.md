@@ -138,13 +138,21 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
    - *The Sentinel-aware path never ran in-cluster.* All three inits logged
      `no Sentinel reachable` and fell back to the bootstrap order, because a
      brand-new pod's connections are refused for minutes on two older nodes
-     (see *Proxy backend unreachable*). Follow-up: retry the lookup for up to
-     ~150 s before falling back; the node-level fix stands.
+     (see *Proxy backend unreachable*). ✅ enclii#577 (merged 2026-09-19 11:06 Mexico City): config-init keeps
+     retrying for up to 150 s while a peer *name resolves* but refuses, and
+     bootstraps at once when no peer name resolves (a true cold start). Its roll
+     was **the clean drill**: every config-init took the Sentinel path, the two
+     replicas re-joined the master at once, the restarted master waited out its
+     grace and joined the promoted pod; `+odown` at +5 s, leader in 0.1 s,
+     `+switch-master` at ≈7 s, both proxy pods `UP` on the promoted pod at
+     8.5 s, partial resync, no second master. The node-level fix stands.
    - *A freshly resolved slot is routable before its first check.* HAProxy
      marks a server `UP/READY` when its DNS record (re)appears and only marks
-     it DOWN after `fall` failed checks (~2 s for a replica). Follow-up:
-     `init-state down` on the `server-template` (HAProxy 3.0) so a new record
-     needs `rise` passing checks first.
+     it DOWN after `fall` failed checks (~2 s for a replica). ✅ enclii#578: `init-state down` on the
+     `server-template` — a HAProxy 3.1+ keyword, so the proxy image moved to
+     the 3.2 LTS (digest pinned); verified live: every slot starts
+     `DOWN/READY`, only the master goes `UP` after its checks, replicas never
+     UP.
    Also seen: the leader election took 10 s (0.15 s in the first drill) with a
    dead Sentinel runid still counted as a voter — the reset above clears it.
 3. **Node placement.** One pod landed on an untainted CI builder node (the
