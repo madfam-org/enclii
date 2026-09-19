@@ -148,8 +148,17 @@ spec:
         app.kubernetes.io/part-of: enclii-infrastructure
         app.kubernetes.io/component: redis-master-proxy
     spec:
-      # Spread the two replicas across nodes where possible.
+      # Spread the two replicas across nodes where possible, and prefer to stay
+      # off the CI builder pool (label role=builder).
       affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: role
+                    operator: NotIn
+                    values: ["builder"]
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100

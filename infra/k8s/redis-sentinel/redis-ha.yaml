@@ -83,6 +83,11 @@ data:
     sentinel failover-timeout mymaster 18000
     sentinel parallel-syncs mymaster 1
 
+    # This file is only a TEMPLATE. The live file lives on the PVC
+    # (/data/sentinel/sentinel.conf): Sentinel rewrites it with its identity
+    # (`sentinel myid`), the learned replicas/sentinels, the epochs and the
+    # CURRENT master, and config-init keeps those state lines across restarts
+    # while re-applying the tunables below on every boot (see config-init).
     # Auth (sentinel auth-pass / requirepass) AND `sentinel announce-ip <pod IP>`
     # are appended at pod startup by the config-init container. announce-ip
     # cannot live in this file: redis-sentinel does not expand environment
@@ -144,9 +149,18 @@ spec:
         seccompProfile:
           type: RuntimeDefault
 
-      # Prefer spreading across nodes; tolerate co-location if the cluster is
-      # short on schedulable nodes (builder nodes carry NoSchedule).
+      # Prefer spreading across nodes and staying off the CI builder pool
+      # (label role=builder; not every builder node is tainted), but tolerate
+      # both if the cluster is short on schedulable nodes.
       affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: role
+                    operator: NotIn
+                    values: ["builder"]
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
@@ -166,23 +180,51 @@ spec:
             - |
               set -euo pipefail
               cp /tmp/redis.conf /etc/redis/redis.conf
-              cp /tmp/sentinel.conf /etc/redis/sentinel.conf
 
               # Inject auth into redis.conf
               echo ""                                        >> /etc/redis/redis.conf
               echo "requirepass ${REDIS_PASSWORD}"           >> /etc/redis/redis.conf
               echo "masterauth ${REDIS_PASSWORD}"            >> /etc/redis/redis.conf
 
-              # Inject auth into sentinel.conf
-              echo ""                                        >> /etc/redis/sentinel.conf
-              echo "sentinel auth-pass mymaster ${REDIS_PASSWORD}" >> /etc/redis/sentinel.conf
-              echo "requirepass ${REDIS_PASSWORD}"           >> /etc/redis/sentinel.conf
-
-              # Announce this pod's IP to the peer Sentinels. POD_IP comes from
-              # the downward API (status.podIP); redis-sentinel does not expand
-              # env vars in its config file, so it has to be rendered here.
+              # POD_IP comes from the downward API (status.podIP); redis-sentinel
+              # does not expand env vars in its config file, so it is rendered here.
               [ -n "${POD_IP:-}" ] || { echo "config-init: POD_IP is empty" >&2; exit 1; }
-              echo "sentinel announce-ip ${POD_IP}"          >> /etc/redis/sentinel.conf
+
+              # ---- Sentinel config lives on the PVC so identity and topology survive
+              # restarts. Sentinel rewrites the file it was started with: `sentinel
+              # myid`, the learned replicas/sentinels, the epochs and the CURRENT
+              # master (it updates the `sentinel monitor` line on every switch).
+              # Until 2026-09-19 the file was re-rendered into an emptyDir on every
+              # start, so each restart minted a new runid (stale peer entries — the
+              # cause of the 08:06 self-REPLICAOF incident) and a cold start of all
+              # three pods forgot who was master. Now the STATE lines persist and
+              # everything else is re-applied from the template on every boot, so
+              # ConfigMap tunables still take effect after a roll.
+              SCONF=/data/sentinel/sentinel.conf
+              STATE_RE='^(port|dir|requirepass|sentinel (announce-ip|announce-port|announce-hostnames|resolve-hostnames|auth-pass|down-after-milliseconds|failover-timeout|parallel-syncs)) '
+              mkdir -p /data/sentinel
+              if [ -s "${SCONF}" ] && grep -q '^sentinel myid ' "${SCONF}" && grep -q '^sentinel monitor mymaster ' "${SCONF}"; then
+                echo "config-init: persisted Sentinel state found — runid $(sed -n 's/^sentinel myid //p' "${SCONF}" | cut -c1-8), last master $(sed -n 's/^sentinel monitor mymaster \([^ ]*\).*/\1/p' "${SCONF}")"
+                # keep state, drop every tunable, re-append the template's tunables
+                grep -vE "${STATE_RE}" "${SCONF}" > "${SCONF}.new"
+                grep -E '^(port|dir|sentinel (announce-port|announce-hostnames|resolve-hostnames|down-after-milliseconds|failover-timeout|parallel-syncs)) ' /tmp/sentinel.conf >> "${SCONF}.new"
+                mv "${SCONF}.new" "${SCONF}"
+              else
+                if [ -s "${SCONF}" ]; then
+                  echo "config-init: persisted Sentinel file is incomplete — re-rendering (kept as sentinel.conf.bad)"
+                  cp "${SCONF}" "${SCONF}.bad"
+                else
+                  echo "config-init: no persisted Sentinel state — rendering from the template"
+                fi
+                cp /tmp/sentinel.conf "${SCONF}"
+              fi
+              # volatile lines, every boot (the pod IP changes; the password may rotate)
+              {
+                echo ""
+                echo "sentinel auth-pass mymaster ${REDIS_PASSWORD}"
+                echo "requirepass ${REDIS_PASSWORD}"
+                echo "sentinel announce-ip ${POD_IP}"
+              } >> "${SCONF}"
 
               # ---- Who is the master? Ask Sentinel instead of assuming ordinal 0. ----
               # Until 2026-09-19 every pod but redis-ha-0 hard-coded `replicaof redis-ha-0`,
@@ -273,14 +315,19 @@ spec:
                   echo "replicaof $2 $3"                       >> /etc/redis/redis.conf
                   echo "config-init: Sentinel names $2:$3 as master — starting as its replica";;
                 bootstrap)
-                  # No Sentinel reachable: cold start of the whole set. Ordinal 0 leads and
-                  # the others follow it (the original bootstrap order). NOTE: Sentinel state
-                  # is rendered fresh on every start (emptyDir), so after a cold start the
-                  # set forgets which pod was master last — a known gap, see the runbook.
-                  if [ "$(hostname)" != "redis-ha-0" ]; then
-                    echo "replicaof redis-ha-0.${HEADLESS} 6379" >> /etc/redis/redis.conf
-                  fi
-                  echo "config-init: no Sentinel reachable — bootstrap order (ordinal 0 leads)";;
+                  # No Sentinel reachable: cold start. Follow the master this pod's own
+                  # persisted Sentinel state last recorded (the `sentinel monitor` line,
+                  # which Sentinel updates on every switch). With no state yet the line
+                  # is the template's, i.e. the original order: ordinal 0 leads.
+                  last="$(sed -n 's/^sentinel monitor mymaster \([^ ]*\) \([0-9]*\).*/\1 \2/p' "${SCONF}" | head -1)"
+                  lhost="${last%% *}"; lport="${last#* }"
+                  [ -n "${last}" ] || { lhost="redis-ha-0.${HEADLESS}"; lport=6379; }
+                  if [ "${lhost}" = "${ME}" ] || [ "${lhost}" = "${POD_IP}" ]; then
+                    echo "config-init: no Sentinel reachable — bootstrap from persisted state: this pod was master, starting as master"
+                  else
+                    echo "replicaof ${lhost} ${lport}"       >> /etc/redis/redis.conf
+                    echo "config-init: no Sentinel reachable — bootstrap from persisted state: ${lhost}:${lport} was master, starting as its replica"
+                  fi;;
               esac
           env:
             - name: POD_IP
@@ -304,6 +351,8 @@ spec:
               mountPath: /tmp
             - name: config
               mountPath: /etc/redis
+            - name: data
+              mountPath: /data
 
       containers:
         # 1) Redis server — shares the PVC at /data, config at /etc/redis.
@@ -372,7 +421,8 @@ spec:
         # 2) Sentinel — co-located with Redis, shares the PVC for sentinel state.
         - name: sentinel
           image: docker.io/library/redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
-          command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
+          # The persisted file (see config-init); Sentinel rewrites it in place.
+          command: ["redis-sentinel", "/data/sentinel/sentinel.conf"]
           ports:
             - containerPort: 26379
               name: sentinel
@@ -422,8 +472,6 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           volumeMounts:
-            - name: config
-              mountPath: /etc/redis
             - name: data
               mountPath: /data
           securityContext:
