@@ -16,7 +16,7 @@
 > missing Enclii adapter gap.
 
 
-> Last Updated: 2026-09-19 (first automatic failover drill PASSED; gates A + B closed; original 2026-04-17)
+> Last Updated: 2026-09-19 (step 0 DONE: proxy + Sentinel fixes live, three drills logged; next = the forgesight canary; original 2026-04-17)
 > Owner: Platform Infra
 > Related: [P1.3 in 2026-04 Enclii remediation plan](https://github.com/madfam-org/internal-devops/blob/main/roadmaps/2026-04-enclii-remediation-plan.md)
 
@@ -43,8 +43,18 @@ separate operation (see `runbooks/secret-rotation.md`).
 
 ## Status and strategy (revised 2026-09-18)
 
+> [!NOTE]
+> **2026-09-19, end of day: step 0 is done.** The master-routing proxy is live
+> (`redis-ha-proxy.data.svc.cluster.local:6379`, enclii#567–#570, #574, #578),
+> the Sentinels have quorum (#571), pods announce themselves by hostname and ask
+> Sentinel who the master is on boot (#575, #577), and three drills are logged in
+> [`redis-failover-log.md`](./redis-failover-log.md) — the last one clean at
+> 8.5 s. Still **zero consumers** on the HA set; the next gate is the
+> forgesight-api canary. Open items: [enclii#580](https://github.com/madfam-org/enclii/issues/580).
+> Offline tests for the two decision points: [`tests/redis-sentinel/`](../../tests/redis-sentinel/README.md).
+
 > [!WARNING]
-> **This migration has been stalled since it began.** `redis-ha-0/1/2` has run
+> **This migration was stalled from April to September 2026.** `redis-ha-0/1/2` has run
 > healthy for ~5 months, but **zero consumers have cut over** — nothing outside
 > this runbook references `redis-sentinel.data`. The reason is the plan itself:
 > it asks eight services across three client languages to each ship and validate
@@ -158,8 +168,9 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
 3. **Node placement.** One pod landed on an untainted CI builder node (the
    manifest's "builder nodes carry NoSchedule" comment does not hold for every
    builder); prefer non-builder nodes with `nodeAffinity`, or taint the node.
-4. `monitoring/prometheus` was down during the drill (fix: enclii#572); read
-   nothing into "no alerts fired".
+4. `monitoring/prometheus` was down during the first drill (fixed by enclii#572,
+   which also revealed it is now OOMKilled at its 2Gi limit every 30–45 min —
+   tracked in enclii#580); read nothing into "no alerts fired".
 
 ### Recommended approach — a master-routing layer, then URL-swap every consumer
 
@@ -189,8 +200,8 @@ Two ways to build it:
 
 ### Corrected cutover plan
 
-0. **Build + chaos-test the master-routing proxy** — the gated first PR, and the
-   only genuinely new work. Acceptance, in order (status above):
+0. ✅ **Build + chaos-test the master-routing proxy** — done 2026-09-19 (see the
+   status note at the top). Acceptance, in order:
    1. ✅ 2026-09-19 — Sentinel quorum: an automatic failover reached
       `+odown … #quorum 2/2` and elected a leader (confirm with
       `SENTINEL CKQUORUM mymaster` before each cutover);
@@ -567,6 +578,14 @@ Common causes: replica pod OOM, Longhorn PV disk pressure, network saturation
 during a large write burst.
 
 ---
+
+## Validation — offline tests
+
+`tests/redis-sentinel/proxy-check-test.sh` and `tests/redis-sentinel/config-init-test.sh`
+run the rendered proxy check and the rendered `config-init` script on the pinned
+images in docker and assert the behaviour the drills established (see
+[`tests/redis-sentinel/README.md`](../../tests/redis-sentinel/README.md)). Run
+them before changing either; CI cannot (no docker on the runners).
 
 ## Validation — post-deploy
 

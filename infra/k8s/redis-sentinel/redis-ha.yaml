@@ -8,15 +8,22 @@
 #   OLD (still live, do not touch in this PR):
 #     redis.data.svc.cluster.local:6379             — single-instance Deployment
 #
-#   NEW (this PR):
+#   NEW:
+#     redis-ha-proxy.data.svc.cluster.local:6379    — plain endpoint that always
+#                                                     reaches the current master
+#                                                     (redis-ha-proxy.yaml; this is
+#                                                     how consumers migrate)
 #     redis-sentinel.data.svc.cluster.local:26379   — Sentinel-aware clients
 #     redis-ha-headless.data.svc.cluster.local      — per-pod DNS for replication
 #
-# There is intentionally no `redis-master` Service. Kubernetes cannot select the
-# current Redis master without an operator updating pod labels on failover, and a
-# static Service that selects all Redis pods causes write clients to hit replicas
-# and fail with READONLY. Non-Sentinel clients must stay on the existing
-# single-instance `redis.data.svc.cluster.local:6379` until they are upgraded.
+# There is intentionally no label-selected `redis-master` Service: Kubernetes
+# cannot select the current master without an operator relabelling pods on
+# failover, and a Service over all pods sends writes to replicas (READONLY). The
+# HAProxy proxy above closes that gap with a health check (role:master AND
+# connected_slaves >= 1). On boot each pod asks a live Sentinel who the master is
+# (config-init below) and announces itself by its headless DNS name, so Sentinel
+# tracks pods by a name that survives IP changes. Offline tests for both decision
+# points: tests/redis-sentinel/. History: docs/runbooks/redis-sentinel-migration.md.
 #
 # Auth: reuses the existing `redis-auth` Secret (key: `redis-password`) — same
 # password as single-instance Redis so consumers keep working when they cut over.
