@@ -37,8 +37,9 @@ metadata:
     app.kubernetes.io/part-of: enclii-infrastructure
 data:
   redis.conf: |
-    # Redis server configuration (master + replicas use the same file;
-    # replicas are configured via `replicaof` appended by the init container).
+    # Redis server configuration (master + replicas use the same file; the
+    # init container appends `replica-announce-ip <pod FQDN>` and, unless
+    # Sentinel says this pod IS the master, `replicaof <current master>`).
     bind 0.0.0.0
     port 6379
     protected-mode yes
@@ -176,12 +177,83 @@ spec:
               [ -n "${POD_IP:-}" ] || { echo "config-init: POD_IP is empty" >&2; exit 1; }
               echo "sentinel announce-ip ${POD_IP}"          >> /etc/redis/sentinel.conf
 
-              # Replicas follow redis-ha-0 on start. Sentinel will re-configure
-              # `replicaof` dynamically after the first failover.
-              if [ "$(hostname)" != "redis-ha-0" ]; then
-                echo "replicaof redis-ha-0.redis-ha-headless.data.svc.cluster.local 6379" \
-                  >> /etc/redis/redis.conf
-              fi
+              # ---- Who is the master? Ask Sentinel instead of assuming ordinal 0. ----
+              # Until 2026-09-19 every pod but redis-ha-0 hard-coded `replicaof redis-ha-0`,
+              # so after a failover a restarting redis-ha-0 booted as a SECOND master until
+              # Sentinel converted it (~15 s; the first drill showed the proxy with two UP
+              # backends for ~13 s). Now each pod asks a live Sentinel who the master is.
+              # SELF_FQDN / SENTINEL_HOSTS / SELF_GRACE exist only so this script can be
+              # exercised outside the cluster (docs/runbooks/redis-sentinel-migration.md).
+              HEADLESS="redis-ha-headless.data.svc.cluster.local"
+              ME="${SELF_FQDN:-$(hostname).${HEADLESS}}"
+              SENTINELS="${SENTINEL_HOSTS:-redis-sentinel.data.svc.cluster.local redis-ha-0.${HEADLESS} redis-ha-1.${HEADLESS} redis-ha-2.${HEADLESS}}"
+
+              # Announce the STABLE per-pod DNS name, not the pod IP (which changes on every
+              # restart): Sentinel then tracks every pod by a name it can re-resolve, a
+              # restarted pod is never an orphan, and after a promotion
+              # `SENTINEL get-master-addr-by-name` answers with that name — which is how a
+              # pod recognises itself below.
+              echo "replica-announce-ip ${ME}"               >> /etc/redis/redis.conf
+              echo "replica-announce-port 6379"              >> /etc/redis/redis.conf
+
+              rcli() { timeout 3 redis-cli -a "${REDIS_PASSWORD}" --no-auth-warning "$@" 2>/dev/null; }
+              # Prints "<host> <port>" from the first Sentinel that answers.
+              sentinel_master() {
+                for h in ${SENTINELS}; do
+                  [ "$h" = "${ME}" ] && continue
+                  reply="$(rcli -h "$h" -p 26379 SENTINEL get-master-addr-by-name mymaster || true)"
+                  host="$(printf '%s\n' "${reply}" | sed -n 1p)"
+                  port="$(printf '%s\n' "${reply}" | sed -n 2p)"
+                  case "${host}" in ''|'(nil)'|*empty*|*ERR*|*NOAUTH*) continue;; esac
+                  [ -n "${port}" ] || continue
+                  echo "${host} ${port}"; return 0
+                done
+                return 1
+              }
+              alive() { rcli -h "$1" -p "$2" PING | grep -qE 'PONG|LOADING'; }
+
+              decision=""; self_seen=0; deadline=$(( $(date +%s) + 20 ))
+              while [ -z "${decision}" ]; do
+                if m="$(sentinel_master)"; then
+                  host="${m% *}"; port="${m#* }"
+                  if [ "${host}" = "${ME}" ] || [ "${host}" = "${POD_IP}" ]; then
+                    # Sentinel still names this pod. Its previous incarnation may have just
+                    # died: give Sentinel down-after (5 s) plus an election to fail over
+                    # before believing it, so a fast restart never races the promotion.
+                    self_seen=$(( self_seen + 1 ))
+                    [ "${self_seen}" -ge "${SELF_GRACE:-10}" ] && decision="master"
+                  elif alive "${host}" "${port}"; then
+                    decision="replica ${host} ${port}"
+                  elif [ "$(date +%s)" -ge "${deadline}" ]; then
+                    # Sentinel keeps naming an unreachable master (mid-failover, or this
+                    # pod's own pre-2026-09-19 IP): following it is harmless, Sentinel
+                    # re-points us the moment it switches.
+                    decision="replica ${host} ${port}"
+                  fi
+                else
+                  decision="bootstrap"
+                fi
+                [ -n "${decision}" ] || sleep 1
+              done
+
+              case "${decision}" in
+                master)
+                  echo "config-init: Sentinel names ${ME} as master — starting as master";;
+                replica*)
+                  # shellcheck disable=SC2086  # split "replica <host> <port>" on purpose
+                  set -- ${decision}
+                  echo "replicaof $2 $3"                       >> /etc/redis/redis.conf
+                  echo "config-init: Sentinel names $2:$3 as master — starting as its replica";;
+                bootstrap)
+                  # No Sentinel reachable: cold start of the whole set. Ordinal 0 leads and
+                  # the others follow it (the original bootstrap order). NOTE: Sentinel state
+                  # is rendered fresh on every start (emptyDir), so after a cold start the
+                  # set forgets which pod was master last — a known gap, see the runbook.
+                  if [ "$(hostname)" != "redis-ha-0" ]; then
+                    echo "replicaof redis-ha-0.${HEADLESS} 6379" >> /etc/redis/redis.conf
+                  fi
+                  echo "config-init: no Sentinel reachable — bootstrap order (ordinal 0 leads)";;
+              esac
           env:
             - name: POD_IP
               valueFrom:
