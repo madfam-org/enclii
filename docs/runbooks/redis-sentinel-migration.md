@@ -115,10 +115,34 @@ Row recorded in [`redis-failover-log.md`](./redis-failover-log.md).
    the proxy too (reads included), consistent with `min-replicas-to-write 1`,
    which already refuses writes in that state. Re-route after a promotion is
    ~1 s later than before.
-2. **Stop ordinal 0 from booting as a master after a failover.** `config-init`
-   should ask a Sentinel for the current master
-   (`SENTINEL get-master-addr-by-name mymaster`) and write `replicaof <master>`
-   unless the pod *is* the master (the DandyDeveloper chart's approach).
+2. ✅ 2026-09-19, enclii#575 (**merge while watching: it rolls `redis-ha` and
+   will fail over up to three times**) — **`config-init` asks Sentinel who the
+   master is** instead of assuming ordinal 0, and every pod now announces its
+   stable headless DNS name (`replica-announce-ip redis-ha-N.redis-ha-headless…`)
+   so Sentinel tracks pods by a name it can re-resolve (a restarted pod, whose
+   IP changes, is never an orphan; after a promotion
+   `SENTINEL get-master-addr-by-name` answers with that name). The boot
+   decision, from the first Sentinel that answers (`redis-sentinel` Service,
+   then the three pod names):
+   - Sentinel names **another** pod and it answers `PING` → `replicaof` it;
+   - Sentinel names **this** pod → wait ~10 s (down-after 5 s + an election) and
+     ask again, so a fast restart never races a promotion; still this pod →
+     start as master;
+   - Sentinel names a master that does **not** answer (mid-failover, or this
+     pod's own pre-#575 IP) → wait up to 20 s for the switch, then follow
+     whatever Sentinel says (harmless: Sentinel re-points a known pod);
+   - no Sentinel reachable → the old bootstrap order (ordinal 0 leads).
+   Verified offline in docker (`redis:7-alpine`, one Sentinel, quorum 1,
+   down-after 2 s) for all four branches plus the transition case; the decision
+   is printed by the init container: `kubectl logs -n data redis-ha-N -c config-init`.
+   **What the roll does:** pods restart `2 → 1 → 0`; the master is `redis-ha-2`
+   today, so the first restart already causes a failover, and each pod that is
+   master when its turn comes causes another (up to three, ~6 s each, all
+   idle). After the roll every pod is known by hostname, which completes the
+   transition. **Known gap (not in #575):** Sentinel state lives in the
+   rendered `sentinel.conf` (emptyDir), so after a *cold start of all three
+   pods* the set forgets who was master and ordinal 0 leads with whatever data
+   it has — persist `sentinel.conf` on the PVC to close it.
 3. **Node placement.** One pod landed on an untainted CI builder node (the
    manifest's "builder nodes carry NoSchedule" comment does not hold for every
    builder); prefer non-builder nodes with `nodeAffinity`, or taint the node.
@@ -495,8 +519,22 @@ pod that is `3/3 Running`.
 
    An IP missing from a set, or sync errors in the journal, confirms it.
    `systemctl restart k3s` (control plane) or `k3s-agent` (worker) rebuilds
-   kube-router's state without touching pods. Re-read the proxy logs: the slot
-   must move from `Layer4` to `Layer7 timeout` (replica) or `UP` (master).
+   kube-router's state without touching pods. Then read the **stats socket**,
+   not the log: HAProxy logs UP/DOWN transitions only, never a change of the
+   DOWN *reason*, so a slot that went from refused to "reached, replica" stays
+   silent. Expected: master `UP`/`L7OK`, replicas `DOWN`/`L7TOUT at step 7`.
+
+   ```bash
+   kubectl port-forward -n data pod/<proxy pod> 18404:8404 &
+   curl -s 'http://127.0.0.1:18404/stats;csv' | cut -d, -f1,2,18,37,56   # pxname,svname,status,check_status,last_chk
+   ```
+
+   Observed 2026-09-19: freshly created proxy pods were refused by the redis
+   pods on two older nodes for ≈3 min, then admitted without any action, while
+   the pod on a newer node admitted them at once. So the admission of a *new*
+   pod's IP by NetworkPolicy enforcement is eventually consistent (minutes) on
+   those nodes: after any proxy (re)creation, wait ~5 min before trusting
+   failover routing.
 
 3. Rolling `redis-ha` (fresh pod IPs, fresh ipset entries) is the cheaper
    experiment; the announce-ip fix roll doubles as it.
