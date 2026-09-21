@@ -36,6 +36,23 @@ export interface RedirectTokens {
 
 export type AuthMode = "local" | "oidc";
 
+/**
+ * OIDC `prompt` values this console offers, mirroring the enclii admin-console
+ * (DISPATCH) account-switching model:
+ * - `login` — «Sign in as someone else»: force Janua to re-authenticate even
+ *   when a silent SSO session exists, so a different account can be entered.
+ * - `select_account` — «Switch account»: ask Janua to show its account chooser.
+ *
+ * Omitting `prompt` is the default «Sign in with Janua SSO» behavior (Janua may
+ * silently reuse the existing estate session). Janua's `/authorize` honors both
+ * values; see janua #623.
+ */
+export type LoginPrompt = "login" | "select_account";
+
+export interface LoginWithOIDCOptions {
+  prompt?: LoginPrompt;
+}
+
 export interface AuthContextType {
   // State
   user: User | null;
@@ -50,7 +67,7 @@ export interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<void>;
 
   // OIDC methods
-  loginWithOIDC: () => void;
+  loginWithOIDC: (options?: LoginWithOIDCOptions) => void;
   handleOAuthCallback: (code: string, state?: string) => Promise<void>;
   storeTokensFromRedirect: (tokens: RedirectTokens) => Promise<void>;
 
