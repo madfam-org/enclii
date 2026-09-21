@@ -71,6 +71,8 @@ export default function LoginPage() {
         {/* OIDC Login (Primary for production) */}
         {authMode === "oidc" ? (
           <div className="space-y-6">
+            {/* Default sign-in: no `prompt`, so Janua may silently reuse an
+                existing SSO session. */}
             <button
               onClick={() => loginWithOIDC()}
               className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-enclii-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue transition-colors"
@@ -80,6 +82,31 @@ export default function LoginPage() {
               </svg>
               Sign in with Janua SSO
             </button>
+
+            {/* Account switching (enclii model): let an operator holding more than
+                one MADFAM account front a different one without the default
+                silent reuse. `select_account` shows Janua's chooser; `login`
+                forces a fresh credential entry. */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => loginWithOIDC({ prompt: "select_account" })}
+                className="flex justify-center items-center gap-2 py-2.5 px-4 border border-border rounded-md text-sm font-medium text-foreground bg-transparent hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue transition-colors"
+              >
+                <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-3-3.87" />
+                </svg>
+                Switch account
+              </button>
+              <button
+                onClick={() => loginWithOIDC({ prompt: "login" })}
+                className="flex justify-center items-center gap-2 py-2.5 px-4 border border-border rounded-md text-sm font-medium text-foreground bg-transparent hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-enclii-blue transition-colors"
+              >
+                <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7zM19 8v6M22 11h-6" />
+                </svg>
+                Sign in as someone else
+              </button>
+            </div>
 
             <div className="text-center text-sm text-muted-foreground">
               <p>

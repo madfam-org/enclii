@@ -19,7 +19,7 @@ import React, {
   useRef,
   type ReactNode,
 } from "react";
-import type { AuthMode, AuthContextType, User, RedirectTokens } from "./auth-types";
+import type { AuthMode, AuthContextType, User, RedirectTokens, LoginWithOIDCOptions } from "./auth-types";
 import { apiFetchResponse, apiPublicFetchResponse, attemptTokenRefresh } from "@/lib/api";
 
 // =============================================================================
@@ -238,7 +238,7 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (options?: LoginWithOIDCOptions) => {
     // Generate PKCE parameters
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -260,6 +260,15 @@ function OIDCAuthProvider({ children }: { children: ReactNode }) {
       code_challenge: codeChallenge,
       code_challenge_method: "S256",
     });
+
+    // Optional OIDC `prompt` (account switching). Appended only when supplied,
+    // so the default sign-in keeps sending NO prompt (silent session reuse).
+    // Janua honors `login` (force re-auth) and `select_account` (chooser); see
+    // janua #623. Mirrors the enclii admin-console (DISPATCH) switching model.
+    if (options?.prompt) {
+      params.set("prompt", options.prompt);
+    }
+
     window.location.href = `${JANUA_BASE_URL}/api/v1/oauth/authorize?${params.toString()}`;
   }, []);
 
@@ -488,6 +497,9 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     clearAuthError: () => setAuthError(null),
     login: loginLocal,
     register,
+    // Local/bootstrap mode has no OIDC prompt concept (no estate SSO session to
+    // switch). The `LoginWithOIDCOptions` arg from the interface is simply not
+    // read here; local login has no chooser.
     loginWithOIDC: () => {
       if (typeof window !== "undefined") localStorage.setItem("auth_return_url", window.location.pathname);
       clearStorage();
