@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/lockbox"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/secretsintake"
 )
 
@@ -21,6 +22,7 @@ type fakeVault struct {
 	disabled      bool
 	readErr       map[string]error
 	writeErr      map[string]error
+	mutateErr     map[string]error
 	writes        int
 	mutationCalls int
 	failMutation  int
@@ -28,9 +30,10 @@ type fakeVault struct {
 
 func newFakeVault() *fakeVault {
 	return &fakeVault{
-		data:     map[string]map[string]interface{}{},
-		readErr:  map[string]error{},
-		writeErr: map[string]error{},
+		data:      map[string]map[string]interface{}{},
+		readErr:   map[string]error{},
+		writeErr:  map[string]error{},
+		mutateErr: map[string]error{},
 	}
 }
 
@@ -65,6 +68,12 @@ func (f *fakeVault) MutateSecretData(ctx context.Context, path string, update fu
 	f.mutationCalls++
 	if f.mutationCalls == f.failMutation {
 		return 0, errors.New("injected custody failure")
+	}
+	// mutateErr injects a Vault-layer error the way the real client surfaces one:
+	// before the callback runs, standing in for a write Vault rejected. Distinct
+	// from writeErr, which the merge path uses.
+	if err := f.mutateErr[path]; err != nil {
+		return 0, err
 	}
 	data, err := f.GetSecretData(ctx, path)
 	if err != nil {
@@ -645,5 +654,116 @@ func TestKalyaCustodyDoesNotForwardInternalKeyOnRedirect(t *testing.T) {
 	_, err := newHTTPKalyaMinter().ReconcileFeedToken(context.Background(), redirect.URL, "fixture-internal-key", "fixture", "enclii-standing-feed-fixture-nauta", strings.Repeat("a", 64), "", false)
 	if err == nil || reached {
 		t.Fatal("internal key followed redirect")
+	}
+}
+
+// TestProvisionKalyaFeedTokenSurfacesVaultDiagnostic proves the masking is gone:
+// when the custody CAS write fails with a Vault diagnostic (the production
+// failure), the operator-facing entry.Error carries Vault's own message instead
+// of the opaque "failed to establish durable credential custody". This is
+// deliverable A — the run becomes self-diagnosing.
+func TestProvisionKalyaFeedTokenSurfacesVaultDiagnostic(t *testing.T) {
+	kalya := newFakeKalya(t)
+	vault := vaultWithKalyaKey()
+	vault.mutateErr["secret/crea-map"] = &lockbox.VaultDiagnostic{
+		Status:  http.StatusBadRequest,
+		Message: "check-and-set parameter required for this call",
+	}
+
+	// Single consumer so the mint-count assertion below is unambiguous.
+	req, err := resolveKalyaFeedRequest("crea", []string{"crea-map"}, kalya.origin(), false)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	outcome, err := provisionKalyaFeedToken(context.Background(), vault, newHTTPKalyaMinter(), req)
+	if err != nil {
+		t.Fatalf("a per-consumer custody failure must be reported, not fatal: %v", err)
+	}
+	creaMap := outcome.Consumers[0]
+	if creaMap.Action != "error" {
+		t.Fatalf("want an error outcome for crea-map, got %q", creaMap.Action)
+	}
+	if !strings.Contains(creaMap.Error, "failed to establish durable credential custody") {
+		t.Fatalf("lost the custody-phase context: %q", creaMap.Error)
+	}
+	if !strings.Contains(creaMap.Error, "check-and-set parameter required") {
+		t.Fatalf("Vault diagnostic was masked, not surfaced: %q", creaMap.Error)
+	}
+	if !strings.Contains(creaMap.Error, "status 400") {
+		t.Fatalf("Vault status code was not surfaced: %q", creaMap.Error)
+	}
+	// kalya must never have been asked to mint, since the pre-mint custody write
+	// failed.
+	if kalya.mints != 0 {
+		t.Fatalf("mint attempted after a failed custody write: %d", kalya.mints)
+	}
+}
+
+// TestProvisionKalyaFeedTokenSurfacesCorruptCustodyRecord covers the other
+// deterministic, previously-masked cause: a prior partial write left an
+// unreadable custody record at secret/crea-map. readKalyaCustody rejects it, the
+// callback returns errCustodyStateInvalid, and the operator now sees exactly
+// that instead of an opaque partial.
+func TestProvisionKalyaFeedTokenSurfacesCorruptCustodyRecord(t *testing.T) {
+	kalya := newFakeKalya(t)
+	vault := vaultWithKalyaKey()
+	// A token of the wrong length is an invalid custody record.
+	vault.data["secret/crea-map"] = map[string]interface{}{
+		kalyaCustodyKey("crea"): map[string]interface{}{
+			"token": "too-short",
+			"phase": "pending",
+		},
+	}
+
+	outcome, err := provisionKalyaFeedToken(context.Background(), vault, newHTTPKalyaMinter(),
+		kalyaRequest(t, kalya.origin(), false))
+	if err != nil {
+		t.Fatalf("a corrupt record must be a per-consumer error, not fatal: %v", err)
+	}
+	var creaMap kalyaFeedConsumerOutcome
+	for _, entry := range outcome.Consumers {
+		if entry.Consumer == "crea-map" {
+			creaMap = entry
+		}
+	}
+	if creaMap.Action != "error" {
+		t.Fatalf("want an error outcome, got %q", creaMap.Action)
+	}
+	if !strings.Contains(creaMap.Error, "invalid credential custody state") {
+		t.Fatalf("corrupt custody record not diagnosed: %q", creaMap.Error)
+	}
+}
+
+// TestProvisionKalyaFeedTokenStillWithholdsAnUntrustedError is the guardrail on
+// deliverable A: surfacing Vault's own diagnostic must not turn into surfacing
+// an arbitrary error a Vault client might have built from a credential-bearing
+// payload. An error that is neither a VaultDiagnostic nor a known custody
+// sentinel is reported without its text, so the token it might contain cannot
+// leak through the diagnostic path.
+func TestProvisionKalyaFeedTokenStillWithholdsAnUntrustedError(t *testing.T) {
+	kalya := newFakeKalya(t)
+	vault := vaultWithKalyaKey()
+	vault.mutateErr["secret/crea-map"] = errors.New("denied: rejected payload token=tok-crea-secret")
+
+	outcome, err := provisionKalyaFeedToken(context.Background(), vault, newHTTPKalyaMinter(),
+		kalyaRequest(t, kalya.origin(), false))
+	if err != nil {
+		t.Fatalf("unexpected fatal: %v", err)
+	}
+	rendered, _ := json.Marshal(outcome)
+	if strings.Contains(string(rendered), "tok-crea-secret") {
+		t.Fatalf("an untrusted error leaked the token: %s", rendered)
+	}
+	var creaMap kalyaFeedConsumerOutcome
+	for _, entry := range outcome.Consumers {
+		if entry.Consumer == "crea-map" {
+			creaMap = entry
+		}
+	}
+	if creaMap.Action != "error" {
+		t.Fatalf("want an error outcome, got %q", creaMap.Action)
+	}
+	if !strings.Contains(creaMap.Error, "withheld to avoid leaking") {
+		t.Fatalf("untrusted error should be withheld with an explanation: %q", creaMap.Error)
 	}
 }
