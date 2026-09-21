@@ -163,6 +163,33 @@ targets:
       - janua_portal_client_id
       - janua_portal_client_secret
 
+  # The entitlement fail-open alarm's probe key (nauta #297). The probe reads a
+  # client ERP surface guarded by NAUTA_INTERNAL_PROBE_KEY and holds the SAME
+  # value on both sides — deliberately NOT janua_internal_api_key: a probe whose
+  # job is to ask "is the identity credential missing?" must not itself carry a
+  # credential to the identity provider. This key authorises nothing but the read.
+  #
+  # No consumer references it yet: the web pod's projection lives in
+  # web-external-secret.yaml + _secrets-template.yaml (not committed as of this
+  # target), and the alarm CronJob mounts its own copy. So like oidc-janua-portal
+  # above, this is a parked extra property at secret/nauta — ESO only fails on
+  # properties it references and cannot find, so an unmapped extra is ignored.
+  # external_secret is nauta-web-secrets, the object the web-side mapping will
+  # land in; until that mapping exists the post-intake force-sync refreshes it
+  # harmlessly (the key is a no-op extra there). LOWERCASE property, to match the
+  # `property:` field nauta's ExternalSecret will reference (ESO is all-or-nothing
+  # per ExternalSecret). No `generate:` block is needed: --generate mints any key
+  # the target declares, at the default 32 bytes of crypto/rand, so the operator
+  # can `--generate nauta_internal_probe_key` and never handle a value.
+  nauta/internal-probe-key:
+    label: Nauta entitlement fail-open probe key (#297)
+    description: Clave interna de la sonda del alarma de apertura-por-falla de entitlements de nauta; mismo valor en ambos lados, NO es janua_internal_api_key; generable en el servidor con --generate nauta_internal_probe_key
+    vault_path: secret/nauta
+    namespace: nauta
+    external_secret: nauta-web-secrets
+    keys:
+      - nauta_internal_probe_key
+
   # crea-map, symbiosis-hcm and the nauta feed tokens below were added after the
   # operator had to fall back to break-glass `vault kv patch` inside vault-0 on
   # 2026-09-03: the secrets these apps needed that night had no intake target,
@@ -206,6 +233,34 @@ targets:
     keys:
       - kalya_occupancy_feed_url
       - kalya_capacity_feed_url
+
+  # crea-map's Selva AI-gateway bearer (#303). Operator-supplied, NOT --generate:
+  # the value is a token minted on the Selva side, so Switchyard must not mint its
+  # own — this is a value-intake target like kalya-feeds/oidc above. Same path and
+  # ExternalSecret as the other crea-map targets — the intake write is a merge, so
+  # it lands alongside them without clobbering. LOWERCASE property to match the
+  # `property:` field crea-map's ExternalSecret references (ESO is all-or-nothing).
+  crea-map/selva-api-key:
+    label: crea-map Selva AI-gateway bearer (#303)
+    description: Bearer con el que crea-map llama a la puerta de enlace de IA Selva; valor acuñado del lado de Selva y provisto por el operador (no se genera en el servidor)
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - selva_api_key
+
+  # crea-map's RLS-por-caso switch (K23, #303). A plain on/off string, default
+  # "false" — operator-supplied, value-intake, never generated. It rides the same
+  # crea-map path and ExternalSecret as a merged extra property. LOWERCASE to
+  # match the ExternalSecret's `property:` field (ESO is all-or-nothing).
+  crea-map/rls-por-caso:
+    label: crea-map RLS-por-caso switch (K23) — value 'false'/'true'
+    description: Interruptor de RLS por caso del MAP (K23); cadena on/off simple, por defecto "false", provista por el operador
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - rls_por_caso
 
   # symbiosis-hcm is the PRODUCER of the absence feed; crea-map cross-reads
   # map_absence_feed_key and consumes it as HCM_FEED_API_KEY. Intaking both keys
