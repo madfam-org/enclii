@@ -44,7 +44,10 @@ function TestConsumer() {
       <div data-testid="authorized">{String(isAuthorized)}</div>
       <div data-testid="user">{user ? JSON.stringify(user) : 'null'}</div>
       <div data-testid="error">{error || 'none'}</div>
-      <button data-testid="login-btn" onClick={login}>Login</button>
+      <button data-testid="login-btn" onClick={() => login()}>Login</button>
+      <button data-testid="login-default-btn" onClick={() => login()}>Login default</button>
+      <button data-testid="login-select-btn" onClick={() => login({ prompt: 'select_account' })}>Switch account</button>
+      <button data-testid="login-prompt-btn" onClick={() => login({ prompt: 'login' })}>Sign in as someone else</button>
       <button data-testid="logout-btn" onClick={logout}>Logout</button>
     </div>
   )
@@ -477,6 +480,97 @@ describe('login', () => {
       value: originalCrypto,
       writable: true,
       configurable: true,
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Layer 2 — Switch account / Sign in as someone else (OIDC `prompt`)
+  // ---------------------------------------------------------------------------
+
+  describe('prompt (account switching)', () => {
+    let originalCrypto: Crypto
+    let originalLocation: Location
+    let href: string
+
+    beforeEach(() => {
+      const mockGetRandomValues = jest.fn((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = i % 256
+        return arr
+      })
+      originalCrypto = global.crypto
+      Object.defineProperty(global, 'crypto', {
+        value: {
+          getRandomValues: mockGetRandomValues,
+          subtle: { digest: jest.fn().mockResolvedValue(new ArrayBuffer(32)) },
+        },
+        writable: true,
+        configurable: true,
+      })
+
+      href = ''
+      originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        value: {
+          ...originalLocation,
+          origin: 'https://admin.enclii.dev',
+          get href() {
+            return href
+          },
+          set href(value: string) {
+            href = value
+          },
+        } as unknown as Location,
+        writable: true,
+        configurable: true,
+      })
+    })
+
+    afterEach(() => {
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      })
+      Object.defineProperty(global, 'crypto', {
+        value: originalCrypto,
+        writable: true,
+        configurable: true,
+      })
+    })
+
+    async function clickAndReadAuthorizeUrl(testId: string): Promise<URL> {
+      render(
+        <AuthProvider>
+          <TestConsumer />
+        </AuthProvider>
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false')
+      })
+      await act(async () => {
+        screen.getByTestId(testId).click()
+      })
+      expect(href).toContain('/api/v1/oauth/authorize?')
+      return new URL(href)
+    }
+
+    it('appends prompt=select_account for «Switch account»', async () => {
+      const url = await clickAndReadAuthorizeUrl('login-select-btn')
+      expect(url.searchParams.get('prompt')).toBe('select_account')
+      // core PKCE params are still present
+      expect(url.searchParams.get('response_type')).toBe('code')
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    })
+
+    it('appends prompt=login for «Sign in as someone else»', async () => {
+      const url = await clickAndReadAuthorizeUrl('login-prompt-btn')
+      expect(url.searchParams.get('prompt')).toBe('login')
+    })
+
+    it('sends NO prompt for the default sign-in', async () => {
+      const url = await clickAndReadAuthorizeUrl('login-default-btn')
+      expect(url.searchParams.has('prompt')).toBe(false)
+      expect(url.searchParams.get('response_type')).toBe('code')
     })
   })
 })
