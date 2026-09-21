@@ -118,12 +118,13 @@ spec:
             - /data
             - /stringData
             # ESO writes the produced Secret (e.g. enclii-secrets, creationPolicy
-            # Merge) with its own reconcile hash + the operator ops annotations,
-            # and Argo injects its tracking label. None of these live in the git
-            # stub, so without ignoring them the Secret sits permanently
-            # OutOfSync (core-services Degraded). Mirrors the ExternalSecret-kind
-            # ignores below, but on the produced Secret.
+            # Merge) with its own reconcile hash + the operator ops annotations
+            # + a managed-by label, and Argo injects its tracking label. None of
+            # these live in the git stub, so without ignoring them the Secret
+            # sits permanently OutOfSync (core-services Degraded). Mirrors the
+            # ExternalSecret-kind ignores below, but on the produced Secret.
             - /metadata/labels/app.kubernetes.io~1instance
+            - /metadata/labels/app.kubernetes.io~1managed-by
             - /metadata/annotations/reconcile.external-secrets.io~1data-hash
             - /metadata/annotations/force-sync
             - /metadata/annotations/enclii.dev~1secret-intake-id
