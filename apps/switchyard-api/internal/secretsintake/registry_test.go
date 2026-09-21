@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 30)
+	assert.Len(t, reg, 33)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 30)
+	require.Len(t, list, 33)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -50,6 +50,8 @@ func TestListTargetsSorted(t *testing.T) {
 		"coupler/janua-service-token",
 		"crea-map/internal-api-key",
 		"crea-map/kalya-feeds",
+		"crea-map/rls-por-caso",
+		"crea-map/selva-api-key",
 		"crea/porkbun-registrar",
 		"dhanam/app-infra",
 		"dhanam/oidc-janua",
@@ -61,6 +63,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"karafiel/web-oidc-janua",
 		"lexidrop/oidc-janua",
 		"lexidrop/selva-inference",
+		"nauta/internal-probe-key",
 		"nauta/kalya-feed-tokens",
 		"nauta/oidc-janua",
 		"nauta/oidc-janua-portal",
@@ -125,6 +128,68 @@ func TestNautaSymbiosisHCMOAuthTarget(t *testing.T) {
 	for _, k := range tgt.Keys {
 		assert.Equal(t, strings.ToLower(k), k,
 			"key %q must be lowercase to match nauta's ExternalSecret property", k)
+	}
+}
+
+// The entitlement fail-open probe key (nauta #297). Shares secret/nauta with
+// every other nauta target — the intake write is a merge, so it lands alongside
+// them without clobbering. Deliberately NOT janua_internal_api_key: the probe
+// must not carry a credential to the identity provider to ask whether that
+// credential is missing. Pinned here so a rename is a test failure and not a
+// silent write to a path nothing reads. The key is lowercase to match the
+// `property:` field nauta's ExternalSecret will reference (ESO is all-or-nothing
+// per ExternalSecret). No generate policy is declared, so it inherits the
+// default entropy — which is what makes `--generate nauta_internal_probe_key`
+// mint a value the operator never handles.
+func TestNautaInternalProbeKeyTarget(t *testing.T) {
+	tgt, err := GetTarget("nauta/internal-probe-key")
+	require.NoError(t, err)
+	assert.Equal(t, "secret/nauta", tgt.VaultPath)
+	assert.Equal(t, "nauta", tgt.Namespace)
+	assert.Equal(t, "nauta-web-secrets", tgt.ExternalSecret)
+	assert.Equal(t, []string{"nauta_internal_probe_key"}, tgt.Keys)
+	assert.NotEmpty(t, tgt.Label)
+	for _, k := range tgt.Keys {
+		assert.Equal(t, strings.ToLower(k), k,
+			"key %q must be lowercase to match nauta's ExternalSecret property", k)
+	}
+	// No custom generate policy: --generate must still work at the default.
+	assert.Nil(t, tgt.Generate)
+	assert.Equal(t, DefaultGenerateBytes, tgt.GenerateBytes())
+}
+
+// The crea-map #303 batch: the Selva AI-gateway bearer and the RLS-por-caso
+// switch (K23). BOTH are operator-supplied value-intake — never generated: the
+// Selva bearer is minted on the Selva side and the RLS switch is a plain on/off
+// string. They share secret/crea-map and crea-map-secrets with the other
+// crea-map targets; the intake write is a merge, so they land alongside them
+// without clobbering. Lowercase properties to match crea-map's ExternalSecret
+// `property:` fields (ESO is all-or-nothing per ExternalSecret). Pinned so a
+// rename is a test failure, not a silent write to a path nothing reads.
+func TestCreaMap303Targets(t *testing.T) {
+	cases := []struct {
+		id   string
+		keys []string
+	}{
+		{"crea-map/selva-api-key", []string{"selva_api_key"}},
+		{"crea-map/rls-por-caso", []string{"rls_por_caso"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/crea-map", tgt.VaultPath)
+			assert.Equal(t, "crea-map", tgt.Namespace)
+			assert.Equal(t, "crea-map-secrets", tgt.ExternalSecret)
+			assert.Equal(t, tc.keys, tgt.Keys)
+			assert.NotEmpty(t, tgt.Label)
+			for _, k := range tgt.Keys {
+				assert.Equal(t, strings.ToLower(k), k,
+					"key %q must be lowercase to match crea-map's ExternalSecret property", k)
+			}
+			// Value-intake, not generatable: no generate policy declared.
+			assert.Nil(t, tgt.Generate)
+		})
 	}
 }
 
