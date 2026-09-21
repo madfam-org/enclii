@@ -7,6 +7,16 @@
 // Extend Jest matchers with jest-dom for better DOM assertions
 require('@testing-library/jest-dom');
 
+// Polyfill TextEncoder/TextDecoder for jsdom (needed by the PKCE code-challenge
+// path in contexts/AuthContext.tsx). Mirrors apps/admin-console/jest.setup.js.
+const { TextEncoder, TextDecoder } = require('util');
+if (!global.TextEncoder) {
+  global.TextEncoder = TextEncoder;
+}
+if (!global.TextDecoder) {
+  global.TextDecoder = TextDecoder;
+}
+
 // Mock window.matchMedia for components that use media queries
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

@@ -165,6 +165,29 @@ User → /login → Click "Sign in with Janua SSO"
      → JWT tokens → Redirect to /auth/callback → Dashboard
 ```
 
+### OIDC Sign-in Controls (account switching)
+
+In OIDC mode the login page (`app/login/page.tsx`) offers three entry points,
+mirroring the enclii admin-console (DISPATCH) switching model. They call the
+same `loginWithOIDC()` and differ only by the OIDC `prompt` parameter appended
+to Janua's `authorize` URL:
+
+| Control | `prompt` value | Effect |
+|---------|----------------|--------|
+| **Sign in with Janua SSO** | *(omitted)* | Default. Janua may silently reuse an existing SSO session. |
+| **Switch account** | `select_account` | Janua shows its account chooser — for operators holding more than one MADFAM account. |
+| **Sign in as someone else** | `login` | Forces a fresh credential entry, ignoring any existing SSO session. |
+
+`prompt` is appended **only when supplied** (`OIDCAuthProvider.login()`), so the
+default sign-in sends no prompt and keeps silent session reuse. Janua honors
+`login` and `select_account` (see janua #623). Local/bootstrap mode has no
+`prompt` concept — there is no estate SSO session to switch.
+
+Behavior is covered by `contexts/AuthContext.test.tsx`.
+
+> **Ecosystem directive:** every MADFAM platform adopts this «Switch account /
+> Sign in as someone else» model, **except Crea Tu Mundo MAP**.
+
 ## Route Protection
 
 All routes except the following require authentication:
