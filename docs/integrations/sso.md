@@ -80,6 +80,28 @@ Access tokens are RS256-signed JWTs:
 }
 ```
 
+### Web Console Sign-in (account switching)
+
+The Enclii web consoles — **admin.enclii.dev** (admin/DISPATCH) and
+**app.enclii.dev** (Switchyard UI) — sign operators in through the same OIDC
+PKCE flow, and both offer explicit account-switching controls on their login
+pages. The controls differ only by the OIDC `prompt` parameter appended to
+Janua's `authorize` URL:
+
+| Control | `prompt` value | Effect |
+|---------|----------------|--------|
+| **Sign in with Janua SSO** | *(omitted)* | Default. Janua may silently reuse an existing SSO session. |
+| **Switch account** | `select_account` | Janua shows its account chooser — for an operator holding more than one MADFAM account. |
+| **Sign in as someone else** | `login` | Forces fresh re-authentication, ignoring any existing SSO session. |
+
+`prompt` is appended **only when supplied**, so the default sign-in keeps the
+silent-session-reuse behavior. Signing out uses Janua's RP-Initiated Logout
+(`end_session`) so the shared SSO session is actually ended, not just the local
+cookies cleared — see [Logout](#logout).
+
+> **Ecosystem directive:** every MADFAM platform adopts this «Switch account /
+> Sign in as someone else» sign-in model, **except Crea Tu Mundo MAP**.
+
 ---
 
 ## Configuration

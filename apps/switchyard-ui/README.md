@@ -191,23 +191,38 @@ export function useCreateProject() {
 
 ## Authentication
 
-Authentication uses NextAuth.js with Janua as the OIDC provider:
+Authentication is handled directly in `contexts/AuthContext.tsx` (no NextAuth.js
+dependency). The provider runs in one of two modes, selected by
+`NEXT_PUBLIC_AUTH_MODE`:
 
-```typescript
-// app/api/auth/[...nextauth]/route.ts
-import NextAuth from 'next-auth'
-import { JanuaProvider } from '@/lib/auth/janua'
+- **`oidc`** (production) — a direct OAuth 2.0 / OIDC **PKCE** flow against
+  Janua SSO (`auth.madfam.io`). `loginWithOIDC()` generates the PKCE verifier,
+  stores it, and performs a top-level navigation to Janua's `authorize`
+  endpoint.
+- **`local`** (bootstrap/dev) — email/password directly against the Switchyard
+  API, using the Janua `SignIn` component.
 
-export const authOptions = {
-  providers: [
-    JanuaProvider({
-      clientId: process.env.JANUA_CLIENT_ID!,
-      clientSecret: process.env.JANUA_CLIENT_SECRET!,
-      issuer: process.env.NEXT_PUBLIC_AUTH_URL,
-    }),
-  ],
-}
-```
+See [`AUTH_CONFIGURATION.md`](./AUTH_CONFIGURATION.md) for the full environment
+matrix and Janua OAuth-client setup.
+
+### Sign-in controls (account switching)
+
+The login page (`app/login/page.tsx`) exposes three OIDC entry points, matching
+the enclii admin-console (DISPATCH) switching model. They differ only by the
+OIDC `prompt` parameter appended to the Janua `authorize` URL:
+
+| Control | `prompt` | Behavior |
+|---------|----------|----------|
+| **Sign in with Janua SSO** | *(none)* | Default. Janua may silently reuse an existing SSO session. |
+| **Switch account** | `select_account` | Janua shows its account chooser (for operators holding more than one MADFAM account). |
+| **Sign in as someone else** | `login` | Forces a fresh credential entry, ignoring any existing SSO session. |
+
+The `prompt` is appended **only when supplied**, so the default sign-in keeps
+sending no prompt (silent session reuse). This is implemented in
+`OIDCAuthProvider.login()` and covered by `contexts/AuthContext.test.tsx`.
+
+> **Ecosystem note:** every MADFAM platform adopts this «Switch account /
+> Sign in as someone else» model, **except Crea Tu Mundo MAP**.
 
 ## Deployment
 
