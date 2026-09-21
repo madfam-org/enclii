@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { adoptSidFromLocation, withTabSessionHeader } from '@/lib/tab-session'
 
 /**
  * AuthContext for Dispatch
@@ -120,6 +121,14 @@ interface AuthContextType {
   isAuthenticated: boolean
   isAuthorized: boolean
   login: (options?: LoginOptions) => void
+  /**
+   * Two-tab focus: open a NEW browser tab and run Janua's account chooser in it,
+   * so the operator can bring up a second, different estate account alongside
+   * this one. The new tab runs `prompt=select_account`; picking an account there
+   * pins that tab to it (via the `#janua_sid` fragment) without disturbing this
+   * tab. See `lib/tab-session.ts`.
+   */
+  openAccountInNewTab: () => void
   logout: () => void
   error: string | null
 }
@@ -143,17 +152,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = useCallback(async () => {
     try {
+      // Two-tab focus: if we arrived carrying `#janua_sid=<sid>` (from Janua's
+      // switch-session?return_sid), pin THIS tab to that estate account and strip
+      // the fragment from the address bar. A no-op when no fragment is present.
+      adoptSidFromLocation()
+
       const token = document.cookie.split('; ').find(r => r.startsWith('dispatch_auth='))?.split('=')[1]
       if (!token) {
         setIsLoading(false)
         return
       }
 
-      // Verify token with Janua
+      // Verify token with Janua. `withTabSessionHeader` adds `X-Janua-Session`
+      // only when this tab holds a per-tab sid; otherwise the headers are
+      // unchanged. (The Bearer already names the user, so the header is
+      // redundant here — it is sent for contract consistency with the authorize
+      // path, and is harmless because Bearer outranks it in Janua's resolver.)
       const response = await fetch(`${JANUA_URL}/api/v1/auth/me`, {
-        headers: {
+        headers: withTabSessionHeader({
           Authorization: `Bearer ${token}`,
-        },
+        }),
       })
 
       if (response.ok) {
@@ -238,6 +256,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${JANUA_URL}/api/v1/oauth/authorize?${params.toString()}`
   }, [])
 
+  const openAccountInNewTab = useCallback(() => {
+    if (typeof window === 'undefined') return
+    // Open a NEW tab and let IT run the chooser. The authorize flow needs a PKCE
+    // `code_verifier` in the tab's own (per-tab) sessionStorage, so the new tab
+    // must start the flow itself — the opener cannot seed it. `/auth/new-account`
+    // is a thin bootstrap page that calls `login({ prompt: 'select_account' })`
+    // on mount. Opened with noopener so the new tab cannot script this one.
+    window.open('/auth/new-account', '_blank', 'noopener,noreferrer')
+  }, [])
+
   const logout = useCallback(async () => {
     // Clear the local `dispatch_*` cookies FIRST so the browser is already
     // signed out of this console before we hand off to Janua. If the top-level
@@ -283,6 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         isAuthorized,
         login,
+        openAccountInNewTab,
         logout,
         error,
       }}
