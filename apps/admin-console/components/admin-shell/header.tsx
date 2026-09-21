@@ -10,11 +10,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@enclii/ui-components/dropdown-menu"
-import { Radio, LogOut, User, ChevronDown, Users, UserPlus } from 'lucide-react'
+import { Radio, LogOut, User, ChevronDown, Users, UserPlus, ExternalLink } from 'lucide-react'
 import { MobileSidebarToggle } from './sidebar'
 
 export function AdminHeader() {
-  const { user, isAuthorized, login, logout } = useAuth()
+  const { user, isAuthorized, login, openAccountInNewTab, logout } = useAuth()
 
   const displayRole = user?.roles?.includes('superadmin')
     ? 'SUPERADMIN'
@@ -64,6 +64,10 @@ export function AdminHeader() {
               <DropdownMenuItem onClick={() => login({ prompt: 'login' })} className="gap-2">
                 <UserPlus className="size-4" />
                 Sign in as someone else
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={openAccountInNewTab} className="gap-2">
+                <ExternalLink className="size-4" />
+                Open account in a new tab
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout} className="gap-2">

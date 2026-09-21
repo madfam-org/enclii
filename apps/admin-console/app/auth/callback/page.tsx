@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Radio, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { adoptSidFromLocation, withTabSessionHeader } from '@/lib/tab-session'
 
 /**
  * OAuth Callback Page
@@ -49,6 +50,11 @@ function AuthCallbackContent() {
 
   const handleCallback = async () => {
     try {
+      // Two-tab focus: if Janua's switch-session?return_sid landed us here with
+      // `#janua_sid=<sid>`, pin THIS tab to that estate account (stored per-tab in
+      // sessionStorage) and strip the fragment. A no-op when no fragment is present.
+      adoptSidFromLocation()
+
       const code = searchParams.get('code')
       const errorParam = searchParams.get('error')
 
@@ -88,9 +94,10 @@ function AuthCallbackContent() {
 
       const { access_token } = await response.json()
 
-      // Verify user identity
+      // Verify user identity. The Bearer already names the user; `X-Janua-Session`
+      // is added only when this tab holds a per-tab sid, for contract consistency.
       const meResponse = await fetch(`${JANUA_URL}/api/v1/auth/me`, {
-        headers: { Authorization: `Bearer ${access_token}` },
+        headers: withTabSessionHeader({ Authorization: `Bearer ${access_token}` }),
       })
 
       if (!meResponse.ok) {
