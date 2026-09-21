@@ -280,11 +280,53 @@ describe('AuthProvider', () => {
 // =============================================================================
 
 describe('logout', () => {
-  it('clears user state and redirects to /login', async () => {
-    Object.defineProperty(document, 'cookie', {
+  const JANUA_URL = 'https://auth.madfam.io'
+
+  function mockLocation(origin: string) {
+    const originalLocation = window.location
+    let href = ''
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...originalLocation,
+        origin,
+        hostname: new URL(origin).hostname,
+        get href() {
+          return href
+        },
+        set href(value: string) {
+          href = value
+        },
+      } as unknown as Location,
       writable: true,
-      value: 'dispatch_auth=valid-jwt-token',
       configurable: true,
+    })
+    return {
+      getHref: () => href,
+      restore: () =>
+        Object.defineProperty(window, 'location', {
+          value: originalLocation,
+          writable: true,
+          configurable: true,
+        }),
+    }
+  }
+
+  it('performs a top-level navigation to the Janua RP-initiated logout URL with the encoded return, after clearing local cookies', async () => {
+    // The naive string `document.cookie` mock used elsewhere in this file
+    // OVERWRITES on every assignment, so it cannot show three cleared cookies
+    // at once. Track every WRITE instead — that is what lets us assert both the
+    // clearing AND the ordering (all cookies cleared before the redirect).
+    const cookieWrites: string[] = []
+    let cookieValue = 'dispatch_auth=valid-jwt-token'
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get() {
+        return cookieValue
+      },
+      set(v: string) {
+        cookieWrites.push(v)
+        cookieValue = v
+      },
     })
 
     // Auth check succeeds
@@ -297,6 +339,8 @@ describe('logout', () => {
       }),
     })
 
+    const loc = mockLocation('https://admin.enclii.dev')
+
     render(
       <AuthProvider>
         <TestConsumer />
@@ -307,8 +351,10 @@ describe('logout', () => {
       expect(screen.getByTestId('authenticated')).toHaveTextContent('true')
     })
 
-    // Logout - mock the Janua logout call
-    mockFetch.mockResolvedValueOnce({ ok: true })
+    // No fetch is expected during logout anymore — reset the mock so a stray
+    // call would be visible.
+    mockFetch.mockReset()
+    cookieWrites.length = 0
 
     await act(async () => {
       screen.getByTestId('logout-btn').click()
@@ -317,7 +363,29 @@ describe('logout', () => {
     await waitFor(() => {
       expect(screen.getByTestId('user')).toHaveTextContent('null')
     })
-    expect(mockPush).toHaveBeenCalledWith('/login')
+
+    // All three local cookies were cleared with Max-Age=0 before handing off.
+    const cleared = cookieWrites.filter((w) => w.includes('Max-Age=0'))
+    expect(cleared.some((w) => w.startsWith('dispatch_auth='))).toBe(true)
+    expect(cleared.some((w) => w.startsWith('dispatch_user_email='))).toBe(true)
+    expect(cleared.some((w) => w.startsWith('dispatch_user_roles='))).toBe(true)
+
+    // Top-level navigation to Janua end_session with the encoded origin-root return.
+    const href = loc.getHref()
+    expect(href.startsWith(`${JANUA_URL}/logout?`)).toBe(true)
+    const url = new URL(href)
+    expect(url.searchParams.get('client_id')).toBeTruthy()
+    expect(url.searchParams.get('post_logout_redirect_uri')).toBe('https://admin.enclii.dev/')
+    // Encoded in the raw query string (not a bare unescaped URI).
+    expect(href).toContain(
+      `post_logout_redirect_uri=${encodeURIComponent('https://admin.enclii.dev/')}`
+    )
+
+    // logout() must NOT use fetch to end the Janua session (fetch cannot delete
+    // the same-origin janua_sso cookie).
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    loc.restore()
   })
 })
 
