@@ -7,11 +7,43 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
+
+	"github.com/madfam-org/enclii/apps/switchyard-api/internal/lockbox"
 )
 
 var kalyaTenantPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,79}$`)
+
+// These custody-conflict conditions are raised inside the compare-and-set
+// callback from fixed strings that never contain a credential, so they are safe
+// to show an operator verbatim. Keeping them as sentinels lets the reconciler
+// surface exactly these (and Vault's own diagnostics) while leaving any other,
+// unrecognised error opaque.
+var (
+	errCustodyStateInvalid  = errors.New("invalid credential custody state")
+	errCustodyForeignOrigin = errors.New("credential custody belongs to another Kalya origin")
+)
+
+// safeCustodyDetail returns an operator-safe description of a custody write
+// failure. A Vault diagnostic (built only from Vault's own errors array) and the
+// custody-conflict sentinels above are surfaced; anything else — including an
+// error a Vault client might have built from a credential-bearing payload — is
+// reported without its text, so the diagnostic path can never widen into a leak.
+func safeCustodyDetail(err error) string {
+	var diag *lockbox.VaultDiagnostic
+	switch {
+	case errors.As(err, &diag):
+		return diag.Error()
+	case errors.Is(err, errCustodyStateInvalid):
+		return errCustodyStateInvalid.Error() + " (a prior partial write left an unreadable custody record at this path; rerun to resume)"
+	case errors.Is(err, errCustodyForeignOrigin):
+		return errCustodyForeignOrigin.Error()
+	default:
+		return "an unexpected Vault error was withheld to avoid leaking credential material; check switchyard-api logs"
+	}
+}
 
 type atomicKalyaVault interface {
 	MutateSecretData(context.Context, string, func(map[string]interface{}) (map[string]interface{}, error)) (int, error)
@@ -36,10 +68,10 @@ func readKalyaCustody(data map[string]interface{}, tenant string) (kalyaCredenti
 	}
 	encoded, err := json.Marshal(raw)
 	if err != nil {
-		return state, fmt.Errorf("invalid credential custody state")
+		return state, errCustodyStateInvalid
 	}
 	if json.Unmarshal(encoded, &state) != nil || len(state.Token) != 43 || (state.Phase != "pending" && state.Phase != "published" && state.Phase != "active") {
-		return state, fmt.Errorf("invalid credential custody state")
+		return state, errCustodyStateInvalid
 	}
 	return state, nil
 }
@@ -68,7 +100,7 @@ func reconcileKalyaFeedConsumers(ctx context.Context, vault VaultSecretWriter, m
 			}
 			if prior.Token != "" {
 				if prior.Origin != req.Origin {
-					return nil, fmt.Errorf("credential custody belongs to another Kalya origin")
+					return nil, errCustodyForeignOrigin
 				}
 				if prior.Phase != "active" {
 					state = prior
@@ -94,7 +126,13 @@ func reconcileKalyaFeedConsumers(ctx context.Context, vault VaultSecretWriter, m
 		})
 		if err != nil {
 			entry.Action = "error"
-			entry.Error = "failed to establish durable credential custody"
+			// safeCustodyDetail surfaces a custody-state conflict (fixed strings,
+			// no credential) or Vault's own diagnostic (its `errors` array, never
+			// an echo of the submitted payload), and withholds anything else. That
+			// turns the next operator run into a self-diagnosing one instead of
+			// another opaque "partial", without widening the diagnostic into a
+			// path that could leak the token the payload carried.
+			entry.Error = fmt.Sprintf("failed to establish durable credential custody: %s", safeCustodyDetail(err))
 			continue
 		}
 		if skip {
@@ -123,7 +161,7 @@ func reconcileKalyaFeedConsumers(ctx context.Context, vault VaultSecretWriter, m
 		})
 		if err != nil {
 			entry.Action = "error"
-			entry.Error = "consumer projection failed; prior credential remains live and custody is retryable"
+			entry.Error = fmt.Sprintf("consumer projection failed; prior credential remains live and custody is retryable: %s", safeCustodyDetail(err))
 			continue
 		}
 		_, err = minter.ReconcileFeedToken(ctx, req.Origin, key, req.Tenant, label, hashText, state.PreviousHash, true)
@@ -142,7 +180,7 @@ func reconcileKalyaFeedConsumers(ctx context.Context, vault VaultSecretWriter, m
 		})
 		if err != nil {
 			entry.Action = "error"
-			entry.Error = "credential active; custody acknowledgement pending retry"
+			entry.Error = fmt.Sprintf("credential active; custody acknowledgement pending retry: %s", safeCustodyDetail(err))
 			continue
 		}
 		entry.Version = version
