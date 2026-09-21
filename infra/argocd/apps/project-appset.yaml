@@ -117,6 +117,22 @@ spec:
           jsonPointers:
             - /data
             - /stringData
+            # ESO writes the produced Secret (e.g. enclii-secrets, creationPolicy
+            # Merge) with its own reconcile hash + the operator ops annotations,
+            # and Argo injects its tracking label. None of these live in the git
+            # stub, so without ignoring them the Secret sits permanently
+            # OutOfSync (core-services Degraded). Mirrors the ExternalSecret-kind
+            # ignores below, but on the produced Secret.
+            - /metadata/labels/app.kubernetes.io~1instance
+            - /metadata/annotations/reconcile.external-secrets.io~1data-hash
+            - /metadata/annotations/force-sync
+            - /metadata/annotations/enclii.dev~1secret-intake-id
+            - /metadata/annotations/enclii.dev~1secret-intake-target
+            - /metadata/annotations/enclii.dev~1last-ops-idempotency-key
+            - /metadata/annotations/enclii.dev~1last-ops-operation
+            - /metadata/annotations/enclii.dev~1last-ops-reason
+            - /metadata/annotations/enclii.dev~1last-ops-requested
+            - /metadata/annotations/enclii.dev~1refresh-requested-at
         - group: external-secrets.io
           kind: ExternalSecret
           jsonPointers:
