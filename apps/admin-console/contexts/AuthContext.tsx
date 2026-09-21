@@ -16,6 +16,37 @@ import { useRouter } from 'next/navigation'
 const JANUA_URL = process.env.NEXT_PUBLIC_JANUA_URL || 'https://auth.madfam.io'
 const OAUTH_CLIENT_ID = process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID || 'jnc_lofqyf9LQXG_OwENAIw89p_XvngkWMi-'
 
+/**
+ * Janua OIDC RP-Initiated Logout (end_session) endpoint path.
+ *
+ * Confirmed against the janua repo (apps/api/app/routers/v1/oauth_provider.py,
+ * `logout_router` mounted WITHOUT the `/api/v1` prefix — see
+ * `app.include_router(oauth_provider_v1.logout_router)` in main.py). The route
+ * is therefore served at the API root as `GET /logout`, NOT
+ * `/api/v1/auth/logout`. It requires `client_id` and `post_logout_redirect_uri`
+ * query params (and an optional `state`), clears the `janua_sso` cookie, revokes
+ * the referenced session row, then 302s to the post-logout URI.
+ *
+ * Kept as a single constant so it is trivial to update if the janua lane lands
+ * the endpoint at a different path before it deploys.
+ */
+const JANUA_LOGOUT_PATH = process.env.NEXT_PUBLIC_JANUA_LOGOUT_PATH || '/logout'
+
+/**
+ * Post-logout landing.
+ *
+ * janua's `validate_post_logout_redirect_uri` accepts either an exact
+ * registered redirect URI or the ORIGIN ROOT (path `/`) of a registered
+ * callback. This console only registers `${origin}/auth/callback`, so a bare
+ * `${origin}/login` would be rejected with `400 invalid_request`. We therefore
+ * point the redirect at the origin root, which janua accepts; middleware then
+ * bounces the now-cookieless browser from `/` to `/login`.
+ */
+function postLogoutRedirectUri(): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}/`
+}
+
 // PKCE helpers for secure OAuth 2.0 flow
 function generateCodeVerifier(): string {
   const array = new Uint8Array(32)
@@ -183,27 +214,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    try {
-      const token = document.cookie.split('; ').find(r => r.startsWith('dispatch_auth='))?.split('=')[1]
-      if (token) {
-        // Notify Janua of logout
-        await fetch(`${JANUA_URL}/api/v1/auth/logout`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }).catch(() => {})
-      }
-    } finally {
-      // Clear cookies with proper domain
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
-      const clearDomain = hostname.includes('.enclii.dev') ? '; domain=.enclii.dev' : ''
-      document.cookie = `dispatch_auth=; Max-Age=0; path=/${clearDomain}`
-      document.cookie = `dispatch_user_email=; Max-Age=0; path=/${clearDomain}`
-      document.cookie = `dispatch_user_roles=; Max-Age=0; path=/${clearDomain}`
-      setUser(null)
+    // Clear the local `dispatch_*` cookies FIRST so the browser is already
+    // signed out of this console before we hand off to Janua. If the top-level
+    // navigation below never resolves to a working page (e.g. janua's logout
+    // endpoint is not deployed yet), the local session is still gone.
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+    const clearDomain = hostname.includes('.enclii.dev') ? '; domain=.enclii.dev' : ''
+    document.cookie = `dispatch_auth=; Max-Age=0; path=/${clearDomain}`
+    document.cookie = `dispatch_user_email=; Max-Age=0; path=/${clearDomain}`
+    document.cookie = `dispatch_user_roles=; Max-Age=0; path=/${clearDomain}`
+    setUser(null)
+
+    // RP-initiated logout: a TOP-LEVEL browser navigation (not fetch) to Janua's
+    // end_session endpoint. This is the only thing that actually deletes the
+    // `janua_sso` cookie and revokes the session row — a same-origin cookie a
+    // cross-origin fetch cannot touch. Janua then 302s back to the origin root,
+    // and middleware sends the cookieless browser on to /login.
+    //
+    // Graceful degrade: until the janua lane deploys this GET endpoint, the URL
+    // 404s. Because a cross-origin 404 cannot self-redirect us back, we cannot
+    // guarantee the /login landing purely from the client in that window; the
+    // local cookies are already cleared above, so re-opening the console lands
+    // on /login regardless. To keep the common (janua-down) case from stranding
+    // the operator on a broken page, fall back to a same-tab /login redirect if
+    // the origin can't be determined.
+    if (typeof window === 'undefined') {
       router.push('/login')
+      return
     }
+
+    const params = new URLSearchParams({
+      client_id: OAUTH_CLIENT_ID,
+      post_logout_redirect_uri: postLogoutRedirectUri(),
+    })
+    window.location.href = `${JANUA_URL}${JANUA_LOGOUT_PATH}?${params.toString()}`
   }, [router])
 
   return (
