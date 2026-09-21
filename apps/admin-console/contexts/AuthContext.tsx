@@ -67,12 +67,28 @@ interface User {
   roles?: string[]
 }
 
+/**
+ * OIDC `prompt` values this console uses.
+ *
+ * - `login` — «Sign in as someone else»: force Janua to re-authenticate even
+ *   if an SSO session exists.
+ * - `select_account` — «Switch account»: ask Janua to show its account chooser.
+ *
+ * Omitting `prompt` entirely is the default «Sign in with Janua SSO» behavior
+ * (silent reuse of an existing session). See RFC 6749 / OIDC Core §3.1.2.1.
+ */
+export type LoginPrompt = 'login' | 'select_account'
+
+interface LoginOptions {
+  prompt?: LoginPrompt
+}
+
 interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
   isAuthorized: boolean
-  login: () => void
+  login: (options?: LoginOptions) => void
   logout: () => void
   error: string | null
 }
@@ -162,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (options?: LoginOptions) => {
     // Generate PKCE parameters for secure OAuth 2.0 flow
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallenge(codeVerifier)
@@ -179,6 +195,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
     })
+
+    // Optional OIDC `prompt`. Appended only when a value is supplied, so the
+    // default sign-in keeps sending NO prompt (silent session reuse). Until
+    // Janua honors these prompts, `select_account` degrades to today's silent
+    // reuse — acceptable; it becomes a real chooser once the janua lane ships.
+    if (options?.prompt) {
+      params.set('prompt', options.prompt)
+    }
+
     window.location.href = `${JANUA_URL}/api/v1/oauth/authorize?${params.toString()}`
   }, [])
 

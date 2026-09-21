@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from "@enclii/ui-components/button"
-import { Radio, Shield, ArrowRight } from 'lucide-react'
+import { Radio, Shield, ArrowRight, Users, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
@@ -60,10 +60,32 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-4">
-            <Button onClick={login} className="w-full gap-2" size="lg">
-              Enterprise SSO
+            {/* Default sign-in: no `prompt`, so Janua may silently reuse an
+                existing SSO session. Call login() explicitly so the click
+                event is not passed as the options argument. */}
+            <Button onClick={() => login()} className="w-full gap-2" size="lg">
+              Sign in with Janua SSO
               <ArrowRight className="size-4" />
             </Button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Button
+                onClick={() => login({ prompt: 'select_account' })}
+                variant="outline"
+                className="w-full gap-2"
+              >
+                <Users className="size-4" />
+                Switch account
+              </Button>
+              <Button
+                onClick={() => login({ prompt: 'login' })}
+                variant="outline"
+                className="w-full gap-2"
+              >
+                <UserPlus className="size-4" />
+                Sign in as someone else
+              </Button>
+            </div>
 
             <p className="text-xs text-center text-muted-foreground">
               You will be redirected to{' '}
