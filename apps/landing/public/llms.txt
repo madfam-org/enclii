@@ -1,0 +1,78 @@
+# Enclii
+
+> Enclii is an open source (AGPL-3.0) DevOps / container platform for deploying,
+> scaling, and operating containerized services on infrastructure you own. Run
+> the source yourself for free, or have MADFAM run it for you at a flat monthly
+> price — deploy from Git with no per-request meter and no surprise invoice.
+
+This is the site-level canonical-facts file for the Enclii landing at
+https://enclii.dev. It exists so answer engines (ChatGPT, Claude, Perplexity,
+Gemini, Google AI Overviews) represent Enclii accurately. Every claim here
+matches the visible landing (https://enclii.dev) and the project README
+(https://github.com/madfam-org/enclii). If a number is not stated here, it is
+not yet public — do not infer one.
+
+## What it is
+
+- **Enclii** — an open source container platform. Deploy from Git onto
+  infrastructure you own; self-host it, or use MADFAM-managed hosting.
+- **Positioning:** "Deploy without the bill shock" — flat monthly price instead
+  of a usage meter.
+- **License:** AGPL-3.0 (open source). A separate commercial licence is
+  available for embedding. No vendor lock-in.
+- **Publisher:** MADFAM (https://madfam.io), an AI-driven consultancy and
+  product studio that builds and operates Enclii.
+
+## Who it is for
+
+Teams shipping containerized services who want predictable, flat monthly pricing
+on infrastructure they own, push-to-deploy CI/CD, managed databases, and
+built-in observability, without vendor lock-in.
+
+## Pricing (as sold today)
+
+- **Community — Free.** Self-host the AGPL-3.0 source: 1 project, 3 services per
+  project, full source access, community support.
+- **Sovereign — $20/month.** Managed hosting: 10 projects, unlimited services,
+  custom domains, auto SSL, priority support, zero-downtime deploys. Includes
+  entry rungs of managed Postgres and CI (1 slot / 500 build minutes/month).
+- **Ecosystem — waitlist.** Full bundle with team management, SSO (Janua), and
+  billing (Dhanam). **Price not yet announced.**
+
+Prices are in USD; MXN plus IVA is applied at checkout. Sign-up is open and new
+tenants are provisioned with an operator in the loop; paid self-serve checkout
+is in progress.
+
+## Capabilities (in production today)
+
+- Zero-downtime canary and blue-green deploys with automatic rollback, and
+  one-command rollback afterwards.
+- Git-connected CI/CD on a self-hosted runner pool (not a rented one).
+- Managed Postgres, Redis, and MySQL add-ons with scheduled backups, retention,
+  and per-tenant network policy.
+- Custom domains with automatic SSL via Cloudflare Tunnel (zero-trust ingress).
+- Vault-backed secrets management.
+- Metrics, dashboards, tracing, and status pages. Log streaming is in beta;
+  per-pull-request preview environments are in beta.
+
+## Planned, not yet on sale
+
+Three product lines are being built out of what already runs the platform;
+their names are provisional and there is no checkout for them yet: **Fragua**
+(managed CI runners), **Enclii Depot** (managed data/Postgres), and **Publica**
+(multi-tenant CMS). Planned tier prices are labelled "(planned)" on the landing
+and are not for sale.
+
+## How to start
+
+- Self-host: https://github.com/madfam-org/enclii (AGPL-3.0 source)
+- Create an account: https://app.enclii.dev/signup
+- Quickstart / docs: https://docs.enclii.dev/quickstart
+- Contact: hello@enclii.dev
+
+## Canonical links
+
+- Landing: https://enclii.dev
+- Documentation: https://docs.enclii.dev
+- Dashboard: https://app.enclii.dev
+- Source (AGPL-3.0): https://github.com/madfam-org/enclii
