@@ -429,6 +429,95 @@ export default function Home() {
         </div>
       </section>
 
+      {/* FAQ Section — answer-shaped, extractable prose. Each Q&A here matches
+          the FAQPage JSON-LD in components/structured-data.tsx one-to-one, so an
+          answer engine reads the same claims from the markup and the schema. */}
+      <section id="faq" className="py-24 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Frequently asked questions
+            </h2>
+          </div>
+          <dl className="space-y-8">
+            <div>
+              <dt className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                What is Enclii?
+              </dt>
+              <dd className="text-gray-600 dark:text-gray-400">
+                Enclii is an open source (AGPL-3.0) DevOps / container platform for deploying,
+                scaling, and operating containerized services on infrastructure you own. You can
+                self-host the source, or have MADFAM run it for you at a flat monthly price — deploy
+                from Git with no per-request meter and no surprise invoice.
+              </dd>
+            </div>
+            <div>
+              <dt className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                How much does Enclii cost?
+              </dt>
+              <dd className="text-gray-600 dark:text-gray-400">
+                Two tiers are on sale today: <strong>Community is free</strong> — you self-host the
+                AGPL-3.0 source on your own infrastructure. <strong>Sovereign is $20/month</strong>{' '}
+                for managed hosting with 10 projects, unlimited services, custom domains, auto SSL,
+                and zero-downtime deploys. A third tier, Ecosystem, is on a waitlist and its price is
+                not yet announced. Prices are shown in USD; MXN plus IVA applies at checkout.
+              </dd>
+            </div>
+            <div>
+              <dt className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Who is Enclii for?
+              </dt>
+              <dd className="text-gray-600 dark:text-gray-400">
+                Teams who ship containerized services and want predictable, flat monthly pricing on
+                infrastructure they own, instead of usage-metered clouds. It suits developers who
+                want push-to-deploy CI/CD, managed databases, and observability without vendor
+                lock-in, because the platform is open source and can be self-hosted.
+              </dd>
+            </div>
+            <div>
+              <dt className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                How do I get started with Enclii?
+              </dt>
+              <dd className="text-gray-600 dark:text-gray-400">
+                Start free by self-hosting the AGPL-3.0 source from{' '}
+                <a
+                  href="https://github.com/madfam-org/enclii"
+                  className="underline hover:text-gray-900 dark:hover:text-white"
+                >
+                  GitHub
+                </a>
+                , or create an account at{' '}
+                <a
+                  href="https://app.enclii.dev/signup"
+                  className="underline hover:text-gray-900 dark:hover:text-white"
+                >
+                  app.enclii.dev/signup
+                </a>
+                . Sign-up is open and new tenants are provisioned with an operator in the loop; paid
+                self-serve checkout is in progress. The{' '}
+                <a
+                  href="https://docs.enclii.dev/quickstart"
+                  className="underline hover:text-gray-900 dark:hover:text-white"
+                >
+                  quickstart
+                </a>{' '}
+                describes what happens after you sign up.
+              </dd>
+            </div>
+            <div>
+              <dt className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Is Enclii open source?
+              </dt>
+              <dd className="text-gray-600 dark:text-gray-400">
+                Yes. Enclii is licensed under AGPL-3.0 and the full source is on GitHub. A separate
+                commercial licence is available for embedding. Because it is open source you can run
+                it entirely yourself with no vendor lock-in.
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-24 px-4 sm:px-6 lg:px-8 hero-gradient">
         <div className="max-w-4xl mx-auto text-center">

@@ -27,6 +27,12 @@ export function SiteNav() {
               Pricing
             </a>
             <a
+              href="#faq"
+              className="hidden sm:inline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm"
+            >
+              FAQ
+            </a>
+            <a
               href="https://docs.enclii.dev"
               className="hidden sm:inline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm"
             >

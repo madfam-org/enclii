@@ -1,0 +1,56 @@
+# Enclii landing — https://enclii.dev
+# GEO: this is a public marketing landing. Classic search crawlers AND AI answer
+# engines are explicitly welcome to read and cite it, so the platform is
+# represented accurately in generative answers.
+
+# Default: everything is crawlable.
+User-agent: *
+Allow: /
+
+# AI answer-engine / training crawlers — explicitly permitted for discovery.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+# Canonical facts for LLMs.
+# https://enclii.dev/llms.txt
+
+Sitemap: https://enclii.dev/sitemap.xml
