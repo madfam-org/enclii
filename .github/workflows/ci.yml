@@ -296,6 +296,34 @@ jobs:
       - name: Run ExternalSecret multi-writer lint
         run: python3 scripts/check-externalsecret-writers.py infra/k8s/
 
+  argocd-ignore-differences-lint:
+    name: ArgoCD ignoreDifferences safety
+    runs-on: ubuntu-latest
+    # Cheap (<1s over infra/argocd). Prevents the 2026-09-07 / 2026-09-23
+    # ExternalSecret class: RespectIgnoreDifferences=true plus an ignore rule
+    # selecting INSIDE a list on a CRD makes ArgoCD copy the whole live list
+    # over the desired one (RFC 7386 merge patch), so added spec.data entries
+    # are silently dropped while the sync reports Succeeded. Also blocks
+    # ServerSideDiff (Kyverno denies its admission dry-run).
+    # See scripts/check-argocd-ignore-differences.py and
+    # docs/infrastructure/ARGOCD_KNOWN_ISSUES.md.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet pyyaml pytest
+
+      - name: Run ArgoCD ignoreDifferences self-tests
+        run: pytest tests/scripts/test_check_argocd_ignore_differences.py -v
+
+      - name: Run ArgoCD ignoreDifferences lint
+        run: python3 scripts/check-argocd-ignore-differences.py infra/argocd/
+
   probe-target-lint:
     name: Probe target consistency
     runs-on: ubuntu-latest
@@ -2048,7 +2076,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint]
+    needs: [lint, unit-tests, ui-tests, security-scan, manifest-audit, golden-config, status-configmap-drift, zero-touch-boundary, networkpolicy-port-lint, image-age-ratchet, ecosystem-e2e, dependabot-secret-trap-lint, argocd-ignore-differences-lint]
     if: always()
 
     steps:
@@ -2092,6 +2120,10 @@ jobs:
           fi
           if [ "${{ needs.networkpolicy-port-lint.result }}" != "success" ]; then
             echo "❌ NetworkPolicy port consistency check failed (prevents 2026-05-04 outage class)"
+            exit 1
+          fi
+          if [ "${{ needs.argocd-ignore-differences-lint.result }}" != "success" ]; then
+            echo "❌ ArgoCD ignoreDifferences safety check failed (a CRD list rule would silently drop writes)"
             exit 1
           fi
           if [ "${{ needs.image-age-ratchet.result }}" != "success" ]; then
