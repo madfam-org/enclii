@@ -189,7 +189,9 @@ func applyRuntimeHealth(status *ServiceStatus, health client.ServiceHealth) {
 			status.Status = "failed"
 		}
 	}
-	if health.PodCount > 0 || health.ReadyPods > 0 {
+	if health.Status == "unknown" {
+		status.Replicas = "unavailable"
+	} else if health.Status == "healthy" || health.Status == "degraded" || health.Status == "unhealthy" || health.PodCount > 0 || health.ReadyPods > 0 {
 		status.Replicas = fmt.Sprintf("%d/%d", health.ReadyPods, health.PodCount)
 	}
 }

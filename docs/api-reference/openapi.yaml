@@ -5993,22 +5993,55 @@ components:
     ServiceHealthResponse:
       type: object
       properties:
+        healthy_count:
+          type: integer
+        degraded_count:
+          type: integer
+          description: Includes services with unknown runtime health.
+        unhealthy_count:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
         services:
           type: array
           items:
             type: object
             properties:
-              id:
+              service_id:
                 type: string
                 format: uuid
-              name:
+              service_name:
                 type: string
-              health:
+              project_slug:
                 type: string
-                enum: [healthy, unhealthy, unknown]
-              last_check:
+              status:
+                type: string
+                enum: [healthy, degraded, unhealthy, unknown]
+              last_checked:
                 type: string
                 format: date-time
+              deployment_name:
+                type: string
+                description: Resolved native workload, when runtime observation succeeds.
+              observation_reason:
+                type: string
+                enum: [runtime_unavailable, workload_ambiguous, workload_binding_conflict, workload_not_found, runtime_access_denied, runtime_timeout]
+                description: Unknown health reason; raw Kubernetes errors are never returned.
+              pod_count:
+                type: integer
+                description: Unknown status makes this value unavailable, not a confirmed zero.
+              ready_pods:
+                type: integer
+              uptime:
+                type: number
+                description: Deployment-history estimate, not an external availability probe.
+              response_time_ms:
+                type: number
+                description: Reserved; zero does not establish measured response time.
+              error_rate:
+                type: number
+                description: Reserved; zero does not establish measured error rate.
 
     RecentErrorsResponse:
       type: object

@@ -123,16 +123,23 @@ type DeploymentStatusInfo struct {
 	UnavailableReplicas int32
 	Generation          int64
 	ObservedGeneration  int64
+	DeploymentName      string
 	ImageTag            string // Image tag from first container (for version display)
 }
 
 // GetDeploymentStatusInfo returns detailed status information about a deployment
 func (c *Client) GetDeploymentStatusInfo(ctx context.Context, namespace, name string) (*DeploymentStatusInfo, error) {
-	deployment, err := c.Clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if c == nil || (c.KubeClient == nil && c.Clientset == nil) {
+		return nil, fmt.Errorf("kubernetes client not initialized")
+	}
+	deployment, err := c.kubeClient().AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
+	return deploymentStatusInfo(deployment), nil
+}
 
+func deploymentStatusInfo(deployment *appsv1.Deployment) *DeploymentStatusInfo {
 	// Extract image tag from first container for version display
 	imageTag := ""
 	if len(deployment.Spec.Template.Spec.Containers) > 0 {
@@ -150,6 +157,7 @@ func (c *Client) GetDeploymentStatusInfo(ctx context.Context, namespace, name st
 	}
 
 	status := &DeploymentStatusInfo{
+		DeploymentName:      deployment.Name,
 		Replicas:            deployment.Status.Replicas,
 		DesiredReplicas:     desiredReplicas,
 		UpdatedReplicas:     deployment.Status.UpdatedReplicas,
@@ -161,7 +169,7 @@ func (c *Client) GetDeploymentStatusInfo(ctx context.Context, namespace, name st
 		ImageTag:            imageTag,
 	}
 
-	return status, nil
+	return status
 }
 
 // ExecCommand executes a command inside a running pod belonging to the given deployment.

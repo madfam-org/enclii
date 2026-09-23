@@ -66,16 +66,18 @@ const healthSFKey = "service-health"
 
 // ServiceHealth represents the health status of a service
 type ServiceHealth struct {
-	ServiceID    string    `json:"service_id"`
-	ServiceName  string    `json:"service_name"`
-	ProjectSlug  string    `json:"project_slug"`
-	Status       string    `json:"status"` // healthy, degraded, unhealthy, unknown
-	Uptime       float64   `json:"uptime"` // percentage
-	ResponseTime float64   `json:"response_time_ms"`
-	ErrorRate    float64   `json:"error_rate"`
-	LastChecked  time.Time `json:"last_checked"`
-	PodCount     int       `json:"pod_count"`
-	ReadyPods    int       `json:"ready_pods"`
+	ServiceID         string    `json:"service_id"`
+	ServiceName       string    `json:"service_name"`
+	ProjectSlug       string    `json:"project_slug"`
+	Status            string    `json:"status"` // healthy, degraded, unhealthy, unknown
+	Uptime            float64   `json:"uptime"` // percentage
+	ResponseTime      float64   `json:"response_time_ms"`
+	ErrorRate         float64   `json:"error_rate"`
+	LastChecked       time.Time `json:"last_checked"`
+	PodCount          int       `json:"pod_count"`
+	ReadyPods         int       `json:"ready_pods"`
+	DeploymentName    string    `json:"deployment_name,omitempty"`
+	ObservationReason string    `json:"observation_reason,omitempty"`
 }
 
 // ServiceHealthResponse contains health status for all services
@@ -265,7 +267,7 @@ func (h *Handler) GetServiceHealth(c *gin.Context) {
 }
 
 // computeServiceHealth performs the actual fan-out: ListAll services + per-
-// service K8s probe + per-service latest-deployment lookup, with a bounded
+// service K8s probe, with a bounded
 // concurrency cap. Extracted from GetServiceHealth so the singleflight
 // wrapper has a clean callee and the recompute is unit-testable in
 // isolation. The boolean return is true when the handler-budget context
@@ -312,19 +314,7 @@ func (h *Handler) computeServiceHealth(ctx context.Context) (ServiceHealthRespon
 				}
 			}
 
-			// Latest deployment seeds the status; the K8s probe below
-			// overrides if the pod-level reality disagrees (catches stale
-			// "running" deployment rows masking crashloops).
-			if latestDep, err := h.repos.Deployments.GetLatestByService(gCtx, svc.ID.String()); err == nil && latestDep != nil {
-				switch latestDep.Status {
-				case types.DeploymentStatusRunning:
-					health.Status = "healthy"
-				case types.DeploymentStatusPending:
-					health.Status = "degraded"
-				case types.DeploymentStatusFailed:
-					health.Status = "unhealthy"
-				}
-			}
+			applyRuntimeObservation(&health, nil, nil)
 
 			if h.k8sClient != nil && svc.Name != "" {
 				ns := "default"
@@ -333,19 +323,8 @@ func (h *Handler) computeServiceHealth(ctx context.Context) (ServiceHealthRespon
 				} else if projectSlug != "" {
 					ns = projectSlug
 				}
-				status, err := h.k8sClient.GetDeploymentStatusInfo(gCtx, ns, svc.Name)
-				if err == nil && status != nil {
-					health.PodCount = int(status.Replicas)
-					health.ReadyPods = int(status.ReadyReplicas)
-					switch {
-					case status.Replicas == 0, status.ReadyReplicas == 0:
-						health.Status = "unhealthy"
-					case status.ReadyReplicas < status.Replicas:
-						health.Status = "degraded"
-					default:
-						health.Status = "healthy"
-					}
-				}
+				status, err := h.k8sClient.GetServiceDeploymentStatusInfo(gCtx, ns, svc.Name)
+				applyRuntimeObservation(&health, status, err)
 			}
 
 			// Uptime is an additional DB query. We compute it for the

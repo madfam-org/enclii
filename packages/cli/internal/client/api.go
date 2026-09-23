@@ -628,16 +628,18 @@ type DeploymentWithRelease struct {
 }
 
 type ServiceHealth struct {
-	ServiceID    string    `json:"service_id"`
-	ServiceName  string    `json:"service_name"`
-	ProjectSlug  string    `json:"project_slug"`
-	Status       string    `json:"status"`
-	Uptime       float64   `json:"uptime"`
-	ResponseTime float64   `json:"response_time_ms"`
-	ErrorRate    float64   `json:"error_rate"`
-	LastChecked  time.Time `json:"last_checked"`
-	PodCount     int       `json:"pod_count"`
-	ReadyPods    int       `json:"ready_pods"`
+	ServiceID         string    `json:"service_id"`
+	ServiceName       string    `json:"service_name"`
+	ProjectSlug       string    `json:"project_slug"`
+	Status            string    `json:"status"`
+	Uptime            float64   `json:"uptime"`
+	ResponseTime      float64   `json:"response_time_ms"`
+	ErrorRate         float64   `json:"error_rate"`
+	LastChecked       time.Time `json:"last_checked"`
+	PodCount          int       `json:"pod_count"`
+	ReadyPods         int       `json:"ready_pods"`
+	DeploymentName    string    `json:"deployment_name,omitempty"`
+	ObservationReason string    `json:"observation_reason,omitempty"`
 }
 
 type ServiceHealthResponse struct {

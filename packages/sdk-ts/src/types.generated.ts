@@ -3699,14 +3699,37 @@ export interface components {
             error_rate?: number;
         };
         ServiceHealthResponse: {
+            healthy_count?: number;
+            /** @description Includes services with unknown runtime health. */
+            degraded_count?: number;
+            unhealthy_count?: number;
+            /** Format: date-time */
+            timestamp?: string;
             services?: {
                 /** Format: uuid */
-                id?: string;
-                name?: string;
+                service_id?: string;
+                service_name?: string;
+                project_slug?: string;
                 /** @enum {string} */
-                health?: "healthy" | "unhealthy" | "unknown";
+                status?: "healthy" | "degraded" | "unhealthy" | "unknown";
                 /** Format: date-time */
-                last_check?: string;
+                last_checked?: string;
+                /** @description Resolved native workload, when runtime observation succeeds. */
+                deployment_name?: string;
+                /**
+                 * @description Unknown health reason; raw Kubernetes errors are never returned.
+                 * @enum {string}
+                 */
+                observation_reason?: "runtime_unavailable" | "workload_ambiguous" | "workload_binding_conflict" | "workload_not_found" | "runtime_access_denied" | "runtime_timeout";
+                /** @description Unknown status makes this value unavailable, not a confirmed zero. */
+                pod_count?: number;
+                ready_pods?: number;
+                /** @description Deployment-history estimate, not an external availability probe. */
+                uptime?: number;
+                /** @description Reserved; zero does not establish measured response time. */
+                response_time_ms?: number;
+                /** @description Reserved; zero does not establish measured error rate. */
+                error_rate?: number;
             }[];
         };
         RecentErrorsResponse: {

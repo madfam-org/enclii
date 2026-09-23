@@ -159,15 +159,7 @@ func TestGetServiceHealth_RejectsInvalidServiceID(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestComputeServiceHealth_HappyPath_NoK8s exercises the extracted recompute
-// against a single service with no K8s client wired. It validates:
-//
-//  1. ListAll services row is correctly scanned
-//  2. Projects.List is collapsed into a single round-trip (one ExpectQuery)
-//  3. Deployments.GetLatestByService is invoked per service
-//  4. Status is seeded from the latest deployment row (running → healthy)
-//  5. Cache is populated on success
-//  6. partial=false on a clean computation
+// A missing runtime observer must not present deployment history as live health.
 func TestComputeServiceHealth_HappyPath_NoK8s(t *testing.T) {
 	h, mock, cleanup := setupObservabilityTestHandler(t)
 	defer cleanup()
@@ -175,9 +167,6 @@ func TestComputeServiceHealth_HappyPath_NoK8s(t *testing.T) {
 
 	serviceID := uuid.New()
 	projectID := uuid.New()
-	releaseID := uuid.New()
-	deploymentID := uuid.New()
-	envID := uuid.New()
 	now := time.Now()
 
 	// 1. ServiceRepository.ListAll
@@ -194,26 +183,6 @@ func TestComputeServiceHealth_HappyPath_NoK8s(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "slug", "ci_runner_mode", "created_at", "updated_at"}).
 			AddRow(projectID, "API", "api", "shared", now, now))
 
-	// 3. Deployments.GetLatestByService — running status → healthy.
-	mock.ExpectQuery(`SELECT d.id, d.release_id, d.environment_id, d.replicas, d.status, d.health.+FROM deployments d`).
-		WithArgs(serviceID.String()).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "release_id", "environment_id", "replicas", "status", "health", "error_message",
-			"service_id", "version_number", "created_at", "updated_at",
-		}).AddRow(
-			deploymentID, releaseID, envID, 2, "running", "healthy", nil,
-			serviceID, 1, now, now,
-		))
-
-	// 4. computeUptime → Deployments.GetByServiceSince. Status=healthy so
-	// the uptime branch fires; we return zero rows (uptime 0% is fine —
-	// the assertion below doesn't depend on the value).
-	mock.ExpectQuery(`(?s)FROM deployments d\s+JOIN releases r ON d.release_id = r.id\s+WHERE r.service_id = \$1 AND d.created_at >= \$2`).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "release_id", "environment_id", "replicas", "status", "health", "error_message",
-			"service_id", "version_number", "created_at", "updated_at",
-		}))
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -226,8 +195,10 @@ func TestComputeServiceHealth_HappyPath_NoK8s(t *testing.T) {
 	assert.Equal(t, serviceID.String(), got.ServiceID)
 	assert.Equal(t, "api", got.ServiceName)
 	assert.Equal(t, "api", got.ProjectSlug, "project slug must come from the bulk-fetched projects map")
-	assert.Equal(t, "healthy", got.Status, "running deployment must seed status=healthy")
-	assert.Equal(t, 1, resp.HealthySvcs)
+	assert.Equal(t, "unknown", got.Status)
+	assert.Equal(t, "runtime_unavailable", got.ObservationReason)
+	assert.Equal(t, 0, resp.HealthySvcs)
+	assert.Equal(t, 1, resp.DegradedSvcs)
 
 	// Cache must be populated on success.
 	healthCacheMu.Lock()
