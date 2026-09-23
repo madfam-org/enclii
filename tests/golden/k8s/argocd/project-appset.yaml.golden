@@ -37,6 +37,13 @@ spec:
       annotations:
         notifications.argoproj.io/subscribe.on-sync-succeeded.enclii: ""
         notifications.argoproj.io/subscribe.on-sync-failed.enclii: ""
+        # Client-side diff ONLY -- keep ServerSideDiff out of this annotation.
+        # Mirrors the runtime reconciler
+        # (apps/switchyard-api/internal/argocd/application_reconciler.go):
+        # SSD's server-side dry-run goes through admission, and Kyverno's
+        # verify-image-signatures denies it on every CI digest bump of a
+        # signature-verified Deployment -> ComparisonError wedges the whole
+        # app. See docs/infrastructure/ARGOCD_KNOWN_ISSUES.md.
         argocd.argoproj.io/compare-options: IgnoreExtraneous=true
       finalizers:
         - resources-finalizer.argocd.argoproj.io
@@ -144,7 +151,22 @@ spec:
             - /metadata/annotations/enclii.dev~1last-ops-reason
             - /metadata/annotations/enclii.dev~1last-ops-requested
             - /metadata/annotations/enclii.dev~1refresh-requested-at
-          jqPathExpressions:
-            - .spec.data[]?.remoteRef.conversionStrategy
-            - .spec.data[]?.remoteRef.decodingStrategy
-            - .spec.data[]?.remoteRef.metadataPolicy
+          # NOTE: there is deliberately NO jqPathExpressions block on this rule.
+          #
+          # It used to hide `.spec.data[]?.remoteRef.{conversionStrategy,
+          # decodingStrategy,metadataPolicy}` (apiserver-applied ESO CRD
+          # defaults). With RespectIgnoreDifferences=true, ArgoCD copies live
+          # values at ignored paths into the desired object before applying;
+          # ExternalSecret is a CRD, so that copy is an RFC 7386 merge patch in
+          # which arrays are atomic -> the whole LIVE spec.data replaced the
+          # desired one and every added entry was silently dropped while the
+          # sync reported "serverside-applied / Succeeded".
+          # See docs/infrastructure/ARGOCD_KNOWN_ISSUES.md,
+          # "ExternalSecret `spec.data` Changes Never Applied".
+          #
+          # The defaulting noise is handled by spelling the three defaults out
+          # in the ExternalSecret manifests in git, NOT by ServerSideDiff (its
+          # admission dry-run is denied by Kyverno on signature-verified
+          # Deployments -- same doc, "Server-Side Diff Denied by Kyverno").
+          # The jsonPointers above are safe: they select map keys, not list
+          # items. scripts/check-argocd-ignore-differences.py enforces this.
