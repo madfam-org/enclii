@@ -262,6 +262,22 @@ targets:
     keys:
       - rls_por_caso
 
+  # crea-map → janua payment-mail machine client (crea-map #688, janua #635).
+  # The OIDC provisioner (config/ecosystem-oidc-provision.yaml →
+  # crea-map-payment-mail) mints the client_credentials pair and files it here
+  # as a MERGE at crea-map's path. crea-map reads JANUA_MAIL_CLIENT_ID to bind
+  # every staff payment-mail intent to this client, and JANUA_MAIL_CLIENT_SECRET
+  # only in the (suspended) payment-mail recovery sweep. LOWERCASE properties.
+  crea-map/janua-mail-client:
+    label: crea-map cliente de correo de pagos (janua, client_credentials)
+    description: Par client_credentials del cliente máquina de crea-map hacia janua para los avisos de pago al personal (audiencia janua-email, alcance crea-map:payment-mail, ligado a la organización de Crea Tu Mundo); lo acuña el aprovisionador OIDC, no el operador
+    vault_path: secret/crea-map
+    namespace: crea-map
+    external_secret: crea-map-secrets
+    keys:
+      - janua_mail_client_id
+      - janua_mail_client_secret
+
   # symbiosis-hcm is the PRODUCER of the absence feed; crea-map cross-reads
   # map_absence_feed_key and consumes it as HCM_FEED_API_KEY. Intaking both keys
   # at the producer's path keeps one copy of the truth — the consumer's

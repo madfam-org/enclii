@@ -167,6 +167,40 @@ func TestLoadRegistry_nautaSymbiosisHCMMachineClient(t *testing.T) {
 	}, values)
 }
 
+// crea-map-payment-mail is the second client_credentials machine edge. janua
+// #635 authorizes POST /api/v1/email/payment-notices from THIS client row alone
+// (active, confidential, org-bound, audience janua-email, scope
+// crea-map:payment-mail, grant client_credentials), so any drift here makes the
+// provisioned client unusable (403 mail_service_grant_unavailable).
+func TestLoadRegistry_creaMapPaymentMailMachineClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["crea-map-payment-mail"]
+	require.True(t, ok, "crea-map-payment-mail platform missing")
+
+	assert.Equal(t, "crea-map/janua-mail-client", p.IntakeTarget)
+	require.Equal(t, map[string]string{
+		"janua_mail_client_id":     "client_id",
+		"janua_mail_client_secret": "client_secret",
+	}, p.IntakeKeyMap)
+
+	jc := p.JanuaClient
+	assert.Equal(t, "janua-email", jc.Audience)
+	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
+	assert.Equal(t, []string{"crea-map:payment-mail"}, jc.AllowedScopes)
+	assert.Empty(t, jc.RedirectURIs, "a client_credentials client has no browser leg")
+	assert.True(t, jc.confidential(), "the machine client must be confidential")
+	assert.Equal(t, "e6cbd51d-8329-4c4e-8c74-aba643ab4575", jc.OrganizationID,
+		"janua #635 requires the client row to be bound to the CTM organization")
+
+	values := buildIntakeValues(reg.Issuer, "jnc_mail", "s3cr3t", p)
+	assert.Equal(t, map[string]string{
+		"janua_mail_client_id":     "jnc_mail",
+		"janua_mail_client_secret": "s3cr3t",
+	}, values)
+}
+
 // TestRegistry_humanCopyMatchesEmbedded fails the build when
 // config/ecosystem-oidc-provision.yaml (what scripts/provision-ecosystem-oidc.sh
 // passes with --registry, and what humans edit) drifts from the copy this package
