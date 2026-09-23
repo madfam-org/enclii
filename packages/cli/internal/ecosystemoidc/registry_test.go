@@ -186,6 +186,8 @@ func TestLoadRegistry_creaMapPaymentMailMachineClient(t *testing.T) {
 	}, p.IntakeKeyMap)
 
 	jc := p.JanuaClient
+	assert.Equal(t, "jnc_9PHl6rQWZFakbXtmWSB5i-bAWJVWKZ1J", jc.ClientID,
+		"pinned after the first provision run; an unpinned re-run registers a duplicate")
 	assert.Equal(t, "janua-email", jc.Audience)
 	assert.Equal(t, []string{"client_credentials"}, jc.GrantTypes)
 	assert.Equal(t, []string{"crea-map:payment-mail"}, jc.AllowedScopes)
