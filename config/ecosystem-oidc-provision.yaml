@@ -303,7 +303,7 @@ platforms:
       janua_mail_client_secret: client_secret
     janua_client:
       name: Crea MAP → Janua payment mail (service)
-      client_key: crea-map-payment-mail
+      client_key: crea-map-payment-mail  # pragma: allowlist secret
       audience: janua-email
       description: Machine edge (client_credentials) from crea-map's staff payment-mail outbox to janua's POST /api/v1/email/payment-notices. Org-bound to CTM/crea, scope crea-map:payment-mail — one edge, one client, one scope. Never a browser login.
       is_confidential: true
