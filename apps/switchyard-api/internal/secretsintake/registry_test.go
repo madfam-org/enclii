@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 33)
+	assert.Len(t, reg, 34)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 33)
+	require.Len(t, list, 34)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -49,6 +49,7 @@ func TestListTargetsSorted(t *testing.T) {
 		"ceq/vast-api-key",
 		"coupler/janua-service-token",
 		"crea-map/internal-api-key",
+		"crea-map/janua-mail-client",
 		"crea-map/kalya-feeds",
 		"crea-map/rls-por-caso",
 		"crea-map/selva-api-key",
@@ -88,6 +89,7 @@ func TestSeptember2026Targets(t *testing.T) {
 	}{
 		{"crea-map/internal-api-key", "secret/crea-map", []string{"internal_api_key"}},
 		{"crea-map/kalya-feeds", "secret/crea-map", []string{"kalya_occupancy_feed_url", "kalya_capacity_feed_url"}},
+		{"crea-map/janua-mail-client", "secret/crea-map", []string{"janua_mail_client_id", "janua_mail_client_secret"}},
 		{"symbiosis-hcm/map-absence-feed", "secret/symbiosis-hcm", []string{"map_absence_feed_url", "map_absence_feed_key"}},
 		{"nauta/kalya-feed-tokens", "secret/nauta", []string{"kalya_feed_tokens"}},
 		{"nauta/symbiosis-hcm-token", "secret/nauta", []string{"symbiosis_hcm_token"}},
