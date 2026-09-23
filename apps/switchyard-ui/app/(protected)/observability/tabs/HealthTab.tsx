@@ -53,7 +53,7 @@ export function HealthTab({ serviceHealth }: HealthTabProps) {
         <CardTitle>Service Health</CardTitle>
         <CardDescription>
           {serviceHealth?.healthy_count} healthy, {serviceHealth?.degraded_count}{" "}
-          degraded, {serviceHealth?.unhealthy_count} unhealthy
+          degraded or unknown, {serviceHealth?.unhealthy_count} unhealthy
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -93,17 +93,22 @@ export function HealthTab({ serviceHealth }: HealthTabProps) {
                     {service.project_slug}
                   </p>
                 )}
+                {service.observation_reason && (
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    Runtime health unavailable: {service.observation_reason.replaceAll("_", " ")}.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Uptime:</span>
                     <span className="ml-1 font-mono">
-                      {service.uptime.toFixed(1)}%
+                      {service.status === "unknown" ? "Unavailable" : `${service.uptime.toFixed(1)}%`}
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Pods:</span>
                     <span className="ml-1 font-mono">
-                      {service.ready_pods}/{service.pod_count}
+                      {service.status === "unknown" ? "Unavailable" : `${service.ready_pods}/${service.pod_count}`}
                     </span>
                   </div>
                 </div>

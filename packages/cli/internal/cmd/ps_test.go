@@ -139,3 +139,12 @@ func TestApplyRuntimeHealthMapsStatusWhenDeploymentStatusMissing(t *testing.T) {
 	assert.Equal(t, "degraded", status.Health)
 	assert.Equal(t, "1/3", status.Replicas)
 }
+
+func TestApplyRuntimeHealthDoesNotRetainHistoricalReplicaCounts(t *testing.T) {
+	for _, tc := range []struct{ health, replicas string }{{"unknown", "unavailable"}, {"unhealthy", "0/0"}} {
+		status := ServiceStatus{Status: "running", Health: "healthy", Replicas: "2/2"}
+		applyRuntimeHealth(&status, client.ServiceHealth{Status: tc.health})
+		assert.Equal(t, tc.health, status.Health)
+		assert.Equal(t, tc.replicas, status.Replicas)
+	}
+}

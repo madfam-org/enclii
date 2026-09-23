@@ -67,6 +67,8 @@ export interface ServiceHealth {
   last_checked: string;
   pod_count: number;
   ready_pods: number;
+  deployment_name?: string;
+  observation_reason?: string;
 }
 
 export interface ServiceHealthResponse {
