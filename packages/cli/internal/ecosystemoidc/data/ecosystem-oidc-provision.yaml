@@ -279,6 +279,41 @@ platforms:
         - client_credentials
 
   # ---------------------------------------------------------------------------
+  # crea-map → janua payment mail (service). The second client_credentials
+  # machine edge, shaped exactly like nauta-symbiosis-hcm: one edge, one client,
+  # one scope. janua #635's POST /api/v1/email/payment-notices accepts ONLY an
+  # RS256 token with aud `janua-email`, token_use client_credentials, actor
+  # service_account and scope `crea-map:payment-mail`, then re-reads THIS client
+  # row under lock (active, confidential, organization_id, audience,
+  # allowed_scopes, grant_types) before every claim
+  # (janua apps/api/app/services/payment_mail_auth.py). So the org binding and
+  # the scope below are the authorization, not decoration.
+  #
+  # Org-bound to Crea Tu Mundo, like nauta-symbiosis-hcm: crea-map #688 binds
+  # every staff payment-mail intent to (JANUA_ORGANIZATION_ID, this client_id).
+  #
+  # NOT pinned with a client_id: the first provision run CREATES it. Pin its
+  # jnc_… id here as soon as it exists (an unpinned re-run registers a
+  # duplicate). The pair lands at secret/crea-map via crea-map/janua-mail-client.
+  # ---------------------------------------------------------------------------
+  crea-map-payment-mail:
+    intake_target: crea-map/janua-mail-client
+    intake_key_map:
+      janua_mail_client_id: client_id
+      janua_mail_client_secret: client_secret
+    janua_client:
+      name: Crea MAP → Janua payment mail (service)
+      client_key: crea-map-payment-mail  # pragma: allowlist secret
+      audience: janua-email
+      description: Machine edge (client_credentials) from crea-map's staff payment-mail outbox to janua's POST /api/v1/email/payment-notices. Org-bound to CTM/crea, scope crea-map:payment-mail — one edge, one client, one scope. Never a browser login.
+      is_confidential: true
+      organization_id: e6cbd51d-8329-4c4e-8c74-aba643ab4575
+      allowed_scopes:
+        - crea-map:payment-mail
+      grant_types:
+        - client_credentials
+
+  # ---------------------------------------------------------------------------
   # Telesia — completionist dashboard (app.telesia.quest), onboarded 2026-09-12.
   #
   # Modelled on nauta: one confidential authorization_code LOGIN client, with the
