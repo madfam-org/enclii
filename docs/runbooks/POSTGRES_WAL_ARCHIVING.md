@@ -1,5 +1,11 @@
 # Postgres WAL Archiving Runbook (pgBackRest → R2)
 
+> **Boundary checkpoint (2026-09-23, platform on-call):** Public-safe runbook —
+> no secrets or production topology beyond this repo's own IaC. Alert names and
+> CronJob schedules are configuration contracts, not values. Private
+> operational detail stays in `internal-devops`. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+
 > [!IMPORTANT]
 > MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
 > Routine production operations must use Enclii web, API, or CLI. Treat raw
@@ -37,12 +43,15 @@
     pgbackrest-backup-diff 0 2 * * 1-6   (Mon-Sat 02:00 UTC)
     pgbackrest-backup-full 0 2 * * 0     (Sunday 02:00 UTC)
 
-  Alerts (monitoring/postgres-wal-archive PrometheusRule):
+  Alerts (prometheus-rules ConfigMap, key postgres-wal-archive-rules.yml,
+  in infra/k8s/production/monitoring/prometheus.yaml; ported from the
+  retired PrometheusRule in #440):
     PostgresWALArchiveBehind   (critical, paging)
     PostgresWALLagHigh         (warning)
-    PostgresBackupCheckFailed  (warning)
     PostgresWALSpoolDiskHigh   (warning)
     PostgresBackupJobsStale    (warning)
+    PgBackRestCheckUnhealthy   (critical; replaces PostgresBackupCheckFailed,
+                                pgbackrest-health-rules.yml)
 ```
 
 **RPO**: continuous WAL with `archive_timeout=60` → **≤ 1 minute** in the steady state.
