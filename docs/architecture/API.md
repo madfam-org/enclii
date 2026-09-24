@@ -178,7 +178,7 @@ of calling per-service build-status endpoints from project cards.
 
 **Query Parameters:**
 - `project_ids` (string): Comma-separated project UUIDs (required)
-- `limit_per_project` (int): Processes returned per project (default: 5, max: 20)
+- `limit_per_project` (int): Processes returned per project, 1 to 20 (default: 5); any other value is a `400` naming the range
 - `active_only` (bool): Include only active, failed, or blocked processes
 
 **Response:**
@@ -215,7 +215,7 @@ Server-sent event stream for one or more project-card process summaries.
 
 **Query Parameters:**
 - `project_ids` (string): Comma-separated project UUIDs (required)
-- `limit_per_project` (int): Processes returned per project (default: 5, max: 20)
+- `limit_per_project` (int): Processes returned per project, 1 to 20 (default: 5); any other value is a `400` naming the range
 - `active_only` (bool): Defaults to active/failed/blocked only; pass `false` for all
 
 Clients should prefer authenticated `fetch()` streaming with an
@@ -233,7 +233,7 @@ tooling.
 Return the process timeline for a single project.
 
 **Query Parameters:**
-- `limit` (int): Processes returned (default: 50, max: 100)
+- `limit` (int): Processes returned, 1 to 100 (default: 50); any other value is a `400` naming the range
 - `active_only` (bool): Include only active, failed, or blocked processes
 
 #### GET /projects/`:slug`/processes/stream

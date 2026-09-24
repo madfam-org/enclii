@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -79,17 +78,19 @@ func (h *Handler) ListTemplates(c *gin.Context) {
 	})
 }
 
+// templateListMaxLimit bounds ?limit= on GET /templates/featured and
+// /templates/search. Both used to accept any positive value unbounded.
+const templateListMaxLimit = 100
+
 // GetFeaturedTemplates returns featured templates
 // GET /v1/templates/featured
 func (h *Handler) GetFeaturedTemplates(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Parse limit parameter
-	limit := 6
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-			limit = parsed
-		}
+	// limit 1..100 (default 6); anything else is a 400.
+	limit, ok := queryLimitOr400(c, 6, templateListMaxLimit)
+	if !ok {
+		return
 	}
 
 	templates, err := h.repos.Templates.GetFeatured(ctx, limit)
@@ -163,12 +164,10 @@ func (h *Handler) SearchTemplates(c *gin.Context) {
 		return
 	}
 
-	// Parse limit parameter
-	limit := 20
-	if limitStr := c.Query("limit"); limitStr != "" {
-		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-			limit = parsed
-		}
+	// limit 1..100 (default 20); anything else is a 400.
+	limit, ok := queryLimitOr400(c, 20, templateListMaxLimit)
+	if !ok {
+		return
 	}
 
 	templates, err := h.repos.Templates.Search(ctx, query, limit)

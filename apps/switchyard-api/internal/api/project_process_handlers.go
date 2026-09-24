@@ -86,7 +86,11 @@ func (h *Handler) GetProjectProcessSummaries(c *gin.Context) {
 		return
 	}
 
-	limitPerProject := projectProcessLimit(c.Query("limit_per_project"), 5, 20)
+	// limit_per_project 1..20 (default 5); anything else is a 400.
+	limitPerProject, ok := queryBoundedIntOr400(c, "limit_per_project", 5, 20)
+	if !ok {
+		return
+	}
 	activeOnly := strings.EqualFold(c.Query("active_only"), "true")
 
 	summaries := make([]projectProcessSummary, 0, len(projectIDs))
@@ -137,6 +141,12 @@ func (h *Handler) GetProjectProcesses(c *gin.Context) {
 		return
 	}
 
+	// limit 1..100 (default 50); anything else is a 400, before any lookup.
+	limit, ok := queryLimitOr400(c, 50, 100)
+	if !ok {
+		return
+	}
+
 	project, err := h.repos.Projects.GetBySlug(c.Param("slug"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -146,7 +156,6 @@ func (h *Handler) GetProjectProcesses(c *gin.Context) {
 		return
 	}
 
-	limit := projectProcessLimit(c.Query("limit"), 50, 100)
 	activeOnly := strings.EqualFold(c.Query("active_only"), "true")
 	summary, err := h.buildProjectProcessSummary(ctx, project.ID, limit, activeOnly)
 	if err != nil {
@@ -192,7 +201,12 @@ func (h *Handler) streamProjectProcessSummaries(c *gin.Context, projectIDs []uui
 		return
 	}
 
-	limitPerProject := projectProcessLimit(c.Query("limit_per_project"), 5, 20)
+	// limit_per_project 1..20 (default 5); anything else is a 400 before the
+	// event stream starts.
+	limitPerProject, ok := queryBoundedIntOr400(c, "limit_per_project", 5, 20)
+	if !ok {
+		return
+	}
 	activeOnly := !strings.EqualFold(c.Query("active_only"), "false")
 	once := strings.EqualFold(c.Query("once"), "true")
 	interval := projectProcessStreamInterval(c.Query("interval_ms"))
@@ -618,25 +632,6 @@ func parseProjectProcessIDs(raw string) ([]uuid.UUID, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
-}
-
-func projectProcessLimit(raw string, fallback, max int) int {
-	if fallback <= 0 {
-		fallback = 5
-	}
-	limit := fallback
-	if strings.TrimSpace(raw) != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil {
-			limit = parsed
-		}
-	}
-	if limit <= 0 {
-		return fallback
-	}
-	if limit > max {
-		return max
-	}
-	return limit
 }
 
 func projectProcessStreamInterval(raw string) time.Duration {

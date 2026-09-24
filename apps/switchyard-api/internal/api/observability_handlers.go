@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -417,13 +416,10 @@ func filterServiceHealthResponse(response ServiceHealthResponse, serviceID strin
 func (h *Handler) GetRecentErrors(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	limitStr := c.DefaultQuery("limit", "50")
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
+	// limit 1..200 (default 50); anything else is a 400.
+	limit, ok := queryLimitOr400(c, 50, 200)
+	if !ok {
+		return
 	}
 
 	serviceID := c.Query("service_id")
