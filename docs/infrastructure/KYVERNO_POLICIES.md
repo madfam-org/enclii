@@ -116,6 +116,24 @@ Notes on that pattern:
 - Keep the policy comment in `image-policies.yaml` and this section in step
   with the pattern that is actually deployed.
 
+### Other identity checks outside Kyverno
+
+`apps/switchyard-api/internal/api/build_callbacks.go` defines
+`cosignGitHubActionsIdentityRE`, which accepts only the tag/`main` form
+(`@refs/(heads/main|tags/v[0-9].*)$`). Its only use is
+`verifyImageDigestSignature`, called from `commitDigestToTargetRepo` on the
+Roundhouse `POST /v1/callbacks/build-complete` path, before switchyard commits
+a digest to a target GitOps repo.
+
+`build-publish.yml` callers report through `POST /v1/callbacks/lifecycle-event`,
+which does not run that check. SHA-pinned build-publish callers are therefore
+not affected by it today.
+
+That constant must also accept `@[0-9a-f]{40}` if build-publish images are ever
+routed through the `build-complete` path, or if Roundhouse builds are ever
+signed by a SHA-pinned workflow. Otherwise the digest commit is refused with
+"Refused to commit unsigned or unverifiable image digest".
+
 ## Troubleshooting
 
 If Kyverno reports `no matching signatures` for an image whose CI sign step
