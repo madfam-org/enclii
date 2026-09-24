@@ -228,6 +228,7 @@ func runLocalUp(services []string, skipInfra bool) error {
 			fmt.Println("\n   Enclii:")
 			fmt.Println("     API: http://localhost:4200")
 			fmt.Println("     UI:  http://localhost:4201")
+			fmt.Println("     CLI: export ENCLII_API_ENDPOINT=http://localhost:4200")
 		}
 	}
 

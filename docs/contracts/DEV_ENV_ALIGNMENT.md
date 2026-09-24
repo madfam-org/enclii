@@ -9,6 +9,10 @@ Use these variables together for local development:
 | CLI | `ENCLII_API_ENDPOINT` | `http://localhost:4200` (override prod default) |
 | Roundhouse → API | `ENCLII_ROUNDHOUSE_API_KEY` | shared secret; required in production |
 
+The CLI defaults to the hosted API (`https://api.enclii.dev`) and never falls back to
+localhost on its own; set `ENCLII_API_ENDPOINT` as above to use a local Switchyard
+(`enclii local up` prints the line). `ENCLII_ENVIRONMENT` only selects the CLI's log format.
+
 ## Log streaming
 
 | Consumer | Endpoint | Backend |

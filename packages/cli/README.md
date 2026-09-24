@@ -183,7 +183,7 @@ Tokens auto-refresh on the next CLI invocation when within 60 seconds of expiry,
 
 Other defaults come from environment variables (`ENCLII_API_ENDPOINT`, `ENCLII_API_TOKEN` (or legacy `ENCLII_TOKEN`), `ENCLII_OIDC_ISSUER`, `ENCLII_OIDC_CLIENT_ID`, `ENCLII_PROFILE`, `ENCLII_BROWSER`, `ENCLII_LOG_LEVEL`, `ENCLII_PROJECT`) or the global flags (`--api-endpoint`, `--api-token`, `--log-level`, `--profile`).
 
-`ENCLII_ENVIRONMENT` defaults to `development`, and in `development` with `ENCLII_API_ENDPOINT` unset the CLI targets `http://localhost:4200` (aligned with `switchyard-ui`). Set `ENCLII_API_ENDPOINT=https://api.enclii.dev` to reach the hosted API. See `docs/contracts/DEV_ENV_ALIGNMENT.md`.
+The API endpoint defaults to `https://api.enclii.dev`. For a local Switchyard, set `ENCLII_API_ENDPOINT=http://localhost:4200` (aligned with `switchyard-ui`; `enclii local up` prints this line). See `docs/contracts/DEV_ENV_ALIGNMENT.md`. `ENCLII_ENVIRONMENT=production` only switches the CLI's log output to JSON.
 
 Timetable (`enclii jobs`) and Junction (`enclii junctions`) commands use the same `apiRequest` / `apiRequestResponse` helpers as billing and admin commands.
 
