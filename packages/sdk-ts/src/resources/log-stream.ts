@@ -6,11 +6,15 @@
  * Handshake requirements of that route, as the server enforces them:
  *   - Auth: `Authorization: Bearer <token>` header, or a `token` query
  *     parameter when a header cannot be set (auth/jwt_middleware.go).
- *   - Origin: the upgrader's `CheckOrigin` accepts only an `Origin` header
- *     that exactly matches one of the configured WebSocket origins
- *     (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`); a missing `Origin` is refused.
- *   - Query: `env` (default `development`), `lines` (default 100),
- *     `timestamps=true`. Nothing else is read.
+ *   - Origin (api/ws_upgrade.go): an `Origin` header, when sent, must exactly
+ *     match one of the configured WebSocket origins
+ *     (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`). An upgrade without `Origin` is
+ *     accepted only when it authenticates with the `Authorization` header;
+ *     a query-token upgrade without `Origin` is refused with 403. Servers
+ *     before this rule refused every upgrade without an allowed `Origin`.
+ *   - Query: `env` (default `development`; an unknown env is a 404),
+ *     `lines` (default 100), `timestamps=true`, and `since` (RFC3339 or a
+ *     Go duration; limits the backlog), which these helpers do not send.
  */
 
 import type { LogStreamMessage, LogTailOptions } from '../types-ops';

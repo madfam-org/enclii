@@ -667,7 +667,7 @@ func TestListCronJobRuns_Success(t *testing.T) {
 		AddRow(uuid.New(), cronJobID, "failed", int64(1), now, now, "error output")
 
 	mock.ExpectQuery(`SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output`).
-		WithArgs(cronJobID, 50).
+		WithArgs(cronJobID, 50, 0).
 		WillReturnRows(rows)
 
 	router := gin.New()
@@ -732,7 +732,7 @@ func TestListOneOffJobs_Success(t *testing.T) {
 		AddRow(uuid.New(), projectID, serviceID, "seed-data", "./seed.sh", sql.NullString{String: "node:20", Valid: true}, 600, nil, "pending", nil, "", now, nil, nil)
 
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-		WithArgs(projectID, 50).
+		WithArgs(projectID, 50, 0).
 		WillReturnRows(rows)
 
 	router := gin.New()
@@ -765,7 +765,7 @@ func TestListOneOffJobs_Empty(t *testing.T) {
 			AddRow(projectID, "Empty Project", "empty-project", "github", now, now))
 
 	mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-		WithArgs(projectID, 50).
+		WithArgs(projectID, 50, 0).
 		WillReturnRows(sqlmock.NewRows(oneOffJobSelectColumns))
 
 	router := gin.New()

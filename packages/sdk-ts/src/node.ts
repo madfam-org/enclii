@@ -4,8 +4,8 @@
  * Re-exports everything from the main entry and adds `nodeLogsTail()`, which
  * streams `GET /services/{id}/logs/stream` with the `ws` library. Unlike a
  * browser WebSocket, `ws` can send the `Authorization` header (as the CLI
- * does) and an explicit `Origin` header, and it reconnects with exponential
- * backoff.
+ * does) and, optionally, an `Origin` header, and it reconnects with
+ * exponential backoff.
  *
  * ```ts
  * import { EncliiClient, nodeLogsTail } from '@madfam/enclii-sdk/node';
@@ -13,7 +13,7 @@
  * const enclii = new EncliiClient({...});
  * for await (const frame of nodeLogsTail(enclii, 'svc_123', {
  *   env: 'production',
- *   origin: 'https://app.example.com', // one of the server's allowed WS origins
+ *   // origin: 'https://app.example.com', // only for servers that require one
  * })) {
  *   if (frame.type === 'log') console.log(frame.timestamp, frame.message);
  * }
@@ -39,9 +39,11 @@ export interface NodeLogsTailOptions extends LogTailOptions {
   /** Bearer token for the upgrade (defaults to resolving from the client). */
   token?: string;
   /**
-   * Value of the `Origin` header. The server refuses the upgrade unless this
-   * exactly matches one of its configured WebSocket origins
-   * (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`); without it the upgrade gets 403.
+   * Value of the `Origin` header; not sent when unset. The server accepts a
+   * Bearer-authenticated upgrade without `Origin`, but when one is sent it
+   * must exactly match one of the configured WebSocket origins
+   * (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`) or the upgrade gets 403. Servers
+   * that predate that rule require an allowed origin here.
    */
   origin?: string;
 }
@@ -53,7 +55,7 @@ export interface NodeLogsTailOptions extends LogTailOptions {
  * consumers break the loop or abort `options.signal` to stop. A dropped
  * connection is retried up to `maxReconnects` times, after which the iterator
  * completes. An upgrade the server rejects with a 4xx status (bad token,
- * disallowed or missing `Origin`, no access) is not retried: the iterator
+ * disallowed `Origin`, no access, unknown env) is not retried: the iterator
  * throws. Each reconnect replays the server's `lines` backlog.
  */
 export async function* nodeLogsTail(
@@ -141,7 +143,7 @@ export async function* nodeLogsTail(
         throw new Error(
           `nodeLogsTail: ${closeReason} (service ${serviceId}). ` +
             (status === 403 && !options.origin
-              ? 'The server requires an Origin header from its allowed WebSocket origins; set options.origin.'
+              ? 'Servers that predate Bearer-authenticated upgrades without an Origin require one of their allowed WebSocket origins; set options.origin.'
               : 'Check the token, options.origin, and access to the service.'),
         );
       }

@@ -3,10 +3,12 @@
  * reconnect-with-backoff. Press Ctrl-C to stop.
  *
  * Usage:
- *   ENCLII_TOKEN=... ENCLII_SERVICE_ID=... ENCLII_WS_ORIGIN=... tsx examples/tail-logs.ts
+ *   ENCLII_TOKEN=... ENCLII_SERVICE_ID=... tsx examples/tail-logs.ts
  *
- * ENCLII_WS_ORIGIN must be one of the server's allowed WebSocket origins;
- * the server refuses an upgrade without a matching Origin header.
+ * The token goes in the Authorization header, so no Origin is needed.
+ * ENCLII_WS_ORIGIN is optional: set it to one of the server's allowed
+ * WebSocket origins only for a switchyard-api that predates Bearer upgrades
+ * without an Origin (such a server answers 403 without it).
  */
 
 import { EncliiClient, nodeLogsTail } from '@madfam/enclii-sdk/node';

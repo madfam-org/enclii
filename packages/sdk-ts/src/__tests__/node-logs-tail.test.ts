@@ -43,8 +43,9 @@ function client() {
 
 describe('nodeLogsTail', () => {
   // Contract: StreamServiceLogsWS (logs_handlers.go) authenticates via the
-  // Authorization header (jwt_middleware.go), requires an allowed Origin
-  // (getWebSocketUpgrader CheckOrigin), and reads env/lines/timestamps.
+  // Authorization header (jwt_middleware.go), checks an Origin only when one
+  // is sent (websocketOriginAllowed in ws_upgrade.go), and reads
+  // env/lines/timestamps/since.
   it('sends Authorization and Origin headers to /logs/stream and yields frames', async () => {
     const frames: unknown[] = [];
     const done = (async () => {
@@ -85,6 +86,23 @@ describe('nodeLogsTail', () => {
     await done;
     expect(frames).toHaveLength(2);
     expect(frames[1]).toMatchObject({ type: 'log', pod: 'api-7d9f', message: 'GET /health 200' });
+  });
+
+  it('sends no Origin when options.origin is unset (Bearer-only upgrade)', async () => {
+    const next = nodeLogsTail(client(), 'svc-1', { maxReconnects: 0 })
+      [Symbol.asyncIterator]()
+      .next();
+    await tick();
+    const ws = sockets[0]!;
+    expect(ws.opts.headers).toEqual({ Authorization: 'Bearer test-token' });
+    expect('origin' in ws.opts).toBe(false);
+    ws.emit('message', Buffer.from(JSON.stringify({
+      type: 'connected',
+      timestamp: '2026-09-24T12:00:00Z',
+      message: 'Connected',
+    })));
+    expect((await next).value).toMatchObject({ type: 'connected' });
+    ws.close();
   });
 
   it('throws without retrying when the upgrade is rejected with 403', async () => {

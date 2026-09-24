@@ -68,12 +68,12 @@ func newDeploymentsListCommand(cfg *config.Config) *cobra.Command {
 
 			if serviceID != "" {
 				api := client.NewAPIClient(cfg.APIEndpoint, cfg.APIToken)
-				deployments, err := api.ListServiceDeployments(ctx, serviceID)
+				deployments, truncated, err := listServiceDeploymentsForDisplay(ctx, api, serviceID, cmd.ErrOrStderr())
 				if err != nil {
 					return err
 				}
 				if jsonOut {
-					return emitJSON(map[string]interface{}{"deployments": deployments})
+					return emitJSON(map[string]interface{}{"deployments": deployments, "truncated": truncated})
 				}
 				return renderDeploymentTable(cmd, serviceID, deployments, limit)
 			}

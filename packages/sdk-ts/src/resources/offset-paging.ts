@@ -1,6 +1,7 @@
 /**
  * Cursor adapter for the API's `limit`/`offset` endpoints (`GET /activity`,
- * `GET /lifecycle-webhooks/{id}/deliveries`). The SDK keeps its `Page<T>`
+ * `GET /lifecycle-webhooks/{id}/deliveries`, `GET /cron-jobs/{id}/runs`,
+ * `GET /projects/{slug}/one-off-jobs`). The SDK keeps its `Page<T>`
  * contract: the cursor is the decimal offset of the next page, and
  * `nextCursor` is null once a page comes back shorter than the page size the
  * server actually applied (it echoes that as `limit`).
@@ -25,8 +26,9 @@ export function assertLimit(
   max: number,
 ): void {
   if (limit === undefined) return;
-  // The API silently replaces an out-of-range limit with its default, which
-  // would make a caller's page size lie; reject it here instead.
+  // The API answers 400 for an out-of-range limit (older servers silently
+  // replaced it with the default, which made a caller's page size lie);
+  // reject it here too, before any request.
   if (!Number.isInteger(limit) || limit < 1 || limit > max) {
     throw new Error(`${method}: limit must be an integer from 1 to ${max}`);
   }

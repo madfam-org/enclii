@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,19 +24,10 @@ type ActivityListResponse struct {
 func (h *Handler) GetActivity(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Parse query parameters
-	limit := 50
-	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
-	}
-
-	offset := 0
-	if o := c.Query("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
+	// limit 1..100 (default 50), offset >= 0; anything else is a 400.
+	limit, offset, ok := queryLimitOffsetOr400(c, 50, 100)
+	if !ok {
+		return
 	}
 
 	// Build filters from query parameters

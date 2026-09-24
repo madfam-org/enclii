@@ -20,6 +20,8 @@ The `rollback` command reverts a service to a previous deployment. With no targe
 
 `--to` overrides a positional target when both are set. The service name is required.
 
+Finding the previous deployment, or matching a short id, reads the service's deployment history. If the API returns that history partial (it could not read the deployments of some releases), the rollback stops with `the API returned a partial deployment list ...; retry the command` instead of choosing a target from incomplete data.
+
 ### Strategies
 
 - **Default (manifest commit):** writes the previous image tag and lets the Deployment controller perform a rolling update. Takes a few minutes; the rollback is durably captured in git, which ArgoCD keeps as the state of record.

@@ -56,23 +56,25 @@ interface LogHistory {
 
 The endpoint returns one block of text; it does not page, and there is no `iter()`. `history()` throws a plain `Error` before sending when `lines` is outside 1 to 10000 (the API would silently use 100 instead).
 
-`since` is sent as the `since` query parameter, but the current API ignores it. It is honored once the server-side change that adds `since` to this endpoint is deployed; until then you get the most recent `lines` regardless.
+`since` is sent as the `since` query parameter. A switchyard-api that includes [#622](https://github.com/madfam-org/enclii/pull/622) returns only lines newer than it; an older one ignores it and returns the most recent `lines` regardless.
 
 ## How the stream authenticates
 
-The stream route accepts the upgrade only when both hold:
+The stream route checks two things on the upgrade (`websocketOriginAllowed` in `apps/switchyard-api/internal/api/ws_upgrade.go`):
 
 - **Token:** an `Authorization: Bearer <token>` header, or a `token` query parameter when a header cannot be set (`apps/switchyard-api/internal/auth/jwt_middleware.go`).
-- **Origin:** an `Origin` header that exactly matches one of the server's configured WebSocket origins (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`; `CheckOrigin` in `logs_handlers.go`). A request without `Origin` is refused with HTTP 403.
+- **Origin:** when an `Origin` header is sent, it must exactly match one of the server's configured WebSocket origins (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or the upgrade is refused with HTTP 403. An upgrade without `Origin` is accepted only when it authenticated with the `Authorization` header; a query-token upgrade without `Origin` is refused with 403.
 
-Browsers always send the page's origin and cannot set headers. Node.js can set both headers but sends no `Origin` unless told to. That splits the two helpers by runtime:
+Browsers always send the page's origin and cannot set headers, so the allow-list is what stops another site from opening a stream with a victim's credentials. A Bearer header is never attached by a browser on its own, so a client that sends one already holds the token and needs no `Origin`. That splits the two helpers by runtime:
 
 | Helper | Runtime | Token | Origin |
 |--------|---------|-------|--------|
 | `logs.tail()` | Browser | `?token=` query parameter | The page's origin, which the server must allow |
-| `nodeLogsTail()` | Node.js | `Authorization` header | `options.origin`, which must be an allowed origin |
+| `nodeLogsTail()` | Node.js | `Authorization` header | None needed; `options.origin` is sent when set and must then be allowed |
 
-`logs.tail()` does not work outside a browser: `globalThis.WebSocket` in Node.js 22+, Deno, and Bun sends no `Origin`, so the server refuses the upgrade. Use `nodeLogsTail()` there.
+`logs.tail()` does not work outside a browser: it authenticates with a query token, and `globalThis.WebSocket` in Node.js 22+, Deno, and Bun sends no `Origin`, so the server refuses the upgrade. Use `nodeLogsTail()` there.
+
+A switchyard-api that predates [#625](https://github.com/madfam-org/enclii/pull/625) refuses every upgrade without an allowed `Origin`, including Bearer-authenticated ones; against such a server `nodeLogsTail()` needs `options.origin`, and `enclii logs --follow` fails with 403.
 
 ## Stream live logs in a browser
 
@@ -90,7 +92,7 @@ It throws a plain `Error` when no `WebSocket` global exists, or when the socket 
 
 ## Stream live logs in Node.js
 
-`nodeLogsTail()` uses the `ws` package, sends the bearer token in the `Authorization` header (as `enclii logs --follow` does), sends `options.origin` as the `Origin` header, and reconnects with exponential backoff (starting at `initialReconnectMs`, doubling, with jitter, capped at 30 seconds).
+`nodeLogsTail()` uses the `ws` package, sends the bearer token in the `Authorization` header (as `enclii logs --follow` does), sends `options.origin` as the `Origin` header only when it is set, and reconnects with exponential backoff (starting at `initialReconnectMs`, doubling, with jitter, capped at 30 seconds).
 
 ```typescript
 import { EncliiClient, nodeLogsTail } from '@madfam/enclii-sdk/node';
@@ -105,7 +107,6 @@ process.on('SIGINT', () => abort.abort());
 
 for await (const frame of nodeLogsTail(enclii, serviceId, {
   env: 'production',
-  origin: process.env.ENCLII_WS_ORIGIN, // one of the server's allowed WebSocket origins
   signal: abort.signal,
   maxReconnects: 10,
   onReconnect: (attempt, reason) => console.error(`reconnect #${attempt}: ${reason}`),
@@ -118,27 +119,29 @@ for await (const frame of nodeLogsTail(enclii, serviceId, {
 
 | Field | Type | Default |
 |-------|------|---------|
-| `origin` | `string` | none; without it the server answers 403 |
+| `origin` | `string` | none; not sent. Needed only against a server that predates Bearer upgrades without `Origin` |
 | `token` | `string` | the client's token |
 | `maxReconnects` | `number` | `5` |
 | `initialReconnectMs` | `number` | `1_000` |
 | `onReconnect` | `(attempt: number, reason: string) => void` | none |
 | `onParseError` | `(raw: string) => void` | none; called for frames that are not stream messages |
 
-When the server rejects the upgrade with a 4xx status, `nodeLogsTail()` throws an `Error` naming the status and does not retry; a 403 without `origin` says to set it. Other disconnects are retried up to `maxReconnects` times, after which the iterator completes. Each reconnect replays the server's `lines` backlog, so lines can repeat across a reconnect.
+When the server rejects the upgrade with a 4xx status (for example 403 for a disallowed `origin`, 404 for an unknown `env`), `nodeLogsTail()` throws an `Error` naming the status and does not retry; a 403 without `origin` says that older servers need it. Other disconnects are retried up to `maxReconnects` times, after which the iterator completes. Each reconnect replays the server's `lines` backlog, so lines can repeat across a reconnect.
 
 `packages/sdk-ts/examples/tail-logs.ts` is a runnable version.
 
 ## Stream options and frames
 
-`LogTailOptions` maps onto the only query parameters the stream reads:
+`LogTailOptions` maps onto these query parameters of the stream:
 
 | Field | Query parameter | Default on the server |
 |-------|-----------------|-----------------------|
-| `env` | `env` | `development` |
+| `env` | `env` | `development`; an env the project does not have is a 404 before the upgrade |
 | `lines` | `lines` | `100` (backlog per pod before following) |
 | `timestamps` | `timestamps=true` | off |
 | `signal` | none | |
+
+The stream also reads a `since` query parameter (RFC3339 timestamp or Go duration; it limits the backlog to newer lines, as `enclii logs --follow --since` sends it), but `LogTailOptions` has no field for it, so neither helper sends it.
 
 Both helpers yield every frame the server sends, typed `LogStreamMessage`:
 

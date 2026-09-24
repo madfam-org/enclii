@@ -35,7 +35,7 @@ enclii deployments list [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--service` | string | | Service ID (optional — omit for cross-service list) |
-| `--limit` | int | `50` | Maximum number of deployments |
+| `--limit` | int | `50` | Maximum number of deployments. Without `--service` the API accepts 1 to 100 and answers `400` outside that range (servers before [#625](https://github.com/madfam-org/enclii/pull/625) silently used 50); with `--service` the whole history is fetched and `--limit` only trims the table. |
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
 ### `get`
@@ -143,7 +143,7 @@ enclii deployments by-version --service svc_storefront --version 42
 ### Pipe to jq for status filtering
 
 ```bash
-enclii deployments list --json --limit 200 | \
+enclii deployments list --json --limit 100 | \
   jq '.deployments[] | select(.status == "failed")'
 ```
 
@@ -152,6 +152,7 @@ enclii deployments list --json --limit 200 | \
 - IDs in the table view are truncated to 8 characters for readability. Pass the full ID to `get` and `by-version`; `enclii deployments list --json` returns full IDs.
 - `latest` returns the most recent deployment regardless of status. To find the most recent successful deployment, filter the JSON output of `list` by `status == "succeeded"`.
 - A failed deployment is not automatically rolled back; use [`enclii rollback`](./rollback.md) to revert.
+- With `--service`, the list can come back partial when the API cannot read the deployments of some releases. The command still shows the rows it got, prints a `warning: the API returned a partial deployment list ...` line on stderr naming the unread releases, and `--json` output carries `"truncated": true` (it is `false` otherwise). Re-run the command for the full list.
 
 ## Exit Codes
 

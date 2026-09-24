@@ -210,6 +210,10 @@ func (r *DeploymentRepository) ListByRelease(ctx context.Context, releaseID stri
 		deployments = append(deployments, deployment)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return deployments, nil
 }
 

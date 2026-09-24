@@ -314,6 +314,7 @@ func (h *Handler) GetServiceStatus(c *gin.Context) {
 }
 
 // GetLogs retrieves logs for a deployment
+// GET /v1/deployments/:id/logs?lines=&follow=&since=
 func (h *Handler) GetLogs(c *gin.Context) {
 	ctx := c.Request.Context()
 	idStr := c.Param("id")
@@ -323,6 +324,11 @@ func (h *Handler) GetLogs(c *gin.Context) {
 		return
 	}
 	if !h.enforceDeploymentAccess(c, deploymentID) {
+		return
+	}
+	// Optional window (parseLogsSince); a bad value is a 400 before lookups.
+	sinceSeconds, ok := logsSinceOr400(c)
+	if !ok {
 		return
 	}
 
@@ -376,7 +382,7 @@ func (h *Handler) GetLogs(c *gin.Context) {
 	labelSelectors := deploymentLogSelectors(deployment.ID, service.Name)
 
 	// Get logs from Kubernetes
-	logs, err := h.k8sClient.GetLogsWithSelectors(ctx, namespace, labelSelectors, linesInt, follow)
+	logs, err := h.k8sClient.GetLogsWithSelectorsSince(ctx, namespace, labelSelectors, linesInt, follow, sinceSeconds)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get logs", logging.Error("k8s_error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})
@@ -662,46 +668,6 @@ func (h *Handler) GetDeployment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, deployment)
-}
-
-// ListServiceDeployments returns all deployments for a service
-func (h *Handler) ListServiceDeployments(c *gin.Context) {
-	ctx := c.Request.Context()
-	idStr := c.Param("id")
-	serviceID, err := uuid.Parse(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
-		return
-	}
-
-	if !h.enforceServiceAccess(c, serviceID) {
-		return
-	}
-
-	// Get all releases for this service
-	releases, err := h.repos.Releases.ListByService(serviceID)
-	if err != nil {
-		h.logger.Error(ctx, "Failed to list releases", logging.Error("db_error", err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve releases"})
-		return
-	}
-
-	// Get deployments for each release
-	var allDeployments []*types.Deployment
-	for _, release := range releases {
-		deployments, err := h.repos.Deployments.ListByRelease(ctx, release.ID.String())
-		if err != nil {
-			h.logger.Error(ctx, "Failed to list deployments", logging.Error("db_error", err))
-			continue
-		}
-		allDeployments = append(allDeployments, deployments...)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"service_id":  serviceID,
-		"deployments": allDeployments,
-		"count":       len(allDeployments),
-	})
 }
 
 // sendComplianceWebhooks sends deployment evidence to Vanta/Drata

@@ -1,5 +1,5 @@
 import type { EncliiClient } from '../client';
-import type { Page, UnpagedListOptions } from '../types';
+import type { OffsetPageOptions, Page, UnpagedListOptions } from '../types';
 import type {
   CreateCronJobRequest,
   CreateOneOffJobRequest,
@@ -7,13 +7,24 @@ import type {
   CronJobRun,
   OneOffJob,
 } from '../types-ops';
+import {
+  assertLimit,
+  nextOffsetCursor,
+  offsetFromCursor,
+} from './offset-paging';
+
+/** Server-side cap on `limit` for the run and one-off job lists. */
+const MAX_TIMETABLE_LIMIT = 100;
 
 /**
  * Timetable — cron and one-off scheduled jobs
  * (`apps/switchyard-api/internal/api/timetable_handlers.go`).
  *
- * No list endpoint here pages: `listCron()` returns every cron job, while
- * `listCronRuns()` and `listOneOff()` return only the 50 most recent rows.
+ * `listCron()` returns every cron job in one response. `listCronRuns()` and
+ * `listOneOff()` page newest first with `limit` (1 to 100, default 50) and an
+ * opaque `cursor`; pass the returned `nextCursor` back for the next page.
+ * A server that predates paging returns the 50 newest rows with a null
+ * `nextCursor`.
  */
 export class JobsResource {
   constructor(private readonly client: EncliiClient) {}
@@ -66,31 +77,46 @@ export class JobsResource {
     await this.client.del(`/cron-jobs/${encodeURIComponent(jobId)}`);
   }
 
-  /** The 50 most recent runs of a cron job; older runs are not reachable. */
+  /** One page of a cron job's runs, newest first. */
   async listCronRuns(
     jobId: string,
-    _options: UnpagedListOptions = {},
+    options: OffsetPageOptions = {},
   ): Promise<Page<CronJobRun>> {
-    const resp = await this.client.get<{ runs: CronJobRun[]; total: number }>(
-      `/cron-jobs/${encodeURIComponent(jobId)}/runs`,
-    );
-    return { data: resp.runs ?? [], nextCursor: null };
+    assertLimit('jobs.listCronRuns', options.limit, MAX_TIMETABLE_LIMIT);
+    const resp = await this.client.get<{
+      runs: CronJobRun[] | null;
+      total: number;
+      limit?: number;
+      offset?: number;
+    }>(`/cron-jobs/${encodeURIComponent(jobId)}/runs`, {
+      limit: options.limit,
+      offset: offsetFromCursor('jobs.listCronRuns', options.cursor),
+    });
+    const data = resp.runs ?? [];
+    return { data, nextCursor: nextOffsetCursor(data.length, resp) };
   }
 
   // ---------------------------------------------------------------------------
   // One-off
   // ---------------------------------------------------------------------------
 
-  /** The 50 most recent one-off jobs of a project; older jobs are not reachable. */
+  /** One page of a project's one-off jobs, newest first. */
   async listOneOff(
     projectSlug: string,
-    _options: UnpagedListOptions = {},
+    options: OffsetPageOptions = {},
   ): Promise<Page<OneOffJob>> {
+    assertLimit('jobs.listOneOff', options.limit, MAX_TIMETABLE_LIMIT);
     const resp = await this.client.get<{
-      one_off_jobs: OneOffJob[];
+      one_off_jobs: OneOffJob[] | null;
       total: number;
-    }>(`/projects/${encodeURIComponent(projectSlug)}/one-off-jobs`);
-    return { data: resp.one_off_jobs ?? [], nextCursor: null };
+      limit?: number;
+      offset?: number;
+    }>(`/projects/${encodeURIComponent(projectSlug)}/one-off-jobs`, {
+      limit: options.limit,
+      offset: offsetFromCursor('jobs.listOneOff', options.cursor),
+    });
+    const data = resp.one_off_jobs ?? [];
+    return { data, nextCursor: nextOffsetCursor(data.length, resp) };
   }
 
   /** Create a one-off job. The API wraps it as `{ one_off_job, message }`. */

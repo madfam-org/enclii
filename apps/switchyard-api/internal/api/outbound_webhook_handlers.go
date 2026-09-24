@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -308,17 +307,10 @@ func (h *Handler) ListOutboundWebhookDeliveries(c *gin.Context) {
 	if _, ok := h.loadOutboundWebhookWithAccess(c, id); !ok {
 		return
 	}
-	limit := 50
-	if q := c.Query("limit"); q != "" {
-		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 200 {
-			limit = n
-		}
-	}
-	offset := 0
-	if q := c.Query("offset"); q != "" {
-		if n, err := strconv.Atoi(q); err == nil && n >= 0 {
-			offset = n
-		}
+	// limit 1..200 (default 50), offset >= 0; anything else is a 400.
+	limit, offset, ok := queryLimitOffsetOr400(c, 50, 200)
+	if !ok {
+		return
 	}
 	deliveries, err := h.repos.OutboundWebhooks.ListDeliveriesBySubscription(ctx, id, limit, offset)
 	if err != nil {

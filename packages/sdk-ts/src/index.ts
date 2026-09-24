@@ -47,6 +47,7 @@ export {
 export type { EncliiErrorContext } from './errors';
 
 export { parseVersionLabel } from './resources/deployments';
+export type { ServiceDeploymentsPage } from './resources/deployments';
 export type { ServiceOperationOptions } from './resources/services';
 export { isTerminal as isCanaryTerminal } from './resources/canary';
 export {

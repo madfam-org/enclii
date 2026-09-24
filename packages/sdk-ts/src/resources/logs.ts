@@ -17,7 +17,8 @@ const MAX_HISTORY_LINES = 10_000;
  *     text of the service's pods in one environment.
  *   - `tail(serviceId, opts)` — live WebSocket stream for **browsers**. It
  *     authenticates with a `token` query parameter and relies on the browser
- *     sending the page's `Origin`, which the server must allow. In Node.js use
+ *     sending the page's `Origin`, which the server must allow (a query-token
+ *     upgrade without an allowed `Origin` is refused). In Node.js use
  *     `nodeLogsTail` from `@madfam/enclii-sdk/node` instead.
  */
 export class LogsResource {
@@ -50,10 +51,11 @@ export class LogsResource {
    * sends, including the `connected` status frame; filter on
    * `frame.type === 'log'` for log lines.
    *
-   * Browser-only in practice: the server refuses an upgrade without an
-   * allowed `Origin` header, and non-browser `WebSocket` implementations
-   * (Node.js 22+, Deno, Bun) send none. The token travels in the URL
-   * (`?token=`) because a browser WebSocket cannot set headers.
+   * Browser-only in practice: this authenticates with a query token, and
+   * the server refuses a query-token upgrade without an allowed `Origin`
+   * header, which non-browser `WebSocket` implementations (Node.js 22+,
+   * Deno, Bun) do not send. The token travels in the URL (`?token=`) because
+   * a browser WebSocket cannot set headers.
    */
   async *tail(
     serviceId: string,

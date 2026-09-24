@@ -20,12 +20,23 @@ export type UUID = string;
 
 /**
  * Envelope returned by every SDK list method. `nextCursor` is non-null only
- * for endpoints that page (`audit.list`, `webhooks.deliveries`); pass it back
- * as `cursor` to fetch the next page.
+ * for endpoints that page (`audit.list`, `webhooks.deliveries`,
+ * `jobs.listCronRuns`, `jobs.listOneOff`); pass it back as `cursor` to fetch
+ * the next page.
  */
 export interface Page<T> {
   data: T[];
   nextCursor: string | null;
+}
+
+/**
+ * Options of list methods over `limit`/`offset` endpoints. `limit` is checked
+ * against the endpoint's range before sending (the API answers 400 outside
+ * it); `cursor` is a `nextCursor` from a previous page.
+ */
+export interface OffsetPageOptions {
+  limit?: number;
+  cursor?: string;
 }
 
 /**
