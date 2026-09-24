@@ -37,12 +37,15 @@
     pgbackrest-backup-diff 0 2 * * 1-6   (Mon-Sat 02:00 UTC)
     pgbackrest-backup-full 0 2 * * 0     (Sunday 02:00 UTC)
 
-  Alerts (monitoring/postgres-wal-archive PrometheusRule):
+  Alerts (prometheus-rules ConfigMap, key postgres-wal-archive-rules.yml,
+  in infra/k8s/production/monitoring/prometheus.yaml; ported from the
+  retired PrometheusRule in #440):
     PostgresWALArchiveBehind   (critical, paging)
     PostgresWALLagHigh         (warning)
-    PostgresBackupCheckFailed  (warning)
     PostgresWALSpoolDiskHigh   (warning)
     PostgresBackupJobsStale    (warning)
+    PgBackRestCheckUnhealthy   (critical; replaces PostgresBackupCheckFailed,
+                                pgbackrest-health-rules.yml)
 ```
 
 **RPO**: continuous WAL with `archive_timeout=60` → **≤ 1 minute** in the steady state.

@@ -5,9 +5,10 @@
 #   resources because the Prometheus Operator CRDs are served by a different
 #   path (rule files are loaded directly into Prometheus via volume-mounted
 #   ConfigMaps, OR via raw-applied PrometheusRule resources that the cluster
-#   accepts in `directory:` mode). To stay consistent with the existing
-#   `postgres-backup-monitoring` wrapper at infra/argocd/apps/postgres-backup.yaml,
-#   we ship deploy-pipeline-monitor's CronJob + ConfigMap + ExternalSecret +
+#   accepts in `directory:` mode). Following the pattern of the former
+#   `postgres-backup-monitoring` wrapper (retired 2026-09-23 after its
+#   wal-archive-rules/ path was removed in #440), we ship
+#   deploy-pipeline-monitor's CronJob + ConfigMap + ExternalSecret +
 #   PrometheusRule together as one manifest, synced via this directory-mode
 #   Application. This also lets us pause / roll back the monitor without
 #   touching the rest of the monitoring stack.
