@@ -19,10 +19,29 @@ data:
       smtp_auth_password_file: '/etc/alertmanager/smtp-password'
       smtp_require_tls: true
 
+    # EMAIL BUDGET. Every email route shares one Gmail account whose
+    # consumer sending cap is about 500 messages a day. Past it Gmail refuses
+    # all sending for about 24 hours, and the fallback that does not depend on
+    # angelia-api goes dark. The timings below were chosen by replaying 18.6h
+    # of real ALERTS (2026-09-24, 2,546 series) through Alertmanager's
+    # dispatch model:
+    #
+    #   before: group_by alertname+severity+service, group_interval 5m,
+    #           critical repeat 1h, warning repeat 4h        -> ~1,449 emails/day
+    #   after:  the config below                             ->   ~142 emails/day
+    #
+    # Churn, not repeats, was the cost: a group re-sends at every
+    # group_interval tick where its membership changed, and PodNotReady
+    # (1,518 series), PodCrashLooping (859) and MainCIFailingForTooLong
+    # (173 flaps) changed on nearly every 5-minute tick. The replay also showed
+    # `group_by: [alertname, namespace]` is WORSE (~1,860/day), because
+    # PodNotReady alone splits into 36 churning groups. Re-run the replay
+    # before loosening any of this. Every critical alert still pages; only
+    # how often an unchanged or already-paging condition re-sends changed.
     route:
-      group_by: ['alertname', 'severity', 'service']
+      group_by: ['alertname']
       group_wait: 30s
-      group_interval: 5m
+      group_interval: 15m
       repeat_interval: 4h
       receiver: 'default-receiver'
       routes:
@@ -44,25 +63,74 @@ data:
           receiver: 'default-receiver'
           continue: false
           group_wait: 10s
+          # Email budget: 4h like every other critical, not 1h.
+          repeat_interval: 4h
+
+        # THE MIRROR OF THE ROUTE ABOVE. AlertmanagerEmailDeliveryFailing
+        # reports that EMAIL is failing. It is `severity: critical`, so the
+        # critical route below would deliver it through critical-receiver's
+        # email_configs too, an alert about dead email sent by dead email.
+        # It goes to courier-only-receiver (webhook, no email) and stops.
+        # Each last mile reports the other's failure: on 2026-09-24 email had
+        # failed for weeks (Gmail 535, then 454) and nothing said so.
+        - matchers:
+            - alertname="AlertmanagerEmailDeliveryFailing"
+          receiver: 'courier-only-receiver'
+          continue: false
+          group_wait: 10s
           repeat_interval: 1h
 
-        # Critical alerts - immediate notification
+        # Watchdog always fires (alert-delivery-rules.yml in prometheus.yaml).
+        # It is proof of the pipeline, not a page: without this route it has
+        # no severity route to match and would reach default-receiver, one
+        # email every 4h forever. watchdog-sink has no integrations. When an
+        # outside-the-cluster heartbeat is sanctioned, its webhook goes on
+        # watchdog-sink with a short repeat_interval here, and the heartbeat
+        # going quiet becomes the page for "both last miles are dead".
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog-sink'
+          continue: false
+          group_wait: 30s
+          repeat_interval: 5m
+
+        # Informational alerts page nobody. `severity: info` is used by
+        # ARCScaleSetAtMaxCapacity and CNPGFailoverInProgress, notices whose
+        # failure modes have their own warning/critical rules. They stay
+        # visible in the Alertmanager UI and API; they cost no email.
+        - matchers:
+            - severity=~"info|none"
+          receiver: 'informational-sink'
+          continue: false
+
+        # Critical alerts - every one pages (email + Courier).
+        # A NEW alertname opens its own group and goes out after group_wait
+        # (10s). group_interval only paces further instances of an alertname
+        # that is already paging (e.g. a second repo's CI going red), which
+        # wait up to 15m. repeat_interval 4h re-sends a still-broken
+        # condition; Courier's hourly idempotency window
+        # (`alarm:<alertname>:<hour>`) is compatible with any repeat of 1h or
+        # more.
         - match:
             severity: critical
           receiver: 'critical-receiver'
+          group_by: ['alertname']
           group_wait: 10s
-          # Matches Courier's hourly idempotency window
-          # (`alarm:<alertname>:<hour>`): a repeat inside the hour collapses to
-          # one delivery in the ledger, so a shorter interval would only add
-          # POSTs, not pages.
-          repeat_interval: 1h
+          group_interval: 15m
+          repeat_interval: 4h
 
-        # Warning alerts - grouped notifications
+        # Warning alerts - ONE DIGEST. Grouping by severity puts every firing
+        # warning in one group, so at most one email every 3h while the set
+        # changes, and once a day while it doesn't. Warnings never page
+        # (Courier skips them by severity), so a digest loses nothing a
+        # person would act on sooner.
         - match:
             severity: warning
           receiver: 'warning-receiver'
+          group_by: ['severity']
           group_wait: 1m
-          repeat_interval: 4h
+          group_interval: 3h
+          repeat_interval: 24h
 
     receivers:
       - name: 'default-receiver'
@@ -94,10 +162,11 @@ data:
       # with no change here. Until then warnings reach people by email only,
       # exactly as they do today.
       #
-      # repeat_interval: 1h on the critical route is not arbitrary: Courier
-      # dedups on `alarm:<alertname>:<hour>`, an hourly idempotency window, so
-      # every repeat inside the hour collapses to one delivery. A shorter
-      # repeat_interval would not page more often, it would just POST more.
+      # Courier dedups on `alarm:<alertname>:<hour>`, an hourly idempotency
+      # window, so a critical repeat_interval under 1h would not page more
+      # often, it would just POST more. The critical route repeats every 4h
+      # (the shared email budget, see the note above `route:`), so a condition
+      # that stays broken re-pages the phone every 4h.
       #
       # Until the operator populates `secret/angelia:courier_alertmanager_secret`
       # (intake target `angelia/courier-alertmanager`), the receiver answers
@@ -123,7 +192,7 @@ data:
           - to: 'admin@madfam.io'
             send_resolved: true
             headers:
-              Subject: '[WARNING] {{ .CommonLabels.alertname }} - Enclii'
+              Subject: '[WARNING] digest: {{ .Alerts.Firing | len }} firing, {{ .Alerts.Resolved | len }} resolved - Enclii'
         webhook_configs:
           - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
             send_resolved: true
@@ -131,6 +200,23 @@ data:
               authorization:
                 type: Bearer
                 credentials_file: /etc/alertmanager/courier/courier-alertmanager-secret
+
+      # Carries AlertmanagerEmailDeliveryFailing only. Webhook and NO email,
+      # the exact inverse of default-receiver carrying CourierReceiverDown.
+      - name: 'courier-only-receiver'
+        webhook_configs:
+          - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/courier/courier-alertmanager-secret
+
+      # Carries Watchdog only. No integrations on purpose, see its route.
+      - name: 'watchdog-sink'
+
+      # Carries severity info/none only. No integrations on purpose.
+      - name: 'informational-sink'
 
     inhibit_rules:
       # If a critical alert is firing, inhibit warnings for the same service

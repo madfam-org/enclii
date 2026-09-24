@@ -351,6 +351,109 @@ def test_courier_receiver_down_is_routed_to_email_first():
     )
 
 
+def _route_for(cfg: dict, alertname: str) -> tuple[int, dict]:
+    routes = (cfg.get("route") or {}).get("routes") or []
+    for i, route in enumerate(routes):
+        if any(f'alertname="{alertname}"' in str(m) for m in route.get("matchers") or []):
+            return i, route
+    raise AssertionError(f"no child route matches alertname={alertname}")
+
+
+def _first_severity_route_index(cfg: dict) -> int:
+    routes = (cfg.get("route") or {}).get("routes") or []
+    for i, route in enumerate(routes):
+        sev = (route.get("match") or {}).get("severity")
+        if sev in ("critical", "warning") or any(
+            str(m).startswith(("severity=\"critical", "severity=\"warning"))
+            for m in route.get("matchers") or []
+        ):
+            return i
+    return len(routes)
+
+
+def test_email_failure_is_routed_to_courier_only():
+    """The mirror of CourierReceiverDown: dead email must not report by email.
+
+    AlertmanagerEmailDeliveryFailing is `severity: critical`. Routed by
+    severity it would reach critical-receiver, whose email_configs are the
+    thing it reports as broken. On 2026-09-24 email had failed for weeks with
+    nothing saying so.
+    """
+    cfg = _live_alertmanager_config()
+    idx, route = _route_for(cfg, "AlertmanagerEmailDeliveryFailing")
+    assert idx < _first_severity_route_index(cfg), (
+        "the AlertmanagerEmailDeliveryFailing route must sit above the "
+        "severity routes, or the critical route catches it first"
+    )
+    assert route.get("continue") is False
+    by_name = {r.get("name"): r for r in (cfg.get("receivers") or [])}
+    recv = by_name.get(route.get("receiver"))
+    assert recv is not None, f"undefined receiver {route.get('receiver')!r}"
+    assert "email_configs" not in recv, (
+        "the receiver for AlertmanagerEmailDeliveryFailing must not depend on "
+        "the email path that alert reports as broken"
+    )
+    hooks = recv.get("webhook_configs") or []
+    assert len(hooks) == 1 and hooks[0]["url"] == COURIER_WEBHOOK_URL
+    auth = hooks[0]["http_config"]["authorization"]
+    assert auth["credentials_file"] == COURIER_CREDENTIALS_FILE
+
+
+def test_critical_route_keeps_paging_within_the_email_budget():
+    """Every critical still pages, and the timings stay inside Gmail's cap.
+
+    The route timings were set by replaying real ALERTS against the ~500/day
+    consumer cap (see the note above `route:`). Loosening them silently puts
+    the fallback back over the cap; dropping the critical route stops paging.
+    """
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    crit = [r for r in routes if (r.get("match") or {}).get("severity") == "critical"]
+    assert len(crit) == 1, "exactly one severity=critical route expected"
+    crit = crit[0]
+    assert crit["receiver"] == "critical-receiver"
+    assert crit.get("group_by") == ["alertname"]
+    assert crit.get("repeat_interval") == "4h"
+    assert crit.get("group_interval") == "15m"
+    warn = [r for r in routes if (r.get("match") or {}).get("severity") == "warning"]
+    assert len(warn) == 1 and warn[0].get("group_by") == ["severity"], (
+        "warnings are one digest group; per-alertname warning groups churn"
+    )
+
+
+def test_informational_severities_go_to_a_sink():
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    idx = next(
+        i for i, r in enumerate(routes)
+        if any('severity=~"info|none"' in str(m) for m in r.get("matchers") or [])
+    )
+    assert idx < _first_severity_route_index(cfg)
+    by_name = {r.get("name"): r for r in (cfg.get("receivers") or [])}
+    recv = by_name[routes[idx]["receiver"]]
+    assert [k for k in recv if k.endswith("_configs")] == []
+
+
+def test_watchdog_is_routed_to_a_sink_above_the_severity_routes():
+    """Watchdog always fires; it must be visible in Alertmanager, not delivered.
+
+    Unrouted, it falls to default-receiver and emails every repeat_interval
+    forever. Routed to a receiver with an integration, it pages forever.
+    """
+    cfg = _live_alertmanager_config()
+    idx, route = _route_for(cfg, "Watchdog")
+    assert idx < _first_severity_route_index(cfg)
+    assert route.get("continue") is False
+    by_name = {r.get("name"): r for r in (cfg.get("receivers") or [])}
+    recv = by_name.get(route.get("receiver"))
+    assert recv is not None, f"undefined receiver {route.get('receiver')!r}"
+    integrations = [k for k in recv if k.endswith("_configs")]
+    assert integrations == [], (
+        f"Watchdog's receiver must have no integrations until an outside "
+        f"heartbeat is sanctioned; found {integrations}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Other load-time rejections
 # ---------------------------------------------------------------------------
