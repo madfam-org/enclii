@@ -168,6 +168,9 @@ type LogStreamOptions struct {
 	TailLines      int64
 	Follow         bool
 	Timestamps     bool
+	// SinceSeconds, when non-nil, limits the backlog to lines newer than that
+	// many seconds (PodLogOptions.SinceSeconds); TailLines applies within it.
+	SinceSeconds *int64
 }
 
 // LogLine represents a single log line with metadata
@@ -227,6 +230,9 @@ func (c *Client) streamPodLogs(ctx context.Context, opts LogStreamOptions, podNa
 
 	if opts.TailLines > 0 {
 		podLogOpts.TailLines = &opts.TailLines
+	}
+	if opts.SinceSeconds != nil {
+		podLogOpts.SinceSeconds = opts.SinceSeconds
 	}
 
 	kubeClient := c.kubeClient()

@@ -200,7 +200,7 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 			AddRow(uuid.New(), projectID, serviceID, "seed-data", "seed run", sql.NullString{String: "node:20", Valid: true}, 60, nil, "pending", nil, "", now, nil, nil)
 
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-			WithArgs(projectID, 50).
+			WithArgs(projectID, 50, 0).
 			WillReturnRows(rows)
 
 		results, err := repo.ListByProject(context.Background(), projectID, 50)
@@ -219,7 +219,7 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 
 		projectID := uuid.New()
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-			WithArgs(projectID, 50).
+			WithArgs(projectID, 50, 0).
 			WillReturnRows(sqlmock.NewRows(oneOffJobColumns))
 
 		results, err := repo.ListByProject(context.Background(), projectID, 50)
@@ -234,10 +234,10 @@ func TestOneOffJobRepository_ListByProject(t *testing.T) {
 
 		projectID := uuid.New()
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-			WithArgs(projectID, 50).
+			WithArgs(projectID, 50, 0).
 			WillReturnRows(sqlmock.NewRows(oneOffJobColumns))
 		mock.ExpectQuery(`SELECT id, project_id, service_id, name, command, image`).
-			WithArgs(projectID, 500).
+			WithArgs(projectID, 500, 0).
 			WillReturnRows(sqlmock.NewRows(oneOffJobColumns))
 
 		_, err := repo.ListByProject(context.Background(), projectID, 0)

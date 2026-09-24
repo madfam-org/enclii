@@ -264,14 +264,9 @@ func (h *Handler) handleResendSendTestApplyDryRun(ctx context.Context, operation
 			Data:        data,
 		}
 	}
-	fromEmail := h.emailService.FromEmail()
-	fromName := h.emailService.FromName()
-	if target != "" {
-		if sender := ecosystem.DefaultSenderForTenant(ecosystem.TenantFromDomain(target)); sender != "" {
-			fromEmail = sender
-		}
-	}
+	fromName, fromEmail := h.resendSendTestSender(target)
 	data["from"] = fmt.Sprintf("%s <%s>", fromName, fromEmail)
+	data["from_email"] = fromEmail
 	data["can_apply"] = true
 	return operatorOperationResponse{
 		OperationID: fmt.Sprintf("op_%d", time.Now().UTC().UnixNano()),
@@ -284,19 +279,44 @@ func (h *Handler) handleResendSendTestApplyDryRun(ctx context.Context, operation
 	}
 }
 
-func (h *Handler) handleResendSendTestApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
-	to := strings.TrimSpace(req.Args["to"])
-	if to == "" {
-		return operatorOperationResponse{
-			OperationID: fmt.Sprintf("op_%d", time.Now().UTC().UnixNano()),
-			Operation:   operation,
-			Status:      "invalid_request",
-			DryRun:      false,
-			Summary:     "resend.send-test-apply requires args.to",
-		}, http.StatusBadRequest
+// resendSendTestSender is the sender of a send-test, shared by the dry-run
+// and the real send so the preview is what is sent: the default sender
+// address of the tenant that owns args.target (ecosystem tenants.json, e.g.
+// noreply@creatumundo.mx for creatumundo.mx), falling back to the email
+// service's configured sender when there is no target or the domain belongs
+// to no tenant with a default sender. The display name is always the email
+// service's. Callers must have checked h.emailService != nil.
+func (h *Handler) resendSendTestSender(target string) (fromName, fromEmail string) {
+	fromName = h.emailService.FromName()
+	fromEmail = h.emailService.FromEmail()
+	if target != "" {
+		if sender := ecosystem.DefaultSenderForTenant(ecosystem.TenantFromDomain(target)); sender != "" {
+			fromEmail = sender
+		}
 	}
-	fromEmail := h.emailService.FromEmail()
-	fromName := h.emailService.FromName()
+	return fromName, fromEmail
+}
+
+// handleResendSendTestApply sends the test email. It runs the dry-run first
+// and stops on the same conditions (missing args.to is a 400; no Resend API
+// key or no email service is a 503 adapter_unconfigured), so it never calls
+// an unconfigured client, and it sends from the sender the dry-run showed.
+func (h *Handler) handleResendSendTestApply(ctx context.Context, operation string, req operatorOperationRequest) (operatorOperationResponse, int) {
+	dry := h.handleResendSendTestApplyDryRun(ctx, operation, req)
+	switch dry.Status {
+	case "ready_to_apply":
+	case "invalid_request":
+		dry.DryRun = false
+		return dry, http.StatusBadRequest
+	case "adapter_unconfigured":
+		dry.DryRun = false
+		return dry, http.StatusServiceUnavailable
+	default:
+		dry.DryRun = false
+		return dry, http.StatusInternalServerError
+	}
+	to := strings.TrimSpace(req.Args["to"])
+	fromName, fromEmail := h.resendSendTestSender(resendDomainTarget(req))
 	subject := "Enclii Resend send-test"
 	body := fmt.Sprintf("This is a send-test from Enclii Provider Hub at %s.", time.Now().UTC().Format(time.RFC3339))
 	_, err := h.resendClient().SendEmail(ctx, resend.SendEmailRequest{

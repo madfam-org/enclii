@@ -90,7 +90,7 @@ func TestCronJobRunRepository_ListByCronJob(t *testing.T) {
 			AddRow(uuid.New(), cronJobID, "running", nil, now.Add(-time.Minute), nil, "")
 
 		mock.ExpectQuery(`SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output`).
-			WithArgs(cronJobID, 50).
+			WithArgs(cronJobID, 50, 0).
 			WillReturnRows(rows)
 
 		results, err := repo.ListByCronJob(context.Background(), cronJobID, 0)
@@ -112,7 +112,7 @@ func TestCronJobRunRepository_ListByCronJob(t *testing.T) {
 
 		cronJobID := uuid.New()
 		mock.ExpectQuery(`SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output`).
-			WithArgs(cronJobID, 50).
+			WithArgs(cronJobID, 50, 0).
 			WillReturnRows(sqlmock.NewRows(cronJobRunColumns))
 
 		results, err := repo.ListByCronJob(context.Background(), cronJobID, 0)
@@ -127,7 +127,7 @@ func TestCronJobRunRepository_ListByCronJob(t *testing.T) {
 
 		cronJobID := uuid.New()
 		mock.ExpectQuery(`SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output`).
-			WithArgs(cronJobID, 10).
+			WithArgs(cronJobID, 10, 0).
 			WillReturnRows(sqlmock.NewRows(cronJobRunColumns))
 
 		results, err := repo.ListByCronJob(context.Background(), cronJobID, 10)
@@ -142,7 +142,7 @@ func TestCronJobRunRepository_ListByCronJob(t *testing.T) {
 
 		cronJobID := uuid.New()
 		mock.ExpectQuery(`SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output`).
-			WithArgs(cronJobID, 500).
+			WithArgs(cronJobID, 500, 0).
 			WillReturnRows(sqlmock.NewRows(cronJobRunColumns))
 
 		results, err := repo.ListByCronJob(context.Background(), cronJobID, 9999)
@@ -157,7 +157,7 @@ func TestCronJobRunRepository_ListByCronJob(t *testing.T) {
 
 		cronJobID := uuid.New()
 		mock.ExpectQuery(`SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output`).
-			WithArgs(cronJobID, 50).
+			WithArgs(cronJobID, 50, 0).
 			WillReturnError(sql.ErrConnDone)
 
 		results, err := repo.ListByCronJob(context.Background(), cronJobID, 0)

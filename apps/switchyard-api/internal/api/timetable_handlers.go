@@ -342,14 +342,22 @@ func (h *Handler) DeleteCronJob(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "cron job deleted"})
 }
 
-// ListCronJobRuns lists execution runs for a cron job
-// GET /v1/cron-jobs/:id/runs
+// ListCronJobRuns lists execution runs for a cron job, newest first.
+// GET /v1/cron-jobs/:id/runs?limit=&offset=
+//
+// Pages like /activity: limit 1..100 (default 50), offset >= 0, echoed back
+// as limit/offset; out-of-range values are a 400. total stays the number of
+// runs in this response.
 func (h *Handler) ListCronJobRuns(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cron job ID"})
+		return
+	}
+	limit, offset, ok := queryLimitOffsetOr400(c, timetableListDefaultLimit, timetableListMaxLimit)
+	if !ok {
 		return
 	}
 
@@ -371,7 +379,7 @@ func (h *Handler) ListCronJobRuns(c *gin.Context) {
 		return
 	}
 
-	runs, err := h.repos.CronJobRuns.ListByCronJob(ctx, id, 50)
+	runs, err := h.repos.CronJobRuns.ListByCronJobPage(ctx, id, limit, offset)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list cron job runs", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list cron job runs"})
@@ -383,8 +391,10 @@ func (h *Handler) ListCronJobRuns(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"runs":  runs,
-		"total": len(runs),
+		"runs":   runs,
+		"total":  len(runs),
+		"limit":  limit,
+		"offset": offset,
 	})
 }
 
@@ -459,9 +469,12 @@ func (h *Handler) CreateOneOffJob(c *gin.Context) {
 	})
 }
 
-// oneOffJobListLimit bounds ListOneOffJobs responses (mirrors the cron job
-// runs listing, ListCronJobRuns).
-const oneOffJobListLimit = 50
+// timetableListDefaultLimit / timetableListMaxLimit bound the page size of
+// ListCronJobRuns and ListOneOffJobs (the same bounds as GET /activity).
+const (
+	timetableListDefaultLimit = 50
+	timetableListMaxLimit     = 100
+)
 
 // oneOffJobLogTailLines / oneOffJobLogLimitBytes bound how much log output the
 // one-off job logs endpoint returns per request.
@@ -470,11 +483,19 @@ const (
 	oneOffJobLogLimitBytes = 1024 * 1024 // 1 MiB
 )
 
-// ListOneOffJobs lists the most recent one-off jobs for a project
-// GET /v1/projects/:slug/one-off-jobs
+// ListOneOffJobs lists a project's one-off jobs, newest first.
+// GET /v1/projects/:slug/one-off-jobs?limit=&offset=
+//
+// Pages like ListCronJobRuns: limit 1..100 (default 50), offset >= 0, echoed
+// back as limit/offset; out-of-range values are a 400. total stays the number
+// of jobs in this response.
 func (h *Handler) ListOneOffJobs(c *gin.Context) {
 	ctx := c.Request.Context()
 	slug := c.Param("slug")
+	limit, offset, ok := queryLimitOffsetOr400(c, timetableListDefaultLimit, timetableListMaxLimit)
+	if !ok {
+		return
+	}
 
 	project, err := h.repos.Projects.GetBySlug(slug)
 	if err != nil {
@@ -487,7 +508,7 @@ func (h *Handler) ListOneOffJobs(c *gin.Context) {
 		return
 	}
 
-	jobs, err := h.repos.OneOffJobs.ListByProject(ctx, project.ID, oneOffJobListLimit)
+	jobs, err := h.repos.OneOffJobs.ListByProjectPage(ctx, project.ID, limit, offset)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to list one-off jobs", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list one-off jobs"})
@@ -501,6 +522,8 @@ func (h *Handler) ListOneOffJobs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"one_off_jobs": jobs,
 		"total":        len(jobs),
+		"limit":        limit,
+		"offset":       offset,
 	})
 }
 

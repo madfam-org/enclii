@@ -10,35 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/k8s"
 	"github.com/madfam-org/enclii/apps/switchyard-api/internal/logging"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
-
-// getWebSocketUpgrader returns an upgrader configured with allowed origins from config
-func (h *Handler) getWebSocketUpgrader() *websocket.Upgrader {
-	allowedOrigins := h.config.WebSocketAllowedOrigins
-	return &websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			// Allow connections from configured origins
-			origin := r.Header.Get("Origin")
-			if len(allowedOrigins) == 0 {
-				// If no origins configured, deny all for security
-				return false
-			}
-			for _, allowed := range allowedOrigins {
-				if origin == allowed {
-					return true
-				}
-			}
-			return false
-		},
-	}
-}
 
 // LogStreamMessage represents a WebSocket message for log streaming
 type LogStreamMessage struct {
@@ -50,7 +26,7 @@ type LogStreamMessage struct {
 }
 
 // StreamLogsWS handles WebSocket connections for real-time log streaming
-// GET /v1/deployments/:id/logs/stream
+// GET /v1/deployments/:id/logs/stream?lines=&timestamps=&since=
 func (h *Handler) StreamLogsWS(c *gin.Context) {
 	ctx := c.Request.Context()
 	deploymentIDStr := c.Param("id")
@@ -61,6 +37,10 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 		return
 	}
 	if !h.enforceDeploymentAccess(c, deploymentUUID) {
+		return
+	}
+	sinceSeconds, ok := logsSinceOr400(c)
+	if !ok {
 		return
 	}
 
@@ -105,7 +85,7 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 	}
 
 	// Upgrade HTTP connection to WebSocket
-	conn, err := h.getWebSocketUpgrader().Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.getWebSocketUpgrader(c).Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to upgrade to WebSocket", logging.Error("error", err))
 		return
@@ -163,6 +143,7 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 		TailLines:     tailLines,
 		Follow:        true,
 		Timestamps:    timestamps,
+		SinceSeconds:  sinceSeconds,
 	}, logChan, errChan)
 
 	// Process logs and send to WebSocket
@@ -213,7 +194,11 @@ func (h *Handler) StreamLogsWS(c *gin.Context) {
 }
 
 // StreamServiceLogsWS handles WebSocket connections for real-time log streaming by service ID
-// GET /v1/services/:id/logs/stream
+// GET /v1/services/:id/logs/stream?env=&lines=&timestamps=&since=
+//
+// since (see parseLogsSince) limits the backlog to lines newer than the
+// window, as `enclii logs --follow --since` sends it. A bad since is a 400
+// and an unknown env a 404, both answered before the upgrade.
 func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 	ctx := c.Request.Context()
 	serviceUUID, ok := h.mustServiceAccess(c)
@@ -221,6 +206,10 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 		return
 	}
 	envName := c.DefaultQuery("env", "development")
+	sinceSeconds, ok := logsSinceOr400(c)
+	if !ok {
+		return
+	}
 
 	// Get service
 	service, err := h.repos.Services.GetByID(serviceUUID)
@@ -238,8 +227,17 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 		return
 	}
 
+	// Resolve the environment before upgrading: after the upgrade an HTTP
+	// status can no longer be sent, so an unknown env must be a 404 here.
+	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to get environment for log streaming", logging.Error("error", err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
+		return
+	}
+
 	// Upgrade HTTP connection to WebSocket
-	conn, err := h.getWebSocketUpgrader().Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.getWebSocketUpgrader(c).Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to upgrade to WebSocket", logging.Error("error", err))
 		return
@@ -255,13 +253,6 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 	}
 
 	timestamps := c.Query("timestamps") == "true"
-
-	env, err := h.repos.Environments.GetByProjectAndName(service.ProjectID, envName)
-	if err != nil {
-		h.logger.Error(ctx, "Failed to get environment for log streaming", logging.Error("error", err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "Environment not found"})
-		return
-	}
 
 	namespace := env.KubeNamespace
 	if namespace == "" {
@@ -306,6 +297,7 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 		TailLines:      tailLines,
 		Follow:         true,
 		Timestamps:     timestamps,
+		SinceSeconds:   sinceSeconds,
 	}, logChan, errChan)
 
 	// Process logs and send to WebSocket
@@ -524,7 +516,7 @@ func (h *Handler) StreamBuildLogsWS(c *gin.Context) {
 	}
 
 	// Upgrade HTTP connection to WebSocket
-	conn, err := h.getWebSocketUpgrader().Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.getWebSocketUpgrader(c).Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to upgrade to WebSocket", logging.Error("error", err))
 		return

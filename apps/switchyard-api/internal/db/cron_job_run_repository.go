@@ -39,24 +39,33 @@ func (r *CronJobRunRepository) Create(ctx context.Context, run *types.CronJobRun
 	return err
 }
 
-// ListByCronJob retrieves all runs for a cron job
+// ListByCronJob retrieves the most recent runs of a cron job, newest first.
 func (r *CronJobRunRepository) ListByCronJob(ctx context.Context, cronJobID uuid.UUID, limit int) ([]*types.CronJobRun, error) {
+	return r.ListByCronJobPage(ctx, cronJobID, limit, 0)
+}
+
+// ListByCronJobPage is ListByCronJob skipping the newest offset runs. Limit
+// defaults to 50 and is capped at 500; a negative offset is treated as 0.
+func (r *CronJobRunRepository) ListByCronJobPage(ctx context.Context, cronJobID uuid.UUID, limit, offset int) ([]*types.CronJobRun, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 500 {
 		limit = 500
 	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	query := `
 		SELECT id, cron_job_id, status, exit_code, started_at, ended_at, log_output
 		FROM cron_job_runs
 		WHERE cron_job_id = $1
-		ORDER BY started_at DESC
-		LIMIT $2
+		ORDER BY started_at DESC, id DESC
+		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, cronJobID, limit)
+	rows, err := r.db.QueryContext(ctx, query, cronJobID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

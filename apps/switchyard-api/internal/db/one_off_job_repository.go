@@ -90,11 +90,20 @@ func (r *OneOffJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*types
 // first. Limit defaults to 50 and is capped at 500 (same bounds as
 // CronJobRunRepository.ListByCronJob).
 func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.UUID, limit int) ([]*types.OneOffJob, error) {
+	return r.ListByProjectPage(ctx, projectID, limit, 0)
+}
+
+// ListByProjectPage is ListByProject skipping the newest offset jobs; a
+// negative offset is treated as 0.
+func (r *OneOffJobRepository) ListByProjectPage(ctx context.Context, projectID uuid.UUID, limit, offset int) ([]*types.OneOffJob, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 500 {
 		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	query := `
@@ -103,11 +112,11 @@ func (r *OneOffJobRepository) ListByProject(ctx context.Context, projectID uuid.
 		       created_at, started_at, ended_at
 		FROM one_off_jobs
 		WHERE project_id = $1
-		ORDER BY created_at DESC
-		LIMIT $2
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, projectID, limit)
+	rows, err := r.db.QueryContext(ctx, query, projectID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
