@@ -1,5 +1,11 @@
 # Status Configmap Regeneration Runbook
 
+> **Boundary checkpoint (2026-09-24, platform ops):** public-safe procedure for
+> regenerating the status ConfigMaps through the Switchyard API. Operator
+> identities, tokens and cluster internals stay out of this repo; they live in
+> `madfam-org/internal-devops`. Policy: `docs/PUBLIC_REPO_BOUNDARY.md` and the
+> canonical repo-boundary contract in `madfam-org/internal-devops`.
+
 _Last updated: 2026-05-18 — onboarding now stores status entries in the DB snapshot; runtime ConfigMap projection is the default zero-touch path._
 
 ## Why this exists
