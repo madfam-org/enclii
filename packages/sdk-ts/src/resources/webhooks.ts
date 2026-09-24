@@ -3,11 +3,21 @@ import type {
   CreateWebhookSubscriptionRequest,
   CreateWebhookSubscriptionResponse,
   OutboundWebhookDelivery,
-  OutboundWebhookEventType,
+  OutboundWebhookEventTypeInfo,
   OutboundWebhookSubscription,
   Page,
+  UnpagedIterOptions,
+  UnpagedListOptions,
   UpdateWebhookSubscriptionRequest,
 } from '../types';
+import {
+  assertLimit,
+  nextOffsetCursor,
+  offsetFromCursor,
+} from './offset-paging';
+
+/** Server-side cap on `limit` for the deliveries endpoint. */
+const MAX_DELIVERIES_LIMIT = 200;
 
 /**
  * Outbound lifecycle webhook subscriptions (P2.3).
@@ -23,32 +33,24 @@ import type {
 export class WebhooksResource {
   constructor(private readonly client: EncliiClient) {}
 
-  /** List subscriptions for a project. */
+  /** List every subscription of a project in one response. */
   async list(
     projectSlug: string,
-    options: { limit?: number; cursor?: string } = {},
+    _options: UnpagedListOptions = {},
   ): Promise<Page<OutboundWebhookSubscription>> {
     const resp = await this.client.get<{
-      subscriptions: OutboundWebhookSubscription[];
-      next_cursor?: string | null;
-    }>(
-      `/projects/${encodeURIComponent(projectSlug)}/lifecycle-webhooks`,
-      options,
-    );
-    return {
-      data: resp.subscriptions ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+      subscriptions: OutboundWebhookSubscription[] | null;
+    }>(`/projects/${encodeURIComponent(projectSlug)}/lifecycle-webhooks`);
+    return { data: resp.subscriptions ?? [], nextCursor: null };
   }
 
-  iter(
+  /** Iterate every subscription of a project (one request; see `list()`). */
+  async *iter(
     projectSlug: string,
-    options: { pageSize?: number } = {},
+    _options: UnpagedIterOptions = {},
   ): AsyncIterable<OutboundWebhookSubscription> {
-    return this.client.paginate<OutboundWebhookSubscription>(
-      `/projects/${encodeURIComponent(projectSlug)}/lifecycle-webhooks`,
-      { itemsField: 'subscriptions', pageSize: options.pageSize },
-    );
+    const page = await this.list(projectSlug);
+    yield* page.data;
   }
 
   /**
@@ -117,29 +119,39 @@ export class WebhooksResource {
     return resp.delivery;
   }
 
-  /** List recent deliveries for a subscription. */
+  /**
+   * List a subscription's deliveries, one page at a time. The API pages with
+   * `limit` (1 to 200, default 50) and `offset`; pass the returned
+   * `nextCursor` back as `cursor` for the next page.
+   */
   async deliveries(
     subscriptionId: string,
     options: { limit?: number; cursor?: string } = {},
   ): Promise<Page<OutboundWebhookDelivery>> {
+    assertLimit('webhooks.deliveries', options.limit, MAX_DELIVERIES_LIMIT);
     const resp = await this.client.get<{
-      deliveries: OutboundWebhookDelivery[];
-      next_cursor?: string | null;
+      deliveries: OutboundWebhookDelivery[] | null;
+      limit: number;
+      offset: number;
     }>(
       `/lifecycle-webhooks/${encodeURIComponent(subscriptionId)}/deliveries`,
-      options,
+      {
+        limit: options.limit,
+        offset: offsetFromCursor('webhooks.deliveries', options.cursor),
+      },
     );
-    return {
-      data: resp.deliveries ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+    const data = resp.deliveries ?? [];
+    return { data, nextCursor: nextOffsetCursor(data.length, resp) };
   }
 
-  /** List all subscribable event types (public — no auth required). */
-  async eventTypes(): Promise<OutboundWebhookEventType[]> {
+  /**
+   * List the subscribable lifecycle event types with their descriptions
+   * (`GET /lifecycle-webhooks/event-types`; requires authentication).
+   */
+  async eventTypes(): Promise<OutboundWebhookEventTypeInfo[]> {
     const resp = await this.client.get<{
-      event_types: OutboundWebhookEventType[];
-    }>('/webhooks/event-types');
+      event_types: OutboundWebhookEventTypeInfo[] | null;
+    }>('/lifecycle-webhooks/event-types');
     return resp.event_types ?? [];
   }
 }

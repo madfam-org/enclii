@@ -2,7 +2,7 @@ import type { EncliiClient } from '../client';
 import type {
   InstantRollbackRequest,
   InstantRollbackResponse,
-  RollbackRequest,
+  ManifestRollbackResponse,
 } from '../types';
 
 /**
@@ -14,9 +14,9 @@ import type {
  *     rollback. Traffic shifts in <30s when the target ReplicaSet is still
  *     running, <90s when it needs to scale back up.
  *
- *   - `manifest(deploymentId, {to_release})` — manifest-commit rollback. Writes
- *     a new image tag; ArgoCD does a rolling update (2-3 min). Used when you
- *     want the rollback durably captured in git.
+ *   - `manifest(deploymentId)` — rolls the deployment's service back to its
+ *     most recent other `running` deployment and marks this one `failed`.
+ *     The API takes no target: use `instant()` to pick one.
  */
 export class RollbackResource {
   constructor(private readonly client: EncliiClient) {}
@@ -32,14 +32,23 @@ export class RollbackResource {
     );
   }
 
-  /** Manifest-commit rollback — slow path, ArgoCD reconciles. */
+  /**
+   * Roll `deploymentId` back to the service's previous `running` deployment.
+   * `POST /deployments/{id}/rollback` reads no request body, so the target
+   * cannot be chosen; a second argument throws instead of being ignored.
+   */
   async manifest(
     deploymentId: string,
-    input: RollbackRequest = {},
-  ): Promise<void> {
-    await this.client.post(
+    ...unsupported: never[]
+  ): Promise<ManifestRollbackResponse> {
+    if (unsupported.length > 0) {
+      throw new Error(
+        'rollback.manifest: the API does not accept a rollback target; ' +
+          'use rollback.instant(serviceId, { target_deployment_id }) to choose one',
+      );
+    }
+    return this.client.post<ManifestRollbackResponse>(
       `/deployments/${encodeURIComponent(deploymentId)}/rollback`,
-      input,
     );
   }
 }

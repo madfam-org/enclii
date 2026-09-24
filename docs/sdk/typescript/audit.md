@@ -37,22 +37,38 @@ const { data } = await enclii.audit.list({
 });
 
 for (const e of data) {
-  console.log(e.action, e.resource_type, e.resource_id, e.actor_email);
+  console.log(e.timestamp, e.action, e.resource_type, e.resource_name, e.actor_email, e.outcome);
 }
 ```
 
 `AuditQueryOptions` (all optional, sent as query parameters):
 
-| Field | Type |
-|-------|------|
-| `action` | `string` |
-| `resource_type` | `string` |
-| `project_id` | `string` |
-| `actor_id` | `string` |
-| `limit` | `number` |
-| `cursor` | `string` |
+| Field | Type | Notes |
+|-------|------|-------|
+| `action` | `string` | |
+| `resource_type` | `string` | |
+| `project_id` | `string` | A UUID. The API silently drops a value that is not one. |
+| `actor_id` | `string` | A UUID. The API silently drops a value that is not one. |
+| `limit` | `number` | Page size, 1 to 100; the API default is 50. |
+| `cursor` | `string` | A `nextCursor` from a previous page. |
 
-`iter()` takes the same filters without `cursor` and uses `limit` as the page size.
+## Paging
+
+`GET /activity` (`GetActivity` in `apps/switchyard-api/internal/api/activity_handlers.go`) pages with `limit` and `offset` and answers `{ activities, count, limit, offset }`. The SDK maps that onto `Page<T>`: `cursor` is sent as `offset`, and `nextCursor` is set whenever a page comes back full (as many rows as the `limit` the server applied), otherwise `null`. Treat the cursor as opaque.
+
+```typescript
+const first = await enclii.audit.list({ limit: 100 });
+if (first.nextCursor) {
+  const second = await enclii.audit.list({ limit: 100, cursor: first.nextCursor });
+}
+
+// Or let iter() walk every page, `limit` rows at a time (default 50)
+for await (const e of enclii.audit.iter({ action: 'deploy', limit: 100 })) {
+  console.log(e.timestamp, e.resource_name);
+}
+```
+
+`list()` throws a plain `Error` before sending for a `limit` outside 1 to 100 (the API would silently use 50) or a cursor it did not return. Offset paging can skip or repeat a row when new events arrive between pages.
 
 ## Discover filter values
 
@@ -61,35 +77,28 @@ const actions = await enclii.audit.actions();
 const resourceTypes = await enclii.audit.resourceTypes();
 ```
 
-## Current API behaviour
-
-- `GET /activity` pages with `limit` and `offset` and does not return `next_cursor`, so `cursor` is ignored and `list()`/`iter()` only reach the first page. Use `limit` to size it, or call the endpoint directly with `offset`:
-
-  ```typescript
-  import type { AuditEvent } from '@madfam/enclii-sdk';
-
-  const resp = await enclii.get<{ activities: AuditEvent[]; count: number; limit: number; offset: number }>(
-    '/activity',
-    { limit: 100, offset: 100 },
-  );
-  ```
-
-- The API's activity rows carry their time in a `timestamp` field, not `created_at`, and have no `service_id`. `AuditEvent.created_at` and `AuditEvent.service_id` are therefore `undefined` at runtime. Rows also include fields the SDK type does not declare, such as `actor_role`, `resource_name`, `environment_id`, `outcome`, and `context`.
+Both return fixed lists compiled into the API.
 
 ## Types
 
 ```typescript
 interface AuditEvent {
   id: UUID;
+  timestamp: ISODateTime;
   actor_id?: UUID;
-  actor_email?: string;
+  actor_email: string;
+  actor_role: string;
   action: string;
   resource_type: string;
-  resource_id?: string;
+  resource_id: string;
+  resource_name: string;
   project_id?: UUID;
-  service_id?: UUID;
+  environment_id?: UUID;
+  ip_address: string;
+  user_agent: string;
+  outcome: string; // 'success' | 'failure' | 'denied'
+  context: Record<string, unknown> | null;
   metadata?: Record<string, unknown>;
-  created_at: ISODateTime;
 }
 ```
 

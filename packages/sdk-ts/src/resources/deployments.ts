@@ -2,8 +2,11 @@ import type { EncliiClient } from '../client';
 import type {
   DeployRequest,
   Deployment,
+  LatestDeploymentResponse,
   Page,
   Release,
+  UnpagedIterOptions,
+  UnpagedListOptions,
 } from '../types';
 
 /**
@@ -61,39 +64,40 @@ export class DeploymentsResource {
     );
   }
 
-  /** List deployments for a service. Cursor-paginated. */
+  /**
+   * List every deployment of a service, newest release first. The endpoint
+   * returns all rows in one response.
+   */
   async list(
     serviceId: string,
-    options: { limit?: number; cursor?: string } = {},
+    _options: UnpagedListOptions = {},
   ): Promise<Page<Deployment>> {
     const resp = await this.client.get<{
-      deployments: Deployment[];
-      next_cursor?: string | null;
-    }>(
-      `/services/${encodeURIComponent(serviceId)}/deployments`,
-      options,
-    );
-    return {
-      data: resp.deployments ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+      service_id: string;
+      deployments: Deployment[] | null;
+      count: number;
+    }>(`/services/${encodeURIComponent(serviceId)}/deployments`);
+    return { data: resp.deployments ?? [], nextCursor: null };
   }
 
-  iter(
+  /** Iterate every deployment of a service (one request; see `list()`). */
+  async *iter(
     serviceId: string,
-    options: { pageSize?: number } = {},
+    _options: UnpagedIterOptions = {},
   ): AsyncIterable<Deployment> {
-    return this.client.paginate<Deployment>(
-      `/services/${encodeURIComponent(serviceId)}/deployments`,
-      { itemsField: 'deployments', pageSize: options.pageSize },
-    );
+    const page = await this.list(serviceId);
+    yield* page.data;
   }
 
-  /** Most recent deployment for a service (convenience shortcut). */
+  /**
+   * Most recent deployment for a service. The API wraps it as
+   * `{ deployment, release? }`; this returns the deployment.
+   */
   async latest(serviceId: string): Promise<Deployment> {
-    return this.client.get<Deployment>(
+    const resp = await this.client.get<LatestDeploymentResponse>(
       `/services/${encodeURIComponent(serviceId)}/deployments/latest`,
     );
+    return resp.deployment;
   }
 
   /** Trigger a deployment (build must already be ready). */
@@ -115,19 +119,15 @@ export class DeploymentsResource {
     );
   }
 
-  /** List releases (built images) for a service. */
+  /** List every release (built image) of a service in one response. */
   async listReleases(
     serviceId: string,
-    options: { limit?: number; cursor?: string } = {},
+    _options: UnpagedListOptions = {},
   ): Promise<Page<Release>> {
-    const resp = await this.client.get<{
-      releases: Release[];
-      next_cursor?: string | null;
-    }>(`/services/${encodeURIComponent(serviceId)}/releases`, options);
-    return {
-      data: resp.releases ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+    const resp = await this.client.get<{ releases: Release[] | null }>(
+      `/services/${encodeURIComponent(serviceId)}/releases`,
+    );
+    return { data: resp.releases ?? [], nextCursor: null };
   }
 
   /**

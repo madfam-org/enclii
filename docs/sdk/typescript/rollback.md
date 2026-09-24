@@ -12,7 +12,7 @@ tags: [sdk, typescript, rollback, deployments]
 | Method | Signature | HTTP |
 |--------|-----------|------|
 | `instant` | `instant(serviceId: string, input: InstantRollbackRequest): Promise<InstantRollbackResponse>` | `POST /services/{id}/rollback` |
-| `manifest` | `manifest(deploymentId: string, input?: RollbackRequest): Promise<void>` | `POST /deployments/{id}/rollback` |
+| `manifest` | `manifest(deploymentId: string): Promise<ManifestRollbackResponse>` | `POST /deployments/{id}/rollback` |
 
 To cancel a canary, use [`canary.rollback()`](./canary.md#promote-or-roll-back) instead.
 
@@ -70,15 +70,24 @@ interface InstantRollbackResponse {
 
 ## Manifest rollback
 
-The slower path. The SDK source describes it as a manifest commit that the GitOps controller reconciles with a rolling update (a few minutes), so the rollback is recorded in git.
+Rolls a deployment's service back to its previous `running` deployment. The handler (`RollbackDeployment` in `apps/switchyard-api/internal/api/deployment_handlers.go`) reads no request body: it picks the target itself by walking the service's other releases, newest first, and taking the first deployment whose status is `running`. It then marks `deploymentId` as `failed` and asks the reconciler to roll the workload back.
 
 ```typescript
-await enclii.rollback.manifest(currentDeploymentId);
+const result = await enclii.rollback.manifest(currentDeploymentId);
+console.log(result.message, result.rolled_back_to.id, `v${result.rolled_back_to.version_number}`);
 ```
 
-`RollbackRequest` is `{ to_release?: string }` and defaults to `{}`. The method resolves to `undefined`; the SDK discards the response body.
+`manifest()` sends no body and takes no target. Passing a second argument throws a plain `Error` before any request, instead of being silently ignored; to go back to a specific deployment, use `instant()` with `target_deployment_id`. The call fails with `ValidationError` when the service has no other `running` deployment.
 
-> **Current API behaviour:** the `POST /deployments/{id}/rollback` handler does not read a request body. It always rolls back to the service's previous successful deployment, so `to_release` has no effect. To go back to a specific deployment, use `instant()` with `target_deployment_id`.
+```typescript
+interface ManifestRollbackResponse {
+  message: string;
+  rolled_back_to: Deployment;     // the earlier running deployment
+  current_deployment: Deployment; // as loaded before the rollback
+}
+```
+
+`current_deployment` is the row as it was loaded before the rollback: the API marks it `failed` but returns its previous `status`.
 
 ## Related documentation
 

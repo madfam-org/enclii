@@ -39,9 +39,16 @@ describe('ServicesResource', () => {
       () => new Response(null, { status: 202 }),
     );
     const client = newClient({ fetch });
-    await client.services.restart('s1', { environment: 'prod' });
+    await client.services.restart('s1', {
+      environment: 'staging',
+      reason: 'config reload',
+    });
     expect(calls[0]!.url).toContain('/services/s1/restart');
-    expect(JSON.parse(calls[0]!.body!)).toEqual({ environment: 'prod' });
+    // RestartRequest (infra_handlers.go) reads `env` and `reason`.
+    expect(JSON.parse(calls[0]!.body!)).toEqual({
+      env: 'staging',
+      reason: 'config reload',
+    });
   });
 
   it('scales a service', async () => {
@@ -51,5 +58,8 @@ describe('ServicesResource', () => {
     const client = newClient({ fetch });
     await client.services.scale('s1', 5);
     expect(JSON.parse(calls[0]!.body!)).toEqual({ replicas: 5 });
+    await client.services.scale('s1', 3, { environment: 'staging' });
+    // ScaleRequest (infra_handlers.go) reads `replicas` and `env`.
+    expect(JSON.parse(calls[1]!.body!)).toEqual({ replicas: 3, env: 'staging' });
   });
 });

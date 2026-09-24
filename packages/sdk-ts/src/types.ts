@@ -18,10 +18,31 @@ export type ISODateTime = string;
 /** UUID v4 string. */
 export type UUID = string;
 
-/** Envelope returned by every list endpoint that supports cursor pagination. */
+/**
+ * Envelope returned by every SDK list method. `nextCursor` is non-null only
+ * for endpoints that page (`audit.list`, `webhooks.deliveries`); pass it back
+ * as `cursor` to fetch the next page.
+ */
 export interface Page<T> {
   data: T[];
   nextCursor: string | null;
+}
+
+/**
+ * Options of list methods whose endpoint returns every row in one response.
+ * Neither field is sent: the API has no paging on these routes.
+ */
+export interface UnpagedListOptions {
+  /** @deprecated Ignored; the endpoint returns every row in one response. */
+  limit?: number;
+  /** @deprecated Ignored; `nextCursor` is always null for this endpoint. */
+  cursor?: string;
+}
+
+/** Options of `iter()` methods over endpoints that return every row at once. */
+export interface UnpagedIterOptions {
+  /** @deprecated Ignored; the endpoint does not page, so `iter()` makes one request. */
+  pageSize?: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -42,6 +63,8 @@ export interface Project {
 export interface CreateProjectRequest {
   name: string;
   slug: string;
+  description?: string;
+  /** @deprecated The create endpoint ignores it; set it with `PUT /projects/{slug}/ci-runner-config`. */
   ci_runner_mode?: CIRunnerMode;
 }
 
@@ -142,14 +165,31 @@ export interface Deployment {
 
 export interface DeployRequest {
   release_id: string;
-  environment_name: string;
+  /** Environment name; the API uses `development` when it is empty. */
+  environment_name?: string;
   environment?: Record<string, string>;
   replicas?: number;
+  /** Change ticket for the production deployment-approval check. */
+  change_ticket_url?: string;
 }
 
-/** Classic manifest-commit rollback (slow path). */
-export interface RollbackRequest {
-  to_release?: string;
+/** Response of `GET /services/{id}/deployments/latest`. */
+export interface LatestDeploymentResponse {
+  deployment: Deployment;
+  /** Omitted when the release cannot be loaded. */
+  release?: Release;
+}
+
+/** Response of the manifest rollback, `POST /deployments/{id}/rollback`. */
+export interface ManifestRollbackResponse {
+  message: string;
+  /** The service's earlier `running` deployment that traffic returns to. */
+  rolled_back_to: Deployment;
+  /**
+   * The deployment that was rolled back, as loaded before the rollback. The
+   * API marks it `failed` but returns the pre-rollback `status`.
+   */
+  current_deployment: Deployment;
 }
 
 /** Instant (P0.5) selector-flip rollback request. */
@@ -235,71 +275,6 @@ export interface CanaryRollout {
 }
 
 // -----------------------------------------------------------------------------
-// Logs
-// -----------------------------------------------------------------------------
-
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
-
-export interface LogEntry {
-  timestamp: ISODateTime;
-  pod: string;
-  message: string;
-  level?: LogLevel | string;
-  /** Container name (for multi-container pods). */
-  container?: string;
-}
-
-export interface LogHistoryOptions {
-  /** Max rows to return; server-side cap applies. */
-  limit?: number;
-  /** Filter to rows at or above this level. */
-  level?: LogLevel | string;
-  /** ISO-8601 lower bound (inclusive). */
-  since?: string;
-  /** ISO-8601 upper bound (exclusive). */
-  until?: string;
-  /** Pagination cursor. */
-  cursor?: string;
-}
-
-export interface LogTailOptions {
-  /** Filter to rows at or above this level. */
-  level?: LogLevel | string;
-  /** Specific pod name to follow (otherwise all). */
-  pod?: string;
-  /** Container name (for multi-container pods). */
-  container?: string;
-  /** Abort signal for graceful shutdown. */
-  signal?: AbortSignal;
-}
-
-// -----------------------------------------------------------------------------
-// Audit / activity log
-// -----------------------------------------------------------------------------
-
-export interface AuditEvent {
-  id: UUID;
-  actor_id?: UUID;
-  actor_email?: string;
-  action: string;
-  resource_type: string;
-  resource_id?: string;
-  project_id?: UUID;
-  service_id?: UUID;
-  metadata?: Record<string, unknown>;
-  created_at: ISODateTime;
-}
-
-export interface AuditQueryOptions {
-  action?: string;
-  resource_type?: string;
-  project_id?: string;
-  actor_id?: string;
-  limit?: number;
-  cursor?: string;
-}
-
-// -----------------------------------------------------------------------------
 // Outbound lifecycle webhooks (P2.3)
 // -----------------------------------------------------------------------------
 
@@ -310,6 +285,12 @@ export type OutboundWebhookEventType =
   | 'rollback.succeeded'
   | 'secret.rotated'
   | 'service.scaled';
+
+/** One entry of `GET /lifecycle-webhooks/event-types`. */
+export interface OutboundWebhookEventTypeInfo {
+  type: OutboundWebhookEventType;
+  description: string;
+}
 
 export type OutboundWebhookDeliveryStatus =
   | 'pending'
@@ -389,27 +370,6 @@ export interface OutboundWebhookEnvelope<TData = Record<string, unknown>> {
   /** Matches `OutboundWebhookAPIVersion` on the server; bumped on breaking changes. */
   api_version: string;
   data: TData;
-}
-
-// -----------------------------------------------------------------------------
-// Secrets (via RFC 0005 bridge)
-// -----------------------------------------------------------------------------
-
-export interface EnvVar {
-  id: UUID;
-  service_id: UUID;
-  key: string;
-  /** Present only when value is not a secret or caller has reveal permission. */
-  value?: string;
-  is_secret: boolean;
-  created_at: ISODateTime;
-  updated_at: ISODateTime;
-}
-
-export interface SetEnvVarRequest {
-  key: string;
-  value: string;
-  is_secret?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -585,63 +545,4 @@ export interface ServiceVolume {
   size: string;
   storage_class_name?: string;
   access_mode?: string;
-}
-
-// -----------------------------------------------------------------------------
-// Jobs / Timetable
-// -----------------------------------------------------------------------------
-
-export interface CronJob {
-  id: UUID;
-  project_id: UUID;
-  service_id: UUID;
-  name: string;
-  schedule: string;
-  command: string;
-  image?: string;
-  timeout: number;
-  retries: number;
-  suspended: boolean;
-  concurrency: 'allow' | 'forbid' | 'replace';
-  created_at: ISODateTime;
-  updated_at: ISODateTime;
-  last_run_at?: ISODateTime | null;
-  next_run_at?: ISODateTime | null;
-}
-
-export interface CreateCronJobRequest {
-  name: string;
-  schedule: string;
-  command: string;
-  service_id: string;
-  image?: string;
-  timeout?: number;
-  retries?: number;
-  concurrency?: 'allow' | 'forbid' | 'replace';
-}
-
-export interface OneOffJob {
-  id: UUID;
-  project_id: UUID;
-  service_id: UUID;
-  name: string;
-  command: string;
-  image?: string;
-  timeout: number;
-  run_at?: ISODateTime | null;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  exit_code?: number | null;
-  created_at: ISODateTime;
-  started_at?: ISODateTime | null;
-  ended_at?: ISODateTime | null;
-}
-
-export interface CronJobRun {
-  id: UUID;
-  cron_job_id: UUID;
-  status: 'running' | 'completed' | 'failed';
-  exit_code?: number | null;
-  started_at: ISODateTime;
-  ended_at?: ISODateTime | null;
-  log_output?: string;
 }

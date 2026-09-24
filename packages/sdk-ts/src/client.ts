@@ -317,6 +317,15 @@ export class EncliiClient {
     return Math.min(Math.round(jitter), this.retry.maxDelayMs);
   }
 
+  /**
+   * Resolve the bearer token the client would send right now, or null for
+   * anonymous access. The log-stream helpers use it because a WebSocket
+   * upgrade cannot go through `request()`.
+   */
+  async resolveToken(): Promise<string | null> {
+    return (await this.auth.getToken()) || null;
+  }
+
   // ---------------------------------------------------------------------------
   // Convenience verbs (used internally by resources)
   // ---------------------------------------------------------------------------

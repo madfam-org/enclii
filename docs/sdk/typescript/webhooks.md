@@ -13,8 +13,8 @@ These are not the notification webhooks (Slack, Discord, Telegram, custom) manag
 
 | Method | Signature | HTTP |
 |--------|-----------|------|
-| `list` | `list(projectSlug: string, options?: { limit?: number; cursor?: string }): Promise<Page<OutboundWebhookSubscription>>` | `GET /projects/{slug}/lifecycle-webhooks` |
-| `iter` | `iter(projectSlug: string, options?: { pageSize?: number }): AsyncIterable<OutboundWebhookSubscription>` | `GET /projects/{slug}/lifecycle-webhooks` |
+| `list` | `list(projectSlug: string): Promise<Page<OutboundWebhookSubscription>>` | `GET /projects/{slug}/lifecycle-webhooks` |
+| `iter` | `iter(projectSlug: string): AsyncIterable<OutboundWebhookSubscription>` | `GET /projects/{slug}/lifecycle-webhooks` |
 | `create` | `create(projectSlug: string, input: CreateWebhookSubscriptionRequest): Promise<CreateWebhookSubscriptionResponse>` | `POST /projects/{slug}/lifecycle-webhooks` |
 | `get` | `get(subscriptionId: string): Promise<OutboundWebhookSubscription>` | `GET /lifecycle-webhooks/{id}` |
 | `update` | `update(subscriptionId: string, input: UpdateWebhookSubscriptionRequest): Promise<OutboundWebhookSubscription>` | `PATCH /lifecycle-webhooks/{id}` |
@@ -22,7 +22,9 @@ These are not the notification webhooks (Slack, Discord, Telegram, custom) manag
 | `delete` | `delete(subscriptionId: string): Promise<void>` | `DELETE /lifecycle-webhooks/{id}` |
 | `test` | `test(subscriptionId: string): Promise<OutboundWebhookDelivery>` | `POST /lifecycle-webhooks/{id}/test` |
 | `deliveries` | `deliveries(subscriptionId: string, options?: { limit?: number; cursor?: string }): Promise<Page<OutboundWebhookDelivery>>` | `GET /lifecycle-webhooks/{id}/deliveries` |
-| `eventTypes` | `eventTypes(): Promise<OutboundWebhookEventType[]>` | `GET /webhooks/event-types` |
+| `eventTypes` | `eventTypes(): Promise<OutboundWebhookEventTypeInfo[]>` | `GET /lifecycle-webhooks/event-types` |
+
+The API handlers are in `apps/switchyard-api/internal/api/outbound_webhook_handlers.go`. The subscriptions endpoint returns every subscription in one response, so `list()` has `nextCursor: null` and `iter()` makes one request (their deprecated `limit`/`cursor`/`pageSize` options are not sent).
 
 There is no redeliver method; the API route `POST /lifecycle-webhooks/{id}/deliveries/{deliveryId}/redeliver` can be called with [`client.post()`](./index.md#low-level-requests).
 
@@ -85,7 +87,18 @@ for (const d of data) {
 }
 ```
 
-The deliveries endpoint pages with `limit`/`offset`; the SDK sends `limit` and `cursor`, so only the first page is reachable through `deliveries()`. See [Pagination](./index.md#pagination).
+The deliveries endpoint pages with `limit` (1 to 200, default 50) and `offset`. `deliveries()` sends `cursor` as the `offset`, and returns a `nextCursor` whenever a page comes back full, so you can walk every delivery:
+
+```typescript
+let cursor: string | undefined;
+do {
+  const page = await enclii.webhooks.deliveries(subscription.id, { limit: 200, cursor });
+  for (const d of page.data) console.log(d.id, d.status);
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+```
+
+Treat the cursor as opaque. `deliveries()` throws a plain `Error` before sending for a `limit` outside 1 to 200 (the API would silently use 50) or a cursor it did not return. See [Pagination](./index.md#pagination).
 
 ## Verify deliveries in your receiver
 
@@ -133,15 +146,14 @@ The delivered JSON body has the shape `OutboundWebhookEnvelope`: `{ id, type, cr
 
 `OutboundWebhookEventType` is `'deploy.started' | 'deploy.succeeded' | 'deploy.failed' | 'rollback.succeeded' | 'secret.rotated' | 'service.scaled'`.
 
-> **Current API behaviour:** `eventTypes()` calls `GET /webhooks/event-types`, which in the current API lists the **notification** webhook event types, as objects `{ type, category, description }` with names such as `deployment.succeeded`. It does not return the lifecycle event types, and it does not return strings, despite the `OutboundWebhookEventType[]` return type. The lifecycle list is at `GET /lifecycle-webhooks/event-types`:
->
-> ```typescript
-> const { event_types } = await enclii.get<{
->   event_types: { type: string; description: string }[];
-> }>('/lifecycle-webhooks/event-types');
-> ```
->
-> Both routes require authentication.
+`eventTypes()` returns the subscribable lifecycle event types with a description of each:
+
+```typescript
+const types = await enclii.webhooks.eventTypes();
+// [{ type: 'deploy.started', description: '...' }, ...]
+```
+
+The route requires authentication. It is distinct from `GET /webhooks/event-types`, which lists the notification-webhook event types (for example `deployment.succeeded`).
 
 ## Types
 
@@ -161,6 +173,11 @@ interface OutboundWebhookSubscription {
   last_failure_at?: ISODateTime | null;
   consecutive_failures: number;
   auto_disabled_at?: ISODateTime | null;
+}
+
+interface OutboundWebhookEventTypeInfo {
+  type: OutboundWebhookEventType;
+  description: string;
 }
 
 interface CreateWebhookSubscriptionResponse {
