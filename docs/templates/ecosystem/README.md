@@ -2,36 +2,62 @@
 
 Produces the self-contained `ECOSYSTEM.md` file that every MADFAM repo ships
 at its root. Each rendered file contains this repo's role in the ecosystem +
-the 12-platform map + the full enclii CLI DevOps reference, so a Claude
-session on a fresh machine can operate any service by reading only that
-repo's `ECOSYSTEM.md`.
+the product map from the product registry + the full enclii CLI DevOps
+reference, so a Claude session on a fresh machine can operate any service by
+reading only that repo's `ECOSYSTEM.md`.
 
 ## Usage
 
 From `labspace/enclii` (or any MADFAM checkout where this lives):
 
 ```bash
-# Regenerate ECOSYSTEM.md for every repo
-MADFAM_LABSPACE=/path/to/labspace python3 docs/templates/ecosystem/generator.py
+# Render into checkouts (a private repo's own docs/ecosystem-metadata.json is picked up)
+python3 docs/templates/ecosystem/generator.py --write ../janua ../tezca
 
-# Regenerate specific repos
-python3 docs/templates/ecosystem/generator.py enclii janua tezca
+# Drift check: render in memory, diff against each checkout's ECOSYSTEM.md, write nothing
+python3 docs/templates/ecosystem/generator.py --check ../janua ../tezca
+#   exit 0 = every file matches, 1 = drift (a unified diff is printed),
+#   2 = UNDETERMINED (no metadata entry, no ECOSYSTEM.md, or no usable projection)
+
+# Legacy form: render named repos into $MADFAM_LABSPACE/<repo>
+MADFAM_LABSPACE=/path/to/labspace python3 docs/templates/ecosystem/generator.py enclii janua
 ```
 
-`MADFAM_LABSPACE` defaults to `/Users/aldoruizluna/labspace`; override it on
-other machines.
+`--repo NAME` sets the metadata key when a single checkout's directory name
+differs from the repo name. `MADFAM_LABSPACE` defaults to
+`/Users/aldoruizluna/labspace`; override it on other machines.
+
+## Where the facts come from
+
+| Fact | Source |
+|---|---|
+| Which products exist, display name, repo, front door, lifecycle, retirements | the public product-registry projection (below) |
+| One-line cross-repo role of a product | `site.role`/`role` in the projection if present, else `PLATFORM_ROLES` in `registry.py`, else the registry's `site.banner_keyword` |
+| Per-repo description, services, dependencies, env | `metadata_<pillar>.py` (+ private overlay) |
+| Estate counts (services, ArgoCD apps, namespaces) | **not rendered** — they live, dated, in `internal-devops/infrastructure/topology.md` |
+| Topology | roles only (control-plane, worker, two builders); node identity never |
+
+The projection is read from, in order: `--projection PATH`, then
+`MADFAM_PRODUCT_PROJECTION`, then
+`$MADFAM_LABSPACE/solarpunk-foundry/packages/core/src/products/projection.public.json`
+(the public copy vendored in `madfam-org/solarpunk-foundry`, generated from the
+private registry by `internal-devops/scripts/generate-product-projections.py`).
+A missing or malformed projection is an error — there is no built-in fallback
+map. When the registry changes, re-vendor the projection in the foundry, then
+re-render; `--check` is how a stale render is found.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `generator.py` | Render logic + shared boilerplate (ecosystem map + enclii CLI reference) |
+| `generator.py` | Render logic, `--check`/`--write`, shared boilerplate (conventions, topology, enclii CLI reference) |
+| `registry.py` | Projection loading/validation, product tables, `PLATFORM_ROLES`, prettier-aligned tables |
 | `metadata.py` | Aggregator — unions the per-pillar dicts into `REPOS_FULL` |
 | `metadata_platform.py` | Infrastructure + Identity/Auth (9 repos) |
 | `metadata_business.py` | Financial/CRM/HCM + Learning (6 repos) |
-| `metadata_fabrication.py` | Fabrication (10 repos) |
-| `metadata_intelligence.py` | Intelligence/AI/Agents (6 repos) |
-| `metadata_experience.py` | Brand/Experience + Games + Ecosystem blueprint (8 repos) |
+| `metadata_fabrication.py` | Fabrication (9 repos) |
+| `metadata_intelligence.py` | Intelligence/AI/Agents (5 repos) |
+| `metadata_experience.py` | Brand/Experience + Games + Ecosystem blueprint (9 repos) |
 
 Split into per-pillar modules so each stays under enclii's 800-line
 pre-commit guard.
@@ -85,4 +111,9 @@ overlay entry are unaffected.
   re-render only that repo.
 - **Correct a repo's metadata** → edit that repo's entry, re-render only it.
 
+- **Registry change** (product added, retired, renamed, new front door) →
+  re-vendor the projection in `solarpunk-foundry`, then re-render every repo.
+
 Re-renders are deterministic — safe to re-run without worrying about drift.
+Tables are emitted in prettier's aligned form, so repos that run
+`prettier --check` over Markdown accept a render unchanged.

@@ -31,9 +31,18 @@ sys.path.insert(0, str(GENERATOR_DIR))
 from generator import (  # noqa: E402
     LEGACY_RAW_BANNER,
     LEGACY_RAW_MARKER,
-    render,
+    render as _render,
 )
 from metadata import REPOS_FULL  # noqa: E402
+from registry import load_projection  # noqa: E402
+
+# The generator reads the product-registry projection; CI has no sibling
+# solarpunk-foundry checkout, so these tests use the frozen copy under fixtures/.
+PROJECTION = load_projection(Path(__file__).parent / "fixtures" / "ecosystem-projection.public.json")
+
+
+def render(repo: str, meta: dict) -> str:
+    return _render(repo, meta, PROJECTION)
 
 
 # ---------------------------------------------------------------------------

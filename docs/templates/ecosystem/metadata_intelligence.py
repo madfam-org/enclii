@@ -7,20 +7,20 @@ the aggregated `REPOS_FULL` dict and `generator.py` for render logic.
 REPOS = {
     'selva-office': {
         'tagline': 'Selva — gamified multi-agent business orchestration + OpenAI-compatible LLM inference routing.',
-        'description': "Selva Office (branded externally as **Selva**) is MADFAM's AI inference + agent orchestration platform. Two roles: (1) **inference proxy** — OpenAI-compatible `/v1` endpoint (`nexus-api`) that every ecosystem service routes its LLM calls through; (2) **agent platform** — LangGraph workers + Colyseus real-time state + 2D Phaser office UI for drafting agents, assigning them to departments, and approving their actions via a gamepad. Target domain: `selva.town`.",
+        'description': "Selva Office (repo `selva-office`) is MADFAM's AI inference + agent orchestration platform. Two roles: (1) **inference proxy** — OpenAI-compatible `/v1` endpoint (`nexus-api`) that every ecosystem service routes its LLM calls through; (2) **agent platform** — LangGraph workers + Colyseus real-time state + 2D Phaser office UI for drafting agents, assigning them to departments, and approving their actions via a gamepad. Target domain: `selva.town`.",
         'pillar': 'Intelligence / Agents + LLM routing',
         'type': 'platform',
-        'status': 'production',
+        'status': 'production (staging tier live 2026-05-30; north-star program in [docs/AUTONOMOUS_OPERATIONS_PROGRAM.md](docs/AUTONOMOUS_OPERATIONS_PROGRAM.md); commercial GA no-go gates in [docs/COMMERCIAL_GA_REMEDIATION_PLAN_2026-06-04.md](docs/COMMERCIAL_GA_REMEDIATION_PLAN_2026-06-04.md))',
         'production': {
             'services': [
-                ('selva-nexus-api', 'agents-api.madfam.io', 8000),
-                ('selva-office-ui', 'agents.madfam.io', 3000),
-                ('selva-admin', 'agents-admin.madfam.io', 3001),
-                ('selva-colyseus', 'agents-ws.madfam.io', 2567),
-                ('selva-gateway', '(background)', None),
-                ('selva-workers', '(langgraph worker)', None),
+                ('selva-nexus-api', 'api.selva.town', 4300),
+                ('selva-office-ui', 'app.selva.town', 3000),
+                ('selva-admin', 'admin.selva.town', 3000),
+                ('selva-colyseus', 'ws.selva.town', 4303),
+                ('selva-gateway', 'gw.selva.town (health/metrics)', 4304),
+                ('selva-workers', '(langgraph worker, internal)', 4305),
             ],
-            'namespace': 'selva-office',
+            'namespace': 'selva',
         },
         'upstream_deps': [
             'LLM providers: openai, anthropic, deepinfra, groq, etc.',
@@ -43,6 +43,8 @@ REPOS = {
             'ENCLII_API_URL — HITL budget gate callback',
         ],
         'service_name_for_ops': 'selva-nexus-api',
+        'production_truth': '> See [docs/PORTS.md](docs/PORTS.md) for canonical port assignments.\n\nNamespaces: `selva` (production) / `selva-staging` (staging) in source. Live cutover from the prior operational namespaces is sequenced through ArgoCD to avoid pruning healthy workloads.',
+        'boilerplate_overrides': [{'find': "  an app's own session cookie needs its own secret.", 'replace': "  an app's own session cookie needs its own secret.\n  `https://auth.madfam.io`\n  is the single canonical Janua URL and OIDC issuer for **all** Selva\n  surfaces (office-ui, admin, nexus-api) across prod and staging. Janua is\n  single-issuer per deployment (`JANUA_CUSTOM_DOMAIN=auth.madfam.io`; its\n  `/.well-known/openid-configuration` returns `issuer: https://auth.madfam.io`\n  and is not Host-aware), so every `JANUA_ISSUER_URL` /\n  `NEXT_PUBLIC_JANUA_ISSUER_URL` value MUST be `https://auth.madfam.io` for\n  discovery + token `iss` validation to pass. Do NOT introduce a\n  `auth.selva.town` alias — it has no DNS/tunnel and would break OIDC issuer\n  matching even if it did.", 'why': 'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Single-issuer Janua contract for every Selva surface.'}, {'find': '  (`selva-office`) at `/v1` (OpenAI-compatible). Do not talk directly\n  to OpenAI / Anthropic from service code.', 'replace': '  (`selva-office`, served at `api.selva.town/v1`, OpenAI-compatible). Do not\n  talk directly to OpenAI / Anthropic from service code.', 'why': 'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Names the public inference host.'}],
     },
     'fortuna': {
         'tagline': 'Problem intelligence + zeitgeist engine — evidence-linked discovery of real customer problems.',

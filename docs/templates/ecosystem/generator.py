@@ -34,6 +34,7 @@ try:
     from .registry import (
         ProjectionError,
         load_projection,
+        md_table,
         render_platform_map,
         render_registry_entry,
         render_retired,
@@ -44,6 +45,7 @@ except ImportError:
     from registry import (  # type: ignore
         ProjectionError,
         load_projection,
+        md_table,
         render_platform_map,
         render_registry_entry,
         render_retired,
@@ -227,7 +229,10 @@ ECOSYSTEM_MAP_TAIL = dedent("""
       (`selva-office`) at `/v1` (OpenAI-compatible). Do not talk directly
       to OpenAI / Anthropic from service code.
     - **Agent SaaS tools**: end-user delegated tool calls (Slack, Gmail, etc.)
-      route through Coupler (`madfam-org/coupler`), not the Enclii Provider Hub.
+      route through Coupler (`madfam-org/coupler`, the Agent Tool Plane), not the
+      Enclii Provider Hub.
+      Operator infra actions stay on Enclii `providers.*` / `ops.*` (proxied as
+      `madfam.ops.*` from Coupler for admin agents only).
     - **Third-party messages**: email/SMS/chat to people outside MADFAM go out
       through Angelia Courier (`madfam-org/angelia`). Carve-outs: Janua's
       customer-configured alert notifier and Selva agent tools.
@@ -343,7 +348,7 @@ ENCLII_CLI_REF = dedent("""
     enclii releases {SERVICE} -n 20
     enclii deployments list
 
-    # Secrets (routed through Lockbox -> Vault -> ESO -> K8s)
+    # Secrets (routed through Lockbox → Vault → ESO → K8s)
     enclii secrets list --env prod
     enclii secrets set MY_KEY=value --secret --env prod
 
@@ -364,7 +369,7 @@ ENCLII_CLI_REF = dedent("""
     enclii observe health --service <service-id>
 
     # Local dev environment
-    enclii local up         # spin up dependent services (postgres, redis, ...)
+    enclii local up         # spin up dependent services (postgres, redis, …)
     enclii local logs
     enclii local down
     ```
@@ -406,14 +411,14 @@ ENCLII_CLI_REF = dedent("""
 
     ### Exit codes (scripting against the CLI)
 
-    | Code | Meaning |
-    |---|---|
-    | 0  | success |
-    | 10 | validation error |
-    | 20 | build failed |
-    | 30 | deploy failed |
-    | 40 | timeout |
-    | 50 | auth error |
+    | Code | Meaning          |
+    | ---- | ---------------- |
+    | 0    | success          |
+    | 10   | validation error |
+    | 20   | build failed     |
+    | 30   | deploy failed    |
+    | 40   | timeout          |
+    | 50   | auth error       |
 """).strip()
 
 
@@ -446,14 +451,8 @@ def render(repo: str, meta: dict, projection: dict | None = None) -> str:
 
     svc_table = "_(no deployed services — this repo is a library/tool.)_\n"
     if services:
-        rows = []
-        for name, domain, port in services:
-            port_s = str(port) if port else "—"
-            rows.append(f"| `{name}` | {domain} | {port_s} |")
-        svc_table = (
-            "| Service | Public domain | Container port |\n"
-            "|---|---|---|\n" + "\n".join(rows) + "\n"
-        )
+        rows = [[f"`{name}`", str(domain), str(port) if port else "—"] for name, domain, port in services]
+        svc_table = md_table(["Service", "Public domain", "Container port"], rows) + "\n"
 
     deps = meta.get("upstream_deps", [])
     consumers = meta.get("downstream_consumers", [])
@@ -461,7 +460,12 @@ def render(repo: str, meta: dict, projection: dict | None = None) -> str:
 
     deps_md = "\n".join(f"- {d}" for d in deps) if deps else "_(none)_"
     consumers_md = "\n".join(f"- {c}" for c in consumers) if consumers else "_(none)_"
-    env_md = "\n".join(f"- `{e}`" for e in env_vars) if env_vars else "_(see repo README / .env.example)_"
+    # An entry that already carries its own code spans renders as written.
+    env_md = (
+        "\n".join(f"- {e}" if "`" in e else f"- `{e}`" for e in env_vars)
+        if env_vars
+        else "_(see repo README / .env.example)_"
+    )
 
     blocks = apply_boilerplate_overrides(
         repo,

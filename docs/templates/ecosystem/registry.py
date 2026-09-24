@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import unicodedata
 from pathlib import Path
 
 PROJECTION_ENV = "MADFAM_PRODUCT_PROJECTION"
@@ -130,6 +131,35 @@ def product_role(product: dict) -> str:
     return keyword.capitalize() if keyword else "—"
 
 
+def _display_width(text: str) -> int:
+    """Terminal width as prettier's `getStringWidth` counts it (wide/fullwidth = 2)."""
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+    return width
+
+
+def md_table(header: list[str], rows: list[list[str]]) -> str:
+    """A Markdown table in prettier's aligned form.
+
+    Several fleet repos run `prettier --check` over Markdown (digifab-quoting,
+    primavera3d), and prettier re-pads every table it sees. Emitting the padded
+    form here keeps a render byte-identical after prettier, so `--check` and a
+    repo's formatter can never disagree about the same file.
+    """
+    table = [header] + rows
+    widths = [max(3, *(_display_width(row[i]) for row in table)) for i in range(len(header))]
+
+    def line(cells: list[str]) -> str:
+        padded = [cell + " " * (widths[i] - _display_width(cell)) for i, cell in enumerate(cells)]
+        return "| " + " | ".join(padded) + " |"
+
+    delimiter = "| " + " | ".join("-" * width for width in widths) + " |"
+    return "\n".join([line(header), delimiter] + [line(row) for row in rows])
+
+
 def _repo_cell(product: dict) -> str:
     repo = product.get("repo") or {}
     if not repo.get("name"):
@@ -170,15 +200,17 @@ def render_platform_map(projection: dict) -> str:
     sections = []
     for category, products in groups.items():
         rows = [
-            "| Product | Repo | Front door | Lifecycle | Role |",
-            "|---|---|---|---|---|",
+            [
+                f"**{product['display_name']}**",
+                _repo_cell(product),
+                _front_door(product),
+                product["lifecycle"],
+                product_role(product),
+            ]
+            for product in products
         ]
-        for product in products:
-            rows.append(
-                f"| **{product['display_name']}** | {_repo_cell(product)} | {_front_door(product)} "
-                f"| {product['lifecycle']} | {product_role(product)} |"
-            )
-        sections.append(f"#### {category}\n\n" + "\n".join(rows))
+        table = md_table(["Product", "Repo", "Front door", "Lifecycle", "Role"], rows)
+        sections.append(f"#### {category}\n\n{table}")
     return "\n\n".join(sections)
 
 
@@ -187,10 +219,9 @@ def render_retired(projection: dict) -> str:
     if not retired:
         return "_(the registry records no retired products)_"
     names = {p["slug"]: p["display_name"] for p in projection["products"]}
-    rows = ["| Product | Retired on | Successor | Redirect |", "|---|---|---|---|"]
+    rows = []
     for entry in retired:
         successor = entry.get("successor_slug")
         successor_s = names.get(successor, successor) if successor else "—"
-        redirect = entry.get("redirect_to") or "none"
-        rows.append(f"| {entry['display_name']} | {entry['retired_on']} | {successor_s} | {redirect} |")
-    return "\n".join(rows)
+        rows.append([entry["display_name"], entry["retired_on"], successor_s, entry.get("redirect_to") or "none"])
+    return md_table(["Product", "Retired on", "Successor", "Redirect"], rows)

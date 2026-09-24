@@ -35,15 +35,15 @@ REPOS = {
     },
     'ceq': {
         'tagline': 'Creative Entropy Quantized — ComfyUI wrapper + /v1/render asset pillar for MADFAM.',
-        'description': "CEQ is MADFAM's internal content generation platform: a streamlined hacker-centric ComfyUI wrapper. Ships `/v1/render/*` deterministic R2-cached render endpoints + `@ceq/sdk` as the asset pillar consumed across the ecosystem. First consumer: Rondelio's stratum-tcg. Audio/3D rendering stubs exist but return 501. Domain: `ceq.lol`.",
+        'description': "CEQ is MADFAM's internal content generation platform: a streamlined hacker-centric ComfyUI wrapper. Ships `/v1/render/*` deterministic R2-cached render endpoints + `@ceq/sdk` as the asset pillar consumed across the ecosystem. First consumer: Rondelio's stratum-tcg. Render families live today: card/thumbnail (Pillow), audio (WAV), 3D (GLB). Production render calls require Janua auth. Domain: `ceq.lol`.",
         'pillar': 'Brand / Asset pillar',
         'type': 'service',
-        'status': 'production',
+        'status': 'production public edge stable, not commercial GA. Current truth is in `docs/README.md`, `docs/CEQ_CODEBASE_AUDIT_WRAPUP_2026-06-02.md`, and `docs/DOCS_EVIDENCE_AUDIT_2026-06-02.md`: public smoke is green; `ceq-api` and `ceq-studio` are healthy in Enclii; `ceq-janua-client-secret` ExternalSecret is degraded until Vault `secret/ceq.JANUA_CLIENT_SECRET` is populated; authenticated smoke and GPU E2E remain unproven; commercial GA still needs billing, credits, entitlements, quotas, support, and observability launch work.',
         'production': {
             'services': [
-                ('ceq-studio', 'ceq.lol', 3000),
-                ('ceq-api', 'api.ceq.lol', 8000),
-                ('ceq-workers', '(ComfyUI worker — GPU node)', 8188),
+                ('ceq-studio', 'ceq.lol, app.ceq.lol', 5801),
+                ('ceq-api', 'api.ceq.lol, ws.ceq.lol', 5800),
+                ('ceq-workers', '(ComfyUI worker — GPU node)', '5810–5819'),
             ],
             'namespace': 'ceq',
         },
@@ -108,7 +108,7 @@ REPOS = {
         'status': 'production',
         'production': {
             'services': [
-                ('bloom-scroll-web', 'almanac.solar', 3000),
+                ('bloom-scroll-web', 'almanac.solar', 8080),
                 ('bloom-scroll-api', 'api.almanac.solar', 8000),
                 ('bloom-scroll-ingest', '(background ingest)', None),
             ],
@@ -131,6 +131,8 @@ REPOS = {
             'CORS_ALLOWED_ORIGINS — explicit allowlist',
         ],
         'service_name_for_ops': 'bloom-scroll-web',
+        'production_truth': '### Production observations — 2026-05-28\n\nEvidence-backed current state is maintained in `docs/CURRENT_STATE.md`.\n\n- `https://almanac.solar` returned HTTP 200.\n- `https://api.almanac.solar/health` returned HTTP 200 with database OK, 8 embeddings indexed, and 8 cards.\n- `scripts/prod-smoke.sh` passed against production after the `argocd-6aa4ae5` rollout, including hidden `/docs` and `/openapi.json` checks on `api.almanac.solar`.\n- `https://almanac.solar/main.dart.js` contains the correct baked API base, `https://api.almanac.solar/api/v1`.\n- The same JS bundle also contains `localhost:8000` inside connection-help text, so the repo narrows the status assertion to the exact leaked default API base (`http://localhost:8000/api/v1`).\n- Enclii-first production observation requires explicit project context from this checkout, for example `ENCLII_PROJECT=bloom-scroll enclii ps --env production`.\n- `ENCLII_PROJECT=bloom-scroll enclii ops apps status bloom-scroll-services --json` reported Argo health `Healthy` and sync `Synced` at revision `6aa4ae551fe9287d2d49210791fc69068266b67c`; `enclii ops apps diff` reported drift count `0`.\n- `ENCLII_PROJECT=bloom-scroll enclii observe health --service ... --json` reported both `bloom-scroll-api` and `bloom-scroll-web` healthy. The released Enclii CLI `v1.0.0-alpha.1` reported both services running, healthy, `2/2`, on `argocd-6aa4ae5`.\n- The shared Enclii build/publish workflow was patched in `madfam-org/enclii@0a72ed7`, and the in-repo Enclii CI digest verifier in `madfam-org/enclii@f919192`, to authenticate to GHCR during digest-pin cosign verification for private packages. `madfam-org/enclii@b763d92` added GitHub Release artifacts for CLI distribution.',
+        'boilerplate_overrides': [{'find': "  an app's own session cookie needs its own secret.", 'replace': "  an app's own session cookie needs its own secret.\n  Bloom Scroll keeps HS algorithms only as an explicit local development\n  fallback when configured; RS256 is the production contract.", 'why': 'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Bloom Scroll documents its local-development HS fallback here.'}],
     },
     'coforma-studio': {
         'tagline': 'Multi-tenant Customer Advisory Board (CAB) platform — "Advisory-as-a-Service".',
@@ -162,6 +164,7 @@ REPOS = {
             'SELVA_BASE_URL — LLM routing',
         ],
         'service_name_for_ops': 'coforma-studio-api',
+        'sensitivity_banner': '> [!IMPORTANT]\n> Coforma is a customer-advisory and sentiment surface that can feed Tulana PMF and ecosystem go-to-market decisions. Treat tenant/customer records, CAB feedback, integration payloads, billing state, and exported artifacts as sensitive customer/business data.\n> Live deploys, DB changes, exports/imports, webhook delivery, integration sync, package publishing, and billing operations require explicit operator intent plus `LOCAL_SERVICES`, `LOCAL_DB`, `LOCAL_DESTRUCTIVE`, `LOCAL_CUSTOMER_DATA_OPS`, or `LOCAL_PRODUCTION_OPS` as applicable.',
     },
     'stratum-tcg': {
         'tagline': 'STRATUM: The Fab Wars — hybrid TCG / Eurogame simulating the fabrication economy.',
@@ -218,7 +221,7 @@ REPOS = {
         'service_name_for_ops': 'turnbased-server',
     },
     'solarpunk-foundry': {
-        'tagline': 'Ecosystem orchestration hub — port registry, @madfam/* shared packages, architecture narrative.',
+        'tagline': 'Ecosystem orchestration hub — port registry, `@madfam/*` shared packages, architecture narrative.',
         'description': 'The solarpunk-foundry repo is the ecosystem-level blueprint: the canonical port registry (`docs/PORT_ALLOCATION.md`) that every service looks up its port block in, the `@madfam/core` package + other shared packages, local dogfooding scaffolds, and the public-safe architecture narrative for the MADFAM vision. Reference this first when reasoning about ecosystem-level decisions.',
         'pillar': 'Ecosystem blueprint',
         'type': 'docs + shared packages',
