@@ -186,9 +186,11 @@ self-service monthly cadence, logging to the same dr-log.md.
 ## Related
 
 - Manifest: [`infra/k8s/dr-test/ephemeral-postgres.yaml`](../infra/k8s/dr-test/ephemeral-postgres.yaml)
-- Existing K8s Job-based drill: [`infra/k8s/production/backup/postgres-restore-drill.yaml`](../infra/k8s/production/backup/postgres-restore-drill.yaml)
-  (this validates the `data` namespace Postgres is restorable into itself;
-  `dr-drill.sh` validates the full end-to-end R2 → fresh cluster path)
+- Existing K8s drills: the logical CronJob
+  [`infra/k8s/production/backup/restore-drill-cronjob.yaml`](../infra/k8s/production/backup/restore-drill-cronjob.yaml)
+  and the pgBackRest PITR CronJob
+  [`infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml`](../infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml)
+  (`dr-drill.sh` validates the full end-to-end R2 → fresh cluster path)
 - DR runbook: `internal-devops/runbooks/disaster-recovery.md`
 - Drill log: `internal-devops/runbooks/dr-log.md`
 - Remediation plan: `internal-devops/roadmaps/2026-04-enclii-remediation-plan.md` (P0.1)

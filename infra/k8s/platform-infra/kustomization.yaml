@@ -10,7 +10,9 @@ resources:
   # Backup infrastructure (data namespace)
   - postgres-backup.yaml
   - backup-verify-cronjob.yaml
-  # postgres-restore-drill.yaml is intentionally excluded — run manually via kubectl apply
+  # The logical pg_dumpall restore drill is the CronJob in
+  # production/backup/restore-drill-cronjob.yaml (backup ArgoCD app); run it
+  # on demand with scripts/backup-restore-drill.sh.
 
   # P1.1 — WAL archiving to R2 via pgBackRest.
   # Existing postgres-backup.yaml (daily pg_dump) stays in place for a
@@ -22,9 +24,10 @@ resources:
   - pgbackrest-r2-credentials.externalsecret.yaml
   # pgbackrest-r2-credentials.yaml.template is retained only as a break-glass
   # literal Secret reference; normal production sync is Vault-backed above.
-  # Monthly DR drill — restores the latest base backup to a side-channel
-  # PVC to verify the recovery path works. Emits Prometheus textfile
-  # metrics; alertmanager fires on consecutive failures.
+  # Monthly DR drill: restores the latest backup + WAL to a side-channel
+  # PVC, starts it and checks contents and replay recency. Its signal is
+  # the CronJob's last successful time (kube-state-metrics), alerted in
+  # monitoring/prometheus.yaml pgbackrest-health-rules.
   - postgres-pgbackrest-restore-drill.yaml
 
   # Monitoring exporters (data namespace)

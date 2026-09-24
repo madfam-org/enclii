@@ -1,44 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Postgres Backup Restore Drill
-# Applies the restore drill Job and tails logs until completion.
-# Non-destructive: never touches the production database.
+# Postgres Backup Restore Drill (logical, pg_dumpall).
+# Starts a one-off Job from the monthly CronJob `postgres-restore-drill`, so
+# there is exactly ONE drill definition
+# (infra/k8s/production/backup/restore-drill-cronjob.yaml), then waits for it
+# and prints its logs. Non-destructive: the drill restores into an ephemeral
+# Postgres inside its own pod and never connects to the production server.
+#
+# Break-glass only (see AGENTS.md): routine runs are the CronJob itself.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-JOB_MANIFEST="${SCRIPT_DIR}/../infra/k8s/production/backup/postgres-restore-drill.yaml"
 NAMESPACE="data"
-JOB_NAME="postgres-restore-drill"
+JOB_NAME="postgres-restore-drill-manual-$(date -u +%m%d%H%M%S)"
+TIMEOUT="${DRILL_TIMEOUT:-5400s}"
 
 echo "=== Postgres Backup Restore Drill ==="
-echo ""
+kubectl -n "${NAMESPACE}" create job --from=cronjob/postgres-restore-drill "${JOB_NAME}"
+echo "Job: ${JOB_NAME} (timeout ${TIMEOUT})"
 
-# Clean up previous run if exists
-if kubectl get job "${JOB_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
-  echo "Cleaning up previous drill job..."
-  kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --wait=true
-fi
+# Wait for either terminal condition; `kubectl wait` on one condition alone
+# would sit out the whole timeout on a failed drill.
+DEADLINE=$(( $(date +%s) + ${TIMEOUT%s} ))
+RESULT=""
+while [ "$(date +%s)" -lt "${DEADLINE}" ]; do
+  RESULT=$(kubectl -n "${NAMESPACE}" get job "${JOB_NAME}" \
+    -o jsonpath='{range .status.conditions[?(@.status=="True")]}{.type}{"\n"}{end}' | grep -E '^(Complete|Failed)$' || true)
+  [ -n "${RESULT}" ] && break
+  sleep 15
+done
 
-# Apply the job
-echo "Applying restore drill job..."
-kubectl apply -f "${JOB_MANIFEST}"
-
-# Wait for pod to start
-echo "Waiting for pod to start..."
-kubectl wait --for=condition=ready pod -l app=postgres-restore-drill -n "${NAMESPACE}" --timeout=120s 2>/dev/null || true
-
-# Tail logs
 echo ""
 echo "--- Drill Output ---"
-kubectl logs -n "${NAMESPACE}" "job/${JOB_NAME}" -f
+kubectl -n "${NAMESPACE}" logs "job/${JOB_NAME}" --all-containers || true
 
-# Check result
-EXIT_CODE=$(kubectl get job "${JOB_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.succeeded}')
-if [ "${EXIT_CODE}" = "1" ]; then
+if [ "${RESULT}" = "Complete" ]; then
   echo ""
-  echo "✅ Restore drill completed successfully"
+  echo "Restore drill PASSED (${JOB_NAME})"
 else
   echo ""
-  echo "❌ Restore drill failed"
+  echo "Restore drill FAILED or timed out (${JOB_NAME}: ${RESULT:-no terminal condition})"
   exit 1
 fi

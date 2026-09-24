@@ -1417,33 +1417,77 @@ data:
               runbook: docs/runbooks/deploy-pipeline-monitor.md
 
   # =========================================================================
-  # Resurrected 2026-08-26 (availability remediation Tier 0.3) from the dead
-  # PrometheusRule pgbackrest-health-rules.yaml (monitoring/pgbackrest-health).
-  # That object existed in the cluster as a CRD but was never reconciled —
-  # no prometheus-operator runs here, so only /etc/prometheus/rules/*.yml
-  # (this ConfigMap) is ever loaded. See the doctrine note above
-  # secret-integrity-rules.yml for the verified 2026-08-06 rule-count check.
+  # Backup and restore freshness (rewritten 2026-09-24, estate blocker A1).
   #
-  # PgBackRestRestoreDrillOverdue duplicated PostgresBackupCheckFailed from
-  # the also-dead wal-archive-rules/postgres-wal-archive.yaml at
-  # warning severity with a weaker expr (no `absent()` guard) — skipped in
-  # favor of the critical-severity, absent-guarded version here
-  # (PgBackRestCheckUnhealthy behaves like PostgresBackupCheckFailed but is
-  # correct on total absence, not just staleness).
+  # WHY THE PREVIOUS RULES COULD NOT DO THEIR JOB
+  #   - PgBackRestCheckUnhealthy and PgBackRestRestoreDrillOverdue read
+  #     pgbackrest_check_* / pgbackrest_restore_drill_* textfile metrics.
+  #     Those were never collected: the check and drill pods mount no
+  #     node-exporter textfile directory, so `[ -d "$METRICS_DIR" ]` was
+  #     always false and nothing was written. Both rules were therefore
+  #     permanently firing on `absent()`, which is as useless as never
+  #     firing: a page that is always on teaches everyone to ignore it.
+  #   - PostgresWALArchiveBehind / PostgresWALLagHigh read
+  #     pg_stat_archiver_last_archive_age_seconds. postgres-exporter v0.15.0
+  #     exports pg_stat_archiver_last_archive_age (no `_seconds`; see
+  #     cmd/postgres_exporter/queries.go and postgres_exporter.go at that
+  #     tag), so both could never fire.
+  #   - PostgresBackupJobsStale took max(kube_job_status_completion_time)
+  #     over retained Jobs. When history rotates the Jobs away the series
+  #     vanishes and the rule goes silent, exactly when it matters.
+  #   - PgBackRestCronJobFailed fired on every RETAINED failed Job, so it
+  #     kept firing for days after recovery and said nothing about staleness.
+  #
+  # WHAT THESE READ NOW (verified exporters, no new metrics)
+  #   - kube-state-metrics v2.15.0 (`--resources` includes cronjobs):
+  #     kube_cronjob_created and kube_cronjob_status_last_successful_time,
+  #     labels {namespace, cronjob}. The success timestamp lives on the
+  #     CronJob, so it survives Job history rotation and TTL deletion. It is
+  #     ABSENT for a CronJob that has never succeeded, which is what the
+  #     `created unless last_successful_time` form detects.
+  #     kube_pod_status_reason{reason="Evicted"} for the 2026-09-18 incident.
+  #   - postgres-exporter v0.15.0: pg_stat_archiver_last_archive_age
+  #     (gauge, seconds) and pg_stat_archiver_failed_count (counter).
+  #   These alerts add only severity/category/component labels. None of them
+  #   defines a series labelled job, instance or namespace.
+  #
+  # WHAT THESE DO NOT SAY
+  #   Freshness of an artefact is not proof that it restores. Only a passing
+  #   restore drill is, which is why the drills have their own rules here.
   # =========================================================================
   pgbackrest-health-rules.yml: |
     groups:
       - name: pgbackrest-operational-health
         interval: 60s
         rules:
-          - alert: PgBackRestCheckUnhealthy
+          # Every rule below depends on kube-state-metrics exporting CronJob
+          # state. If it stops, they all go quiet at once; say so.
+          - alert: BackupFreshnessSignalMissing
+            expr: absent(kube_cronjob_created{namespace="data",cronjob="pgbackrest-check"})
+            for: 15m
+            labels:
+              severity: critical
+              category: platform
+              component: backup
+            annotations:
+              summary: "Backup freshness alerts are blind (no CronJob metrics for data/pgbackrest-check)"
+              description: |
+                kube-state-metrics is not exporting kube_cronjob_created for
+                data/pgbackrest-check. Every backup-freshness and restore-drill
+                alert in this group depends on it and cannot fire. Check the
+                kube-state-metrics Deployment in monitoring and its scrape job.
+
+          # pgbackrest check runs every 15 min and forces a WAL switch, so it
+          # proves archive_command + repo reachability end to end. 45 min =
+          # three consecutive missed or failed runs.
+          - alert: PgBackRestCheckNotSucceeding
             expr: |
-              (pgbackrest_check_healthy{stanza="main"} == 0)
+              (time() - kube_cronjob_status_last_successful_time{namespace="data",cronjob="pgbackrest-check"}) > 2700
               or
               (
-                absent(pgbackrest_check_last_run_timestamp_seconds{stanza="main"})
-                or
-                (time() - pgbackrest_check_last_run_timestamp_seconds{stanza="main"} > 2700)
+                kube_cronjob_created{namespace="data",cronjob="pgbackrest-check"}
+                unless on (namespace, cronjob)
+                kube_cronjob_status_last_successful_time{namespace="data",cronjob="pgbackrest-check"}
               )
             for: 5m
             labels:
@@ -1451,89 +1495,153 @@ data:
               category: platform
               component: pgbackrest
             annotations:
-              summary: "pgBackRest backup health check is unhealthy or stale"
+              summary: "pgBackRest check has not succeeded for over 45 minutes"
               description: |
-                pgbackrest_check_healthy{stanza="main"} is 0 OR the check CronJob
-                has not run in >45 minutes. This means the backup repo may be
-                unreachable, the stanza may be corrupt, or credentials rotated
-                without updating the backup pod.
-
-                Immediate steps:
-                  1. kubectl -n data get jobs -l app=pgbackrest-check --sort-by=.metadata.creationTimestamp | tail -5
-                  2. kubectl -n data logs job/<latest-check-job>
-                  3. kubectl -n data exec deploy/postgres -c pgbackrest -- pgbackrest check --stanza=main
+                data/pgbackrest-check (every 15 min) has no successful run in
+                45 minutes. The repo may be unreachable, credentials may have
+                rotated, or the check may be targeting a dead pod (the
+                2026-09-18 incident). WAL archiving can still be healthy; see
+                PostgresWALArchiveStale.
                 Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
 
-          # NOTE: the source CRD's expr referenced
-          # pgbackrest_restore_drill_last_success_timestamp_seconds, a metric
-          # name that CronJob never emitted (it writes
-          # pgbackrest_restore_drill_last_run_timestamp_seconds — see
-          # infra/k8s/platform-infra/postgres-pgbackrest-restore-drill.yaml).
-          # That mismatch meant this rule would never have fired even if the
-          # operator had reconciled it. Fixed to the real metric name here.
-          - alert: PgBackRestRestoreDrillOverdue
+          # Newest of full (Sunday) or diff (Mon-Sat): one should succeed
+          # every day. 36h = a whole missed day plus 12h of slack.
+          - alert: PgBackRestBackupStale
             expr: |
               (
-                absent(pgbackrest_restore_drill_last_run_timestamp_seconds{stanza="main"})
-                or
-                (time() - pgbackrest_restore_drill_last_run_timestamp_seconds{stanza="main"} > 3024000)
-              )
+                time() - max by (namespace) (
+                  kube_cronjob_status_last_successful_time{namespace="data",cronjob=~"pgbackrest-backup-(full|diff)"}
+                )
+              ) > 129600
             for: 15m
-            labels:
-              severity: warning
-              category: platform
-              component: pgbackrest
-            annotations:
-              summary: "pgBackRest restore drill is overdue (>35 days)"
-              description: |
-                No successful restore drill recorded in the past 35 days.
-                Without a successful restore drill, the backup cannot be
-                considered verified for DR purposes.
-
-                Trigger a drill manually:
-                  kubectl -n data create job --from=cronjob/pgbackrest-restore-drill \
-                    drill-$(date +%Y%m%d)
-                Then monitor: kubectl -n data logs job/drill-$(date +%Y%m%d) -f
-                Runbook: docs/runbooks/disaster-recovery.md#restore-drill
-
-          - alert: PgBackRestCronJobFailed
-            expr: |
-              kube_job_status_failed{
-                namespace="data",
-                job_name=~"pgbackrest-(check|backup-full|backup-diff).*"
-              } > 0
-            for: 0m
             labels:
               severity: critical
               category: platform
               component: pgbackrest
             annotations:
-              summary: "pgBackRest CronJob {{ $labels.job_name }} has failed"
+              summary: "No successful pgBackRest full or diff backup for {{ $value | humanizeDuration }}"
               description: |
-                The CronJob {{ $labels.job_name }} in namespace {{ $labels.namespace }}
-                has failed (kube_job_status_failed > 0). This is a K8s-level
-                failure (OOM, bad image, scheduling error) distinct from a
-                successful run that found unhealthy state.
+                Neither data/pgbackrest-backup-full nor data/pgbackrest-backup-diff
+                has succeeded in over 36 hours. Point-in-time recovery still
+                works from the last good backup plus archived WAL, but restore
+                time grows with every day of WAL to replay.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#backup-cadence
 
-                Investigate:
-                  kubectl -n data describe job {{ $labels.job_name }}
-                  kubectl -n data logs job/{{ $labels.job_name }}
-                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#check-failures
+          # Weekly full. 8 days = one missed Sunday plus a day of slack.
+          # Diffs depend on the last full, so a stale full is its own alert.
+          - alert: PgBackRestFullBackupStale
+            expr: |
+              (time() - kube_cronjob_status_last_successful_time{namespace="data",cronjob="pgbackrest-backup-full"}) > 691200
+              or
+              (
+                kube_cronjob_created{namespace="data",cronjob="pgbackrest-backup-full"}
+                unless on (namespace, cronjob)
+                kube_cronjob_status_last_successful_time{namespace="data",cronjob="pgbackrest-backup-full"}
+              )
+            for: 30m
+            labels:
+              severity: critical
+              category: platform
+              component: pgbackrest
+            annotations:
+              summary: "No successful pgBackRest FULL backup in over 8 days"
+              description: |
+                data/pgbackrest-backup-full (weekly) has not succeeded in over
+                8 days, or never has. Run one manually after checking why the
+                last run failed.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#backup-cadence
+
+          # A restore drill that has NEVER passed means recovery is unproven.
+          # This fires until the first pass, by design.
+          - alert: RestoreDrillNeverSucceeded
+            expr: |
+              kube_cronjob_created{namespace="data",cronjob=~"(pgbackrest|postgres)-restore-drill"}
+              unless on (namespace, cronjob)
+              kube_cronjob_status_last_successful_time{namespace="data",cronjob=~"(pgbackrest|postgres)-restore-drill"}
+            for: 1h
+            labels:
+              severity: warning
+              category: platform
+              component: restore-drill
+            annotations:
+              summary: "Restore drill {{ $labels.cronjob }} has never succeeded"
+              description: |
+                {{ $labels.namespace }}/{{ $labels.cronjob }} has no successful
+                run on record, so restoring from this backup path is unproven.
+                Run it on demand and read its log; it states which check failed.
+                Runbook: docs/runbooks/RESTORE_DRILL_LOG.md
+
+          # Monthly drills. 35 days = one missed month plus slack.
+          - alert: RestoreDrillOverdue
+            expr: |
+              (time() - kube_cronjob_status_last_successful_time{namespace="data",cronjob=~"(pgbackrest|postgres)-restore-drill"}) > 3024000
+            for: 1h
+            labels:
+              severity: warning
+              category: platform
+              component: restore-drill
+            annotations:
+              summary: "Restore drill {{ $labels.cronjob }} last passed {{ $value | humanizeDuration }} ago"
+              description: |
+                {{ $labels.namespace }}/{{ $labels.cronjob }} has not passed in
+                over 35 days (it runs monthly). Without a recent pass the backup
+                cannot be treated as verified for recovery.
+                Runbook: docs/runbooks/RESTORE_DRILL_LOG.md
+
+          # Tenant-scoped logical DB backup (daily) owned by the tezca repo,
+          # which ships no PrometheusRule of its own. karafiel's legalgen
+          # object backup is already covered by karafiel's own PrometheusRule
+          # (KarafielScheduledJobFailed + absence), so it is not repeated here.
+          - alert: TenantDBBackupStale
+            expr: |
+              (time() - kube_cronjob_status_last_successful_time{namespace="tezca",cronjob="tezca-db-backup"}) > 129600
+              or
+              (
+                kube_cronjob_created{namespace="tezca",cronjob="tezca-db-backup"}
+                unless on (namespace, cronjob)
+                kube_cronjob_status_last_successful_time{namespace="tezca",cronjob="tezca-db-backup"}
+              )
+            for: 1h
+            labels:
+              severity: warning
+              category: platform
+              component: backup
+            annotations:
+              summary: "Tenant backup {{ $labels.namespace }}/{{ $labels.cronjob }} is stale or has never succeeded"
+              description: |
+                The daily tenant backup has not succeeded in 36 hours, or has
+                never succeeded. The shared instance's pgBackRest backups still
+                cover this data; this alert is about the tenant's own
+                fast-restore artefact.
+
+          # 2026-09-18: the kubelet evicted data/postgres when the
+          # pgbackrest-logs emptyDir hit its sizeLimit. The Evicted object then
+          # misdirected every backup job for six days.
+          - alert: PostgresPodEvicted
+            expr: kube_pod_status_reason{namespace="data",pod=~"postgres-.*",reason="Evicted"} == 1
+            for: 5m
+            labels:
+              severity: warning
+              category: platform
+              component: postgres
+            annotations:
+              summary: "Shared Postgres pod {{ $labels.pod }} was evicted"
+              description: |
+                A data/postgres pod object is in phase Failed with reason
+                Evicted. Find the cause (usually an emptyDir over its
+                sizeLimit), then delete the Evicted object; the ReplicaSet does
+                not remove it.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md
 
   # =========================================================================
-  # Resurrected 2026-08-26 (availability remediation Tier 0.3) from the dead
-  # PrometheusRule wal-archive-rules/postgres-wal-archive.yaml
-  # (monitoring/postgres-wal-archive). Same dead-CRD story as above.
+  # WAL archiving (rewritten 2026-09-24; see the header above
+  # pgbackrest-health-rules.yml for why the old metric name never matched).
   #
-  # PostgresBackupCheckFailed from the source file is skipped here: it
-  # duplicates PgBackRestCheckUnhealthy above (same pgbackrest_check_healthy
-  # condition) at a weaker, non-absent-guarded warning severity.
+  # archive_timeout=60 and a pgbackrest check every 15 min (which forces a
+  # WAL switch) keep a healthy archive's age at minutes. The thresholds allow
+  # for that without paging on an ordinary quiet stretch.
   #
-  # 2026-09-19: PostgresBackupJobsStale's description said
-  # `pgbackrest-backup-{{full|diff}}` as prose, but `{{ }}` opens a Go
-  # template action, so Prometheus saw a call to an undefined function
-  # `full`, refused the whole rule set and crash-looped (exit 1 on every
-  # start) from 2026-08-26 (enclii#440). Annotations are templates: keep `{{` out of
+  # 2026-09-19 lesson kept: annotations are Go templates. Keep `{{` out of
   # them unless it is a real expression, and run `promtool check rules`.
   # =========================================================================
   postgres-wal-archive-rules.yml: |
@@ -1541,45 +1649,67 @@ data:
       - name: postgres-wal-archive
         interval: 30s
         rules:
-          - alert: PostgresWALArchiveBehind
+          - alert: PostgresWALArchiveFailing
             expr: |
-              (
-                pg_stat_archiver_failed_count - pg_stat_archiver_failed_count offset 5m > 0
-              )
+              increase(pg_stat_archiver_failed_count[10m]) > 0
               and
-              (
-                (pg_stat_archiver_last_archive_age_seconds > 300)
-                or
-                (pg_stat_archiver_last_archive_age_seconds == 0)
-              )
+              pg_stat_archiver_last_archive_age > 600
             for: 5m
             labels:
               severity: critical
               category: platform
               component: postgres-wal-archive
             annotations:
-              summary: "Postgres WAL archiver is behind or failing"
+              summary: "Postgres archive_command is failing"
               description: |
-                pg_stat_archiver shows failed_count incrementing AND no successful
-                archive in >5min. RPO is at risk. Check pgbackrest sidecar logs:
-                  kubectl -n data logs deploy/postgres -c pgbackrest --tail=100
+                pg_stat_archiver.failed_count is increasing and no WAL segment
+                has been archived for over 10 minutes. The recovery point is
+                falling behind. Check the postgres container log for
+                archive-push errors.
                 Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#failure-modes
 
-          - alert: PostgresWALLagHigh
-            expr: pg_stat_archiver_last_archive_age_seconds > 300
-            for: 2m
+          - alert: PostgresWALArchiveLag
+            expr: pg_stat_archiver_last_archive_age > 900
+            for: 10m
             labels:
               severity: warning
               category: platform
               component: postgres-wal-archive
             annotations:
-              summary: "Postgres WAL archive lag > 5 minutes"
+              summary: "Last WAL archive was {{ $value | humanizeDuration }} ago"
               description: |
-                Most recent WAL archive is {{ $value | humanizeDuration }} old.
-                RPO target is 5 minutes. This is a warning — if it persists and
-                the archiver is failing (see failed_count), PostgresWALArchiveBehind
-                will page.
+                No WAL segment has been archived for over 15 minutes although
+                archive_timeout is 60s. If failed_count is also rising,
+                PostgresWALArchiveFailing pages.
                 Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#wal-lag
+
+          - alert: PostgresWALArchiveStale
+            expr: pg_stat_archiver_last_archive_age > 3600
+            for: 5m
+            labels:
+              severity: critical
+              category: platform
+              component: postgres-wal-archive
+            annotations:
+              summary: "No WAL archived for {{ $value | humanizeDuration }}"
+              description: |
+                The newest archived WAL segment is over an hour old, so a
+                restore now would lose over an hour of writes.
+                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#wal-lag
+
+          - alert: PostgresWALArchiveSignalMissing
+            expr: absent(pg_stat_archiver_last_archive_age)
+            for: 30m
+            labels:
+              severity: warning
+              category: platform
+              component: postgres-wal-archive
+            annotations:
+              summary: "WAL archive alerts are blind (pg_stat_archiver_last_archive_age absent)"
+              description: |
+                postgres-exporter is not exporting pg_stat_archiver, so the
+                WAL archive alerts above cannot fire. Check the
+                postgres-exporter Deployment in data and the `postgres` scrape job.
 
           - alert: PostgresWALSpoolDiskHigh
             expr: |
@@ -1600,21 +1730,6 @@ data:
                 start failing. Investigate R2 reachability first, then consider
                 an emergency resize.
                 Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#spool-pressure
-
-          - alert: PostgresBackupJobsStale
-            expr: |
-              time() - max(kube_job_status_completion_time{namespace="data",job_name=~"pgbackrest-backup-.*"}) > 129600
-            for: 15m
-            labels:
-              severity: warning
-              category: platform
-              component: postgres-wal-archive
-            annotations:
-              summary: "No successful pgBackRest full/diff backup in >36h"
-              description: |
-                Last successful pgbackrest-backup-(full|diff) Job completion is
-                over 36 hours ago. Expected cadence: full weekly, diff daily.
-                Runbook: docs/runbooks/POSTGRES_WAL_ARCHIVING.md#backup-cadence
 
   # =========================================================================
   # Resurrected 2026-08-26 (availability remediation Tier 0.3). Two sources:
