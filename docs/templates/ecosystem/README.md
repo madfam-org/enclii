@@ -39,7 +39,8 @@ differs from the repo name. `MADFAM_LABSPACE` defaults to
 
 The projection is read from, in order: `--projection PATH`, then
 `MADFAM_PRODUCT_PROJECTION`, then
-`$MADFAM_LABSPACE/solarpunk-foundry/packages/core/src/products/projection.public.json`
+`$MADFAM_LABSPACE/solarpunk-foundry/packages/core/src/products/projection.public.json`,
+then the `solarpunk-foundry` checkout next to this enclii checkout
 (the public copy vendored in `madfam-org/solarpunk-foundry`, generated from the
 private registry by `internal-devops/scripts/generate-product-projections.py`).
 A missing or malformed projection is an error — there is no built-in fallback

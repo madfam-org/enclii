@@ -12,8 +12,9 @@ the public foundry, so this public generator never reads a private repo:
       (schema `madfam-product-projection/v1`)
 
 Resolution order for the projection path: the explicit argument (`--projection`
-on the command line), then `MADFAM_PRODUCT_PROJECTION`, then the sibling
-checkout `$MADFAM_LABSPACE/solarpunk-foundry/...`. A missing or malformed
+on the command line), then `MADFAM_PRODUCT_PROJECTION`, then
+`$MADFAM_LABSPACE/solarpunk-foundry/...`, then the solarpunk-foundry checkout
+next to this enclii checkout. A missing or malformed
 projection is a hard failure — there is deliberately no built-in fallback map,
 because a fallback is exactly how the stale 12-platform table outlived the
 registry by five months.
@@ -67,9 +68,14 @@ class ProjectionError(Exception):
     """The projection could not be used. The CLI maps this to exit 2 (UNDETERMINED)."""
 
 
-def default_projection_path() -> Path:
+def default_projection_paths() -> list[Path]:
+    """`$MADFAM_LABSPACE/solarpunk-foundry/...`, then the foundry checkout that
+    sits next to the enclii checkout this file lives in. The second covers
+    callers that point MADFAM_LABSPACE at a scratch output directory (tulana's
+    scripts/render-ecosystem-md.sh does)."""
     labspace = Path(os.environ.get("MADFAM_LABSPACE", "/Users/aldoruizluna/labspace"))
-    return labspace / PROJECTION_RELPATH
+    sibling = Path(__file__).resolve().parents[4] / PROJECTION_RELPATH
+    return [labspace / PROJECTION_RELPATH] + ([sibling] if sibling != labspace / PROJECTION_RELPATH else [])
 
 
 def resolve_projection_path(explicit: str | os.PathLike | None = None) -> Path:
@@ -78,7 +84,8 @@ def resolve_projection_path(explicit: str | os.PathLike | None = None) -> Path:
     env = os.environ.get(PROJECTION_ENV, "").strip()
     if env:
         return Path(env)
-    return default_projection_path()
+    candidates = default_projection_paths()
+    return next((c for c in candidates if c.is_file()), candidates[0])
 
 
 def load_projection(path: str | os.PathLike | None = None) -> dict:

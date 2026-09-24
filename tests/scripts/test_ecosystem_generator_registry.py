@@ -180,7 +180,11 @@ def test_wrong_schema_is_rejected(tmp_path: Path) -> None:
 def test_projection_path_resolution_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("MADFAM_LABSPACE", str(tmp_path))
     monkeypatch.delenv(registry.PROJECTION_ENV, raising=False)
-    assert registry.resolve_projection_path() == tmp_path / registry.PROJECTION_RELPATH
+    labspace_copy = tmp_path / registry.PROJECTION_RELPATH
+    assert registry.default_projection_paths()[0] == labspace_copy
+    labspace_copy.parent.mkdir(parents=True)
+    labspace_copy.write_text("{}")
+    assert registry.resolve_projection_path() == labspace_copy
     monkeypatch.setenv(registry.PROJECTION_ENV, "/from/env.json")
     assert registry.resolve_projection_path() == Path("/from/env.json")
     assert registry.resolve_projection_path("/explicit.json") == Path("/explicit.json")
