@@ -23,7 +23,12 @@ Enclii-first management of Madfam ecosystem providers (Resend, Cloudflare, GitHu
    enclii providers resend domain-dns-apply enclii.dev --apply --reason "Resend DNS for enclii.dev"
    ```
 4. **Verify** — `enclii providers resend domain-verify-apply enclii.dev --apply --reason "post-DNS verify"`
-5. **Send test** — Dispatch **Providers → Resend**, the domain row's send-test action. The API requires a recipient (`args.to`) and the CLI has no flag to pass one, so `enclii providers resend send-test-apply` from the CLI returns `invalid_request`.
+5. **Send test** — Dispatch **Providers → Resend**, the domain row's send-test action, or pass the recipient with `--to` (sent as `args.to`, which the API requires):
+   ```bash
+   enclii providers resend send-test-apply enclii.dev --to ops@example.com
+   enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply --reason "post-verify send test"
+   ```
+   `--to` first ships in the CLI release after `v1.0.0-alpha.11`. On that release and older the flag is rejected as unknown, and without it the API answers `invalid_request`; use Dispatch instead.
 
 Vault backfill (retire Janua bridge):
 
