@@ -277,7 +277,7 @@ def _live_alertmanager_config() -> dict:
 COURIER_WEBHOOK_URL = (
     "http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager"
 )
-COURIER_CREDENTIALS_FILE = "/etc/alertmanager/courier-alertmanager-secret"
+COURIER_CREDENTIALS_FILE = "/etc/alertmanager/courier/courier-alertmanager-secret"
 
 
 def test_live_config_has_no_slack_configs():
