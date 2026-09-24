@@ -74,7 +74,7 @@ Browsers always send the page's origin and cannot set headers, so the allow-list
 
 `logs.tail()` does not work outside a browser: it authenticates with a query token, and `globalThis.WebSocket` in Node.js 22+, Deno, and Bun sends no `Origin`, so the server refuses the upgrade. Use `nodeLogsTail()` there.
 
-A switchyard-api that predates PRNUM_LINK refuses every upgrade without an allowed `Origin`, including Bearer-authenticated ones; against such a server `nodeLogsTail()` needs `options.origin`, and `enclii logs --follow` fails with 403.
+A switchyard-api that predates [#625](https://github.com/madfam-org/enclii/pull/625) refuses every upgrade without an allowed `Origin`, including Bearer-authenticated ones; against such a server `nodeLogsTail()` needs `options.origin`, and `enclii logs --follow` fails with 403.
 
 ## Stream live logs in a browser
 

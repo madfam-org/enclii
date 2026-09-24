@@ -99,7 +99,7 @@ enclii webhooks deliveries <sub_id> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--limit` | int | `20` | Max deliveries to return, 1 to 200. The API answers `400` outside that range (servers before PRNUM_LINK silently used 50). |
+| `--limit` | int | `20` | Max deliveries to return, 1 to 200. The API answers `400` outside that range (servers before [#625](https://github.com/madfam-org/enclii/pull/625) silently used 50). |
 
 ## Examples
 

@@ -75,7 +75,7 @@ enclii logs --env staging
 Some behaviour depends on the switchyard-api the CLI talks to:
 
 - **`--since` without `--follow`** is honoured from [#622](https://github.com/madfam-org/enclii/pull/622). An older server ignores it and returns the last `--lines` lines whatever the window, with no error.
-- **`--follow`** works from PRNUM_LINK. Before it, the stream refused every WebSocket upgrade without an allowed browser `Origin` header, which the CLI does not send, so `enclii logs --follow` failed with `WebSocket connection failed (403)`. The same release applies `--since` to the stream (an older server ignored it and replayed the last `--lines` lines) and answers an unknown `--env` with a `404` before the upgrade, where an older server accepted the stream and then closed it without a message.
+- **`--follow`** works from [#625](https://github.com/madfam-org/enclii/pull/625). Before it, the stream refused every WebSocket upgrade without an allowed browser `Origin` header, which the CLI does not send, so `enclii logs --follow` failed with `WebSocket connection failed (403)`. The same release applies `--since` to the stream (an older server ignored it and replayed the last `--lines` lines) and answers an unknown `--env` with a `404` before the upgrade, where an older server accepted the stream and then closed it without a message.
 
 The server accepts `since` as an RFC3339 timestamp, which is what the CLI sends, or as a positive Go duration such as `24h` for direct API callers. It rejects anything else, and timestamps in the future, with HTTP `400`. The response shape does not change.
 

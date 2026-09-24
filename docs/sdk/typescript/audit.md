@@ -68,7 +68,7 @@ for await (const e of enclii.audit.iter({ action: 'deploy', limit: 100 })) {
 }
 ```
 
-`list()` throws a plain `Error` before sending for a `limit` outside 1 to 100 (the API answers 400; servers before PRNUM_LINK silently used 50) or a cursor it did not return. Offset paging can skip or repeat a row when new events arrive between pages.
+`list()` throws a plain `Error` before sending for a `limit` outside 1 to 100 (the API answers 400; servers before [#625](https://github.com/madfam-org/enclii/pull/625) silently used 50) or a cursor it did not return. Offset paging can skip or repeat a row when new events arrive between pages.
 
 ## Discover filter values
 

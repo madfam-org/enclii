@@ -24,7 +24,7 @@ The API handlers are in `apps/switchyard-api/internal/api/timetable_handlers.go`
 
 `listCron()` returns every cron job of the project in one response; its `limit`/`cursor` options are deprecated and not sent, and `nextCursor` is `null`.
 
-`listCronRuns()` and `listOneOff()` page newest first, like [`audit.list()`](./audit.md): `limit` is 1 to 100 (default 50), and `nextCursor` is set while pages come back full; pass it back as `cursor` for the next page. The SDK sends them as the API's `limit` and `offset`, and throws a plain `Error` before sending for a `limit` outside 1 to 100 (the API answers 400) or a cursor it did not return. A switchyard-api that predates PRNUM_LINK ignores both and returns the 50 most recent rows with no `limit` echo, so `nextCursor` is `null` there and older rows are not reachable.
+`listCronRuns()` and `listOneOff()` page newest first, like [`audit.list()`](./audit.md): `limit` is 1 to 100 (default 50), and `nextCursor` is set while pages come back full; pass it back as `cursor` for the next page. The SDK sends them as the API's `limit` and `offset`, and throws a plain `Error` before sending for a `limit` outside 1 to 100 (the API answers 400) or a cursor it did not return. A switchyard-api that predates [#625](https://github.com/madfam-org/enclii/pull/625) ignores both and returns the 50 most recent rows with no `limit` echo, so `nextCursor` is `null` there and older rows are not reachable.
 
 There are no `iter()` methods on `jobs` (loop on `nextCursor`), and no methods to get a single one-off job or its logs (the API routes `GET /one-off-jobs/{id}` and `GET /one-off-jobs/{id}/logs` exist; call them with [`client.get()`](./index.md#low-level-requests)).
 

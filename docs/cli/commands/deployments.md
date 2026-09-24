@@ -35,7 +35,7 @@ enclii deployments list [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--service` | string | | Service ID (optional — omit for cross-service list) |
-| `--limit` | int | `50` | Maximum number of deployments. Without `--service` the API accepts 1 to 100 and answers `400` outside that range (servers before PRNUM_LINK silently used 50); with `--service` the whole history is fetched and `--limit` only trims the table. |
+| `--limit` | int | `50` | Maximum number of deployments. Without `--service` the API accepts 1 to 100 and answers `400` outside that range (servers before [#625](https://github.com/madfam-org/enclii/pull/625) silently used 50); with `--service` the whole history is fetched and `--limit` only trims the table. |
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
 ### `get`

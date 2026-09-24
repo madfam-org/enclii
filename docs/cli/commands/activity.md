@@ -28,7 +28,7 @@ enclii activity list [flags]
 |------|------|---------|-------------|
 | `--action` | string | | Filter by action name |
 | `--resource-type` | string | | Filter by resource type |
-| `--limit` | int | `50` | Maximum number of events to return, 1 to 100. The API answers `400` outside that range (servers before PRNUM_LINK silently used 50). |
+| `--limit` | int | `50` | Maximum number of events to return, 1 to 100. The API answers `400` outside that range (servers before [#625](https://github.com/madfam-org/enclii/pull/625) silently used 50). |
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
 ### `actions`

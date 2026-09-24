@@ -135,7 +135,7 @@ for await (const d of enclii.deployments.iter(serviceId)) {
 
 The API returns all of the service's deployments in one response (`{ service_id, deployments, count, truncated }`), newest release first, so `iter()` makes a single request and `nextCursor` is `null`.
 
-The list is assembled release by release. When the API cannot read the deployments of some releases it still answers with the rows it read, sets `truncated: true`, and names the unread releases in `skipped_release_ids`. `list()` returns a `ServiceDeploymentsPage`, a `Page<Deployment>` with `truncated` and `skippedReleaseIds`; check `truncated` before choosing a rollback target or counting deployments. `iter()` throws a plain `Error` instead of yielding a truncated list. A server that predates PRNUM_LINK sends no `truncated`, which reads as `false`. The deprecated `limit`/`cursor` options of `list()` and `listReleases()`, and `pageSize` of `iter()`, are not sent. See [Pagination](./index.md#pagination).
+The list is assembled release by release. When the API cannot read the deployments of some releases it still answers with the rows it read, sets `truncated: true`, and names the unread releases in `skipped_release_ids`. `list()` returns a `ServiceDeploymentsPage`, a `Page<Deployment>` with `truncated` and `skippedReleaseIds`; check `truncated` before choosing a rollback target or counting deployments. `iter()` throws a plain `Error` instead of yielding a truncated list. A server that predates [#625](https://github.com/madfam-org/enclii/pull/625) sends no `truncated`, which reads as `false`. The deprecated `limit`/`cursor` options of `list()` and `listReleases()`, and `pageSize` of `iter()`, are not sent. See [Pagination](./index.md#pagination).
 
 ## Releases
 
