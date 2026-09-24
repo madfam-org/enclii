@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"net/mail"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 )
 
 // NewProvidersCommand creates the provider control surface that will replace
@@ -146,6 +148,7 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 	var autoRenew string
 	var priority string
 	var replace bool
+	var recipient string
 	cmd := &cobra.Command{
 		Use:   action + " [target]",
 		Short: short,
@@ -185,6 +188,13 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 			if replace {
 				extra["replace"] = "true"
 			}
+			if provider == "resend" && action == "send-test-apply" {
+				to, err := validateSendTestRecipient(recipient)
+				if err != nil {
+					return err
+				}
+				extra["to"] = to
+			}
 			return runOperation(cmd, cfg, providerPath(provider, action), fmt.Sprintf("providers.%s.%s", provider, action), flags, extra)
 		},
 	}
@@ -219,7 +229,29 @@ func newProviderActionCommand(cfg *config.Config, provider, action, short string
 		cmd.Flags().StringVar(&autoRenew, "auto-renew", "", "Desired registrar auto-renew state: on or off (required)")
 		cmd.Flags().StringVar(&zoneDomain, "domain", "", "Apex domain managed by Porkbun (derived from target if omitted)")
 	}
+	if provider == "resend" && action == "send-test-apply" {
+		// The server reads the recipient from args.to on both the dry-run and
+		// the apply path (operator_provider_resend_dns.go) and answers
+		// invalid_request without it, so the CLI requires it up front.
+		cmd.Flags().StringVar(&recipient, "to", "", "Recipient email address for the test message (required)")
+	}
 	return cmd
+}
+
+// validateSendTestRecipient checks the --to value for resend send-test-apply
+// before any API call: exactly one bare address, e.g. ops@example.com. A
+// display-name form or a comma-separated list is rejected rather than passed
+// through, because the server sends to args.to as a single recipient.
+func validateSendTestRecipient(raw string) (string, error) {
+	to := strings.TrimSpace(raw)
+	if to == "" {
+		return "", &exitcodes.ValidationError{Err: fmt.Errorf("--to is required: send-test-apply needs a recipient email address")}
+	}
+	addr, err := mail.ParseAddress(to)
+	if err != nil || addr.Name != "" || addr.Address != to {
+		return "", &exitcodes.ValidationError{Err: fmt.Errorf("--to %q is not a single bare email address (e.g. ops@example.com)", raw)}
+	}
+	return to, nil
 }
 
 func providerPath(provider, action string) string {

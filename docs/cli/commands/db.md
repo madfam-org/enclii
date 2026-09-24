@@ -66,6 +66,8 @@ enclii db schema [flags]
 
 Calls `GET /v1/admin/db/schema`. Verifies `schema_migrations` version/dirty state and columns such as `services.rollout_blocked_reason` (migration 030). Requires **admin** API token.
 
+Prefer this over break-glass `psql` when verifying GA migrations (ops task O-2).
+
 ## Examples
 
 ### Check WAL archive freshness for production

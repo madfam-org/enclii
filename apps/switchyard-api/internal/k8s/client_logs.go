@@ -99,6 +99,14 @@ func (c *Client) GetLogs(ctx context.Context, namespace, labelSelector string, l
 // GetLogsWithSelectors retrieves logs from pods matching the first selector
 // that returns pods.
 func (c *Client) GetLogsWithSelectors(ctx context.Context, namespace string, labelSelectors []string, lines int, follow bool) (string, error) {
+	return c.GetLogsWithSelectorsSince(ctx, namespace, labelSelectors, lines, follow, nil)
+}
+
+// GetLogsWithSelectorsSince is GetLogsWithSelectors with an optional time
+// window: when sinceSeconds is non-nil, only lines newer than that many
+// seconds are returned (PodLogOptions.SinceSeconds), and the lines tail
+// applies within that window.
+func (c *Client) GetLogsWithSelectorsSince(ctx context.Context, namespace string, labelSelectors []string, lines int, follow bool, sinceSeconds *int64) (string, error) {
 	pods, _, err := c.ListPodsWithFallback(ctx, namespace, labelSelectors)
 	if err != nil {
 		return "", fmt.Errorf("failed to list pods: %w", err)
@@ -121,8 +129,9 @@ func (c *Client) GetLogsWithSelectors(ctx context.Context, namespace string, lab
 			return "", fmt.Errorf("kubernetes client not initialized")
 		}
 		req := kubeClient.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-			Follow:    follow,
-			TailLines: int64Ptr(int64(lines)),
+			Follow:       follow,
+			TailLines:    int64Ptr(int64(lines)),
+			SinceSeconds: sinceSeconds,
 		})
 
 		logs, err := req.Stream(ctx)

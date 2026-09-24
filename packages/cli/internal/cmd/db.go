@@ -161,7 +161,7 @@ func newDBSchemaCommand(cfg *config.Config) *cobra.Command {
 state and verifies GA-critical columns (e.g. services.rollout_blocked_reason
 from migration 030). Requires admin API token.
 
-Prefer this over break-glass psql for Commercial GA migration verify (O-2).`,
+Prefer this over break-glass psql when verifying GA migrations (ops task O-2).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var report dbSchemaReport
 			if err := apiRequest(cmd.Context(), cfg, "GET", "/v1/admin/db/schema", nil, &report); err != nil {

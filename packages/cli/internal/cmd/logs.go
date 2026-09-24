@@ -58,7 +58,11 @@ Examples:
   enclii logs my-service --env production -f --timestamps
 
 --timestamps requires --follow: the one-shot history endpoint returns
-plain text without per-line timestamps.`,
+plain text without per-line timestamps.
+
+Without --follow, the server applies --since. A switchyard-api that predates
+since support on the log history endpoint ignores it and returns the last
+--lines lines regardless of the window.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateLogsFlags(follow, timestamps); err != nil {

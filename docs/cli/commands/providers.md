@@ -62,6 +62,8 @@ enclii providers porkbun ping --tenant crea
 enclii providers porkbun domains --tenant crea
 enclii providers porkbun nameservers-apply creatumundo.mx --tenant crea --nameservers <NS1>,<NS2> --apply --reason "delegate the client apex to its Enclii-managed Cloudflare zone"
 enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR token scope fix"
+enclii providers resend send-test-apply enclii.dev --to ops@example.com
+enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply --reason "confirm enclii.dev sends after DNS verify"
 ```
 
 ## Required Mutation Flags
@@ -76,7 +78,7 @@ enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR to
 | `--tenant` | Ecosystem tenant scope; selects per-tenant provider credentials |
 | `--json` | Emit machine-readable JSON |
 
-Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`.
+Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`; `resend send-test-apply` requires `--to <email>`, a single bare recipient address (such as `ops@example.com`) that the CLI validates before calling the API and sends as `args.to`. The positional target is the sender domain the dry-run plan reports against. `--to` first ships in the CLI release after `v1.0.0-alpha.11`; older CLIs reject it as unknown.
 
 ## Remaining Adapter Work
 
