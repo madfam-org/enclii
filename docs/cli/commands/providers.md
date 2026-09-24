@@ -78,7 +78,7 @@ enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply 
 | `--tenant` | Ecosystem tenant scope; selects per-tenant provider credentials |
 | `--json` | Emit machine-readable JSON |
 
-Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`; `resend send-test-apply` requires `--to <email>`, a single bare recipient address (such as `ops@example.com`) that the CLI validates before calling the API and sends as `args.to`. The positional target is the sender domain the dry-run plan reports against. `--to` first ships in the CLI release after `v1.0.0-alpha.11`; older CLIs reject it as unknown.
+Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`; `resend send-test-apply` requires `--to <email>`, a single bare recipient address (such as `ops@example.com`) that the CLI validates before calling the API and sends as `args.to`. The positional target is the sender domain the dry-run plan reports against. `--to` first shipped in `v1.0.0-alpha.12`; older CLIs reject it as unknown.
 
 ## Remaining Adapter Work
 

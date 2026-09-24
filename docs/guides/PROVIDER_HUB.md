@@ -28,7 +28,7 @@ Enclii-first management of Madfam ecosystem providers (Resend, Cloudflare, GitHu
    enclii providers resend send-test-apply enclii.dev --to ops@example.com
    enclii providers resend send-test-apply enclii.dev --to ops@example.com --apply --reason "post-verify send test"
    ```
-   `--to` first ships in the CLI release after `v1.0.0-alpha.11`. On that release and older the flag is rejected as unknown, and without it the API answers `invalid_request`; use Dispatch instead.
+   `--to` first shipped in `v1.0.0-alpha.12`. On `v1.0.0-alpha.11` and older the flag is rejected as unknown, and without it the API answers `invalid_request`: upgrade the CLI, or use Dispatch.
 
 Vault backfill (retire Janua bridge):
 
