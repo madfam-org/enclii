@@ -46,6 +46,34 @@ data:
           group_wait: 10s
           repeat_interval: 1h
 
+        # THE MIRROR OF THE ROUTE ABOVE. AlertmanagerEmailDeliveryFailing
+        # reports that EMAIL is failing. It is `severity: critical`, so the
+        # critical route below would deliver it through critical-receiver's
+        # email_configs too, an alert about dead email sent by dead email.
+        # It goes to courier-only-receiver (webhook, no email) and stops.
+        # Each last mile reports the other's failure: on 2026-09-24 email had
+        # failed for weeks (Gmail 535, then 454) and nothing said so.
+        - matchers:
+            - alertname="AlertmanagerEmailDeliveryFailing"
+          receiver: 'courier-only-receiver'
+          continue: false
+          group_wait: 10s
+          repeat_interval: 1h
+
+        # Watchdog always fires (alert-delivery-rules.yml in prometheus.yaml).
+        # It is proof of the pipeline, not a page: without this route it has
+        # no severity route to match and would reach default-receiver, one
+        # email every 4h forever. watchdog-sink has no integrations. When an
+        # outside-the-cluster heartbeat is sanctioned, its webhook goes on
+        # watchdog-sink with a short repeat_interval here, and the heartbeat
+        # going quiet becomes the page for "both last miles are dead".
+        - matchers:
+            - alertname="Watchdog"
+          receiver: 'watchdog-sink'
+          continue: false
+          group_wait: 30s
+          repeat_interval: 5m
+
         # Critical alerts - immediate notification
         - match:
             severity: critical
@@ -131,6 +159,20 @@ data:
               authorization:
                 type: Bearer
                 credentials_file: /etc/alertmanager/courier/courier-alertmanager-secret
+
+      # Carries AlertmanagerEmailDeliveryFailing only. Webhook and NO email,
+      # the exact inverse of default-receiver carrying CourierReceiverDown.
+      - name: 'courier-only-receiver'
+        webhook_configs:
+          - url: 'http://angelia-api.angelia.svc.cluster.local/v1/courier/alertmanager'
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/courier/courier-alertmanager-secret
+
+      # Carries Watchdog only. No integrations on purpose, see its route.
+      - name: 'watchdog-sink'
 
     inhibit_rules:
       # If a critical alert is firing, inhibit warnings for the same service

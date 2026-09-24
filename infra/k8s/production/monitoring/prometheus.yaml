@@ -71,11 +71,28 @@ data:
         cluster: enclii-production
         environment: production
 
+    # Alerts go to EVERY Alertmanager peer, not to the load-balanced Service.
+    # Alertmanager does not gossip alerts, only silences and the notification
+    # log, so a client must push each alert to every peer itself. Through the
+    # `alertmanager` ClusterIP the keep-alive connection pinned this server to
+    # one peer: on 2026-09-24 alertmanager-1 held 388 alerts from this server
+    # while alertmanager-0 and -2 held none, so the "3-peer HA" pager was one
+    # pod for everything this Prometheus evaluates. The operator-managed
+    # `rules-eval` Prometheus already does this through endpoint discovery,
+    # and the `alertmanager` scrape job below already reaches all three
+    # peers on this port, so no network policy changes. Deduplication across
+    # the peers is the notification log, gossiped on 9094.
     alerting:
       alertmanagers:
-        - static_configs:
-            - targets:
-              - alertmanager:9093
+        - kubernetes_sd_configs:
+            - role: endpoints
+              namespaces:
+                names:
+                  - monitoring
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+              action: keep
+              regex: alertmanager;http
 
     rule_files:
       - /etc/prometheus/rules/*.yml
@@ -2003,6 +2020,77 @@ data:
                 never to the webhook. If you are reading it in a chat message,
                 the routing is wrong.
               runbook_url: "https://github.com/madfam-org/angelia/blob/main/docs/runbooks/courier-provisioning.md"
+
+  # The other half of the pair, and the pipeline's own pulse.
+  #
+  # On 2026-09-24 every notification this estate tried to send had been
+  # failing for weeks: email with Gmail `535 BadCredentials`, then `454 Too
+  # many login attempts`, and the webhook with no credential. CourierReceiverDown
+  # covered the webhook half and was itself routed to the broken email. Nothing
+  # reported the EMAIL half at all, so the fallback could die silently.
+  #
+  # AlertmanagerEmailDeliveryFailing is the mirror of CourierReceiverDown: it
+  # is routed by alertname to `courier-only-receiver` (webhook, no email) in
+  # alertmanager.yaml. Each last mile reports the other's failure, so one
+  # working path is enough to learn the other is dead. If BOTH are dead no
+  # in-cluster rule can tell anyone; that is what Watchdog is for.
+  #
+  # Watchdog always fires. It proves rule evaluation and the push to every
+  # Alertmanager peer, end to end. It routes to `watchdog-sink` (no
+  # integrations), so it pages nobody. Its presence on all three peers is the
+  # check an operator runs by hand today, and the hook an outside-the-cluster
+  # heartbeat attaches to once one is sanctioned. Absent from any peer means
+  # the pipeline from this Prometheus to that peer is broken.
+  alert-delivery-rules.yml: |
+    groups:
+      - name: alert-delivery
+        interval: 1m
+        rules:
+          - alert: Watchdog
+            expr: vector(1)
+            labels:
+              severity: none
+              service: alertmanager
+              category: alerting-pipeline
+            annotations:
+              summary: "Alerting pipeline heartbeat (always firing, pages nobody)"
+              description: |
+                This alert fires permanently. It exists to be seen, not
+                delivered: Alertmanager routes it to `watchdog-sink`, which
+                has no integrations. If it is missing from an Alertmanager
+                peer's /api/v2/alerts, this Prometheus is not reaching that
+                peer and every other alert is missing there too.
+
+          - alert: AlertmanagerEmailDeliveryFailing
+            expr: sum by (pod) (increase(alertmanager_notifications_failed_total{integration="email"}[15m])) > 0
+            for: 10m
+            labels:
+              severity: critical
+              service: alertmanager
+              category: alerting-last-mile
+            annotations:
+              summary: "Alertmanager {{ $labels.pod }} cannot deliver email"
+              description: |
+                {{ $labels.pod }} failed at least one email notification in
+                the last 15 minutes, for 10 minutes running. Email is the
+                fallback that does not depend on angelia-api. While this
+                fires, alerts reach people only through Angelia Courier.
+
+                Read the reason in the pod log:
+                  kubectl -n monitoring logs {{ $labels.pod }} --since=30m | grep 'email\['
+                  535 BadCredentials    the Gmail app password was revoked or
+                                        rotated; recreate it and re-create
+                                        `alertmanager-smtp-secret`.
+                  454 Too many login    Google is throttling the retry storm
+                                        from a bad password. It clears once
+                                        logins succeed.
+                  550 5.4.5 / quota     Gmail's daily sending limit. Volume,
+                                        not credentials: reduce the firing set
+                                        or move SMTP to a relay.
+
+                This alert is deliberately routed to the Courier webhook and
+                never to email. If you are reading it in an email, the routing
+                is wrong.
 ---
 # Prometheus PVC
 apiVersion: v1
