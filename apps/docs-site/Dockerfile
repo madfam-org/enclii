@@ -38,7 +38,18 @@ FROM docker.io/library/nginx:alpine AS runner
 # fixes — the trivy gate blocks digest pins on fixable HIGH/CRITICAL CVEs in
 # base packages (2026-07-10: CVE-2026-33630 c-ares, CVE-2026-56131/56407/56408
 # libexpat; previously libxml2). Same pattern as switchyard-api (PR #311).
-RUN apk upgrade --no-cache
+#
+# APK_SECURITY_REFRESH is echoed into the command so bumping it busts the
+# BuildKit layer cache: a cached `apk upgrade` layer keeps shipping the old
+# package set after Alpine publishes a fix (see apps/switchyard-api/Dockerfile).
+# The `libexpat>=…` floor fails the build loudly if the mirror serves an older
+# package than the fix the scan gate expects.
+# 2026-09-24: CVE-2026-93990 (libexpat 2.8.4-r0, fixed 2.8.5-r0) failed
+# `Scan: docs-site` on #625's push run 36056625981.
+ARG APK_SECURITY_REFRESH=2026-09-24
+RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
+    apk upgrade --no-cache && \
+    apk add --no-cache 'libexpat>=2.8.5-r0'
 
 # Copy custom nginx config (standard port 80)
 # Security headers applied at origin (defense-in-depth; Cloudflare may also set some).
