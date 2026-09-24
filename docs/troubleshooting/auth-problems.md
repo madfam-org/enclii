@@ -208,8 +208,9 @@ enclii teams list
 **Causes**:
 - Token file corrupted
 - Wrong OIDC issuer configured (`ENCLII_OIDC_ISSUER`)
-- The CLI is calling the wrong API: unless `ENCLII_API_ENDPOINT` is set, the
-  default `development` environment targets `http://localhost:4200`
+- The CLI is calling the wrong API: check `ENCLII_API_ENDPOINT` and
+  `--api-endpoint` (the default is `https://api.enclii.dev`; a
+  `http://localhost:4200` left over from local development is a common cause)
 - Network issues reaching auth server
 
 **Solutions**:
@@ -219,8 +220,8 @@ enclii teams list
 enclii logout
 enclii login
 
-# Point the CLI at the hosted API
-export ENCLII_API_ENDPOINT=https://api.enclii.dev
+# Point the CLI back at the hosted API (the default)
+unset ENCLII_API_ENDPOINT
 ```
 
 ### JWKS Validation Errors
@@ -289,7 +290,7 @@ browser's Janua session.
 |----------|---------|---------|
 | `ENCLII_OIDC_ISSUER` | SSO provider URL | `https://auth.madfam.io` |
 | `ENCLII_OIDC_CLIENT_ID` | OAuth client used for token refresh | the built-in Enclii CLI client |
-| `ENCLII_API_ENDPOINT` | API endpoint | `http://localhost:4200` in the default `development` environment, `https://api.enclii.dev` otherwise |
+| `ENCLII_API_ENDPOINT` | API endpoint | `https://api.enclii.dev` |
 | `ENCLII_API_TOKEN` | API token; wins over any stored login (legacy `ENCLII_TOKEN` also accepted) | unset |
 | `ENCLII_PROFILE` | Stored identity to use, like `--profile` | `default` |
 | `ENCLII_BROWSER` | Command that opens the login URL | the operating system's opener |

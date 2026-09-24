@@ -93,8 +93,12 @@ func Load() (*Config, error) {
 	// Set defaults
 	viper.SetDefault("environment", "development")
 	viper.SetDefault("log-level", "info")
-	// Production default; local dev should set ENCLII_API_ENDPOINT=http://localhost:4200
-	// (see docs/contracts/DEV_ENV_ALIGNMENT.md).
+	// Production default. Local development points the CLI at its own stack
+	// explicitly with ENCLII_API_ENDPOINT=http://localhost:4200 (see
+	// docs/contracts/DEV_ENV_ALIGNMENT.md). The endpoint never depends on
+	// ENCLII_ENVIRONMENT: that only selects the log format, and it defaults to
+	// "development" for everyone, so keying the endpoint on it sent every
+	// installed CLI to localhost.
 	viper.SetDefault("api-endpoint", "https://api.enclii.dev")
 	viper.SetDefault("project", "default")
 	viper.SetDefault("project-dir", ".")
@@ -108,10 +112,6 @@ func Load() (*Config, error) {
 	}
 
 	apiEndpoint := viper.GetString("api-endpoint")
-	if viper.GetString("environment") == "development" && os.Getenv("ENCLII_API_ENDPOINT") == "" {
-		// Align with switchyard-ui local default when the operator has not set a remote API.
-		apiEndpoint = "http://localhost:4200"
-	}
 
 	apiToken := viper.GetString("api-token")
 	if apiToken == "" {

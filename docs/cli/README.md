@@ -180,7 +180,7 @@ These flags are available for all commands:
 
 | Flag | Description |
 |------|-------------|
-| `--api-endpoint` | API endpoint URL. Without it or `ENCLII_API_ENDPOINT`, the CLI targets `http://localhost:4200` while `ENCLII_ENVIRONMENT` is `development` (the default), and `https://api.enclii.dev` otherwise |
+| `--api-endpoint` | API endpoint URL (default `https://api.enclii.dev`, or `ENCLII_API_ENDPOINT`) |
 | `--api-token` | Authentication token (overrides stored credentials) |
 | `--log-level` | Log level: `debug`, `info`, `warn`, `error` |
 | `--profile` | Stored identity to use; each profile keeps its own login (default `default`, or `ENCLII_PROFILE`). See [`login`](commands/login.md#several-identities-profiles-and-account-switching) |
@@ -192,7 +192,7 @@ Most read subcommands across the CLI accept a `--json` flag for stable, machine-
 
 | Variable | Description |
 |----------|-------------|
-| `ENCLII_API_ENDPOINT` | API endpoint. Set `https://api.enclii.dev` for the hosted API: when unset, the default `development` environment targets `http://localhost:4200` |
+| `ENCLII_API_ENDPOINT` | API endpoint (default `https://api.enclii.dev`). Local development sets `http://localhost:4200`; see `docs/contracts/DEV_ENV_ALIGNMENT.md` |
 | `ENCLII_API_TOKEN` | Authentication token (alternative to `enclii login`) |
 | `ENCLII_OIDC_ISSUER` | OIDC issuer URL for self-hosted deployments (default: `https://auth.madfam.io`) |
 | `ENCLII_OIDC_CLIENT_ID` | OAuth client used for token refresh in self-hosted deployments; log in with the same value via `enclii login --client-id` |
@@ -200,7 +200,7 @@ Most read subcommands across the CLI accept a `--json` flag for stable, machine-
 | `ENCLII_BROWSER` | Command that opens login URLs, for example `open -na "Google Chrome" --args --incognito` |
 | `ENCLII_VAULT_ADDR` / `VAULT_ADDR` | Override Vault address for `enclii vault status` |
 | `ENCLII_PROJECT` | Default project slug |
-| `ENCLII_ENVIRONMENT` | Default environment (`development` unless set) |
+| `ENCLII_ENVIRONMENT` | `production` switches the CLI's log output to JSON (default `development`); it does not change the API endpoint |
 | `ENCLII_LOG_LEVEL` | Logging verbosity: `debug`, `info`, `warn`, `error` |
 
 ## Credentials Storage

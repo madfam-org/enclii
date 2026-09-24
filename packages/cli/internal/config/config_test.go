@@ -34,9 +34,10 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Environment != "development" {
 		t.Errorf("Environment = %q, want %q", cfg.Environment, "development")
 	}
-	// Development + unset api-endpoint resolves to local Switchyard (see DEV_ENV_ALIGNMENT.md).
-	if cfg.APIEndpoint != "http://localhost:4200" {
-		t.Errorf("APIEndpoint = %q, want %q", cfg.APIEndpoint, "http://localhost:4200")
+	// With nothing set, the CLI talks to the hosted API. Local development
+	// opts in with ENCLII_API_ENDPOINT (see DEV_ENV_ALIGNMENT.md).
+	if cfg.APIEndpoint != "https://api.enclii.dev" {
+		t.Errorf("APIEndpoint = %q, want %q", cfg.APIEndpoint, "https://api.enclii.dev")
 	}
 	if cfg.Project != "default" {
 		t.Errorf("Project = %q, want %q", cfg.Project, "default")
@@ -64,6 +65,56 @@ func TestLoad_ProductionDefaultAPIEndpoint(t *testing.T) {
 	}
 	if cfg.APIEndpoint != "https://api.enclii.dev" {
 		t.Errorf("APIEndpoint = %q, want https://api.enclii.dev", cfg.APIEndpoint)
+	}
+}
+
+// Regression: ENCLII_ENVIRONMENT only selects the log format. Setting it to
+// development must not move the CLI off the hosted API (it used to force
+// http://localhost:4200, which every installed CLI inherited by default).
+func TestLoad_DevelopmentEnvironmentKeepsHostedAPI(t *testing.T) {
+	for _, v := range []string{"ENCLII_ENVIRONMENT", "ENCLII_API_ENDPOINT"} {
+		prev, had := os.LookupEnv(v)
+		t.Cleanup(func() {
+			if had {
+				os.Setenv(v, prev)
+			} else {
+				os.Unsetenv(v)
+			}
+		})
+		os.Unsetenv(v)
+	}
+	os.Setenv("ENCLII_ENVIRONMENT", "development")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.APIEndpoint != "https://api.enclii.dev" {
+		t.Errorf("APIEndpoint = %q, want https://api.enclii.dev", cfg.APIEndpoint)
+	}
+}
+
+// Local development points the CLI at its own stack explicitly.
+func TestLoad_LocalDevelopmentEndpointOverride(t *testing.T) {
+	for _, v := range []string{"ENCLII_ENVIRONMENT", "ENCLII_API_ENDPOINT"} {
+		prev, had := os.LookupEnv(v)
+		t.Cleanup(func() {
+			if had {
+				os.Setenv(v, prev)
+			} else {
+				os.Unsetenv(v)
+			}
+		})
+		os.Unsetenv(v)
+	}
+	os.Setenv("ENCLII_API_ENDPOINT", "http://localhost:4200")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.APIEndpoint != "http://localhost:4200" {
+		t.Errorf("APIEndpoint = %q, want http://localhost:4200", cfg.APIEndpoint)
 	}
 }
 
