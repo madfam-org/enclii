@@ -102,14 +102,14 @@ enclii db wal-status --stanza staging-main
 
 - The CLI requires `kubectl` context and permission to `exec` into the Postgres pod's `pgbackrest` sidecar.
 - Exit code `0` is returned even when the status is **degraded** — the human/JSON output reports the actual state. This makes the command safe to run in dashboards.
-- If the sidecar cannot be reached or the stanza has not been created yet, the command exits `1`. (The command's own help text says `2`; the CLI maps every non-typed error to `1`.)
+- If the sidecar cannot be reached or the stanza has not been created yet, the command exits `1`.
 
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | `0` | Successfully inspected (including degraded status) |
-| `1` | Any error, including an unreachable sidecar or a stanza that is not created yet (the `wal-status` help text says `2`, but the CLI maps these errors to `1`), and API errors for `schema` |
+| `1` | Any error, including an unreachable sidecar or a stanza that is not created yet, and API errors for `schema` |
 
 ## See Also
 

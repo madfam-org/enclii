@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 )
 
 func TestNewLogsCommand(t *testing.T) {
@@ -127,4 +129,26 @@ func TestResolveServiceName_Empty(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, serviceName)
 	assert.Contains(t, err.Error(), "service name required")
+}
+
+// TestLogs_TimestampsRequiresFollow pins that --timestamps without
+// --follow fails fast with a validation error instead of being silently
+// ignored. The check runs before any API call, so no server is needed.
+func TestLogs_TimestampsRequiresFollow(t *testing.T) {
+	cmd := NewLogsCommand(&config.Config{APIEndpoint: "http://127.0.0.1:1", APIToken: "test-token"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"my-service", "--timestamps"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Equal(t, exitcodes.Validation, exitcodes.FromError(err))
+	assert.Contains(t, err.Error(), "--timestamps requires --follow")
+}
+
+func TestValidateLogsFlags(t *testing.T) {
+	assert.NoError(t, validateLogsFlags(false, false))
+	assert.NoError(t, validateLogsFlags(true, false))
+	assert.NoError(t, validateLogsFlags(true, true))
+	assert.Error(t, validateLogsFlags(false, true))
 }

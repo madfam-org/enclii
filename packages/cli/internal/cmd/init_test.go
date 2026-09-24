@@ -7,7 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
+	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
 
 // TestInit_TemplateCatalogValidation verifies unknown templates are
@@ -127,5 +131,89 @@ func TestKnownTemplates(t *testing.T) {
 		if slug == "unknown" {
 			t.Error("knownTemplates should exclude 'unknown' sentinel")
 		}
+	}
+}
+
+// runInitInTempDir executes `enclii init` with args in a fresh temp dir
+// and returns the parsed service.yaml (nil when the command failed).
+func runInitInTempDir(t *testing.T, args ...string) (*types.ServiceSpec, error) {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Chdir(tmp)
+
+	cmd := NewInitCommand(&config.Config{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		return nil, err
+	}
+
+	raw, err := os.ReadFile(filepath.Join(tmp, "service.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec types.ServiceSpec
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		t.Fatalf("service.yaml does not parse: %v\n%s", err, raw)
+	}
+	return &spec, nil
+}
+
+// TestInit_KeepsTemplatePort pins the fix for `enclii init` writing 8080
+// for every template: the generated runtime.port is the template's port.
+func TestInit_KeepsTemplatePort(t *testing.T) {
+	cases := map[string]int{
+		"nextjs":   3000,
+		"fastapi":  8000,
+		"flask":    5000,
+		"angular":  4200,
+		"vite":     4173,
+		"go-fiber": 8080,
+		"auto":     8080,
+	}
+	for template, want := range cases {
+		t.Run(template, func(t *testing.T) {
+			spec, err := runInitInTempDir(t, "--template", template, "svc")
+			if err != nil {
+				t.Fatalf("init --template %s failed: %v", template, err)
+			}
+			if got := spec.Spec.Runtime.Port; got != want {
+				t.Errorf("init --template %s wrote runtime.port %d, want %d", template, got, want)
+			}
+		})
+	}
+}
+
+// TestInit_ExplicitPortWins verifies --port overrides the template's port.
+func TestInit_ExplicitPortWins(t *testing.T) {
+	spec, err := runInitInTempDir(t, "--template", "nextjs", "--port", "9090", "svc")
+	if err != nil {
+		t.Fatalf("init --port failed: %v", err)
+	}
+	if got := spec.Spec.Runtime.Port; got != 9090 {
+		t.Errorf("runtime.port = %d, want 9090", got)
+	}
+}
+
+// TestInit_RejectsInvalidPort verifies an out-of-range --port is a
+// validation error and writes nothing.
+func TestInit_RejectsInvalidPort(t *testing.T) {
+	for _, bad := range []string{"0", "-1", "65536"} {
+		t.Run(bad, func(t *testing.T) {
+			_, err := runInitInTempDir(t, "--template", "nextjs", "--port="+bad, "svc")
+			if err == nil {
+				t.Fatalf("expected error for --port %s", bad)
+			}
+			if got := exitcodes.FromError(err); got != exitcodes.Validation {
+				t.Errorf("exit code = %d, want %d (validation)", got, exitcodes.Validation)
+			}
+			if !strings.Contains(err.Error(), "--port must be between 1 and 65535") {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if _, statErr := os.Stat("service.yaml"); statErr == nil {
+				t.Error("service.yaml written despite invalid --port")
+			}
+		})
 	}
 }

@@ -14,6 +14,8 @@ The `logs` command retrieves logs for a service in an environment. Without `--fo
 
 If `service` is omitted, the CLI reads the service name (and project) from `service.yaml` in the current directory, or from the file passed with `--file`.
 
+Without `--follow`, the API returns the recent lines as plain text with no per-line timestamps, so `--timestamps` is rejected in that mode instead of being silently ignored.
+
 The output is plain text. There is no `--output`/`-o` flag and no JSON output mode, and there are no `--level`, `--instance`, `--until`, `--tail`, or `--no-color` flags; pipe through `grep` to filter.
 
 ## Arguments
@@ -30,7 +32,7 @@ The output is plain text. There is no `--output`/`-o` flag and no JSON output mo
 | `--follow`, `-f` | bool | `false` | Stream logs in real time over a WebSocket |
 | `--lines`, `-n` | int | `100` | Number of recent lines to show |
 | `--since` | string | | Show logs since a duration ago. Go duration syntax: `5m`, `1h`, `24h` (no `d` unit; use `168h` for 7 days). |
-| `--timestamps` | bool | `false` | Prefix each streamed line with its `HH:MM:SS` timestamp (applies with `--follow`) |
+| `--timestamps` | bool | `false` | Prefix each streamed line with its `HH:MM:SS` timestamp. Requires `--follow`; without it the command fails with exit code `10`. |
 | `--file`, `-F` | string | `service.yaml` | Path to the service spec file used when `service` is omitted |
 
 ## Examples

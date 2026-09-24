@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 )
 
 // mockRunner wires canned outputs keyed on the first argument after
@@ -353,4 +354,32 @@ func TestRunDBWalStatus_ColorOnlyWhenTTY(t *testing.T) {
 		Runner: m.Run, IsTTY: true,
 	}))
 	assert.True(t, strings.Contains(tty.String(), "\033["), "tty output should include ANSI color codes")
+}
+
+// TestRunDBWalStatus_FailureExitCode pins the process exit code for every
+// wal-status failure path to 1 (via exitcodes.FromError, which main uses)
+// and keeps the --help text in agreement with it.
+func TestRunDBWalStatus_FailureExitCode(t *testing.T) {
+	cases := map[string]*mockRunner{
+		"no pod found":        {getPodOut: []byte("")},
+		"stanza not created":  {getPodOut: []byte("postgres-abc-123"), execInfoOut: []byte("stanza not yet created"), execInfoErr: fmt.Errorf("exit status 25")},
+		"unparseable output":  {getPodOut: []byte("postgres-abc-123"), execInfoOut: []byte("not json")},
+		"kubectl get errored": {getPodErr: fmt.Errorf("connection refused")},
+	}
+	for name, m := range cases {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := runDBWalStatus(context.Background(), &buf, walStatusArgs{
+				Namespace: "data", Label: "app=postgres", Sidecar: "pgbackrest", Stanza: "main",
+				Runner: m.Run, IsTTY: false,
+			})
+			require.Error(t, err)
+			assert.Equal(t, 1, exitcodes.FromError(err))
+		})
+	}
+
+	walCmd, _, err := NewDBCommand(&config.Config{}).Find([]string{"wal-status"})
+	require.NoError(t, err)
+	assert.Contains(t, walCmd.Long, "Exit code 1 if the\nsidecar cannot be reached")
+	assert.NotContains(t, walCmd.Long, "Exit code 2")
 }
