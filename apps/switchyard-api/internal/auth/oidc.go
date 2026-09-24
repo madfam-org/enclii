@@ -334,22 +334,10 @@ func (o *OIDCManager) getOrCreateUser(ctx context.Context, claims *struct {
 // Supports both Authorization header and query parameter (for WebSocket connections)
 func (o *OIDCManager) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var tokenString string
-
-		// Try Authorization header first (standard method)
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" {
-			bearerToken := strings.Split(authHeader, " ")
-			if len(bearerToken) == 2 && bearerToken[0] == "Bearer" {
-				tokenString = bearerToken[1]
-			}
-		}
-
-		// Fall back to query parameter (for WebSocket connections)
-		// WebSocket API doesn't support custom headers, so token is passed via query param
-		if tokenString == "" {
-			tokenString = c.Query("token")
-		}
+		// Authorization header first, then the `token` query parameter
+		// (WebSockets); requestToken records which one was used, which the
+		// WebSocket origin check reads (api/ws_upgrade.go).
+		tokenString := requestToken(c)
 
 		if tokenString == "" {
 			c.JSON(401, gin.H{"error": "Authorization required (header or token query param)"})
