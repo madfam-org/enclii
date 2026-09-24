@@ -157,9 +157,18 @@ spec:
             # too: nothing referenced it, and re-adding telegram_configs — the
             # only thing it existed for — is now forbidden by
             # internal-devops decisions/2026-09-05-third-party-messaging-via-angelia-courier.md § 2.
+            #
+            # This is a DIRECTORY mount, not a subPath one. A subPath mount never
+            # receives Secret updates. The Secret does not exist until the
+            # operator runs `angelia/courier-alertmanager`, so with a subPath
+            # mount every peer kept the empty mount it started with, and each
+            # rotation needed a restart before the last mile armed. The kubelet
+            # refreshes a whole-volume mount by itself, and Alertmanager reads
+            # `credentials_file` on every webhook request, so a newly created or
+            # rotated Secret takes effect within about a kubelet sync period
+            # with no restart.
             - name: courier-secret
-              mountPath: /etc/alertmanager/courier-alertmanager-secret
-              subPath: courier-alertmanager-secret
+              mountPath: /etc/alertmanager/courier
               readOnly: true
             - name: data
               mountPath: /alertmanager
