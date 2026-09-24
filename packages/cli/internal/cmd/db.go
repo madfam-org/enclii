@@ -218,7 +218,7 @@ operator-friendly summary:
   - R2 repo footprint (sum of backup delta sizes)
   - Replica lag (stub for P1.1; wires up in P1.2 once replication lands)
 
-Exit code 0 on success (including degraded status). Exit code 2 if the
+Exit code 0 on success (including degraded status). Exit code 1 if the
 sidecar cannot be reached or the stanza is not yet created.
 
 Defaults target the production in-cluster Postgres at data/app=postgres.
@@ -322,7 +322,8 @@ func runDBWalStatus(ctx context.Context, w io.Writer, a walStatusArgs) error {
 }
 
 // errWalStatusUnreachable is returned when the cluster/sidecar is not
-// reachable. Exit code 2 via cobra's default mapping.
+// reachable. It is an untyped error, so exitcodes.FromError maps it to
+// exit code 1 (the documented behavior; nothing depends on a distinct code).
 var errWalStatusUnreachable = fmt.Errorf("wal-status unreachable")
 
 // findPostgresPod runs `kubectl get pod` with the label selector and

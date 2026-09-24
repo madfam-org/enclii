@@ -25,8 +25,22 @@ The `init` command writes a starter `service.yaml` in the current directory. The
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--template`, `-t` | string | `auto` | Framework slug from the catalog, or `auto` |
+| `--port` | int | template's port | Value written to `spec.runtime.port`. Must be 1–65535; an out-of-range value fails with exit code `10`. |
 
-There are no `--name`, `--port`, `--force`, or `--no-detect` flags.
+There are no `--name`, `--force`, or `--no-detect` flags.
+
+### Default port by template
+
+Without `--port`, `runtime.port` is the template's port:
+
+| Port | Templates |
+|------|-----------|
+| `3000` | `astro`, `express`, `fastify`, `nestjs`, `nextjs`, `nuxtjs`, `rails`, `react`, `remix`, `sveltekit`, `vue` |
+| `4173` | `vite` |
+| `4200` | `angular` |
+| `5000` | `flask` |
+| `8000` | `django`, `fastapi` |
+| `8080` | `auto`, `dockerfile`, `go-chi`, `go-echo`, `go-fiber`, `go-gin`, `go-stdlib`, `phoenix`, `rust-actix`, `rust-axum`, `static` |
 
 ### Template slugs
 
@@ -63,6 +77,14 @@ Next steps:
 💡 Learn more at https://enclii.dev/docs
 ```
 
+### Initialize with an explicit port
+
+```bash
+enclii init api --template fastapi --port 9000
+```
+
+This writes `runtime.port: 9000` instead of the template's `8000`.
+
 ## Generated Configuration
 
 `enclii init web --template nextjs` writes:
@@ -77,7 +99,7 @@ spec:
     build:
         type: nextjs
     runtime:
-        port: 8080
+        port: 3000
         replicas: 2
         healthCheck: /health
     env:
@@ -85,7 +107,7 @@ spec:
           value: production
 ```
 
-The generated `runtime.port` is `8080` and the env block holds `NODE_ENV=production` regardless of template. Edit both to match your application before deploying.
+The generated `runtime.port` is the template's port (`3000` for `nextjs`), or the `--port` value when you pass one. The env block holds `NODE_ENV=production` regardless of template; edit it to match your application before deploying.
 
 ## See Also
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/madfam-org/enclii/packages/cli/internal/client"
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 	"github.com/madfam-org/enclii/packages/cli/internal/spec"
 )
 
@@ -53,10 +54,17 @@ Examples:
   # Show logs from the last hour
   enclii logs my-service --since 1h
 
-  # Show production logs with timestamps
-  enclii logs my-service --env production --timestamps`,
+  # Stream production logs with timestamps
+  enclii logs my-service --env production -f --timestamps
+
+--timestamps requires --follow: the one-shot history endpoint returns
+plain text without per-line timestamps.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateLogsFlags(follow, timestamps); err != nil {
+				return err
+			}
+
 			var serviceName string
 			if len(args) > 0 {
 				serviceName = args[0]
@@ -80,10 +88,24 @@ Examples:
 	cmd.Flags().StringVarP(&environment, "env", "e", "dev", "Environment to show logs for")
 	cmd.Flags().IntVarP(&lines, "lines", "n", 100, "Number of lines to show (tail)")
 	cmd.Flags().StringVar(&since, "since", "", "Show logs since duration (e.g., 5m, 1h, 24h)")
-	cmd.Flags().BoolVar(&timestamps, "timestamps", false, "Show timestamps with each log line")
+	cmd.Flags().BoolVar(&timestamps, "timestamps", false, "Show timestamps with each log line (requires --follow)")
 	cmd.Flags().StringVarP(&specFile, "file", "F", "service.yaml", "Path to service.yaml specification file")
 
 	return cmd
+}
+
+// validateLogsFlags rejects flag combinations the API cannot honor.
+// GET /v1/services/{id}/logs/history returns the pod logs as one plain-text
+// string with no per-line timestamps (and takes no timestamps parameter);
+// only the --follow WebSocket stream carries a timestamp per line. Failing
+// here beats silently ignoring --timestamps.
+func validateLogsFlags(follow, timestamps bool) error {
+	if timestamps && !follow {
+		return &exitcodes.ValidationError{Err: fmt.Errorf(
+			"--timestamps requires --follow: the one-shot log history the API returns has no per-line timestamps; " +
+				"re-run with --follow, or drop --timestamps")}
+	}
+	return nil
 }
 
 func showLogs(cfg *config.Config, serviceName, environment string, follow bool, lines int, since *time.Time, timestamps bool, specFile string) error {

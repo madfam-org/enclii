@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/frameworks"
 	"github.com/madfam-org/enclii/packages/sdk-go/pkg/types"
 )
@@ -43,6 +44,7 @@ func knownTemplates() []string {
 
 func NewInitCommand(cfg *config.Config) *cobra.Command {
 	var templateName string
+	var port int
 
 	cmd := &cobra.Command{
 		Use:   "init [name]",
@@ -51,6 +53,10 @@ func NewInitCommand(cfg *config.Config) *cobra.Command {
 			"Template slugs map to madfam-org/<slug>-starter repos and are sourced from the framework catalog.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("port") && (port < 1 || port > 65535) {
+				return &exitcodes.ValidationError{Err: fmt.Errorf("--port must be between 1 and 65535, got %d", port)}
+			}
+
 			// Validate template against the canonical catalog. "auto"
 			// stays a valid sentinel for detection-time resolution.
 			if templateName != "auto" && templateName != "" {
@@ -78,17 +84,21 @@ func NewInitCommand(cfg *config.Config) *cobra.Command {
 			// Get project name (could be different from service name)
 			projectName := serviceName // For MVP, project and service names are the same
 
-			return initializeService(serviceName, projectName, templateName)
+			return initializeService(serviceName, projectName, templateName, port)
 		},
 	}
 
 	cmd.Flags().StringVarP(&templateName, "template", "t", "auto",
-		"Framework slug (auto, nextjs, fastapi, go-fiber, …). Run `enclii init --help` to see the full catalog.")
+		"Framework slug (auto, nextjs, fastapi, go-fiber, …). Run 'enclii init --help' to see the full catalog.")
+	cmd.Flags().IntVar(&port, "port", 0,
+		"Container port for spec.runtime.port (default: the template's port, e.g. 3000 for nextjs, 8000 for fastapi)")
 
 	return cmd
 }
 
-func initializeService(serviceName, projectName, templateName string) error {
+// initializeService writes service.yaml. port is the value of --port; 0
+// means "not passed", so the template's idiomatic port is used.
+func initializeService(serviceName, projectName, templateName string, port int) error {
 	fmt.Printf("🚂 Initializing Enclii service '%s'...\n", serviceName)
 
 	// Check if service.yaml already exists
@@ -123,29 +133,10 @@ func initializeService(serviceName, projectName, templateName string) error {
 		},
 	}
 
-	// Customize based on template
-	switch templateName {
-	case "node", "javascript", "typescript":
-		spec.Spec.Runtime.Port = 3000
-		spec.Spec.Env = []types.EnvVar{
-			{Name: "NODE_ENV", Value: "production"},
-			{Name: "PORT", Value: "3000"},
-		}
-	case "go":
-		spec.Spec.Runtime.Port = 8080
-		spec.Spec.Env = []types.EnvVar{
-			{Name: "GO_ENV", Value: "production"},
-			{Name: "PORT", Value: "8080"},
-		}
-	case "python":
-		spec.Spec.Runtime.Port = 8000
-		spec.Spec.Env = []types.EnvVar{
-			{Name: "PYTHONENV", Value: "production"},
-			{Name: "PORT", Value: "8000"},
-		}
-	default:
-		// Auto-detect or use defaults
-		spec.Spec.Runtime.Port = 8080
+	// An explicit --port wins; otherwise keep the template's port from
+	// detectPort. Nothing below may overwrite it.
+	if port != 0 {
+		spec.Spec.Runtime.Port = port
 	}
 
 	// Write service.yaml
