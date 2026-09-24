@@ -1,5 +1,11 @@
 import type { EncliiClient } from '../client';
-import type { CreateProjectRequest, Page, Project } from '../types';
+import type {
+  CreateProjectRequest,
+  Page,
+  Project,
+  UnpagedIterOptions,
+  UnpagedListOptions,
+} from '../types';
 
 export class ProjectsResource {
   constructor(private readonly client: EncliiClient) {}
@@ -9,29 +15,21 @@ export class ProjectsResource {
     return this.client.get<Project>(`/projects/${encodeURIComponent(slug)}`);
   }
 
-  /** List projects accessible to the caller. Cursor-paginated. */
-  async list(
-    options: { limit?: number; cursor?: string } = {},
-  ): Promise<Page<Project>> {
-    const resp = await this.client.get<{
-      projects: Project[];
-      next_cursor?: string | null;
-    }>('/projects', options);
-    return {
-      data: resp.projects ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+  /**
+   * List every project visible to the caller. The endpoint returns all rows
+   * in one response.
+   */
+  async list(_options: UnpagedListOptions = {}): Promise<Page<Project>> {
+    const resp = await this.client.get<{ projects: Project[] | null }>(
+      '/projects',
+    );
+    return { data: resp.projects ?? [], nextCursor: null };
   }
 
-  /**
-   * Iterate over every project lazily. Fetches pages on demand; the entire
-   * set never lives in memory at once.
-   */
-  iter(options: { pageSize?: number } = {}): AsyncIterable<Project> {
-    return this.client.paginate<Project>('/projects', {
-      itemsField: 'projects',
-      pageSize: options.pageSize,
-    });
+  /** Iterate every project (one request; see `list()`). */
+  async *iter(_options: UnpagedIterOptions = {}): AsyncIterable<Project> {
+    const page = await this.list();
+    yield* page.data;
   }
 
   async create(input: CreateProjectRequest): Promise<Project> {

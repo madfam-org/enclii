@@ -10,9 +10,8 @@
  * });
  *
  * const deploy = await enclii.deployments.get('svc_123', 'v42');
- * for await (const entry of enclii.logs.tail('svc_123', { level: 'error' })) {
- *   console.log(entry.timestamp, entry.message);
- * }
+ * const { logs } = await enclii.logs.history('svc_123', { env: 'production' });
+ * console.log(logs);
  * ```
  */
 
@@ -48,6 +47,7 @@ export {
 export type { EncliiErrorContext } from './errors';
 
 export { parseVersionLabel } from './resources/deployments';
+export type { ServiceOperationOptions } from './resources/services';
 export { isTerminal as isCanaryTerminal } from './resources/canary';
 export {
   DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
@@ -56,3 +56,4 @@ export {
 export type { VerifyWebhookSignatureOptions } from './resources/webhooks';
 
 export * from './types';
+export * from './types-ops';

@@ -4,6 +4,7 @@ import {
   jsonResponse,
   newClient,
 } from '../test-helpers';
+import { goDeployment } from '../fixtures';
 
 describe('RollbackResource', () => {
   it('instant() posts to /services/{id}/rollback', async () => {
@@ -30,14 +31,38 @@ describe('RollbackResource', () => {
     expect(out.to_version).toBe(41);
   });
 
-  it('manifest() posts to /deployments/{id}/rollback', async () => {
-    const { fetch, calls } = createStubFetch(
-      () => new Response(null, { status: 204 }),
+  // Contract: RollbackDeployment (deployment_handlers.go) reads no body and
+  // answers {"message", "rolled_back_to": Deployment, "current_deployment": Deployment}.
+  it('manifest() POSTs without a body and returns the rollback result', async () => {
+    const { fetch, calls } = createStubFetch(() =>
+      jsonResponse({
+        message: 'Deployment rolled back successfully',
+        rolled_back_to: goDeployment('dep-prev'),
+        current_deployment: goDeployment('dep-current'),
+      }),
     );
     const client = newClient({ fetch });
-    await client.rollback.manifest('dep-current', { to_release: 'rel-5' });
+    const out = await client.rollback.manifest('dep-current');
+    expect(out.rolled_back_to.id).toBe('dep-prev');
+    expect(out.current_deployment.id).toBe('dep-current');
+    expect(out.message).toMatch(/rolled back/);
     expect(calls[0]!.method).toBe('POST');
-    expect(calls[0]!.url).toContain('/deployments/dep-current/rollback');
-    expect(JSON.parse(calls[0]!.body!)).toEqual({ to_release: 'rel-5' });
+    expect(calls[0]!.url).toBe(
+      'https://api.enclii.test/v1/deployments/dep-current/rollback',
+    );
+    expect(calls[0]!.body).toBeNull();
+  });
+
+  it('manifest() throws instead of ignoring a target argument', async () => {
+    const { fetch, calls } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch });
+    const manifest = client.rollback.manifest as unknown as (
+      id: string,
+      input: unknown,
+    ) => Promise<unknown>;
+    await expect(
+      manifest.call(client.rollback, 'dep-current', { to_release: 'rel-5' }),
+    ).rejects.toThrow(/rollback\.instant/);
+    expect(calls).toHaveLength(0);
   });
 });

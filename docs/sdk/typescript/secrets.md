@@ -11,15 +11,13 @@ tags: [sdk, typescript, secrets, environment-variables]
 
 | Method | Signature | HTTP |
 |--------|-----------|------|
-| `list` | `list(serviceId: string, options?: { limit?: number; cursor?: string }): Promise<Page<EnvVar>>` | `GET /services/{id}/env-vars` |
+| `list` | `list(serviceId: string, options?: { environment_id?: string }): Promise<Page<EnvVar>>` | `GET /services/{id}/env-vars` |
 | `set` | `set(serviceId: string, input: SetEnvVarRequest): Promise<EnvVar>` | `POST /services/{id}/env-vars` |
-| `bulkSet` | `bulkSet(serviceId: string, vars: SetEnvVarRequest[]): Promise<EnvVar[]>` | `POST /services/{id}/env-vars/bulk` |
+| `bulkSet` | `bulkSet(serviceId: string, vars: BulkEnvVar[], options?: { environment_id?: string }): Promise<BulkSetEnvVarsResponse>` | `POST /services/{id}/env-vars/bulk` |
 | `delete` | `delete(serviceId: string, varId: string): Promise<void>` | `DELETE /services/{id}/env-vars/{varId}` |
 | `reveal` | `reveal(serviceId: string, varId: string): Promise<{ key: string; value: string }>` | `POST /services/{id}/env-vars/{varId}/reveal` |
 
-Variables are addressed by ID (`EnvVar.id`), not by key. There is no `get` or `update` method, and no project-level variables.
-
-> **Read the [current API behaviour](#current-api-behaviour) section:** `list()` and `bulkSet()` do not work against the current API.
+Variables are addressed by ID (`EnvVar.id`), not by key. There is no `get` or `update` method, and no project-level variables. The API handlers are in `apps/switchyard-api/internal/api/envvar_handlers.go`.
 
 ## Setup
 
@@ -40,16 +38,19 @@ const v = await enclii.secrets.set(serviceId, {
   value: 'postgres://...',
   is_secret: true,
 });
-console.log(v.id, v.key, v.is_secret);
+console.log(v.id, v.key, v.is_secret, v.value); // value is '••••••••' for secrets
 ```
 
 `SetEnvVarRequest`:
 
-| Field | Type | Required |
-|-------|------|----------|
-| `key` | `string` | yes |
-| `value` | `string` | yes |
-| `is_secret` | `boolean` | no |
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `key` | `string` | yes | Starts with a letter or underscore; letters, digits, and underscores only. |
+| `value` | `string` | yes | |
+| `is_secret` | `boolean` | no | |
+| `environment_id` | `string` | no | UUID of one environment. Omit to apply the variable to every environment. |
+
+Creating a key that already exists fails with `ConflictError`; use `bulkSet()` to upsert.
 
 ## Reveal a secret value
 
@@ -69,43 +70,26 @@ await enclii.secrets.delete(serviceId, varId);
 
 ```typescript
 const { data } = await enclii.secrets.list(serviceId);
+const staging = await enclii.secrets.list(serviceId, { environment_id: stagingEnvId });
 ```
+
+The endpoint returns every variable in one response (`{ environment_variables: [...] }`), so `nextCursor` is always `null`. `environment_id` is sent as a query parameter to narrow the list. Secret values come back masked as `••••••••`.
 
 ## Bulk set
 
 ```typescript
-await enclii.secrets.bulkSet(serviceId, [
+const { count } = await enclii.secrets.bulkSet(serviceId, [
   { key: 'LOG_LEVEL', value: 'info', is_secret: false },
   { key: 'API_KEY', value: '...', is_secret: true },
 ]);
+
+// Scope the whole batch to one environment
+await enclii.secrets.bulkSet(serviceId, [{ key: 'LOG_LEVEL', value: 'debug' }], {
+  environment_id: stagingEnvId,
+});
 ```
 
-## Current API behaviour
-
-Differences between the SDK and the current API (`apps/switchyard-api/internal/api/envvar_handlers.go`):
-
-- **`list()`** reads the array from a response field named `env_vars`, but the API returns it as `environment_variables`. `list()` therefore always returns `data: []`. Until the SDK is fixed, read the endpoint directly:
-
-  ```typescript
-  import type { EnvVar } from '@madfam/enclii-sdk';
-
-  const resp = await enclii.get<{ environment_variables: EnvVar[] }>(
-    `/services/${serviceId}/env-vars`,
-  );
-  ```
-
-- **`bulkSet()`** sends `{ env_vars: [...] }`, but the API requires `{ variables: [...] }` (at least one), so the call fails with `ValidationError`. On success the API returns `{ message, count }`, not the variables. To bulk-upsert today:
-
-  ```typescript
-  await enclii.post(`/services/${serviceId}/env-vars/bulk`, {
-    variables: [
-      { key: 'LOG_LEVEL', value: 'info', is_secret: false },
-      { key: 'API_KEY', value: '...', is_secret: true },
-    ],
-  });
-  ```
-
-- Both the create and bulk endpoints also accept an optional `environment_id` to scope a variable to one environment (unset means all environments). `SetEnvVarRequest` does not declare it.
+`bulkSet()` creates or updates each variable by key. It sends `{ variables: [...], environment_id? }` and resolves to the API's `{ message, count }`; the API does not return the variables, so call `list()` if you need their IDs. It throws a plain `Error` before sending when the batch is empty or has more than 100 entries (the API's limit).
 
 ## Types
 
@@ -113,8 +97,9 @@ Differences between the SDK and the current API (`apps/switchyard-api/internal/a
 interface EnvVar {
   id: UUID;
   service_id: UUID;
+  environment_id?: UUID; // absent when the variable applies to every environment
   key: string;
-  value?: string; // masked or absent for secrets unless revealed
+  value: string;         // '••••••••' when is_secret is true
   is_secret: boolean;
   created_at: ISODateTime;
   updated_at: ISODateTime;
@@ -124,6 +109,14 @@ interface SetEnvVarRequest {
   key: string;
   value: string;
   is_secret?: boolean;
+  environment_id?: string;
+}
+
+type BulkEnvVar = Omit<SetEnvVarRequest, 'environment_id'>;
+
+interface BulkSetEnvVarsResponse {
+  message: string;
+  count: number;
 }
 ```
 

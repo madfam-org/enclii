@@ -25,7 +25,7 @@ yarn add @madfam/enclii-sdk
 ## Requirements
 
 - Node.js 18 or later (`engines.node` is `>=18`), for `fetch` and `SubtleCrypto`, or a modern browser.
-- `logs.tail()` needs a global `WebSocket` (browsers, Node.js 22+). On older Node.js releases use `nodeLogsTail()` from the `@madfam/enclii-sdk/node` subpath, which uses the `ws` package. See [Logs](./logs.md).
+- Live log streaming is split by runtime: `logs.tail()` is for browsers, and Node.js uses `nodeLogsTail()` from the `@madfam/enclii-sdk/node` subpath (the `ws` package). The server requires an allowed `Origin` header, which only a browser or `nodeLogsTail()` with `origin` sends. See [Logs](./logs.md).
 
 ## Quick Start
 
@@ -92,7 +92,7 @@ The client exposes ten resource namespaces. There is no `domains`, `releases`, `
 | `deployments` | [Deployments](./deployments.md) | `get`, `getByVersion`, `list`, `iter`, `latest`, `deploy`, `build`, `listReleases`, `wait` |
 | `rollback` | [Rollback](./rollback.md) | `instant`, `manifest` |
 | `canary` | [Canary](./canary.md) | `start`, `get`, `promote`, `rollback`, `wait` |
-| `logs` | [Logs](./logs.md) | `history`, `iter`, `tail` |
+| `logs` | [Logs](./logs.md) | `history`, `tail` |
 | `secrets` | [Secrets](./secrets.md) | `list`, `set`, `bulkSet`, `delete`, `reveal` |
 | `jobs` | [Jobs](./jobs.md) | `listCron`, `getCron`, `createCron`, `updateCron`, `deleteCron`, `listCronRuns`, `listOneOff`, `createOneOff` |
 | `webhooks` | [Webhooks](./webhooks.md) | `list`, `iter`, `create`, `get`, `update`, `rotateSecret`, `delete`, `test`, `deliveries`, `eventTypes` |
@@ -106,7 +106,7 @@ Other exports from `@madfam/enclii-sdk`:
 - `isCanaryTerminal(state: CanaryRolloutState): boolean`.
 - `verifyWebhookSignature(...)` and `DEFAULT_SIGNATURE_TOLERANCE_SECONDS` (300), for webhook receivers.
 - The auth classes `StaticTokenAuth`, `TokenProviderAuth`, `AnonymousAuth`, and `resolveAuthStrategy`.
-- All error classes and all types from `src/types.ts`.
+- All error classes and all types from `src/types.ts` and `src/types-ops.ts`.
 
 `@madfam/enclii-sdk/node` re-exports all of the above and adds `nodeLogsTail()`.
 
@@ -139,20 +139,28 @@ interface Page<T> {
 }
 ```
 
-They send `limit` and `cursor` as query parameters and read `next_cursor` from the response. The `iter()` methods return an `AsyncIterable<T>` built on `client.paginate()`, which requests one page at a time and stops when `next_cursor` is missing or empty.
+How far a list reaches depends on the endpoint behind it:
+
+| Endpoints | Paging | `nextCursor` | `iter()` |
+|-----------|--------|--------------|----------|
+| `projects.list`, `services.list`, `deployments.list`, `deployments.listReleases`, `webhooks.list`, `secrets.list`, `jobs.listCron` | None: every row in one response | always `null` | one request, yields every row |
+| `jobs.listCronRuns`, `jobs.listOneOff` | None: the API returns only the 50 most recent rows | always `null` | no `iter()` |
+| `audit.list`, `webhooks.deliveries` | `limit`/`offset` on the API | set while pages come back full | `audit.iter()` walks every page |
+
+On the unpaged endpoints the `limit`/`cursor` options (and `pageSize` on `iter()`) are deprecated and not sent. On the paged ones, the SDK sends `cursor` as the API's `offset` and sets `nextCursor` when a page holds as many rows as the `limit` the server applied; treat the cursor as opaque.
 
 ```typescript
-const page = await enclii.projects.list({ limit: 50 });
+const page = await enclii.audit.list({ limit: 100 });
 if (page.nextCursor) {
-  const next = await enclii.projects.list({ limit: 50, cursor: page.nextCursor });
+  const next = await enclii.audit.list({ limit: 100, cursor: page.nextCursor });
 }
 
-for await (const project of enclii.projects.iter({ pageSize: 50 })) {
-  console.log(project.slug);
+for await (const event of enclii.audit.iter({ action: 'deploy' })) {
+  console.log(event.timestamp, event.resource_name);
 }
 ```
 
-> **Current API behaviour:** none of the endpoints that the SDK's list methods call in the current API (`apps/switchyard-api`) return `next_cursor`, so `nextCursor` is always `null` and `iter()` yields only the first response. Most of these endpoints return every row in one response; `GET /activity` and webhook deliveries use `limit`/`offset` paging, which the SDK does not expose.
+`client.paginate()` remains available for endpoints that return a `next_cursor` field; none of the resource methods use it.
 
 ## Retries and timeouts
 
@@ -212,11 +220,11 @@ try {
 }
 ```
 
-Some methods throw a plain `Error` before any request is sent or while polling: `deployments.get()` with an invalid v-label, `deployments.wait()` and `canary.wait()` on timeout or abort, `webhooks.create()` with a non-`https://` URL, and `logs.tail()` when no `WebSocket` is available or the socket errors.
+Some methods throw a plain `Error` before any request is sent, while polling, or while streaming: `deployments.get()` with an invalid v-label; `deployments.wait()` and `canary.wait()` on timeout or abort; `webhooks.create()` with a non-`https://` URL; `audit.list()`, `webhooks.deliveries()`, and `logs.history()` with an out-of-range `limit`/`lines` or a cursor they did not return; `secrets.bulkSet()` with an empty or over-100 batch; `rollback.manifest()` given a target; `logs.tail()` when no `WebSocket` is available or the socket errors; and `nodeLogsTail()` when the server rejects the upgrade with a 4xx status.
 
 ## Types
 
-The hand-written types in `src/types.ts` are exported from the package root and are what the resource methods use. A generated companion, `src/types.generated.ts`, is built from `docs/api/openapi.yaml` with `pnpm generate-types`; it is not re-exported from the package entry points.
+The hand-written types in `src/types.ts` and `src/types-ops.ts` (logs, audit, secrets, jobs) are exported from the package root and are what the resource methods use. A generated companion, `src/types.generated.ts`, is built from `docs/api/openapi.yaml` with `pnpm generate-types`; it is not re-exported from the package entry points.
 
 ## Framework integration
 

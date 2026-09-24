@@ -12,12 +12,12 @@ tags: [sdk, typescript, services]
 | Method | Signature | HTTP |
 |--------|-----------|------|
 | `get` | `get(serviceId: string): Promise<Service>` | `GET /services/{id}` |
-| `list` | `list(projectSlug: string, options?: { limit?: number; cursor?: string }): Promise<Page<Service>>` | `GET /projects/{slug}/services` |
-| `iter` | `iter(projectSlug: string, options?: { pageSize?: number }): AsyncIterable<Service>` | `GET /projects/{slug}/services` |
+| `list` | `list(projectSlug: string): Promise<Page<Service>>` | `GET /projects/{slug}/services` |
+| `iter` | `iter(projectSlug: string): AsyncIterable<Service>` | `GET /projects/{slug}/services` |
 | `create` | `create(projectSlug: string, input: CreateServiceRequest): Promise<Service>` | `POST /projects/{slug}/services` |
 | `delete` | `delete(serviceId: string): Promise<void>` | `DELETE /services/{id}` |
-| `restart` | `restart(serviceId: string, options?: { environment?: string }): Promise<void>` | `POST /services/{id}/restart` |
-| `scale` | `scale(serviceId: string, replicas: number, options?: { environment?: string }): Promise<void>` | `POST /services/{id}/scale` |
+| `restart` | `restart(serviceId: string, options?: ServiceOperationOptions & { reason?: string }): Promise<void>` | `POST /services/{id}/restart` |
+| `scale` | `scale(serviceId: string, replicas: number, options?: ServiceOperationOptions): Promise<void>` | `POST /services/{id}/scale` |
 
 There is no `update`, `deploy`, `rollback`, `listReleases`, `logs`, `streamLogs`, `metrics`, `exec`, or environment-variable method on `services`. The related operations live elsewhere:
 
@@ -61,7 +61,7 @@ for await (const svc of enclii.services.iter('my-project')) {
 }
 ```
 
-See [Pagination](./index.md#pagination) for how `nextCursor` and `iter()` behave against the current API.
+`GET /projects/{slug}/services` returns every service of the project in one response (`{ services }`), so `nextCursor` is `null` and `iter()` makes one request. The deprecated `limit`/`cursor`/`pageSize` options are not sent. See [Pagination](./index.md#pagination).
 
 ## Create a service
 
@@ -96,10 +96,10 @@ The API route requires the admin role.
 ## Restart
 
 ```typescript
-await enclii.services.restart(serviceId);
+await enclii.services.restart(serviceId, { reason: 'pick up rotated config' });
 ```
 
-Resolves to `undefined`. The SDK sends `options` as the request body, so `{ environment: 'staging' }` is sent as `{"environment":"staging"}`.
+Triggers a rolling restart. The request body is `{ env, reason }`; `reason` defaults to `manual-restart` on the server. Resolves to `undefined`.
 
 ## Scale
 
@@ -107,17 +107,22 @@ Resolves to `undefined`. The SDK sends `options` as the request body, so `{ envi
 await enclii.services.scale(serviceId, 3);
 ```
 
-The request body is `{ replicas, ...options }`. Resolves to `undefined`.
+The request body is `{ replicas, env }`. Resolves to `undefined`.
 
-### Current API behaviour for restart and scale
+### Environment and limits
 
-- Both routes require the admin role in the current API.
-- **The `environment` option does not select an environment.** The API reads a field named `env` (default `production`), not `environment`, and uses it only as a label in the audit record and response. The restart or scale itself is applied to the service's workload in the project's namespace (`RollingRestart` / `ScaleDeployment` in `apps/switchyard-api/internal/api/infra_handlers.go`), whatever the option says.
-- The scale endpoint caps `replicas` at 10. `replicas` is a required field, so `0` fails request validation (`ValidationError`).
+Both routes require the admin role (`RestartService` / `ScaleService` in `apps/switchyard-api/internal/api/infra_handlers.go`).
+
+- **`environment` does not select an environment.** The SDK sends it as `env` (the server default is `production`), and the API uses it only as a label in its log, audit record, response, and the `service.scaled` webhook. The restart or scale is applied to the service's workload in the project's namespace, whatever the option says.
+- `scale()` accepts 1 to 10 replicas. The API rejects more than 10, and it also rejects `0` with `ValidationError`: its `replicas` field is marked required, which treats zero as missing. Scaling to zero is not possible through this route.
 
 ## Types
 
 ```typescript
+interface ServiceOperationOptions {
+  environment?: string; // sent as `env`; a label only
+}
+
 type HealthStatus = 'unknown' | 'healthy' | 'unhealthy' | 'degraded';
 
 interface Service {

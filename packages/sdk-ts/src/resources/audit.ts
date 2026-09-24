@@ -1,47 +1,55 @@
 import type { EncliiClient } from '../client';
-import type { AuditEvent, AuditQueryOptions, Page } from '../types';
+import type { Page } from '../types';
+import type { AuditEvent, AuditQueryOptions } from '../types-ops';
+import {
+  assertLimit,
+  nextOffsetCursor,
+  offsetFromCursor,
+} from './offset-paging';
+
+/** Server-side cap on `limit` for `GET /activity` (activity_handlers.go). */
+const MAX_ACTIVITY_LIMIT = 100;
 
 /**
  * Audit / activity event querying.
  *
  * Backed by `/activity` on the API side — every resource mutation (service
  * updates, deploys, rollbacks, secret rotations, webhook CRUD, ...) produces
- * an audit row. Useful for compliance reporting and debugging.
+ * an audit row. The endpoint pages with `limit`/`offset`; the SDK exposes that
+ * as an opaque `cursor`/`nextCursor`.
  */
 export class AuditResource {
   constructor(private readonly client: EncliiClient) {}
 
   async list(options: AuditQueryOptions = {}): Promise<Page<AuditEvent>> {
+    assertLimit('audit.list', options.limit, MAX_ACTIVITY_LIMIT);
     const resp = await this.client.get<{
-      activities: AuditEvent[];
-      next_cursor?: string | null;
+      activities: AuditEvent[] | null;
+      count: number;
+      limit: number;
+      offset: number;
     }>('/activity', {
       action: options.action,
       resource_type: options.resource_type,
       project_id: options.project_id,
       actor_id: options.actor_id,
       limit: options.limit,
-      cursor: options.cursor,
+      offset: offsetFromCursor('audit.list', options.cursor),
     });
-    return {
-      data: resp.activities ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+    const data = resp.activities ?? [];
+    return { data, nextCursor: nextOffsetCursor(data.length, resp) };
   }
 
-  iter(
+  /** Walk every matching event, one page (of `limit`, default 50) at a time. */
+  async *iter(
     options: Omit<AuditQueryOptions, 'cursor'> = {},
   ): AsyncIterable<AuditEvent> {
-    return this.client.paginate<AuditEvent>('/activity', {
-      itemsField: 'activities',
-      query: {
-        action: options.action,
-        resource_type: options.resource_type,
-        project_id: options.project_id,
-        actor_id: options.actor_id,
-      },
-      pageSize: options.limit,
-    });
+    let cursor: string | undefined;
+    do {
+      const page = await this.list({ ...options, cursor });
+      for (const event of page.data) yield event;
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
   }
 
   /** List of action types available for filtering. */

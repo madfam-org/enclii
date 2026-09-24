@@ -1,41 +1,44 @@
 import type { EncliiClient } from '../client';
-import type { EnvVar, Page, SetEnvVarRequest } from '../types';
+import type { Page, UnpagedListOptions } from '../types';
+import type {
+  BulkEnvVar,
+  BulkSetEnvVarsResponse,
+  EnvVar,
+  SetEnvVarRequest,
+} from '../types-ops';
+
+/** Server-side cap on one bulk upsert (envvar_handlers.go BulkUpsertEnvVars). */
+const MAX_BULK_VARIABLES = 100;
 
 /**
- * Service env-vars and secrets (via RFC 0005 bridge).
+ * Service environment variables and secrets
+ * (`apps/switchyard-api/internal/api/envvar_handlers.go`).
  *
- * The Enclii API exposes a bridge to the RFC 0005 Vault for read-back-disabled
- * secret values. Calls here either:
- *   - Create/update an env-var (plaintext or secret marker),
- *   - List env-vars (values elided unless caller has reveal permission),
- *   - Reveal a single secret value (logged for audit).
- *
- * Writing raw secret values through this bridge is expected to be replaced by
- * direct Selva-Vault tooling once RFC 0005 Sprint 3 lands; the API surface
- * will stay the same for consumers.
+ * A variable is plaintext or a secret (`is_secret: true`). List and create
+ * responses mask secret values as `••••••••`; `reveal()` returns the value and
+ * the API records the reveal in its audit trail. Variables are addressed by
+ * ID, not by key.
  */
 export class SecretsResource {
   constructor(private readonly client: EncliiClient) {}
 
-  /** List env-vars for a service. Values are elided for secrets. */
+  /**
+   * List a service's variables. `environment_id` narrows the list to one
+   * environment; the endpoint returns every row in one response.
+   */
   async list(
     serviceId: string,
-    options: { limit?: number; cursor?: string } = {},
+    options: UnpagedListOptions & { environment_id?: string } = {},
   ): Promise<Page<EnvVar>> {
     const resp = await this.client.get<{
-      env_vars: EnvVar[];
-      next_cursor?: string | null;
-    }>(
-      `/services/${encodeURIComponent(serviceId)}/env-vars`,
-      options,
-    );
-    return {
-      data: resp.env_vars ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
+      environment_variables: EnvVar[] | null;
+    }>(`/services/${encodeURIComponent(serviceId)}/env-vars`, {
+      environment_id: options.environment_id,
+    });
+    return { data: resp.environment_variables ?? [], nextCursor: null };
   }
 
-  /** Create or update a single env-var. Set `is_secret: true` for secrets. */
+  /** Create a single variable. Set `is_secret: true` for secrets. */
   async set(serviceId: string, input: SetEnvVarRequest): Promise<EnvVar> {
     return this.client.post<EnvVar>(
       `/services/${encodeURIComponent(serviceId)}/env-vars`,
@@ -43,19 +46,33 @@ export class SecretsResource {
     );
   }
 
-  /** Bulk set — idempotent upsert. */
+  /**
+   * Create or update up to 100 variables by key in one call. `environment_id`
+   * scopes the whole batch (omit for all environments). The API returns only
+   * the number of variables written, not the variables.
+   */
   async bulkSet(
     serviceId: string,
-    vars: SetEnvVarRequest[],
-  ): Promise<EnvVar[]> {
-    const resp = await this.client.post<{ env_vars: EnvVar[] }>(
+    vars: BulkEnvVar[],
+    options: { environment_id?: string } = {},
+  ): Promise<BulkSetEnvVarsResponse> {
+    if (vars.length === 0 || vars.length > MAX_BULK_VARIABLES) {
+      throw new Error(
+        `secrets.bulkSet: expected 1 to ${MAX_BULK_VARIABLES} variables, got ${vars.length}`,
+      );
+    }
+    return this.client.post<BulkSetEnvVarsResponse>(
       `/services/${encodeURIComponent(serviceId)}/env-vars/bulk`,
-      { env_vars: vars },
+      {
+        variables: vars,
+        ...(options.environment_id
+          ? { environment_id: options.environment_id }
+          : {}),
+      },
     );
-    return resp.env_vars ?? [];
   }
 
-  /** Delete an env-var by ID. */
+  /** Delete a variable by ID. */
   async delete(serviceId: string, varId: string): Promise<void> {
     await this.client.del(
       `/services/${encodeURIComponent(serviceId)}/env-vars/${encodeURIComponent(varId)}`,
@@ -64,7 +81,7 @@ export class SecretsResource {
 
   /**
    * Reveal the plaintext value of a secret. The call is logged for audit
-   * and may require elevated permissions.
+   * and requires the developer role.
    */
   async reveal(
     serviceId: string,

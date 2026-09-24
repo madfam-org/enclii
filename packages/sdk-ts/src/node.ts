@@ -1,18 +1,21 @@
 /**
  * Node-only entrypoint for @madfam/enclii-sdk.
  *
- * The browser entry (`@madfam/enclii-sdk`) uses `globalThis.WebSocket` for log
- * streaming — that works in modern browsers and Node ≥22 but throws on older
- * Node releases. This subpath re-exports everything from the main entry and
- * adds a `nodeLogsTail()` helper that uses the `ws` library directly and
- * handles graceful reconnect with exponential backoff.
+ * Re-exports everything from the main entry and adds `nodeLogsTail()`, which
+ * streams `GET /services/{id}/logs/stream` with the `ws` library. Unlike a
+ * browser WebSocket, `ws` can send the `Authorization` header (as the CLI
+ * does) and an explicit `Origin` header, and it reconnects with exponential
+ * backoff.
  *
  * ```ts
  * import { EncliiClient, nodeLogsTail } from '@madfam/enclii-sdk/node';
  *
  * const enclii = new EncliiClient({...});
- * for await (const entry of nodeLogsTail(enclii, 'svc_123', {level: 'error'})) {
- *   console.log(entry.timestamp, entry.message);
+ * for await (const frame of nodeLogsTail(enclii, 'svc_123', {
+ *   env: 'production',
+ *   origin: 'https://app.example.com', // one of the server's allowed WS origins
+ * })) {
+ *   if (frame.type === 'log') console.log(frame.timestamp, frame.message);
  * }
  * ```
  */
@@ -21,7 +24,8 @@ export * from './index';
 
 import WebSocket from 'ws';
 import type { EncliiClient } from './client';
-import type { LogEntry, LogTailOptions } from './types';
+import type { LogStreamMessage, LogTailOptions } from './types-ops';
+import { buildLogStreamUrl, parseLogFrame } from './resources/log-stream';
 
 export interface NodeLogsTailOptions extends LogTailOptions {
   /** Max reconnect attempts before giving up. Defaults to 5. */
@@ -30,139 +34,125 @@ export interface NodeLogsTailOptions extends LogTailOptions {
   initialReconnectMs?: number;
   /** Called once per reconnect attempt for observability. */
   onReconnect?: (attempt: number, reason: string) => void;
-  /** Called when a non-fatal message couldn't be parsed. */
+  /** Called when a frame is not a JSON stream message. */
   onParseError?: (raw: string) => void;
-  /** Bearer token for the WS upgrade (defaults to resolving from the client). */
+  /** Bearer token for the upgrade (defaults to resolving from the client). */
   token?: string;
+  /**
+   * Value of the `Origin` header. The server refuses the upgrade unless this
+   * exactly matches one of its configured WebSocket origins
+   * (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`); without it the upgrade gets 403.
+   */
+  origin?: string;
 }
 
 /**
  * Node-side log streaming with reconnect-on-disconnect.
  *
- * The returned AsyncIterable yields log entries; consumers break the loop to
- * stop streaming. An AbortSignal on `options.signal` also stops streaming.
- * The function reconnects up to `maxReconnects` times on transient
- * disconnects; after that it gives up and completes the iterator.
+ * Yields every frame (`log`, `error`, `info`, `connected`, `disconnected`);
+ * consumers break the loop or abort `options.signal` to stop. A dropped
+ * connection is retried up to `maxReconnects` times, after which the iterator
+ * completes. An upgrade the server rejects with a 4xx status (bad token,
+ * disallowed or missing `Origin`, no access) is not retried: the iterator
+ * throws. Each reconnect replays the server's `lines` backlog.
  */
 export async function* nodeLogsTail(
   client: EncliiClient,
   serviceId: string,
   options: NodeLogsTailOptions = {},
-): AsyncIterable<LogEntry> {
+): AsyncIterable<LogStreamMessage> {
   const maxReconnects = options.maxReconnects ?? 5;
   const initialBackoff = options.initialReconnectMs ?? 1_000;
   let attempt = 0;
-  let closedByCaller = false;
+  let closedByCaller = options.signal?.aborted ?? false;
 
-  options.signal?.addEventListener('abort', () => {
+  let current: WebSocket | null = null;
+  let wake: (() => void) | null = null;
+  const onAbort = () => {
     closedByCaller = true;
-  });
+    current?.close();
+    const w = wake;
+    wake = null;
+    w?.();
+  };
+  options.signal?.addEventListener('abort', onAbort);
 
-  while (!closedByCaller && attempt <= maxReconnects) {
-    const url = buildWsUrl(client, serviceId, options);
-    const token =
-      options.token ??
-      (await (
-        client as unknown as {
-          // Internal — resolve the auth token without re-implementing auth.
-          auth: { getToken(): Promise<string | null | undefined> };
-        }
-      ).auth.getToken());
+  try {
+    while (!closedByCaller) {
+      const url = buildLogStreamUrl(client.baseUrl, serviceId, options);
+      const token = options.token ?? (await client.resolveToken());
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+      const ws = new WebSocket(url, {
+        headers,
+        ...(options.origin ? { origin: options.origin } : {}),
+      });
+      current = ws;
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(url, { headers });
-    } catch (err) {
-      if (attempt >= maxReconnects) throw err;
-      await sleep(backoff(initialBackoff, attempt));
-      attempt++;
-      options.onReconnect?.(attempt, `open failed: ${(err as Error).message}`);
-      continue;
-    }
+      const queue: LogStreamMessage[] = [];
+      let closed = false;
+      let closeReason = 'connection closed';
+      let rejectedStatus: number | null = null;
+      const notify = () => {
+        const w = wake;
+        wake = null;
+        w?.();
+      };
 
-    const queue: LogEntry[] = [];
-    let resolver: ((r: IteratorResult<LogEntry>) => void) | null = null;
-    let closed = false;
-    let closeReason = 'clean';
+      ws.on('unexpected-response', (_req, res) => {
+        rejectedStatus = res.statusCode ?? 0;
+        closeReason = `upgrade rejected with HTTP ${rejectedStatus}`;
+        ws.terminate();
+      });
+      ws.on('message', (data) => {
+        const raw = data.toString();
+        const frame = parseLogFrame(raw);
+        if (frame) queue.push(frame);
+        else options.onParseError?.(raw);
+        notify();
+      });
+      ws.on('error', (err) => {
+        if (rejectedStatus === null) closeReason = `error: ${err.message}`;
+      });
+      ws.on('close', () => {
+        closed = true;
+        notify();
+      });
 
-    ws.on('message', (data) => {
-      const raw = data.toString();
       try {
-        const parsed = JSON.parse(raw) as LogEntry;
-        if (resolver) {
-          const r = resolver;
-          resolver = null;
-          r({ value: parsed, done: false });
-        } else {
-          queue.push(parsed);
+        for (;;) {
+          if (queue.length > 0) {
+            yield queue.shift()!;
+            continue;
+          }
+          if (closed || closedByCaller) break;
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
         }
-      } catch {
-        options.onParseError?.(raw);
-      }
-    });
-    ws.on('error', (err) => {
-      closeReason = `error: ${err.message}`;
-    });
-    ws.on('close', () => {
-      closed = true;
-      if (resolver) {
-        const r = resolver;
-        resolver = null;
-        r({ value: undefined as unknown as LogEntry, done: true });
-      }
-    });
-
-    try {
-      while (!closed || queue.length > 0) {
-        if (closedByCaller) {
-          ws.close();
-          return;
-        }
-        if (queue.length > 0) {
-          yield queue.shift()!;
-          continue;
-        }
-        const next = await new Promise<IteratorResult<LogEntry>>((resolve) => {
-          resolver = resolve;
-        });
-        if (next.done) break;
-        yield next.value;
-      }
-    } finally {
-      try {
+      } finally {
         ws.close();
-      } catch {
-        /* no-op */
       }
-    }
 
-    if (closedByCaller) return;
-    if (attempt >= maxReconnects) {
-      // Exhausted retries; complete the iterator.
-      return;
+      if (closedByCaller) return;
+      const status = rejectedStatus as number | null;
+      if (status !== null && status >= 400 && status < 500) {
+        throw new Error(
+          `nodeLogsTail: ${closeReason} (service ${serviceId}). ` +
+            (status === 403 && !options.origin
+              ? 'The server requires an Origin header from its allowed WebSocket origins; set options.origin.'
+              : 'Check the token, options.origin, and access to the service.'),
+        );
+      }
+      if (attempt >= maxReconnects) return;
+      attempt++;
+      options.onReconnect?.(attempt, closeReason);
+      await sleep(backoff(initialBackoff, attempt));
     }
-    attempt++;
-    options.onReconnect?.(attempt, closeReason);
-    await sleep(backoff(initialBackoff, attempt));
+  } finally {
+    options.signal?.removeEventListener('abort', onAbort);
   }
-}
-
-function buildWsUrl(
-  client: EncliiClient,
-  serviceId: string,
-  options: NodeLogsTailOptions,
-): string {
-  const baseHttp = (client as unknown as { baseUrl: string }).baseUrl;
-  const base = baseHttp.replace(/^http(s?):\/\//, 'ws$1://');
-  const params = new URLSearchParams();
-  if (options.level) params.append('level', String(options.level));
-  if (options.pod) params.append('pod', options.pod);
-  if (options.container) params.append('container', options.container);
-  const qs = params.toString();
-  return `${base}/services/${encodeURIComponent(serviceId)}/logs/stream${qs ? `?${qs}` : ''}`;
 }
 
 function backoff(initial: number, attempt: number): number {

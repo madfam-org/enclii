@@ -12,8 +12,8 @@ tags: [sdk, typescript, projects]
 | Method | Signature | HTTP |
 |--------|-----------|------|
 | `get` | `get(slug: string): Promise<Project>` | `GET /projects/{slug}` |
-| `list` | `list(options?: { limit?: number; cursor?: string }): Promise<Page<Project>>` | `GET /projects` |
-| `iter` | `iter(options?: { pageSize?: number }): AsyncIterable<Project>` | `GET /projects` |
+| `list` | `list(): Promise<Page<Project>>` | `GET /projects` |
+| `iter` | `iter(): AsyncIterable<Project>` | `GET /projects` |
 | `create` | `create(input: CreateProjectRequest): Promise<Project>` | `POST /projects` |
 | `delete` | `delete(slug: string): Promise<void>` | `DELETE /projects/{slug}` |
 
@@ -42,21 +42,17 @@ Throws `NotFoundError` if the slug does not exist or is not visible to the calle
 ## List projects
 
 ```typescript
-const { data, nextCursor } = await enclii.projects.list({ limit: 50 });
+const { data } = await enclii.projects.list();
 for (const p of data) {
   console.log(`${p.slug}\t${p.name}`);
 }
-```
 
-To walk every page lazily:
-
-```typescript
-for await (const p of enclii.projects.iter({ pageSize: 50 })) {
+for await (const p of enclii.projects.iter()) {
   console.log(p.slug);
 }
 ```
 
-See [Pagination](./index.md#pagination) for how `nextCursor` and `iter()` behave against the current API.
+`GET /projects` returns every project visible to the caller in one response (`{ projects }`), so `nextCursor` is `null` and `iter()` makes one request. The deprecated `limit`/`cursor`/`pageSize` options are not sent. See [Pagination](./index.md#pagination).
 
 ## Create a project
 
@@ -73,9 +69,10 @@ const project = await enclii.projects.create({
 |-------|------|----------|
 | `name` | `string` | yes |
 | `slug` | `string` | yes |
-| `ci_runner_mode` | `'github' \| 'self-hosted'` | no |
+| `description` | `string` | no |
+| `ci_runner_mode` | `'github' \| 'self-hosted'` | no; deprecated |
 
-The current API's create handler reads only `name`, `slug`, and `description`; it ignores `ci_runner_mode`. The API route requires the admin role.
+The create handler reads only `name`, `slug`, and `description`. `ci_runner_mode` is deprecated because the handler ignores it; set the runner mode afterwards with `PUT /projects/{slug}/ci-runner-config` (for example through [`client.put()`](./index.md#low-level-requests)). The API route requires the admin role.
 
 ## Delete a project
 

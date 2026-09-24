@@ -1,87 +1,205 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   createStubFetch,
   jsonResponse,
   newClient,
 } from '../test-helpers';
 
-describe('LogsResource', () => {
-  it('history() returns a page with paginated cursor', async () => {
-    const { fetch, calls } = createStubFetch(() =>
-      jsonResponse({
-        logs: [
-          {
-            timestamp: '2026-04-17T00:00:00Z',
-            pod: 'api-0',
-            message: 'hello',
-            level: 'info',
-          },
-        ],
-        next_cursor: 'cur-1',
-      }),
-    );
+/** gin.H written by GetLogsHistory (logs_handlers.go). */
+const historyBody = {
+  service_id: 'svc-1',
+  service_name: 'api',
+  environment: 'production',
+  namespace: 'enclii-acme-production',
+  logs: 'line one\nline two\n',
+  lines: 500,
+};
+
+describe('LogsResource.history', () => {
+  it('sends env/lines/since and returns the raw-text response', async () => {
+    const { fetch, calls } = createStubFetch(() => jsonResponse(historyBody));
     const client = newClient({ fetch });
-    const page = await client.logs.history('svc-1', {
-      level: 'info',
-      limit: 100,
+    const out = await client.logs.history('svc-1', {
+      env: 'production',
+      lines: 500,
+      since: '2026-09-24T00:00:00Z',
     });
-    expect(page.data).toHaveLength(1);
-    expect(page.nextCursor).toBe('cur-1');
-    expect(calls[0]!.url).toContain('/services/svc-1/logs/history');
+    expect(out).toEqual(historyBody);
+    expect(out.logs.split('\n')[0]).toBe('line one');
+    expect(calls[0]!.method).toBe('GET');
     const u = new URL(calls[0]!.url);
-    expect(u.searchParams.get('level')).toBe('info');
-    expect(u.searchParams.get('limit')).toBe('100');
-  });
-
-  it('iter() walks multiple pages', async () => {
-    let page = 0;
-    const { fetch } = createStubFetch(() => {
-      page++;
-      if (page === 1) {
-        return jsonResponse({
-          logs: [
-            {
-              timestamp: '2026-04-17T00:00:00Z',
-              pod: 'api-0',
-              message: 'first',
-            },
-          ],
-          next_cursor: 'c2',
-        });
-      }
-      return jsonResponse({
-        logs: [
-          {
-            timestamp: '2026-04-17T00:00:01Z',
-            pod: 'api-1',
-            message: 'second',
-          },
-        ],
-        next_cursor: null,
-      });
+    expect(u.pathname).toBe('/v1/services/svc-1/logs/history');
+    expect(Object.fromEntries(u.searchParams)).toEqual({
+      env: 'production',
+      lines: '500',
+      since: '2026-09-24T00:00:00Z',
     });
-    const client = newClient({ fetch });
-    const collected: string[] = [];
-    for await (const entry of client.logs.iter('svc-1')) {
-      collected.push(entry.message);
-    }
-    expect(collected).toEqual(['first', 'second']);
   });
 
-  it('tail() throws when no WebSocket implementation is available', async () => {
+  it('sends no query when called without options', async () => {
+    const { fetch, calls } = createStubFetch(() => jsonResponse(historyBody));
+    const client = newClient({ fetch });
+    await client.logs.history('svc-1');
+    expect(new URL(calls[0]!.url).search).toBe('');
+  });
+
+  it('rejects a lines value the API would silently replace', async () => {
+    const { fetch, calls } = createStubFetch(() => jsonResponse(historyBody));
+    const client = newClient({ fetch });
+    await expect(client.logs.history('svc-1', { lines: 0 })).rejects.toThrow(/1 to 10000/);
+    await expect(client.logs.history('svc-1', { lines: 10_001 })).rejects.toThrow(/1 to 10000/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// logs.tail — against a fake browser WebSocket
+// ---------------------------------------------------------------------------
+
+type Listener = (ev: { data?: unknown }) => void;
+
+class FakeBrowserWebSocket {
+  static instances: FakeBrowserWebSocket[] = [];
+  readonly listeners: Record<string, Listener[]> = {};
+  closed = false;
+  constructor(public readonly url: string, ...rest: unknown[]) {
+    // A browser WebSocket takes (url, protocols?) and has no header option.
+    expect(rest).toEqual([]);
+    FakeBrowserWebSocket.instances.push(this);
+  }
+  addEventListener(type: string, fn: Listener) {
+    (this.listeners[type] ??= []).push(fn);
+  }
+  emit(type: string, ev: { data?: unknown } = {}) {
+    for (const fn of this.listeners[type] ?? []) fn(ev);
+  }
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.emit('close');
+  }
+}
+
+const g = globalThis as { WebSocket?: unknown };
+const originalWebSocket = g.WebSocket;
+afterEach(() => {
+  g.WebSocket = originalWebSocket;
+  FakeBrowserWebSocket.instances = [];
+});
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe('LogsResource.tail', () => {
+  it('opens /logs/stream with env/lines/timestamps and ?token=, yielding every frame', async () => {
+    g.WebSocket = FakeBrowserWebSocket;
     const { fetch } = createStubFetch(() => jsonResponse({}));
     const client = newClient({ fetch });
-    // Save and remove WebSocket to simulate an older runtime.
-    const original = (globalThis as { WebSocket?: unknown }).WebSocket;
-    (globalThis as { WebSocket?: unknown }).WebSocket = undefined;
-    try {
-      const iter = client.logs.tail('svc-1');
-      // Error surfaces on the first .next() call
-      await expect(iter[Symbol.asyncIterator]().next()).rejects.toThrow(
-        /WebSocket/,
-      );
-    } finally {
-      (globalThis as { WebSocket?: unknown }).WebSocket = original;
-    }
+    const frames: unknown[] = [];
+    const done = (async () => {
+      for await (const f of client.logs.tail('svc-1', {
+        env: 'production',
+        lines: 50,
+        timestamps: true,
+      })) {
+        frames.push(f);
+      }
+    })();
+    await tick();
+    const ws = FakeBrowserWebSocket.instances[0]!;
+    const u = new URL(ws.url);
+    expect(u.protocol).toBe('wss:');
+    expect(u.host).toBe('api.enclii.test');
+    expect(u.pathname).toBe('/v1/services/svc-1/logs/stream');
+    expect(Object.fromEntries(u.searchParams)).toEqual({
+      env: 'production',
+      lines: '50',
+      timestamps: 'true',
+      token: 'test-token',
+    });
+
+    // Frames shaped like LogStreamMessage in logs_handlers.go.
+    ws.emit('open');
+    ws.emit('message', {
+      data: JSON.stringify({
+        type: 'connected',
+        timestamp: '2026-09-24T12:00:00Z',
+        message: 'Connected to logs for api in enclii-acme-production',
+      }),
+    });
+    ws.emit('message', {
+      data: JSON.stringify({
+        type: 'log',
+        pod: 'api-7d9f',
+        container: 'api',
+        timestamp: '2026-09-24T12:00:01Z',
+        message: 'GET /health 200',
+      }),
+    });
+    ws.emit('message', { data: 'not json' });
+    ws.close();
+    await done;
+    expect(frames).toEqual([
+      {
+        type: 'connected',
+        timestamp: '2026-09-24T12:00:00Z',
+        message: 'Connected to logs for api in enclii-acme-production',
+      },
+      {
+        type: 'log',
+        pod: 'api-7d9f',
+        container: 'api',
+        timestamp: '2026-09-24T12:00:01Z',
+        message: 'GET /health 200',
+      },
+    ]);
+  });
+
+  it('omits the token parameter for anonymous clients', async () => {
+    g.WebSocket = FakeBrowserWebSocket;
+    const { fetch } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch, token: null });
+    const it = client.logs.tail('svc-1')[Symbol.asyncIterator]();
+    const next = it.next();
+    await tick();
+    const ws = FakeBrowserWebSocket.instances[0]!;
+    expect(new URL(ws.url).search).toBe('');
+    ws.close();
+    expect((await next).done).toBe(true);
+  });
+
+  it('throws a handshake error when the upgrade is refused', async () => {
+    g.WebSocket = FakeBrowserWebSocket;
+    const { fetch } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch });
+    const next = client.logs.tail('svc-1')[Symbol.asyncIterator]().next();
+    await tick();
+    const ws = FakeBrowserWebSocket.instances[0]!;
+    ws.emit('error');
+    ws.close();
+    await expect(next).rejects.toThrow(/handshake failed.*Origin/);
+  });
+
+  it('stops on abort', async () => {
+    g.WebSocket = FakeBrowserWebSocket;
+    const { fetch } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch });
+    const abort = new AbortController();
+    const next = client.logs
+      .tail('svc-1', { signal: abort.signal })
+      [Symbol.asyncIterator]()
+      .next();
+    await tick();
+    abort.abort();
+    expect((await next).done).toBe(true);
+    expect(FakeBrowserWebSocket.instances[0]!.closed).toBe(true);
+  });
+
+  it('throws when no WebSocket implementation is available', async () => {
+    g.WebSocket = undefined;
+    const { fetch } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch });
+    await expect(
+      client.logs.tail('svc-1')[Symbol.asyncIterator]().next(),
+    ).rejects.toThrow(/nodeLogsTail/);
   });
 });

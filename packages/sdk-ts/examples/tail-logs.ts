@@ -3,7 +3,10 @@
  * reconnect-with-backoff. Press Ctrl-C to stop.
  *
  * Usage:
- *   ENCLII_TOKEN=... ENCLII_SERVICE_ID=... tsx examples/tail-logs.ts
+ *   ENCLII_TOKEN=... ENCLII_SERVICE_ID=... ENCLII_WS_ORIGIN=... tsx examples/tail-logs.ts
+ *
+ * ENCLII_WS_ORIGIN must be one of the server's allowed WebSocket origins;
+ * the server refuses an upgrade without a matching Origin header.
  */
 
 import { EncliiClient, nodeLogsTail } from '@madfam/enclii-sdk/node';
@@ -25,17 +28,20 @@ async function main() {
     abort.abort();
   });
 
-  for await (const entry of nodeLogsTail(client, serviceId, {
-    level: 'info',
+  for await (const frame of nodeLogsTail(client, serviceId, {
+    env: process.env.ENCLII_ENV ?? 'production',
+    origin: process.env.ENCLII_WS_ORIGIN,
     signal: abort.signal,
     maxReconnects: 10,
     onReconnect: (attempt, reason) => {
       console.error(`[reconnect attempt ${attempt}] ${reason}`);
     },
   })) {
-    const ts = entry.timestamp;
-    const level = entry.level ?? '-';
-    console.log(`${ts} [${level}] ${entry.pod} ${entry.message}`);
+    if (frame.type === 'log') {
+      console.log(`${frame.timestamp} ${frame.pod ?? '-'} ${frame.message}`);
+    } else {
+      console.error(`[${frame.type}] ${frame.message}`);
+    }
   }
 }
 

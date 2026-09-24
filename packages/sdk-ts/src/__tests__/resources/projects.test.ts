@@ -7,21 +7,21 @@ import {
 } from '../test-helpers';
 
 describe('ProjectsResource', () => {
-  it('lists projects with cursor pagination', async () => {
+  // Contract: ListProjects answers {"projects": [...]} with every row.
+  it('lists every project in one request without paging params', async () => {
     const { fetch, calls } = createStubFetch(() =>
       jsonResponse({
         projects: [
           { id: 'p1', name: 'alpha', slug: 'alpha' },
           { id: 'p2', name: 'beta', slug: 'beta' },
         ],
-        next_cursor: 'cur-1',
       }),
     );
     const client = newClient({ fetch });
     const page = await client.projects.list({ limit: 2 });
     expect(page.data).toHaveLength(2);
-    expect(page.nextCursor).toBe('cur-1');
-    expect(calls[0]!.url).toContain('/projects?limit=2');
+    expect(page.nextCursor).toBeNull();
+    expect(calls[0]!.url).toBe('https://api.enclii.test/v1/projects');
   });
 
   it('gets a project by slug and url-encodes special characters', async () => {

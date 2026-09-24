@@ -1,90 +1,93 @@
 import type { EncliiClient } from '../client';
 import type {
-  LogEntry,
+  LogHistory,
   LogHistoryOptions,
+  LogStreamMessage,
   LogTailOptions,
-  Page,
-} from '../types';
+} from '../types-ops';
+import { buildLogStreamUrl, parseLogFrame } from './log-stream';
+
+/** Server-side bound on `lines` for the history endpoint (logs_handlers.go). */
+const MAX_HISTORY_LINES = 10_000;
 
 /**
- * Log retrieval.
+ * Service logs (`apps/switchyard-api/internal/api/logs_handlers.go`).
  *
- * Two variants:
- *   - `history(serviceId, opts)` — synchronous, cursor-paginated. Good for
- *     "give me the last N lines" use cases.
- *   - `tail(serviceId, opts)` — AsyncIterable streaming. Browser-safe via
- *     WebSocket (the platform's `WebSocket` global); for long-running
- *     Node sessions with reconnect backoff, import from
- *     `@madfam/enclii-sdk/node` instead.
+ *   - `history(serviceId, opts)` — one request; returns the recent raw log
+ *     text of the service's pods in one environment.
+ *   - `tail(serviceId, opts)` — live WebSocket stream for **browsers**. It
+ *     authenticates with a `token` query parameter and relies on the browser
+ *     sending the page's `Origin`, which the server must allow. In Node.js use
+ *     `nodeLogsTail` from `@madfam/enclii-sdk/node` instead.
  */
 export class LogsResource {
   constructor(private readonly client: EncliiClient) {}
 
-  /** Fetch historical logs for a service. Cursor-paginated. */
+  /** Fetch recent logs for a service as raw text. */
   async history(
     serviceId: string,
     options: LogHistoryOptions = {},
-  ): Promise<Page<LogEntry>> {
-    const resp = await this.client.get<{
-      logs: LogEntry[];
-      next_cursor?: string | null;
-    }>(`/services/${encodeURIComponent(serviceId)}/logs/history`, {
-      limit: options.limit,
-      level: options.level,
-      since: options.since,
-      until: options.until,
-      cursor: options.cursor,
-    });
-    return {
-      data: resp.logs ?? [],
-      nextCursor: resp.next_cursor ?? null,
-    };
-  }
-
-  /** Iterate every historical log line lazily. */
-  iter(
-    serviceId: string,
-    options: Omit<LogHistoryOptions, 'cursor'> = {},
-  ): AsyncIterable<LogEntry> {
-    return this.client.paginate<LogEntry>(
+  ): Promise<LogHistory> {
+    if (
+      options.lines !== undefined &&
+      (!Number.isInteger(options.lines) ||
+        options.lines < 1 ||
+        options.lines > MAX_HISTORY_LINES)
+    ) {
+      // The API silently replaces an out-of-range value with 100.
+      throw new Error(
+        `logs.history: lines must be an integer from 1 to ${MAX_HISTORY_LINES}`,
+      );
+    }
+    return this.client.get<LogHistory>(
       `/services/${encodeURIComponent(serviceId)}/logs/history`,
-      {
-        itemsField: 'logs',
-        query: {
-          level: options.level,
-          since: options.since,
-          until: options.until,
-        },
-        pageSize: options.limit,
-      },
+      { env: options.env, lines: options.lines, since: options.since },
     );
   }
 
   /**
-   * Tail live logs via WebSocket. AsyncIterable so consumers can use
-   * `for await (const entry of enclii.logs.tail(id)) { ... }`.
+   * Tail live logs over `globalThis.WebSocket`. Yields every frame the server
+   * sends, including the `connected` status frame; filter on
+   * `frame.type === 'log'` for log lines.
    *
-   * Uses `globalThis.WebSocket` — fine in browsers and Node ≥22. For
-   * Node-specific reconnect-with-backoff behavior, import
-   * `nodeLogsTail` from `@madfam/enclii-sdk/node`.
+   * Browser-only in practice: the server refuses an upgrade without an
+   * allowed `Origin` header, and non-browser `WebSocket` implementations
+   * (Node.js 22+, Deno, Bun) send none. The token travels in the URL
+   * (`?token=`) because a browser WebSocket cannot set headers.
    */
   async *tail(
     serviceId: string,
     options: LogTailOptions = {},
-  ): AsyncIterable<LogEntry> {
+  ): AsyncIterable<LogStreamMessage> {
     const WS = (globalThis as { WebSocket?: typeof WebSocket }).WebSocket;
     if (typeof WS !== 'function') {
       throw new Error(
         'logs.tail: no WebSocket implementation found. ' +
-          'In Node < 22 or custom runtimes, import from "@madfam/enclii-sdk/node" instead.',
+          'Outside a browser, use nodeLogsTail from "@madfam/enclii-sdk/node".',
       );
     }
 
-    const url = this.buildStreamUrl(serviceId, options);
+    const token = await this.client.resolveToken();
+    const url = buildLogStreamUrl(
+      this.client.baseUrl,
+      serviceId,
+      options,
+      token,
+    );
+    if (options.signal?.aborted) return;
     const ws = new WS(url);
 
-    // Graceful teardown plumbing.
+    const queue: LogStreamMessage[] = [];
+    let wake: (() => void) | null = null;
+    let opened = false;
     let closed = false;
+    let failure: Error | null = null;
+    const notify = () => {
+      const w = wake;
+      wake = null;
+      w?.();
+    };
+
     const onAbort = () => {
       closed = true;
       try {
@@ -92,85 +95,57 @@ export class LogsResource {
       } catch {
         /* no-op */
       }
+      notify();
     };
-    if (options.signal) {
-      if (options.signal.aborted) onAbort();
-      else options.signal.addEventListener('abort', onAbort);
-    }
+    options.signal?.addEventListener('abort', onAbort);
+
+    ws.addEventListener('open', () => {
+      opened = true;
+    });
+    ws.addEventListener('message', (ev) => {
+      const frame = parseLogFrame(
+        typeof ev.data === 'string' ? ev.data : String(ev.data),
+      );
+      if (frame) {
+        queue.push(frame);
+        notify();
+      }
+    });
+    ws.addEventListener('error', () => {
+      failure = new Error(
+        opened
+          ? `logs.tail: WebSocket error (service ${serviceId})`
+          : `logs.tail: WebSocket handshake failed (service ${serviceId}). ` +
+            'The server refuses the upgrade when the token is missing or invalid, ' +
+            "when the page's Origin is not in its allowed WebSocket origins, " +
+            'or when the caller cannot access the service.',
+      );
+      notify();
+    });
+    ws.addEventListener('close', () => {
+      closed = true;
+      notify();
+    });
 
     try {
-      // Drive a queue from the WS event callbacks.
-      const queue: LogEntry[] = [];
-      let resolver: ((v: IteratorResult<LogEntry>) => void) | null = null;
-      let errored: Error | null = null;
-
-      ws.addEventListener('message', (ev) => {
-        try {
-          const parsed = JSON.parse(
-            typeof ev.data === 'string' ? ev.data : String(ev.data),
-          ) as LogEntry;
-          if (resolver) {
-            const r = resolver;
-            resolver = null;
-            r({ value: parsed, done: false });
-          } else {
-            queue.push(parsed);
-          }
-        } catch {
-          // Ignore malformed frames — platform never sends these but guard anyway.
-        }
-      });
-      ws.addEventListener('error', () => {
-        errored = new Error(`logs.tail: WebSocket error (service ${serviceId})`);
-        if (resolver) {
-          const r = resolver;
-          resolver = null;
-          r({ value: undefined as unknown as LogEntry, done: true });
-        }
-      });
-      ws.addEventListener('close', () => {
-        closed = true;
-        if (resolver) {
-          const r = resolver;
-          resolver = null;
-          r({ value: undefined as unknown as LogEntry, done: true });
-        }
-      });
-
-      while (!closed || queue.length > 0) {
+      for (;;) {
         if (queue.length > 0) {
           yield queue.shift()!;
           continue;
         }
-        const next = await new Promise<IteratorResult<LogEntry>>((resolve) => {
-          resolver = resolve;
+        if (failure && !options.signal?.aborted) throw failure;
+        if (closed) return;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
         });
-        if (next.done) break;
-        yield next.value;
       }
-      if (errored) throw errored;
     } finally {
+      options.signal?.removeEventListener('abort', onAbort);
       try {
         ws.close();
       } catch {
         /* no-op */
       }
-      options.signal?.removeEventListener?.('abort', onAbort);
     }
-  }
-
-  private buildStreamUrl(
-    serviceId: string,
-    options: LogTailOptions,
-  ): string {
-    // Replace http(s) with ws(s) so callers don't have to.
-    const baseHttp = (this.client as unknown as { baseUrl: string }).baseUrl;
-    const base = baseHttp.replace(/^http(s?):\/\//, 'ws$1://');
-    const params = new URLSearchParams();
-    if (options.level) params.append('level', String(options.level));
-    if (options.pod) params.append('pod', options.pod);
-    if (options.container) params.append('container', options.container);
-    const qs = params.toString();
-    return `${base}/services/${encodeURIComponent(serviceId)}/logs/stream${qs ? `?${qs}` : ''}`;
   }
 }

@@ -65,15 +65,64 @@ describe('WebhooksResource', () => {
     expect(out.event_type).toBe('test.ping');
   });
 
-  it('eventTypes() returns the catalogue', async () => {
-    const { fetch } = createStubFetch(() =>
-      jsonResponse({
-        event_types: ['deploy.started', 'deploy.succeeded'],
-      }),
+  // Contract: GetOutboundWebhookEventTypes (outbound_webhook_handlers.go)
+  // serves GET /lifecycle-webhooks/event-types as
+  // {"event_types": [{"type", "description"}]}. /webhooks/event-types is the
+  // unrelated notification-webhook catalogue.
+  it('eventTypes() GETs the lifecycle catalogue and returns its objects', async () => {
+    const catalogue = [
+      { type: 'deploy.started', description: 'A deployment has started' },
+      { type: 'service.scaled', description: 'A service was scaled' },
+    ];
+    const { fetch, calls } = createStubFetch(() =>
+      jsonResponse({ event_types: catalogue }),
     );
     const client = newClient({ fetch });
     const out = await client.webhooks.eventTypes();
-    expect(out).toEqual(['deploy.started', 'deploy.succeeded']);
+    expect(out).toEqual(catalogue);
+    expect(calls[0]!.method).toBe('GET');
+    expect(calls[0]!.url).toBe(
+      'https://api.enclii.test/v1/lifecycle-webhooks/event-types',
+    );
+    expect(calls[0]!.headers['authorization']).toBe('Bearer test-token');
+  });
+
+  // Contract: ListOutboundWebhookDeliveries pages with limit (1-200) and
+  // offset and answers {"deliveries", "limit", "offset"}.
+  it('deliveries() maps cursor to offset and derives nextCursor', async () => {
+    const delivery = (id: string) => ({
+      id,
+      subscription_id: 'sub-1',
+      event_id: `evt-${id}`,
+      event_type: 'deploy.succeeded',
+      payload_sha256: 'abc',
+      attempt_number: 1,
+      status: 'delivered',
+      created_at: '2026-09-20T09:00:00Z',
+    });
+    const { fetch, calls } = createStubFetch((call) => {
+      const offset = Number(new URL(call.url).searchParams.get('offset') ?? '0');
+      const ids = offset === 0 ? ['d1', 'd2'] : ['d3'];
+      return jsonResponse({ deliveries: ids.map(delivery), limit: 2, offset });
+    });
+    const client = newClient({ fetch });
+    const first = await client.webhooks.deliveries('sub-1', { limit: 2 });
+    expect(first.data.map((d) => d.id)).toEqual(['d1', 'd2']);
+    expect(first.nextCursor).toBe('2');
+    const second = await client.webhooks.deliveries('sub-1', {
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    expect(second.data.map((d) => d.id)).toEqual(['d3']);
+    expect(second.nextCursor).toBeNull();
+    const u = new URL(calls[1]!.url);
+    expect(u.pathname).toBe('/v1/lifecycle-webhooks/sub-1/deliveries');
+    expect(u.searchParams.get('limit')).toBe('2');
+    expect(u.searchParams.get('offset')).toBe('2');
+    expect(u.searchParams.has('cursor')).toBe(false);
+    await expect(
+      client.webhooks.deliveries('sub-1', { limit: 201 }),
+    ).rejects.toThrow(/1 to 200/);
   });
 
   it('rotateSecret() returns a new secret', async () => {

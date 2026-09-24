@@ -4,10 +4,10 @@ Official TypeScript SDK for the [Enclii](https://enclii.dev) DevOps platform.
 
 - Type-safe client for the Enclii control plane API
 - Retry with exponential backoff on 429/5xx
-- Cursor pagination as AsyncIterable
+- `list()` returns `{ data, nextCursor }`; `iter()` yields every row as an AsyncIterable
 - Canary, rollback (instant + manifest), v-number lookup
 - Outbound lifecycle webhook subscriptions and signature verification
-- Streaming logs via WebSocket (browser + Node)
+- Streaming logs via WebSocket (`logs.tail` in browsers, `nodeLogsTail` in Node)
 
 ## Install
 
@@ -32,7 +32,7 @@ const enclii = new EncliiClient({
 // Fetch a deployment by Heroku-style v-number
 const dep = await enclii.deployments.get('svc_123', 'v42');
 
-// Cursor-paginated list — iterate over every page lazily
+// Iterate every service of a project
 for await (const svc of enclii.services.iter('my-project')) {
   console.log(svc.name);
 }
@@ -65,7 +65,7 @@ const enclii = new EncliiClient({
 ### Projects
 
 ```ts
-await enclii.projects.list({ limit: 50 });
+await enclii.projects.list(); // every project in one response
 await enclii.projects.get('my-project');
 await enclii.projects.create({ name: 'My Project', slug: 'my-proj' });
 await enclii.projects.delete('old-proj');
@@ -79,7 +79,8 @@ await enclii.services.create('my-project', {
   name: 'api',
   git_repo: 'git@github.com:acme/api.git',
 });
-await enclii.services.restart('svc_123', { environment: 'prod' });
+// Admin role. `environment` is sent as `env` and only labels the audit record.
+await enclii.services.restart('svc_123', { reason: 'config reload' });
 await enclii.services.scale('svc_123', 5);
 ```
 
@@ -113,8 +114,9 @@ await enclii.rollback.instant('svc_123', {
   change_ticket_url: 'https://jira/CHG-123',
 });
 
-// Manifest-commit rollback (slow, ArgoCD reconciles)
-await enclii.rollback.manifest('dep_current', { to_release: 'rel_5' });
+// Roll a deployment back to the service's previous running deployment.
+// The API takes no target; use instant() to choose one.
+const { rolled_back_to } = await enclii.rollback.manifest('dep_current');
 ```
 
 ### Canary (P2.7)
@@ -140,21 +142,23 @@ await enclii.canary.rollback('svc_123', rollout.id, { reason: '5xx spike' });
 ### Logs
 
 ```ts
-// History (cursor-paginated)
-const page = await enclii.logs.history('svc_123', {
-  level: 'error',
-  since: '2026-04-17T00:00:00Z',
-  limit: 200,
+// Recent logs as raw text (one request)
+const { logs } = await enclii.logs.history('svc_123', {
+  env: 'production',
+  lines: 500,
 });
 
-// Live tail (browser / Node ≥22)
-for await (const entry of enclii.logs.tail('svc_123', { level: 'error' })) {
-  console.log(entry.timestamp, entry.message);
+// Live tail in a browser. The token goes in the URL (?token=) and the page's
+// Origin must be one of the server's allowed WebSocket origins.
+for await (const frame of enclii.logs.tail('svc_123', { env: 'production' })) {
+  if (frame.type === 'log') console.log(frame.timestamp, frame.pod, frame.message);
 }
 
-// Node-specific: reconnect with exponential backoff
+// Node: Authorization header, explicit Origin, reconnect with backoff
 import { nodeLogsTail } from '@madfam/enclii-sdk/node';
-for await (const entry of nodeLogsTail(enclii, 'svc_123', {
+for await (const frame of nodeLogsTail(enclii, 'svc_123', {
+  env: 'production',
+  origin: process.env.ENCLII_WS_ORIGIN, // must match an allowed origin
   maxReconnects: 10,
   onReconnect: (n, reason) => console.warn(`reconnect #${n}: ${reason}`),
 })) {
@@ -165,13 +169,11 @@ for await (const entry of nodeLogsTail(enclii, 'svc_123', {
 ### Audit / activity
 
 ```ts
-const events = await enclii.audit.list({
-  project_id: 'proj_123',
-  action: 'deploy.succeeded',
-  limit: 100,
-});
+// One page (limit 1-100, default 50); pass nextCursor back as cursor
+const page = await enclii.audit.list({ action: 'deploy', limit: 100 });
 
-for await (const event of enclii.audit.iter({ resource_type: 'deployment' })) {
+// Every matching event, fetched page by page
+for await (const event of enclii.audit.iter({ resource_type: 'service' })) {
   /* ... */
 }
 ```
@@ -229,10 +231,10 @@ await enclii.secrets.set('svc_123', {
   value: 'postgres://...',
   is_secret: true,
 });
-await enclii.secrets.bulkSet('svc_123', [
+const { count } = await enclii.secrets.bulkSet('svc_123', [
   { key: 'LOG_LEVEL', value: 'info', is_secret: false },
   { key: 'API_KEY', value: '...', is_secret: true },
-]);
+]); // upsert by key; returns { message, count }
 const revealed = await enclii.secrets.reveal('svc_123', 'var_abc');
 ```
 
@@ -292,7 +294,8 @@ try {
 
 ## Type generation from OpenAPI
 
-The SDK ships curated, hand-written types in `src/types.ts`. A fully generated
+The SDK ships curated, hand-written types in `src/types.ts` and
+`src/types-ops.ts`. A fully generated
 companion from `docs/api/openapi.yaml` lives at `src/types.generated.ts` (run
 `pnpm generate-types`). The hand-written types are ergonomic; the generated
 types give full fidelity for edge cases.

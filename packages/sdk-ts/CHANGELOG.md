@@ -2,6 +2,79 @@
 
 All notable changes to `@madfam/enclii-sdk`.
 
+## Unreleased
+
+Aligns the SDK with the Switchyard API (`apps/switchyard-api`) wherever the two
+disagreed. Not yet published; the package version is unchanged.
+
+### Breaking
+
+- `logs.history()` returns `LogHistory` (`{ service_id, service_name,
+  environment, namespace, logs, lines }`, where `logs` is raw text) instead of
+  `Page<LogEntry>`. `LogHistoryOptions` is now `{ env?, lines?, since? }`;
+  `limit`, `level`, `until` and `cursor` are removed (the API never read them).
+  `since` is sent but only honored once the server-side change that adds it
+  deploys.
+- `logs.iter()` is removed: the history endpoint does not page.
+- `logs.tail()` and `nodeLogsTail()` yield `LogStreamMessage` frames
+  (`{ type, pod?, container?, timestamp, message }`, including the `connected`
+  status frame). `LogTailOptions` is now `{ env?, lines?, timestamps?, signal? }`;
+  `level`, `pod` and `container` are removed (the API never read them).
+  `LogEntry` is a deprecated alias of `LogStreamMessage`.
+- `nodeLogsTail()` throws when the server rejects the upgrade with a 4xx status
+  instead of retrying and then completing without output.
+- `secrets.bulkSet()` resolves to `{ message, count }` (was `EnvVar[]`), and its
+  entries are `BulkEnvVar` (no per-variable `environment_id`).
+- `webhooks.eventTypes()` calls `GET /lifecycle-webhooks/event-types` and
+  resolves to `OutboundWebhookEventTypeInfo[]` (`{ type, description }`)
+  instead of `OutboundWebhookEventType[]`.
+- `rollback.manifest()` takes only the deployment ID (a second argument
+  throws) and resolves to `ManifestRollbackResponse` instead of `void`.
+  `RollbackRequest` is removed.
+- `AuditEvent` matches the API's rows: `created_at` and `service_id` are
+  removed; `timestamp`, `actor_role`, `resource_name`, `environment_id`,
+  `ip_address`, `user_agent`, `outcome` and `context` are added.
+- `EnvVar.value` is always present (secrets are masked as `••••••••`).
+
+### Fixed
+
+- `secrets.list()` reads `environment_variables` (always returned `[]`).
+- `secrets.bulkSet()` sends `{ variables }` (failed with 400).
+- `jobs.listOneOff()` reads `one_off_jobs` (always returned `[]`).
+- `jobs.createCron()` / `jobs.createOneOff()` unwrap `cron_job` / `one_off_job`
+  (the returned `id` was `undefined`).
+- `deployments.latest()` unwraps `{ deployment, release }` (fields were
+  `undefined`).
+- `logs.tail()` sends the token as the `token` query parameter the server
+  accepts; `nodeLogsTail()` can send an `Origin` header (`options.origin`).
+- `audit.iter()` walks every page (it stopped after the first 50 rows);
+  `audit.list()` and `webhooks.deliveries()` map `cursor`/`nextCursor` onto the
+  API's `limit`/`offset` paging.
+- `services.restart()` / `services.scale()` send `environment` as `env`, the
+  field the API reads.
+
+### Added
+
+- `secrets.list()` option and `SetEnvVarRequest` field `environment_id`;
+  `secrets.bulkSet()` third argument `{ environment_id }`.
+- `DeployRequest.change_ticket_url`; `environment_name` is optional (the API
+  defaults to `development`).
+- `CreateProjectRequest.description`; `ci_runner_mode` is deprecated (the
+  create endpoint ignores it).
+- `services.restart()` option `reason`.
+- `OneOffJob.failure_reason`.
+- `EncliiClient.resolveToken()`.
+- `audit.list()`, `webhooks.deliveries()` and `logs.history()` reject an
+  out-of-range `limit`/`lines` or a malformed cursor before sending, where the
+  API would silently substitute its default.
+
+### Deprecated
+
+- `limit`/`cursor` on the list methods of endpoints that return every row in
+  one response (`projects`, `services`, `deployments.list`/`listReleases`,
+  `webhooks.list`, `secrets.list`, `jobs.*`), and `pageSize` on their `iter()`.
+  They are no longer sent; `nextCursor` is always `null` there.
+
 ## 0.1.0 - 2026-04-17
 
 Initial release (P2.4a of the Enclii remediation plan).
