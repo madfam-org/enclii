@@ -356,9 +356,7 @@ enclii jobs create --concurrency replace ...
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (invalid schedule, missing flags) |
-| `30` | API request failed |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
 
 ## See Also
 

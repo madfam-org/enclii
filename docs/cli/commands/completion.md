@@ -50,6 +50,14 @@ enclii completion powershell | Out-String | Invoke-Expression       # current se
 enclii completion powershell >> $PROFILE                            # persistent
 ```
 
+### Flags
+
+Each shell subcommand accepts:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--no-descriptions` | bool | `false` | Disable completion descriptions |
+
 ## Examples
 
 ### Install zsh completion (oh-my-zsh)

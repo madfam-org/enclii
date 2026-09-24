@@ -28,8 +28,10 @@ encouraging direct `kubectl`.
 | `enclii ops apps status|sync|sync-sweep|diff|retire|rollback` | Argo app inspection and remediation |
 | `enclii ops pods diagnose|logs|restart` | Pod diagnosis, logs, and safe restarts |
 | `enclii ops jobs list|trigger` | CronJob inspection and audited one-off execution from an existing template |
-| `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile |
+| `enclii ops storage volumes|pvc|longhorn|repair-plan|settings-apply|prune-detached|storageclass-apply|r2-audit` | PVC/PV/Longhorn inspection, repair planning, CPU settings (O-5), orphan prune (O-4), StorageClass reconcile, R2 credential audit (incomplete, shared, or mismatched buckets) |
 | `enclii ops secrets external|vault|refresh|sync|sync-sweep|rotate|vault-backfill` | ExternalSecrets and Vault readiness workflows |
+| `enclii ops secrets provision-kalya-feed` | Server-side kalya standing-feed credential provisioning ([below](#ops-secrets-provision-kalya-feed)) |
+| `enclii ops domains reconcile` | Declared-vs-live hostname reconcile for a service ([below](#ops-domains-reconcile)) |
 | `enclii secrets intake` | Chat-safe operator credential handoff into Vault ([secrets.md](./secrets.md#enclii-secrets-intake)) |
 | `enclii ops policy violations|exceptions|waiver-plan|cosign-enable` | Kyverno policy visibility, waivers, cosign namespace enforce (O-11) |
 | `enclii ops runners arc|drain` | ARC runner-set inspection and drain planning |
@@ -107,7 +109,12 @@ enclii ops domains reconcile nauta-web \
 # Provision ONE hostname, leaving every other declared hostname untouched
 enclii ops domains reconcile nauta-web --domain crea-erp.madfam.io \
   --apply --reason "route the declared ERP host"
+
+# Read enclii.yaml at a specific commit instead of the default branch head
+enclii ops domains reconcile nauta-web --ref 1a2b3c4 --apply --reason "..."
 ```
+
+Besides the shared contract flags (`--apply`, `--reason`, `--idempotency-key`, `--json`, `--namespace`, `--project`, `--service`), it accepts `--domain` (reconcile only this hostname) and `--ref` (git ref to read `enclii.yaml` from; default: the repository's default branch head).
 
 `--domain` is the safe form when only one hostname needs attention. Unlike
 `providers cloudflare tunnels-apply --project X`, which reconciles every
@@ -140,6 +147,15 @@ The token is never returned by the API, never logged, and never reaches the
 machine running the CLI. Idempotent: consumers already carrying this tenant's
 properties are skipped and nothing is minted. `--rotate` is the explicit opt-in
 to replace a live token.
+
+| Flag | Description |
+|------|-------------|
+| `--tenant` | kalya tenant slug (for example `crea`); required |
+| `--consumers` | Consumers to provision: `crea-map`, `nauta` (comma-separated) |
+| `--rotate` | Mint a replacement token even when the consumers are already provisioned |
+| `--kalya-origin` | kalya origin (default: kalya's verified service domain, else `https://kalya.app`) |
+
+It also takes the shared contract flags listed under [Required Mutation Flags](#required-mutation-flags).
 
 `enclii secrets provision kalya-feed` is an alias for the same operation.
 

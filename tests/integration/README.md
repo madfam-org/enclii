@@ -42,7 +42,7 @@ Tests HTTP path-based routing:
 ### Required
 - **Kubernetes cluster**: Kind, Minikube, or cloud cluster
 - **kubectl**: Configured with cluster access
-- **Go 1.21+**: For running tests
+- **Go 1.26+**: For running tests
 - **cert-manager**: For TLS tests (optional but recommended)
 - **nginx-ingress-controller**: For routing tests (optional but recommended)
 

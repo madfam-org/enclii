@@ -25,6 +25,7 @@ Each release shows:
 | `--limit`, `-n` | int | `10` | Number of releases to show |
 | `--all`, `-a` | bool | `false` | Show all releases (overrides `--limit`) |
 | `--id` | string | | Service ID (alternative to service name) |
+| `--project`, `-p` | string | | Project slug for the service-name lookup (defaults to the configured project; searches all projects if unset) |
 
 ## Examples
 
@@ -75,7 +76,7 @@ If the service name is not found, the command prints the available services in t
 | Code | Meaning |
 |------|---------|
 | `0` | Releases listed successfully |
-| `10` | Validation error (missing service name/ID, service not found) |
+| `1` | Any error: invalid arguments or flags, service not found, API errors, or an expired/invalid API token |
 
 ## See Also
 

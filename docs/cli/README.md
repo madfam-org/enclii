@@ -85,11 +85,11 @@ enclii logout
 ## Quick Start
 
 ```bash
-# 1. Initialize a new service
-enclii init --name my-app
+# 1. Initialize a new service (writes service.yaml)
+enclii init my-app
 
-# 2. Deploy to preview environment
-enclii deploy --env preview
+# 2. Deploy to the default dev environment and wait for it
+enclii deploy --wait
 
 # 3. Check deployment status
 enclii ps
@@ -98,7 +98,7 @@ enclii ps
 enclii logs my-app -f
 
 # 5. Deploy to production
-enclii deploy --env production
+enclii deploy --env prod --wait
 ```
 
 ## Commands Overview
@@ -121,11 +121,11 @@ enclii deploy --env production
 | [`deployments`](./commands/deployments.md) | Query deployment runs (alias `deps`) |
 | [`releases`](./commands/releases.md) | List releases (build artifacts) for a service |
 | [`ps`](./commands/ps.md) | List services and their status |
-| [`logs`](./commands/logs.md) | Stream or fetch service logs |
+| [`logs`](./commands/logs.md) | Show or stream service logs |
 | [`rollback`](./commands/rollback.md) | Rollback to a previous deployment |
 | [`canary`](./commands/canary.md) | Manage in-flight canary rollouts |
 | [`services-delete`](./commands/services-delete.md) | Delete a service from a project |
-| [`services-sync`](./commands/services-sync.md) | Synchronize service configuration |
+| [`services-sync`](./commands/services-sync.md) | Sync service definitions from YAML files |
 | [`onboard`](./commands/onboard.md) | Onboard a new project with full provisioning |
 | [`tenant`](./commands/tenant.md) | Provision a whole client from one manifest (design preview; validates + plans, does not execute) |
 
@@ -163,9 +163,10 @@ enclii deploy --env production
 |---------|-------------|
 | [`admin`](./commands/admin.md) | Platform operator commands (mirrors admin-console portal) |
 | [`ops`](./commands/ops.md) | Audited Kubernetes, Argo, Longhorn, Kyverno, ARC replacement workflows |
-| [`providers`](./commands/providers.md) | Audited GitHub, Cloudflare, Porkbun, and Hetzner replacement workflows |
+| [`providers`](./commands/providers.md) | Audited GitHub, Cloudflare, Porkbun, Hetzner, and Resend replacement workflows |
 | [`vault`](./commands/vault.md) | Inspect cluster Vault deployment |
 | [`db`](./commands/db.md) | Inspect the platform database (read-only WAL status) |
+| `quote-flow` | Verify the Selva -> Yantra4D -> Cotiza -> ForgeSight quote path (`quote-flow verify`); see the [Quote Flow Doctor runbook](../runbooks/QUOTE_FLOW_DOCTOR.md) |
 
 ### Local & meta
 | Command | Description |
@@ -229,27 +230,31 @@ Tokens are auto-refreshed on the next CLI invocation when within 60 seconds of e
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `10` | Validation error (invalid input) |
-| `20` | Build failed |
-| `30` | Deployment failed |
-| `40` | Timeout |
-| `50` | Authentication error |
+| `1` | Any other error, including missing arguments, unknown flags, API errors, and an expired or invalid API token (run `enclii login` again) |
+| `10` | Validation error raised by the command itself (for example a required flag or `--force` missing), or an invalid `--profile` name |
+| `20` | Build failed (`deploy`) |
+| `30` | Deployment failed (`deploy`, `rollback`, and `canary promote`/`rollback` requests) |
+| `40` | Timeout (`deploy` build/deploy waits, `login` callback wait) |
+| `50` | Authentication failed during `enclii login` |
+
+Each command page lists the codes that command can return.
 
 ## Examples
 
-### Deploy with Canary Strategy
+### Deploy as a Canary
 ```bash
-enclii deploy --env production --strategy canary --canary-percent 10
+enclii deploy --env prod --canary 10 --change-ticket https://tracker.example.com/CHG-1234
 ```
 
-### View Logs with Filtering
+### View Recent Logs and Filter
 ```bash
-enclii logs my-app --since 1h --level error -f
+enclii logs my-app --since 1h | grep -i error
 ```
 
-### Rollback to Previous Version
+### Rollback to a Specific Deployment
 ```bash
-enclii rollback my-app --to-revision 5
+enclii deploy ls my-app
+enclii rollback my-app v5
 ```
 
 ### Local Development

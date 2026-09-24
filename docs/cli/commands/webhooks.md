@@ -164,8 +164,8 @@ enclii webhooks delete sub_a1b2c3d4 --force
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing URL, invalid events list, non-https URL) |
-| `50` | Authentication error |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
+| `10` | Validation error (missing `--project` or `--url`, unknown event type, non-https URL, delete without `--force`) |
 
 ## See Also
 

@@ -308,8 +308,7 @@ enclii functions delete hello --force
 | Code | Meaning |
 |------|---------|
 | `0` | Command successful |
-| `10` | Validation error (missing `functions/` directory, undetected runtime, invalid config) |
-| `30` | API operation failed (create, invoke, delete) |
+| `1` | Any error: invalid arguments or flags, a missing `functions/` directory or undetected runtime, API errors, or an expired/invalid API token |
 
 ## See Also
 

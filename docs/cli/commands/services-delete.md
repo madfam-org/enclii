@@ -104,9 +104,7 @@ enclii services-delete --project enclii --name janua-api
 | Code | Meaning |
 |------|---------|
 | `0` | Service deleted successfully, or deletion cancelled by user |
-| `10` | Validation error (missing required flags) |
-| `30` | Deletion failed (API error, service not found) |
-| `50` | Authentication error (invalid or missing API token) |
+| `1` | Any error: invalid arguments or flags, API errors (for example service not found), or an expired/invalid API token |
 
 ## See Also
 

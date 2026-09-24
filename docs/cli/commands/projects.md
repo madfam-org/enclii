@@ -111,6 +111,20 @@ Requires **admin** API token (`POST /v1/admin/projects/:slug/reconcile-services`
 |------|------|---------|-------------|
 | `--json` | bool | `false` | Emit machine-readable JSON |
 
+### `set-team`
+
+Assign a project to a team so it belongs to that tenant, which onboarding a client's app under their team requires. Admin only.
+
+```bash
+enclii projects set-team <project-slug> --team <team-slug>
+enclii projects set-team <project-slug> --unparent
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--team` | string | | Team slug to parent the project under |
+| `--unparent` | bool | `false` | Un-parent the project (back to personal) |
+
 ## Examples
 
 ### List all projects
@@ -191,8 +205,7 @@ enclii projects reconcile-services blueprint-harvester
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing slug, invalid name) |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
 
 ## See Also
 

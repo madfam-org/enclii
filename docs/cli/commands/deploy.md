@@ -1,110 +1,99 @@
 # enclii deploy
 
-Deploy a service to an environment.
+Build and deploy a service to an environment, optionally as a canary.
 
 ## Synopsis
 
 ```bash
 enclii deploy [flags]
+enclii deploy ls [service] [flags]
+enclii deploy show <v{n}|uuid> [service]
 ```
 
 ## Description
 
-The `deploy` command builds and deploys your service to the specified environment. It reads the `enclii.yaml` configuration, triggers a build, creates a release, and deploys to the target environment with the specified strategy.
+`enclii deploy` builds the service described by the current directory's `service.yaml` (or the file passed with `--file`) at the current git commit and deploys it to the target environment.
+
+The flow is:
+
+1. Read the git commit of the working directory (the command must run inside a git repository).
+2. Parse the service spec (`service.yaml` by default).
+3. Ensure the project, the service, and the target environment exist, creating them if they do not.
+4. Trigger a build for the commit and wait for it to finish (build timeout: 10 minutes).
+5. Deploy the resulting release to the environment with a rolling update.
+6. With `--wait`, poll until the deployment is healthy (deploy timeout: 5 minutes). Without it, the command returns as soon as the deployment is initiated and prints the `enclii logs <service> -f` command to follow it.
+
+The default strategy is a rolling update. Pass `--canary` to run a canary rollout instead (see [Canary deploys](#canary-deploys)). There are no `--strategy`, `--release`, `--skip-build`, `--timeout`, `--message`, or `--dry-run` flags.
 
 ## Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--env`, `-e` | string | `preview` | Target environment: `preview`, `staging`, `production` |
-| `--strategy` | string | `rolling` | Deployment strategy: `rolling`, `blue-green`, `canary` |
-| `--canary-percent` | int | `10` | Initial traffic percentage for canary deployments |
-| `--wait`, `-w` | bool | `true` | Wait for deployment to complete |
-| `--timeout` | duration | `10m` | Deployment timeout |
-| `--skip-build` | bool | `false` | Use existing release (requires `--release`) |
-| `--release` | string | | Specific release ID to deploy |
-| `--message`, `-m` | string | | Deployment message/description |
-| `--dry-run` | bool | `false` | Validate without deploying |
+| `--env`, `-e` | string | `dev` | Environment to deploy to (for example `dev`, `staging`, `prod`). Created if it does not exist. |
+| `--file`, `-f` | string | `service.yaml` | Path to the service spec file |
+| `--wait`, `-w` | bool | `false` | Wait for the deployment to complete |
+| `--canary` | string | | Deploy as a canary at this traffic percentage (`20%` or `20`). Range 5-50. |
+| `--validation-window` | string | `10m` | How long the canary must stay healthy before auto-promote (for example `10m`, `30m`) |
+| `--smoke-endpoint` | string | | Optional http(s) URL probed during canary validation (HTTP 200 = healthy) |
+| `--change-ticket` | string | | Change ticket URL (required for production canary rollouts) |
+
+Note that `-f` is `--file` here, not "follow". To follow a deployment's logs, use [`enclii logs <service> -f`](./logs.md).
+
+## Subcommands
+
+### `ls`
+
+List a service's deployment history with Heroku-style v-numbers. Output columns: version, status, deployment id (short), created-at. If `service` is omitted, the service from this directory's `service.yaml` is used.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit`, `-n` | int | `20` | Maximum number of deployments to show |
+
+### `show`
+
+Show one deployment. The target is either a v-number (`v42`, which requires the `service` argument) or a full deployment UUID (`service` optional). Prints the deployment's id, status, health, replicas, release, environment, and creation time.
 
 ## Examples
 
-### Deploy to Preview
+### Deploy to the default (`dev`) environment
+
 ```bash
 enclii deploy
-# Deploys to preview environment with rolling strategy
 ```
 
-### Deploy to Production with Canary
-```bash
-enclii deploy --env production --strategy canary --canary-percent 5
-```
-
-**Output:**
-```
-Building service...
-  Detected: Node.js (nixpacks)
-  Building: ████████████████████ 100%
-  Image: ghcr.io/acme/api:v1.2.3
-
-Creating release...
-  Release: rel_abc123
-  Commit:  a1b2c3d (feat: add user endpoint)
-  SBOM:    generated
-
-Deploying to production...
-  Strategy: canary (5% initial traffic)
-  Progress: ████████████████████ 100%
-
-Deployment successful!
-  URL:     https://api.acme.com
-  Release: rel_abc123
-  Status:  healthy (5% traffic)
-
-Next: Monitor metrics, then run:
-  enclii deploy --env production --release rel_abc123 --canary-percent 100
-```
-
-### Blue-Green Deployment
-```bash
-enclii deploy --env staging --strategy blue-green
-```
-
-### Deploy Specific Release
-```bash
-enclii deploy --env production --skip-build --release rel_abc123
-```
-
-### Dry Run (Validate Only)
-```bash
-enclii deploy --env production --dry-run
-```
-
-## Deployment Strategies
-
-### Rolling (Default)
-Gradually replaces old instances with new ones. Zero downtime, but both versions run briefly during transition.
+### Deploy to staging and wait for it to become healthy
 
 ```bash
-enclii deploy --strategy rolling
+enclii deploy --env staging --wait
 ```
 
-### Blue-Green
-Deploys to inactive environment, then switches traffic atomically. Instant rollback capability.
+### Deploy a spec that is not in the current directory
 
 ```bash
-enclii deploy --strategy blue-green
+enclii deploy -f services/api/service.yaml --env staging
 ```
 
-### Canary
-Routes a percentage of traffic to new version. Gradually increase if metrics are healthy.
+### Canary deploy to production
 
 ```bash
-# Initial canary deployment
-enclii deploy --strategy canary --canary-percent 10
-
-# Promote to full traffic after validation
-enclii deploy --release rel_abc123 --canary-percent 100
+enclii deploy --env prod --canary 10 --validation-window 30m \
+  --change-ticket https://tracker.example.com/CHG-1234
 ```
+
+### Inspect deployment history
+
+```bash
+enclii deploy ls api --limit 5
+enclii deploy show v42 api
+```
+
+## Canary deploys
+
+With `--canary N`, the command builds a fresh release, then starts a canary rollout that routes N% of traffic to the new digest by replica proportion. It holds for the validation window, then auto-promotes if healthy or auto-rolls-back if not. The command tails the rollout until it reaches a terminal state and exits non-zero (code `30`) if the canary is rolled back or fails.
+
+Constraints reported by the CLI: the percentage must be between 5 and 50, the service needs at least 2 replicas, and StatefulSets are not supported.
+
+Use [`enclii canary`](./canary.md) to inspect, promote, or abort a running rollout.
 
 ## Build Process
 
@@ -118,15 +107,18 @@ enclii deploy --release rel_abc123 --canary-percent 100
 
 | Code | Meaning |
 |------|---------|
-| `0` | Deployment successful |
-| `10` | Validation error (invalid config) |
+| `0` | Deployment successful (or initiated, without `--wait`) |
+| `1` | Other error (for example not in a git repository, or the spec file could not be parsed) |
+| `10` | Validation error (invalid `--canary` percentage or `--validation-window`) |
 | `20` | Build failed |
-| `30` | Deployment failed |
-| `40` | Timeout |
+| `30` | Deployment failed, or the canary was rolled back / failed |
+| `40` | Timeout (build after 10 minutes, deployment after 5 minutes) |
 
 ## See Also
 
-- [`enclii rollback`](./rollback.md) - Revert deployment
-- [`enclii ps`](./ps.md) - Check deployment status
-- [`enclii logs`](./logs.md) - View deployment logs
-- [Service Spec Reference](../../reference/service-spec.md) — deployment strategy configuration
+- [`enclii canary`](./canary.md) - Inspect, promote, or abort a canary rollout
+- [`enclii rollback`](./rollback.md) - Revert a deployment
+- [`enclii deployments`](./deployments.md) - Query deployment runs across services
+- [`enclii ps`](./ps.md) - Check service status
+- [`enclii logs`](./logs.md) - View service logs
+- [Service Spec Reference](../../reference/service-spec.md) — service configuration

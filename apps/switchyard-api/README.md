@@ -51,7 +51,7 @@ Switchyard is the core API that powers the Enclii platform. It manages:
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.26+
 - PostgreSQL 15+
 - Redis 7+
 

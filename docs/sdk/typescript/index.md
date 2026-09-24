@@ -7,212 +7,152 @@ tags: [sdk, typescript, javascript, api]
 
 # Enclii TypeScript SDK
 
-The official TypeScript/JavaScript SDK for interacting with the Enclii API.
+The official TypeScript/JavaScript SDK for the Enclii control-plane API, published as `@madfam/enclii-sdk` (source: `packages/sdk-ts`).
 
 ## Installation
 
 ```bash
+# pnpm
+pnpm add @madfam/enclii-sdk
+
 # npm
-npm install @enclii/sdk
+npm install @madfam/enclii-sdk
 
 # yarn
-yarn add @enclii/sdk
-
-# pnpm
-pnpm add @enclii/sdk
+yarn add @madfam/enclii-sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import { EncliiClient } from '@enclii/sdk';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-// Initialize the client
 const enclii = new EncliiClient({
-  apiKey: process.env.ENCLII_API_KEY,
+  baseUrl: 'https://api.enclii.dev/v1', // required; must include /v1
+  token: process.env.ENCLII_API_TOKEN,  // personal API token or OIDC access token
 });
 
 // List your projects
 const projects = await enclii.projects.list();
-console.log(projects);
 
-// Deploy a service
-const deployment = await enclii.services.deploy('service-id', {
-  environment: 'production',
-});
-console.log(`Deployment started: ${deployment.id}`);
+// Fetch a deployment by Heroku-style v-number
+const dep = await enclii.deployments.get('svc_123', 'v42');
+
+// Iterate every service in a project, page by page
+for await (const svc of enclii.services.iter('my-project')) {
+  console.log(svc.name);
+}
 ```
 
 ## Requirements
 
-- Node.js 18+ or compatible runtime (Deno, Bun)
-- TypeScript 5.0+ (for TypeScript users)
+- Node.js 18+ (for `fetch` and `SubtleCrypto`), or a modern browser. Log streaming through the `@madfam/enclii-sdk/node` subpath is Node-only.
 
-## Features
+## Authentication
 
-- **Full API Coverage**: All Enclii API endpoints
-- **TypeScript First**: Complete type definitions
-- **Modern**: ESM and CommonJS support
-- **Lightweight**: Zero runtime dependencies
-- **Tree-shakeable**: Only bundle what you use
+The SDK has a single `token` option, sent as `Authorization: Bearer <token>`. It accepts a string, an async function called before every request, or an `AuthStrategy` object. Use a personal API token from [`enclii tokens create`](../../cli/commands/tokens.md) for automation, or the signed-in user's OIDC access token in user-facing apps. The SDK does not read environment variables by itself.
 
-## Authentication Methods
+See the [Authentication Guide](./authentication) for details.
 
-The SDK supports multiple authentication methods:
+## Resources
 
-### API Key (Recommended for CI/CD)
+The client exposes these resource namespaces: `projects`, `services`, `deployments`, `rollback`, `canary`, `logs`, `audit`, `webhooks`, `secrets`, and `jobs`. There is no `domains` or `apiKeys` resource.
 
-```typescript
-const enclii = new EncliiClient({
-  apiKey: 'ek_live_xxx...',
-});
-```
+| Page | Covers |
+|------|--------|
+| [Projects](./projects) | Projects |
+| [Services](./services) | Services |
+| [Deployments](./deployments) | Deployments |
+| [Domains](./domains) | Custom domains |
 
-### Access Token (For user sessions)
-
-```typescript
-const enclii = new EncliiClient({
-  accessToken: 'eyJhbG...',
-});
-```
-
-### Custom Token Provider
-
-```typescript
-const enclii = new EncliiClient({
-  tokenProvider: async () => {
-    // Return fresh token
-    return getTokenFromStore();
-  },
-});
-```
-
-See [Authentication Guide](./authentication) for more details.
-
-## SDK Modules
-
-| Module | Description |
-|--------|-------------|
-| [Projects](./projects) | Create and manage projects |
-| [Services](./services) | Manage services and configurations |
-| [Deployments](./deployments) | Deploy and monitor deployments |
-| [Domains](./domains) | Configure custom domains |
+> The four module pages above were written against an earlier API sketch and still show methods the 0.1.0 SDK does not have (for example `services.deploy`, `projects.setVariable`, and the whole `domains` resource). Until they are rewritten, use the method list in `packages/sdk-ts/README.md` and the type definitions shipped with the package as the reference.
 
 ## Error Handling
 
+Failed requests throw typed errors. Check them with `instanceof`:
+
 ```typescript
-import { EncliiClient, EncliiError, RateLimitError } from '@enclii/sdk';
+import {
+  EncliiError,
+  AuthenticationError,
+  NotFoundError,
+  RateLimitError,
+} from '@madfam/enclii-sdk';
 
 try {
-  const project = await enclii.projects.get('invalid-id');
-} catch (error) {
-  if (error instanceof RateLimitError) {
-    // Wait and retry
-    await sleep(error.retryAfter * 1000);
-    return retry();
+  await enclii.projects.get('missing-project');
+} catch (err) {
+  if (err instanceof RateLimitError) {
+    console.warn(`Rate limited; retry after ${err.retryAfterSeconds ?? '?'}s`);
+  } else if (err instanceof NotFoundError) {
+    console.warn('No such project');
+  } else if (err instanceof EncliiError) {
+    console.error(`${err.method} ${err.path} -> ${err.status}: ${err.message}`);
+    console.error(`Request ID: ${err.requestId}`);
+  } else {
+    throw err;
   }
-
-  if (error instanceof EncliiError) {
-    console.error(`API Error: ${error.code} - ${error.message}`);
-    console.error(`Request ID: ${error.requestId}`);
-  }
-
-  throw error;
 }
 ```
+
+Status mapping: 400/422 `ValidationError`, 401 `AuthenticationError`, 403 `AuthorizationError`, 404 `NotFoundError`, 409 `ConflictError`, 429 `RateLimitError`, 5xx `ServerError`. The client already retries 429 and 5xx responses with exponential backoff before throwing.
 
 ## Configuration Options
 
 ```typescript
 const enclii = new EncliiClient({
-  // Authentication (one required)
-  apiKey: 'ek_live_xxx',
-  accessToken: 'eyJhbG...',
-  tokenProvider: async () => 'token',
+  baseUrl: 'https://api.enclii.dev/v1', // required, includes /v1
 
-  // Optional settings
-  baseUrl: 'https://api.enclii.dev',  // Default
-  timeout: 30000,                      // 30 seconds
-  retries: 3,                          // Automatic retries
+  // Bearer token: string, async provider, or AuthStrategy; omit for anonymous
+  token: process.env.ENCLII_API_TOKEN,
 
-  // Hooks
-  onRequest: (config) => {
-    console.log(`Request: ${config.method} ${config.url}`);
+  // Retries on 429/5xx (these are the defaults)
+  retry: {
+    maxAttempts: 3,
+    initialDelayMs: 250,
+    backoffFactor: 2,
+    maxDelayMs: 10_000,
   },
-  onResponse: (response) => {
-    console.log(`Response: ${response.status}`);
-  },
-  onError: (error) => {
-    console.error(`Error: ${error.message}`);
-  },
+  timeoutMs: 30_000,                        // default
+  defaultHeaders: { 'x-client': 'my-app' }, // added to every request
+  // fetch: customFetch,                    // defaults to globalThis.fetch
+  // userAgent: 'my-app/1.0',               // defaults to @madfam/enclii-sdk/<version>
 });
 ```
 
-## Environment Variables
-
-The SDK automatically reads these environment variables:
-
-| Variable | Purpose |
-|----------|---------|
-| `ENCLII_API_KEY` | API key for authentication |
-| `ENCLII_API_URL` | Custom API endpoint |
-| `ENCLII_DEBUG` | Enable debug logging |
-
-```typescript
-// Uses ENCLII_API_KEY automatically
-const enclii = new EncliiClient();
-```
+There are no `apiKey`, `accessToken`, `tokenProvider`, `timeout`, `retries`, or `onRequest`/`onResponse`/`onError` options.
 
 ## Framework Integration
 
-### Next.js
+### Next.js route handler
 
 ```typescript
 // lib/enclii.ts
-import { EncliiClient } from '@enclii/sdk';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
 export const enclii = new EncliiClient({
-  apiKey: process.env.ENCLII_API_KEY,
+  baseUrl: process.env.ENCLII_BASE_URL!, // e.g. https://api.enclii.dev/v1
+  token: process.env.ENCLII_API_TOKEN,
 });
 
-// app/api/deploy/route.ts
+// app/api/projects/route.ts
 import { enclii } from '@/lib/enclii';
 
-export async function POST(request: Request) {
-  const { serviceId } = await request.json();
-  const deployment = await enclii.services.deploy(serviceId);
-  return Response.json(deployment);
+export async function GET() {
+  return Response.json(await enclii.projects.list());
 }
 ```
 
-### Express
-
-```typescript
-import express from 'express';
-import { EncliiClient } from '@enclii/sdk';
-
-const app = express();
-const enclii = new EncliiClient();
-
-app.get('/projects', async (req, res) => {
-  const projects = await enclii.projects.list();
-  res.json(projects);
-});
-```
+`ENCLII_BASE_URL` and `ENCLII_API_TOKEN` here are your application's own variables; the SDK only sees the values you pass.
 
 ### GitHub Actions
 
-```yaml
-- name: Deploy to Enclii
-  env:
-    ENCLII_API_KEY: ${{ secrets.ENCLII_API_KEY }}
-  run: |
-    npx @enclii/sdk deploy --service my-service
-```
+The SDK is a library, not a command-line tool: there is no `npx @madfam/enclii-sdk deploy`. From CI, call it from a script (see the [CI/CD example](./authentication#cicd-github-actions)) or use the [`enclii` CLI](/cli/).
 
 ## Related Documentation
 
+- **Package README**: `packages/sdk-ts/README.md` (full method list)
 - **API Reference**: [OpenAPI Docs](/api-reference/)
 - **Authentication**: [Auth Guide](./authentication)
-- **Go SDK**: [Go SDK](https://github.com/madfam-io/enclii/tree/main/packages/sdk-go)
+- **Go SDK**: [Go SDK](https://github.com/madfam-org/enclii/tree/main/packages/sdk-go)
 - **CLI**: [CLI Reference](/cli/)

@@ -6,7 +6,7 @@ Export everything Enclii holds about your project.
 
 ```bash
 enclii export --project <slug> [--wait --out <path>]
-enclii export <list|status|download> [flags]
+enclii export <list|status|download|approve> [flags]
 ```
 
 ## Description
@@ -68,6 +68,14 @@ enclii export download <export_id> [flags]
 |------|------|---------|-------------|
 | `--out` | string | `./<export_id>.tar.gz` | Target path |
 
+### `approve`
+
+Approve a pending production export as the second project admin (the HITL approver). It can also be approved from the dashboard. On success it prints `Export <export_id> approved.`
+
+```bash
+enclii export approve <export_id>
+```
+
 ## Examples
 
 ### Initiate an export, return immediately
@@ -116,9 +124,7 @@ enclii export download exp_abc123 --out acme.tar.gz
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing project, invalid export id) |
-| `40` | Timeout waiting for export to become ready (`--wait`) |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags, API errors, timing out while waiting with `--wait`, or an expired/invalid API token |
 
 ## See Also
 

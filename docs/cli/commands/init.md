@@ -5,101 +5,90 @@ Initialize a new service configuration.
 ## Synopsis
 
 ```bash
-enclii init [flags]
+enclii init [name] [flags]
 ```
 
 ## Description
 
-The `init` command scaffolds a new Enclii service configuration file (`enclii.yaml`) in the current directory. It auto-detects the project type (Node.js, Go, Python, etc.) and generates appropriate defaults for build, runtime, and health check settings.
+The `init` command writes a starter `service.yaml` in the current directory. The service name (and, for now, the project name) is the `name` argument, or the current directory's name when it is omitted. The command fails if `service.yaml` already exists; there is no overwrite flag.
+
+`init` does not inspect the files in the directory. The `--template` value is written as `spec.build.type`, and a catalog slug also prints a pointer to the matching `madfam-org/<slug>-starter` template repository.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | No | Service and project name. Defaults to the current directory's name. |
 
 ## Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--name`, `-n` | string | directory name | Service name |
-| `--template`, `-t` | string | auto-detect | Template: `node`, `go`, `python`, `docker`, `static` |
-| `--port`, `-p` | int | auto-detect | Service port |
-| `--force`, `-f` | bool | `false` | Overwrite existing `enclii.yaml` |
-| `--no-detect` | bool | `false` | Skip auto-detection, use minimal config |
+| `--template`, `-t` | string | `auto` | Framework slug from the catalog, or `auto` |
+
+There are no `--name`, `--port`, `--force`, or `--no-detect` flags.
+
+### Template slugs
+
+`auto`, `angular`, `astro`, `django`, `dockerfile`, `express`, `fastapi`, `fastify`, `flask`, `go-chi`, `go-echo`, `go-fiber`, `go-gin`, `go-stdlib`, `nestjs`, `nextjs`, `nuxtjs`, `phoenix`, `rails`, `react`, `remix`, `rust-actix`, `rust-axum`, `static`, `sveltekit`, `vite`, `vue`.
+
+An unknown slug fails with the list of known templates. Short forms such as `node`, `go`, or `python` are rejected.
 
 ## Examples
 
-### Auto-Detect Configuration
+### Initialize using the directory name
+
 ```bash
-cd my-nodejs-app
+cd my-app
 enclii init
+```
+
+### Initialize a Next.js service with an explicit name
+
+```bash
+enclii init web --template nextjs
 ```
 
 **Output:**
 ```
-Detected: Node.js application (package.json found)
-Created: enclii.yaml
-
-Service: my-nodejs-app
-Type:    http
-Port:    3000
-Build:   nixpacks (auto-detected)
+🚂 Initializing Enclii service 'web'...
+✅ Created service.yaml
+📦 Starter template: https://github.com/madfam-org/nextjs-starter
 
 Next steps:
-  1. Review enclii.yaml
-  2. Run: enclii deploy --env preview
-```
+  1. Review and customize service.yaml
+  2. Run 'enclii deploy' to deploy to development
+  3. Run 'enclii deploy --env prod' to deploy to production
 
-### Specify Template
-```bash
-enclii init --template go --name api-service --port 8080
-```
-
-### Minimal Configuration
-```bash
-enclii init --no-detect --name worker-service
+💡 Learn more at https://enclii.dev/docs
 ```
 
 ## Generated Configuration
 
-The command creates `enclii.yaml` with the following structure:
+`enclii init web --template nextjs` writes:
 
 ```yaml
-apiVersion: enclii.dev/v1
+apiVersion: enclii.dev/v1alpha
 kind: Service
 metadata:
-  name: my-nodejs-app
+    name: web
+    project: web
 spec:
-  type: http
-  port: 3000
-
-  build:
-    type: nixpacks
-    # Or: dockerfile: ./Dockerfile
-
-  runtime:
-    instances: 1
-    resources:
-      cpu: "0.5"
-      memory: "512Mi"
-
-  healthCheck:
-    path: /health
-    interval: 30s
-    timeout: 5s
-
-  env:
-    - name: NODE_ENV
-      value: production
+    build:
+        type: nextjs
+    runtime:
+        port: 8080
+        replicas: 2
+        healthCheck: /health
+    env:
+        - name: NODE_ENV
+          value: production
 ```
 
-## Auto-Detection Logic
-
-| File Detected | Template Used | Default Port |
-|---------------|---------------|--------------|
-| `package.json` | node | 3000 |
-| `go.mod` | go | 8080 |
-| `requirements.txt` or `pyproject.toml` | python | 8000 |
-| `Dockerfile` | docker | 8080 |
-| `index.html` | static | 80 |
+The generated `runtime.port` is `8080` and the env block holds `NODE_ENV=production` regardless of template. Edit both to match your application before deploying.
 
 ## See Also
 
 - [Service Specification Reference](../../reference/service-spec.md)
 - [`enclii deploy`](./deploy.md) - Deploy the service
-- [`enclii services sync`](./services-sync.md) - Sync configuration
+- [`enclii services-sync`](./services-sync.md) - Sync service definitions from YAML files

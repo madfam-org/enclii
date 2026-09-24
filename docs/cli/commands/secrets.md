@@ -23,6 +23,7 @@ The command reads `service.yaml` (or a custom spec file via `--file`) to resolve
 | `set`, `list`, `get`, `delete` | Per-service | Service env vars via `service.yaml` |
 | `intake` | Platform | Chat-safe Vault intake ([details below](#enclii-secrets-intake)) |
 | `provision oidc` | Platform | Auto-provision Janua OIDC + Vault intake ([details below](#enclii-secrets-provision-oidc)) |
+| `provision kalya-feed` | Platform | Server-side kalya standing-feed credential ([details below](#enclii-secrets-provision-kalya-feed)) |
 | `sync`, `rotate`, `vault-backfill` | Platform | Audited ESO/Vault ops via Switchyard |
 
 ### `set`
@@ -208,8 +209,7 @@ enclii secrets list --file ./deploy/enclii.yaml
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (invalid KEY=VALUE format, missing spec file) |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags (for example a malformed `KEY=VALUE`), a missing spec file, API errors (including `403 Forbidden`), or an expired/invalid API token |
 
 ## See Also
 
@@ -228,6 +228,8 @@ enclii secrets sync forgesight-secrets --namespace forgesight --apply --reason "
 ```
 
 Without `--apply`, the command requests a dry-run plan. With `--apply`, `--reason` is required.
+
+`sync`, `rotate`, and `vault-backfill` share the operation-contract flags: `--apply`, `--reason`, `--idempotency-key` (retry key for safe repeats), `--json`, `--namespace`/`-n`, `--project`, and `--service`. `rotate` adds `--provider-version`; `vault-backfill` adds `--vault-path` and `--external-secret`.
 
 ## `enclii secrets rotate`
 
@@ -328,9 +330,11 @@ enclii secrets provision oidc --all --dry-run --reason "ecosystem sweep"
 |------|-------------|
 | `--platform` | Platform key from registry (`dhanam`, `phynd-crm`, `ceq`, …) |
 | `--all` | Provision every platform in the registry |
-| `--dry-run` | Print planned Janua + intake actions without writing |
+| `--dry-run` | Plan the Janua reconcile without the Vault intake |
 | `--reason` | Required audit reason (same as intake) |
 | `--registry` | Override registry YAML path |
+| `--rotate-secret` | Rotate the Janua client secret when an existing client has no retrievable secret (default `true`) |
+| `--json` | JSON output (no secret values) |
 
 For Dhanam, also auto-submits `dhanam/session-auth` (generated `SESSION_SECRET` /
 `NEXTAUTH_SECRET`) when configured in the registry. After provision, force-sync
@@ -350,3 +354,15 @@ PATCHed to match the registry and reported as `reconciled=…`. A confidentialit
 a pinned-id mismatch or an inactive client is refused rather than reconciled.
 
 Rebuild CLI after pulling: `cd packages/cli && go build -o ~/.local/bin/enclii ./cmd/enclii/`
+
+## `enclii secrets provision kalya-feed`
+
+Alias of [`enclii ops secrets provision-kalya-feed`](./ops.md#ops-secrets-provision-kalya-feed): mints a kalya standing-feed token server-side and files it into its consumers' Vault paths. The token is never returned or printed.
+
+```bash
+enclii secrets provision kalya-feed --tenant crea --consumers crea-map,nauta
+enclii secrets provision kalya-feed --tenant crea --consumers crea-map,nauta \
+  --apply --reason "wire the crea standing feed"
+```
+
+It takes `--tenant` (required), `--consumers`, `--rotate`, `--kalya-origin`, and the shared operation-contract flags (`--apply`, `--reason`, `--idempotency-key`, `--json`, `--namespace`, `--project`, `--service`).

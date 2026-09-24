@@ -1,12 +1,12 @@
 ---
 title: providers
-description: Audited MADFAM provider workflows for GitHub, Cloudflare, Porkbun, and Hetzner
+description: Audited MADFAM provider workflows for GitHub, Cloudflare, Porkbun, Hetzner, and Resend
 ---
 
 # `enclii providers`
 
 `enclii providers` is the contract-first replacement layer for direct `gh`,
-Cloudflare, Porkbun, and Hetzner tooling in MADFAM operations.
+Cloudflare, Porkbun, Hetzner, and Resend tooling in MADFAM operations.
 
 Mutating commands are dry-run by default. Use `--apply --reason "..."` only
 when the corresponding provider adapter is wired and the audit reason is clear.
@@ -38,9 +38,10 @@ returns `adapter_unconfigured`.
 |---------|---------|
 | `enclii providers capabilities` | List server-supported provider capabilities |
 | `enclii providers github runs|rerun|cancel|secrets|packages|protection` | GitHub Actions, repo secrets, GHCR, branch protection |
-| `enclii providers cloudflare zones|zone-add-apply|zone-settings-apply|dns|dns-apply|tunnels|tunnels-apply|access|r2|hostnames` | Zones, DNS, tunnels, Access, R2, custom hostnames |
+| `enclii providers cloudflare credentials|zones|zone-add-apply|zone-settings-apply|dns|dns-apply|tunnels|tunnels-apply|access|r2|hostnames` | Credential readiness, zones, DNS, tunnels, Access, R2, custom hostnames |
 | `enclii providers porkbun credentials|ping|domains|dns|dns-apply|renewals|nameservers|nameservers-apply|auto-renew-apply` | Domain inventory, DNS create fallback, renewal state, auto-renew, registrar delegation — per registrar account |
 | `enclii providers hetzner nodes|lb|vswitch|storage|firewall` | Robot/Cloud nodes, DR LB, vSwitch, storage boxes, firewall |
+| `enclii providers resend credentials|domains|domain|domain-add-apply|domain-dns-apply|domain-verify-apply|emails|send-test-apply` | Resend transactional email: API key and sender readiness, domain inventory and DNS records, register a domain, apply its DNS records via Cloudflare, trigger verification, recent sends, test send |
 
 ## Examples
 
@@ -71,6 +72,11 @@ enclii providers github rerun 25430873929 --apply --reason "re-run after GHCR to
 | `--reason` | Audit reason; required with `--apply` |
 | `--idempotency-key` | Optional retry key for safely repeating an operation |
 | `--project`, `--service` | Enclii scope selectors passed to the operation contract |
+| `--namespace`, `-n` | Kubernetes or provider namespace scope |
+| `--tenant` | Ecosystem tenant scope; selects per-tenant provider credentials |
+| `--json` | Emit machine-readable JSON |
+
+Command-specific flags: `porkbun dns-apply` takes `--domain`, `--name` (both derived from the target when omitted), `--type` (default `CNAME`), `--content` (default: the Enclii tunnel CNAME), and `--ttl`; `porkbun auto-renew-apply` requires `--auto-renew on|off`; `porkbun nameservers-apply` takes `--nameservers`.
 
 ## Remaining Adapter Work
 

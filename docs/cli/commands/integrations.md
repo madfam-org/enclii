@@ -159,8 +159,8 @@ Dockerfiles: [services/api/Dockerfile services/worker/Dockerfile apps/ui/Dockerf
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing `--installation-id`) |
-| `50` | Authentication error |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
+| `10` | Validation error (missing `--installation-id` on `link`) |
 
 ## See Also
 

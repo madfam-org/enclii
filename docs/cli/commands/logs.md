@@ -1,118 +1,79 @@
 # enclii logs
 
-Stream or fetch service logs.
+Show or stream service logs.
 
 ## Synopsis
 
 ```bash
-enclii logs <service> [flags]
+enclii logs [service] [flags]
 ```
 
 ## Description
 
-The `logs` command retrieves logs from a running service. Supports real-time streaming, historical log retrieval, and filtering by level, time range, and instance.
+The `logs` command retrieves logs for a service in an environment. Without `--follow` it prints the most recent lines once (preceded by the service's latest deployment id and version, when available). With `--follow` it opens a WebSocket stream and prints lines as they arrive, prefixed with a per-pod colour-coded `pod/container` label.
+
+If `service` is omitted, the CLI reads the service name (and project) from `service.yaml` in the current directory, or from the file passed with `--file`.
+
+The output is plain text. There is no `--output`/`-o` flag and no JSON output mode, and there are no `--level`, `--instance`, `--until`, `--tail`, or `--no-color` flags; pipe through `grep` to filter.
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `service` | Yes | Service name |
+| `service` | No | Service name. Defaults to `metadata.name` from the service spec file. |
 
 ## Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--env`, `-e` | string | `production` | Target environment |
-| `--follow`, `-f` | bool | `false` | Stream logs in real-time |
-| `--since` | duration | `1h` | Show logs since duration (e.g., `5m`, `2h`, `7d`) |
-| `--until` | string | | Show logs until timestamp |
-| `--tail`, `-n` | int | `100` | Number of recent lines to show |
-| `--level`, `-l` | string | all | Filter by level: `debug`, `info`, `warn`, `error` |
-| `--instance` | string | all | Filter by specific instance ID |
-| `--output`, `-o` | string | `text` | Output format: `text`, `json` |
-| `--timestamps`, `-t` | bool | `true` | Show timestamps |
-| `--no-color` | bool | `false` | Disable colored output |
+| `--env`, `-e` | string | `dev` | Environment to show logs for |
+| `--follow`, `-f` | bool | `false` | Stream logs in real time over a WebSocket |
+| `--lines`, `-n` | int | `100` | Number of recent lines to show |
+| `--since` | string | | Show logs since a duration ago. Go duration syntax: `5m`, `1h`, `24h` (no `d` unit; use `168h` for 7 days). |
+| `--timestamps` | bool | `false` | Prefix each streamed line with its `HH:MM:SS` timestamp (applies with `--follow`) |
+| `--file`, `-F` | string | `service.yaml` | Path to the service spec file used when `service` is omitted |
 
 ## Examples
 
-### Basic Log Retrieval
+### Recent logs
+
 ```bash
 enclii logs api
 ```
 
-**Output:**
-```
-2025-01-11T10:30:15Z [INFO]  Server started on port 8080
-2025-01-11T10:30:16Z [INFO]  Connected to database
-2025-01-11T10:31:02Z [INFO]  GET /api/v1/users 200 45ms
-2025-01-11T10:31:15Z [WARN]  Rate limit approaching for client 192.168.1.1
-2025-01-11T10:32:00Z [ERROR] Failed to process webhook: timeout
-```
+### Stream logs in real time
 
-### Stream Logs in Real-Time
 ```bash
 enclii logs api -f
 # Press Ctrl+C to stop
 ```
 
-### Filter by Log Level
+### Errors from the last 24 hours
+
 ```bash
-enclii logs api --level error --since 24h
+enclii logs api --since 24h -n 1000 | grep -i error
 ```
 
-### View Logs from Specific Instance
+### Production logs, streamed with timestamps
+
 ```bash
-enclii logs api --instance api-7d9f8c-abc12
+enclii logs api --env prod -f --timestamps
 ```
 
-### JSON Output for Processing
+### Staging logs for the service in the current directory
+
 ```bash
-enclii logs api -o json | jq '.level == "error"'
+enclii logs --env staging
 ```
-
-**JSON Output Format:**
-```json
-{
-  "timestamp": "2025-01-11T10:32:00Z",
-  "level": "ERROR",
-  "message": "Failed to process webhook: timeout",
-  "service": "api",
-  "instance": "api-7d9f8c-abc12",
-  "trace_id": "abc123def456"
-}
-```
-
-### Staging Environment Logs
-```bash
-enclii logs api --env staging -f
-```
-
-### Last 500 Lines
-```bash
-enclii logs api --tail 500 --since 7d
-```
-
-## Log Levels
-
-| Level | Description |
-|-------|-------------|
-| `debug` | Detailed debugging information |
-| `info` | General operational messages |
-| `warn` | Warning conditions |
-| `error` | Error conditions |
 
 ## Streaming (WebSocket)
 
-When using `--follow`, the CLI establishes a WebSocket connection to stream logs in real-time:
-
-```
-wss://api.enclii.dev/api/v1/services/{service}/logs/stream
-```
-
-The connection automatically reconnects on network interruptions.
+With `--follow`, the CLI connects to `/v1/services/{service_id}/logs/stream` on the configured API endpoint, using `wss://` for an `https://` endpoint and `ws://` for `http://`. The stream does not reconnect on its own: if it drops, the CLI prints "Log stream ended" and exits, and you re-run the command. If the stream cannot be opened, the CLI suggests re-running without `--follow`.
 
 ## See Also
 
 - [`enclii ps`](./ps.md) - Check service status
 - [`enclii deploy`](./deploy.md) - Deploy a service
+- [`enclii functions logs`](./functions.md) - Logs for a serverless function
+- [`enclii local logs`](./local.md) - Logs for the local development environment
 - [Troubleshooting](../../troubleshooting/index.md)
