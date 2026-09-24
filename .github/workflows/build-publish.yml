@@ -903,7 +903,7 @@ jobs:
               if COSIGN_EXPERIMENTAL=1 cosign verify \
                 --certificate-identity-regexp="${CERT_IDENTITY_REGEXP}" \
                 --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-                "$ref" >/tmp/cosign-verify-${name}.json 2>/tmp/cosign-verify-${name}.err; then
+                "$ref" >"/tmp/cosign-verify-${name}.json" 2>"/tmp/cosign-verify-${name}.err"; then
                 verified=1
                 break
               fi
@@ -911,7 +911,7 @@ jobs:
             if [ "$verified" -ne 1 ]; then
               echo "ERROR: Refusing to pin unsigned or unverifiable digest $ref"
               echo "Accepted signer identities: ${CERT_IDENTITY_REGEXP}"
-              cat /tmp/cosign-verify-${name}.err || true
+              cat "/tmp/cosign-verify-${name}.err" || true
               exit 1
             fi
             echo "Pinning signed digest $name to $digest"

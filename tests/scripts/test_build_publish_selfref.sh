@@ -112,6 +112,7 @@ b64url() { printf '%s' "$1" | base64 | tr -d '=\n' | tr '/+' '_-'; }
 # The claim value is chosen so its base64 carries '/', '+' and needs padding.
 claims='{"job_workflow_ref":"madfam-org/enclii/.github/workflows/build-publish.yml@1111111111111111111111111111111111111111","x":"???>>>"}'
 TEST_JWT="$(b64url '{"alg":"RS256"}').$(b64url "$claims").sig"
+# shellcheck disable=SC2329  # invoked by fetch_job_workflow_ref (from the extracted lib)
 curl() { printf '{"value":"%s"}' "$TEST_JWT"; }  # not $jwt: the lib's `local jwt` would shadow it
 got=$(ACTIONS_ID_TOKEN_REQUEST_URL='https://example.invalid/token?x=1' ACTIONS_ID_TOKEN_REQUEST_TOKEN=t fetch_job_workflow_ref)
 if [ "$got" = "${SELF}@${SHA_MAIN}" ]; then ok "claim read from a base64url JWT"; else bad "claim decode got '$got'"; fi
