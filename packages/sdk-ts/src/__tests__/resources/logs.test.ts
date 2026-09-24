@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { assertLogsSince } from '../../resources/log-stream';
 import {
   createStubFetch,
   jsonResponse,
@@ -41,6 +42,15 @@ describe('LogsResource.history', () => {
     const client = newClient({ fetch });
     await client.logs.history('svc-1');
     expect(new URL(calls[0]!.url).search).toBe('');
+  });
+
+  it('rejects a since value the API would answer with 400', async () => {
+    const { fetch, calls } = createStubFetch(() => jsonResponse(historyBody));
+    const client = newClient({ fetch });
+    await expect(client.logs.history('svc-1', { since: 'last tuesday' })).rejects.toThrow(
+      /logs\.history: since must be/,
+    );
+    expect(calls).toHaveLength(0);
   });
 
   it('rejects a lines value the API would silently replace', async () => {
@@ -154,6 +164,35 @@ describe('LogsResource.tail', () => {
     ]);
   });
 
+  it('sends since, as parseLogsSince reads it, next to the other parameters', async () => {
+    g.WebSocket = FakeBrowserWebSocket;
+    const { fetch } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch });
+    const it = client.logs
+      .tail('svc-1', { env: 'production', since: '2026-09-24T10:00:00Z' })
+      [Symbol.asyncIterator]();
+    const next = it.next();
+    await tick();
+    const ws = FakeBrowserWebSocket.instances[0]!;
+    expect(Object.fromEntries(new URL(ws.url).searchParams)).toEqual({
+      env: 'production',
+      since: '2026-09-24T10:00:00Z',
+      token: 'test-token',
+    });
+    ws.close();
+    expect((await next).done).toBe(true);
+  });
+
+  it('throws on a malformed since before opening a socket', async () => {
+    g.WebSocket = FakeBrowserWebSocket;
+    const { fetch } = createStubFetch(() => jsonResponse({}));
+    const client = newClient({ fetch });
+    await expect(
+      client.logs.tail('svc-1', { since: '-5m' })[Symbol.asyncIterator]().next(),
+    ).rejects.toThrow(/logs stream: since must be/);
+    expect(FakeBrowserWebSocket.instances).toHaveLength(0);
+  });
+
   it('omits the token parameter for anonymous clients', async () => {
     g.WebSocket = FakeBrowserWebSocket;
     const { fetch } = createStubFetch(() => jsonResponse({}));
@@ -201,5 +240,44 @@ describe('LogsResource.tail', () => {
     await expect(
       client.logs.tail('svc-1')[Symbol.asyncIterator]().next(),
     ).rejects.toThrow(/nodeLogsTail/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// since validation — the forms parseLogsSince (logs_since.go) accepts
+// ---------------------------------------------------------------------------
+
+describe('assertLogsSince', () => {
+  it.each([
+    '2026-09-24T10:00:00Z',
+    '2026-09-24T10:00:00.123Z',
+    '2026-09-24T10:00:00-06:00',
+    '90s',
+    '15m',
+    '24h',
+    '1h30m',
+    '1.5h',
+    '500ms',
+    '+5m',
+  ])('accepts %s', (since) => {
+    expect(() => assertLogsSince(since, 't')).not.toThrow();
+  });
+
+  it.each([
+    '',
+    ' 5m',
+    '5',
+    '0s',
+    '0h0m',
+    '-5m',
+    '5 minutes',
+    'yesterday',
+    '2026-09-24',
+    '2026-09-24 10:00:00Z',
+    '2026-09-24T10:00:00',
+    '2026-13-24T10:00:00Z',
+    '2026-09-24T25:00:00Z',
+  ])('rejects %j', (since) => {
+    expect(() => assertLogsSince(since, 't')).toThrow(/t: since must be/);
   });
 });

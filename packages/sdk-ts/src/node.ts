@@ -56,7 +56,8 @@ export interface NodeLogsTailOptions extends LogTailOptions {
  * connection is retried up to `maxReconnects` times, after which the iterator
  * completes. An upgrade the server rejects with a 4xx status (bad token,
  * disallowed `Origin`, no access, unknown env) is not retried: the iterator
- * throws. Each reconnect replays the server's `lines` backlog.
+ * throws. Each reconnect replays the server's `lines` backlog, limited by
+ * `options.since` when set (the same value is resent on every reconnect).
  */
 export async function* nodeLogsTail(
   client: EncliiClient,
