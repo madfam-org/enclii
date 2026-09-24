@@ -112,6 +112,9 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # 2026-08-29: CVE-2026-14456 (libssl3/libcrypto3 3.5.7-r0, fixed 3.5.8-r0).
 # 2026-09-04: CVE-2026-66046 + CVE-2026-76641 (libexpat 2.8.3-r0, fixed
 # 2.8.4-r0). libexpat is pulled in transitively by `git`.
+# 2026-09-24: CVE-2026-93990 (libexpat 2.8.4-r0, fixed 2.8.5-r0; XML injection
+# via malformed UTF-16). It failed `Scan: switchyard-api` on #625's push run
+# 36056625981, so #625 never pinned.
 #
 # 2026-09-04: the ARG was declared but NEVER expanded in the RUN below, so it
 # busted nothing — BuildKit keys the layer on the literal command string, and
@@ -121,13 +124,13 @@ FROM public.ecr.aws/docker/library/alpine:3.24 AS runtime-base
 # `Scan: switchyard-api` from run 33843611930 onward. The value is now echoed
 # into the command so it genuinely participates in the cache key.
 #
-# The `libexpat>=2.8.4-r0` constraint is a belt-and-braces assertion: if the
+# The `libexpat>=2.8.5-r0` constraint is a belt-and-braces assertion: if the
 # mirror ever serves a package set older than the fix, the build fails loudly
 # here instead of silently producing an image the scan gate later rejects.
-ARG APK_SECURITY_REFRESH=2026-09-04
+ARG APK_SECURITY_REFRESH=2026-09-24
 RUN echo "apk security refresh: ${APK_SECURITY_REFRESH}" && \
     apk --no-cache upgrade && \
-    apk --no-cache add ca-certificates tzdata wget git curl bash 'libexpat>=2.8.4-r0'
+    apk --no-cache add ca-certificates tzdata wget git curl bash 'libexpat>=2.8.5-r0'
 
 # Copy cosign (built from source in the builder stage) so the API can verify
 # signed image digests before committing production GitOps pins from platform
