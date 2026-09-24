@@ -46,7 +46,9 @@ on:
 
 jobs:
   build-publish:
-    uses: madfam-org/enclii/.github/workflows/build-publish.yml@main
+    # Pin a release by its commit SHA, with the tag as a comment. See
+    # "Pinning the reusable workflow" below for how to find the SHA.
+    uses: madfam-org/enclii/.github/workflows/build-publish.yml@<40-hex commit SHA>  # vX.Y.Z
     with:
       image_prefix: ghcr.io/madfam-org/<repo-slug>
       kustomization_path: infra/k8s/production
@@ -60,7 +62,11 @@ jobs:
       # the Dockerfile's COPY paths are relative to a subdirectory
       # rather than the repo root, e.g.:
       #   {"name":"api","context":"backend","dockerfile":"backend/Dockerfile","paths":"backend"}
-    secrets: inherit
+    # Named secrets: pass only what this repo needs (see "Secrets" below).
+    # `secrets: inherit` also still works.
+    secrets:
+      NPM_MADFAM_TOKEN: ${{ secrets.NPM_MADFAM_TOKEN }}
+      ENCLII_CALLBACK_TOKEN: ${{ secrets.ENCLII_CALLBACK_TOKEN }}
     permissions:
       contents: write
       packages: write
@@ -84,13 +90,102 @@ jobs:
 
 ### Secrets
 
-All optional; workflow soft-fails when absent.
+`build-publish.yml` declares every secret it reads under
+`on.workflow_call.secrets`, all `required: false`. A caller can either:
 
-| Secret | Purpose |
-|---|---|
-| `DOCKER_USERNAME` / `DOCKER_TOKEN` | Docker Hub login (usually org-level) |
-| `ENCLII_API_URL` / `ENCLII_DEPLOY_TOKEN` | Enclii lifecycle callback |
-| `ENCLII_COMMIT_TOKEN` | PAT to push past branch protection |
+- keep `secrets: inherit`, which passes every secret the caller repo can
+  see, declared or not; or
+- pass named secrets (`secrets: { NAME: ${{ secrets.NAME }} }`), which
+  hands the reusable workflow only what you list. Passing a name that is
+  not in the table below is a caller-side error: GitHub rejects a secret the
+  called workflow does not declare.
+
+Anything you do not pass is empty inside the workflow, and each use falls
+back as listed. Pass the ones whose fallback is wrong for your repo.
+
+| Secret | Purpose | When not passed |
+|---|---|---|
+| `NPM_MADFAM_TOKEN` | npm.madfam.io auth, mounted as the BuildKit secret `npmrc` | Empty token; any `pnpm install` of `@janua`/`@madfam`/`@forj`/`@cotiza` packages fails |
+| `ENCLII_CALLBACK_TOKEN` | Lifecycle-callback bearer (matches the server's `ENCLII_ARGOCD_WEBHOOK_SECRET`) | Warning, no Release registered: a new service stays at 0 replicas |
+| `ENCLII_DEPLOY_TOKEN` | Legacy name for the callback bearer | Unused when `ENCLII_CALLBACK_TOKEN` is set |
+| `ENCLII_API_URL` | Callback endpoint | `https://api.enclii.dev` |
+| `ENCLII_COMMIT_TOKEN` | Token the digest-pin commit pushes with | `github.token`; pass it if `main` is protected against that token |
+| `GHCR_PAT` | GHCR auth override for push, digest read and verify | `github.token` |
+| `DOCKER_USERNAME` / `DOCKER_TOKEN` | Docker Hub login | Login skipped (soft-fail); use `public.ecr.aws` mirrors |
+
+### Pinning the reusable workflow
+
+Pin a release, not `@main`. With `secrets: inherit`, whatever code sits at
+the ref receives every secret your repo holds, so a moving ref is a standing,
+unreviewed hand-off of those secrets. Two forms work:
+
+- **Commit SHA plus the tag in a comment** (GitHub's recommended form:
+  "Using the commit SHA is the safest option for stability and security"):
+
+  ```yaml
+  uses: madfam-org/enclii/.github/workflows/build-publish.yml@<sha>  # vX.Y.Z
+  ```
+
+  Only commits that contain the SHA-aware signer check can be pinned this
+  way: the first release tag cut after madfam-org/enclii#620, and anything
+  later. Older commits still reject their own SHA identity at the pin step
+  (see below).
+- **Tag**: `@vX.Y.Z`. Still accepted. A tag can be moved by anyone with
+  write access to enclii, which a SHA cannot.
+
+Find a release's commit SHA. The `^{}` suffix peels an annotated tag to the
+commit it points at, and that commit is the SHA to pin:
+
+```bash
+git ls-remote https://github.com/madfam-org/enclii.git 'refs/tags/vX.Y.Z^{}'
+# <40-hex sha>	refs/tags/vX.Y.Z^{}
+# No output? It is a lightweight tag. Drop the ^{}:
+git ls-remote https://github.com/madfam-org/enclii.git 'refs/tags/vX.Y.Z'
+```
+
+Dependabot (`package-ecosystem: github-actions`) understands the
+`@<sha>  # vX.Y.Z` form and bumps both together.
+
+#### How a SHA pin is verified
+
+Keyless signing records the build job's OIDC `job_workflow_ref` as the
+certificate identity: `https://github.com/madfam-org/enclii/.github/workflows/build-publish.yml@<ref>`,
+where `<ref>` is exactly what the caller wrote after `@`. Before pinning a
+digest, the pin job runs `cosign verify` against an identity regexp:
+
+- A tag or `main` caller gets the long-standing regexp: any `madfam-org`
+  workflow at `@refs/heads/main` or `@refs/tags/v…`. This is unchanged.
+- A SHA caller first has the SHA checked. It must be reachable from
+  `madfam-org/enclii` `main` (the GitHub compare API reports
+  `main...<sha>` as `identical` or `behind`) or be the commit of a `v*`
+  tag. If it is, the regexp additionally accepts exactly one identity:
+  `build-publish.yml@<that sha>`. If it is not, the pin step fails with
+  `NOT reachable from madfam-org/enclii main`.
+
+#### What that check does not protect against (imposter commits)
+
+`uses: madfam-org/enclii/...@<sha>` resolves a commit from **any fork in
+the repository network**, not only from `madfam-org/enclii`, and the code
+that runs is the code at that SHA. The reachability check lives in that
+code. An attacker who chooses the SHA also chooses the check, and can
+delete it. So the check does exactly one job: it stops an **honest** caller
+from pinning an unmerged PR head or a fork commit by mistake. It is not a
+security boundary against a malicious SHA.
+
+The controls that do hold are elsewhere:
+
+- **Who can edit caller workflows.** A malicious `uses:` line has to be
+  merged into a caller repo. Review changes to `.github/workflows/` there.
+- **Kyverno admission.** The cluster admits `ghcr.io/madfam-org/*` images
+  only with a keyless signature from the GitHub Actions OIDC issuer (see
+  `infra/k8s/base/kyverno/policies/image-policies.yaml`). That policy does
+  not look at the workflow ref, so a SHA-pinned signature is admitted
+  exactly as a tag-pinned one was before. Pushing to `ghcr.io/madfam-org`
+  still requires that org's package write access.
+
+When you pin a SHA, check it before merging:
+`git ls-remote https://github.com/madfam-org/enclii.git 'refs/tags/vX.Y.Z^{}'`
+must print the same SHA as your `uses:` line.
 
 ### Migration playbook
 
@@ -120,3 +215,9 @@ For each repo:
   `public.ecr.aws/docker/library/…`.
 - Cosign fails to sign: verify the OIDC token is being issued
   (`id-token: write` permission on the caller job).
+- `Refusing to pin unsigned or unverifiable digest` on a SHA-pinned
+  caller: the pinned commit predates the SHA-aware check (#620). Pin a newer
+  release's SHA. The step log prints the accepted identity regexp.
+- `NOT reachable from madfam-org/enclii main`: the SHA is not on `main`
+  and is not a release tag's commit. Re-derive it with `git ls-remote`
+  (above).

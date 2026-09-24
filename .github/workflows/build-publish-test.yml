@@ -18,9 +18,20 @@ on:
     paths:
       - '.github/workflows/build-publish.yml'
       - '.github/workflows/build-publish-test.yml'
+      - 'tests/scripts/test_build_publish_selfref.sh'
   workflow_dispatch:
 
 jobs:
+  selfref-tests:
+    name: Signer-identity (SHA pin) + declared-secrets contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Extracts the `selfref-lib` block from build-publish.yml verbatim (no
+      # copy to drift) and stubs the network. See the script header.
+      - name: Run selfref unit tests
+        run: bash tests/scripts/test_build_publish_selfref.sh
+
   run-tests:
     name: Detect-changes contract tests
     runs-on: ubuntu-latest
