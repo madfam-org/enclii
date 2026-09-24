@@ -63,13 +63,16 @@ name: Reusable — Build, sign, publish, pin
 #   rebuild_all_paths:   regex; files matching this trigger "build all"
 #                         (workflow-file, manifests, etc.)
 #
-# Secrets it expects (via `secrets: inherit`):
+# Secrets it reads (all declared under `on.workflow_call.secrets`, all
+# optional). Callers may keep `secrets: inherit` or pass just the ones they
+# need by name — see docs/guides/reusable-workflows.md:
 #   DOCKER_USERNAME / DOCKER_TOKEN (optional — soft-fail)
-#   MADFAM_BOT_PAT (legacy only — do not place it on the hot path; stale PATs
-#                   must not override the repo-scoped GITHUB_TOKEN)
 #   GHCR_PAT (optional — registry auth override for GHCR push/pull; falls
 #             through to the repo-scoped GITHUB_TOKEN otherwise)
-#   ENCLII_API_URL / ENCLII_DEPLOY_TOKEN (optional — for callback)
+#   ENCLII_CALLBACK_TOKEN (optional — lifecycle callback bearer; must match
+#                          the server's ENCLII_ARGOCD_WEBHOOK_SECRET)
+#   ENCLII_API_URL / ENCLII_DEPLOY_TOKEN (optional — callback endpoint and the
+#                          legacy fallback name for the callback bearer)
 #   ENCLII_COMMIT_TOKEN (optional — PAT to push past branch protection;
 #                        falls through to GITHUB_TOKEN otherwise)
 #   NPM_MADFAM_TOKEN (required for repos consuming @janua/@madfam/@forj/@cotiza
@@ -194,6 +197,38 @@ on:
         required: false
         type: string
         default: ''
+    # Every secret this workflow reads, declared so callers MAY pass them by
+    # name instead of `secrets: inherit` (a named secret that is not declared
+    # here is a caller-side error). All optional: each use below already
+    # soft-fails or falls back to github.token when the value is empty.
+    # `secrets: inherit` callers are unaffected — inherit still passes every
+    # secret the caller can see. Keep this list in sync with `secrets.` uses
+    # (build-publish-test.yml asserts it).
+    secrets:
+      GHCR_PAT:
+        description: Registry auth override for GHCR push/pull/verify. Falls back to github.token.
+        required: false
+      DOCKER_USERNAME:
+        description: Docker Hub login user (soft-fail when absent).
+        required: false
+      DOCKER_TOKEN:
+        description: Docker Hub login token (soft-fail when absent).
+        required: false
+      NPM_MADFAM_TOKEN:
+        description: npm.madfam.io auth, forwarded to the build as the BuildKit secret `npmrc`.
+        required: false
+      ENCLII_COMMIT_TOKEN:
+        description: Token the digest-pin commit pushes with (to pass branch protection). Falls back to github.token.
+        required: false
+      ENCLII_CALLBACK_TOKEN:
+        description: Bearer for the Enclii lifecycle callback (matches the server's ENCLII_ARGOCD_WEBHOOK_SECRET).
+        required: false
+      ENCLII_DEPLOY_TOKEN:
+        description: Legacy fallback name for the lifecycle-callback bearer.
+        required: false
+      ENCLII_API_URL:
+        description: Enclii API base URL for the callback. Defaults to https://api.enclii.dev.
+        required: false
 
 permissions:
   contents: write
@@ -516,6 +551,11 @@ jobs:
     permissions:
       contents: write
       packages: read
+      # Only used to read this job's own `job_workflow_ref` claim (see
+      # "Resolve trusted signer identity"). Nothing is signed here. Every
+      # caller already grants id-token: write, because the build job needs it
+      # for keyless signing, so this asks callers for nothing new.
+      id-token: write
     # Surfaced so the deploy-state-guard can assert on WORK DONE, not just on
     # this job's result. This job reports success when every meaningful step
     # skipped behind `count == 0`, so `pin.result == 'success'` alone is not
@@ -657,13 +697,186 @@ jobs:
             echo "No images found in GHCR for this commit; nothing to pin."
           fi
 
+      # WHICH SIGNER IDENTITIES THE PIN ACCEPTS (callers pinning by SHA)
+      #
+      # Keyless signing puts the build job's OIDC `job_workflow_ref` into the
+      # Fulcio certificate: `https://github.com/<job_workflow_ref>`. For this
+      # reusable workflow that is
+      #   madfam-org/enclii/.github/workflows/build-publish.yml@<what the caller wrote>
+      # so a caller on `@v1.2.3` signs as `...@refs/tags/v1.2.3`, and a caller
+      # on `@<40-hex sha>` signs as `...@<sha>`. The legacy identity regexp only
+      # accepts `@refs/heads/main` and `@refs/tags/v…`, which is why a SHA pin
+      # used to build and sign fine and then die here with "Refusing to pin
+      # unsigned or unverifiable digest".
+      #
+      # This step reads THIS job's own `job_workflow_ref` claim (same workflow
+      # file, same ref as the build job that signed):
+      #   - `@refs/...` (tag/main callers) or claim unavailable → the legacy
+      #     regexp, byte-for-byte unchanged. Existing callers see no change.
+      #   - `@<sha>` → the SHA must be reachable from madfam-org/enclii `main`
+      #     (compare main...<sha> is `identical` or `behind`) or be the commit
+      #     of a `v*` tag. If so, the legacy regexp is widened by exactly ONE
+      #     identity: build-publish.yml at that SHA. Otherwise the pin fails.
+      #
+      # What the reachability check is and is not: `uses: …@<sha>` resolves
+      # commits from ANY fork in the repo network ("imposter commits"), and
+      # the code that runs is the code at that SHA — so an attacker who picks
+      # the SHA also picks this check and can delete it. It protects HONEST
+      # callers from pinning an unmerged PR head or a fork commit by mistake.
+      # The admission control is Kyverno plus who can write to caller repos.
+      #
+      # The function library between the markers is extracted verbatim and
+      # unit-tested by tests/scripts/test_build_publish_selfref.sh.
+      - name: Resolve trusted signer identity
+        id: selfref
+        if: steps.digests.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+        run: |
+          set -euo pipefail
+          # >>> selfref-lib
+          LEGACY_IDENTITY_REGEXP='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$'
+          SELF_WORKFLOW='madfam-org/enclii/.github/workflows/build-publish.yml'
+          SELF_IDENTITY_PREFIX='^https://github\.com/madfam-org/enclii/\.github/workflows/build-publish\.yml@'
+          SELF_REPO='madfam-org/enclii'
+
+          # jwt_claims <jwt>: print the (unverified) payload JSON. The token
+          # comes straight from the runner's OIDC endpoint over TLS; we only
+          # read our own claims, we do not authenticate anyone with them.
+          jwt_claims() {
+            local payload
+            payload=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+            case $(( ${#payload} % 4 )) in
+              2) payload="${payload}==" ;;
+              3) payload="${payload}=" ;;
+            esac
+            printf '%s' "$payload" | base64 -d
+          }
+
+          # fetch_job_workflow_ref: print this job's job_workflow_ref claim.
+          fetch_job_workflow_ref() {
+            local wait resp jwt
+            [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || return 1
+            for wait in 0 5 15; do
+              [ "$wait" -gt 0 ] && sleep "$wait"
+              if resp=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=enclii-build-publish-selfref"); then
+                jwt=$(printf '%s' "$resp" | jq -r '.value // empty')
+                if [ -n "$jwt" ]; then
+                  jwt_claims "$jwt" | jq -r '.job_workflow_ref // empty'
+                  return 0
+                fi
+              fi
+            done
+            return 1
+          }
+
+          # api_get <path>: GET $GH_API_URL/<path>; body on stdout.
+          # rc 0 = 200, 4 = 404/422 (no such commit), 5 = anything else.
+          api_get() {
+            local wait code body
+            body=$(mktemp)
+            for wait in 0 5 15; do
+              [ "$wait" -gt 0 ] && sleep "$wait"
+              code=$(curl -sS -o "$body" -w '%{http_code}' \
+                       -H "Authorization: Bearer ${GH_TOKEN}" \
+                       -H "Accept: application/vnd.github+json" \
+                       "${GH_API_URL:-https://api.github.com}/$1" || echo 000)
+              case "$code" in
+                200) cat "$body"; rm -f "$body"; return 0 ;;
+                404|422) rm -f "$body"; return 4 ;;
+              esac
+            done
+            rm -f "$body"
+            return 5
+          }
+
+          # list_release_tags: print "<sha> <ref>" for every refs/tags/v* ref,
+          # annotated tags peeled (`^{}`) so the commit SHA is listed.
+          list_release_tags() {
+            git ls-remote --tags "https://github.com/${SELF_REPO}.git" 'refs/tags/v*' | awk '{print $1, $2}'
+          }
+
+          # sha_on_main <sha>: rc 0 reachable from main, 1 not, 2 unknown.
+          sha_on_main() {
+            local body rc=0 status
+            body=$(api_get "repos/${SELF_REPO}/compare/main...$1") || rc=$?
+            case "$rc" in 0) ;; 4) return 1 ;; *) return 2 ;; esac
+            status=$(printf '%s' "$body" | jq -r '.status // empty')
+            case "$status" in
+              identical|behind) return 0 ;;
+              ahead|diverged) return 1 ;;
+              *) return 2 ;;
+            esac
+          }
+
+          # release_tag_for <sha>: print the v* tag whose commit is <sha>.
+          release_tag_for() {
+            local tags
+            tags=$(list_release_tags) || return 2
+            printf '%s\n' "$tags" | awk -v s="$1" '$1 == s { sub(/\^\{\}$/, "", $2); sub(/^refs\/tags\//, "", $2); print $2; found=1; exit } END { exit !found }'
+          }
+
+          # resolve_identity_regexp <job_workflow_ref>: print the identity
+          # regexp the pin must verify against, or explain and return 1.
+          resolve_identity_regexp() {
+            local jwr="$1" path ref rc tag
+            if [ -z "$jwr" ]; then
+              printf '%s\n' "$LEGACY_IDENTITY_REGEXP"
+              return 0
+            fi
+            path="${jwr%%@*}"
+            ref="${jwr#*@}"
+            if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+              printf '%s\n' "$LEGACY_IDENTITY_REGEXP"
+              return 0
+            fi
+            if [ "$path" != "$SELF_WORKFLOW" ]; then
+              echo "::error::build-publish is running as '${jwr}', not from ${SELF_WORKFLOW}. SHA pins are only trusted for the canonical madfam-org/enclii workflow." >&2
+              return 1
+            fi
+            rc=0; sha_on_main "$ref" || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "SHA ${ref} is reachable from ${SELF_REPO} main." >&2
+            elif tag=$(release_tag_for "$ref"); then
+              echo "SHA ${ref} is the commit of release tag ${tag}." >&2
+            elif [ "$rc" -eq 2 ]; then
+              echo "::error::Could not determine whether ${ref} is on ${SELF_REPO} main (GitHub API unavailable), and it is not the commit of any v* tag. Refusing to trust it; rerun the failed jobs." >&2
+              return 1
+            else
+              echo "::error::This caller pins build-publish.yml@${ref}, which is NOT reachable from ${SELF_REPO} main and is NOT the commit of a v* release tag." >&2
+              echo "::error::It may be an unmerged PR head or a commit from a fork (a SHA in the repo network resolves either way). Pin a release: git ls-remote https://github.com/${SELF_REPO}.git 'refs/tags/vX.Y.Z^{}'" >&2
+              return 1
+            fi
+            printf '%s|%s%s$\n' "$LEGACY_IDENTITY_REGEXP" "$SELF_IDENTITY_PREFIX" "$ref"
+          }
+          # <<< selfref-lib
+
+          jwr=""
+          if ! jwr=$(fetch_job_workflow_ref); then
+            jwr=""
+          fi
+          if [ -z "$jwr" ]; then
+            echo "::warning::Could not read this job's job_workflow_ref OIDC claim; verifying against the tag/main identity only. A caller that pins build-publish by commit SHA will fail the signature check below."
+          fi
+          echo "job_workflow_ref=${jwr:-<unavailable>}"
+          regexp=$(resolve_identity_regexp "$jwr")
+          echo "identity_regexp=${regexp}"
+          echo "identity_regexp=${regexp}" >> "$GITHUB_OUTPUT"
+
       - name: Update kustomization image digests
         if: steps.digests.outputs.count != '0'
         env:
           IMAGE_PREFIX: ${{ inputs.image_prefix }}
           KUSTOMIZATION_PATH: ${{ inputs.kustomization_path }}
+          CERT_IDENTITY_REGEXP: ${{ steps.selfref.outputs.identity_regexp }}
         run: |
           set -euo pipefail
+          # From "Resolve trusted signer identity": the tag/main regexp, plus
+          # this caller's SHA identity only when that SHA was proven to be on
+          # madfam-org/enclii main or a v* tag. Never verify against empty.
+          : "${CERT_IDENTITY_REGEXP:?signer identity regexp was not resolved}"
           cd "$KUSTOMIZATION_PATH"
           shopt -s nullglob
           # Absolute path only. The old relative `../../../digests/*.txt` glob
@@ -688,7 +901,7 @@ jobs:
                 sleep "$wait"
               fi
               if COSIGN_EXPERIMENTAL=1 cosign verify \
-                --certificate-identity-regexp='^https://github\.com/madfam-org/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/(heads/main|tags/v[0-9].*)$' \
+                --certificate-identity-regexp="${CERT_IDENTITY_REGEXP}" \
                 --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
                 "$ref" >/tmp/cosign-verify-${name}.json 2>/tmp/cosign-verify-${name}.err; then
                 verified=1
@@ -697,6 +910,7 @@ jobs:
             done
             if [ "$verified" -ne 1 ]; then
               echo "ERROR: Refusing to pin unsigned or unverifiable digest $ref"
+              echo "Accepted signer identities: ${CERT_IDENTITY_REGEXP}"
               cat /tmp/cosign-verify-${name}.err || true
               exit 1
             fi
