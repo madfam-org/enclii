@@ -236,8 +236,9 @@ Just update connection strings in Enclii environment variables.
 
 1. **Add domain to Enclii**:
    ```bash
-   enclii domains add --service <id> --domain example.com
+   enclii domains add example.com --service <service-name>
    ```
+   The command prints the CNAME target and a TXT verification record.
 
 2. **Update DNS** (at your registrar):
    ```
@@ -246,7 +247,12 @@ Just update connection strings in Enclii environment variables.
    Value: <tunnel-id>.cfargotunnel.com
    ```
 
-3. **SSL is automatic** via Cloudflare
+3. **Verify ownership** once the TXT record is live:
+   ```bash
+   enclii domains verify example.com --service <service-name>
+   ```
+
+4. **SSL is automatic** via Cloudflare
 
 ### Can I do a zero-downtime DNS switch?
 
@@ -285,15 +291,19 @@ heroku config -a your-app --json > env.json
 
 ### How do I import to Enclii?
 
+`enclii secrets set` targets the service named in `./service.yaml` (pass `-f <spec>` for another file); there is no `--service` flag. The service must already be registered (`enclii services-sync` or a first `enclii deploy`). Add `--env <name>` to scope a value to one existing environment; without it the value applies to all environments.
+
 ```bash
-# From .env file
-enclii services env import --service <id> --file .env
+# From .env file (no bulk-import command; one KEY=VALUE per call)
+grep -v '^#' .env | grep '=' | while IFS= read -r kv; do
+  enclii secrets set "$kv"
+done
 
 # Individual variables
-enclii services env set --service <id> KEY=value
+enclii secrets set KEY=value
 
-# Secrets (encrypted)
-enclii secrets set --service <id> SECRET_KEY=sensitive
+# Secrets (encrypted at rest, masked in responses)
+enclii secrets set SECRET_KEY=sensitive --secret
 ```
 
 ### Are variable names the same?

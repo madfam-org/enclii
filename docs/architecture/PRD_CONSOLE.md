@@ -37,7 +37,7 @@ Console fills that gap at `console.enclii.dev`.
 | Without Console | With Console |
 |---|---|
 | `kubectl exec` via CLI only — cluster-admin credential required | Browser shell scoped to the service + audit-logged |
-| One-off tasks (migrate, seed) via `enclii run` — terminal only | One-click task runner with parameterised commands |
+| One-off tasks (migrate, seed) via `enclii jobs run-once` — terminal only | One-click task runner with parameterised commands |
 | Live log tailing scattered across Grafana queries | Per-service tail with structured search + replay |
 | Release ops (rollback, promote, pause autoscale) via CLI | One-click per action with audit trail |
 | Database console requires CLI + local tooling | `enclii db psql` via web, read-only default |

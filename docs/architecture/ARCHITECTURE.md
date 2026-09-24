@@ -157,10 +157,12 @@ Developer-friendly command-line interface:
 
 **Commands:**
 - `enclii init`: Scaffold new projects
-- `enclii up`: Deploy preview environments
-- `enclii deploy`: Production deployments
+- `enclii previews`: Manage PR preview environments (created by the GitHub webhook)
+- `enclii deploy`: Deployments (rolling, or canary with `--canary N`)
 - `enclii logs`: Stream service logs
-- `enclii scale`: Manage autoscaling
+- `enclii rollback`: Revert to a previous deployment
+
+Replica counts come from the service spec; there is no `enclii scale` command. Full list: [CLI reference](../cli/README.md).
 
 **Features:**
 - OIDC authentication flow

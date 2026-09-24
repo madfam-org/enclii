@@ -186,8 +186,10 @@ docker build -t switchyard-api .
 
 The API runs on Enclii itself (self-hosted):
 
+Pushes to `main` build and deploy it automatically (`spec.build.source.git.autoDeploy` in the repo-root `.enclii.yml`). To roll back:
+
 ```bash
-enclii deploy --service switchyard-api --env production
+enclii rollback switchyard-api --env production
 ```
 
 See [ONBOARDING_GUIDE.md](../../docs/guides/ONBOARDING_GUIDE.md) for details.

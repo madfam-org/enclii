@@ -57,6 +57,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: my-app
+  project: my-app
 spec:
   build:
     type: auto        # Paketo auto-detect
@@ -77,19 +78,24 @@ spec:
 
 ### 3. Port environment variables (2 min)
 
+`enclii secrets set` takes `KEY=VALUE` pairs and targets the service in `./service.yaml`, so register the service first. Without `--env` the values apply to all environments; `--env prod` only works once the environment exists (the first `enclii deploy --env prod` creates it).
+
 ```bash
+# Register the service from ./service.yaml
+enclii services-sync --project my-app
+
 # Import everything from .env.production as Enclii secrets
-while IFS='=' read -r key value; do
-  [ -z "$key" ] || [[ "$key" =~ ^# ]] && continue
-  enclii secrets set "$key" "$value" --env prod
+while IFS= read -r line; do
+  [ -z "$line" ] || [[ "$line" =~ ^# ]] && continue
+  enclii secrets set "$line" --secret
 done < .env.production
 ```
 
 Or set them one at a time:
 
 ```bash
-enclii secrets set DATABASE_URL "postgresql://..." --env prod
-enclii secrets set STRIPE_SECRET_KEY "sk_live_..." --env prod
+enclii secrets set DATABASE_URL="postgresql://..." --secret
+enclii secrets set STRIPE_SECRET_KEY="sk_live_..." --secret
 ```
 
 ### 4. Add a `/health` endpoint (2 min)
@@ -124,7 +130,7 @@ Enclii runs the Paketo Node.js buildpack, pushes to `ghcr.io`, and rolls out to 
 
 ```bash
 enclii domains add myapp.com --env prod
-enclii domains verify myapp.com
+enclii domains verify myapp.com --env prod
 ```
 
 Update DNS per the verification output (usually a single `CNAME` to `<service>.enclii.dev`). Cloudflare for SaaS issues the TLS cert automatically.

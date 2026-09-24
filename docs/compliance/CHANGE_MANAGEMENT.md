@@ -189,15 +189,15 @@ ArgoCD self-heal is enabled. When detected:
 | Strategy | When Used | Configuration |
 |----------|-----------|---------------|
 | RollingUpdate | Default for all services | Zero-downtime, managed by ArgoCD |
-| Canary | Production releases of critical services | `--strategy canary --canary-percent 10` |
-| Blue-Green | Database migrations or breaking changes | Manual cutover after validation |
+| Canary | Production releases of critical services | `enclii deploy --canary 10 --change-ticket <url>` |
+| Blue-Green | Database migrations or breaking changes | Manual cutover after validation (no Enclii blue-green strategy; there is no CLI flag for it) |
 
 ### Canary Deployment Process
 
-1. Deploy new version to 10% of traffic.
-2. Monitor error rate and latency for 5 minutes.
-3. If error rate exceeds 2% for 2 minutes, automatic rollback triggers.
-4. If healthy, progressively increase to 50%, then 100%.
+1. Deploy the new version as a canary: `enclii deploy --env production --canary 10 --change-ticket <url>` (5-50% of traffic, by replica proportion; production canaries require `--change-ticket`).
+2. The canary holds for the validation window (`--validation-window`, default `10m`), optionally probing `--smoke-endpoint`.
+3. If it stays healthy it is promoted to 100% automatically; if not it is rolled back automatically and `enclii deploy` exits with code `30`.
+4. Operators can end the window early with `enclii canary promote <rollout_id>` or abort with `enclii canary rollback <rollout_id> --reason "..."`.
 
 ---
 
@@ -213,7 +213,8 @@ Triggers automatically when:
 ### Manual Rollback
 
 ```bash
-# Via CLI
+# Via CLI (previous deployment; add a v-number such as v42 for a specific one,
+# or --instant to flip traffic at the routing layer)
 enclii rollback <service> --env production
 
 # Via kubectl

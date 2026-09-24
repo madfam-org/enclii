@@ -1,5 +1,9 @@
 # Redis Sentinel Migration Runbook
 
+> **Boundary checkpoint (2026-09-24, platform ops):** the `enclii deploy`/`enclii logs`
+> examples were corrected against `enclii --help`; public-safe, nothing withheld. Policy:
+> [`PUBLIC_REPO_BOUNDARY.md`](../PUBLIC_REPO_BOUNDARY.md).
+
 > **Boundary checkpoint (2026-09-18, platform-infra):** public-safe. This runbook
 > names in-cluster Service DNS, namespaces and `redis-cli`/`kubectl` command
 > shapes, but no secret VALUES (only `PASSWORD` placeholders), node identities,
@@ -440,7 +444,8 @@ Deployment picks up the change on the next pod restart.
 ### 3. Roll the Deployment
 
 ```bash
-enclii deploy karafiel-api --env production --strategy canary --canary-percent 25
+# From the karafiel-api checkout (enclii deploy reads ./service.yaml; -f to point elsewhere)
+enclii deploy --env production --canary 25 --change-ticket <url>
 # or
 kubectl rollout restart -n karafiel deployment/karafiel-api
 ```
@@ -449,7 +454,7 @@ kubectl rollout restart -n karafiel deployment/karafiel-api
 
 ```bash
 # Tail logs for Redis connection errors
-enclii logs karafiel-api -f --level error
+enclii logs karafiel-api --env production -f | grep -i error
 
 # Check the consumer is reaching the HA cluster
 kubectl exec -n data redis-ha-0 -c redis -- redis-cli -a "$REDIS_PASSWORD" \

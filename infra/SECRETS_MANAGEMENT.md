@@ -104,8 +104,11 @@ kubectl annotate pod my-app \
 ### Database Passwords
 
 ```bash
-# Using zero-downtime rotation (built into Enclii)
-enclii secrets rotate --secret postgres-password --service my-service
+# Rotation cutover through Enclii: stage the new value in Vault first, then
+# request a dry-run plan, then apply. The command patches the ExternalSecret's
+# rotation and force-sync annotations; it does not generate or write the value.
+enclii secrets rotate <external-secret-name> --namespace <namespace>
+enclii secrets rotate <external-secret-name> --namespace <namespace> --apply --reason "scheduled rotation"
 
 # Manual rotation with Vault
 vault write database/rotate-root/postgres-connection

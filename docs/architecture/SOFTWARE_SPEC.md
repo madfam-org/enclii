@@ -202,22 +202,27 @@ spec:
 
 ### 7.1 CLI (canonical: `enclii`; alias: `conductor`)
 
-**Top‑level verbs**
+> **Implementation status (2026-09-24):** this section is the v0.1 design. The shipped CLI
+> (v1.0.0-alpha.11) differs; each verb below notes what exists today. Verbs marked
+> *planned* are not implemented, and no `conductor` alias ships. Current usage:
+> [CLI reference](../cli/README.md).
 
-* `enclii init` → scaffold project and Service Spec from templates.
-* `enclii up` → build + deploy current branch to a preview env; returns URL.
-* `enclii deploy --env prod [--strategy canary --wait]` → promote release.
-* `enclii logs <service> [-f] [--env <name>] [--grep <expr>]` → stream logs.
-* `enclii ps [--env]` → show services, versions, replicas, health, P95, error rate.
-* `enclii secrets set NAME=val --service api --env prod` → write secrets.
-* `enclii scale api --min 2 --max 8 --env prod` → adjust HPA bounds.
-* `enclii routes add --host api.example.com --service api --env prod`
-* `enclii jobs run nightly-report --env prod`
-* `enclii rollback api --to <releaseId>`
-* `enclii cost --since 30d`
-* `enclii auth login|token create --scopes ...`
+**Top‑level verbs** (design, with current status)
 
-**Exit codes**: 0 success; 10 validation error; 20 build failed; 30 deploy failed; 40 timeout; 50 auth error.
+* `enclii init` → scaffold project and Service Spec from templates. *Implemented:* `enclii init [name] --template <slug>`.
+* `enclii up` → build + deploy current branch to a preview env; returns URL. *Planned; not implemented.* Preview environments are created by the GitHub webhook and managed with `enclii previews`.
+* `enclii deploy --env prod [--strategy canary --wait]` → promote release. *Implemented as* `enclii deploy --env prod [--canary N] [--wait]`; there is no `--strategy` flag.
+* `enclii logs <service> [-f] [--env <name>] [--grep <expr>]` → stream logs. *Implemented without `--grep`:* `enclii logs <service> [-f] [--env <name>] [--since <dur>] [-n <lines>]`.
+* `enclii ps [--env]` → show services, versions, replicas, health, P95, error rate. *Implemented:* `enclii ps [--env] [--project]`.
+* `enclii secrets set NAME=val --service api --env prod` → write secrets. *Implemented as* `enclii secrets set NAME=val [--secret] [--env prod]`, targeting the service in `./service.yaml` (`-f` for another spec); there is no `--service` flag.
+* `enclii scale api --min 2 --max 8 --env prod` → adjust HPA bounds. *Planned; not implemented.* Replicas are set in the Service Spec.
+* `enclii routes add --host api.example.com --service api --env prod`. *Implemented as* `enclii junctions add <domain> --service-id <id> --project <slug>` (`routes` is an alias of `junctions`), and `enclii domains add <domain> --service <name> --env <env>`.
+* `enclii jobs run nightly-report --env prod`. *Implemented as* `enclii jobs run-once --name <name> --command <cmd> --service-id <id> --project <slug>`; scheduled jobs use `enclii jobs create`.
+* `enclii rollback api --to <releaseId>`. *Implemented:* `enclii rollback api [v{n}|digest]`, or `--to <id>`; `--instant` flips traffic at the routing layer.
+* `enclii cost --since 30d`. *Implemented as* `enclii billing show --project <slug>` (current-period spend); there is no `cost` command or `--since` window.
+* `enclii auth login|token create --scopes ...`. *Implemented as* `enclii login` and `enclii tokens create --name <name> [--scopes ...]`; there is no `auth` command.
+
+**Exit codes** (design): 0 success; 10 validation error; 20 build failed; 30 deploy failed; 40 timeout; 50 auth error. *Implemented:* the same codes plus `1` for any other error; `50` is returned only by `enclii login`, and a 401 from any other command exits `1`.
 
 ### 7.2 Control Plane API (REST)
 
@@ -248,14 +253,14 @@ spec:
 
 **Deploy (main branch, prod)**
 
-1. Git push to `main` → CI calls `enclii build` (Roundhouse) → image + SBOM → sign image.
+1. Git push to `main` → CI calls `enclii build` (Roundhouse) → image + SBOM → sign image. *(Design. There is no `enclii build` command: builds start from the GitHub webhook or from `enclii deploy`.)*
 2. Create `Release` → `POST /deployments` with `strategy=canary 10%/5m` and success metrics (error rate, P95).
 3. Reconcilers apply manifests; Service becomes `Healthy` when probes pass and canary checks OK.
 4. Auto‑promote 10%→100% if checks pass; on failure, auto‑rollback and page.
 
 **Preview env (PR)**
 
-* `enclii up` creates `preview‑{branch‑hash}` namespace, route `https://{hash}.project.dev.enclii.dev`, deploys release, comments URL on PR.
+* *(Design; `enclii up` is not implemented. Previews are created by the GitHub webhook.)* `enclii up` creates `preview‑{branch‑hash}` namespace, route `https://{hash}.project.dev.enclii.dev`, deploys release, comments URL on PR.
 
 **Rollback**
 
@@ -331,7 +336,7 @@ spec:
 * **Integration:** build→release→deploy pipeline; preview env provision; secret injection; route TLS issuance; HPA scale‑out under synthetic load.
 * **E2E:**
 
-  * *TC‑01:* `enclii up` creates preview and returns a working URL in <3 min P95.
+  * *TC‑01:* `enclii up` creates preview and returns a working URL in <3 min P95. *(`enclii up` is planned, not implemented; previews come from the GitHub webhook.)*
   * *TC‑02:* canary 10%→100% with automated rollback on 5xx rate > 2% for 2 min.
   * *TC‑03:* secret rotation with zero downtime.
   * *TC‑04:* cron job fires on schedule; logs captured; retry on failure.
@@ -388,7 +393,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - run: npm ci
-      - run: enclii up --preview # build + deploy branch env
+      # Design used `enclii up --preview` here; it is not implemented.
+      # PR previews are created by the Enclii GitHub webhook.
 
   release:
     needs: build
@@ -396,7 +402,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: enclii deploy --env prod --strategy canary --wait
+      - run: enclii deploy --env prod --canary 10 --change-ticket "$CHANGE_TICKET_URL"
 ```
 
 ## Appendix B — Minimal Manifests Emitted by Reconcilers

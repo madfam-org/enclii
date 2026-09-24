@@ -143,7 +143,7 @@ Expected: PVC created, volume mounted, data persists
 **Manual Test Steps**:
 ```bash
 # 1. Deploy service with volume
-enclii deploy --service file-processor --env dev
+enclii deploy -f <file-processor-spec>.yaml --env dev
 
 # 2. Verify PVC created
 kubectl get pvc -n enclii-{project-id}
@@ -195,7 +195,7 @@ Expected: Ingress and Certificate resources exist with correct config
 **Manual Test Steps**:
 ```bash
 # 1. Deploy service
-enclii deploy --service api-gateway --env production
+enclii deploy -f <api-gateway-spec>.yaml --env production
 
 # 2. Add custom domain
 curl -X POST https://api.enclii.io/v1/services/{id}/domains \

@@ -84,12 +84,9 @@ docker build \
 
 ### 1. Deploy Janua
 
-Deploy Janua via Enclii or manually:
+Janua deploys from its own repository (`enclii deploy` has no `--template` flag):
 ```bash
-# Via Enclii (future)
-enclii deploy --template janua --env production
-
-# Or via Kubernetes (see Janua repo for manifests)
+# Via Kubernetes (see Janua repo for manifests)
 kubectl apply -k apps/api/k8s/
 ```
 

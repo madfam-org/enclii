@@ -326,11 +326,12 @@ go through Enclii web, API, or CLI.
 | Code | Meaning          |
 | ---- | ---------------- |
 | 0    | success          |
+| 1    | any other error, including an expired or invalid token |
 | 10   | validation error |
 | 20   | build failed     |
 | 30   | deploy failed    |
 | 40   | timeout          |
-| 50   | auth error       |
+| 50   | auth failure during `enclii login` only |
 
 ---
 

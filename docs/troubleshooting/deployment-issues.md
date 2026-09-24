@@ -25,8 +25,8 @@ This guide helps resolve issues with deploying services to the Enclii platform.
 ## Quick Diagnosis
 
 ```bash
-# Check deployment status
-enclii ps --service <service-id>
+# Check service status (the project defaults to service.yaml / ENCLII_PROJECT; override with --project)
+enclii ps --env <env>
 
 # View recent deployments
 enclii deployments list --service <service-id>
@@ -54,7 +54,7 @@ enclii logs <service-name> -f
 
 1. **Check service logs for startup errors**:
 ```bash
-enclii logs <service-name> --previous
+enclii logs <service-name> --env <env> -n 500
 
 # Direct pod debugging (kubectl — when you need K8s event details)
 kubectl describe pod -n <namespace> -l app=<service>
@@ -140,12 +140,15 @@ app.get('/healthz', (req, res) => {
 
 1. **Check logs from crashed container**:
 ```bash
-enclii logs <service-name> --previous
+enclii logs <service-name> --env <env> -n 500
+
+# The CLI has no --previous flag; for the previous container's output (break-glass):
+kubectl logs -n <namespace> <pod> --previous
 ```
 
-2. **Verify environment variables**:
+2. **Verify environment variables** (run in the service's directory, or pass `-f path/to/service.yaml`):
 ```bash
-enclii services env list --service <service-id>
+enclii secrets list --env <env>
 ```
 
 3. **Check for common startup issues**:
@@ -153,9 +156,9 @@ enclii services env list --service <service-id>
    - Port mismatch (app listens on different port than configured)
    - File permission errors
 
-4. **Debug locally** with same environment:
+4. **Debug locally** with same environment. There is no env export command; `--json` gives a machine-readable list (add `--reveal` to include secret values, which is audit-logged):
 ```bash
-enclii services env export --service <service-id> > .env
+enclii secrets list --env <env> --json
 docker run --env-file .env <image>
 ```
 
@@ -225,14 +228,15 @@ resources:
 **Solutions**:
 
 ```bash
-# Quick rollback to previous release
-enclii rollback <service-name>
+# Quick rollback to the previous deployment
+enclii rollback <service-name> --env <env>
 
-# Rollback to specific release
-enclii rollback <service-name> --release <release-id>
+# List deployments with their v-numbers, then roll back to one
+enclii deploy ls <service-name>
+enclii rollback <service-name> v42 --env <env>
 
-# List available releases for rollback
-enclii releases list --service <service-id>
+# Flip traffic in under 30s instead of re-committing a manifest
+enclii rollback <service-name> --env <env> --instant --reason "bad release"
 ```
 
 ### Pod Scheduling Issues
@@ -266,39 +270,33 @@ resources:
 ### Canary Deployments
 
 ```bash
-# Deploy with canary (gradual rollout)
-enclii deploy --strategy canary --canary-percent 10
+# Deploy with canary: 10% of traffic, auto-promote after the validation window
+enclii deploy --env <env> --canary 10 --validation-window 10m
 
-# Check canary status
-enclii deployments get <deployment-id>
+# Check canary status (tail until it reaches a terminal state)
+enclii canary status <rollout-id> --service <service-name> -f
 
 # Promote canary to full rollout
-enclii deployments promote <deployment-id>
+enclii canary promote <rollout-id> --service <service-name>
 
 # Abort canary
-enclii deployments abort <deployment-id>
+enclii canary rollback <rollout-id> --service <service-name> --reason "error rate spiked"
 ```
+
+Production canaries also need `--change-ticket <url>`. See [enclii canary](/cli/commands/canary).
 
 ### Blue-Green Deployments
 
-```bash
-# Deploy new version alongside existing
-enclii deploy --strategy blue-green
-
-# Switch traffic to new version
-enclii deployments switch <deployment-id>
-
-# Rollback by switching back
-enclii deployments switch --to previous
-```
+There is no blue-green strategy. `enclii deploy` does a rolling update by default or a canary with `--canary N`; for a fast revert use `enclii rollback <service-name> --instant`.
 
 ## Monitoring Deployments
 
 ### Real-time Status
 
 ```bash
-# Watch deployment progress
-enclii ps --watch
+# Check deployment progress (ps has no watch mode; re-run it, or deploy with --wait)
+enclii ps --env <env>
+enclii deploy ls <service-name>
 
 # Stream logs during deployment
 enclii logs <service-name> -f
@@ -330,14 +328,15 @@ kubectl get pods -n <namespace> -l app=<service> -w
 ### Managing Secrets
 
 ```bash
+# Run in the service's directory, or pass -f path/to/service.yaml
 # List current environment
-enclii services env list --service <service-id>
+enclii secrets list --env <env>
 
 # Set new variable
-enclii services env set --service <service-id> KEY=value
+enclii secrets set KEY=value --env <env>
 
 # Set secret (encrypted)
-enclii secrets set --service <service-id> SECRET_KEY=sensitive-value
+enclii secrets set SECRET_KEY=sensitive-value --secret --env <env>
 ```
 
 ## Related Documentation

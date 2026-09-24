@@ -194,7 +194,7 @@ teardown; the CNPG `Cluster` was never touched. A first-class
 
 | Transition | Failure mode | Recovery |
 | --- | --- | --- |
-| `pending → provisioning` | CloudNativePG namespace create fails | Row stuck in `pending`; reconciler retries 3× with 30s backoff, then `failed` with reason. Operator reruns with `enclii addon retry <id>` (Sprint 2). |
+| `pending → provisioning` | CloudNativePG namespace create fails | Row stuck in `pending`; reconciler retries 3× with 30s backoff, then `failed` with reason. Operator reruns with `enclii addon retry <id>` (planned for Sprint 2; not implemented). |
 | `provisioning → ready` | Cluster stuck in `Setting up primary` > 15min | Reconciler transitions to `failed` with `provision_timeout`. Operator destroys addon, reviews CNPG logs, recreates. |
 | `ready → pending_deletion` | `ScheduleDeletion` write fails | Delete request returns an error; nothing torn down (fail-safe). Client retries. |
 | `pending_deletion → deleting` | Retention sweep's `Deprovision` errors | Row stays in `pending_deletion` (or `failed` if deprovision half-ran); next reconciler tick retries the finalize. A stuck teardown surfaces via `status_message` + the event ledger. |

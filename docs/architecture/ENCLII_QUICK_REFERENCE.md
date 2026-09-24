@@ -401,8 +401,12 @@ Structured Logs
 ## DEPLOYMENT WORKFLOW
 
 ### Development (Preview)
+
+Planned design: there is no `enclii up` command. PR previews are created by the
+GitHub webhook and managed with `enclii previews` ([reference](../cli/commands/previews.md)).
+
 ```
-1. enclii up
+1. PR opened (GitHub webhook)
    └─ Build Docker image
    └─ Push to registry
    └─ Create Release object
@@ -415,19 +419,19 @@ SLA: P95 < 3 minutes
 
 ### Staging/Production
 ```
-1. enclii deploy --env prod --strategy canary
-   └─ Create Release object
-   └─ Create Deployment (canary 10%)
-   └─ Monitor SLOs (error rate, latency, availability)
+1. enclii deploy --env prod --canary 10 --change-ticket <url>
+   └─ Build and create Release object
+   └─ Start canary rollout (10% of traffic by replica proportion)
+   └─ Hold for the validation window (--validation-window, default 10m)
    └─ Auto-promote 10% → 100% if healthy
-   └─ Auto-rollback if SLO breach (2 min window)
+   └─ Auto-rollback if unhealthy (enclii deploy exits 30)
 
 SLA: P95 ≤ 8 minutes (build → running)
 ```
 
 ### Rollback
 ```
-1. enclii rollback api --to {releaseId}
+1. enclii rollback api [v{n}]     (or --to <id>; --instant flips traffic in <30s)
    └─ Swap ReplicaSets to previous version
    └─ Monitor SLOs for 10 minutes
    └─ Clean up failed ReplicaSet
@@ -593,11 +597,11 @@ make run-reconcilers
 
 # CLI Usage
 ./bin/enclii init                    # Create service
-./bin/enclii up                      # Deploy preview
+./bin/enclii previews list           # PR previews (created by the GitHub webhook)
 ./bin/enclii deploy --env prod       # Deploy production
 ./bin/enclii logs api -f             # Tail logs
 ./bin/enclii ps                      # List services
-./bin/enclii scale --min 2 --max 10  # Configure autoscaling
+# Replicas are set in service.yaml; there is no enclii scale command
 
 # Kubernetes Operations
 kubectl get deployments -n prod-{project}

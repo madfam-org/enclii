@@ -66,19 +66,20 @@ curl -fsSL https://install.enclii.dev | sh
 # Login
 enclii login
 
-# Create project
-enclii project create my-app --region us-central1
+# Create project (there is no --region flag)
+enclii projects create --name my-app --slug my-app
 
-# Create environments
-enclii env create production
-enclii env create staging
+# Environments are created on first deploy: `enclii deploy --env staging`
+# creates the "staging" environment if it does not exist yet.
+# List a project's environments:
+enclii projects environments my-app
 ```
 
 ### 3. Choose Database Strategy
 
 | Railway Setup | Recommended Enclii Approach | Migration Complexity |
 |--------------|----------------------------|---------------------|
-| **Railway Postgres** | Enclii in-cluster PostgreSQL (or AWS RDS / GCP CloudSQL) | 🟡 Medium (requires dump/restore) |
+| **Railway Postgres** | Enclii managed Postgres addon (`enclii addon`) (or AWS RDS / GCP CloudSQL) | 🟡 Medium (requires dump/restore) |
 | **Railway Redis** | Enclii in-cluster Redis (or AWS ElastiCache / GCP Memorystore) | 🟢 Low (minimal data migration) |
 | **Railway MongoDB** | MongoDB Atlas | 🟡 Medium (requires dump/restore) |
 | **No database** | N/A | 🟢 Low |
@@ -463,17 +464,16 @@ spec:
 
 ### Initialize Service
 
-```bash
-# Create service
-enclii service create -f enclii.yaml --env production
+The CLI reads `service.yaml` by default. This guide names the spec `enclii.yaml`, so commands that read the spec (`deploy`, `secrets`) take `-f enclii.yaml`.
 
-# Or use CLI directly
-enclii init \
-  --name web-api \
-  --buildpack auto \
-  --port 3000 \
-  --health-check /health \
-  --replicas 2
+```bash
+# Register the service from enclii.yaml (there is no `service create` command;
+# `enclii deploy -f enclii.yaml` also creates it on first deploy)
+enclii services-sync --dir . --project myapp
+
+# Or scaffold a service.yaml with the CLI, then edit port, replicas and health check
+# (init takes only a name and --template)
+enclii init web-api
 ```
 
 ---
@@ -499,15 +499,18 @@ curl -H "Authorization: Bearer $RAILWAY_TOKEN" \
 
 **Option 1: Enclii Lockbox (Recommended)**
 
+`enclii secrets set` takes `KEY=VALUE` pairs for the service in the spec file. The service must be registered, and an `--env` environment must already exist (omit `--env` to apply to all environments).
+
 ```bash
 # Create secrets in Lockbox
-enclii secret create DATABASE_URL "postgresql://user:pass@rds.amazonaws.com:5432/mydb" --env production
-enclii secret create REDIS_URL "redis://elasticache.amazonaws.com:6379" --env production
-enclii secret create API_KEY "sk_live_xxxxx" --env production
-enclii secret create JWT_SECRET "super-secret-key" --env production
+enclii secrets set -f enclii.yaml --secret --env production \
+  DATABASE_URL="postgresql://user:pass@rds.amazonaws.com:5432/mydb" \
+  REDIS_URL="redis://elasticache.amazonaws.com:6379" \
+  API_KEY="sk_live_xxxxx" \
+  JWT_SECRET="super-secret-key"
 
 # Verify secrets
-enclii secret list --env production
+enclii secrets list -f enclii.yaml --env production
 ```
 
 **Option 2: Kubernetes Secrets (Direct)**
@@ -542,7 +545,7 @@ while IFS='=' read -r key value; do
 
   # Create Enclii secret
   echo "Importing $key..."
-  enclii secret create "$key" "$value" --env production
+  enclii secrets set -f enclii.yaml "$key=$value" --secret --env production
 done < railway.env
 
 echo "✅ Import complete!"
@@ -572,10 +575,10 @@ Test:
 
 ```bash
 # Deploy with secrets
-enclii deploy --env production
+enclii deploy -f enclii.yaml --env production --wait
 
-# Verify secrets are injected
-enclii exec web-api --env production -- env | grep DATABASE_URL
+# Verify the keys are set for the service (values are masked)
+enclii secrets list -f enclii.yaml --env production
 ```
 
 ---
@@ -593,15 +596,14 @@ Railway typically provides:
 **1. Add Custom Domain**
 
 ```bash
-# Add custom domain
-enclii domain add api.myapp.com \
+# Add custom domain (TLS is on by default)
+enclii domains add api.myapp.com \
   --service web-api \
   --env production \
-  --tls-enabled \
   --tls-issuer letsencrypt-prod
 
-# Verify domain
-enclii domain list --service web-api --env production
+# Confirm it was added
+enclii domains list --service web-api --env production
 ```
 
 **2. Configure DNS**
@@ -628,8 +630,8 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.
 Enclii requires DNS TXT record verification:
 
 ```bash
-# Get verification token
-enclii domain verify api.myapp.com --service web-api --env production
+# Show the verification record (also printed by `enclii domains add`)
+enclii domains status api.myapp.com --service web-api --env production
 
 # Output:
 # Add this TXT record to your DNS:
@@ -646,35 +648,18 @@ Verify:
 
 ```bash
 # Trigger verification
-enclii domain verify api.myapp.com --service web-api --env production
+enclii domains verify api.myapp.com --service web-api --env production
 
 # Check status
-enclii domain status api.myapp.com --service web-api --env production
+enclii domains status api.myapp.com --service web-api --env production
 ```
 
 **4. Configure Routes (Path-Based Routing)**
 
-If you have multiple paths on Railway, configure routes:
+There is no `enclii route` command, and path-based routing across services is not configurable from the CLI. If you have multiple paths on Railway, either route them inside one service or give each service its own hostname:
 
 ```bash
-# Add routes
-enclii route add /api/v1 \
-  --service web-api \
-  --env production \
-  --path-type Prefix \
-  --port 3000
-
-enclii route add /api/v2 \
-  --service web-api-v2 \
-  --env production \
-  --path-type Prefix \
-  --port 3000
-
-enclii route add /health \
-  --service web-api \
-  --env production \
-  --path-type Exact \
-  --port 3000
+enclii domains add api-v2.myapp.com --service web-api-v2 --env production
 ```
 
 **5. Wait for TLS Certificate**
@@ -697,11 +682,11 @@ curl https://api.myapp.com/health
 ### Deploy to Staging First
 
 ```bash
-# Deploy to staging
-enclii deploy --env staging
+# Deploy to staging and wait until healthy
+enclii deploy -f enclii.yaml --env staging --wait
 
-# Monitor deployment
-enclii status --env staging --follow
+# Check service status
+enclii ps --env staging
 
 # Check logs
 enclii logs web-api --env staging --follow
@@ -716,14 +701,14 @@ curl https://staging-api.myapp.com/api/v1/users
 **1. Deploy New Stack (Green)**
 
 ```bash
-# Deploy to production (parallel to Railway)
-enclii deploy --env production
+# Deploy to production (parallel to Railway) and wait for healthy status
+enclii deploy -f enclii.yaml --env production --wait
 
-# Wait for healthy status
-enclii status --env production
+# Check service status
+enclii ps --env production
 
-# Get Enclii service URL
-enclii info --env production
+# List the service's domains
+enclii domains list --service web-api --env production
 ```
 
 **2. Test with Subset of Traffic**
@@ -743,7 +728,7 @@ Option B: Use a specific test subdomain
 curl -H "Host: api.myapp.com" http://<enclii-ingress-ip>/health
 
 # Or create test subdomain
-enclii domain add test-api.myapp.com --service web-api --env production
+enclii domains add test-api.myapp.com --service web-api --env production
 ```
 
 **3. Migrate Database (Blue-Green Strategy)**
@@ -784,8 +769,8 @@ sudo killall -HUP mDNSResponder  # macOS
 **5. Monitor After Cutover**
 
 ```bash
-# Watch metrics
-enclii metrics --env production
+# Watch metrics (service ID from `enclii projects services myapp`)
+enclii observe metrics --service <service-id>
 
 # Monitor error rate
 enclii logs web-api --env production --follow | grep ERROR
@@ -801,7 +786,7 @@ psql $RDS_URL -c "SELECT count(*) FROM pg_stat_activity;"
 
 After migration, verify:
 
-- [ ] All services are healthy: `enclii status --env production`
+- [ ] All services are healthy: `enclii ps --env production`
 - [ ] HTTPS works: `curl https://api.myapp.com`
 - [ ] Database connectivity: Test critical API endpoints
 - [ ] Secret injection: Verify env vars are set correctly
@@ -828,7 +813,7 @@ api.myapp.com.  60  IN  A  <railway-ip>
 # Most traffic will switch back within 1-2 minutes
 
 # 3. Investigate issues on Enclii
-enclii logs web-api --env production --tail 1000 > enclii_error.log
+enclii logs web-api --env production --lines 1000 > enclii_error.log
 
 # 4. Keep Railway running until issues are resolved
 ```
@@ -843,13 +828,18 @@ If database migration failed:
 psql $RDS_URL -c "DROP SUBSCRIPTION rds_sub;"
 
 # 2. Update connection string back to Railway
-enclii secret update DATABASE_URL "$RAILWAY_DATABASE_URL" --env production
+#    (a single-key `secrets set` fails if the key already exists, so delete first)
+enclii secrets delete DATABASE_URL -f enclii.yaml --force
+enclii secrets set DATABASE_URL="$RAILWAY_DATABASE_URL" -f enclii.yaml --secret --env production
 
-# 3. Redeploy services
-enclii deploy --env production --force
+# 3. Redeploy services (rebuilds the current commit; there is no --force flag)
+enclii deploy -f enclii.yaml --env production --wait
 
-# 4. Verify connectivity
-enclii exec web-api --env production -- psql $DATABASE_URL -c "SELECT 1;"
+# 4. Verify connectivity with a one-off job in the service's environment
+enclii jobs run-once --name db-check --image postgres:16-alpine \
+  --command 'psql "$DATABASE_URL" -c "SELECT 1;"' \
+  --service-id <service-id> --project myapp
+enclii jobs logs <job-id>
 ```
 
 ### Complete Rollback to Railway
@@ -890,8 +880,12 @@ Error: connect ECONNREFUSED
 **Diagnosis:**
 
 ```bash
-# Check if database is accessible from pod
-enclii exec web-api --env production -- nc -zv <db-host> 5432
+# Check if database is accessible from the cluster (one-off job in the
+# service's environment; there is no `enclii exec`)
+enclii jobs run-once --name db-reach --image postgres:16-alpine \
+  --command "pg_isready -h <db-host> -p 5432" \
+  --service-id <service-id> --project myapp
+enclii jobs logs <job-id>
 
 # Check security group rules
 aws ec2 describe-security-groups --group-ids sg-xxxxx
@@ -921,7 +915,7 @@ Error: DATABASE_URL is not defined
 
 ```bash
 # Check if secret exists
-enclii secret list --env production | grep DATABASE_URL
+enclii secrets list -f enclii.yaml --env production | grep DATABASE_URL
 
 # Check pod environment
 kubectl exec -n myapp-production deploy/web-api -- env | grep DATABASE_URL
@@ -931,10 +925,10 @@ kubectl exec -n myapp-production deploy/web-api -- env | grep DATABASE_URL
 
 ```bash
 # Recreate secret
-enclii secret create DATABASE_URL "postgresql://..." --env production
+enclii secrets set DATABASE_URL="postgresql://..." -f enclii.yaml --secret --env production
 
-# Force redeploy
-enclii deploy --env production --force
+# Redeploy (there is no --force flag; deploy always rebuilds and rolls out)
+enclii deploy -f enclii.yaml --env production --wait
 ```
 
 ### Issue 3: TLS Certificate Not Issued
@@ -963,8 +957,8 @@ kubectl describe certificate web-api-api-myapp-com-tls -n myapp-production
 # Delete and recreate certificate
 kubectl delete certificate web-api-api-myapp-com-tls -n myapp-production
 
-# Trigger domain reconciliation
-enclii domain verify api.myapp.com --service web-api --env production --force
+# Re-run domain verification
+enclii domains verify api.myapp.com --service web-api --env production
 
 # Wait for issuance (can take 2-5 minutes)
 kubectl get certificate -n myapp-production -w
@@ -998,7 +992,7 @@ spec:
         memory: "2Gi"  # Increased from 1Gi
 
 # Redeploy
-enclii deploy --env production
+enclii deploy -f enclii.yaml --env production
 ```
 
 ### Issue 5: Slow Performance
@@ -1014,8 +1008,11 @@ aws rds describe-db-instances --db-instance-identifier myapp-prod --query 'DBIns
 
 kubectl get nodes -o wide
 
-# Check network latency
-enclii exec web-api --env production -- ping -c 5 <db-host>
+# Check connection latency from the cluster (one-off job; there is no `enclii exec`)
+enclii jobs run-once --name db-latency --image postgres:16-alpine \
+  --command 'time psql "$DATABASE_URL" -c "SELECT 1;"' \
+  --service-id <service-id> --project myapp
+enclii jobs logs <job-id>
 ```
 
 **Fix:**
@@ -1063,6 +1060,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: web-api
+  project: myapp
 spec:
   build:
     buildpack: auto
@@ -1078,15 +1076,15 @@ spec:
       tlsEnabled: true
 EOF
 
-# 5. Create secrets
-enclii secret create DATABASE_URL "$RDS_URL" --env production
+# 5. Register the service and create secrets
+enclii services-sync --dir . --project myapp
+enclii secrets set DATABASE_URL="$RDS_URL" -f enclii.yaml --secret
 
 # 6. Deploy
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+enclii deploy -f enclii.yaml --env production --wait
 
 # 7. Add domain and verify
-enclii domain add api.myapp.com --service web-api --env production
+enclii domains add api.myapp.com --service web-api --env production
 # (Follow DNS verification steps)
 
 # 8. Test
@@ -1133,6 +1131,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: web-app
+  project: myapp
 spec:
   build:
     buildpack: auto
@@ -1156,17 +1155,18 @@ spec:
       tlsEnabled: true
 EOF
 
-# 4. Create secrets
-enclii secret create DATABASE_URL "$RDS_URL" --env production
-enclii secret create REDIS_URL "redis://$ELASTICACHE_HOST:6379" --env production
-enclii secret create NEXTAUTH_SECRET "$(openssl rand -base64 32)" --env production
+# 4. Register the service and create secrets
+enclii services-sync --dir . --project myapp
+enclii secrets set -f enclii.yaml --secret \
+  DATABASE_URL="$RDS_URL" \
+  REDIS_URL="redis://$ELASTICACHE_HOST:6379" \
+  NEXTAUTH_SECRET="$(openssl rand -base64 32)"
 
 # 5. Deploy
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+enclii deploy -f enclii.yaml --env production --wait
 
 # 6. Configure domain
-enclii domain add app.myapp.com --service web-app --env production
+enclii domains add app.myapp.com --service web-app --env production
 # (Verify DNS)
 
 # 7. Test thoroughly
@@ -1176,8 +1176,8 @@ curl https://app.myapp.com
 # 8. Switch DNS
 # Update A record to Enclii
 
-# 9. Monitor
-enclii metrics --env production
+# 9. Monitor (service ID from `enclii projects services myapp`)
+enclii observe metrics --service <service-id>
 ```
 
 **Time:** ~3 hours
@@ -1203,6 +1203,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: user-service
+  project: myapp
 spec:
   build:
     buildpack: auto
@@ -1216,9 +1217,9 @@ spec:
       tlsEnabled: true
 EOF
 
-enclii service create -f user-service.yaml --env production
-enclii secret create DATABASE_URL "$RAILWAY_DATABASE_URL" --env production
-enclii deploy --env production
+enclii services-sync --dir . --project myapp
+enclii secrets set DATABASE_URL="$RAILWAY_DATABASE_URL" -f user-service.yaml --secret
+enclii deploy -f user-service.yaml --env production --wait
 
 # 2. Update api-gateway to call Enclii user-service
 # Update USER_SERVICE_URL to users-api.myapp.com
@@ -1273,40 +1274,25 @@ spec:
 
 ### 3. Set Up Monitoring Alerts
 
+There is no `enclii alert` command; alert rules cannot be created from the CLI. Inspect a service's active alerts, health and errors with [`enclii observe`](../cli/commands/observe.md):
+
 ```bash
-# Create alerts for key metrics
-enclii alert create high-error-rate \
-  --metric http_requests_total \
-  --condition 'rate[5m] > 0.05' \
-  --severity critical \
-  --notify slack-channel
-
-enclii alert create high-latency \
-  --metric http_request_duration_seconds \
-  --condition 'p95 > 1.0' \
-  --severity warning
-
-enclii alert create low-replica-count \
-  --metric deployment_replicas_available \
-  --condition '< 2' \
-  --severity critical
+enclii observe alerts --service <service-id>
+enclii observe health --service <service-id>
+enclii observe errors --service <service-id>
 ```
 
 ### 4. Configure Backups
 
-```bash
-# Set up automated database backups
-enclii backup create \
-  --database myapp-prod \
-  --schedule "0 2 * * *" \
-  --retention 30days \
-  --storage s3://myapp-backups/
+There is no `enclii backup` command. For an external database (RDS), use the provider's automated backups. To schedule your own dump, create a cron job that runs in the service's environment; the command must write the dump somewhere durable (for example upload it to object storage):
 
-# Test restore
-enclii backup restore \
-  --backup myapp-prod-2025-11-20 \
-  --target myapp-staging
+```bash
+enclii jobs create --name nightly-backup --schedule "0 2 * * *" \
+  --command 'pg_dump -Fc "$DATABASE_URL" > /backups/db.dump' \
+  --service-id <service-id> --project myapp
 ```
+
+For Enclii managed Postgres addons, `enclii export --project myapp` produces a tarball that includes a `pg_dump` of each bound addon. There is no restore command; restore with `pg_restore` (see [Database Operations](./database-operations.md)).
 
 ---
 

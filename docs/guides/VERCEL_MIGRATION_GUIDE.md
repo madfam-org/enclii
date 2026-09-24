@@ -401,24 +401,24 @@ export async function GET() {
 ### Step 5: Deploy to Enclii
 
 ```bash
-# Create project
-enclii project create myapp --region us-central1
+# Create project (there is no --region flag)
+enclii projects create --name myapp --slug myapp
 
-# Create environment
-enclii env create production
+# Register the service from enclii.yaml (there is no `service create` command).
+# The CLI reads service.yaml by default, so spec-reading commands take -f enclii.yaml.
+enclii services-sync --dir . --project myapp
 
-# Import secrets (see Environment Variables section)
-enclii secret create NEXTAUTH_SECRET "$(openssl rand -base64 32)" --env production
-enclii secret create DATABASE_URL "postgresql://..." --env production
+# Import secrets (see Environment Variables section). Without --env they apply
+# to all environments; the "production" environment is created by the first deploy.
+enclii secrets set -f enclii.yaml --secret \
+  NEXTAUTH_SECRET="$(openssl rand -base64 32)" \
+  DATABASE_URL="postgresql://..."
 
-# Create service
-enclii service create -f enclii.yaml --env production
+# Deploy and wait until healthy
+enclii deploy -f enclii.yaml --env production --wait
 
-# Deploy
-enclii deploy --env production
-
-# Monitor deployment
-enclii status --env production --follow
+# Check service status
+enclii ps --env production
 
 # Check logs
 enclii logs web-app --env production --follow
@@ -507,6 +507,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: docs-site
+  project: myapp
 spec:
   build:
     dockerfile: Dockerfile
@@ -536,8 +537,8 @@ spec:
 **Step 5: Deploy**
 
 ```bash
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+# Creates the project, service and environment on first run
+enclii deploy -f enclii.yaml --env production --wait
 ```
 
 ---
@@ -739,7 +740,7 @@ while IFS='=' read -r key value; do
 
   # Private secrets
   echo "Importing secret: $key"
-  enclii secret create "$key" "$value" --env production
+  enclii secrets set -f enclii.yaml "$key=$value" --secret --env production
 done < .env.production
 ```
 
@@ -775,18 +776,16 @@ spec:
 **Step 1: Add Domains to Enclii**
 
 ```bash
-# Add primary domain
-enclii domain add myapp.com \
+# Add primary domain (TLS is on by default)
+enclii domains add myapp.com \
   --service web-app \
   --env production \
-  --tls-enabled \
   --tls-issuer letsencrypt-prod
 
 # Add www subdomain
-enclii domain add www.myapp.com \
+enclii domains add www.myapp.com \
   --service web-app \
   --env production \
-  --tls-enabled \
   --tls-issuer letsencrypt-prod
 ```
 
@@ -801,8 +800,8 @@ www      300  IN  CNAME myapp.com             (Proxied)
 
 ```bash
 # Verify DNS ownership
-enclii domain verify myapp.com --service web-app --env production
-enclii domain verify www.myapp.com --service web-app --env production
+enclii domains verify myapp.com --service web-app --env production
+enclii domains verify www.myapp.com --service web-app --env production
 ```
 
 **Step 4: Test HTTPS**
@@ -927,7 +926,7 @@ module.exports = {
 
 ```bash
 # Deploy to staging
-enclii deploy --env staging
+enclii deploy -f enclii.yaml --env staging --wait
 
 # Test
 curl https://staging.myapp.com/api/health
@@ -941,7 +940,7 @@ npm run test:e2e -- --baseUrl https://staging.myapp.com
 
 ```bash
 # Deploy to production (Enclii)
-enclii deploy --env production
+enclii deploy -f enclii.yaml --env production --wait
 
 # Parallel test (before switching DNS)
 curl -H "Host: myapp.com" http://<enclii-ingress-ip>
@@ -951,7 +950,7 @@ curl -H "Host: myapp.com" http://<enclii-ingress-ip>
 
 # Monitor
 enclii logs web-app --env production --follow
-enclii metrics --env production
+enclii observe metrics --service <service-id>   # ID from `enclii projects services myapp`
 ```
 
 ### Performance Comparison
@@ -1011,9 +1010,8 @@ EOF
 # 4. Create enclii.yaml
 # (see above)
 
-# 5. Deploy
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+# 5. Deploy (creates the service on first run)
+enclii deploy -f enclii.yaml --env production --wait
 
 # 6. Configure Cloudflare
 # (add DNS, enable proxy, configure caching)
@@ -1046,10 +1044,10 @@ spec:
     - DATABASE_URL
     - STRIPE_SECRET_KEY
 
-# 4. Deploy
-enclii secret create DATABASE_URL "postgresql://..." --env production
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+# 4. Register the service, set the secret, deploy
+enclii services-sync --dir . --project myapp
+enclii secrets set DATABASE_URL="postgresql://..." -f enclii.yaml --secret
+enclii deploy -f enclii.yaml --env production --wait
 
 # 5. Configure Cloudflare
 # Enable Polish (Lossy for e-commerce product images)
@@ -1082,6 +1080,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: docs
+  project: myapp
 spec:
   build:
     dockerfile: Dockerfile
@@ -1095,9 +1094,8 @@ spec:
       tlsEnabled: true
 EOF
 
-# 4. Deploy
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+# 4. Deploy (creates the service on first run)
+enclii deploy -f enclii.yaml --env production --wait
 
 # 5. Configure Cloudflare
 # Aggressive caching for static docs

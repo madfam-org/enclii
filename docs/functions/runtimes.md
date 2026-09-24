@@ -359,13 +359,7 @@ async fn main() {
 
 ## Custom Runtime Configuration
 
-Override the default handler in your function config:
-
-```bash
-enclii functions deploy --project my-project --handler mymodule.myhandler
-```
-
-Or via the API:
+Override the default handler in your function config via the API (the CLI has no `--handler` flag):
 
 ```json
 {
@@ -381,15 +375,7 @@ Or via the API:
 
 All runtimes support environment variables:
 
-```bash
-# Via CLI
-enclii functions deploy --project my-project \
-  --env DATABASE_URL=postgres://... \
-  --env API_KEY=secret
-
-# Via Dashboard
-# Settings → Environment Variables
-```
+Set them through the API's `config.env_vars` (see [Function configuration](./configuration.md#environment-variables)); `enclii functions deploy` has no `--env` flag.
 
 Access in code:
 

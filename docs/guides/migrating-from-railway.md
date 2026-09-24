@@ -17,7 +17,7 @@ Railway and Enclii have similar mental models — a project contains services, s
 | Preview environments per PR | Native | Native (P1.7) |
 | Custom domains + TLS | Native | Native (Cloudflare for SaaS) |
 | Environment variables | Native | `enclii secrets set` |
-| Managed Postgres | Native | P3.1 (managed-DB addon, landing) |
+| Managed Postgres | Native | `enclii addon` (managed Postgres addon) |
 | Managed Redis | Native | P3.1 (managed-cache addon, landing) |
 | Private service networking | Native | Native (cluster-internal DNS) |
 | Cron / scheduled jobs | Native | `enclii jobs` |
@@ -31,7 +31,7 @@ Railway and Enclii have similar mental models — a project contains services, s
 | Project | Project |
 | Service (one per repo or folder) | Service (one `service.yaml` per deployable unit) |
 | Environment (production / staging / preview) | Environment (`--env prod` / `--env staging` / `--env dev`) |
-| Plugin (Postgres, Redis) | Addon (P3.1) |
+| Plugin (Postgres, Redis) | Addon (`enclii addon`) |
 
 ## Service-per-repo vs multi-service-per-repo
 
@@ -96,9 +96,16 @@ spec:
 ### 3. Port env vars (2 min)
 
 ```bash
+# Register the service from ./service.yaml so the variables have a target
+# (--project must match metadata.project in service.yaml)
+enclii services-sync --project <project>
+
+# `enclii secrets set` takes KEY=VALUE pairs for the service in ./service.yaml.
+# Without --env the values apply to all environments (--env prod only works
+# once the environment exists; the first `enclii deploy --env prod` creates it).
 jq -r 'to_entries[] | "\(.key)=\(.value)"' railway-vars.json \
-  | while IFS='=' read -r key value; do
-      enclii secrets set "$key" "$value" --env prod
+  | while IFS= read -r kv; do
+      enclii secrets set "$kv" --secret
     done
 ```
 
@@ -110,16 +117,17 @@ Railway Postgres → Enclii managed Postgres is a dump + restore:
 # Export from Railway
 railway run pg_dump "$DATABASE_URL" > dump.sql
 
-# Until P3.1 (managed-DB addon) lands, provision Postgres in-cluster:
-# Ask your Enclii operator to provision a PG instance and expose a DATABASE_URL secret.
-# With P3.1:
-#   enclii addon create postgres --name my-app-db --env prod
-#   enclii addon attach my-app-db --service my-app --env prod
-# Then:
+# Create a managed Postgres addon bound to the service; its connection
+# string is injected into the service as DATABASE_URL.
+enclii addon plans
+enclii addon create my-app-db --plan standard-0 --service <service-id>
+
+# Restore. DATABASE_URL is the addon's connection string; run this from a host
+# that can reach the addon (the CLI has no port-forward command).
 psql "$DATABASE_URL" < dump.sql
 ```
 
-Until the addon API ships, coordinate Postgres provisioning with your operator — see [database operations](./database-operations.md).
+See [database operations](./database-operations.md) for what the addon CLI covers.
 
 ### 5. Deploy (2 min)
 
@@ -131,7 +139,7 @@ enclii deploy --env prod
 
 ```bash
 enclii domains add myapp.com --env prod
-enclii domains verify myapp.com
+enclii domains verify myapp.com --env prod
 ```
 
 When healthy, shut the Railway service down.
@@ -152,7 +160,7 @@ When healthy, shut the Railway service down.
 ## Next steps
 
 - [Full Railway migration guide](./RAILWAY_MIGRATION_GUIDE.md) — full coverage of plugins, cron, and private networking
-- [Database operations](./database-operations.md) — Postgres management until addon API ships
+- [Database operations](./database-operations.md) — managed Postgres addons
 - [Onboarding guide](./ONBOARDING_GUIDE.md) — per-PR preview environments (P1.7)
 - [`enclii jobs`](../cli/commands/jobs.md) — cron / scheduled tasks
 

@@ -59,10 +59,10 @@ Yes. You have full control:
 
 ```bash
 # Delete a service (and its data)
-enclii services delete <service-id> --confirm
+enclii services-delete --project <project-slug> --name <service-name>
 
 # Delete entire project
-enclii projects delete <project-id> --confirm
+enclii projects delete <project-slug>
 ```
 
 For complete account deletion, contact support.
@@ -114,7 +114,8 @@ Secrets are managed through the **Lockbox** subsystem:
 
 ```bash
 # CLI
-enclii secrets set --service <id> DATABASE_URL="postgres://..."
+# Run in the service's directory, or pass -f path/to/service.yaml
+enclii secrets set DATABASE_URL="postgres://..." --secret
 
 # Or via UI
 # Project → Service → Settings → Environment

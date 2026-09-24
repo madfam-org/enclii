@@ -6,13 +6,13 @@ This directory contains example service configurations demonstrating Enclii plat
 
 ```bash
 # Deploy a stateful service with persistent volumes
-enclii up -f examples/stateful-service.yaml
+enclii deploy -f examples/stateful-service.yaml
 
 # Deploy a service with custom domain and HTTPS
-enclii up -f examples/custom-domain-service.yaml
+enclii deploy -f examples/custom-domain-service.yaml
 
 # Deploy a complete production-ready service
-enclii up -f examples/complete-example.yaml
+enclii deploy -f examples/complete-example.yaml
 ```
 
 ## Examples
@@ -170,7 +170,7 @@ POST /v1/services/{service_id}/routes
 
 2. Deploy:
    ```bash
-   enclii deploy --service myapp --env production
+   enclii deploy -f service.yaml --env production
    ```
 
 3. Verify PVCs created:

@@ -30,11 +30,12 @@ The GitHub integration enables:
 
 ### 2. Link Repository to Service
 
-```bash
-# Via CLI
-enclii services link --repo https://github.com/org/repo
+There is no per-service link command. Link the GitHub App installation to your account once, check which repositories it can see, then declare the repository in the service spec:
 
-# Or update enclii.yaml
+```bash
+enclii integrations github link --installation-id <installation-id>
+enclii integrations github status
+enclii integrations github repos
 ```
 
 In your `enclii.yaml`:
@@ -63,16 +64,14 @@ If using self-hosted GitHub Enterprise or need manual webhook setup:
 1. Go to your repository **Settings → Webhooks**
 2. Click **Add webhook**
 3. Configure:
-   - **Payload URL**: `https://api.enclii.dev/webhooks/github`
+   - **Payload URL**: `https://api.enclii.dev/v1/webhooks/github`
    - **Content type**: `application/json`
-   - **Secret**: Generate via `enclii webhooks create`
+   - **Secret**: the GitHub webhook secret configured for your Enclii installation. No CLI command generates it; `enclii webhooks` manages outbound Enclii event subscriptions, not GitHub's inbound webhook.
    - **Events**: Select `Push`, `Pull request`, `Check run`
 
 ### 2. Verify Webhook
 
-```bash
-enclii webhooks verify --repo org/repo
-```
+The CLI has no webhook verification command. Check **Settings → Webhooks → Recent Deliveries** in GitHub for a `2xx` response from Enclii, then confirm the push produced a build with `enclii releases <service>`.
 
 ---
 
@@ -105,9 +104,9 @@ Enclii posts build status as GitHub commit status checks:
 - **failure**: Build failed
 - **error**: Infrastructure error
 
-View build logs:
+View build status (and the error message of failed builds):
 ```bash
-enclii builds logs --latest
+enclii releases <service>
 ```
 
 ---
@@ -244,7 +243,7 @@ Use Enclii in your GitHub Actions workflows.
 
 2. Add to repository secrets:
    - Go to **Settings → Secrets → Actions**
-   - Add `ENCLII_TOKEN` with your token
+   - Add `ENCLII_API_TOKEN` with your token
 
 ### Workflow Example
 
@@ -269,7 +268,7 @@ jobs:
 
       - name: Deploy to Staging
         env:
-          ENCLII_TOKEN: ${{ secrets.ENCLII_TOKEN }}
+          ENCLII_API_TOKEN: ${{ secrets.ENCLII_API_TOKEN }}
         run: |
           enclii deploy --env staging --wait
 
@@ -279,22 +278,12 @@ jobs:
       - name: Deploy to Production
         if: success()
         env:
-          ENCLII_TOKEN: ${{ secrets.ENCLII_TOKEN }}
+          ENCLII_API_TOKEN: ${{ secrets.ENCLII_API_TOKEN }}
         run: |
-          enclii deploy --env production --strategy canary --canary-percent 10
+          enclii deploy --env production --canary 10 --change-ticket "$CHANGE_TICKET_URL"
 ```
 
-### Deployment Status Action
-
-```yaml
-      - name: Comment Deployment URL
-        uses: madfam-org/enclii-action@v1
-        with:
-          token: ${{ secrets.ENCLII_TOKEN }}
-          service: api
-          environment: staging
-          comment-on-pr: true
-```
+The CLI also accepts the legacy `ENCLII_TOKEN` variable. There is no published Enclii GitHub Action; call the CLI from a `run` step as above.
 
 ---
 
@@ -382,29 +371,27 @@ Enclii automatically prevents committing secrets in `enclii.yaml`:
 1. Check webhook delivery status in GitHub:
    - Go to **Settings → Webhooks → Recent Deliveries**
 
-2. Verify webhook secret:
-   ```bash
-   enclii webhooks verify --repo org/repo
-   ```
+2. Verify the webhook secret matches: a mismatch shows as a `401` response under **Recent Deliveries**. The CLI has no webhook verification command.
 
 3. Check Enclii service status:
    - [status.enclii.dev](https://status.enclii.dev)
 
 ### Build Not Starting
 
-1. Verify repository is linked:
+1. Verify the GitHub App can see the repository:
    ```bash
-   enclii services show api
+   enclii integrations github status
+   enclii integrations github repos
    ```
 
-2. Check branch configuration:
+2. Check the branch configuration in the service spec and confirm the service is registered:
    ```bash
-   enclii services config api
+   enclii projects services <project-slug>
    ```
 
-3. View webhook logs:
+3. Check recent builds and GitHub's **Recent Deliveries** for the webhook:
    ```bash
-   enclii webhooks logs --repo org/repo --since 1h
+   enclii releases <service>
    ```
 
 ### Preview Environment Not Created

@@ -19,7 +19,7 @@ Enclii's build system is Paketo — the same buildpack family Heroku helped pion
 | Review Apps | Native | Preview environments per PR (P1.7) |
 | Custom domains + TLS | Native | Native (Cloudflare for SaaS) |
 | Config vars | Native | `enclii secrets set` |
-| Heroku Postgres | Native | P3.1 (managed-DB addon) |
+| Heroku Postgres | Native | `enclii addon` (managed Postgres addon) |
 | Heroku Redis | Native | P3.1 (managed-cache addon) |
 | Scheduler | Native | `enclii jobs` |
 | Rollback | One click | `enclii rollback` |
@@ -44,6 +44,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: web
+  project: my-app
 spec:
   build:
     type: auto
@@ -62,6 +63,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: worker
+  project: my-app
 spec:
   build:
     type: auto
@@ -90,9 +92,15 @@ Edit `service.yaml` — Paketo auto-detects your Gemfile / package.json / requir
 ### 3. Port config vars to secrets (2 min)
 
 ```bash
+# Register the service from ./service.yaml so the secrets have a target
+enclii services-sync --project my-app
+
+# `enclii secrets set` takes KEY=VALUE pairs for the service in ./service.yaml.
+# Without --env the values apply to all environments (--env prod only works
+# once the environment exists; the first `enclii deploy --env prod` creates it).
 jq -r 'to_entries[] | "\(.key)=\(.value)"' heroku-config.json \
-  | while IFS='=' read -r key value; do
-      enclii secrets set "$key" "$value" --env prod
+  | while IFS= read -r kv; do
+      enclii secrets set "$kv" --secret
     done
 ```
 
@@ -103,11 +111,13 @@ jq -r 'to_entries[] | "\(.key)=\(.value)"' heroku-config.json \
 heroku pg:backups:capture --app my-heroku-app
 heroku pg:backups:download --app my-heroku-app
 
-# Until P3.1 (managed-DB addon), coordinate Postgres provisioning with your operator.
-# With P3.1:
-#   enclii addon create postgres --name my-app-db --env prod
-#   enclii addon attach my-app-db --service web --env prod
-# Restore:
+# Create a managed Postgres addon bound to the web service; its connection
+# string is injected into the service as DATABASE_URL.
+enclii addon plans
+enclii addon create my-app-db --plan standard-0 --service <web-service-id>
+
+# Restore. DATABASE_URL is the addon's connection string; run this from a host
+# that can reach the addon (the CLI has no port-forward command).
 pg_restore --verbose --no-owner --no-acl -d "$DATABASE_URL" latest.dump
 ```
 
@@ -123,7 +133,7 @@ The Paketo buildpack produces an OCI image. Release phase (`spec.release.command
 
 ```bash
 enclii domains add myapp.com --env prod
-enclii domains verify myapp.com
+enclii domains verify myapp.com --env prod
 ```
 
 Flip DNS when the new deployment is healthy. Shut the Heroku app down once traffic stabilizes.
