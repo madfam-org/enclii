@@ -357,8 +357,8 @@ jobs:
       # banner that internal-devops/scripts/check-enclii-first-docs.py looks
       # for. Without it every fleet re-render drops the banner and has to be
       # hand-patched downstream (madfam-org/forj#134).
-      - name: Run ecosystem generator banner tests
-        run: pytest tests/scripts/test_ecosystem_generator_banner.py -v
+      - name: Run ecosystem generator tests (banner, registry source, --check)
+        run: pytest tests/scripts/test_ecosystem_generator_banner.py tests/scripts/test_ecosystem_generator_registry.py -v
 
       # Exercises the bash embedded in the ARC watchdog + pool-health manifests.
       # Both are scale-sensitive: they behaved correctly on a handful of runners

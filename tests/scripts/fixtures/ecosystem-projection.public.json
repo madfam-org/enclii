@@ -1,0 +1,1271 @@
+{
+  "$comment": "GENERATED — do not edit. Public-safe projection of internal-devops/ecosystem/registry/products.yaml, emitted by scripts/generate-product-projections.py. Private fields (notes, registry_notes, hub, commerce.dhanam_plan_prefix) are stripped by allow-list; customer_facing:false and client_owned:true products are dropped entirely; retired products ship only as tombstones under `retired`. `repo` is present because export_private_repo_names is true (ruling R15) — flipping that flag in the registry removes it everywhere at once.",
+  "schema": "madfam-product-projection/v1",
+  "generated_from": "internal-devops/ecosystem/registry/products.yaml",
+  "registry_version": 4,
+  "last_updated": "2026-09-23",
+  "export_private_repo_names": true,
+  "products": [
+    {
+      "slug": "enclii",
+      "display_name": "Enclii",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "soil",
+      "repo": {
+        "name": "enclii",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Go + Next.js"
+      },
+      "domains": {
+        "primary": "enclii.dev",
+        "hosts": [
+          "app.enclii.dev",
+          "api.enclii.dev",
+          "admin.enclii.dev",
+          "status.enclii.dev",
+          "docs.enclii.dev"
+        ],
+        "infra_hosts": [
+          "npm.madfam.io",
+          "status.madfam.io",
+          "grafana.enclii.dev",
+          "prometheus.enclii.dev",
+          "alertmanager.enclii.dev"
+        ]
+      },
+      "site": {
+        "category": "Infrastructure",
+        "track": "platform",
+        "order": 1,
+        "icon": "☁️",
+        "banner_keyword": "DEPLOYMENT",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "community",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "janua",
+      "display_name": "Janua",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "soil",
+      "repo": {
+        "name": "janua",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python (FastAPI) + Next.js"
+      },
+      "domains": {
+        "primary": "janua.dev",
+        "hosts": [
+          "docs.janua.dev"
+        ],
+        "infra_hosts": [
+          "auth.madfam.io"
+        ]
+      },
+      "site": {
+        "category": "Infrastructure",
+        "track": "platform",
+        "order": 2,
+        "icon": "🔐",
+        "banner_keyword": "AUTHENTICATION",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "community",
+          "pro",
+          "enterprise"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "selva",
+      "display_name": "Selva",
+      "aliases": [
+        "Selva Office"
+      ],
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "selva-office",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python + TypeScript"
+      },
+      "domains": {
+        "primary": "selva.town",
+        "hosts": [
+          "www.selva.town",
+          "app.selva.town",
+          "api.selva.town",
+          "admin.selva.town",
+          "ws.selva.town",
+          "gw.selva.town"
+        ],
+        "infra_hosts": [
+          "inference.selva.town"
+        ]
+      },
+      "site": {
+        "category": "Infrastructure",
+        "track": "platform",
+        "order": 3,
+        "icon": "🌳",
+        "banner_keyword": "AI AGENT OFFICE",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "maker",
+          "studio",
+          "enterprise"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "selva"
+      }
+    },
+    {
+      "slug": "forgesight",
+      "display_name": "Forgesight",
+      "site_slug": "forge-sight",
+      "aliases": [
+        "Forge Sight",
+        "ForgeSight"
+      ],
+      "data_license": "DATA_LICENSE",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-09-23",
+      "license": "AGPL-3.0",
+      "layer": "roots",
+      "repo": {
+        "name": "forgesight",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python"
+      },
+      "domains": {
+        "primary": "forgesight.app",
+        "hosts": [
+          "www.forgesight.app",
+          "app.forgesight.app",
+          "api.forgesight.app",
+          "admin.forgesight.app"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "self-serve",
+        "order": 4,
+        "icon": "🏭",
+        "banner_keyword": "INDUSTRY INTELLIGENCE",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "essentials",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "forgesight"
+      }
+    },
+    {
+      "slug": "dhanam",
+      "display_name": "Dhanam",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "dhanam",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "open_core_repo": "dhanam-core",
+        "language": "TypeScript (NestJS + Next.js)"
+      },
+      "domains": {
+        "primary": "dhan.am",
+        "hosts": [
+          "app.dhan.am",
+          "api.dhan.am",
+          "admin.dhan.am"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "self-serve",
+        "order": 5,
+        "icon": "💰",
+        "banner_keyword": "BUDGETING & WEALTH",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "community",
+          "essentials",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "dhanam"
+      }
+    },
+    {
+      "slug": "fortuna",
+      "display_name": "Fortuna",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-09-23",
+      "license": "Proprietary",
+      "layer": "roots",
+      "repo": {
+        "name": "fortuna",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python + TypeScript"
+      },
+      "domains": {
+        "primary": "fortuna.tube",
+        "hosts": [
+          "api.fortuna.tube"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "self-serve",
+        "order": 6,
+        "icon": "🔮",
+        "banner_keyword": "PROBLEM INTELLIGENCE",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "rondelio",
+      "display_name": "Rondelio",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-07-09",
+      "license": "Proprietary",
+      "layer": "fruit",
+      "repo": {
+        "name": "rondelio",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python + TypeScript"
+      },
+      "domains": {
+        "primary": "rondel.io",
+        "hosts": [
+          "www.rondel.io",
+          "api.rondel.io",
+          "play.rondel.io",
+          "studio.rondel.io",
+          "admin.rondel.io",
+          "sim.rondel.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "self-serve",
+        "order": 7,
+        "icon": "🎲",
+        "banner_keyword": "GAMES",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "karafiel",
+      "display_name": "Karafiel",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "stem",
+      "repo": {
+        "name": "karafiel",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python (Django) + Next.js"
+      },
+      "domains": {
+        "primary": "karafiel.mx",
+        "hosts": [
+          "app.karafiel.mx",
+          "api.karafiel.mx",
+          "admin.karafiel.mx"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Standards",
+        "track": "self-serve",
+        "order": 8,
+        "icon": "📜",
+        "banner_keyword": "COMPLIANCE & CFDI",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "contador",
+          "despacho",
+          "firma"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "karafiel"
+      }
+    },
+    {
+      "slug": "tezca",
+      "display_name": "Tezca",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "stem",
+      "repo": {
+        "name": "tezca",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python (Django)"
+      },
+      "domains": {
+        "primary": "tezca.mx",
+        "hosts": [
+          "api.tezca.mx",
+          "admin.tezca.mx"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Standards",
+        "track": "self-serve",
+        "order": 9,
+        "icon": "⚖️",
+        "banner_keyword": "LEGAL OPS",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "community",
+          "essentials",
+          "institutional"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "tezca"
+      }
+    },
+    {
+      "slug": "avala",
+      "display_name": "Avala",
+      "acronym": "Alineamiento y Verificación de Aprendizajes y Logros Acreditables",
+      "aliases": [
+        "AVALA"
+      ],
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "stem",
+      "repo": {
+        "name": "avala",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript (Next.js + NestJS)"
+      },
+      "domains": {
+        "primary": "avala.studio",
+        "hosts": [
+          "app.avala.studio",
+          "admin.avala.studio",
+          "api.avala.studio"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Standards",
+        "track": "ecosystem",
+        "order": 10,
+        "icon": "🎓",
+        "banner_keyword": "COMPETENCY TRAINING",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "institution",
+          "issuer",
+          "enterprise"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "yantra4d",
+      "display_name": "Yantra4D",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "yantra4d",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python + Next.js"
+      },
+      "domains": {
+        "primary": "yantra4d.com",
+        "hosts": [
+          "app.yantra4d.com",
+          "api.yantra4d.com",
+          "admin.yantra4d.com"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "ecosystem",
+        "order": 11,
+        "icon": "📐",
+        "banner_keyword": "PHYGITAL FABRICATION",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "guest",
+          "essentials",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "yantra4d"
+      }
+    },
+    {
+      "slug": "cotiza",
+      "display_name": "Cotiza",
+      "site_slug": "cotiza-studio",
+      "aliases": [
+        "Cotiza Studio"
+      ],
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "Proprietary",
+      "layer": "fruit",
+      "repo": {
+        "name": "digifab-quoting",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "cotiza.studio",
+        "hosts": [
+          "api.cotiza.studio"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "ecosystem",
+        "order": 12,
+        "icon": "📊",
+        "banner_keyword": "QUOTING ENGINE",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "maker",
+          "creator-pro",
+          "business",
+          "enterprise"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "cotiza"
+      }
+    },
+    {
+      "slug": "pravara-mes",
+      "display_name": "Pravara MES",
+      "aliases": [
+        "Pravara-MES"
+      ],
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "pravara-mes",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python (Django)"
+      },
+      "domains": {
+        "primary": "mes.madfam.io",
+        "hosts": [
+          "mes-api.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "ecosystem",
+        "order": 13,
+        "icon": "⚙️",
+        "banner_keyword": "MANUFACTURING",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "voxa",
+      "display_name": "Voxa",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "Apache-2.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "voxa",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "voxa.madfam.io",
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 14,
+        "icon": "🗣️",
+        "banner_keyword": "ASSISTIVE COMMUNICATION",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "family",
+          "clinic"
+        ],
+        "admin_tier": "admin",
+        "checkout_slug": "voxa"
+      }
+    },
+    {
+      "slug": "phynd-crm",
+      "display_name": "PhyndCRM",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "phynd-crm",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "phynd.app",
+        "hosts": [
+          "crm.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 15,
+        "icon": "🤝",
+        "banner_keyword": "CRM & CAMPAIGNS",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "ceq",
+      "display_name": "CEQ",
+      "lifecycle": "degraded",
+      "lifecycle_verified": "2026-09-23",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "ceq",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python"
+      },
+      "domains": {
+        "primary": "ceq.lol",
+        "hosts": [
+          "app.ceq.lol",
+          "api.ceq.lol",
+          "ws.ceq.lol"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 16,
+        "icon": "🎨",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "pro",
+          "madfam"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "acervo",
+      "display_name": "Acervo",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "UNLICENSED",
+      "layer": "fruit",
+      "repo": {
+        "name": "acervo",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "acervo.madfam.io",
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 17,
+        "icon": "📚",
+        "banner_keyword": "RECORDS ENGINE",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "kalya",
+      "display_name": "Kalya",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "UNLICENSED",
+      "layer": "fruit",
+      "repo": {
+        "name": "kalya",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "kalya.app",
+        "hosts": [
+          "www.kalya.app",
+          "kalya.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 18,
+        "icon": "📅",
+        "banner_keyword": "BOOKING & SCHEDULING",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "solo",
+          "team",
+          "biz"
+        ],
+        "admin_tier": "admin",
+        "tier_labels": {
+          "free": "Gratis",
+          "solo": "Solo",
+          "team": "Equipo",
+          "biz": "Negocio"
+        },
+        "checkout_slug": "kalya"
+      }
+    },
+    {
+      "slug": "symbiosis",
+      "display_name": "Symbiosis HCM",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-09-05",
+      "license": "AGPL-3.0",
+      "layer": "fruit",
+      "repo": {
+        "name": "symbiosis-hcm",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python (Django)"
+      },
+      "domains": {
+        "primary": "hcm.madfam.io",
+        "hosts": [
+          "hcm-app.madfam.io",
+          "hcm-admin.madfam.io",
+          "hcm-api.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 19,
+        "icon": "🧬",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "team",
+          "biz"
+        ],
+        "admin_tier": "admin",
+        "tier_labels": {
+          "free": "Gratis",
+          "team": "Equipo",
+          "biz": "Negocio"
+        },
+        "checkout_slug": "symbiosis"
+      }
+    },
+    {
+      "slug": "nauta",
+      "display_name": "Nauta",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-09-23",
+      "license": "UNLICENSED",
+      "layer": "fruit",
+      "repo": {
+        "name": "nauta",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "nauta.quest",
+        "hosts": [
+          "app.nauta.quest",
+          "www.nauta.quest",
+          "erp.creatumundo.mx",
+          "crea.madfam.io",
+          "ensayo.madfam.io",
+          "crea-erp.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "platform",
+        "order": 21,
+        "icon": "🧭",
+        "banner_keyword": "FRACTIONAL CTO",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "erp",
+          "vcto"
+        ],
+        "admin_tier": "admin",
+        "tier_labels": {
+          "erp": "ERP",
+          "vcto": "vCTO"
+        }
+      }
+    },
+    {
+      "slug": "meridian",
+      "display_name": "Meridian",
+      "lifecycle": "degraded",
+      "lifecycle_verified": "2026-09-23",
+      "license": "AGPL-3.0",
+      "layer": "stem",
+      "repo": {
+        "name": "meridian",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "meridian.madfam.io",
+        "hosts": [
+          "meridian-app.madfam.io",
+          "meridian-api.madfam.io",
+          "meridian-admin.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Standards",
+        "track": "ecosystem",
+        "order": 22,
+        "icon": "🛂",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "fashion-cabinet",
+      "display_name": "Fashion Cabinet",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "AGPL-3.0",
+      "layer": "stem",
+      "repo": {
+        "name": "fashion-cabinet",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python"
+      },
+      "domains": {
+        "primary": "fashioncabi.net",
+        "hosts": [
+          "www.fashioncabi.net",
+          "fc.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "ecosystem",
+        "order": 23,
+        "icon": "👗",
+        "banner_keyword": "PARAMETRIC FASHION",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "factlas",
+      "display_name": "Factlas",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-08-24",
+      "license": "Proprietary",
+      "layer": "roots",
+      "repo": {
+        "name": "factlas",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python"
+      },
+      "domains": {
+        "primary": "factl.as",
+        "hosts": [
+          "api.factl.as"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "ecosystem",
+        "order": 24,
+        "icon": "🌎",
+        "banner_keyword": "GEOSPATIAL FACTS",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "pilot",
+          "analyst",
+          "institutional"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "periplo",
+      "display_name": "Periplo",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-08-24",
+      "license": "UNLICENSED",
+      "layer": "fruit",
+      "repo": {
+        "name": "periplo",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": null,
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 25,
+        "icon": "📍",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "essentials",
+          "pro"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "geom-core",
+      "display_name": "geom-core",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-09-04",
+      "license": "Apache-2.0",
+      "layer": "stem",
+      "repo": {
+        "name": "geom-core",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "C++"
+      },
+      "domains": {
+        "primary": null,
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Standards",
+        "track": "ecosystem",
+        "order": 26,
+        "icon": "🧮",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "fragua",
+      "display_name": "Fragua",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-09-04",
+      "license": "AGPL-3.0",
+      "layer": "soil",
+      "repo": {
+        "name": "enclii",
+        "github_org": "madfam-org",
+        "visibility": "public"
+      },
+      "domains": {
+        "primary": null,
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Infrastructure",
+        "track": "platform",
+        "order": 27,
+        "icon": "⚒️",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [
+          "arranque",
+          "equipo",
+          "escala",
+          "dedicada"
+        ],
+        "admin_tier": "admin",
+        "tier_labels": {
+          "arranque": "Arranque",
+          "equipo": "Equipo",
+          "escala": "Escala",
+          "dedicada": "Dedicada"
+        }
+      }
+    },
+    {
+      "slug": "enclii_depot",
+      "display_name": "Enclii Depot",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-09-04",
+      "license": "AGPL-3.0",
+      "layer": "soil",
+      "repo": {
+        "name": "enclii",
+        "github_org": "madfam-org",
+        "visibility": "public"
+      },
+      "domains": {
+        "primary": null,
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Infrastructure",
+        "track": "platform",
+        "order": 28,
+        "icon": "🗄️",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [
+          "community",
+          "pro",
+          "premium",
+          "madfam"
+        ],
+        "admin_tier": "admin",
+        "tier_labels": {
+          "community": "Comunidad",
+          "pro": "Estándar",
+          "premium": "Alta disponibilidad",
+          "madfam": "Dedicado"
+        }
+      }
+    },
+    {
+      "slug": "routecraft",
+      "display_name": "RouteCraft",
+      "lifecycle": "live",
+      "lifecycle_verified": "2026-09-05",
+      "license": "Proprietary",
+      "layer": "fruit",
+      "repo": {
+        "name": "routecraft",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript + Python"
+      },
+      "domains": {
+        "primary": "routecraft.app",
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 30,
+        "icon": "🗺️",
+        "banner_keyword": "TRIP PLANNING",
+        "show_in_banner": true
+      },
+      "commerce": {
+        "tiers": [
+          "discovery",
+          "professional",
+          "enterprise"
+        ],
+        "admin_tier": "admin",
+        "tier_labels": {
+          "discovery": "Discovery",
+          "professional": "Professional",
+          "enterprise": "Enterprise"
+        }
+      }
+    },
+    {
+      "slug": "tlacuilo",
+      "display_name": "Tlacuilo",
+      "lifecycle": "beta",
+      "lifecycle_verified": "2026-09-05",
+      "license": "AGPL-3.0",
+      "layer": "roots",
+      "repo": {
+        "name": "tlacuilo",
+        "github_org": "madfam-org",
+        "visibility": "public",
+        "language": "Python (FastAPI + Celery)"
+      },
+      "domains": {
+        "primary": "tlacuilo.madfam.io",
+        "hosts": [],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "ecosystem",
+        "order": 31,
+        "icon": "🖋️",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "telesia",
+      "display_name": "Telesia",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-09-23",
+      "license": "Proprietary",
+      "layer": "fruit",
+      "repo": {
+        "name": "telesia",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript (Next.js + Fastify)"
+      },
+      "domains": {
+        "primary": "telesia.quest",
+        "hosts": [
+          "www.telesia.quest",
+          "app.telesia.quest",
+          "api.telesia.quest"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Applications",
+        "track": "self-serve",
+        "order": 32,
+        "icon": "🏆",
+        "banner_keyword": "COMPLETION",
+        "show_in_banner": false
+      },
+      "commerce": {
+        "tiers": [
+          "free",
+          "premium"
+        ],
+        "admin_tier": "admin"
+      }
+    },
+    {
+      "slug": "marca",
+      "display_name": "Marca",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-09-23",
+      "license": "UNLICENSED",
+      "layer": "fruit",
+      "repo": {
+        "name": "marca",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "TypeScript"
+      },
+      "domains": {
+        "primary": "madf.am",
+        "hosts": [
+          "www.madf.am"
+        ],
+        "infra_hosts": [
+          "marca.madfam.io"
+        ]
+      },
+      "site": {
+        "category": "Applications",
+        "track": "platform",
+        "order": 33,
+        "icon": "🔗",
+        "show_in_banner": false
+      }
+    },
+    {
+      "slug": "lexidrop",
+      "display_name": "LexiDrop",
+      "lifecycle": "incubating",
+      "lifecycle_verified": "2026-09-23",
+      "license": "Proprietary",
+      "layer": "roots",
+      "repo": {
+        "name": "lexidrop",
+        "github_org": "madfam-org",
+        "visibility": "private",
+        "language": "Python + TypeScript"
+      },
+      "domains": {
+        "primary": "ld.madfam.io",
+        "hosts": [
+          "ld-app.madfam.io",
+          "ld-api.madfam.io"
+        ],
+        "infra_hosts": []
+      },
+      "site": {
+        "category": "Intelligence",
+        "track": "self-serve",
+        "order": 34,
+        "icon": "🌐",
+        "show_in_banner": false
+      }
+    }
+  ],
+  "retired": [
+    {
+      "slug": "penny",
+      "display_name": "PENNY",
+      "retired_on": "2026-07-25",
+      "successor_slug": "selva"
+    },
+    {
+      "slug": "sim4d",
+      "display_name": "Sim4D",
+      "retired_on": "2026-08-30",
+      "successor_slug": "yantra4d"
+    },
+    {
+      "slug": "spark",
+      "display_name": "SPARK",
+      "retired_on": "2026-04-08"
+    }
+  ]
+}

@@ -42,16 +42,16 @@ REPOS = {
     },
     'forgesight': {
         'tagline': 'Digital Fabrication Industry Intelligence — pricing + vendor feed consumed by Cotiza.',
-        'description': "Forgesight is **exclusively** a digital-fabrication industry intelligence platform. It tracks industry offerings + supporting details (capabilities, price curves, vendor performance, material availability) and feeds that intelligence to Cotiza Studio's pricing engine and to MADFAM's procurement decisions. Does **not** handle project management, engagement tracking, or client-facing flows — those belong to PhyndCRM / Cotiza. Domain: `forgesight.quest`.",
+        'description': "Forgesight is **exclusively** a digital-fabrication industry intelligence platform. It tracks industry offerings + supporting details (capabilities, price curves, vendor performance, material availability) and feeds that intelligence to Cotiza Studio's pricing engine and to MADFAM's procurement decisions. Does **not** handle project management, engagement tracking, or client-facing flows — those belong to PhyndCRM / Cotiza. Domain: `forgesight.app`.",
         'pillar': 'Fabrication / Industry Intelligence',
         'type': 'service',
         'status': 'production',
         'production': {
             'services': [
-                ('forgesight-www', 'forgesight.quest', 3000),
-                ('forgesight-app', 'app.forgesight.quest', 3001),
-                ('forgesight-api', 'api.forgesight.quest', 8000),
-                ('forgesight-admin', 'admin.forgesight.quest', 3002),
+                ('forgesight-www', 'forgesight.app', 3000),
+                ('forgesight-app', 'app.forgesight.app', 3001),
+                ('forgesight-api', 'api.forgesight.app', 8000),
+                ('forgesight-admin', 'admin.forgesight.app', 3002),
                 ('forgesight-pipeline', '(background scraper/ingest)', None),
             ],
             'namespace': 'forgesight',
@@ -196,7 +196,7 @@ REPOS = {
     },
     'geom-core': {
         'tagline': 'High-performance C++ geometry library with Python and WASM bindings for 3D printing.',
-        'description': 'Zero-dependency C++17 core library for 3D geometry analysis: binary STL + STEP file parsing (OCCT optional), mesh analysis (volume, watertight, bounding box), printability checks, toolpath generation primitives. Consumed by yantra4d, digifab-quoting, blueprint-harvester, sim4d, and pravara-mes via Python bindings or WASM.',
+        'description': 'Zero-dependency C++17 core library for 3D geometry analysis: binary STL + STEP file parsing (OCCT optional), mesh analysis (volume, watertight, bounding box), printability checks, toolpath generation primitives. Consumed by yantra4d, digifab-quoting, blueprint-harvester, and pravara-mes via Python bindings or WASM.',
         'pillar': 'Fabrication / Geometry library',
         'type': 'library',
         'status': 'stable',
@@ -211,7 +211,7 @@ REPOS = {
             'emscripten (WASM target)',
         ],
         'downstream_consumers': [
-            'yantra4d, digifab-quoting, blueprint-harvester, sim4d, pravara-mes',
+            'yantra4d, digifab-quoting, blueprint-harvester, pravara-mes',
         ],
         'key_env': [
             '(library — no runtime env)',
@@ -262,38 +262,6 @@ REPOS = {
         ],
         'service_name_for_ops': 'blueprint-harvester-api',
     },
-    'sim4d': {
-        'tagline': 'Web-first, node-based parametric CAD (alpha) — runs on real OCCT.wasm.',
-        'description': "Sim4D is MADFAM's browser-native parametric CAD environment. Runs on the real OCCT.wasm kernel (all 25 core OCCT operations verified); pre-compiled WASM binaries ship in the repo for instant use. Targets designers who want programmatic CAD without leaving the browser. Ships studio app, marketing site, and collaboration layer. Domain: `sim4d.com` / `sim4d.io`.",
-        'pillar': 'Fabrication / Parametric CAD',
-        'type': 'service',
-        'status': 'alpha',
-        'production': {
-            'services': [
-                ('sim4d-studio', 'app.sim4d.com', 3000),
-                ('sim4d-marketing', 'sim4d.com', 3001),
-                ('sim4d-collaboration', '(ws server)', 3002),
-            ],
-            'namespace': 'sim4d',
-        },
-        'upstream_deps': [
-            'occt.wasm (geometry kernel)',
-            'geom-core (server-side analysis)',
-            'postgres (user designs)',
-            'yjs / websocket (collaboration)',
-            'janua (auth via `@janua/react-sdk`)',
-        ],
-        'downstream_consumers': [
-            'digifab-quoting (design → quote)',
-            'pravara-mes (design → fab job)',
-        ],
-        'key_env': [
-            'DATABASE_URL — Postgres',
-            'JANUA_JWKS_URI — auth',
-            'COLLAB_WS_URL — collaboration server',
-        ],
-        'service_name_for_ops': 'sim4d-studio',
-    },
     'primavera3d': {
         'tagline': '3D modeling + digital fabrication services portfolio site.',
         'description': "Primavera3D is a high-performance marketing and services site showcasing MADFAM's 3D modeling and digital fabrication capabilities — parametric design, visualization, immersive product experiences. Entry point for external clients discovering MADFAM fabrication services. Domain: `primavera3d.pro`.",
@@ -331,7 +299,7 @@ REPOS = {
             'namespace': 'tablaco',
         },
         'upstream_deps': [
-            'sim4d / yantra4d (parametric generation)',
+            'yantra4d (parametric generation)',
             'pravara-mes (fab routing for print orders)',
             'digifab-quoting (cost+quote)',
             'phynd-crm (engagement aggregate)',

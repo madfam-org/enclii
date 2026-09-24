@@ -7,7 +7,7 @@ the aggregated `REPOS_FULL` dict and `generator.py` for render logic.
 REPOS = {
     'enclii': {
         'tagline': "MADFAM's self-hosted PaaS control plane.",
-        'description': "Enclii is the open-source DevOps platform that deploys, scales, and operates every other MADFAM service. It's the Switchyard API + Web UI + Dispatch admin console + Roundhouse build workers + Waybill cost metering + Signal observability, all running on our own bare-metal k3s cluster behind Cloudflare Tunnel. Every other repo in the ecosystem deploys *through* Enclii — K8s manifests and CI live in each repo, ArgoCD reconciles, Switchyard tracks lifecycle events.",
+        'description': "Enclii is the open-source DevOps platform that deploys, scales, and operates every other MADFAM service. It's the Switchyard API + Web UI + Dispatch admin console + Roundhouse build workers + Waybill cost metering + Signal observability, all running on our own bare-metal k3s cluster behind Cloudflare Tunnel. Every other repo in the ecosystem deploys _through_ Enclii — K8s manifests and CI live in each repo, ArgoCD reconciles, Switchyard tracks lifecycle events.",
         'pillar': 'Infrastructure (PaaS control plane)',
         'type': 'platform',
         'status': 'production',
@@ -38,6 +38,15 @@ REPOS = {
             'GITHUB_WEBHOOK_SECRET — HMAC verification for push events',
         ],
         'service_name_for_ops': 'switchyard-api',
+        'boundary_checkpoint': (
+            '> **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,\n'
+            '> IP addresses and hardware SKUs — is private and does not appear in this public\n'
+            '> repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`\n'
+            '> placeholders such as `<CONTROL_PLANE_NODE>` and `<BUILDER_NODE>` resolve from\n'
+            '> `internal-devops/infrastructure/nodes.md`. Policy:\n'
+            '> `docs/PUBLIC_REPO_BOUNDARY.md` and the canonical repo-boundary contract in\n'
+            '> `madfam-org/internal-devops`.'
+        ),
     },
     'internal-devops': {
         'tagline': 'Private operational documentation — server IPs, SSH keys, kubeconfigs, cost ledger.',
@@ -63,7 +72,7 @@ REPOS = {
     },
     'server-auction-tracker': {
         'tagline': 'Hetzner Server Auction intelligence — automated scoring, price history, cluster simulation.',
-        'description': "Monitors Hetzner's server auction in real time, scoring listings with a cluster-aware weighted formula (PassMark CPU benchmarks + RAM/drives/price/datacenter + ECC/NVMe). Produces deal badges, time-on-market urgency signals, and cluster-expansion simulations. Drives all MADFAM hardware procurement decisions — this is how the current control-plane, worker and builder nodes were sourced. CLI binary is `foundry-scout`; web dashboard at `sniper.madfam.io` is `deal-sniper`.",
+        'description': "Monitors Hetzner's server auction in real time, scoring listings with a cluster-aware weighted formula (PassMark CPU benchmarks + RAM/drives/price/datacenter + ECC/NVMe). Produces deal badges, time-on-market urgency signals, and cluster-expansion simulations. Drives all MADFAM hardware procurement decisions — this is how the estate's dedicated control-plane and worker nodes and the CI builder were sourced (node identity lives only in the private operations record). CLI binary is `foundry-scout`; web dashboard at `sniper.madfam.io` is `deal-sniper`.",
         'pillar': 'Infrastructure (procurement intelligence)',
         'type': 'service + CLI',
         'status': 'production',
@@ -71,10 +80,10 @@ REPOS = {
             'services': [
                 ('deal-sniper', 'sniper.madfam.io', 3000),
             ],
-            'namespace': 'deal-sniper',
+            'namespace': 'foundry-scout',
         },
         'upstream_deps': [
-            'hetzner server auction HTML (scraped)',
+            'hetzner server auction feed (external source)',
             'sqlite (price history, trends)',
             'janua (admin auth)',
         ],
@@ -145,7 +154,7 @@ REPOS = {
         'key_env': [
             'DATABASE_URL — Postgres scores + catalog',
             'JANUA_JWKS_URI — RS256 token verification (post-2026-04-17 compliance pass)',
-            'CONNECTOR_* — per-connector credentials (check `docs/MADFAM_COMPLIANCE.md`)',
+            '`CONNECTOR_*` — per-connector credentials (check `docs/MADFAM_COMPLIANCE.md`)',
             'CORS_ALLOWED_ORIGINS — explicit allowlist (no wildcards post-H5 audit)',
         ],
         'service_name_for_ops': 'routecraft-api',
@@ -205,12 +214,16 @@ REPOS = {
             'dhanam, karafiel, forgesight, tezca, fortuna, digifab-quoting, selva-office, pravara-mes, yantra4d, avala, phynd-crm, routecraft, symbiosis-hcm — all verify tokens via JWKS',
         ],
         'key_env': [
-            'JANUA_DATABASE_URL — Postgres connection',
-            'JANUA_REDIS_URL — session + rate-limit store',
-            'JANUA_JWT_PRIVATE_KEY / PUBLIC_KEY — RS256 signing material',
-            'GITHUB_OAUTH_CLIENT_ID / SECRET — GitHub identity federation',
+            '`JANUA_DATABASE_URL` — Postgres connection.',
+            '`JANUA_REDIS_URL` / `REDIS_URL` — session and rate-limit store.',
+            '`JANUA_JWT_PRIVATE_KEY` / `JANUA_JWT_PUBLIC_KEY` — RS256 signing material.',
+            '`GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` — GitHub identity federation.',
         ],
         'service_name_for_ops': 'janua-api',
+        'sensitivity_banner': (
+            '> [!IMPORTANT]\n'
+            '> Janua owns ecosystem identity: users, tenants, OAuth/OIDC clients, sessions, token signing keys, MFA/passkeys, SAML/SCIM metadata, webhooks, and migration exports. Treat identity data and auth-provider operations as sensitive and side-effectful; keep examples placeholder-only. This is the identity-data side-effect doctrine for ecosystem context.'
+        ),
     },
     'karafiel': {
         'tagline': 'Active tax defense + operational compliance — CFDI, NOM-151, SAT-adjacent, contract generation.',
@@ -283,5 +296,10 @@ REPOS = {
             'CORS_ALLOWED_ORIGINS — explicit allowlist (no wildcards post-H2 audit)',
         ],
         'service_name_for_ops': 'tezca-api',
+        'sensitivity_banner': (
+            '> [!IMPORTANT]\n'
+            '> Tezca is a legal intelligence/oracle surface. Treat legal source data, legal analysis, official-source URLs, scraper catalogs, search indexes, API keys, webhooks, chat prompts, and generated exports as sensitive legal/compliance data where applicable.\n'
+            '> Scraping, ingestion, RMF/DOF jobs, quality backfills, reindexing, exports, webhooks, chat/LLM calls, DB changes, MCP/SDK publishing, and GitOps deploys require explicit operator intent plus `LOCAL_SERVICES`, `LOCAL_DB`, `LOCAL_DESTRUCTIVE`, or `LOCAL_LEGAL_DATA_OPS` as applicable.'
+        ),
     },
 }
