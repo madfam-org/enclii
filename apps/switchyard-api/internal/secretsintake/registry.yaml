@@ -510,3 +510,45 @@ targets:
       - database_url
       - direct_database_url
       - redis_url
+
+  # creator-census (2026-09-24) — the census web (cc-app.madfam.io), a Next.js
+  # BFF that signs in through Janua. Its Deployment mounts Secret
+  # creator-census-web (optional: true) for JANUA_CLIENT_SECRET and
+  # SESSION_SECRET, and refuses sign-in ("not configured") until both exist.
+  # JANUA_CLIENT_ID is PLAIN config in the Deployment, not a secret, so it is not
+  # a key here: the operator copies it from the `provision oidc` output.
+  #
+  # TWO targets, one path, one ExternalSecret — deliberately. The CLI prompts
+  # for every key of a target that is not in --generate, so a single target
+  # holding both keys would make `--generate session_secret` demand the Janua
+  # client secret at a masked prompt, a value no human holds (the provisioner
+  # writes it straight from Janua). Splitting keeps each write route to exactly
+  # one property: web-oidc is written only by `enclii secrets provision oidc
+  # --platform creator-census-web`; web-session only by
+  # `enclii secrets intake submit creator-census/web-session --generate session_secret`.
+  # Intake writes are merges, so the two land side by side in secret/creator-census.
+  #
+  # LOWERCASE keys, because that is what Vault stores: the intake API lowercases
+  # every key before the merge (normalizeVaultSecretKey), so JANUA_CLIENT_SECRET
+  # would land as janua_client_secret anyway. Declaring the stored name makes
+  # the ExternalSecret contract readable here: census maps
+  # `property: janua_client_secret` -> JANUA_CLIENT_SECRET and
+  # `property: session_secret` -> SESSION_SECRET. ESO is all-or-nothing per
+  # ExternalSecret, so an upper-case `property:` there syncs ZERO keys.
+  creator-census/web-oidc:
+    label: Creator Census web Janua OAuth client secret
+    description: Creator Census web (cc-app.madfam.io) Janua confidential client secret, filed by `enclii secrets provision oidc --platform creator-census-web`. The client_id is plain Deployment config, not stored here.
+    vault_path: secret/creator-census
+    namespace: creator-census
+    external_secret: creator-census-web  # pragma: allowlist secret
+    keys:
+      - janua_client_secret
+
+  creator-census/web-session:
+    label: Creator Census web session signing secret
+    description: Signs the census web BFF session cookie. Mint server-side with --generate session_secret (32 bytes crypto/rand, never returned); rotating it signs every user out.
+    vault_path: secret/creator-census
+    namespace: creator-census
+    external_secret: creator-census-web  # pragma: allowlist secret
+    keys:
+      - session_secret

@@ -11,7 +11,7 @@ import (
 func TestLoadRegistry(t *testing.T) {
 	reg, err := LoadRegistry()
 	require.NoError(t, err)
-	assert.Len(t, reg, 35)
+	assert.Len(t, reg, 37)
 	assert.Contains(t, reg, "ceq/vast-api-key")
 	assert.Contains(t, reg, "karafiel/web-oidc-janua")
 	tgt := reg["ceq/vast-api-key"]
@@ -32,7 +32,7 @@ func TestGetTarget(t *testing.T) {
 func TestListTargetsSorted(t *testing.T) {
 	list, err := ListTargets()
 	require.NoError(t, err)
-	require.Len(t, list, 35)
+	require.Len(t, list, 37)
 	for i := 1; i < len(list); i++ {
 		assert.Less(t, list[i-1].ID, list[i].ID, "targets should be sorted by id")
 	}
@@ -55,6 +55,8 @@ func TestListTargetsSorted(t *testing.T) {
 		"crea-map/rls-por-caso",
 		"crea-map/selva-api-key",
 		"crea/porkbun-registrar",
+		"creator-census/web-oidc",
+		"creator-census/web-session",
 		"dhanam/app-infra",
 		"dhanam/oidc-janua",
 		"dhanam/session-auth",
@@ -301,4 +303,30 @@ func TestKalyaProvisioningCustody(t *testing.T) {
 	assert.Equal(t, "nauta-kalya-feeds", feed.ExternalSecret)
 	assert.Equal(t, "secret/nauta", feed.VaultPath)
 	assert.Equal(t, []string{"kalya_feed_tokens"}, feed.Keys)
+}
+
+// creator-census web: the Janua client secret and the session secret share one
+// Vault path and one ExternalSecret but are separate targets, so the session
+// key can be minted with --generate without prompting for the client secret.
+func TestCreatorCensusWebTargets(t *testing.T) {
+	cases := []struct {
+		id  string
+		key string
+	}{
+		{"creator-census/web-oidc", "janua_client_secret"},
+		{"creator-census/web-session", "session_secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			tgt, err := GetTarget(tc.id)
+			require.NoError(t, err)
+			assert.Equal(t, "secret/creator-census", tgt.VaultPath)
+			assert.Equal(t, "creator-census", tgt.Namespace)
+			assert.Equal(t, "creator-census-web", tgt.ExternalSecret)
+			assert.Equal(t, []string{tc.key}, tgt.Keys,
+				"one key per target: a second key would be prompted for during --generate")
+			assert.NotEmpty(t, tgt.Label)
+			assert.Equal(t, DefaultGenerateBytes, tgt.GenerateBytes())
+		})
+	}
 }
