@@ -19,5 +19,12 @@ spec:
     requests.cpu: "2"
     requests.memory: 4Gi
     limits.cpu: "4"
-    limits.memory: 8Gi
-    persistentvolumeclaims: "6"
+    # 8Gi -> 10Gi (2026-09-23): the prometheus limit went 2Gi -> 4Gi (OOM in
+    # WAL replay) and the rules-eval Prometheus (1Gi) has never started. At 8Gi
+    # the two together would leave under 400Mi of headroom.
+    limits.memory: 10Gi
+    # 6 -> 8 (2026-09-23): the rules-eval Prometheus (prometheus-operator/)
+    # needs a 7th PVC for its volumeClaimTemplate. At "6" the StatefulSet
+    # failed every create for 28 days ("exceeded quota: monitoring-quota"),
+    # so no PrometheusRule CRD in the cluster was evaluated. One slot of headroom.
+    persistentvolumeclaims: "8"
