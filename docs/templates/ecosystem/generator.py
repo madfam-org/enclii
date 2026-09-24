@@ -4,11 +4,24 @@ ECOSYSTEM.md generator — renders per-repo self-contained docs that embed
 the MADFAM ecosystem map + full enclii CLI reference so any repo can be
 operated from its own ECOSYSTEM.md alone.
 
-Usage (from labspace root):
+Usage:
 
-    python3 docs/templates/ecosystem/generator.py                 # regenerate everything
-    python3 docs/templates/ecosystem/generator.py enclii janua    # regenerate specific repos
+    generator.py                               # render every repo into $MADFAM_LABSPACE/<repo>
+    generator.py enclii janua                  # render named repos into $MADFAM_LABSPACE/<repo>
+    generator.py --write PATH [PATH ...]       # render into the given checkouts
+    generator.py --check PATH [PATH ...]       # diff each checkout's ECOSYSTEM.md, write nothing
+
+    --projection PATH    product-registry projection (else $MADFAM_PRODUCT_PROJECTION,
+                         else $MADFAM_LABSPACE/solarpunk-foundry/packages/core/src/
+                         products/projection.public.json)
+    --repo NAME          metadata key when a checkout's directory name differs
+
+`--check` exit codes: 0 every file matches, 1 at least one file drifted,
+2 UNDETERMINED (no metadata, no ECOSYSTEM.md, or no usable projection) —
+fails CI exactly like 1.
 """
+import argparse
+import difflib
 import json
 import os
 import sys
@@ -18,9 +31,23 @@ from textwrap import dedent
 # Package-relative import with standalone fallback.
 try:
     from .metadata import REPOS_FULL
+    from .registry import (
+        ProjectionError,
+        load_projection,
+        render_platform_map,
+        render_registry_entry,
+        render_retired,
+    )
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from metadata import REPOS_FULL  # type: ignore
+    from registry import (  # type: ignore
+        ProjectionError,
+        load_projection,
+        render_platform_map,
+        render_registry_entry,
+        render_retired,
+    )
 
 LABSPACE = Path(os.environ.get("MADFAM_LABSPACE", "/Users/aldoruizluna/labspace"))
 
@@ -47,6 +74,10 @@ LABSPACE = Path(os.environ.get("MADFAM_LABSPACE", "/Users/aldoruizluna/labspace"
 # ---------------------------------------------------------------------------
 
 OVERLAY_ENV = "MADFAM_ECOSYSTEM_METADATA_OVERLAY"
+
+#: Where a private repo keeps its own overlay. `--check`/`--write PATH` pick it
+#: up automatically, so a scheduled drift check needs no per-repo wiring.
+REPO_OVERLAY_RELPATH = Path("docs") / "ecosystem-metadata.json"
 
 
 def _merge_repo_meta(base: dict, overlay: dict) -> dict:
@@ -158,76 +189,96 @@ LEGACY_RAW_BANNER = dedent(f"""
 # ---------------------------------------------------------------------------
 # Shared boilerplate — embedded verbatim in every ECOSYSTEM.md so each repo
 # is truly self-contained.
+#
+# Nothing below types an estate fact. Which products exist, their repos, front
+# doors and lifecycles come from the product-registry projection (registry.py);
+# counts (services, ArgoCD apps, namespaces) are not rendered at all, because a
+# typed count is stale the week after it is typed ("~40 services", "~28 apps"
+# and "3 nodes" survived in 36 repos for five months). The topology is ROLES
+# only: this text is copied into public repos.
 # ---------------------------------------------------------------------------
 
-ECOSYSTEM_MAP = dedent("""
+ECOSYSTEM_MAP_HEAD = dedent("""
     ## MADFAM Ecosystem Map
 
-    MADFAM runs ~40 services on sovereign bare-metal infrastructure. Everything
-    below is embedded here so this document stands alone.
+    Everything below is embedded here so this document stands alone. The product
+    tables are rendered from the public projection of the MADFAM product registry
+    (`madfam-org/solarpunk-foundry` → `packages/core/src/products/projection.public.json`,
+    generated from the registry in `madfam-org/internal-devops`). To change a row,
+    change the registry and re-render — never hand-edit a rendered copy.
 
-    ### The platforms every repo should know about
+    Estate counts (services, ArgoCD applications, namespaces) are deliberately not
+    typed here: they move weekly. The dated figures live in the private operations
+    record, `madfam-org/internal-devops` (`infrastructure/topology.md`).
 
-    | Platform | Repo | Role |
-    |---|---|---|
-    | **Enclii** | `madfam-org/enclii` | PaaS control plane — all deploys go through this |
-    | **Janua** | `madfam-org/janua` | OIDC/OAuth 2.0 provider — RS256 JWKS at `auth.madfam.io/.well-known/jwks.json` |
-    | **Dhanam** | `madfam-org/dhanam` | Billing + payment gateways (Stripe, Mercado Pago, SPEI, etc.) |
-    | **Selva** | `madfam-org/selva-office` | LLM inference routing + agent orchestration |
-    | **Karafiel** | `madfam-org/karafiel` | Operational compliance — CFDI, NOM-151, e.firma, SAT-adjacent. Owns legal-ops / contract templates |
-    | **Tezca** | `madfam-org/tezca` | Mexican law oracle (informational only — feeds Karafiel) |
-    | **Cotiza** | `madfam-org/digifab-quoting` | MADFAM's quoting engine (fabrication + services) |
-    | **Forgesight** | `madfam-org/forgesight` | Digital fabrication industry intelligence (pricing/vendor feed to Cotiza) |
-    | **Pravara MES** | `madfam-org/pravara-mes` | Fabrication-node routing and dispatch (physical jobs) |
-    | **PhyndCRM** | `madfam-org/phynd-crm` | Client-facing deliverables portal (single pane of glass per engagement) |
-    | **Fortuna** | `madfam-org/fortuna` | Problem intelligence / zeitgeist analysis |
-    | **Avala** | `madfam-org/avala` | Learning verification platform |
+    ### Products in the registry
+""").strip()
 
+ECOSYSTEM_MAP_TAIL = dedent("""
     ### Cross-repo conventions
 
     - **Auth**: every authenticated service verifies Janua JWTs via JWKS at
       `https://auth.madfam.io/.well-known/jwks.json`. RS256 only — HS256 is
-      fail-closed after the 2026-04-23 audit (H3/H4).
+      banned on any path that verifies a Janua token (audit 2026-04-23 H3/H4);
+      an app's own session cookie needs its own secret.
     - **Billing**: credit metering + entitlements flow through Dhanam. See
       `madfam-org/dhanam` for the meter/entitlement/invoice APIs.
     - **Inference**: every LLM call should route through Selva
       (`selva-office`) at `/v1` (OpenAI-compatible). Do not talk directly
       to OpenAI / Anthropic from service code.
+    - **Agent SaaS tools**: end-user delegated tool calls (Slack, Gmail, etc.)
+      route through Coupler (`madfam-org/coupler`), not the Enclii Provider Hub.
+    - **Third-party messages**: email/SMS/chat to people outside MADFAM go out
+      through Angelia Courier (`madfam-org/angelia`). Carve-outs: Janua's
+      customer-configured alert notifier and Selva agent tools.
     - **CORS**: explicit allowlist per service. Wildcards are banned
       (audit 2026-04-23 H2/H5/H6).
-    - **Images**: `@sha256:`-pinned in every manifest. Kyverno fail-closes on
-      `:latest` or mutable tags.
-    - **Onboarding**: `POST /v1/admin/onboard` on switchyard-api creates
-      namespace, ArgoCD app, Cloudflare tunnel routes, Janua client, and
-      NetworkPolicies in one shot. See `enclii/docs/guides/ONBOARDING_GUIDE.md`.
+    - **Images**: `@sha256:`-pinned in every manifest; mutable tags such as
+      `:latest` are a Kyverno policy violation.
+    - **Onboarding**: `enclii onboard` (`POST /v1/admin/onboard` on
+      switchyard-api) creates namespace, ArgoCD app, Cloudflare tunnel routes,
+      Janua client, and NetworkPolicies in one shot. See
+      `enclii/docs/guides/ONBOARDING_GUIDE.md`.
 
     ### Production topology
 
-    Bare-metal k3s (v1.33+), 3 nodes. Roles only — this generator emits node
-    ROLES and never node hostnames, IPs or hardware SKUs, because every repo it
-    writes into is public and `ECOSYSTEM.md` is copied verbatim across all of
-    them (2026-07-16 exposure class 1). Node identity lives only in
-    `madfam-org/internal-devops`.
+    Bare-metal k3s (v1.33+), 4 nodes, described by ROLE only. This file is
+    generated and copied into public repos, so it never carries node hostnames,
+    IP addresses or hardware SKUs (2026-07-16 exposure class 1). Node identity
+    lives only in `madfam-org/internal-devops`.
 
-    - control-plane node (dedicated bare-metal) — control-plane + primary workload
-    - worker node (dedicated bare-metal) — worker + Longhorn 2nd replica
-    - builder node (cloud compute instance, labelled `role=builder`, tainted
+    - control-plane node — control plane + primary workload
+    - worker node — workloads + Longhorn second replica
+    - two builder nodes (labelled `role=builder`, tainted
       `builder=true:NoSchedule`) — ARC runners only
 
-    **Ingress**: Cloudflare Tunnel → 2× cloudflared pods → K8s ClusterIP → container port.
+    **Ingress**: Cloudflare Tunnel → cloudflared pods → K8s ClusterIP → container port.
     Zero exposed node ports. TLS terminated at Cloudflare edge.
 
-    **Storage**: Longhorn CSI v1.7+ in 2-replica mode across dedicated nodes.
-    Object storage: Cloudflare R2 (zero egress).
+    **Storage**: Longhorn CSI in 2-replica mode across the control-plane and
+    worker nodes. Object storage: Cloudflare R2 (zero egress).
 
-    **GitOps**: ArgoCD App-of-Apps (~28 apps across ~22 namespaces) with self-heal.
-    Push to `main` → CI builds → GHCR → `kustomize edit set image` commits digest →
-    ArgoCD syncs → Switchyard tracks lifecycle events.
+    **GitOps**: ArgoCD App-of-Apps with self-heal. Push to `main` → CI builds →
+    GHCR → `kustomize edit set image` commits the digest → ArgoCD syncs →
+    Switchyard tracks lifecycle events.
 
-    **Operational access** (SSH, kubeconfigs, node hostnames, server IPs, hardware
-    SKUs, cost ledger): private repo
-    `madfam-org/internal-devops`. Not in any public repo.
+    **Operational access** (SSH, kubeconfigs, node identity, estate counts, cost
+    ledger): private repo `madfam-org/internal-devops`. Not in any public repo.
 """).strip()
+
+
+def render_ecosystem_map(projection: dict) -> str:
+    """The full map block: registry-sourced tables between fixed prose."""
+    live = len(projection["products"])
+    return "\n\n".join([
+        ECOSYSTEM_MAP_HEAD,
+        f"{live} customer-facing products, grouped by the registry's category and "
+        "listed in registry order. `—` means the registry records no public front door yet.",
+        render_platform_map(projection),
+        "### Retired products — never present as live",
+        render_retired(projection),
+        ECOSYSTEM_MAP_TAIL,
+    ])
 
 
 ENCLII_CLI_REF = dedent("""
@@ -240,16 +291,15 @@ ENCLII_CLI_REF = dedent("""
 
     ### Install
 
+    GitHub Releases are the verified binary channel (Linux, macOS and Windows
+    archives with checksums): `https://github.com/madfam-org/enclii/releases`.
+    Homebrew, Scoop and `get.enclii.dev` are convenience targets, not yet
+    monitored.
+
     ```bash
-    # macOS
-    brew install enclii/tap/enclii
-
-    # Linux / from source (any OS with Go 1.22+)
+    # From source (any OS with Go)
     git clone https://github.com/madfam-org/enclii.git
-    cd enclii && make install-cli
-
-    # Build only (no install)
-    make build-cli && ./bin/enclii version
+    cd enclii && make build-cli && ./bin/enclii --version
     ```
 
     ### Auth
@@ -260,57 +310,58 @@ ENCLII_CLI_REF = dedent("""
     enclii logout                 # clear local creds
     ```
 
-    Env vars: `ENCLII_API_URL` (default `https://api.enclii.dev`),
-    `ENCLII_TOKEN` (alternative to interactive login),
-    `ENCLII_PROJECT`, `ENCLII_ENV`.
+    Global flags: `--api-endpoint` (or `ENCLII_API_ENDPOINT`, default
+    `https://api.enclii.dev`) and `--api-token` (or `ENCLII_API_TOKEN`; legacy
+    `ENCLII_TOKEN` is still read) for non-interactive use. Set
+    `ENCLII_PROJECT=<project-slug>` (or pass `--project`) when a command has to
+    resolve a service name.
 
     ### Day-to-day for {SERVICE}
 
     The commands below default to `{SERVICE}` — the primary service name for
     this repo as registered in Switchyard. For any other service in the
-    ecosystem, swap the name.
+    ecosystem, swap the name. Environments are `dev`, `staging` and `prod`;
+    most commands default to `dev`, so pass `--env prod` for production.
 
     ```bash
-    # Status + where the pods are running
-    enclii ps --wide
-    enclii ps {SERVICE} --env production
+    # Status
+    enclii ps --env prod
 
-    # Logs (tail, filter, history)
-    enclii logs {SERVICE} -f                          # live tail
-    enclii logs {SERVICE} --since 1h --level error    # last hour, errors only
-    enclii logs {SERVICE} --env staging -f
+    # Logs
+    enclii logs {SERVICE} --env prod -f                    # live tail
+    enclii logs {SERVICE} --env prod --since 1h -n 200     # last hour
 
-    # Deploy (preview, staging, production)
-    enclii deploy --env preview                       # from current branch
-    enclii deploy --env staging
-    enclii deploy --env production --strategy canary --canary-percent 10
+    # Deploy (reads service.yaml)
+    enclii deploy --env staging --wait
+    enclii deploy --env prod --canary 10% --change-ticket <url>
 
     # Rollback
-    enclii rollback {SERVICE}                         # previous release
-    enclii rollback {SERVICE} --to-revision 5
+    enclii rollback {SERVICE} --env prod                   # previous release
+    enclii rollback {SERVICE} v42 --env prod
 
-    # Releases + history
-    enclii releases {SERVICE}                          # list builds
-    enclii releases {SERVICE} --latest --output json
+    # Releases + deployment history
+    enclii releases {SERVICE} -n 20
+    enclii deployments list
 
     # Secrets (routed through Lockbox -> Vault -> ESO -> K8s)
-    enclii secrets list {SERVICE}
-    enclii secrets set MY_KEY=value --service {SERVICE} --secret
-    enclii secrets rm MY_KEY --service {SERVICE}
+    enclii secrets list --env prod
+    enclii secrets set MY_KEY=value --secret --env prod
+
+    # Chat-safe operator intake (values never pass through agent chat)
+    enclii secrets intake submit <target> --reason "<audit reason>" --stdin
+    enclii secrets intake status <intake-id>
 
     # Domains, tunnel routes, DNS
-    enclii domains list {SERVICE}
-    enclii domains add {SERVICE} my.example.com       # auto-provisions tunnel route + DNS
+    enclii domains list --service {SERVICE}
+    enclii domains add my.example.com --service {SERVICE}   # auto-provisions tunnel route + DNS
 
-    # Scheduled jobs (cron + one-off)
-    enclii jobs list
-    enclii jobs run <job-name>                         # trigger one-off
-
-    # Routing (ingress + TLS)
-    enclii junctions list {SERVICE}
-
-    # Serverless (scale-to-zero functions)
+    # Scheduled jobs, routing, serverless
+    enclii jobs list --project <project-slug>
+    enclii junctions list --project <project-slug>
     enclii functions list
+
+    # Observability
+    enclii observe health --service <service-id>
 
     # Local dev environment
     enclii local up         # spin up dependent services (postgres, redis, ...)
@@ -367,10 +418,12 @@ ENCLII_CLI_REF = dedent("""
 
 
 PROVENANCE = dedent("""
-    Generated 2026-04-23 as part of the "each repo stands alone" docs sweep. The
-    generator and per-repo metadata live at `madfam-org/enclii/docs/templates/ecosystem/`.
-    Re-render (don't hand-edit per-repo copies) when the ecosystem map or CLI
-    reference needs to update across the fleet.
+    Rendered by `madfam-org/enclii/docs/templates/ecosystem/generator.py` from this
+    repo's metadata entry (plus any private overlay kept in this repo) and the
+    public product-registry projection. First generated 2026-04-23 for the "each
+    repo stands alone" docs sweep. Do not hand-edit this file: change the metadata,
+    overlay or registry and re-render. `generator.py --check <repo-path>` fails when
+    this file differs from what the generator would write.
 """).strip()
 
 
@@ -378,7 +431,15 @@ PROVENANCE = dedent("""
 # Render
 # ---------------------------------------------------------------------------
 
-def render(repo: str, meta: dict) -> str:
+def render(repo: str, meta: dict, projection: dict | None = None) -> str:
+    """Render one repo's ECOSYSTEM.md.
+
+    `projection` is the parsed product-registry projection; when omitted it is
+    loaded from the default location (see registry.py) and a missing file is
+    an error, never a silent fallback.
+    """
+    if projection is None:
+        projection = load_projection()
     services = meta.get("production", {}).get("services", [])
     ns = meta.get("production", {}).get("namespace", "(see enclii ps)")
     service_for_ops = meta.get("service_name_for_ops", repo)
@@ -405,7 +466,7 @@ def render(repo: str, meta: dict) -> str:
     blocks = apply_boilerplate_overrides(
         repo,
         {
-            "map": ECOSYSTEM_MAP,
+            "map": render_ecosystem_map(projection),
             "cli": ENCLII_CLI_REF.replace("{SERVICE}", service_for_ops),
         },
         meta.get("boilerplate_overrides"),
@@ -427,7 +488,7 @@ def render(repo: str, meta: dict) -> str:
     header.append(f"> **{meta.get('tagline', '').strip()}**")
     header_md = "\n\n".join(header)
 
-    cluster = "**Cluster**: bare-metal k3s on Hetzner (see topology section below)."
+    cluster = "**Cluster**: bare-metal k3s (see topology section below)."
     production_truth = (meta.get("production_truth") or "").strip()
     if production_truth:
         cluster = f"{cluster}\n\n{production_truth}"
@@ -453,6 +514,7 @@ embedded below.
 **Pillar**: {meta.get("pillar", "—")}
 **Type**: {meta.get("type", "—")}
 **Status**: {meta.get("status", "—")}
+{render_registry_entry(projection, repo)}
 
 ### Deployed services
 
@@ -492,13 +554,99 @@ embedded below.
 # Main
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def _repo_name(path: Path, explicit: str | None) -> str:
+    return explicit or path.resolve().name
+
+
+def _repos_for_checkout(path: Path) -> dict:
+    """Public metadata + env overlays + the checkout's own overlay, if any."""
+    overlays = [os.environ.get(OVERLAY_ENV, "")]
+    local = path / REPO_OVERLAY_RELPATH
+    if local.is_file():
+        overlays.append(str(local))
+    return load_repos(os.pathsep.join(o for o in overlays if o))
+
+
+def check_checkout(path: Path, projection: dict, repo: str | None = None) -> tuple[int, str]:
+    """Render `path`'s ECOSYSTEM.md in memory and diff it against the file.
+
+    Returns (status, report): 0 identical, 1 drifted, 2 undetermined.
+    """
+    name = _repo_name(path, repo)
+    target = path / "ECOSYSTEM.md"
+    repos = _repos_for_checkout(path)
+    if name not in repos:
+        return 2, f"UNDETERMINED {name}: no metadata entry (add it to a metadata_<pillar>.py module)"
+    if not target.is_file():
+        return 2, f"UNDETERMINED {name}: {target} does not exist"
+    expected = render(name, repos[name], projection)
+    actual = target.read_text(encoding="utf-8")
+    if expected == actual:
+        return 0, f"OK {name}: ECOSYSTEM.md matches the generator"
+    diff = difflib.unified_diff(
+        actual.splitlines(keepends=True),
+        expected.splitlines(keepends=True),
+        fromfile=f"{name}/ECOSYSTEM.md (checked in)",
+        tofile=f"{name}/ECOSYSTEM.md (generator)",
+    )
+    return 1, f"DRIFT {name}: ECOSYSTEM.md differs from the generator output\n" + "".join(diff)
+
+
+def write_checkout(path: Path, projection: dict, repo: str | None = None) -> str:
+    name = _repo_name(path, repo)
+    repos = _repos_for_checkout(path)
+    if name not in repos:
+        raise SystemExit(f"{name}: no metadata entry (add it to a metadata_<pillar>.py module)")
+    out = path / "ECOSYSTEM.md"
+    out.write_text(render(name, repos[name], projection), encoding="utf-8")
+    return f"WROTE {out} ({out.stat().st_size:,} bytes)"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Render or drift-check ECOSYSTEM.md files.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", nargs="+", metavar="PATH", help="diff each checkout; write nothing")
+    mode.add_argument("--write", nargs="+", metavar="PATH", help="render into each checkout")
+    parser.add_argument("--projection", help="path to projection.public.json")
+    parser.add_argument("--repo", help="metadata key, when one PATH's directory name differs")
+    parser.add_argument("names", nargs="*", help="repo names rendered into $MADFAM_LABSPACE/<name>")
+    args = parser.parse_args(argv)
+
+    paths = args.check or args.write
+    if paths and args.names:
+        parser.error("repo names and --check/--write paths are mutually exclusive")
+    if args.repo and (not paths or len(paths) != 1):
+        parser.error("--repo applies to exactly one --check/--write PATH")
+
+    try:
+        projection = load_projection(args.projection)
+    except ProjectionError as error:
+        print(f"UNDETERMINED: {error}", file=sys.stderr)
+        return 2
+
+    if args.check:
+        worst = 0
+        for raw in args.check:
+            status, report = check_checkout(Path(raw), projection, args.repo)
+            print(report, file=sys.stderr if status else sys.stdout)
+            worst = max(worst, status)
+        return worst
+
+    if args.write:
+        for raw in args.write:
+            print(write_checkout(Path(raw), projection, args.repo))
+        return 0
+
     repos = load_repos()
-    targets = sys.argv[1:] or list(repos.keys())
-    for repo in targets:
+    for repo in args.names or list(repos.keys()):
         if repo not in repos:
             print(f"SKIP {repo} — no metadata defined")
             continue
         out = LABSPACE / repo / "ECOSYSTEM.md"
-        out.write_text(render(repo, repos[repo]))
-        print(f"WROTE {out} ({len(out.read_text()):,} bytes)")
+        out.write_text(render(repo, repos[repo], projection), encoding="utf-8")
+        print(f"WROTE {out} ({out.stat().st_size:,} bytes)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
