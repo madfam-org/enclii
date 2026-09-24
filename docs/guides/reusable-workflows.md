@@ -127,7 +127,7 @@ unreviewed hand-off of those secrets. Two forms work:
   ```
 
   Only commits that contain the SHA-aware signer check can be pinned this
-  way. That is the first release after this section was added, and anything
+  way: the first release tag cut after madfam-org/enclii#620, and anything
   later. Older commits still reject their own SHA identity at the pin step
   (see below).
 - **Tag**: `@vX.Y.Z`. Still accepted. A tag can be moved by anyone with
@@ -216,7 +216,7 @@ For each repo:
 - Cosign fails to sign: verify the OIDC token is being issued
   (`id-token: write` permission on the caller job).
 - `Refusing to pin unsigned or unverifiable digest` on a SHA-pinned
-  caller: the pinned commit predates the SHA-aware check. Pin a newer
+  caller: the pinned commit predates the SHA-aware check (#620). Pin a newer
   release's SHA. The step log prints the accepted identity regexp.
 - `NOT reachable from madfam-org/enclii main`: the SHA is not on `main`
   and is not a release tag's commit. Re-derive it with `git ls-remote`
