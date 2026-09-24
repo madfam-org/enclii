@@ -596,6 +596,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/services/{id}/builds/{build_id}/logs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream build logs (WebSocket)
+         * @description Upgrades to a WebSocket and streams the build's logs as JSON
+         *     `LogStreamMessage` frames. `build_id` is the release ID.
+         *
+         *     The server accepts the WebSocket upgrade when either:
+         *
+         *     - an `Origin` header is sent and exactly matches an entry of the
+         *       server's WebSocket allow-list (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or
+         *     - no `Origin` header is sent and the request authenticated with an
+         *       `Authorization: Bearer` header.
+         *
+         *     Every other upgrade is refused with 403: an `Origin` that is not on the
+         *     allow-list (with or without a Bearer header), or no `Origin` with only a
+         *     `token` query parameter. Browsers always send `Origin` and cannot set
+         *     headers, so a browser authenticates with `token` from an allowed origin;
+         *     the CLI and the TS SDK's `nodeLogsTail` send a Bearer header and no
+         *     `Origin`. Servers before enclii #625 refused every upgrade without an
+         *     allowed `Origin`.
+         */
+        get: operations["streamBuildLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/services/{id}/deploy": {
         parameters: {
             query?: never;
@@ -625,7 +661,12 @@ export interface paths {
         };
         /**
          * List service deployments
-         * @description Get all deployments for a service.
+         * @description Every deployment of the service, newest release first, assembled
+         *     release by release. When reading one release's deployments fails, that
+         *     release is skipped instead of failing the request: `truncated` is then
+         *     true and `skipped_release_ids` names the skipped releases. A caller that
+         *     needs the complete history (for example to pick a rollback target) must
+         *     treat `truncated: true` as an error and retry.
          */
         get: operations["listServiceDeployments"];
         put?: never;
@@ -648,6 +689,28 @@ export interface paths {
          * @description Get the most recent deployment for a service.
          */
         get: operations["getLatestDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List deployments across services
+         * @description Recent deployments across every service the caller can see, newest
+         *     first. A platform admin sees all of them; acting as a tenant narrows to
+         *     that tenant's projects.
+         */
+        get: operations["listAllDeployments"];
         put?: never;
         post?: never;
         delete?: never;
@@ -705,9 +768,46 @@ export interface paths {
         };
         /**
          * Get deployment logs
-         * @description Get logs for a deployment.
+         * @description Recent logs of the deployment's service pods in the deployment's environment.
          */
         get: operations["getDeploymentLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployments/{id}/logs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream deployment logs (WebSocket)
+         * @description Upgrades to a WebSocket and streams the logs of the deployment's
+         *     service pods as JSON `LogStreamMessage` frames. A bad `since` is a 400
+         *     before the upgrade.
+         *
+         *     The server accepts the WebSocket upgrade when either:
+         *
+         *     - an `Origin` header is sent and exactly matches an entry of the
+         *       server's WebSocket allow-list (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or
+         *     - no `Origin` header is sent and the request authenticated with an
+         *       `Authorization: Bearer` header.
+         *
+         *     Every other upgrade is refused with 403: an `Origin` that is not on the
+         *     allow-list (with or without a Bearer header), or no `Origin` with only a
+         *     `token` query parameter. Browsers always send `Origin` and cannot set
+         *     headers, so a browser authenticates with `token` from an allowed origin;
+         *     the CLI and the TS SDK's `nodeLogsTail` send a Bearer header and no
+         *     `Origin`. Servers before enclii #625 refused every upgrade without an
+         *     allowed `Origin`.
+         */
+        get: operations["streamDeploymentLogs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -725,9 +825,47 @@ export interface paths {
         };
         /**
          * Get log history
-         * @description Get historical logs for a service.
+         * @description Recent raw log text of the service's pods in one environment. One
+         *     block of text; the endpoint does not page.
          */
         get: operations["getLogsHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/services/{id}/logs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream service logs (WebSocket)
+         * @description Upgrades to a WebSocket and streams the logs of the service's pods in
+         *     one environment as JSON `LogStreamMessage` frames. A bad `since` (400)
+         *     and an unknown `env` (404) are answered before the upgrade.
+         *
+         *     The server accepts the WebSocket upgrade when either:
+         *
+         *     - an `Origin` header is sent and exactly matches an entry of the
+         *       server's WebSocket allow-list (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or
+         *     - no `Origin` header is sent and the request authenticated with an
+         *       `Authorization: Bearer` header.
+         *
+         *     Every other upgrade is refused with 403: an `Origin` that is not on the
+         *     allow-list (with or without a Bearer header), or no `Origin` with only a
+         *     `token` query parameter. Browsers always send `Origin` and cannot set
+         *     headers, so a browser authenticates with `token` from an allowed origin;
+         *     the CLI and the TS SDK's `nodeLogsTail` send a Bearer header and no
+         *     `Origin`. Servers before enclii #625 refused every upgrade without an
+         *     allowed `Origin`.
+         */
+        get: operations["streamServiceLogs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2840,7 +2978,7 @@ export interface paths {
         };
         /**
          * List cron job runs
-         * @description Lists execution history for a cron job
+         * @description Execution history of a cron job, newest first, one page at a time.
          */
         get: operations["listCronJobRuns"];
         put?: never;
@@ -2858,7 +2996,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List one-off jobs
+         * @description The project's one-off jobs, newest first, one page at a time.
+         */
+        get: operations["listOneOffJobs"];
         put?: never;
         /**
          * Create one-off job
@@ -3152,6 +3294,185 @@ export interface paths {
         get: operations["listWebhookEventTypes"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/functions/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get function logs
+         * @description Recent invocations of a function as log entries.
+         */
+        get: operations["getFunctionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{slug}/processes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a project's processes
+         * @description The project's recent build, deploy and service processes.
+         */
+        get: operations["getProjectProcesses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{slug}/processes/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream a project's process summary (SSE)
+         * @description Server-sent events carrying the project's process summary.
+         */
+        get: operations["streamProjectProcesses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project-processes/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summarize processes of several projects */
+        get: operations["getProjectProcessSummaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/project-processes/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream process summaries of several projects (SSE) */
+        get: operations["streamProjectProcessSummaries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{slug}/storage/buckets/{bucket}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List objects in a project bucket */
+        get: operations["listBucketObjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/featured": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List featured templates */
+        get: operations["getFeaturedTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search templates */
+        get: operations["searchTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/providers/resend/send-test-apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a Resend test email
+         * @description Provider Hub operation `providers.resend.send-test-apply` (one action of
+         *     `POST /providers/{provider}/{action}`; admin role). Sends a test email
+         *     through Resend to `args.to`.
+         *
+         *     The sender is the default sender of the tenant that owns `args.target`
+         *     (for example `noreply@creatumundo.mx` for `creatumundo.mx`), or the
+         *     email service's configured sender when there is no target or the
+         *     domain belongs to no tenant with one. The dry-run shows it in
+         *     `data.from`, and the real send uses the same sender.
+         *
+         *     With `dry_run: true` the response is 200 with `status`
+         *     `ready_to_apply`, `invalid_request` (no `args.to`) or
+         *     `adapter_unconfigured`. With `dry_run: false` the send runs the same
+         *     checks first: no `args.to` is a 400 and a missing Resend API key or
+         *     email service is a 503, so an unconfigured client is never called.
+         */
+        post: operations["resendSendTestApply"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4161,6 +4482,57 @@ export interface components {
             restarts?: number;
             age?: string;
         };
+        LogHistory: {
+            /** Format: uuid */
+            service_id?: string;
+            service_name?: string;
+            environment?: string;
+            namespace?: string;
+            /** @description Raw log text of the service's pods, newline-separated. */
+            logs?: string;
+            /** @description Lines requested per pod. */
+            lines?: number;
+        };
+        TemplateListResponse: {
+            templates?: {
+                [key: string]: unknown;
+            }[];
+            count?: number;
+        };
+        OperatorOperationRequest: {
+            /** @description Operation name; defaults to `providers.<provider>.<action>`. */
+            operation?: string;
+            dry_run?: boolean;
+            /** @description Audit reason, required when `dry_run` is false. */
+            reason?: string;
+            idempotency_key?: string;
+            scope?: {
+                [key: string]: string;
+            };
+            /** @description Action arguments. For `resend/send-test-apply`, `to` (required) is the recipient and `target` the domain whose tenant sender is used. */
+            args?: {
+                [key: string]: string;
+            };
+        };
+        OperatorOperationResponse: {
+            operation_id?: string;
+            audit_id?: string;
+            operation: string;
+            /** @description For example `ready_to_apply`, `invalid_request`, `adapter_unconfigured`, `succeeded` or `provider_apply_failed`. */
+            status: string;
+            dry_run: boolean;
+            summary?: string;
+            data?: {
+                [key: string]: unknown;
+            };
+            steps?: {
+                name?: string;
+                status?: string;
+                detail?: string;
+            }[];
+            warnings?: string[];
+            next?: string[];
+        };
         Error: {
             /** @description Human-readable error message */
             error?: string;
@@ -4338,7 +4710,35 @@ export interface components {
             created_at?: string;
         };
     };
-    responses: never;
+    responses: {
+        /**
+         * @description A `limit`, `offset` or `limit_per_project` value is present but not an
+         *     integer, or outside the range this endpoint documents. The `error`
+         *     names the parameter and the range, for example
+         *     `invalid limit "500": must be an integer from 1 to 100` or
+         *     `invalid offset "-1": must be a non-negative integer`.
+         */
+        InvalidListParameter: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description `since` is neither an RFC3339 timestamp nor a positive duration, or is
+         *     a timestamp in the future. The `error` says which forms are accepted.
+         */
+        InvalidLogsSince: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
     parameters: {
         /** @description Maximum number of results to return */
         limit: number;
@@ -4346,6 +4746,20 @@ export interface components {
         offset: number;
         /** @description Project slug */
         projectSlug: string;
+        /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+        pageOffset: number;
+        /** @description Processes per project, 1 to 20. A value outside that range is a 400. */
+        limitPerProject: number;
+        /**
+         * @description Only log lines newer than this: an RFC3339 timestamp
+         *     (`2026-09-24T10:00:00Z`) or a positive Go duration (`90s`, `15m`,
+         *     `24h`), as `parseLogsSince` in
+         *     `apps/switchyard-api/internal/api/logs_since.go` reads it. A timestamp
+         *     in the future, a non-positive duration or any other value is a 400.
+         *     A window longer than 30 days is clamped to 30 days. Omitted: no
+         *     window, only `lines` applies.
+         */
+        logsSince: string;
     };
     requestBodies: never;
     headers: never;
@@ -5296,6 +5710,41 @@ export interface operations {
             };
         };
     };
+    streamBuildLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                build_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching Protocols. The server then sends JSON `LogStreamMessage` frames. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The upgrade was refused (see the upgrade rule above), or the build does not belong to the service. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service or build not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     deployService: {
         parameters: {
             query?: never;
@@ -5340,7 +5789,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        deployments?: components["schemas"]["Deployment"][];
+                        /** Format: uuid */
+                        service_id: string;
+                        deployments: components["schemas"]["Deployment"][];
+                        count: number;
+                        /** @description True when at least one release's deployments could not be read and are missing from `deployments`. */
+                        truncated: boolean;
+                        /** @description Present only when `truncated` is true. The releases whose deployments are missing. */
+                        skipped_release_ids?: string[];
                     };
                 };
             };
@@ -5366,6 +5822,37 @@ export interface operations {
                     "application/json": components["schemas"]["Deployment"];
                 };
             };
+        };
+    };
+    listAllDeployments: {
+        parameters: {
+            query?: {
+                /** @description Only deployments newer than this Go duration (for example `24h`). A value that is not a duration is ignored. */
+                since?: string;
+                /** @description Maximum number of rows, 1 to 100. A value outside that range is a 400. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deployments?: {
+                            [key: string]: unknown;
+                        }[];
+                        count?: number;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getDeployment: {
@@ -5425,8 +5912,20 @@ export interface operations {
     getDeploymentLogs: {
         parameters: {
             query?: {
+                /** @description Lines per pod. A value that is not an integer is replaced with 100. */
                 lines?: number;
-                tail?: boolean;
+                /** @description When `true`, the logs are returned as `text/event-stream` instead of JSON. */
+                follow?: boolean;
+                /**
+                 * @description Only log lines newer than this: an RFC3339 timestamp
+                 *     (`2026-09-24T10:00:00Z`) or a positive Go duration (`90s`, `15m`,
+                 *     `24h`), as `parseLogsSince` in
+                 *     `apps/switchyard-api/internal/api/logs_since.go` reads it. A timestamp
+                 *     in the future, a non-positive duration or any other value is a 400.
+                 *     A window longer than 30 days is clamped to 30 days. Omitted: no
+                 *     window, only `lines` applies.
+                 */
+                since?: components["parameters"]["logsSince"];
             };
             header?: never;
             path: {
@@ -5443,19 +5942,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
+                        deployment_id?: string;
+                        service_name?: string;
+                        /** @description Raw log text, newline-separated. */
                         logs?: string;
+                        lines?: number;
                     };
+                    "text/event-stream": string;
                 };
+            };
+            400: components["responses"]["InvalidLogsSince"];
+            /** @description Deployment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
-    getLogsHistory: {
+    streamDeploymentLogs: {
         parameters: {
             query?: {
-                /** @description Maximum number of results to return */
-                limit?: components["parameters"]["limit"];
-                /** @description Number of results to skip */
-                offset?: components["parameters"]["offset"];
+                /** @description Lines of backlog per pod before following. A value that is not a positive integer is replaced with 100. */
+                lines?: number;
+                /** @description When `true`, Kubernetes prefixes each line with its timestamp. */
+                timestamps?: boolean;
+                /**
+                 * @description Only log lines newer than this: an RFC3339 timestamp
+                 *     (`2026-09-24T10:00:00Z`) or a positive Go duration (`90s`, `15m`,
+                 *     `24h`), as `parseLogsSince` in
+                 *     `apps/switchyard-api/internal/api/logs_since.go` reads it. A timestamp
+                 *     in the future, a non-positive duration or any other value is a 400.
+                 *     A window longer than 30 days is clamped to 30 days. Omitted: no
+                 *     window, only `lines` applies.
+                 */
+                since?: components["parameters"]["logsSince"];
             };
             header?: never;
             path: {
@@ -5465,14 +5988,126 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Log entries */
+            /** @description Switching Protocols. The server then sends JSON `LogStreamMessage` frames, starting with a `connected` frame. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidLogsSince"];
+            /** @description The upgrade was refused (see the upgrade rule above), or the caller cannot access the resource. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deployment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getLogsHistory: {
+        parameters: {
+            query?: {
+                /** @description Environment name. */
+                env?: string;
+                /** @description Lines per pod, 1 to 10000. A value outside that range is replaced with 100. */
+                lines?: number;
+                /**
+                 * @description Only log lines newer than this: an RFC3339 timestamp
+                 *     (`2026-09-24T10:00:00Z`) or a positive Go duration (`90s`, `15m`,
+                 *     `24h`), as `parseLogsSince` in
+                 *     `apps/switchyard-api/internal/api/logs_since.go` reads it. A timestamp
+                 *     in the future, a non-positive duration or any other value is a 400.
+                 *     A window longer than 30 days is clamped to 30 days. Omitted: no
+                 *     window, only `lines` applies.
+                 */
+                since?: components["parameters"]["logsSince"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Log text */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LogEntry"][];
+                    "application/json": components["schemas"]["LogHistory"];
                 };
+            };
+            400: components["responses"]["InvalidLogsSince"];
+            /** @description Service or environment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    streamServiceLogs: {
+        parameters: {
+            query?: {
+                /** @description Environment name. */
+                env?: string;
+                /** @description Lines of backlog per pod before following. A value that is not a positive integer is replaced with 100. */
+                lines?: number;
+                /** @description When `true`, Kubernetes prefixes each line with its timestamp. */
+                timestamps?: boolean;
+                /**
+                 * @description Only log lines newer than this: an RFC3339 timestamp
+                 *     (`2026-09-24T10:00:00Z`) or a positive Go duration (`90s`, `15m`,
+                 *     `24h`), as `parseLogsSince` in
+                 *     `apps/switchyard-api/internal/api/logs_since.go` reads it. A timestamp
+                 *     in the future, a non-positive duration or any other value is a 400.
+                 *     A window longer than 30 days is clamped to 30 days. Omitted: no
+                 *     window, only `lines` applies.
+                 */
+                since?: components["parameters"]["logsSince"];
+                /** @description Access token, for browsers, which cannot set an `Authorization` header. Accepted only together with an allowed `Origin`. */
+                token?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching Protocols. The server then sends JSON `LogStreamMessage` frames, starting with a `connected` frame. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidLogsSince"];
+            /** @description The upgrade was refused (see the upgrade rule above), or the caller cannot access the resource. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service or environment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -5664,10 +6299,10 @@ export interface operations {
     getAllDomains: {
         parameters: {
             query?: {
-                /** @description Maximum number of results to return */
-                limit?: components["parameters"]["limit"];
-                /** @description Number of results to skip */
-                offset?: components["parameters"]["offset"];
+                /** @description Maximum number of rows, 1 to 500. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+                offset?: components["parameters"]["pageOffset"];
                 verified?: boolean;
                 tls_enabled?: boolean;
             };
@@ -5686,6 +6321,7 @@ export interface operations {
                     "application/json": components["schemas"]["DomainsListResponse"];
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getDomainStats: {
@@ -6668,10 +7304,10 @@ export interface operations {
     listDeploymentGroups: {
         parameters: {
             query?: {
-                /** @description Maximum number of results to return */
-                limit?: components["parameters"]["limit"];
-                /** @description Number of results to skip */
-                offset?: components["parameters"]["offset"];
+                /** @description Maximum number of rows, 1 to 100. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+                offset?: components["parameters"]["pageOffset"];
             };
             header?: never;
             path: {
@@ -6690,9 +7326,14 @@ export interface operations {
                     "application/json": {
                         groups?: components["schemas"]["DeploymentGroup"][];
                         count?: number;
+                        /** @description The limit applied. */
+                        limit?: number;
+                        /** @description The offset applied. */
+                        offset?: number;
                     };
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getDeploymentGroup: {
@@ -7169,10 +7810,10 @@ export interface operations {
                 resource_type?: string;
                 project_id?: string;
                 actor_id?: string;
-                /** @description Maximum number of results to return */
-                limit?: components["parameters"]["limit"];
-                /** @description Number of results to skip */
-                offset?: components["parameters"]["offset"];
+                /** @description Maximum number of rows, 1 to 100. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+                offset?: components["parameters"]["pageOffset"];
             };
             header?: never;
             path?: never;
@@ -7180,7 +7821,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Activity list */
+            /** @description Activity list. `limit` and `offset` echo the values applied. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7189,6 +7830,7 @@ export interface operations {
                     "application/json": components["schemas"]["ActivityListResponse"];
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getActivityActions: {
@@ -7299,7 +7941,14 @@ export interface operations {
     };
     getRecentErrors: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of rows, 1 to 200. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Only errors of this service. */
+                service_id?: string;
+                /** @description Only this level. */
+                level?: "error" | "warn" | "fatal";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7315,6 +7964,7 @@ export interface operations {
                     "application/json": components["schemas"]["RecentErrorsResponse"];
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getActiveAlerts: {
@@ -7658,6 +8308,7 @@ export interface operations {
                 event_type?: string;
                 /** @description Only events after this timestamp */
                 since?: string;
+                /** @description Maximum number of rows, 1 to 200. A value outside that range is a 400. */
                 limit?: number;
             };
             header?: never;
@@ -7675,14 +8326,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeploymentLifecycleEvent"][];
+                    "application/json": {
+                        /** @description `owner/repo` */
+                        repo?: string;
+                        count?: number;
+                        events?: components["schemas"]["DeploymentLifecycleEvent"][];
+                    };
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getLifecycleBranch: {
         parameters: {
             query?: {
+                /** @description Maximum number of rows, 1 to 200. A value outside that range is a 400. */
                 limit?: number;
             };
             header?: never;
@@ -7701,9 +8359,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeploymentLifecycleEvent"][];
+                    "application/json": {
+                        repo?: string;
+                        branch?: string;
+                        count?: number;
+                        events?: components["schemas"]["DeploymentLifecycleEvent"][];
+                    };
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     getLifecycleCommit: {
@@ -7734,6 +8398,7 @@ export interface operations {
                 env?: string;
                 event_type?: string;
                 since?: string;
+                /** @description Maximum number of rows, 1 to 200. A value outside that range is a 400. */
                 limit?: number;
             };
             header?: never;
@@ -7748,9 +8413,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeploymentLifecycleEvent"][];
+                    "application/json": {
+                        count?: number;
+                        events?: components["schemas"]["DeploymentLifecycleEvent"][];
+                    };
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     listOnboardings: {
@@ -8966,7 +9635,12 @@ export interface operations {
     };
     listCronJobRuns: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of rows, 1 to 100. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+                offset?: components["parameters"]["pageOffset"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -8975,14 +9649,73 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of cron job runs */
+            /** @description One page of cron job runs */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runs?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** @description Number of runs in this response (not across all pages). */
+                        total?: number;
+                        /** @description The limit applied. */
+                        limit?: number;
+                        /** @description The offset applied. */
+                        offset?: number;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+            /** @description Cron job not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Cron job not found */
+        };
+    };
+    listOneOffJobs: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of rows, 1 to 100. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+                offset?: components["parameters"]["pageOffset"];
+            };
+            header?: never;
+            path: {
+                /** @description Project slug */
+                slug: components["parameters"]["projectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of one-off jobs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        one_off_jobs?: {
+                            [key: string]: unknown;
+                        }[];
+                        /** @description Number of jobs in this response (not across all pages). */
+                        total?: number;
+                        /** @description The limit applied. */
+                        limit?: number;
+                        /** @description The offset applied. */
+                        offset?: number;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+            /** @description Project not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9578,10 +10311,10 @@ export interface operations {
     listLifecycleWebhookDeliveries: {
         parameters: {
             query?: {
-                /** @description Maximum number of results to return */
-                limit?: components["parameters"]["limit"];
-                /** @description Opaque pagination cursor from a prior response */
-                cursor?: string;
+                /** @description Maximum number of rows, 1 to 200. A value outside that range is a 400. */
+                limit?: number;
+                /** @description Rows to skip, 0 or more. A negative or non-integer value is a 400. */
+                offset?: components["parameters"]["pageOffset"];
             };
             header?: never;
             path: {
@@ -9591,7 +10324,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Delivery list */
+            /** @description One page of deliveries, newest first */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9599,10 +10332,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         deliveries?: components["schemas"]["OutboundWebhookDelivery"][];
-                        next_cursor?: string | null;
+                        /** @description The limit applied. */
+                        limit?: number;
+                        /** @description The offset applied. */
+                        offset?: number;
                     };
                 };
             };
+            400: components["responses"]["InvalidListParameter"];
         };
     };
     listWebhookEventTypes: {
@@ -9623,6 +10360,386 @@ export interface operations {
                     "application/json": {
                         event_types?: string[];
                     };
+                };
+            };
+        };
+    };
+    getFunctionLogs: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of rows, 1 to 1000 (servers before this range check ignored the value and always used 100). A value outside that range is a 400. */
+                limit?: number;
+                /** @description Only invocations after this RFC3339 timestamp. A value that does not parse is ignored. */
+                since?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        function_id?: string;
+                        function_name?: string;
+                        logs?: {
+                            /** Format: date-time */
+                            timestamp?: string;
+                            level?: string;
+                            message?: string;
+                            request_id?: string;
+                            source?: string;
+                        }[];
+                        count?: number;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+            /** @description Function not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectProcesses: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of rows, 1 to 100. A value outside that range is a 400. */
+                limit?: number;
+                active_only?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug */
+                slug: components["parameters"]["projectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Process timeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        count?: number;
+                        /** Format: uuid */
+                        project_id?: string;
+                        slug?: string;
+                        processes?: {
+                            [key: string]: unknown;
+                        }[];
+                        summary?: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    streamProjectProcesses: {
+        parameters: {
+            query?: {
+                /** @description Processes per project, 1 to 20. A value outside that range is a 400. */
+                limit_per_project?: components["parameters"]["limitPerProject"];
+            };
+            header?: never;
+            path: {
+                /** @description Project slug */
+                slug: components["parameters"]["projectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectProcessSummaries: {
+        parameters: {
+            query: {
+                /** @description Comma-separated project IDs. */
+                project_ids: string;
+                /** @description Processes per project, 1 to 20. A value outside that range is a 400. */
+                limit_per_project?: components["parameters"]["limitPerProject"];
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One summary per visible project */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        count?: number;
+                        summaries?: {
+                            [key: string]: unknown;
+                        }[];
+                    };
+                };
+            };
+            /** @description Missing or malformed `project_ids`, or a `limit_per_project` outside 1 to 20 (the `error` names the range). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    streamProjectProcessSummaries: {
+        parameters: {
+            query: {
+                /** @description Comma-separated project IDs. */
+                project_ids: string;
+                /** @description Processes per project, 1 to 20. A value outside that range is a 400. */
+                limit_per_project?: components["parameters"]["limitPerProject"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Missing or malformed `project_ids`, or a `limit_per_project` outside 1 to 20 (the `error` names the range). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listBucketObjects: {
+        parameters: {
+            query?: {
+                prefix?: string;
+                /** @description Maximum number of rows, 1 to 1000. A value outside that range is a 400. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Project slug */
+                slug: components["parameters"]["projectSlug"];
+                bucket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Objects under the prefix */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bucket?: string;
+                        prefix?: string;
+                        objects?: {
+                            key?: string;
+                            size?: number;
+                            /** Format: date-time */
+                            last_modified?: string;
+                            etag?: string;
+                        }[];
+                        count?: number;
+                    };
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+            /** @description Project or bucket not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getFeaturedTemplates: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of rows, 1 to 100 (servers before this range check accepted any positive value). A value outside that range is a 400. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Featured templates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateListResponse"];
+                };
+            };
+            400: components["responses"]["InvalidListParameter"];
+        };
+    };
+    searchTemplates: {
+        parameters: {
+            query: {
+                q: string;
+                /** @description Maximum number of rows, 1 to 100 (servers before this range check accepted any positive value). A value outside that range is a 400. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching templates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateListResponse"];
+                };
+            };
+            /** @description Missing `q`, or a `limit` outside 1 to 100 (the `error` names the range). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resendSendTestApply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "dry_run": false,
+                 *       "reason": "verify the tenant sender after DNS changes",
+                 *       "args": {
+                 *         "to": "ops@example.com",
+                 *         "target": "example.com"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["OperatorOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description Dry-run result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorOperationResponse"];
+                };
+            };
+            /** @description Sent. `data` holds `to` and `from`. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorOperationResponse"];
+                };
+            };
+            /**
+             * @description `status: invalid_request` with no `args.to` recipient; or, as
+             *     `{"error": ...}`, a body that is not a valid operation request or
+             *     `dry_run: false` without a `reason`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorOperationResponse"] | components["schemas"]["Error"];
+                };
+            };
+            /** @description Resend rejected the send (`status: provider_apply_failed`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorOperationResponse"];
+                };
+            };
+            /** @description `status: adapter_unconfigured`: no Resend API key (`ENCLII_RESEND_API_KEY`) or no email service. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorOperationResponse"];
                 };
             };
         };

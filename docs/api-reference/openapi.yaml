@@ -39,6 +39,21 @@ info:
     - `ws://api.enclii.dev/v1/deployments/{id}/logs/stream` - Deployment logs
     - `ws://api.enclii.dev/v1/services/{id}/builds/{build_id}/logs/stream` - Build logs
 
+    Each is documented below as a `GET` that upgrades the connection. An upgrade
+    is accepted when it sends an `Origin` on the server's allow-list
+    (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or when it sends no `Origin` and
+    authenticates with an `Authorization: Bearer` header. Anything else is a
+    403: an `Origin` off the allow-list, or no `Origin` with only a `token`
+    query parameter.
+
+    ## List limits
+
+    List endpoints that take `limit`, `offset` or `limit_per_project` answer
+    400 when a value is present but not an integer or outside the range the
+    endpoint documents, and the `error` names that range. An absent or empty
+    value takes the default. Older servers replaced such a value with the
+    default, or clamped it, without saying so.
+
   version: 1.0.0
   contact:
     name: MADFAM Engineering
@@ -117,6 +132,14 @@ tags:
     description: Canary rollout lifecycle (P2.7) - start, validate, promote, rollback
   - name: lifecycle-webhooks
     description: Outbound lifecycle webhook subscriptions (P2.3) - signed HMAC, DLQ
+  - name: functions
+    description: Serverless functions
+  - name: templates
+    description: Project templates catalog
+  - name: storage
+    description: Project object storage buckets
+  - name: providers
+    description: Provider Hub operations (Resend, Cloudflare, Porkbun)
 
 paths:
   # ============================================
@@ -933,6 +956,50 @@ paths:
                   logs:
                     type: string
 
+  /services/{id}/builds/{build_id}/logs/stream:
+    get:
+      summary: Stream build logs (WebSocket)
+      description: |
+        Upgrades to a WebSocket and streams the build's logs as JSON
+        `LogStreamMessage` frames. `build_id` is the release ID.
+
+        The server accepts the WebSocket upgrade when either:
+
+        - an `Origin` header is sent and exactly matches an entry of the
+          server's WebSocket allow-list (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or
+        - no `Origin` header is sent and the request authenticated with an
+          `Authorization: Bearer` header.
+
+        Every other upgrade is refused with 403: an `Origin` that is not on the
+        allow-list (with or without a Bearer header), or no `Origin` with only a
+        `token` query parameter. Browsers always send `Origin` and cannot set
+        headers, so a browser authenticates with `token` from an allowed origin;
+        the CLI and the TS SDK's `nodeLogsTail` send a Bearer header and no
+        `Origin`. Servers before enclii #625 refused every upgrade without an
+        allowed `Origin`.
+      tags: [logs]
+      operationId: streamBuildLogs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: build_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '101':
+          description: Switching Protocols. The server then sends JSON `LogStreamMessage` frames.
+        '403':
+          description: The upgrade was refused (see the upgrade rule above), or the build does not belong to the service.
+        '404':
+          description: Service or build not found
+
   # ============================================
   # DEPLOYMENTS
   # ============================================
@@ -966,7 +1033,13 @@ paths:
   /services/{id}/deployments:
     get:
       summary: List service deployments
-      description: Get all deployments for a service.
+      description: |
+        Every deployment of the service, newest release first, assembled
+        release by release. When reading one release's deployments fails, that
+        release is skipped instead of failing the request: `truncated` is then
+        true and `skipped_release_ids` names the skipped releases. A caller that
+        needs the complete history (for example to pick a rollback target) must
+        treat `truncated: true` as an error and retry.
       tags: [deployments]
       operationId: listServiceDeployments
       parameters:
@@ -983,11 +1056,26 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [service_id, deployments, count, truncated]
                 properties:
+                  service_id:
+                    type: string
+                    format: uuid
                   deployments:
                     type: array
                     items:
                       $ref: '#/components/schemas/Deployment'
+                  count:
+                    type: integer
+                  truncated:
+                    type: boolean
+                    description: True when at least one release's deployments could not be read and are missing from `deployments`.
+                  skipped_release_ids:
+                    type: array
+                    description: Present only when `truncated` is true. The releases whose deployments are missing.
+                    items:
+                      type: string
+                      format: uuid
 
   /services/{id}/deployments/latest:
     get:
@@ -1009,6 +1097,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Deployment'
+
+  /deployments:
+    get:
+      summary: List deployments across services
+      description: |
+        Recent deployments across every service the caller can see, newest
+        first. A platform admin sees all of them; acting as a tenant narrows to
+        that tenant's projects.
+      tags: [deployments]
+      operationId: listAllDeployments
+      parameters:
+        - name: since
+          in: query
+          description: Only deployments newer than this Go duration (for example `24h`). A value that is not a duration is ignored.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Deployment list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployments:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                      description: A deployment enriched with its service and project names.
+                  count:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /deployments/{id}:
     get:
@@ -1065,7 +1195,7 @@ paths:
   /deployments/{id}/logs:
     get:
       summary: Get deployment logs
-      description: Get logs for a deployment.
+      description: Recent logs of the deployment's service pods in the deployment's environment.
       tags: [logs]
       operationId: getDeploymentLogs
       parameters:
@@ -1077,14 +1207,17 @@ paths:
             format: uuid
         - name: lines
           in: query
+          description: Lines per pod. A value that is not an integer is replaced with 100.
           schema:
             type: integer
             default: 100
-        - name: tail
+        - name: follow
           in: query
+          description: When `true`, the logs are returned as `text/event-stream` instead of JSON.
           schema:
             type: boolean
-            default: true
+            default: false
+        - $ref: '#/components/parameters/logsSince'
       responses:
         '200':
           description: Log content
@@ -1093,8 +1226,77 @@ paths:
               schema:
                 type: object
                 properties:
+                  deployment_id:
+                    type: string
+                    format: uuid
+                  service_name:
+                    type: string
                   logs:
                     type: string
+                    description: Raw log text, newline-separated.
+                  lines:
+                    type: integer
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/InvalidLogsSince'
+        '404':
+          description: Deployment not found
+
+  /deployments/{id}/logs/stream:
+    get:
+      summary: Stream deployment logs (WebSocket)
+      description: |
+        Upgrades to a WebSocket and streams the logs of the deployment's
+        service pods as JSON `LogStreamMessage` frames. A bad `since` is a 400
+        before the upgrade.
+
+        The server accepts the WebSocket upgrade when either:
+
+        - an `Origin` header is sent and exactly matches an entry of the
+          server's WebSocket allow-list (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or
+        - no `Origin` header is sent and the request authenticated with an
+          `Authorization: Bearer` header.
+
+        Every other upgrade is refused with 403: an `Origin` that is not on the
+        allow-list (with or without a Bearer header), or no `Origin` with only a
+        `token` query parameter. Browsers always send `Origin` and cannot set
+        headers, so a browser authenticates with `token` from an allowed origin;
+        the CLI and the TS SDK's `nodeLogsTail` send a Bearer header and no
+        `Origin`. Servers before enclii #625 refused every upgrade without an
+        allowed `Origin`.
+      tags: [logs]
+      operationId: streamDeploymentLogs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: lines
+          in: query
+          description: Lines of backlog per pod before following. A value that is not a positive integer is replaced with 100.
+          schema:
+            type: integer
+            default: 100
+        - name: timestamps
+          in: query
+          description: When `true`, Kubernetes prefixes each line with its timestamp.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/logsSince'
+      responses:
+        '101':
+          description: Switching Protocols. The server then sends JSON `LogStreamMessage` frames, starting with a `connected` frame.
+        '400':
+          $ref: '#/components/responses/InvalidLogsSince'
+        '403':
+          description: The upgrade was refused (see the upgrade rule above), or the caller cannot access the resource.
+        '404':
+          description: Deployment not found
 
   # ============================================
   # LOGS
@@ -1102,7 +1304,9 @@ paths:
   /services/{id}/logs/history:
     get:
       summary: Get log history
-      description: Get historical logs for a service.
+      description: |
+        Recent raw log text of the service's pods in one environment. One
+        block of text; the endpoint does not page.
       tags: [logs]
       operationId: getLogsHistory
       parameters:
@@ -1112,17 +1316,97 @@ paths:
           schema:
             type: string
             format: uuid
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
+        - name: env
+          in: query
+          description: Environment name.
+          schema:
+            type: string
+            default: development
+        - name: lines
+          in: query
+          description: Lines per pod, 1 to 10000. A value outside that range is replaced with 100.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 100
+        - $ref: '#/components/parameters/logsSince'
       responses:
         '200':
-          description: Log entries
+          description: Log text
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/LogEntry'
+                $ref: '#/components/schemas/LogHistory'
+        '400':
+          $ref: '#/components/responses/InvalidLogsSince'
+        '404':
+          description: Service or environment not found
+
+  /services/{id}/logs/stream:
+    get:
+      summary: Stream service logs (WebSocket)
+      description: |
+        Upgrades to a WebSocket and streams the logs of the service's pods in
+        one environment as JSON `LogStreamMessage` frames. A bad `since` (400)
+        and an unknown `env` (404) are answered before the upgrade.
+
+        The server accepts the WebSocket upgrade when either:
+
+        - an `Origin` header is sent and exactly matches an entry of the
+          server's WebSocket allow-list (`ENCLII_WEBSOCKET_ALLOWED_ORIGINS`), or
+        - no `Origin` header is sent and the request authenticated with an
+          `Authorization: Bearer` header.
+
+        Every other upgrade is refused with 403: an `Origin` that is not on the
+        allow-list (with or without a Bearer header), or no `Origin` with only a
+        `token` query parameter. Browsers always send `Origin` and cannot set
+        headers, so a browser authenticates with `token` from an allowed origin;
+        the CLI and the TS SDK's `nodeLogsTail` send a Bearer header and no
+        `Origin`. Servers before enclii #625 refused every upgrade without an
+        allowed `Origin`.
+      tags: [logs]
+      operationId: streamServiceLogs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: env
+          in: query
+          description: Environment name.
+          schema:
+            type: string
+            default: development
+        - name: lines
+          in: query
+          description: Lines of backlog per pod before following. A value that is not a positive integer is replaced with 100.
+          schema:
+            type: integer
+            default: 100
+        - name: timestamps
+          in: query
+          description: When `true`, Kubernetes prefixes each line with its timestamp.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/logsSince'
+        - name: token
+          in: query
+          description: Access token, for browsers, which cannot set an `Authorization` header. Accepted only together with an allowed `Origin`.
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols. The server then sends JSON `LogStreamMessage` frames, starting with a `connected` frame.
+        '400':
+          $ref: '#/components/responses/InvalidLogsSince'
+        '403':
+          description: The upgrade was refused (see the upgrade rule above), or the caller cannot access the resource.
+        '404':
+          description: Service or environment not found
 
   /services/{id}/logs/search:
     post:
@@ -1344,8 +1628,15 @@ paths:
       tags: [domains]
       operationId: getAllDomains
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 500. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - $ref: '#/components/parameters/pageOffset'
         - name: verified
           in: query
           schema:
@@ -1361,6 +1652,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DomainsListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /domains/stats:
     get:
@@ -2339,8 +2632,15 @@ paths:
           required: true
           schema:
             type: string
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - $ref: '#/components/parameters/pageOffset'
       responses:
         '200':
           description: Deployment group list
@@ -2355,6 +2655,14 @@ paths:
                       $ref: '#/components/schemas/DeploymentGroup'
                   count:
                     type: integer
+                  limit:
+                    type: integer
+                    description: The limit applied.
+                  offset:
+                    type: integer
+                    description: The offset applied.
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /projects/{slug}/deployment-groups/{group_id}:
     get:
@@ -2844,15 +3152,24 @@ paths:
           schema:
             type: string
             format: uuid
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - $ref: '#/components/parameters/pageOffset'
       responses:
         '200':
-          description: Activity list
+          description: Activity list. `limit` and `offset` echo the values applied.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ActivityListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /activity/actions:
     get:
@@ -2950,6 +3267,26 @@ paths:
       description: Get recent error logs with stack traces.
       tags: [observability]
       operationId: getRecentErrors
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 200. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: service_id
+          in: query
+          description: Only errors of this service.
+          schema:
+            type: string
+        - name: level
+          in: query
+          description: Only this level.
+          schema:
+            type: string
+            enum: [error, warn, fatal]
       responses:
         '200':
           description: Recent errors
@@ -2957,6 +3294,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RecentErrorsResponse'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /observability/alerts:
     get:
@@ -3305,19 +3644,31 @@ paths:
           description: Only events after this timestamp
         - name: limit
           in: query
+          description: Maximum number of rows, 1 to 200. A value outside that range is a 400.
           schema:
             type: integer
-            default: 50
+            minimum: 1
             maximum: 200
+            default: 50
       responses:
         '200':
           description: List of lifecycle events
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+                type: object
+                properties:
+                  repo:
+                    type: string
+                    description: '`owner/repo`'
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeploymentLifecycleEvent'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /v1/lifecycle/branch/{owner}/{repo}/{branch}:
     get:
@@ -3342,8 +3693,11 @@ paths:
             type: string
         - name: limit
           in: query
+          description: Maximum number of rows, 1 to 200. A value outside that range is a 400.
           schema:
             type: integer
+            minimum: 1
+            maximum: 200
             default: 50
       responses:
         '200':
@@ -3351,9 +3705,20 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+                type: object
+                properties:
+                  repo:
+                    type: string
+                  branch:
+                    type: string
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeploymentLifecycleEvent'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /v1/lifecycle/commit/{sha}:
     get:
@@ -3398,8 +3763,11 @@ paths:
             format: date-time
         - name: limit
           in: query
+          description: Maximum number of rows, 1 to 200. A value outside that range is a 400.
           schema:
             type: integer
+            minimum: 1
+            maximum: 200
             default: 50
       responses:
         '200':
@@ -3407,9 +3775,16 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DeploymentLifecycleEvent'
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeploymentLifecycleEvent'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   # ============================================
   # ONBOARDING ENDPOINTS
@@ -4374,7 +4749,7 @@ paths:
   /v1/cron-jobs/{id}/runs:
     get:
       summary: List cron job runs
-      description: Lists execution history for a cron job
+      description: Execution history of a cron job, newest first, one page at a time.
       tags: [timetable]
       operationId: listCronJobRuns
       parameters:
@@ -4384,12 +4759,84 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - $ref: '#/components/parameters/pageOffset'
       responses:
         '200':
-          description: List of cron job runs
+          description: One page of cron job runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  total:
+                    type: integer
+                    description: Number of runs in this response (not across all pages).
+                  limit:
+                    type: integer
+                    description: The limit applied.
+                  offset:
+                    type: integer
+                    description: The offset applied.
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
         '404':
           description: Cron job not found
   /v1/projects/{slug}/one-off-jobs:
+    get:
+      summary: List one-off jobs
+      description: The project's one-off jobs, newest first, one page at a time.
+      tags: [timetable]
+      operationId: listOneOffJobs
+      parameters:
+        - $ref: '#/components/parameters/projectSlug'
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - $ref: '#/components/parameters/pageOffset'
+      responses:
+        '200':
+          description: One page of one-off jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  one_off_jobs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  total:
+                    type: integer
+                    description: Number of jobs in this response (not across all pages).
+                  limit:
+                    type: integer
+                    description: The limit applied.
+                  offset:
+                    type: integer
+                    description: The offset applied.
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
+        '404':
+          description: Project not found
     post:
       summary: Create one-off job
       description: Creates a single-execution job for a service
@@ -4898,15 +5345,18 @@ paths:
           schema:
             type: string
             format: uuid
-        - $ref: '#/components/parameters/limit'
-        - name: cursor
+        - name: limit
           in: query
+          description: Maximum number of rows, 1 to 200. A value outside that range is a 400.
           schema:
-            type: string
-          description: Opaque pagination cursor from a prior response
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - $ref: '#/components/parameters/pageOffset'
       responses:
         '200':
-          description: Delivery list
+          description: One page of deliveries, newest first
           content:
             application/json:
               schema:
@@ -4916,9 +5366,14 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/OutboundWebhookDelivery'
-                  next_cursor:
-                    type: string
-                    nullable: true
+                  limit:
+                    type: integer
+                    description: The limit applied.
+                  offset:
+                    type: integer
+                    description: The offset applied.
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
 
   /v1/webhooks/event-types:
     get:
@@ -4938,6 +5393,396 @@ paths:
                     type: array
                     items:
                       type: string
+
+  # ============================================
+  # OTHER LIST ENDPOINTS WITH BOUNDED LIMITS
+  # ============================================
+  /functions/{id}/logs:
+    get:
+      summary: Get function logs
+      description: Recent invocations of a function as log entries.
+      tags: [functions]
+      operationId: getFunctionLogs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 1000 (servers before this range check ignored the value and always used 100). A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: since
+          in: query
+          description: Only invocations after this RFC3339 timestamp. A value that does not parse is ignored.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  function_id:
+                    type: string
+                    format: uuid
+                  function_name:
+                    type: string
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        level:
+                          type: string
+                        message:
+                          type: string
+                        request_id:
+                          type: string
+                        source:
+                          type: string
+                  count:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
+        '404':
+          description: Function not found
+
+  /projects/{slug}/processes:
+    get:
+      summary: List a project's processes
+      description: The project's recent build, deploy and service processes.
+      tags: [projects]
+      operationId: getProjectProcesses
+      parameters:
+        - $ref: '#/components/parameters/projectSlug'
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Process timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  project_id:
+                    type: string
+                    format: uuid
+                  slug:
+                    type: string
+                  processes:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  summary:
+                    type: object
+                    additionalProperties: true
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
+        '404':
+          description: Project not found
+
+  /projects/{slug}/processes/stream:
+    get:
+      summary: Stream a project's process summary (SSE)
+      description: Server-sent events carrying the project's process summary.
+      tags: [projects]
+      operationId: streamProjectProcesses
+      parameters:
+        - $ref: '#/components/parameters/projectSlug'
+        - $ref: '#/components/parameters/limitPerProject'
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
+        '404':
+          description: Project not found
+
+  /project-processes/summary:
+    get:
+      summary: Summarize processes of several projects
+      tags: [projects]
+      operationId: getProjectProcessSummaries
+      parameters:
+        - name: project_ids
+          in: query
+          required: true
+          description: Comma-separated project IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitPerProject'
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One summary per visible project
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  summaries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '400':
+          description: Missing or malformed `project_ids`, or a `limit_per_project` outside 1 to 20 (the `error` names the range).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /project-processes/stream:
+    get:
+      summary: Stream process summaries of several projects (SSE)
+      tags: [projects]
+      operationId: streamProjectProcessSummaries
+      parameters:
+        - name: project_ids
+          in: query
+          required: true
+          description: Comma-separated project IDs.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitPerProject'
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          description: Missing or malformed `project_ids`, or a `limit_per_project` outside 1 to 20 (the `error` names the range).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /projects/{slug}/storage/buckets/{bucket}/objects:
+    get:
+      summary: List objects in a project bucket
+      tags: [storage]
+      operationId: listBucketObjects
+      parameters:
+        - $ref: '#/components/parameters/projectSlug'
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: prefix
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 1000. A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Objects under the prefix
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bucket:
+                    type: string
+                  prefix:
+                    type: string
+                  objects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        size:
+                          type: integer
+                        last_modified:
+                          type: string
+                          format: date-time
+                        etag:
+                          type: string
+                  count:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
+        '404':
+          description: Project or bucket not found
+
+  /templates/featured:
+    get:
+      summary: List featured templates
+      tags: [templates]
+      operationId: getFeaturedTemplates
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100 (servers before this range check accepted any positive value). A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 6
+      responses:
+        '200':
+          description: Featured templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        '400':
+          $ref: '#/components/responses/InvalidListParameter'
+
+  /templates/search:
+    get:
+      summary: Search templates
+      tags: [templates]
+      operationId: searchTemplates
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of rows, 1 to 100 (servers before this range check accepted any positive value). A value outside that range is a 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Matching templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        '400':
+          description: Missing `q`, or a `limit` outside 1 to 100 (the `error` names the range).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================
+  # PROVIDER HUB
+  # ============================================
+  /providers/resend/send-test-apply:
+    post:
+      summary: Send a Resend test email
+      description: |
+        Provider Hub operation `providers.resend.send-test-apply` (one action of
+        `POST /providers/{provider}/{action}`; admin role). Sends a test email
+        through Resend to `args.to`.
+
+        The sender is the default sender of the tenant that owns `args.target`
+        (for example `noreply@creatumundo.mx` for `creatumundo.mx`), or the
+        email service's configured sender when there is no target or the
+        domain belongs to no tenant with one. The dry-run shows it in
+        `data.from`, and the real send uses the same sender.
+
+        With `dry_run: true` the response is 200 with `status`
+        `ready_to_apply`, `invalid_request` (no `args.to`) or
+        `adapter_unconfigured`. With `dry_run: false` the send runs the same
+        checks first: no `args.to` is a 400 and a missing Resend API key or
+        email service is a 503, so an unconfigured client is never called.
+      tags: [providers]
+      operationId: resendSendTestApply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorOperationRequest'
+            example:
+              dry_run: false
+              reason: verify the tenant sender after DNS changes
+              args:
+                to: ops@example.com
+                target: example.com
+      responses:
+        '200':
+          description: Dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorOperationResponse'
+        '202':
+          description: Sent. `data` holds `to` and `from`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorOperationResponse'
+        '400':
+          description: |
+            `status: invalid_request` with no `args.to` recipient; or, as
+            `{"error": ...}`, a body that is not a valid operation request or
+            `dry_run: false` without a `reason`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OperatorOperationResponse'
+                  - $ref: '#/components/schemas/Error'
+        '502':
+          description: 'Resend rejected the send (`status: provider_apply_failed`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorOperationResponse'
+        '503':
+          description: '`status: adapter_unconfigured`: no Resend API key (`ENCLII_RESEND_API_KEY`) or no email service.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorOperationResponse'
 
 components:
   securitySchemes:
@@ -4970,6 +5815,57 @@ components:
       description: Project slug
       schema:
         type: string
+    pageOffset:
+      name: offset
+      in: query
+      description: Rows to skip, 0 or more. A negative or non-integer value is a 400.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    limitPerProject:
+      name: limit_per_project
+      in: query
+      description: Processes per project, 1 to 20. A value outside that range is a 400.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 5
+    logsSince:
+      name: since
+      in: query
+      description: |
+        Only log lines newer than this: an RFC3339 timestamp
+        (`2026-09-24T10:00:00Z`) or a positive Go duration (`90s`, `15m`,
+        `24h`), as `parseLogsSince` in
+        `apps/switchyard-api/internal/api/logs_since.go` reads it. A timestamp
+        in the future, a non-positive duration or any other value is a 400.
+        A window longer than 30 days is clamped to 30 days. Omitted: no
+        window, only `lines` applies.
+      schema:
+        type: string
+
+  responses:
+    InvalidListParameter:
+      description: |
+        A `limit`, `offset` or `limit_per_project` value is present but not an
+        integer, or outside the range this endpoint documents. The `error`
+        names the parameter and the range, for example
+        `invalid limit "500": must be an integer from 1 to 100` or
+        `invalid offset "-1": must be a non-negative integer`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidLogsSince:
+      description: |
+        `since` is neither an RFC3339 timestamp nor a positive duration, or is
+        a timestamp in the future. The `error` says which forms are accepted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
   schemas:
     # ===== Health =====
@@ -6775,6 +7671,101 @@ components:
           type: integer
         age:
           type: string
+
+    # ===== Logs =====
+    LogHistory:
+      type: object
+      properties:
+        service_id:
+          type: string
+          format: uuid
+        service_name:
+          type: string
+        environment:
+          type: string
+        namespace:
+          type: string
+        logs:
+          type: string
+          description: Raw log text of the service's pods, newline-separated.
+        lines:
+          type: integer
+          description: Lines requested per pod.
+
+    # ===== Templates =====
+    TemplateListResponse:
+      type: object
+      properties:
+        templates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        count:
+          type: integer
+
+    # ===== Provider Hub operations =====
+    OperatorOperationRequest:
+      type: object
+      properties:
+        operation:
+          type: string
+          description: Operation name; defaults to `providers.<provider>.<action>`.
+        dry_run:
+          type: boolean
+        reason:
+          type: string
+          description: Audit reason, required when `dry_run` is false.
+        idempotency_key:
+          type: string
+        scope:
+          type: object
+          additionalProperties:
+            type: string
+        args:
+          type: object
+          description: Action arguments. For `resend/send-test-apply`, `to` (required) is the recipient and `target` the domain whose tenant sender is used.
+          additionalProperties:
+            type: string
+    OperatorOperationResponse:
+      type: object
+      required: [operation, status, dry_run]
+      properties:
+        operation_id:
+          type: string
+        audit_id:
+          type: string
+        operation:
+          type: string
+        status:
+          type: string
+          description: For example `ready_to_apply`, `invalid_request`, `adapter_unconfigured`, `succeeded` or `provider_apply_failed`.
+        dry_run:
+          type: boolean
+        summary:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+              detail:
+                type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        next:
+          type: array
+          items:
+            type: string
 
     # ===== Errors =====
     Error:
