@@ -16,15 +16,17 @@ tags: [sdk, typescript, jobs, cron]
 | `createCron` | `createCron(projectSlug: string, input: CreateCronJobRequest): Promise<CronJob>` | `POST /projects/{slug}/cron-jobs` |
 | `updateCron` | `updateCron(jobId: string, input: Partial<CreateCronJobRequest> & { suspended?: boolean }): Promise<CronJob>` | `PATCH /cron-jobs/{id}` |
 | `deleteCron` | `deleteCron(jobId: string): Promise<void>` | `DELETE /cron-jobs/{id}` |
-| `listCronRuns` | `listCronRuns(jobId: string): Promise<Page<CronJobRun>>` | `GET /cron-jobs/{id}/runs` |
-| `listOneOff` | `listOneOff(projectSlug: string): Promise<Page<OneOffJob>>` | `GET /projects/{slug}/one-off-jobs` |
+| `listCronRuns` | `listCronRuns(jobId: string, options?: OffsetPageOptions): Promise<Page<CronJobRun>>` | `GET /cron-jobs/{id}/runs` |
+| `listOneOff` | `listOneOff(projectSlug: string, options?: OffsetPageOptions): Promise<Page<OneOffJob>>` | `GET /projects/{slug}/one-off-jobs` |
 | `createOneOff` | `createOneOff(projectSlug: string, input: CreateOneOffJobRequest): Promise<OneOffJob>` | `POST /projects/{slug}/one-off-jobs` |
 
 The API handlers are in `apps/switchyard-api/internal/api/timetable_handlers.go`. The create endpoints wrap the new job as `{ cron_job, message }` and `{ one_off_job, message }`; `createCron()` and `createOneOff()` return the job itself.
 
-None of the list endpoints page, so `nextCursor` is always `null` and the list methods' `limit`/`cursor` options are deprecated and not sent. `listCron()` returns every cron job of the project. `listCronRuns()` and `listOneOff()` return only the **50 most recent** rows; older runs and jobs are not reachable through the API.
+`listCron()` returns every cron job of the project in one response; its `limit`/`cursor` options are deprecated and not sent, and `nextCursor` is `null`.
 
-There are no `iter()` methods on `jobs`, and no methods to get a single one-off job or its logs (the API routes `GET /one-off-jobs/{id}` and `GET /one-off-jobs/{id}/logs` exist; call them with [`client.get()`](./index.md#low-level-requests)).
+`listCronRuns()` and `listOneOff()` page newest first, like [`audit.list()`](./audit.md): `limit` is 1 to 100 (default 50), and `nextCursor` is set while pages come back full; pass it back as `cursor` for the next page. The SDK sends them as the API's `limit` and `offset`, and throws a plain `Error` before sending for a `limit` outside 1 to 100 (the API answers 400) or a cursor it did not return. A switchyard-api that predates PRNUM_LINK ignores both and returns the 50 most recent rows with no `limit` echo, so `nextCursor` is `null` there and older rows are not reachable.
+
+There are no `iter()` methods on `jobs` (loop on `nextCursor`), and no methods to get a single one-off job or its logs (the API routes `GET /one-off-jobs/{id}` and `GET /one-off-jobs/{id}/logs` exist; call them with [`client.get()`](./index.md#low-level-requests)).
 
 ## Setup
 
@@ -85,10 +87,14 @@ const oneOff = await enclii.jobs.createOneOff('my-project', {
 });
 console.log(oneOff.id, oneOff.status);
 
-const { data } = await enclii.jobs.listOneOff('my-project'); // 50 most recent
-for (const j of data) {
-  if (j.status === 'failed') console.error(j.name, j.failure_reason ?? `exit ${j.exit_code}`);
-}
+let cursor: string | undefined;
+do {
+  const page = await enclii.jobs.listOneOff('my-project', { limit: 100, cursor });
+  for (const j of page.data) {
+    if (j.status === 'failed') console.error(j.name, j.failure_reason ?? `exit ${j.exit_code}`);
+  }
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
 ```
 
 `CreateOneOffJobRequest` has `name`, `command`, and `service_id` (required) and `image`, `timeout`, and `run_at` (optional).

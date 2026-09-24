@@ -30,6 +30,10 @@ Enclii-first management of Madfam ecosystem providers (Resend, Cloudflare, GitHu
    ```
    `--to` first shipped in `v1.0.0-alpha.12`. On `v1.0.0-alpha.11` and older the flag is rejected as unknown, and without it the API answers `invalid_request`: upgrade the CLI, or use Dispatch.
 
+   **Sender.** The test is sent from the default sender address of the tenant that owns the target domain (for example `noreply@creatumundo.mx` for `creatumundo.mx`, from the ecosystem tenant registry), so it exercises that domain's Resend verification. When the target belongs to no tenant with a default sender, it is sent from the server's configured sender (`ENCLII_EMAIL_FROM_ADDRESS`, default `noreply@enclii.dev`). The dry-run's `from` is exactly what `--apply` sends; before PRNUM_LINK the dry-run showed the tenant sender but the send always used the configured one.
+
+   **Unconfigured server.** Without a Resend API key or without the email service, both the dry-run and `--apply` answer `adapter_unconfigured` (HTTP `503` on `--apply`) before any send is attempted.
+
 Vault backfill (retire Janua bridge):
 
 ```bash

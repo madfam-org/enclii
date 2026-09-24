@@ -49,6 +49,8 @@ List a service's deployment history with Heroku-style v-numbers. Output columns:
 |------|------|---------|-------------|
 | `--limit`, `-n` | int | `20` | Maximum number of deployments to show |
 
+When the API returns a partial history (it could not read the deployments of some releases), `ls` shows the rows it got and prints a `warning: the API returned a partial deployment list ...` line on stderr; re-run it for the full list.
+
 ### `show`
 
 Show one deployment. The target is either a v-number (`v42`, which requires the `service` argument) or a full deployment UUID (`service` optional). Prints the deployment's id, status, health, replicas, release, environment, and creation time.

@@ -98,7 +98,7 @@ do {
 } while (cursor);
 ```
 
-Treat the cursor as opaque. `deliveries()` throws a plain `Error` before sending for a `limit` outside 1 to 200 (the API would silently use 50) or a cursor it did not return. See [Pagination](./index.md#pagination).
+Treat the cursor as opaque. `deliveries()` throws a plain `Error` before sending for a `limit` outside 1 to 200 (the API answers 400; servers before PRNUM_LINK silently used 50) or a cursor it did not return. See [Pagination](./index.md#pagination).
 
 ## Verify deliveries in your receiver
 
