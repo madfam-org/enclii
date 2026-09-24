@@ -141,7 +141,7 @@ cd coupler && git init && cp ../enclii/docs/strategy/AGENT_TOOL_PLANE.md docs/ar
 janua provision apply -f janua.client.yaml
 
 # Enclii preflight (after enclii.yaml committed)
-enclii admin onboard preflight --project coupler
+enclii onboard --repo madfam-org/coupler --project coupler --preflight --dry-run
 ```
 
 ---

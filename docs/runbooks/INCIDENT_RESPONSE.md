@@ -15,6 +15,10 @@ tags: [operations, runbook, incident-response, on-call]
 
 # Incident Response Runbook
 
+> **Boundary checkpoint (2026-09-24, platform ops):** `enclii` CLI examples corrected
+> against `enclii --help` (v1.0.0-alpha.11); public-safe, nothing new withheld. Policy:
+> `docs/PUBLIC_REPO_BOUNDARY.md`.
+
 > **Boundary checkpoint (2026-09-04, platform ops):** node identity — hostnames,
 > IP addresses and hardware SKUs — is private and does not appear in this public
 > repo. Nodes are named by ROLE (control-plane, worker, builder); `<TOKEN>`
@@ -300,7 +304,7 @@ curl -s https://api.enclii.dev/health | jq .
 # Expected: {"status":"healthy","database":"connected"}
 
 # Verify through CLI
-enclii ps --wide
+enclii ps --project enclii --env production
 ```
 
 ---
@@ -403,7 +407,7 @@ kubectl top pods -n enclii -l app=switchyard-api
 kubectl get pods -n enclii -l app=switchyard-api -o wide
 
 # Step 3: Check recent logs for error patterns
-enclii logs switchyard-api --tail=200 --level error
+enclii logs switchyard-api --env production -n 200 | grep -i error
 
 # Step 4: Check for slow database queries
 kubectl exec -n data deploy/postgres -- psql -U postgres -c \
@@ -416,7 +420,7 @@ kubectl exec -n data deploy/postgres -- psql -U postgres -c \
 kubectl get hpa -n enclii
 
 # Step 6: Check for unusual traffic patterns (webhook storms, etc.)
-enclii logs switchyard-api --tail=500 | grep -c "POST /v1/webhooks"
+enclii logs switchyard-api --env production -n 500 | grep -c "POST /v1/webhooks"
 ```
 
 **Resolution steps:**
@@ -453,11 +457,11 @@ time curl -s https://api.enclii.dev/health | jq .
 # Expected: < 500ms response, {"status":"healthy"}
 
 # Verify deployment operations work
-enclii ps --wide
+enclii ps --project enclii --env production
 # Expected: All services listed, response within 2 seconds
 
 # Check error rate has dropped
-enclii logs switchyard-api --tail=100 --level error | wc -l
+enclii logs switchyard-api --env production -n 100 | grep -ci error
 # Expected: Significantly fewer errors than during incident
 ```
 
@@ -469,7 +473,7 @@ enclii logs switchyard-api --tail=100 --level error | wc -l
 
 **Detection signals:**
 - Builds queued for more than 10 minutes with no progress
-- `enclii builds logs --latest` shows no output or stuck state
+- `enclii releases <service>` shows the latest build stuck in `building`
 - Prometheus alert: `BuildQueueDepth` > 5 for > 10 minutes
 - Users report pushes to GitHub not triggering builds
 
@@ -491,7 +495,7 @@ kubectl exec -n data deploy/redis -- redis-cli llen build:queue
 kubectl exec -n data deploy/redis -- redis-cli llen build:processing
 
 # Step 5: Check if webhook delivery is working
-enclii logs switchyard-api --tail=100 | grep "webhook"
+enclii logs switchyard-api --env production -n 100 | grep "webhook"
 
 # Step 6: Check for resource pressure on builder node
 kubectl top node <BUILDER_NODE>
@@ -532,9 +536,9 @@ kubectl debug node/<BUILDER_NODE> -it --image=busybox -- sh -c "crictl rmi --pru
 kubectl logs -n enclii -l app=roundhouse --tail=20
 # Expected: Shows build processing activity
 
-# Trigger a test build and monitor
-enclii builds logs --latest --follow
-# Expected: Build progresses through stages
+# Trigger a test build (enclii deploy in a test service's directory) and monitor
+enclii releases <service> -n 1
+# Expected: the new release moves from building to ready
 
 # Verify queue is draining
 kubectl exec -n data deploy/redis -- redis-cli llen build:queue

@@ -45,10 +45,10 @@ enclii version
 enclii login
 ```
 
-This opens your browser to sign in with GitHub. Once authenticated, you'll see:
+This opens your browser to sign in through Janua SSO. Confirm the account with:
 
-```
-✓ Logged in as developer@example.com
+```bash
+enclii whoami
 ```
 
 ---
@@ -59,72 +59,42 @@ Navigate to your project directory and initialize Enclii:
 
 ```bash
 cd my-app
-enclii init
+enclii init --template express   # or another catalog slug; the default is auto
 ```
 
-**Output:**
-```
-Detected: Node.js application (package.json found)
-Created: enclii.yaml
-
-Service: my-app
-Type:    http
-Port:    3000
-Build:   nixpacks (auto-detected)
-
-Next: Run `enclii deploy` to deploy
-```
-
-This creates an `enclii.yaml` configuration file. Review it:
+This writes a starter `service.yaml` (it fails if one already exists). `init` does not inspect your code: the service and project name default to the directory name, and the generated port and env block are placeholders. Review it:
 
 ```yaml
-apiVersion: enclii.dev/v1
+apiVersion: enclii.dev/v1alpha
 kind: Service
 metadata:
-  name: my-app
-  project: my-project
+    name: my-app
+    project: my-app
 spec:
-  build:
-    type: auto
-  runtime:
-    port: 3000
-    replicas: 1
-    healthCheck: /health
-  env:
-    - name: NODE_ENV
-      value: production
+    build:
+        type: express
+    runtime:
+        port: 8080
+        replicas: 2
+        healthCheck: /health
+    env:
+        - name: NODE_ENV
+          value: production
 ```
+
+Set `runtime.port` to the port your app listens on (for example `3000`). See [`enclii init`](../cli/commands/init.md) for the template catalog.
 
 ---
 
-## Step 4: Deploy to Preview
+## Step 4: Deploy to Development
 
-Deploy your app to a preview environment:
+Commit your code, then deploy. Without `--env`, `enclii deploy` targets the `dev` environment:
 
 ```bash
-enclii deploy
+enclii deploy --wait
 ```
 
-**Output:**
-```
-Building service...
-  Detected: Node.js (nixpacks)
-  Building: ████████████████████ 100%
-  Image: ghcr.io/madfam-org/my-app:v1.0.0
-
-Creating release...
-  Release: rel_abc123
-  Commit:  a1b2c3d (Initial commit)
-
-Deploying to preview...
-  Progress: ████████████████████ 100%
-
-✓ Deployment successful!
-  URL: https://my-app-preview.enclii.app
-  Status: healthy
-```
-
-Visit the URL to see your running application.
+The command must run inside a git repository. It builds the current commit, creates the project, service, and environment if they do not exist, deploys with a rolling update, and with `--wait` polls until the deployment is healthy. See [`enclii deploy`](../cli/commands/deploy.md).
 
 ---
 
@@ -136,14 +106,7 @@ Stream logs from your running service:
 enclii logs my-app -f
 ```
 
-**Output:**
-```
-2025-01-11T10:30:15Z [INFO]  Server started on port 3000
-2025-01-11T10:30:16Z [INFO]  Connected to database
-2025-01-11T10:31:02Z [INFO]  GET / 200 45ms
-```
-
-Press `Ctrl+C` to stop streaming.
+Press `Ctrl+C` to stop streaming. Without `-f` it prints the last 100 lines (`-n` to change).
 
 ---
 
@@ -155,12 +118,6 @@ View your running services:
 enclii ps
 ```
 
-**Output:**
-```
-NAME     ENV       STATUS    INSTANCES   CPU   MEMORY   URL
-my-app   preview   running   1/1         12%   156Mi    https://my-app-preview.enclii.app
-```
-
 ---
 
 ## Step 7: Deploy to Production
@@ -168,19 +125,10 @@ my-app   preview   running   1/1         12%   156Mi    https://my-app-preview.e
 When ready, deploy to production:
 
 ```bash
-enclii deploy --env production
+enclii deploy --env production --wait
 ```
 
-**Output:**
-```
-Deploying to production...
-  Strategy: rolling
-  Progress: ████████████████████ 100%
-
-✓ Deployment successful!
-  URL: https://my-app.enclii.app
-  Status: healthy
-```
+For a gradual rollout, deploy as a canary instead: `enclii deploy --env production --canary 10 --change-ticket <url>`.
 
 ---
 
@@ -199,32 +147,34 @@ enclii domains verify api.example.com
 ### Set Up Environment Variables
 
 ```bash
-# Add a secret
-enclii secrets set DATABASE_URL "postgresql://..." --env production
+# Add a secret (encrypted, masked)
+enclii secrets set DATABASE_URL="postgresql://..." --secret --env production
 
 # Add a regular variable
-enclii env set LOG_LEVEL "info" --env production
+enclii secrets set LOG_LEVEL=info --env production
 ```
 
 ### Configure Auto-Deploy
 
-Update your `enclii.yaml`:
+Declare the repository and branch in your `service.yaml`:
 
 ```yaml
 spec:
-  autoDeploy:
-    enabled: true
-    branch: main
-    environment: staging
+  build:
+    source:
+      git:
+        repository: https://github.com/<org>/<repo>
+        branch: main
+        autoDeploy: true
 ```
 
-Then sync:
+Then sync (`--reconcile-existing` updates a service that is already registered):
 
 ```bash
-enclii services sync
+enclii services-sync --dir . --project <project-slug> --reconcile-existing
 ```
 
-Now every push to `main` automatically deploys to staging.
+Now every push to `main` builds and deploys automatically. `services-sync` sets the auto-deploy environment to `production`; the CLI has no flag to choose another.
 
 ### Set Up Preview Environments
 
@@ -250,7 +200,7 @@ enclii rollback my-app
 
 ### Scale Your Service
 
-Update replicas in `enclii.yaml`:
+Update replicas in `service.yaml`:
 
 ```yaml
 spec:
@@ -258,17 +208,17 @@ spec:
     replicas: 3
 ```
 
-Then sync and deploy:
+Then deploy (`enclii deploy` reads `service.yaml` from the current directory; pass `-f` for another path):
 
 ```bash
-enclii services sync
 enclii deploy --env production
 ```
 
-### View Build Logs
+### View Build Status
 
 ```bash
-enclii builds logs --latest
+# Recent builds with status, and the error message of failed builds
+enclii releases my-app
 ```
 
 ---
@@ -354,8 +304,8 @@ if __name__ == '__main__':
 ### Build Fails
 
 ```bash
-# View build logs
-enclii builds logs --latest
+# Recent builds with status and the error message of failed builds
+enclii releases my-app
 
 # Common issues:
 # - Missing package.json scripts
@@ -378,8 +328,9 @@ curl http://localhost:3000/health
 ### Deployment Stuck
 
 ```bash
-# Check pod status
-enclii ps --wide
+# Check service status
+enclii ps --env production
+enclii deploy ls my-app
 
 # View deployment logs
 enclii logs my-app --since 10m

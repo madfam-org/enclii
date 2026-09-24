@@ -151,7 +151,7 @@ Self-hosted infrastructure is significantly cheaper than equivalent SaaS platfor
 ### 📦 Complete Feature Set
 
 **Developer Experience:**
-- Intuitive CLI (`enclii init`, `enclii up`, `enclii deploy`)
+- Intuitive CLI (`enclii init`, `enclii deploy`, `enclii logs`)
 - Auto-detect buildpacks (Nixpacks, Buildpacks, Dockerfile)
 - Preview environments on every PR
 - Real-time log streaming
@@ -166,7 +166,7 @@ Self-hosted infrastructure is significantly cheaper than equivalent SaaS platfor
 
 **Operations:**
 - Canary deployments with auto-rollback
-- Blue-green deployment strategy
+- Instant rollback (`enclii rollback --instant`)
 - Horizontal pod autoscaling (HPA)
 - Redis caching with tag-based invalidation
 - PgBouncer connection pooling
@@ -358,7 +358,7 @@ make run-ui          # Web UI on http://localhost:8030
 # 4. Try the CLI
 make build-cli
 ./bin/enclii init                  # Scaffold a service
-./bin/enclii up                    # Deploy preview environment
+./bin/enclii previews list         # PR preview environments
 ./bin/enclii deploy --env prod     # Deploy to production
 ./bin/enclii logs api -f           # Tail logs
 ```
@@ -390,32 +390,39 @@ kubectl apply -k infra/k8s/production
 
 ## CLI Reference
 
+> **Boundary checkpoint (2026-09-24, platform ops):** public-safe CLI usage only,
+> checked against `enclii --help` for v1.0.0-alpha.11. No operational detail was
+> added or withheld here. Policy: [`docs/PUBLIC_REPO_BOUNDARY.md`](./docs/PUBLIC_REPO_BOUNDARY.md).
+
 ```bash
-enclii init              # Scaffold a new service from template
-enclii up                # Build & deploy current branch (preview)
-enclii deploy            # Deploy to production with canary
-enclii logs <service>    # Stream logs
-enclii ps                # List services, versions, health
-enclii scale             # Configure autoscaling
-enclii secrets set       # Manage secrets
-enclii rollback          # Revert to previous release
-enclii auth login        # Authenticate via Janua OAuth
+enclii login             # Authenticate via Janua SSO
+enclii init              # Create a service.yaml from a framework template
+enclii deploy            # Build and deploy the service in ./service.yaml (rolling, or --canary N)
+enclii logs <service>    # Show logs (-f to stream)
+enclii ps                # List services and their status
+enclii secrets set       # Manage secrets and environment variables
+enclii domains add       # Add a custom domain
+enclii rollback          # Revert to a previous deployment
+enclii previews list     # PR preview environments (created by the GitHub webhook)
 ```
+
+Replica counts are set in `service.yaml` (`replicas`); there is no `enclii scale` command.
+The full command reference is [`docs/cli/README.md`](./docs/cli/README.md).
 
 **Common workflows:**
 
 ```bash
-# Deploy with canary strategy
-enclii deploy --env prod --strategy canary --wait
+# Canary deploy to production: 10% of traffic, auto-promote after the validation window
+enclii deploy --env prod --canary 10 --change-ticket https://tracker.example.com/CHG-1234
 
 # Set secrets
-enclii secrets set DATABASE_URL=postgres://... --env prod
+enclii secrets set DATABASE_URL=postgres://... --secret --env prod
 
 # Custom domain
-enclii routes add --host api.example.com --service api --env prod
+enclii domains add api.example.com --service api --env prod
 
-# Scale to 5 replicas
-enclii scale --min 5 --max 10 --service api --env prod
+# Roll back to the previous deployment
+enclii rollback api --env prod
 ```
 
 ---

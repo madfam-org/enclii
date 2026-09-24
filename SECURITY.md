@@ -155,11 +155,15 @@ Server-level firewall (iptables/nftables) enforces:
 
 ### Rotation Procedure
 
+> **Boundary checkpoint (2026-09-24, platform ops):** public-safe procedure only; the
+> CLI command in step 5 was corrected against `enclii --help`. Nothing was withheld.
+> Policy: [`docs/PUBLIC_REPO_BOUNDARY.md`](docs/PUBLIC_REPO_BOUNDARY.md).
+
 1. **Generate** new secret value using a cryptographically secure method (`openssl rand -base64 32` or equivalent)
 2. **Store** the new value in HashiCorp Vault at the appropriate path
 3. **Verify** ESO synchronization propagates the new Kubernetes Secret to the target namespace
 4. **Restart** affected pods (rolling restart) to pick up the new secret
-5. **Validate** service health via `enclii ps --wide` and health check endpoints
+5. **Validate** service health via `enclii ps --env <env>` and health check endpoints
 6. **Revoke** the old secret value after confirming the new one is active
 7. **Audit log** the rotation event with timestamp, operator, and affected services
 

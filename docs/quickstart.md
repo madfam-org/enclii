@@ -76,20 +76,17 @@ mkdir my-service && cd my-service
 enclii init
 ```
 
-Enclii detects your runtime and writes a `service.yaml` at the repo root.
+`enclii init` writes a starter `service.yaml` in the current directory, named after the directory. It does not inspect your code.
 
 **Expected:**
 ```
 🚂 Initializing Enclii service 'my-service'...
-Detected: Node.js (auto)
-Created: service.yaml
-
-Next: run `enclii deploy` to deploy this service.
+✅ Created service.yaml
 ```
 
-Review `service.yaml`. The defaults are safe: port auto-detected, 2 replicas, `/health` probe, rolling deploys.
+Review `service.yaml`. The generated `runtime.port` is `8080` whatever your app uses, with 2 replicas and a `/health` probe; set the port to the one your app listens on.
 
-The `--template` flag accepts `auto`, `node`, `go`, or `python`. Named framework templates (`nextjs`, `fastapi`, `django`, …) are tracked in the [template catalog](./templates/templates.md).
+The `--template` flag takes `auto` (the default) or a framework slug such as `nextjs`, `fastapi`, `django`, or `express`; short forms like `node`, `go`, or `python` are rejected. The full list is in [`enclii init`](./cli/commands/init.md) and the [template catalog](./templates/templates.md).
 
 ## 4. Deploy (2 min)
 
@@ -97,18 +94,9 @@ The `--template` flag accepts `auto`, `node`, `go`, or `python`. Named framework
 enclii deploy
 ```
 
-Default environment is `dev`. Add `--wait` if you want the CLI to block until the deploy is healthy.
+Default environment is `dev`. The command must run inside a git repository: it builds the current commit, then deploys it. Add `--wait` if you want the CLI to block until the deploy is healthy; without it the command returns once the deployment starts and prints the `enclii logs <service> -f` command to follow it.
 
-**Expected output:**
-```
-→ Building image (buildpack auto-detect: Node.js)
-→ Push to ghcr.io/<org>/my-service:<sha>
-→ Release v1 created
-→ Deploy to dev.my-service.enclii.dev
-✓ Live at https://dev.my-service.enclii.dev
-```
-
-**If the build failed:** see [Build failures](./troubleshooting/build-failures.md). The most common cause is a missing `package.json` start script or a mis-detected runtime — add `spec.build.type: node` to `service.yaml`.
+**If the build failed:** see [Build failures](./troubleshooting/build-failures.md). The most common cause is a missing `package.json` start script or a mis-detected runtime — set `spec.build.type: dockerfile` (with `spec.build.dockerfile`) in `service.yaml` to build from your own Dockerfile.
 
 **If the deploy timed out:** see [Deployment issues](./troubleshooting/deployment-issues.md). Check that your app listens on `$PORT` (or `$ENCLII_PORT`) and that `/health` returns `200`.
 
@@ -128,7 +116,7 @@ Open [app.enclii.dev](https://app.enclii.dev) to view the service in the dashboa
 - **Tail logs:** `enclii logs my-service -f` → [logs command](./cli/commands/logs.md)
 - **Promote to production:** `enclii deploy --env prod` → [deploy command](./cli/commands/deploy.md)
 - **Add a custom domain:** `enclii domains add mydomain.com` → [domains command](./cli/commands/domains.md)
-- **Set a secret:** `enclii secrets set DATABASE_URL "postgresql://..."` → [secrets command](./cli/commands/secrets.md)
+- **Set a secret:** `enclii secrets set DATABASE_URL="postgresql://..." --secret` → [secrets command](./cli/commands/secrets.md)
 - **Roll back:** `enclii rollback my-service` → [rollback command](./cli/commands/rollback.md)
 
 ## Migrating from another platform?

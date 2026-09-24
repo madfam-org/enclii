@@ -534,7 +534,7 @@ curl -s https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunnel/{t
 
 ```bash
 # Via CLI
-enclii domains add myapp.enclii.dev --service myapp --namespace default --port 80
+enclii domains add myapp.enclii.dev --service myapp --env production
 
 # Via API directly
 curl -X PUT "https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations" \
@@ -547,7 +547,7 @@ curl -X PUT "https://api.cloudflare.com/client/v4/accounts/{account_id}/cfd_tunn
 
 ```bash
 # Via CLI
-enclii domains remove myapp.enclii.dev
+enclii domains remove myapp.enclii.dev --service myapp
 ```
 
 ## Troubleshooting
@@ -586,8 +586,9 @@ For Cloudflare for SaaS custom domains, ask Enclii first — it stores the
 Cloudflare-reported state and the outstanding client action:
 
 ```bash
-# Re-reads the live state from Cloudflare and updates the record.
-enclii api POST "/v1/services/<service-id>/domains/<domain-id>/verify"
+# Re-reads the live state from Cloudflare and updates the record
+# (calls POST /v1/services/<service-id>/domains/<domain-id>/verify).
+enclii domains verify <hostname> --service <service>
 # 200 => Cloudflare reports hostname + certificate active
 # 400 => not yet: response carries `pending_dns_records` for the client
 # 502 => we could not reach Cloudflare (this is our problem, not the client's)
@@ -598,9 +599,13 @@ origin, an ownership conflict with another project, an undecidable zone
 lookup — the reason is on the record, not just in the logs:
 
 ```bash
-enclii api GET "/v1/services/<service-id>/networking" \
+# No CLI command prints these fields; read them from the API with your token.
+curl -s -H "Authorization: Bearer $ENCLII_API_TOKEN" \
+  "https://api.enclii.dev/v1/services/<service-id>/networking" \
   | jq '.domains[] | {domain, status, provisioning_error, provisioning_checked_at}'
 ```
+
+`enclii domains status <hostname> --service <service>` shows the domain's status and DNS instructions.
 
 Break-glass, when the API is unavailable (raw provider access — see the banner
 at the top of this file):

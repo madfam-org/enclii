@@ -91,10 +91,14 @@ For other languages, provide a Dockerfile.
 
 Yes. Enclii has full monorepo support:
 
+Give each service its own `service.yaml` and deploy it from, or point `--file` at, that spec:
+
 ```bash
-# Set the root path for each service
-enclii services create --name api --root-path apps/api
-enclii services create --name web --root-path apps/web
+enclii deploy -f apps/api/service.yaml --env staging
+enclii deploy -f apps/web/service.yaml --env staging
+
+# Or register every spec in a directory without deploying
+enclii services-sync --dir apps/ --project <project-slug>
 ```
 
 Each service builds from its own directory context.
@@ -114,20 +118,20 @@ Typical deploy time: 2-5 minutes.
 ### What deployment strategies are available?
 
 - **Rolling update** (default): Zero-downtime gradual replacement
-- **Canary**: Test with 10% traffic before full rollout
-- **Blue-green**: Deploy alongside existing, then switch
-- **Recreate**: Stop old, start new (for stateful workloads)
+- **Canary** (`enclii deploy --canary N`, N from 5 to 50): route N% of traffic to the new release, then auto-promote or auto-roll-back after the validation window. Needs at least 2 replicas; not supported for StatefulSets.
+
+There is no blue-green or recreate strategy.
 
 ### Can I rollback?
 
 Yes, instantly:
 
 ```bash
-enclii rollback <service>  # Rollback to previous release
-enclii rollback <service> --release <id>  # Specific release
+enclii rollback <service>            # Roll back to the previous deployment
+enclii deploy ls <service>           # List deployments with their v-numbers
+enclii rollback <service> v42        # Roll back to a specific deployment
+enclii rollback <service> --instant  # Flip traffic at the routing layer (<30s)
 ```
-
-Enclii keeps the last 10 releases by default.
 
 ### How do preview environments work?
 

@@ -133,7 +133,7 @@ spec:
 
 **Requirements:**
 - The domain's zone (e.g., `qubic.quest`) must be managed by Cloudflare under the same account
-- The service must be registered via `enclii service create` before the first push
+- The service must be registered (`enclii services-sync`, or a first `enclii deploy`) before the first push
 - DNS records are CNAME'd to `tunnel.enclii.dev` (the Cloudflare tunnel endpoint)
 
 **Cleanup:**
@@ -392,7 +392,7 @@ For sensitive values, use the Enclii dashboard or CLI to manage secrets:
 
 ```bash
 # Add a secret via CLI
-enclii secrets set DATABASE_URL "postgresql://..." --env production
+enclii secrets set DATABASE_URL="postgresql://..." --secret --env production
 ```
 
 Secrets are:
@@ -663,12 +663,11 @@ spec:
 Validate your configuration before deploying:
 
 ```bash
-# Dry-run validation
-enclii services sync --dry-run
-
-# Full validation with diff
-enclii deploy --dry-run
+# Show what services-sync would register or change, without writing
+enclii services-sync --dir . --project <project-slug> --dry-run
 ```
+
+`enclii deploy` has no dry-run mode: it parses the spec before building and exits `1` if the file cannot be parsed.
 
 ### Common Validation Errors
 
@@ -684,5 +683,5 @@ enclii deploy --dry-run
 ## See Also
 
 - [`enclii init`](../cli/commands/init.md) - Generate configuration
-- [`enclii services sync`](../cli/commands/services-sync.md) - Sync configuration
+- [`enclii services-sync`](../cli/commands/services-sync.md) - Sync configuration
 - [`enclii deploy`](../cli/commands/deploy.md) - Deploy service

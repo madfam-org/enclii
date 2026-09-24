@@ -9,6 +9,8 @@ tags: [guides, database, postgresql, redis, mysql, migrations, backups]
 
 This guide covers all aspects of database management on Enclii, including provisioning, migrations, backups, and troubleshooting.
 
+Managed databases are provisioned with [`enclii addon`](../cli/commands/addon.md) (alias `enclii addons`). The CLI surface is `plans`, `create`, `ls`, `destroy`, `api`, and `realtime`. Anything this guide describes that has no CLI subcommand is called out as such.
+
 ## Prerequisites
 
 - [CLI installed](/cli/)
@@ -19,6 +21,7 @@ This guide covers all aspects of database management on Enclii, including provis
 - **Troubleshooting**: [API Errors](/troubleshooting/api-errors)
 - **Migration Guide**: [Migration FAQ](/faq/migration)
 - **Service Spec**: [Service Specification](/reference/service-spec)
+- **Addon design**: [Managed DB addon](../architecture/managed-db-addon.md)
 
 ## Database Types
 
@@ -30,57 +33,52 @@ Enclii supports the following database addons:
 | **Redis** | Caching, sessions, queues | Key-value, pub/sub, streams |
 | **MySQL** | Legacy apps, WordPress | Wide compatibility |
 
+PostgreSQL (CloudNativePG) is the managed engine. `enclii addon create` accepts `--engine redis` and `--engine mysql`, but those engines are scaffolded rather than generally available; `enclii addon plans --engine <engine>` shows whether any plan is offered for them.
+
 ## Provisioning Databases
 
 ### Create a Database Addon
 
 ```bash
+# See the available plans
+enclii addon plans
+
 # PostgreSQL (recommended for most apps)
-enclii addons create postgres --name my-db --project <project-id>
+enclii addon create my-db --plan standard-0 --project <project-slug>
 
-# Redis
-enclii addons create redis --name my-cache --project <project-id>
-
-# MySQL
-enclii addons create mysql --name my-mysql --project <project-id>
+# Redis / MySQL (only if `enclii addon plans --engine <engine>` lists a plan)
+enclii addon create my-cache --engine redis --plan <plan> --project <project-slug>
+enclii addon create my-mysql --engine mysql --plan <plan> --project <project-slug>
 ```
+
+The addon starts in a provisioning state; poll it with `enclii addon ls --project <project-slug>`.
 
 ### Configuration Options
 
-```bash
-# PostgreSQL with specific version and size
-enclii addons create postgres \
-  --name production-db \
-  --project <project-id> \
-  --version 16 \
-  --size small \
-  --storage 20Gi
+Sizing is chosen by plan. There are no `--version`, `--size`, `--storage`, or `--persistence` flags. The plans defined in the [addon design](../architecture/managed-db-addon.md) are:
 
-# Redis with persistence
-enclii addons create redis \
-  --name session-cache \
-  --project <project-id> \
-  --persistence enabled
-```
+| Plan | CPU | Memory | Storage |
+|------|-----|--------|---------|
+| `standard-0` | 0.1 | 256Mi | 1 GB |
+| `standard-1` | 0.5 | 1Gi | 10 GB |
+| `standard-2` | 1 | 2Gi | 50 GB |
 
-**Size options**:
-
-| Size | CPU | Memory | Storage | Use Case |
-|------|-----|--------|---------|----------|
-| `micro` | 0.1 | 256Mi | 1Gi | Development |
-| `small` | 0.5 | 1Gi | 10Gi | Staging, small prod |
-| `medium` | 1 | 2Gi | 50Gi | Production |
-| `large` | 2 | 4Gi | 100Gi | High traffic |
+`enclii addon plans` is the authoritative, live catalog.
 
 ### Connect Service to Database
 
-```bash
-# Link database to service (auto-creates DATABASE_URL)
-enclii addons link my-db --service <service-id>
+A service is bound when the addon is created. The connection string is injected into the service as `DATABASE_URL` (`REDIS_URL` / `MYSQL_URL` for those engines), and the bound service rolls automatically once the credentials secret exists:
 
-# Verify connection string is set
-enclii services env list --service <service-id>
+```bash
+# Create and bind in one step (--service takes the service ID)
+enclii addon create my-db --plan standard-0 --project <project-slug> --service <service-id>
+
+# Use a different env var name
+enclii addon create reporting-db --plan standard-0 --project <project-slug> \
+  --service <service-id> --env-var REPORTING_DATABASE_URL
 ```
+
+There is no separate `link` command; binding an existing addon to another service is not available in the CLI. `enclii projects services <project-slug>` lists service IDs.
 
 ## Connection Strings
 
@@ -108,71 +106,64 @@ mysql://user:password@host:3306/database
 postgresql://user:pass@my-db.enclii-workloads.svc.cluster.local:5432/mydb
 ```
 
-**External** (for admin tools, local development):
-```bash
-# Forward port to localhost
-enclii addons forward my-db --port 5432
+**External** (for admin tools, local development): the CLI has no port-forward command. Options:
 
-# Then connect to localhost:5432
-psql postgres://localhost:5432/mydb
-```
+- Run one-off SQL inside the cluster with `enclii jobs run-once` (see [One-off SQL](#one-off-sql)).
+- Expose the database over HTTPS as a REST API with `enclii addon api enable <addon_id>` (PostgREST; authorization via row-level security). See [`enclii addon api`](../cli/commands/addon.md#api).
+- Operators can use `kubectl port-forward` into the project namespace as a break-glass path.
 
 ### Connection Pooling
 
-For high-traffic applications, enable PgBouncer:
-
-```yaml
-# In addon configuration
-addons:
-  - name: production-db
-    type: postgres
-    pooler:
-      enabled: true
-      maxConnections: 100
-      poolMode: transaction
-```
-
-Use the pooler connection string:
-```
-postgres://user:pass@my-db-pooler:5432/mydb
-```
+A managed connection pooler (PgBouncer) for addons is not available yet; it is an open item in the [addon design](../architecture/managed-db-addon.md). Size your application's pool to the plan (each addon supports a small number of connections).
 
 ## Running Migrations
+
+Run migrations as a one-off job with [`enclii jobs run-once`](../cli/commands/jobs.md). The job runs in the service's currently deployed image with the service's environment and secrets (so it sees `DATABASE_URL`), and the command is executed with `/bin/sh -c`. There is no `enclii exec`.
 
 ### With Popular Migration Tools
 
 **Node.js (Prisma)**:
 ```bash
-# Run migrations via exec
-enclii exec --service <id> -- npx prisma migrate deploy
+enclii jobs run-once --name prisma-migrate --command "npx prisma migrate deploy" \
+  --service-id <id> --project <project-slug>
 ```
 
 **Node.js (Knex)**:
 ```bash
-enclii exec --service <id> -- npx knex migrate:latest
+enclii jobs run-once --name knex-migrate --command "npx knex migrate:latest" \
+  --service-id <id> --project <project-slug>
 ```
 
 **Go (golang-migrate)**:
 ```bash
-enclii exec --service <id> -- migrate -path ./migrations -database $DATABASE_URL up
+# Assumes the migrate binary and ./migrations are in the service image
+enclii jobs run-once --name migrate-up \
+  --command 'migrate -path ./migrations -database "$DATABASE_URL" up' \
+  --service-id <id> --project <project-slug>
 ```
 
 **Python (Alembic)**:
 ```bash
-enclii exec --service <id> -- alembic upgrade head
+enclii jobs run-once --name alembic-upgrade --command "alembic upgrade head" \
+  --service-id <id> --project <project-slug>
 ```
 
 **Ruby (Rails)**:
 ```bash
-enclii exec --service <id> -- rails db:migrate
+enclii jobs run-once --name db-migrate --command "rails db:migrate" \
+  --service-id <id> --project <project-slug>
 ```
+
+Check the result with `enclii jobs get <job-id>` and `enclii jobs logs <job-id>`.
 
 ### Migration Best Practices
 
-1. **Run migrations before deploying new code**:
+1. **Order migrations and deploys deliberately**: `enclii deploy` has no pre-deploy hook flag. A one-off job uses the service's *current* deployment image unless you pass `--image`, so a migration shipped with new code runs after the deploy that ships it:
    ```bash
-   # Build → Migrate → Deploy pattern
-   enclii deploy --service <id> --pre-deploy "npm run migrate"
+   # Deploy the new code, then migrate
+   enclii deploy --env prod --wait
+   enclii jobs run-once --name db-migrate --command "npm run migrate" \
+     --service-id <id> --project <project-slug>
    ```
 
 2. **Make migrations backward-compatible**:
@@ -180,96 +171,97 @@ enclii exec --service <id> -- rails db:migrate
    - Migrate data in separate step
    - Remove old columns after all pods updated
 
-3. **Test migrations in staging first**:
+3. **Test migrations in staging first**. `jobs run-once` has no `--env` flag; it targets the service ID you pass, so use the staging service's ID:
    ```bash
-   enclii deploy --service <id> --env staging
-   enclii exec --service <id> --env staging -- npm run migrate
+   enclii deploy --env staging --wait
+   enclii jobs run-once --name db-migrate --command "npm run migrate" \
+     --service-id <staging-service-id> --project <project-slug>
    ```
 
 ### Rollback Migrations
 
 ```bash
 # Rollback last migration
-enclii exec --service <id> -- npx prisma migrate reset --skip-generate
-# or
-enclii exec --service <id> -- npx knex migrate:rollback
+enclii jobs run-once --name knex-rollback --command "npx knex migrate:rollback" \
+  --service-id <id> --project <project-slug>
 ```
+
+(`npx prisma migrate reset` drops and recreates the database; it is not a single-step rollback.)
 
 ## Backup and Restore
 
 ### Automated Backups
 
-Enclii performs daily automated backups:
+Per-addon backups, backup listing, and restore are not exposed in the CLI. The addon design tracks per-addon WAL archiving and point-in-time recovery as follow-up work.
 
-```bash
-# List available backups
-enclii addons backups list --addon my-db
-
-# View backup details
-enclii addons backups get <backup-id>
-```
-
-**Backup schedule**:
-- Daily at 2:00 AM UTC
-- Retained for 30 days
-- Stored in Cloudflare R2
+`enclii db wal-status` reports WAL-archive and backup freshness for the **platform** Postgres instance (operator, read-only); it does not cover addons.
 
 ### Manual Backups
 
-```bash
-# Create on-demand backup
-enclii addons backup create --addon my-db --name "pre-migration-backup"
+A tenant export includes a `pg_dump` of each bound database addon:
 
-# With custom retention
-enclii addons backup create --addon my-db --retention 90d
+```bash
+# Start an export and download it when ready
+enclii export --project <project-slug> --wait --out ./backup.tar.gz
+
+# Or check on it later
+enclii export list --project <project-slug>
+enclii export status <export_id>
+enclii export download <export_id> --out ./backup.tar.gz
 ```
+
+Production exports require a second project admin's approval (`enclii export approve`). See [`enclii export`](../cli/commands/export.md).
 
 ### Restore from Backup
 
-```bash
-# Restore to same addon (destructive!)
-enclii addons restore --addon my-db --backup <backup-id>
+There is no `restore` command. To restore, create an addon (or use an existing one) and load the dump with `pg_restore` from somewhere that can reach it, for example a one-off job:
 
-# Restore to new addon (safer)
-enclii addons restore --backup <backup-id> --target new-db
+```bash
+enclii jobs run-once --name restore --image postgres:16-alpine \
+  --command 'pg_restore --no-owner --no-acl -d "$DATABASE_URL" /path/to/backup.dump' \
+  --service-id <id> --project <project-slug>
 ```
+
+The dump must be reachable from inside the job (for example downloaded from object storage as part of the command).
 
 ### Export/Import (Manual)
 
 **PostgreSQL export**:
 ```bash
-# Forward port
-enclii addons forward my-db --port 5432 &
-
-# Export with pg_dump
-pg_dump -h localhost -U user -d mydb -Fc > backup.dump
+# From a host that can reach the database
+pg_dump -d "$DATABASE_URL" -Fc > backup.dump
 ```
 
 **PostgreSQL import**:
 ```bash
-# Forward port
-enclii addons forward my-db --port 5432 &
-
-# Import with pg_restore
-pg_restore -h localhost -U user -d mydb backup.dump
+pg_restore -d "$DATABASE_URL" --no-owner --no-acl backup.dump
 ```
 
 **Redis export**:
 ```bash
-# Forward port
-enclii addons forward my-cache --port 6379 &
-
-# Export RDB
-redis-cli -h localhost --rdb dump.rdb
+redis-cli -u "$REDIS_URL" --rdb dump.rdb
 ```
 
 ## Database-Specific Operations
 
+### One-off SQL
+
+There is no `enclii addon shell` and no interactive session. Run statements as one-off jobs; `--image` supplies the client while the service's `DATABASE_URL` is inherited:
+
+```bash
+enclii jobs run-once --name sql --image postgres:16-alpine \
+  --command 'psql "$DATABASE_URL" -c "SELECT version();"' \
+  --service-id <id> --project <project-slug>
+enclii jobs logs <job-id>
+```
+
 ### PostgreSQL
 
-**Create extension**:
+**Create extension** (the addon's database role owns its database but is not a superuser, so only trusted extensions such as `pg_trgm`, `uuid-ossp`, and `pgcrypto` can be created this way):
 ```bash
-enclii exec --addon my-db -- psql -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+enclii jobs run-once --name create-ext --image postgres:16-alpine \
+  --command 'psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"' \
+  --service-id <id> --project <project-slug>
 ```
 
 **Common extensions**:
@@ -287,12 +279,8 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS jsonb_plperl;
 ```
 
-**Query performance**:
-```bash
-# Enter psql shell
-enclii addons shell my-db
-
-# Analyze slow queries
+**Query performance** (as a one-off job, see [One-off SQL](#one-off-sql)):
+```sql
 EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'test@example.com';
 ```
 
@@ -303,38 +291,28 @@ SELECT * FROM pg_stat_activity WHERE datname = 'mydb';
 
 ### Redis
 
-**Monitor in real-time**:
-```bash
-enclii addons shell my-cache
-
-# Inside redis-cli
-MONITOR
-```
+Redis addons are not generally available (see [Database Types](#database-types)). For a Redis bound to a service, run `redis-cli` as a one-off job:
 
 **Memory usage**:
 ```bash
-enclii addons shell my-cache
-
-INFO memory
-MEMORY STATS
+enclii jobs run-once --name redis-info --image redis:7-alpine \
+  --command 'redis-cli -u "$REDIS_URL" INFO memory' \
+  --service-id <id> --project <project-slug>
 ```
 
 **Flush cache**:
 ```bash
-# Flush specific database
-enclii exec --addon my-cache -- redis-cli -n 0 FLUSHDB
-
-# Flush all (careful!)
-enclii exec --addon my-cache -- redis-cli FLUSHALL
+# Flush the database in REDIS_URL (careful!)
+enclii jobs run-once --name redis-flush --image redis:7-alpine \
+  --command 'redis-cli -u "$REDIS_URL" FLUSHDB' \
+  --service-id <id> --project <project-slug>
 ```
+
+Interactive commands such as `MONITOR` need a live session, which the CLI does not provide.
 
 ### MySQL
 
-**Show databases**:
-```bash
-enclii addons shell my-mysql
-SHOW DATABASES;
-```
+MySQL addons are not generally available. Statements can be run the same way with a `mysql` client image and `MYSQL_URL`.
 
 **Create user**:
 ```sql
@@ -347,34 +325,18 @@ FLUSH PRIVILEGES;
 
 ### Database Metrics
 
-```bash
-# View addon metrics
-enclii addons metrics my-db
+There is no addon metrics command. `enclii addon ls` shows each addon's status; [`enclii observe`](../cli/commands/observe.md) reports service-level metrics (CPU, memory, requests, latency) for the service that uses the database.
 
-# Key metrics to watch:
-# - Connection count
-# - Query latency
-# - Storage usage
-# - Replication lag (if applicable)
+```bash
+enclii addon ls --project <project-slug>
+enclii observe metrics --service <service-id>
 ```
+
+Key metrics to watch from inside the database (via [One-off SQL](#one-off-sql)): connection count (`pg_stat_activity`), slow queries (`pg_stat_statements`), and storage (`pg_database_size`).
 
 ### Alerts
 
-Configure alerts for database health:
-
-```yaml
-# In addon configuration
-alerts:
-  - name: high-connections
-    metric: connection_count
-    threshold: 80
-    operator: gt
-
-  - name: storage-warning
-    metric: storage_percent
-    threshold: 85
-    operator: gt
-```
+Addon-level alert configuration is not available. `enclii observe alerts --service <service-id>` lists active alerts for a service.
 
 ## Security
 
@@ -386,28 +348,11 @@ alerts:
 
 ### Credential Rotation
 
-```bash
-# Rotate database credentials
-enclii addons rotate-credentials --addon my-db
-
-# This will:
-# 1. Generate new credentials
-# 2. Update linked services
-# 3. Restart affected pods
-```
+Addon credential rotation is not exposed in the CLI yet (it is planned in the [addon design](../architecture/managed-db-addon.md)). Credentials live in a Kubernetes Secret in the project namespace and are never returned in plaintext by the API.
 
 ### Access Control
 
-```bash
-# Create read-only user
-enclii addons users create --addon my-db --role readonly --name analyst
-
-# List addon users
-enclii addons users list --addon my-db
-
-# Revoke access
-enclii addons users delete --addon my-db --user analyst
-```
+There are no addon user-management commands. The addon's application role has no `CREATEROLE` privilege, so additional database users cannot be created from the application connection. For read access from outside the cluster, prefer the data API (`enclii addon api enable`, with row-level security policies and `enclii addon api token --role <role>`).
 
 ## Troubleshooting
 
@@ -415,80 +360,70 @@ enclii addons users delete --addon my-db --user analyst
 
 | Symptom | Cause | Solution |
 |---------|-------|----------|
-| "Connection refused" | Pod not running | Check `enclii addons status` |
-| "Too many connections" | Pool exhausted | Enable connection pooling |
-| "Authentication failed" | Wrong credentials | Rotate credentials |
+| "Connection refused" | Pod not running | Check the STATUS column of `enclii addon ls` |
+| "Too many connections" | Pool exhausted | Reduce the application pool size or move to a larger plan |
+| "Authentication failed" | Wrong credentials | Confirm the service was bound at `enclii addon create --service` and uses the injected env var |
 | Timeout | Network policy | Check namespace isolation |
 
 ### Performance Issues
 
-```bash
-# Check slow queries (PostgreSQL)
-enclii addons shell my-db
+Run these as [one-off SQL](#one-off-sql):
+
+```sql
+-- Check slow queries (PostgreSQL)
 SELECT * FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10;
 
-# Check index usage
+-- Check index usage
 SELECT * FROM pg_stat_user_indexes WHERE idx_scan = 0;
 ```
 
 ### Storage Issues
 
-```bash
-# Check storage usage
-enclii addons metrics my-db --metric storage
+There is no addon resize or storage-metrics command; check size with `SELECT pg_size_pretty(pg_database_size(current_database()));` as [one-off SQL](#one-off-sql).
 
-# If running low:
-# 1. Clean up old data
-# 2. Vacuum database (PostgreSQL)
-# 3. Resize addon
-enclii addons resize my-db --storage 50Gi
-```
+If running low:
+1. Clean up old data
+2. Vacuum database (PostgreSQL)
+3. Move to a larger plan: create a new addon on a bigger plan, export and restore the data, then destroy the old addon
 
 ## Advanced Topics
 
 ### Read Replicas
 
-```bash
-# Create read replica
-enclii addons replicas create --addon my-db --name my-db-replica
-
-# Use replica for read queries
-# Primary: my-db.namespace.svc.cluster.local
-# Replica: my-db-replica.namespace.svc.cluster.local
-```
+Read replicas are not available for addons (tracked as future work in the [addon design](../architecture/managed-db-addon.md)).
 
 ### Point-in-Time Recovery
 
+Point-in-time recovery is not available for addons yet (tracked in the [addon design](../architecture/managed-db-addon.md)).
+
+### Multi-Region
+
+Per-region addon placement is not available.
+
+### Realtime
+
+Stream row changes from a Postgres addon table over a WebSocket:
+
 ```bash
-# Restore to specific point in time
-enclii addons restore --addon my-db --point-in-time "2026-01-24T10:30:00Z"
-```
-
-### Multi-Region (Enterprise)
-
-For enterprise customers, databases can be replicated across regions:
-
-```yaml
-addons:
-  - name: global-db
-    type: postgres
-    regions:
-      - eu-central (primary)
-      - us-east (replica)
+enclii addon realtime enable <addon_id> --table public.orders
+enclii addon realtime list <addon_id>
 ```
 
 ## Related Commands
 
 ```bash
 # Full addon management reference
-enclii addons --help
+enclii addon --help
 
 # Common operations
-enclii addons list                    # List all addons
-enclii addons status <addon>          # Check addon health
-enclii addons logs <addon>            # View database logs
-enclii addons shell <addon>           # Interactive shell
-enclii addons forward <addon>         # Port forward for local access
+enclii addon plans                                    # List managed-database plans
+enclii addon create <name> --plan <plan>              # Create (optionally --service <id>)
+enclii addon ls --json                                # List addons with full IDs
+enclii addon destroy <addon_id>                       # Destroy (asks for confirmation; --yes skips)
+enclii addon api enable <addon_id>                    # REST API over the database
+enclii jobs run-once --name <n> --command "<cmd>" \
+  --service-id <id> --project <slug>                  # One-off command with the service's DATABASE_URL
+enclii export --project <slug> --wait                 # Tenant export incl. pg_dump of bound addons
 ```
 
 ## Related Documentation

@@ -176,7 +176,7 @@ kubectl run test --rm -it --image=curlimages/curl -- \
 
 1. **Verify service is running**:
 ```bash
-enclii ps --service <service-id>
+enclii ps --env <env> --project <project-slug>
 kubectl get pods -n <namespace> -l app=<service>
 ```
 
@@ -272,7 +272,7 @@ time curl http://<internal-service-url>/api/slow-endpoint
 
 1. **Add domain to service**:
 ```bash
-enclii domains add --service <service-id> --domain <your-domain>
+enclii domains add <your-domain> --service <service-name> --env production
 ```
 
 2. **Configure DNS** (CNAME to tunnel):

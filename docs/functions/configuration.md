@@ -40,13 +40,9 @@ enclii functions deploy [flags]
 |------|------|-------------|
 | `--project, -p` | string | Project slug (required) |
 | `--name, -n` | string | Function name (default: directory name) |
-| `--runtime, -r` | string | Runtime (auto-detected if not specified) |
-| `--handler` | string | Handler entry point |
-| `--memory` | string | Memory allocation (e.g., `256Mi`, `1Gi`) |
-| `--timeout` | int | Timeout in seconds |
-| `--min-replicas` | int | Minimum replicas |
-| `--max-replicas` | int | Maximum replicas |
-| `--env` | string | Environment variable (repeatable) |
+| `--runtime, -r` | string | Runtime: `go`, `python`, `node`, `rust` (auto-detected if not specified) |
+
+These are the only deploy flags. Handler, memory, timeout, scaling, and environment variables are not settable from the CLI; set them through the API's `config` object ([Create Function](#create-function)).
 
 ### Examples
 
@@ -54,17 +50,11 @@ enclii functions deploy [flags]
 # Basic deploy (auto-detect runtime)
 enclii functions deploy --project my-project
 
-# Custom configuration
+# Explicit name and runtime
 enclii functions deploy \
   --project my-project \
   --name process-data \
-  --runtime python \
-  --memory 512Mi \
-  --timeout 60 \
-  --min-replicas 1 \
-  --max-replicas 20 \
-  --env DB_HOST=localhost \
-  --env API_KEY=secret
+  --runtime python
 ```
 
 ## API Configuration
@@ -245,11 +235,7 @@ spec:
 
 ### Setting Variables
 
-**Via CLI:**
-
-```bash
-enclii functions deploy --env KEY=value --env SECRET=other
-```
+The CLI cannot set function environment variables (`enclii functions deploy` has no `--env` flag). Use the API:
 
 **Via API:**
 
@@ -277,15 +263,7 @@ These are set automatically:
 
 ### Secrets
 
-For sensitive values, use Enclii secrets:
-
-```bash
-# Create secret
-enclii secrets set --project my-project DATABASE_PASSWORD=xxx
-
-# Reference in function
-enclii functions deploy --env DATABASE_PASSWORD=@secret/DATABASE_PASSWORD
-```
+The CLI has no way to attach secrets to a function: `enclii secrets` manages service secrets, and `enclii functions deploy` takes no environment or secret flags. Pass sensitive values through the API's `env_vars` (above).
 
 ## Best Practices
 

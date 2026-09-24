@@ -1,454 +1,236 @@
 ---
 title: Deployments
-description: Manage deployments with the Enclii TypeScript SDK
+description: Build, deploy, and inspect deployments with the Enclii TypeScript SDK
 sidebar_position: 5
-tags: [sdk, typescript, deployments, rollback]
+tags: [sdk, typescript, deployments, releases]
 ---
 
 # Deployments
 
-Manage deployments using the TypeScript SDK.
+`enclii.deployments` (`DeploymentsResource`, `packages/sdk-ts/src/resources/deployments.ts`) covers builds (releases) and deployments for a service. Rollbacks and canaries have their own namespaces: see [Rollback](./rollback.md) and [Canary](./canary.md).
 
-## Overview
+| Method | Signature | HTTP |
+|--------|-----------|------|
+| `get` | `get(deploymentId: string): Promise<Deployment>` | `GET /deployments/{id}` |
+| `get` | `get(serviceId: string, vLabel: string): Promise<Deployment>` | `GET /services/{id}/versions/{n}` |
+| `getByVersion` | `getByVersion(serviceId: string, versionNumber: number): Promise<Deployment>` | `GET /services/{id}/versions/{n}` |
+| `list` | `list(serviceId: string, options?: { limit?: number; cursor?: string }): Promise<Page<Deployment>>` | `GET /services/{id}/deployments` |
+| `iter` | `iter(serviceId: string, options?: { pageSize?: number }): AsyncIterable<Deployment>` | `GET /services/{id}/deployments` |
+| `latest` | `latest(serviceId: string): Promise<Deployment>` | `GET /services/{id}/deployments/latest` |
+| `deploy` | `deploy(serviceId: string, input: DeployRequest): Promise<Deployment>` | `POST /services/{id}/deploy` |
+| `build` | `build(serviceId: string, gitSha: string): Promise<Release>` | `POST /services/{id}/build` |
+| `listReleases` | `listReleases(serviceId: string, options?: { limit?: number; cursor?: string }): Promise<Page<Release>>` | `GET /services/{id}/releases` |
+| `wait` | `wait(deploymentId: string, options?: { intervalMs?: number; timeoutMs?: number; signal?: AbortSignal }): Promise<Deployment>` | polls `GET /deployments/{id}` |
 
-Deployments represent the lifecycle of releasing your code to an environment. The SDK provides full control over the deployment process.
+(`get` is one method with an optional second argument; both call forms are shown.)
+
+There is no `services.deploy`, `deployments.create`, `promote`, `abort`, `listEvents`, `getCanaryMetrics`, `updateCanary`, or `releases` namespace, and no deployment strategy, hook, or branch/tag option on `deploy`.
+
+## Setup
 
 ```typescript
-import { EncliiClient } from '@enclii/sdk';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-const enclii = new EncliiClient();
-
-// Deployments module
-enclii.deployments.list(serviceId);
-enclii.deployments.get(deploymentId);
-enclii.deployments.create(serviceId, options);
-enclii.deployments.promote(deploymentId);
-enclii.deployments.abort(deploymentId);
-enclii.deployments.rollback(serviceId, releaseId);
+const enclii = new EncliiClient({
+  baseUrl: 'https://api.enclii.dev/v1',
+  token: process.env.ENCLII_API_TOKEN,
+});
 ```
 
-## Deploy a Service
-
-### Basic Deployment
+## Build a release
 
 ```typescript
-// Deploy using latest code
-const deployment = await enclii.services.deploy('svc_xyz789');
-
-console.log(`Deployment started: ${deployment.id}`);
-console.log(`Status: ${deployment.status}`);
+const release = await enclii.deployments.build(serviceId, gitSha);
+console.log(release.id, release.version, release.status); // status: 'building' | 'ready' | 'failed'
 ```
 
-### Wait for Completion
+The request body is `{ git_sha: gitSha }`. The call returns the new `Release`; it does not wait for the build to finish. Poll `listReleases()` until the release's `status` is `ready` (or `failed`) before deploying it.
+
+## Deploy
 
 ```typescript
-const deployment = await enclii.services.deploy('svc_xyz789');
+const dep = await enclii.deployments.deploy(serviceId, {
+  release_id: release.id,
+  environment_name: 'production',
+});
+console.log(dep.id, dep.status); // usually 'pending' right after creation
+```
 
-// Wait for deployment to complete
-await deployment.wait();
+`DeployRequest`:
 
-if (deployment.status === 'succeeded') {
-  console.log(`Deployed successfully: ${deployment.url}`);
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `release_id` | `string` | yes | The release must already be built. |
+| `environment_name` | `string` | yes (in the SDK type) | Environment name, for example `production` or `staging`. |
+| `environment` | `Record<string, string>` | no | Extra environment variables for this deployment. |
+| `replicas` | `number` | no | |
+
+The current API also accepts `change_ticket_url` on this endpoint (used by the deployment-approval check for production deployments), but `DeployRequest` does not declare it. If `environment_name` is empty, the API uses `development`. To send it, call the endpoint directly:
+
+```typescript
+import type { Deployment } from '@madfam/enclii-sdk';
+
+const dep = await enclii.post<Deployment>(`/services/${serviceId}/deploy`, {
+  release_id: release.id,
+  environment_name: 'production',
+  change_ticket_url: 'https://tickets.example.com/CHG-123',
+});
+```
+
+`deploy()` is a `POST` and is retried on 429/5xx/network errors like any other request; see [Retries and timeouts](./index.md#retries-and-timeouts).
+
+## Wait for a deployment
+
+```typescript
+const final = await enclii.deployments.wait(dep.id, {
+  intervalMs: 5_000,       // default 3_000
+  timeoutMs: 10 * 60_000,  // default 600_000
+});
+
+if (final.status === 'running') {
+  console.log(`Healthy: ${final.health}`);
 } else {
-  console.error(`Deployment failed: ${deployment.error}`);
+  console.error(`Deployment ended as ${final.status}: ${final.error_message ?? ''}`);
 }
 ```
 
-### With Progress Updates
+`wait()` polls `get(deploymentId)` and resolves when `status` is `running`, `failed`, or `rolled_back`. It resolves (does not reject) on `failed`, so check `status`. It rejects with a plain `Error` when `timeoutMs` elapses or `signal` is aborted. A deployment that becomes `superseded` before reaching one of those states keeps polling until the timeout.
+
+## Get a deployment
+
+By deployment ID:
 
 ```typescript
-const deployment = await enclii.services.deploy('svc_xyz789');
-
-// Subscribe to progress
-deployment.on('progress', (event) => {
-  console.log(`${event.phase}: ${event.message}`);
-});
-
-deployment.on('complete', (result) => {
-  console.log(`Deployment ${result.status}`);
-});
-
-deployment.on('error', (error) => {
-  console.error(`Error: ${error.message}`);
-});
-
-await deployment.wait();
+const dep = await enclii.deployments.get(deploymentId);
 ```
 
-## Deployment Options
-
-### Environment Selection
+By Heroku-style v-label or version number (per service):
 
 ```typescript
-// Deploy to specific environment
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  environment: 'production',
-});
-
-// Deploy to staging first
-const stagingDeploy = await enclii.services.deploy('svc_xyz789', {
-  environment: 'staging',
-});
+const v42 = await enclii.deployments.get(serviceId, 'v42');
+const same = await enclii.deployments.getByVersion(serviceId, 42);
 ```
 
-### Deployment Strategies
+The v-label must be `v` or `V` followed by a positive integer; anything else throws a plain `Error` before any request is sent. The exported helper `parseVersionLabel(label)` returns the integer or `null`.
+
+Most recent deployment for a service:
 
 ```typescript
-// Rolling update (default)
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  strategy: 'rolling',
-});
-
-// Canary deployment
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  strategy: 'canary',
-  canaryPercent: 10,  // Start with 10% traffic
-  canaryTimeout: 300, // Auto-promote after 5 min if healthy
-});
-
-// Blue-green deployment
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  strategy: 'blue-green',
-});
-
-// Recreate (stop old, start new)
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  strategy: 'recreate',
-});
+const latest = await enclii.deployments.latest(serviceId);
 ```
 
-### Specific Commit
+> **Current API behaviour:** `GET /services/{id}/deployments/latest` returns a wrapper, `{ deployment, release }` (`release` is omitted when it cannot be loaded), not a bare deployment. `latest()` casts that wrapper to `Deployment`, so fields such as `latest.id` and `latest.status` are `undefined` at runtime. Read the wrapper directly until the SDK is fixed:
+>
+> ```typescript
+> import type { Deployment, Release } from '@madfam/enclii-sdk';
+>
+> const { deployment } = await enclii.get<{ deployment: Deployment; release?: Release }>(
+>   `/services/${serviceId}/deployments/latest`,
+> );
+> ```
+
+## List deployments
 
 ```typescript
-// Deploy specific commit
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  commit: 'abc123',
-});
+const { data } = await enclii.deployments.list(serviceId);
+for (const d of data) {
+  console.log(`v${d.version_number ?? '?'}`, d.status, d.created_at);
+}
 
-// Deploy specific branch
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  branch: 'feature/new-api',
-});
-
-// Deploy specific tag
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  tag: 'v1.2.3',
-});
-```
-
-### With Pre/Post Hooks
-
-```typescript
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  preDeploy: 'npm run migrate',
-  postDeploy: 'npm run seed',
-});
-```
-
-## List Deployments
-
-```typescript
-// List all deployments for a service
-const deployments = await enclii.deployments.list('svc_xyz789');
-
-for (const d of deployments) {
-  console.log(`${d.id}: ${d.status} (${d.createdAt})`);
+for await (const d of enclii.deployments.iter(serviceId)) {
+  // ...
 }
 ```
 
-### With Filtering
-
-```typescript
-// Filter by status
-const failed = await enclii.deployments.list('svc_xyz789', {
-  status: 'failed',
-});
-
-// Filter by environment
-const prodDeployments = await enclii.deployments.list('svc_xyz789', {
-  environment: 'production',
-});
-
-// Filter by date range
-const recentDeployments = await enclii.deployments.list('svc_xyz789', {
-  since: '2024-01-01',
-  until: '2024-01-31',
-});
-```
-
-## Get Deployment Details
-
-```typescript
-const deployment = await enclii.deployments.get('deploy_abc123');
-
-console.log(`Status: ${deployment.status}`);
-console.log(`Environment: ${deployment.environment}`);
-console.log(`Strategy: ${deployment.strategy}`);
-console.log(`Started: ${deployment.startedAt}`);
-console.log(`Finished: ${deployment.finishedAt}`);
-console.log(`Duration: ${deployment.duration}s`);
-```
-
-### Build Logs
-
-```typescript
-const deployment = await enclii.deployments.get('deploy_abc123', {
-  include: ['buildLogs'],
-});
-
-console.log('Build logs:');
-console.log(deployment.buildLogs);
-```
-
-### Deployment Events
-
-```typescript
-const events = await enclii.deployments.listEvents('deploy_abc123');
-
-for (const event of events) {
-  console.log(`[${event.timestamp}] ${event.type}: ${event.message}`);
-}
-```
-
-## Canary Deployments
-
-### Create Canary
-
-```typescript
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  strategy: 'canary',
-  canaryPercent: 5,  // Start with 5% traffic
-});
-
-console.log(`Canary deployment: ${deployment.id}`);
-```
-
-### Monitor Canary
-
-```typescript
-// Watch canary metrics
-const metrics = await enclii.deployments.getCanaryMetrics('deploy_abc123');
-
-console.log(`Traffic: ${metrics.canaryPercent}%`);
-console.log(`Error rate: ${metrics.errorRate}%`);
-console.log(`Latency P95: ${metrics.latencyP95}ms`);
-```
-
-### Promote Canary
-
-```typescript
-// Gradually increase traffic
-await enclii.deployments.updateCanary('deploy_abc123', {
-  percent: 50,  // Increase to 50%
-});
-
-// Check metrics, then promote to 100%
-await enclii.deployments.promote('deploy_abc123');
-```
-
-### Abort Canary
-
-```typescript
-// If metrics look bad, abort
-if (metrics.errorRate > 5) {
-  await enclii.deployments.abort('deploy_abc123');
-  console.log('Canary aborted, traffic restored to previous version');
-}
-```
-
-## Rollback
-
-### To Previous Version
-
-```typescript
-// Rollback to the previous release
-const rollback = await enclii.services.rollback('svc_xyz789');
-
-console.log(`Rolled back to: ${rollback.targetRelease}`);
-await rollback.wait();
-```
-
-### To Specific Release
-
-```typescript
-// List available releases
-const releases = await enclii.services.listReleases('svc_xyz789');
-
-for (const release of releases) {
-  console.log(`${release.id}: ${release.commit.substring(0, 7)} (${release.createdAt})`);
-}
-
-// Rollback to specific release
-const rollback = await enclii.services.rollback('svc_xyz789', {
-  releaseId: 'rel_xyz789',
-});
-```
-
-### Rollback in CI/CD
-
-```typescript
-// Auto-rollback on deployment failure
-try {
-  const deployment = await enclii.services.deploy('svc_xyz789');
-  await deployment.wait();
-
-  if (deployment.status === 'failed') {
-    throw new Error(`Deployment failed: ${deployment.error}`);
-  }
-} catch (error) {
-  console.error('Deployment failed, rolling back...');
-  await enclii.services.rollback('svc_xyz789');
-  throw error;
-}
-```
+The API returns the service's deployments in one response; see [Pagination](./index.md#pagination).
 
 ## Releases
 
-### List Releases
-
 ```typescript
-const releases = await enclii.services.listReleases('svc_xyz789');
-
-for (const release of releases) {
-  console.log(`${release.id}:`);
-  console.log(`  Commit: ${release.commit}`);
-  console.log(`  Image: ${release.image}`);
-  console.log(`  Created: ${release.createdAt}`);
-  console.log(`  Status: ${release.status}`);
-}
+const { data: releases } = await enclii.deployments.listReleases(serviceId);
+const ready = releases.filter((r) => r.status === 'ready');
 ```
 
-### Get Release Details
+## End-to-end: build, deploy, wait
 
 ```typescript
-const release = await enclii.releases.get('rel_xyz789');
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-console.log(`Commit: ${release.commit}`);
-console.log(`Author: ${release.commitAuthor}`);
-console.log(`Message: ${release.commitMessage}`);
-console.log(`Image: ${release.image}`);
-console.log(`SBOM: ${release.sbomUrl}`);
-```
-
-## Deployment Automation
-
-### GitHub Actions
-
-```typescript
-// deploy.ts - Run in GitHub Actions
-import { EncliiClient } from '@enclii/sdk';
-
-async function deploy() {
-  const enclii = new EncliiClient();
-
-  const deployment = await enclii.services.deploy(process.env.SERVICE_ID!, {
-    environment: process.env.ENVIRONMENT || 'staging',
-    commit: process.env.GITHUB_SHA,
-  });
-
-  deployment.on('progress', (event) => {
-    console.log(`::notice::${event.message}`);
-  });
-
-  await deployment.wait();
-
-  if (deployment.status !== 'succeeded') {
-    console.log(`::error::Deployment failed: ${deployment.error}`);
-    process.exit(1);
-  }
-
-  console.log(`::notice::Deployed to ${deployment.url}`);
-}
-
-deploy();
-```
-
-### Scheduled Deployments
-
-```typescript
-// Schedule deployment for off-hours
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  environment: 'production',
-  scheduledFor: '2024-01-15T03:00:00Z',  // 3 AM UTC
+const enclii = new EncliiClient({
+  baseUrl: 'https://api.enclii.dev/v1',
+  token: process.env.ENCLII_API_TOKEN,
 });
 
-console.log(`Deployment scheduled for: ${deployment.scheduledFor}`);
+const release = await enclii.deployments.build(serviceId, gitSha);
+
+// Wait for the build to finish.
+let built = release;
+while (built.status === 'building') {
+  await new Promise((r) => setTimeout(r, 10_000));
+  const { data } = await enclii.deployments.listReleases(serviceId);
+  built = data.find((r) => r.id === release.id) ?? built;
+}
+if (built.status !== 'ready') throw new Error(`build failed: ${built.error_message ?? ''}`);
+
+const dep = await enclii.deployments.deploy(serviceId, {
+  release_id: built.id,
+  environment_name: 'staging',
+});
+const final = await enclii.deployments.wait(dep.id);
+if (final.status !== 'running') process.exit(1);
 ```
+
+`packages/sdk-ts/examples/deploy-and-wait.ts` is a runnable version of the deploy-and-wait half.
 
 ## Types
 
 ```typescript
+type DeploymentStatus =
+  | 'pending' | 'deploying' | 'running' | 'failed' | 'rolled_back' | 'superseded';
+
 interface Deployment {
-  id: string;
-  serviceId: string;
-  status: 'pending' | 'building' | 'deploying' | 'succeeded' | 'failed' | 'aborted';
-  environment: string;
-  strategy: 'rolling' | 'canary' | 'blue-green' | 'recreate';
-  commit?: string;
-  branch?: string;
-  releaseId?: string;
-  url?: string;
-  error?: string;
-  startedAt: string;
-  finishedAt?: string;
-  duration?: number;
+  id: UUID;
+  release_id: UUID;
+  environment_id: UUID;
+  service_id?: UUID;
+  version_number?: number | null; // Heroku-style v-number; null on older rows
+  group_id?: UUID | null;
+  deploy_order: number;
+  replicas: number;
+  status: DeploymentStatus;
+  health: HealthStatus;
+  error_message?: string | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 
-interface DeployOptions {
-  environment?: string;
-  strategy?: 'rolling' | 'canary' | 'blue-green' | 'recreate';
-  commit?: string;
-  branch?: string;
-  tag?: string;
-  canaryPercent?: number;
-  canaryTimeout?: number;
-  preDeploy?: string;
-  postDeploy?: string;
-  scheduledFor?: string;
-}
+type ReleaseStatus = 'building' | 'ready' | 'failed';
 
 interface Release {
-  id: string;
-  serviceId: string;
-  commit: string;
-  commitMessage: string;
-  commitAuthor: string;
-  image: string;
-  sbomUrl?: string;
-  status: 'active' | 'superseded' | 'failed';
-  createdAt: string;
+  id: UUID;
+  service_id: UUID;
+  version: string;
+  image_uri: string;
+  git_sha: string;
+  git_branch?: string;
+  commit_message?: string;
+  commit_author_name?: string;
+  pr_number?: number;
+  pr_title?: string;
+  pr_url?: string;
+  repo_url?: string;
+  status: ReleaseStatus;
+  error_message?: string | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 ```
 
-## Error Handling
+## Related documentation
 
-```typescript
-import {
-  DeploymentError,
-  BuildError,
-  TimeoutError,
-  ConcurrencyError
-} from '@enclii/sdk';
-
-try {
-  const deployment = await enclii.services.deploy('svc_xyz789');
-  await deployment.wait();
-} catch (error) {
-  if (error instanceof BuildError) {
-    console.error('Build failed:', error.buildLogs);
-  } else if (error instanceof TimeoutError) {
-    console.error('Deployment timed out');
-  } else if (error instanceof ConcurrencyError) {
-    console.error('Another deployment is in progress');
-  } else if (error instanceof DeploymentError) {
-    console.error('Deployment failed:', error.message);
-  }
-}
-```
-
-## Related Documentation
-
-- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
-- **Services**: [Service Management](./services)
-- **Troubleshooting**: [Deployment Issues](/troubleshooting/deployment-issues)
-- **API Reference**: [Deployments API](/api-reference/#tag/deployments)
+- [TypeScript SDK overview](./index.md)
+- [Rollback](./rollback.md)
+- [Canary](./canary.md)
+- [CLI: `enclii deploy`](../../cli/commands/deploy.md)
+- [CLI: `enclii deployments`](../../cli/commands/deployments.md)
+- [Deployment troubleshooting](../../troubleshooting/deployment-issues.md)

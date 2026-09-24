@@ -2,425 +2,165 @@
 title: Services
 description: Manage Enclii services with the TypeScript SDK
 sidebar_position: 4
-tags: [sdk, typescript, services, deployment]
+tags: [sdk, typescript, services]
 ---
 
 # Services
 
-Manage Enclii services using the TypeScript SDK.
+`enclii.services` (`ServicesResource`, `packages/sdk-ts/src/resources/services.ts`) covers services inside a project. Services are listed and created under a project **slug** and addressed afterwards by service **ID** (a UUID).
 
-## Overview
+| Method | Signature | HTTP |
+|--------|-----------|------|
+| `get` | `get(serviceId: string): Promise<Service>` | `GET /services/{id}` |
+| `list` | `list(projectSlug: string, options?: { limit?: number; cursor?: string }): Promise<Page<Service>>` | `GET /projects/{slug}/services` |
+| `iter` | `iter(projectSlug: string, options?: { pageSize?: number }): AsyncIterable<Service>` | `GET /projects/{slug}/services` |
+| `create` | `create(projectSlug: string, input: CreateServiceRequest): Promise<Service>` | `POST /projects/{slug}/services` |
+| `delete` | `delete(serviceId: string): Promise<void>` | `DELETE /services/{id}` |
+| `restart` | `restart(serviceId: string, options?: { environment?: string }): Promise<void>` | `POST /services/{id}/restart` |
+| `scale` | `scale(serviceId: string, replicas: number, options?: { environment?: string }): Promise<void>` | `POST /services/{id}/scale` |
 
-Services are the deployable units in Enclii. Each service represents an application or microservice within a project.
+There is no `update`, `deploy`, `rollback`, `listReleases`, `logs`, `streamLogs`, `metrics`, `exec`, or environment-variable method on `services`. The related operations live elsewhere:
+
+| Task | Use |
+|------|-----|
+| Build and deploy | [`deployments.build()` / `deployments.deploy()`](./deployments.md) |
+| Releases | [`deployments.listReleases()`](./deployments.md#releases) |
+| Roll back | [`rollback`](./rollback.md) |
+| Logs | [`logs`](./logs.md) |
+| Environment variables and secrets | [`secrets`](./secrets.md) |
+
+## Setup
 
 ```typescript
-import { EncliiClient } from '@enclii/sdk';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-const enclii = new EncliiClient();
-
-// Services module
-enclii.services.list(projectId);
-enclii.services.get(serviceId);
-enclii.services.create(data);
-enclii.services.update(serviceId, data);
-enclii.services.delete(serviceId);
-enclii.services.deploy(serviceId, options);
+const enclii = new EncliiClient({
+  baseUrl: 'https://api.enclii.dev/v1',
+  token: process.env.ENCLII_API_TOKEN,
+});
 ```
 
-## List Services
+## Get a service
 
 ```typescript
-// List all services in a project
-const services = await enclii.services.list('proj_abc123');
+const svc = await enclii.services.get(serviceId);
+console.log(svc.name, svc.status, svc.health, `${svc.ready_replicas}/${svc.desired_replicas}`);
+```
 
-for (const service of services) {
-  console.log(`${service.name}: ${service.status}`);
+## List services in a project
+
+```typescript
+const { data } = await enclii.services.list('my-project');
+for (const svc of data) {
+  console.log(svc.id, svc.name, svc.health);
+}
+
+// Or lazily
+for await (const svc of enclii.services.iter('my-project')) {
+  console.log(svc.name);
 }
 ```
 
-### With Filtering
+See [Pagination](./index.md#pagination) for how `nextCursor` and `iter()` behave against the current API.
+
+## Create a service
 
 ```typescript
-// Filter by status
-const runningServices = await enclii.services.list('proj_abc123', {
-  status: 'running',
-});
-
-// Filter by environment
-const prodServices = await enclii.services.list('proj_abc123', {
-  environment: 'production',
-});
-
-// Search by name
-const apiServices = await enclii.services.list('proj_abc123', {
-  search: 'api',
+const svc = await enclii.services.create('my-project', {
+  name: 'api',
+  git_repo: 'https://github.com/acme/api',
+  app_path: 'apps/api',
+  build_config: { type: 'dockerfile', dockerfile: 'Dockerfile' },
 });
 ```
 
-## Get Service
+`CreateServiceRequest`:
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | `string` | yes |
+| `git_repo` | `string` | yes |
+| `build_config` | `Partial<BuildConfig>` | no |
+| `app_path` | `string` | no |
+
+`BuildConfig` has `type: 'auto' | 'dockerfile' | 'buildpack'` and the optional fields `dockerfile`, `buildpack`, `context`, `build_args` (`Record<string, string>`), and `target`.
+
+## Delete a service
 
 ```typescript
-const service = await enclii.services.get('svc_xyz789');
-
-console.log(`Service: ${service.name}`);
-console.log(`Status: ${service.status}`);
-console.log(`URL: ${service.url}`);
-console.log(`Replicas: ${service.replicas.running}/${service.replicas.desired}`);
+await enclii.services.delete(serviceId);
 ```
 
-### With Related Data
+The API route requires the admin role.
+
+## Restart
 
 ```typescript
-const service = await enclii.services.get('svc_xyz789', {
-  include: ['deployments', 'domains', 'metrics'],
-});
-
-console.log(`Recent deployments: ${service.deployments.length}`);
-console.log(`Custom domains: ${service.domains.map(d => d.name).join(', ')}`);
+await enclii.services.restart(serviceId);
 ```
 
-## Create Service
+Resolves to `undefined`. The SDK sends `options` as the request body, so `{ environment: 'staging' }` is sent as `{"environment":"staging"}`.
+
+## Scale
 
 ```typescript
-const service = await enclii.services.create({
-  projectId: 'proj_abc123',
-  name: 'api-service',
-  type: 'web',  // 'web', 'worker', 'cron'
-});
+await enclii.services.scale(serviceId, 3);
 ```
 
-### From GitHub Repository
+The request body is `{ replicas, ...options }`. Resolves to `undefined`.
 
-```typescript
-const service = await enclii.services.create({
-  projectId: 'proj_abc123',
-  name: 'my-api',
+### Current API behaviour for restart and scale
 
-  // GitHub integration
-  github: {
-    repository: 'madfam-org/my-app',
-    branch: 'main',
-    rootPath: 'apps/api',  // For monorepos
-  },
-
-  // Build configuration
-  build: {
-    type: 'dockerfile',  // or 'buildpack'
-    dockerfile: './Dockerfile',
-    context: '.',
-  },
-});
-```
-
-### With Full Configuration
-
-```typescript
-const service = await enclii.services.create({
-  projectId: 'proj_abc123',
-  name: 'production-api',
-
-  // Runtime configuration
-  runtime: {
-    port: 3000,
-    replicas: 2,
-    resources: {
-      requests: { cpu: '100m', memory: '128Mi' },
-      limits: { cpu: '500m', memory: '512Mi' },
-    },
-  },
-
-  // Health checks
-  healthCheck: {
-    path: '/health',
-    interval: 30,
-    timeout: 5,
-    healthyThreshold: 2,
-    unhealthyThreshold: 3,
-  },
-
-  // Environment variables
-  env: {
-    NODE_ENV: 'production',
-    LOG_LEVEL: 'info',
-  },
-
-  // Auto-scaling
-  autoscaling: {
-    enabled: true,
-    minReplicas: 2,
-    maxReplicas: 10,
-    targetCPU: 70,
-  },
-
-  // Custom domains
-  domains: ['api.example.com'],
-});
-```
-
-## Update Service
-
-```typescript
-// Update service configuration
-const service = await enclii.services.update('svc_xyz789', {
-  replicas: 3,
-  env: {
-    LOG_LEVEL: 'debug',
-  },
-});
-```
-
-### Update Resources
-
-```typescript
-await enclii.services.update('svc_xyz789', {
-  resources: {
-    requests: { cpu: '200m', memory: '256Mi' },
-    limits: { cpu: '1000m', memory: '1Gi' },
-  },
-});
-```
-
-### Update Auto-scaling
-
-```typescript
-await enclii.services.update('svc_xyz789', {
-  autoscaling: {
-    enabled: true,
-    minReplicas: 2,
-    maxReplicas: 20,
-    targetCPU: 60,
-  },
-});
-```
-
-## Delete Service
-
-```typescript
-// Delete a service
-await enclii.services.delete('svc_xyz789', {
-  confirm: true,
-});
-```
-
-## Deploy Service
-
-See [Deployments](./deployments) for detailed deployment documentation.
-
-```typescript
-// Quick deploy
-const deployment = await enclii.services.deploy('svc_xyz789');
-
-// Deploy with options
-const deployment = await enclii.services.deploy('svc_xyz789', {
-  environment: 'production',
-  strategy: 'canary',
-  canaryPercent: 10,
-});
-
-// Wait for deployment
-await deployment.wait();
-console.log(`Deployed: ${deployment.url}`);
-```
-
-## Environment Variables
-
-### List Variables
-
-```typescript
-const variables = await enclii.services.listVariables('svc_xyz789');
-
-for (const v of variables) {
-  console.log(`${v.key}=${v.isSecret ? '***' : v.value}`);
-}
-```
-
-### Set Variables
-
-```typescript
-// Set multiple variables
-await enclii.services.setVariables('svc_xyz789', {
-  API_KEY: 'secret-value',
-  DEBUG: 'false',
-}, {
-  secrets: ['API_KEY'],  // Mark as secret
-});
-
-// Set single variable
-await enclii.services.setVariable('svc_xyz789', 'NEW_VAR', 'value');
-```
-
-### Delete Variable
-
-```typescript
-await enclii.services.deleteVariable('svc_xyz789', 'OLD_VAR');
-```
-
-## Service Logs
-
-```typescript
-// Get recent logs
-const logs = await enclii.services.logs('svc_xyz789', {
-  tail: 100,
-});
-
-for (const log of logs) {
-  console.log(`[${log.timestamp}] ${log.message}`);
-}
-```
-
-### Stream Logs
-
-```typescript
-// Stream logs in real-time
-const stream = await enclii.services.streamLogs('svc_xyz789');
-
-stream.on('log', (log) => {
-  console.log(`[${log.timestamp}] ${log.message}`);
-});
-
-stream.on('error', (error) => {
-  console.error('Log stream error:', error);
-});
-
-// Stop streaming after 5 minutes
-setTimeout(() => stream.stop(), 5 * 60 * 1000);
-```
-
-### Filter Logs
-
-```typescript
-const logs = await enclii.services.logs('svc_xyz789', {
-  tail: 100,
-  since: '1h',  // Last hour
-  level: 'error',  // Only errors
-  search: 'database',  // Search term
-});
-```
-
-## Service Metrics
-
-```typescript
-const metrics = await enclii.services.metrics('svc_xyz789', {
-  period: '1h',
-  resolution: '5m',
-});
-
-console.log(`CPU: ${metrics.cpu.avg}%`);
-console.log(`Memory: ${metrics.memory.avg}%`);
-console.log(`Requests: ${metrics.requests.total}`);
-console.log(`Errors: ${metrics.errors.total}`);
-console.log(`Latency P95: ${metrics.latency.p95}ms`);
-```
-
-## Service Actions
-
-### Restart Service
-
-```typescript
-// Restart all pods
-await enclii.services.restart('svc_xyz789');
-
-// Rolling restart
-await enclii.services.restart('svc_xyz789', {
-  strategy: 'rolling',
-});
-```
-
-### Scale Service
-
-```typescript
-// Manual scaling
-await enclii.services.scale('svc_xyz789', {
-  replicas: 5,
-});
-
-// Scale to zero (suspend)
-await enclii.services.scale('svc_xyz789', {
-  replicas: 0,
-});
-```
-
-### Exec into Service
-
-```typescript
-// Execute command in running container
-const result = await enclii.services.exec('svc_xyz789', {
-  command: ['npm', 'run', 'migrate'],
-});
-
-console.log(result.stdout);
-if (result.exitCode !== 0) {
-  console.error(result.stderr);
-}
-```
+- Both routes require the admin role in the current API.
+- **The `environment` option does not select an environment.** The API reads a field named `env` (default `production`), not `environment`, and uses it only as a label in the audit record and response. The restart or scale itself is applied to the service's workload in the project's namespace (`RollingRestart` / `ScaleDeployment` in `apps/switchyard-api/internal/api/infra_handlers.go`), whatever the option says.
+- The scale endpoint caps `replicas` at 10. `replicas` is a required field, so `0` fails request validation (`ValidationError`).
 
 ## Types
 
 ```typescript
+type HealthStatus = 'unknown' | 'healthy' | 'unhealthy' | 'degraded';
+
 interface Service {
-  id: string;
-  projectId: string;
+  id: UUID;
+  project_id: UUID;
   name: string;
-  type: 'web' | 'worker' | 'cron';
-  status: 'pending' | 'building' | 'deploying' | 'running' | 'stopped' | 'failed';
-  url?: string;
-  replicas: {
-    desired: number;
-    running: number;
-    ready: number;
-  };
-  runtime: RuntimeConfig;
-  build?: BuildConfig;
-  github?: GitHubConfig;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface CreateServiceInput {
-  projectId: string;
-  name: string;
-  type?: 'web' | 'worker' | 'cron';
-  github?: GitHubConfig;
-  build?: BuildConfig;
-  runtime?: RuntimeConfig;
-  env?: Record<string, string>;
-  domains?: string[];
-}
-
-interface RuntimeConfig {
-  port?: number;
-  replicas?: number;
-  resources?: ResourceConfig;
-  healthCheck?: HealthCheckConfig;
-  autoscaling?: AutoscalingConfig;
+  git_repo: string;
+  app_path?: string;
+  watch_paths?: string[];
+  build_config: BuildConfig;
+  health: HealthStatus;
+  status: string;
+  desired_replicas: number;
+  ready_replicas: number;
+  auto_deploy: boolean;
+  auto_deploy_branch?: string;
+  auto_deploy_env?: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
 }
 ```
 
-## Error Handling
+## Error handling
 
 ```typescript
-import {
-  EncliiError,
-  NotFoundError,
-  ConflictError,
-  DeploymentError
-} from '@enclii/sdk';
+import { AuthorizationError, NotFoundError } from '@madfam/enclii-sdk';
 
 try {
-  await enclii.services.deploy('svc_xyz789');
-} catch (error) {
-  if (error instanceof DeploymentError) {
-    console.log(`Deployment failed: ${error.reason}`);
-    console.log(`Build logs: ${error.buildLogs}`);
-  } else if (error instanceof ConflictError) {
-    console.log('Deployment already in progress');
+  await enclii.services.delete(serviceId);
+} catch (err) {
+  if (err instanceof AuthorizationError) {
+    console.error('Deleting a service needs the admin role');
+  } else if (err instanceof NotFoundError) {
+    console.error('No such service');
+  } else {
+    throw err;
   }
 }
 ```
 
-## Related Documentation
+## Related documentation
 
-- **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
-- **Deployments**: [Deployment Management](./deployments)
-- **Domains**: [Custom Domains](./domains)
-- **API Reference**: [Services API](/api-reference/#tag/services)
+- [TypeScript SDK overview](./index.md)
+- [Deployments](./deployments.md)
+- [Secrets](./secrets.md)
+- [CLI: `enclii ps`](../../cli/commands/ps.md)

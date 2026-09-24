@@ -174,9 +174,14 @@ make precommit         # Run all checks before committing
 ```
 
 ### CLI Operations
+
+> **Boundary checkpoint (2026-09-24, platform ops):** CLI examples in this file were
+> corrected against `enclii --help` (v1.0.0-alpha.11); public-safe usage only, nothing
+> withheld. Policy: [`docs/PUBLIC_REPO_BOUNDARY.md`](./docs/PUBLIC_REPO_BOUNDARY.md).
+
 ```bash
 ./bin/enclii init                  # Scaffold a new service
-./bin/enclii up                     # Deploy preview environment
+./bin/enclii previews list         # PR preview environments (created by the GitHub webhook)
 ./bin/enclii deploy --env prod     # Deploy to production
 ./bin/enclii logs <service> -f     # Tail service logs
 ./bin/enclii rollback <service>    # Rollback to previous release
@@ -195,7 +200,7 @@ Services are defined using YAML specs (stored versioned in the control plane):
 1. Build via Nixpacks/Buildpacks or Dockerfile
 2. Parse `enclii.yaml` — auto-provision custom domains (tunnel routes + DNS CNAMEs)
 3. Create immutable Release with provenance (git SHA, SBOM, signature)
-4. Deploy with canary/blue-green strategies
+4. Deploy with rolling or canary strategies
 5. Automatic rollback on failure based on SLO metrics
 
 ### Environment Variables
@@ -256,7 +261,7 @@ Key vars for local development (set in `.env`):
 - Canary deploys to stage, then manual approval to prod
 
 ### Error Handling
-- Exit codes: 0 (success), 10 (validation), 20 (build failed), 30 (deploy failed), 40 (timeout), 50 (auth)
+- Exit codes: 0 (success), 1 (any other error, including an expired or invalid token), 10 (validation), 20 (build failed), 30 (deploy failed), 40 (timeout), 50 (auth failure during `enclii login` only). See `docs/cli/README.md#exit-codes`
 - Precise error messages with actionable context
 - Automatic rollback triggers when error rate > 2% for 2 minutes
 
@@ -518,8 +523,8 @@ enclii deploy --env staging
 enclii logs <service> -f --env staging
 enclii ps --env staging
 
-# Deploy to production (after staging validation)
-enclii deploy --env production --strategy canary --canary-percent 10
+# Deploy to production as a canary (after staging validation)
+enclii deploy --env production --canary 10 --change-ticket <url>
 ```
 
 ### Database Migration
@@ -548,8 +553,8 @@ kubectl exec -n enclii deploy/switchyard-api -- psql "$DATABASE_URL" -c "\dt"
 # Check API health
 curl https://api.enclii.dev/health
 
-# View API logs (prefer enclii CLI)
-enclii logs switchyard-api -f --level error
+# View API logs (prefer enclii CLI; there is no level filter, so grep)
+enclii logs switchyard-api -f | grep -i error
 
 # Check database connectivity (kubectl — no CLI equivalent)
 kubectl exec -n enclii deploy/switchyard-api -- /app/healthcheck db
@@ -561,8 +566,8 @@ kubectl describe pod -n enclii <pod-name>
 ### Build Failures
 
 ```bash
-# View build logs
-enclii builds logs --latest
+# View recent builds (status and error message for failed builds)
+enclii releases <service>
 
 # Check Roundhouse worker status (kubectl — internal platform service)
 kubectl logs -n enclii -l app=roundhouse -f
@@ -576,7 +581,8 @@ kubectl logs -n enclii-builds job/<job-name>
 
 ```bash
 # Check deployment status (prefer enclii CLI)
-enclii ps --wide
+enclii ps
+enclii deploy ls <service>
 
 # View service logs
 enclii logs <service> -f
@@ -594,8 +600,8 @@ kubectl describe deploy -n <namespace> <service>
 # Test JWKS endpoint
 curl https://auth.madfam.io/.well-known/jwks.json | jq
 
-# Verify token (CLI)
-enclii auth verify
+# Verify the CLI's identity and token
+enclii whoami
 
 # Check Janua logs (kubectl — Janua is a separate service, no enclii equivalent)
 kubectl logs -n janua -l app=janua-api -f
@@ -807,11 +813,12 @@ kubectl port-forward -n staging svc/switchyard-api 8080:8080
 ### Production Environment
 
 ```bash
-# Deploy with canary
-enclii deploy --env production --strategy canary --canary-percent 10
+# Deploy with canary (the command tails the rollout until it finishes)
+enclii deploy --env production --canary 10 --change-ticket <url>
 
 # Monitor
-enclii ps --env production --watch
+enclii ps --env production
+enclii canary status <rollout_id> --service <service> -f
 
 # Rollback if needed
 enclii rollback <service> --env production
@@ -870,9 +877,9 @@ pnpm test:e2e
 | Symptom | Check | Fix |
 |---------|-------|-----|
 | API 500 errors | `enclii logs switchyard-api` | Check DB connection, env vars |
-| Build stuck | `enclii builds logs --latest` | Restart Roundhouse worker |
+| Build stuck | `enclii releases <service>` | Restart Roundhouse worker |
 | Auth fails | `curl .../jwks.json` | Check Janua status, OIDC config |
-| Deploy timeout | `enclii ps --wide` | Check resource limits, probes |
+| Deploy timeout | `enclii ps`, `enclii deploy show v<n> <service>` | Check resource limits, probes |
 | Preview not created | Webhook logs | Verify GitHub integration |
 | SSL errors | Cert-manager logs | Check issuer, DNS |
 

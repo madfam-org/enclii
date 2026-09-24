@@ -17,14 +17,11 @@ This guide helps diagnose and fix issues with the Enclii build pipeline.
 ## Quick Diagnosis
 
 ```bash
-# Check recent builds
-enclii builds list --service <service-id>
+# Recent builds (releases) with version, git SHA, status, and the error message of failed builds
+enclii releases <service-name>
 
-# View build logs
-enclii builds logs --latest
-
-# Check build status
-enclii builds get <build-id>
+# All builds, not just the last 10
+enclii releases <service-name> --all
 ```
 
 ## Common Build Errors
@@ -63,10 +60,10 @@ CMD ["npm", "start"]
 | Ruby | `Gemfile` |
 | Java | `pom.xml` or `build.gradle` |
 
-3. **Set the root path** if in a monorepo:
+3. **Set the root path** if in a monorepo. The CLI has no command that edits a service's root path; it comes from the checked-in service spec (`spec.build.source.git.path`, with `spec.build.context` for the build context). After fixing the spec, repair the stored service metadata (for example a stale `app_path` or `build_config`):
 
 ```bash
-enclii services update <service-id> --root-path apps/my-service
+enclii services-sync --dir apps/my-service --project <project> --reconcile-existing
 ```
 
 ### Dependency Installation Failed
@@ -104,7 +101,8 @@ git push
 **For private dependencies**, configure authentication:
 ```bash
 # Add npm token for private packages
-enclii secrets set NPM_TOKEN=<token> --service <service-id>
+# (run in the service's directory, or pass -f path/to/service.yaml)
+enclii secrets set NPM_TOKEN=<token> --secret
 ```
 
 ### Out of Memory During Build
@@ -157,9 +155,9 @@ CMD ["node", "dist/index.js"]
 
 **Solutions**:
 
-1. **Identify slow step** by reviewing build logs:
+1. **Identify slow step** by reviewing the build job's logs (the CLI shows build status and errors via `enclii releases <service-name>`, not step timings; see [Via kubectl](#via-kubectl-admin)):
 ```bash
-enclii builds logs --latest | grep -E "^\d+:\d+:"
+kubectl logs -n enclii-builds job/<job-name> | grep -E "^\d+:\d+:"
 ```
 
 2. **Cache dependencies**:
@@ -229,11 +227,14 @@ build:
 
 ### Build Arguments
 
-```bash
-# Set build-time arguments
-enclii services update <service-id> \
-  --build-arg NODE_ENV=production \
-  --build-arg VERSION=$(git rev-parse --short HEAD)
+The CLI has no command for setting build arguments. Declare them in the service spec; `enclii services-sync` stores them in the service's build config (add `--reconcile-existing` for a service that already exists):
+
+```yaml
+spec:
+  build:
+    type: dockerfile
+    buildArgs:
+      NODE_ENV: production
 ```
 
 ### Ignoring Files
@@ -251,15 +252,11 @@ tests/
 
 ### Via CLI
 
+The CLI does not stream build logs. It shows each build's status and, for failed builds, the error message:
+
 ```bash
-# Latest build
-enclii builds logs --latest
-
-# Specific build
-enclii builds logs <build-id>
-
-# Follow logs in real-time
-enclii builds logs --latest -f
+enclii releases <service-name>
+enclii releases <service-name> -n 5
 ```
 
 ### Via kubectl (Admin)
@@ -277,12 +274,10 @@ kubectl logs -n enclii -l app=roundhouse -f
 
 ## Retrying Builds
 
-```bash
-# Retry the latest build
-enclii builds retry --latest
+There is no retry command. `enclii deploy` builds the current git commit of the service in `./service.yaml` (or `-f <path>`) and deploys it:
 
-# Trigger new build from latest commit
-enclii deploy --service <service-id>
+```bash
+enclii deploy --env <env>
 ```
 
 ## Related Documentation

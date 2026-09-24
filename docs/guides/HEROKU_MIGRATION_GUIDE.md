@@ -78,11 +78,12 @@ curl -fsSL https://install.enclii.dev | sh
 enclii login
 
 # Create project
-enclii project create my-app
+enclii projects create --name my-app --slug my-app
 
-# Create environments
-enclii env create production
-enclii env create staging
+# Environments are created on first deploy: `enclii deploy --env staging`
+# creates the "staging" environment if it does not exist yet.
+# List a project's environments:
+enclii projects environments my-app
 ```
 
 ---
@@ -94,7 +95,7 @@ enclii env create staging
 | App | Project | Container for services and environments |
 | Dyno | Pod | Container instance running your code |
 | Procfile | Dockerfile CMD / enclii.yaml command | Service start command |
-| Config Vars | Environment Variables / Secrets | `enclii secret create` for sensitive values |
+| Config Vars | Environment Variables / Secrets | `enclii secrets set KEY=VALUE --secret` for sensitive values |
 | Add-ons | In-cluster services or external providers | PostgreSQL and Redis run in-cluster |
 | Buildpacks | Cloud Native Buildpacks | Compatible — most apps build without changes |
 | Review Apps | Preview Environments | Auto-created for PRs |
@@ -297,11 +298,14 @@ heroku config -a your-app -s > heroku.env
 
 **Option 1: Enclii Lockbox (Recommended)**
 
+`enclii secrets set` takes `KEY=VALUE` pairs and targets the service named in `./service.yaml` (pass `-f <spec>` for another file). The service must already be registered (`enclii services-sync` or a first `enclii deploy`), and an `--env` environment must already exist; omit `--env` to apply the values to all environments.
+
 ```bash
-# Import secrets one by one
-enclii secret create DATABASE_URL "postgresql://..." --env production
-enclii secret create REDIS_URL "redis://redis.enclii.svc.cluster.local:6379" --env production
-enclii secret create SECRET_KEY_BASE "$(openssl rand -hex 64)" --env production
+# Import secrets (several KEY=VALUE pairs per call)
+enclii secrets set --secret --env production \
+  DATABASE_URL="postgresql://..." \
+  REDIS_URL="redis://redis.enclii.svc.cluster.local:6379" \
+  SECRET_KEY_BASE="$(openssl rand -hex 64)"
 ```
 
 **Option 2: Bulk Import**
@@ -321,7 +325,7 @@ while IFS='=' read -r key value; do
   value=$(echo "$value" | sed "s/^'//; s/'$//")
 
   echo "Importing $key..."
-  enclii secret create "$key" "$value" --env production
+  enclii secrets set "$key=$value" --secret --env production
 done < heroku.env
 
 echo "Import complete!"
@@ -348,8 +352,8 @@ Enclii uses **Cloud Native Buildpacks (CNB)**, which are compatible with most He
 ### Automatic Detection
 
 ```bash
-# Enclii auto-detects your app type
-enclii init --buildpack auto
+# Enclii auto-detects your app type (--template defaults to "auto")
+enclii init
 ```
 
 Supported runtimes (auto-detected):
@@ -419,15 +423,15 @@ Internet → Cloudflare Edge → cloudflared → K8s Service:80 → Container:po
 **1. Add Domain**
 
 ```bash
-enclii domain add myapp.com \
+# TLS is enabled by default (--tls)
+enclii domains add myapp.com \
   --service web \
-  --env production \
-  --tls-enabled
+  --env production
 ```
 
 **2. Update DNS**
 
-Point your domain to the Cloudflare Tunnel:
+Point your domain to the Cloudflare Tunnel and add the TXT verification record. `enclii domains add` prints both records; `enclii domains status myapp.com --service web` shows them again.
 
 ```dns
 myapp.com.      300  IN  CNAME  <tunnel-id>.cfargotunnel.com
@@ -439,6 +443,7 @@ SSL is automatic via Cloudflare — no cert-manager configuration needed.
 **3. Verify**
 
 ```bash
+enclii domains verify myapp.com --service web --env production
 curl https://myapp.com/health
 ```
 
@@ -448,21 +453,21 @@ curl https://myapp.com/health
 
 | Heroku CLI | Enclii CLI | Description |
 |------------|------------|-------------|
-| `heroku create` | `enclii project create` | Create a new project |
-| `heroku apps` | `enclii project list` | List projects |
-| `heroku ps` | `enclii ps` | Show running processes |
+| `heroku create` | `enclii projects create --name <name> --slug <slug>` | Create a new project |
+| `heroku apps` | `enclii projects list` | List projects |
+| `heroku ps` | `enclii ps` | Show running services |
 | `heroku logs -t` | `enclii logs <service> -f` | Tail logs |
-| `heroku config` | `enclii secret list` | List environment variables |
-| `heroku config:set K=V` | `enclii secret create K V` | Set environment variable |
-| `heroku run bash` | `enclii exec <service> -- bash` | Open shell in container |
-| `heroku pg:psql` | `kubectl exec ... -- psql` | Connect to database |
-| `heroku domains` | `enclii domain list` | List custom domains |
-| `heroku domains:add` | `enclii domain add` | Add custom domain |
-| `heroku releases` | `enclii releases list` | List releases |
+| `heroku config` | `enclii secrets list` | List environment variables |
+| `heroku config:set K=V` | `enclii secrets set K=V` | Set environment variable (add `--secret` for sensitive values) |
+| `heroku run <cmd>` | `enclii jobs run-once --name <name> --command "<cmd>" --service-id <id> --project <slug>` | Run a one-off command with the service's image and env (no interactive shell) |
+| `heroku pg:psql` | `kubectl exec ... -- psql` | Connect to database (break-glass; no CLI equivalent) |
+| `heroku domains` | `enclii domains list` | List custom domains |
+| `heroku domains:add` | `enclii domains add` | Add custom domain |
+| `heroku releases` | `enclii deploy ls <service>` | List deployments with v-numbers (`enclii releases <service>` lists builds) |
 | `heroku rollback` | `enclii rollback <service>` | Rollback to previous release |
-| `heroku maintenance:on` | `enclii maintenance enable` | Enable maintenance mode |
-| `heroku pg:backups` | `enclii backup list` | List database backups |
-| `heroku addons` | N/A (in-cluster services) | Add-ons are built-in |
+| `heroku maintenance:on` | N/A | No maintenance-mode command |
+| `heroku pg:backups` | `enclii export --project <slug>` | Tenant export includes a `pg_dump` of each bound database addon |
+| `heroku addons` | `enclii addon ls` | Managed Postgres addons (`enclii addon`) |
 | `git push heroku main` | `git push origin main` | Deploy (auto via webhook) |
 
 ---
@@ -472,11 +477,11 @@ curl https://myapp.com/health
 ### Deploy to Staging
 
 ```bash
-# Deploy
-enclii deploy --env staging
+# Deploy and wait until it is healthy
+enclii deploy --env staging --wait
 
-# Monitor
-enclii status --env staging --follow
+# Check service status
+enclii ps --env staging
 
 # Check logs
 enclii logs web --env staging --follow
@@ -488,26 +493,29 @@ curl https://staging.myapp.com/health
 ### Deploy to Production
 
 ```bash
-# Deploy with canary strategy
-enclii deploy --env production --strategy canary --canary-percent 10
+# Deploy as a canary: 10% of traffic, auto-promoted after the validation
+# window (default 10m) if healthy, auto-rolled-back if not.
+# Prints "Canary rollout started: <rollout_id>" and tails the rollout.
+enclii deploy --env production --canary 10 --change-ticket <change-ticket-url>
 
 # Monitor error rates
 enclii logs web --env production --follow | grep ERROR
 
-# Full rollout
-enclii deploy --env production
+# Promote early instead of waiting for the validation window
+enclii canary promote <rollout_id> --service web
 
-# Or rollback if issues
+# Or abort the canary, or roll back a completed deploy, if issues
+enclii canary rollback <rollout_id> --service web --reason "error rate spiked"
 enclii rollback web --env production
 ```
 
 ### Verification Checklist
 
-- [ ] All services healthy: `enclii status --env production`
+- [ ] All services healthy: `enclii ps --env production`
 - [ ] HTTPS works: `curl https://myapp.com`
 - [ ] Database connectivity: test critical endpoints
 - [ ] Background workers running: `enclii ps --env production`
-- [ ] Cron jobs scheduled: `enclii jobs list --env production`
+- [ ] Cron jobs scheduled: `enclii jobs list --project <slug>`
 - [ ] Logs flowing: `enclii logs --env production`
 - [ ] Custom domains resolve: `nslookup myapp.com`
 - [ ] Health checks passing: `curl https://myapp.com/health`
@@ -532,9 +540,8 @@ heroku pg:backups:download -a myapp
 # 2. Export environment
 heroku config -a myapp -s > heroku.env
 
-# 3. Create Enclii project
-enclii project create myapp
-enclii env create production
+# 3. Create Enclii project (the "production" environment is created by the first deploy)
+enclii projects create --name myapp --slug myapp
 
 # 4. Import database
 kubectl port-forward svc/postgresql -n enclii 5433:5432
@@ -547,6 +554,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: web
+  project: myapp
 spec:
   build:
     buildpack: auto
@@ -572,6 +580,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: worker
+  project: myapp
 spec:
   build:
     buildpack: auto
@@ -584,22 +593,30 @@ spec:
     - SECRET_KEY_BASE
 EOF
 
-# 7. Import secrets
-enclii secret create DATABASE_URL "postgresql://postgres:pass@postgresql.enclii:5432/myapp" --env production
-enclii secret create REDIS_URL "redis://redis.enclii.svc.cluster.local:6379" --env production
-enclii secret create SECRET_KEY_BASE "$(heroku config:get SECRET_KEY_BASE -a myapp)" --env production
-enclii secret create RAILS_MASTER_KEY "$(heroku config:get RAILS_MASTER_KEY -a myapp)" --env production
+# 7. Register both services, then import secrets
+#    (secrets are per service; without --env they apply to all environments)
+enclii services-sync --dir . --project myapp
+enclii secrets set -f web.yaml --secret \
+  DATABASE_URL="postgresql://postgres:pass@postgresql.enclii:5432/myapp" \
+  REDIS_URL="redis://redis.enclii.svc.cluster.local:6379" \
+  SECRET_KEY_BASE="$(heroku config:get SECRET_KEY_BASE -a myapp)" \
+  RAILS_MASTER_KEY="$(heroku config:get RAILS_MASTER_KEY -a myapp)"
+enclii secrets set -f worker.yaml --secret \
+  DATABASE_URL="postgresql://postgres:pass@postgresql.enclii:5432/myapp" \
+  REDIS_URL="redis://redis.enclii.svc.cluster.local:6379" \
+  SECRET_KEY_BASE="$(heroku config:get SECRET_KEY_BASE -a myapp)"
 
-# 8. Deploy
-enclii service create -f web.yaml --env production
-enclii service create -f worker.yaml --env production
-enclii deploy --env production
+# 8. Deploy (one spec per call)
+enclii deploy -f web.yaml --env production --wait
+enclii deploy -f worker.yaml --env production --wait
 
-# 9. Run migrations
-enclii exec web --env production -- bundle exec rails db:migrate
+# 9. Run migrations as a one-off job (web service image, env and secrets)
+enclii projects services myapp    # look up the web service ID
+enclii jobs run-once --name db-migrate --command "bundle exec rails db:migrate" \
+  --service-id <web-service-id> --project myapp
 
 # 10. Configure domain and switch DNS
-enclii domain add myapp.com --service web --env production
+enclii domains add myapp.com --service web --env production
 ```
 
 ### Example 2: Node.js API with Redis Caching
@@ -618,6 +635,7 @@ apiVersion: enclii.dev/v1
 kind: Service
 metadata:
   name: api
+  project: myapp
 spec:
   build:
     buildpack: auto
@@ -643,14 +661,15 @@ spec:
       tlsEnabled: true
 EOF
 
-# 2. Import secrets
-enclii secret create DATABASE_URL "postgresql://..." --env production
-enclii secret create REDIS_URL "redis://redis.enclii.svc.cluster.local:6379" --env production
-enclii secret create API_SECRET "$(heroku config:get API_SECRET -a myapp)" --env production
+# 2. Register the service, then import secrets
+enclii services-sync --dir . --project myapp
+enclii secrets set -f enclii.yaml --secret \
+  DATABASE_URL="postgresql://..." \
+  REDIS_URL="redis://redis.enclii.svc.cluster.local:6379" \
+  API_SECRET="$(heroku config:get API_SECRET -a myapp)"
 
 # 3. Deploy
-enclii service create -f enclii.yaml --env production
-enclii deploy --env production
+enclii deploy -f enclii.yaml --env production --wait
 
 # 4. Test
 curl https://api.myapp.com/health
@@ -701,7 +720,7 @@ runtime:
 **Fix:** Remove or replace Heroku-specific variables:
 ```bash
 # Replace HEROKU_APP_NAME
-enclii secret create APP_NAME "myapp" --env production
+enclii secrets set APP_NAME=myapp --env production
 
 # Replace HEROKU_SLUG_COMMIT
 # Git SHA is available via build metadata
@@ -712,9 +731,13 @@ enclii secret create APP_NAME "myapp" --env production
 **Symptom:** Sidekiq/Celery/Bull worker not picking up jobs
 
 **Fix:** Ensure the worker service can reach Redis:
+There is no `enclii exec`; run the check as a one-off job with the worker's environment (`--image` swaps in an image that has `redis-cli`):
+
 ```bash
 # Verify Redis connectivity
-enclii exec worker --env production -- redis-cli -h redis.enclii.svc.cluster.local ping
+enclii jobs run-once --name redis-ping --command "redis-cli -h redis.enclii.svc.cluster.local ping" \
+  --image redis:7-alpine --service-id <worker-service-id> --project myapp
+enclii jobs logs <job-id>
 ```
 
 Update `REDIS_URL` to use Kubernetes service discovery:

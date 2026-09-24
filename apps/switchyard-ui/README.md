@@ -228,8 +228,10 @@ sending no prompt (silent session reuse). This is implemented in
 
 The UI is deployed on Enclii (self-hosted):
 
+Pushes to `main` build and deploy it automatically (`spec.build.source.git.autoDeploy` in the repo-root `.enclii.yml`). To roll back:
+
 ```bash
-enclii deploy --service switchyard-ui --env production
+enclii rollback switchyard-ui --env production
 ```
 
 Production URL: https://app.enclii.dev

@@ -97,11 +97,12 @@ Contact your organization admin if you need elevated permissions.
 **Solutions**:
 
 ```bash
-# Verify resource exists
-enclii services list --project <project-id>
+# Verify resource exists (projects are addressed by slug)
+enclii projects list
+enclii projects services <project-slug>
 
-# Check the correct ID
-enclii services get <service-id>
+# Check the correct project details
+enclii projects get <project-slug> --json
 ```
 
 ### 409 Conflict
@@ -117,10 +118,11 @@ enclii services get <service-id>
 
 ```bash
 # Check for existing resource
-enclii services list | grep "my-service"
+enclii projects services <project-slug> | grep "my-service"
 
-# Use a unique name
-enclii services create --name "my-service-v2"
+# Use a unique name: change metadata.name in service.yaml, then deploy
+# (enclii deploy creates the service if it does not exist)
+enclii deploy --env <env>
 ```
 
 ### 422 Unprocessable Entity

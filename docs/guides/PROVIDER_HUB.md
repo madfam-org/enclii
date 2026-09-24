@@ -15,15 +15,15 @@ Enclii-first management of Madfam ecosystem providers (Resend, Cloudflare, GitHu
 1. **Credentials** — `enclii providers resend credentials` or Dispatch **Providers → Overview**.
 2. **Add domain** — Dispatch **Providers → Resend → Add domain**, or:
    ```bash
-   enclii providers resend domain-add-apply --target enclii.dev
-   enclii providers resend domain-add-apply --target enclii.dev --apply --reason "GA sender domain"
+   enclii providers resend domain-add-apply enclii.dev
+   enclii providers resend domain-add-apply enclii.dev --apply --reason "GA sender domain"
    ```
 3. **Apply DNS** — orchestrates Resend TXT/MX via Cloudflare:
    ```bash
-   enclii providers resend domain-dns-apply --target enclii.dev --apply --reason "Resend DNS for enclii.dev"
+   enclii providers resend domain-dns-apply enclii.dev --apply --reason "Resend DNS for enclii.dev"
    ```
-4. **Verify** — `enclii providers resend domain-verify-apply --target enclii.dev --apply --reason "post-DNS verify"`
-5. **Send test** — `enclii providers resend send-test-apply --target enclii.dev --to ops@madfam.io --apply --reason "smoke"`
+4. **Verify** — `enclii providers resend domain-verify-apply enclii.dev --apply --reason "post-DNS verify"`
+5. **Send test** — Dispatch **Providers → Resend**, the domain row's send-test action. The API requires a recipient (`args.to`) and the CLI has no flag to pass one, so `enclii providers resend send-test-apply` from the CLI returns `invalid_request`.
 
 Vault backfill (retire Janua bridge):
 
