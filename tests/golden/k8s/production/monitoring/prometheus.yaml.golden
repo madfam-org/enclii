@@ -2073,12 +2073,20 @@ spec:
           ports:
             - containerPort: 9090
               name: http
+          # 2026-09-23: 2Gi -> 4Gi. After #572 fixed the rule-template crash,
+          # Prometheus still restarted ~7.4k times (exit 137, SIGKILL): WAL
+          # replay finishes after ~60s, and the kill comes ~7s later. Sampled with
+          # `kubectl top`, the pod went 968Mi -> 1516Mi -> 1825Mi within ~45s of
+          # replay, against the 2Gi limit, and was killed before the next sample.
+          # The WAL has grown through 4 weeks of crash-looping. The request stays
+          # at 768Mi, so scheduling is unchanged; monitoring-quota limits.memory
+          # is raised in namespace.yaml to fit.
           resources:
             requests:
               memory: "768Mi"
               cpu: "200m"
             limits:
-              memory: "2Gi"
+              memory: "4Gi"
               cpu: "500m"
           volumeMounts:
             - name: config
