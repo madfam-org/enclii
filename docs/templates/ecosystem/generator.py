@@ -264,8 +264,8 @@ ECOSYSTEM_MAP_TAIL = dedent("""
     worker nodes. Object storage: Cloudflare R2 (zero egress).
 
     **GitOps**: ArgoCD App-of-Apps with self-heal. Push to `main` → CI builds →
-    GHCR → `kustomize edit set image` commits the digest → ArgoCD syncs →
-    Switchyard tracks lifecycle events.
+    GHCR → `kustomize edit set image` commits the digest →
+    ArgoCD syncs → Switchyard tracks lifecycle events.
 
     **Operational access** (SSH, kubeconfigs, node identity, estate counts, cost
     ledger): private repo `madfam-org/internal-devops`. Not in any public repo.
