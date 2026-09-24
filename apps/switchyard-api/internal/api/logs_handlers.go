@@ -354,7 +354,11 @@ func (h *Handler) StreamServiceLogsWS(c *gin.Context) {
 }
 
 // GetLogsHistory returns historical logs (non-streaming)
-// GET /v1/services/:id/logs/history
+// GET /v1/services/:id/logs/history?env=&lines=&since=
+//
+// since is optional (see parseLogsSince): an RFC3339 timestamp, which is what
+// the CLI sends, or a positive Go duration such as 24h. The response shape is
+// unchanged by it.
 func (h *Handler) GetLogsHistory(c *gin.Context) {
 	ctx := c.Request.Context()
 	serviceUUID, ok := h.mustServiceAccess(c)
@@ -363,6 +367,13 @@ func (h *Handler) GetLogsHistory(c *gin.Context) {
 	}
 	serviceID := serviceUUID.String()
 	envName := c.DefaultQuery("env", "development")
+
+	// Optional window; rejected before any lookup so bad input is a 400.
+	sinceSeconds, err := parseLogsSince(c.Query("since"), time.Now())
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Get service
 	service, err := h.repos.Services.GetByID(serviceUUID)
@@ -402,7 +413,7 @@ func (h *Handler) GetLogsHistory(c *gin.Context) {
 	labelSelectors := serviceLogSelectors(service.Name)
 
 	// Get logs
-	logs, err := h.k8sClient.GetLogsWithSelectors(ctx, namespace, labelSelectors, lines, false)
+	logs, err := h.k8sClient.GetLogsWithSelectorsSince(ctx, namespace, labelSelectors, lines, false, sinceSeconds)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to get logs", logging.Error("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get logs"})
