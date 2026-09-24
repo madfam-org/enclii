@@ -87,6 +87,20 @@ spec:
                     # Kyverno 3.1.x only supports exact keyless.subject values;
                     # repo/workflow regex enforcement requires a Kyverno upgrade
                     # or explicit subject enumeration.
+                    #
+                    # When subject enforcement is restored, the pattern must
+                    # also accept commit-SHA refs. Since #620, callers may pin
+                    # .github/workflows/build-publish.yml by 40-hex SHA, and
+                    # their signatures carry the identity
+                    #   .../build-publish.yml@<40-hex sha>
+                    # The pre-c7205639 regexp ended in
+                    #   @refs/(heads/main|tags/v[0-9].*)$
+                    # and would refuse those pods ("no matching signatures").
+                    # End it in, for example:
+                    #   @(refs/(heads/main|tags/v[0-9].*)|[0-9a-f]{40})$
+                    # The matching rule is the "Resolve trusted signer
+                    # identity" pin-job self-check in build-publish.yml.
+                    # See docs/infrastructure/KYVERNO_POLICIES.md.
                     rekor:
                       url: https://rekor.sigstore.dev
 ---
