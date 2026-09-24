@@ -5,66 +5,45 @@ Display information about the currently authenticated user.
 ## Synopsis
 
 ```bash
-enclii whoami [flags]
+enclii [--profile NAME] whoami
 ```
 
 ## Description
 
-The `whoami` command displays details about the currently authenticated user, including their email, user ID, and team memberships. Useful for verifying authentication and debugging access issues.
+The `whoami` command shows which identity the active profile is logged in as:
+the profile name, then the email, name and user ID from the stored access
+token, the issuer and the token's expiry. Use it to confirm which account a
+command will act as before running anything privileged.
 
 > **Output goes to stderr.** `whoami`, `login`, and `logout` report through
 > cobra's `cmd.Println`, which writes to `OutOrStderr()`, and the CLI never
 > calls `SetOut`. So `enclii whoami > /tmp/who` captures an **empty file** and
-> reads as "not logged in". Capture with `enclii whoami 2>&1`, or use
-> `-o json`.
-
-## Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--output`, `-o` | string | `table` | Output format: `table`, `json`, `yaml` |
+> reads as "not logged in". Capture with `enclii whoami 2>&1`.
 
 ## Examples
 
-### Basic Usage
 ```bash
 enclii whoami
+enclii --profile admin whoami
 ```
 
 **Output:**
-```
-Email:    developer@example.com
-User ID:  usr_abc123def456
-Teams:    acme-corp (admin), side-project (member)
-Expires:  2025-01-12T15:30:00Z
-```
 
-### JSON Output
-```bash
-enclii whoami -o json
-```
+```text
+👤 Currently logged in as:
 
-**Output:**
-```json
-{
-  "email": "developer@example.com",
-  "user_id": "usr_abc123def456",
-  "teams": [
-    {"name": "acme-corp", "role": "admin"},
-    {"name": "side-project", "role": "member"}
-  ],
-  "token_expires_at": "2025-01-12T15:30:00Z"
-}
+   Profile: admin
+   Email: admin@madfam.io
+   ID:    <user id>
+   Issuer: https://auth.madfam.io
+   Expires: 2026-09-24T01:13:34-06:00
 ```
 
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Authenticated successfully |
-| `50` | Not authenticated or token expired |
+When the active profile has no login, it says so and names the command to run,
+for example `Not logged in on profile "admin". Run 'enclii --profile admin login' to authenticate.`
+The command exits `0` in both cases.
 
 ## See Also
 
-- [`enclii login`](./login.md) - Authenticate with Enclii
+- [`enclii login`](./login.md) - Authenticate, and hold several identities with profiles
 - [`enclii logout`](./logout.md) - Clear credentials

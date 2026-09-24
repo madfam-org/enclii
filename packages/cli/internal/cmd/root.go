@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/madfam-org/enclii/packages/cli/internal/config"
+	"github.com/madfam-org/enclii/packages/cli/internal/exitcodes"
 )
 
 func NewRootCommand(cfg *config.Config) *cobra.Command {
@@ -15,14 +16,24 @@ func NewRootCommand(cfg *config.Config) *cobra.Command {
 scale, and operate containerized services with guardrails.
 
 Learn more at https://enclii.dev`,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// A --profile switch reloads that profile's stored credentials
+			// first, so an explicit --api-token below still wins over them.
+			if cmd.Flags().Changed("profile") {
+				name, _ := cmd.Flags().GetString("profile")
+				if err := config.SetProfile(name); err != nil {
+					return &exitcodes.ValidationError{Err: err}
+				}
+				cfg.ReloadCredentials()
+			}
 			// Bind flags to viper and update config with flag values
 			if endpoint, _ := cmd.Flags().GetString("api-endpoint"); endpoint != "" {
 				cfg.APIEndpoint = endpoint
 			}
 			if token, _ := cmd.Flags().GetString("api-token"); token != "" {
-				cfg.APIToken = token
+				cfg.SetAPIToken(token)
 			}
+			return nil
 		},
 	}
 
@@ -30,6 +41,7 @@ Learn more at https://enclii.dev`,
 	rootCmd.PersistentFlags().String("api-endpoint", cfg.APIEndpoint, "API endpoint URL")
 	rootCmd.PersistentFlags().String("api-token", "", "API authentication token (or set ENCLII_API_TOKEN; legacy ENCLII_TOKEN is also accepted)")
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
+	rootCmd.PersistentFlags().String("profile", "", "Stored identity to use: each profile keeps its own login (or set ENCLII_PROFILE; default \"default\")")
 
 	// Bind flags to viper for environment variable support
 	_ = viper.BindPFlag("api-endpoint", rootCmd.PersistentFlags().Lookup("api-endpoint"))

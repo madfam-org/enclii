@@ -7,12 +7,52 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
+
+// DefaultProfile is the profile whose credentials live at
+// ~/.enclii/credentials.json, where they always have.
+const DefaultProfile = "default"
+
+var profileNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// activeProfile selects which stored identity the CLI reads and writes. Load
+// sets it from ENCLII_PROFILE; the root command's --profile flag overrides it.
+// Separate profiles let one operator hold several Janua identities (for
+// example an everyday account and admin@) without logging one out.
+var activeProfile = DefaultProfile
+
+// NormalizeProfile validates a profile name and maps "" to the default profile.
+func NormalizeProfile(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == DefaultProfile {
+		return DefaultProfile, nil
+	}
+	if !profileNamePattern.MatchString(name) {
+		return "", fmt.Errorf("invalid profile name %q: use lowercase letters, digits, '-' or '_' (max 64 characters)", name)
+	}
+	return name, nil
+}
+
+// SetProfile makes name the active profile for credential reads and writes.
+func SetProfile(name string) error {
+	normalized, err := NormalizeProfile(name)
+	if err != nil {
+		return err
+	}
+	activeProfile = normalized
+	return nil
+}
+
+// ActiveProfile returns the profile whose credentials are in use.
+func ActiveProfile() string {
+	return activeProfile
+}
 
 // Credentials stores OAuth tokens from login
 type Credentials struct {
@@ -31,8 +71,13 @@ type Config struct {
 	APIEndpoint string
 	APIToken    string
 
-	// OAuth Credentials (loaded from ~/.enclii/credentials.json)
+	// OAuth Credentials (loaded from the active profile's credentials file;
+	// see GetCredentialsPath)
 	Credentials *Credentials
+
+	// apiTokenExplicit records that APIToken came from the environment or a
+	// flag, so reloading a profile's credentials never overrides it.
+	apiTokenExplicit bool
 
 	// Project Configuration
 	Project    string
@@ -73,38 +118,63 @@ func Load() (*Config, error) {
 		apiToken = os.Getenv("ENCLII_TOKEN")
 	}
 
-	config := &Config{
-		Environment: viper.GetString("environment"),
-		LogLevel:    logLevel,
-		APIEndpoint: apiEndpoint,
-		APIToken:    apiToken,
-		Project:     viper.GetString("project"),
-		ProjectDir:  viper.GetString("project-dir"),
-		ConfigFile:  viper.GetString("config-file"),
+	// ENCLII_PROFILE picks the stored identity; unset means the default one.
+	if err := SetProfile(os.Getenv("ENCLII_PROFILE")); err != nil {
+		return nil, fmt.Errorf("ENCLII_PROFILE: %w", err)
 	}
 
-	// Load OAuth credentials if available
-	creds, err := loadCredentials()
-	if err == nil && creds != nil {
-		// If the access token is within the refresh window and we have a
-		// refresh token, swap in a fresh access token before the API
-		// rejects the old one. Failures here are non-fatal — fall back to
-		// whatever token we already have and let the API surface 401s.
-		if shouldRefresh(creds) && creds.RefreshToken != "" {
-			if refreshed, rerr := refreshAccessToken(creds); rerr == nil {
-				creds = refreshed
-				_ = saveCredentials(creds)
-			}
-		}
-		config.Credentials = creds
-		if config.APIToken == "" && creds.AccessToken != "" {
-			if time.Now().Before(creds.ExpiresAt) {
-				config.APIToken = creds.AccessToken
-			}
-		}
+	config := &Config{
+		Environment:      viper.GetString("environment"),
+		LogLevel:         logLevel,
+		APIEndpoint:      apiEndpoint,
+		APIToken:         apiToken,
+		apiTokenExplicit: apiToken != "",
+		Project:          viper.GetString("project"),
+		ProjectDir:       viper.GetString("project-dir"),
+		ConfigFile:       viper.GetString("config-file"),
 	}
+
+	config.ReloadCredentials()
 
 	return config, nil
+}
+
+// ReloadCredentials re-reads the active profile's stored OAuth credentials.
+// The root command calls it after --profile switches the active profile. An
+// API token given explicitly (flag or environment) keeps precedence.
+func (c *Config) ReloadCredentials() {
+	c.Credentials = nil
+	if !c.apiTokenExplicit {
+		c.APIToken = ""
+	}
+
+	creds, err := loadCredentials()
+	if err != nil || creds == nil {
+		return
+	}
+	// If the access token is within the refresh window and we have a
+	// refresh token, swap in a fresh access token before the API
+	// rejects the old one. Failures here are non-fatal — fall back to
+	// whatever token we already have and let the API surface 401s.
+	if shouldRefresh(creds) && creds.RefreshToken != "" {
+		if refreshed, rerr := refreshAccessToken(creds); rerr == nil {
+			creds = refreshed
+			_ = saveCredentials(creds)
+		}
+	}
+	c.Credentials = creds
+	if c.APIToken == "" && creds.AccessToken != "" {
+		if time.Now().Before(creds.ExpiresAt) {
+			c.APIToken = creds.AccessToken
+		}
+	}
+}
+
+// SetAPIToken sets an explicit API token (the --api-token flag). Like an
+// environment token, it wins over any profile's stored credentials.
+func (c *Config) SetAPIToken(token string) {
+	c.APIToken = token
+	c.apiTokenExplicit = token != ""
 }
 
 // refreshLeeway is how close to expiry we tolerate before doing a synchronous
@@ -180,9 +250,9 @@ func refreshAccessToken(creds *Credentials) (*Credentials, error) {
 	return out, nil
 }
 
-// saveCredentials persists Credentials to ~/.enclii/credentials.json with
-// 0600 permissions. Mirrors the writer in internal/cmd/login.go — kept here
-// so refreshAccessToken can update the file without an import cycle.
+// saveCredentials persists Credentials to the active profile's credentials
+// file with 0600 permissions. Mirrors the writer in internal/cmd/login.go —
+// kept here so refreshAccessToken can update the file without an import cycle.
 func saveCredentials(creds *Credentials) error {
 	if creds == nil {
 		return fmt.Errorf("nil credentials")
@@ -198,15 +268,13 @@ func saveCredentials(creds *Credentials) error {
 	return os.WriteFile(credsPath, data, 0600)
 }
 
-// loadCredentials loads saved OAuth credentials from disk
+// loadCredentials loads the active profile's saved OAuth credentials from disk
 func loadCredentials() (*Credentials, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	if _, err := os.UserHomeDir(); err != nil {
 		return nil, err
 	}
 
-	credsPath := filepath.Join(home, ".enclii", "credentials.json")
-	data, err := os.ReadFile(credsPath)
+	data, err := os.ReadFile(GetCredentialsPath())
 	if err != nil {
 		return nil, err
 	}
@@ -219,8 +287,13 @@ func loadCredentials() (*Credentials, error) {
 	return &creds, nil
 }
 
-// GetCredentialsPath returns the path to the credentials file
+// GetCredentialsPath returns the active profile's credentials file:
+// ~/.enclii/credentials.json for the default profile, and
+// ~/.enclii/profiles/<name>/credentials.json for any other profile.
 func GetCredentialsPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".enclii", "credentials.json")
+	if activeProfile == "" || activeProfile == DefaultProfile {
+		return filepath.Join(home, ".enclii", "credentials.json")
+	}
+	return filepath.Join(home, ".enclii", "profiles", activeProfile, "credentials.json")
 }

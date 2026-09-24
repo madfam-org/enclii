@@ -5,45 +5,29 @@ Clear local authentication credentials.
 ## Synopsis
 
 ```bash
-enclii logout [flags]
+enclii [--profile NAME] logout
 ```
 
 ## Description
 
-The `logout` command removes stored authentication tokens from the local configuration file. This does not revoke the token server-side; use the web dashboard for token revocation.
+The `logout` command deletes the active profile's stored credentials file
+(access token, refresh token and expiry). Other profiles keep their logins.
 
-## Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--all` | bool | `false` | Also clear project-specific tokens |
+It does not revoke the token server-side, and it does not end your Janua
+browser session; sign out in the browser, or revoke tokens from the web
+dashboard, for that.
 
 ## Examples
 
-### Standard Logout
 ```bash
-enclii logout
-# Output: Successfully logged out
+enclii logout                   # the default profile (~/.enclii/credentials.json)
+enclii --profile admin logout   # only the "admin" profile
 ```
 
-### Clear All Tokens
-```bash
-enclii logout --all
-# Clears main token and any project-specific API tokens
-```
+## What remains
 
-## What Gets Cleared
-
-- Access token
-- Refresh token
-- Token expiration data
-- Cached user information
-
-## What Remains
-
-- API URL configuration
-- Default project/environment settings
-- Output format preferences
+- Every other profile's login
+- API endpoint and other settings (environment variables, `~/.enclii/config.yml`)
 
 ## See Also
 

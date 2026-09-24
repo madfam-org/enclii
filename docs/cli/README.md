@@ -183,6 +183,7 @@ These flags are available for all commands:
 | `--api-endpoint` | API endpoint URL (default `https://api.enclii.dev`) |
 | `--api-token` | Authentication token (overrides stored credentials) |
 | `--log-level` | Log level: `debug`, `info`, `warn`, `error` |
+| `--profile` | Stored identity to use; each profile keeps its own login (default `default`, or `ENCLII_PROFILE`). See [`login`](commands/login.md#several-identities-profiles-and-account-switching) |
 | `--help`, `-h` | Show help for any command |
 
 Most read subcommands across the CLI accept a `--json` flag for stable, machine-readable output. Most mutating subcommands accept `--force` to skip confirmation prompts. The `ops` and `providers` replacement-layer commands are plan-first: mutations require `--apply --reason "..."`; without `--apply`, they request a dry-run plan.
@@ -195,6 +196,8 @@ Most read subcommands across the CLI accept a `--json` flag for stable, machine-
 | `ENCLII_API_TOKEN` | Authentication token (alternative to `enclii login`) |
 | `ENCLII_OIDC_ISSUER` | OIDC issuer URL for self-hosted deployments (default: `https://auth.madfam.io`) |
 | `ENCLII_OIDC_CLIENT_ID` | OIDC client ID for self-hosted deployments |
+| `ENCLII_PROFILE` | Stored identity to use, like `--profile` (for example `admin`) |
+| `ENCLII_BROWSER` | Command that opens login URLs, for example `open -na "Google Chrome" --args --incognito` |
 | `ENCLII_VAULT_ADDR` / `VAULT_ADDR` | Override Vault address for `enclii vault status` |
 | `ENCLII_PROJECT` | Default project slug |
 | `ENCLII_ENVIRONMENT` | Default environment |

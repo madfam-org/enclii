@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -8,11 +9,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/madfam-org/enclii/packages/cli/internal/config"
 )
 
 func TestGenerateCodeVerifier(t *testing.T) {
@@ -92,7 +96,7 @@ func TestBuildAuthURL(t *testing.T) {
 	codeChallenge := "challenge-value"
 	clientID := "test-client-id"
 
-	result := buildAuthURL(issuer, redirectURI, state, codeChallenge, clientID)
+	result := buildAuthURL(issuer, redirectURI, state, codeChallenge, clientID, "")
 
 	// Should start with issuer + authorizePath
 	assert.Contains(t, result, issuer+authorizePath)
@@ -107,6 +111,9 @@ func TestBuildAuthURL(t *testing.T) {
 
 	// Verify the scope value contains expected scopes
 	assert.Contains(t, result, "openid")
+
+	// Without --prompt the browser session answers silently: no prompt param
+	assert.NotContains(t, result, "prompt=")
 }
 
 func TestBuildAuthURL_EncodesParams(t *testing.T) {
@@ -116,7 +123,7 @@ func TestBuildAuthURL_EncodesParams(t *testing.T) {
 	codeChallenge := "challenge+special"
 	clientID := "client/id"
 
-	result := buildAuthURL(issuer, redirectURI, state, codeChallenge, clientID)
+	result := buildAuthURL(issuer, redirectURI, state, codeChallenge, clientID, "")
 
 	// url.Values.Encode() should handle URL encoding
 	// Spaces become + in query string encoding
@@ -340,4 +347,81 @@ func TestGetDefaultIssuer(t *testing.T) {
 	os.Setenv("ENCLII_OIDC_ISSUER", "https://auth.custom.dev")
 	issuer = getDefaultIssuer()
 	assert.Equal(t, "https://auth.custom.dev", issuer)
+}
+
+func TestBuildAuthURL_Prompt(t *testing.T) {
+	for _, prompt := range []string{"select_account", "login"} {
+		result := buildAuthURL("https://auth.example.com", "http://127.0.0.1:8080/callback", "s", "c", "client", prompt)
+		assert.Contains(t, result, "prompt="+prompt)
+	}
+}
+
+func TestValidateLoginPrompt(t *testing.T) {
+	for _, ok := range []string{"", "select_account", "login"} {
+		assert.NoError(t, validateLoginPrompt(ok), ok)
+	}
+	for _, bad := range []string{"none", "consent", "LOGIN", "select account"} {
+		assert.Error(t, validateLoginPrompt(bad), bad)
+	}
+}
+
+func TestGetCredentialsPath_FollowsProfile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Cleanup(func() { _ = config.SetProfile("") })
+
+	require.NoError(t, config.SetProfile(""))
+	assert.Equal(t, filepath.Join(os.Getenv("HOME"), ".enclii", "credentials.json"), getCredentialsPath())
+
+	require.NoError(t, config.SetProfile("admin"))
+	assert.Equal(t, filepath.Join(os.Getenv("HOME"), ".enclii", "profiles", "admin", "credentials.json"), getCredentialsPath())
+}
+
+func TestSaveAndLoadCredentials_ProfilesAreIsolated(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Cleanup(func() { _ = config.SetProfile("") })
+
+	require.NoError(t, config.SetProfile(""))
+	require.NoError(t, saveCredentials(&Credentials{AccessToken: "everyday-token", TokenType: "Bearer", ExpiresAt: time.Now().Add(time.Hour)}))
+	require.NoError(t, config.SetProfile("admin"))
+	require.NoError(t, saveCredentials(&Credentials{AccessToken: "admin-token", TokenType: "Bearer", ExpiresAt: time.Now().Add(time.Hour)}))
+
+	admin, err := LoadCredentials()
+	require.NoError(t, err)
+	assert.Equal(t, "admin-token", admin.AccessToken)
+
+	require.NoError(t, config.SetProfile(""))
+	everyday, err := LoadCredentials()
+	require.NoError(t, err)
+	assert.Equal(t, "everyday-token", everyday.AccessToken, "logging in on a profile must not replace the default login")
+}
+
+func TestBrowserCommand_EncliiBrowserPassesURLAsArgument(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ENCLII_BROWSER is not used on Windows")
+	}
+	t.Setenv("ENCLII_BROWSER", `open -na "Google Chrome" --args --incognito`)
+	target := "https://auth.example.com/authorize?a=1&b=$(whoami)"
+
+	cmd, err := browserCommand(target)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/bin/sh", "-c", `open -na "Google Chrome" --args --incognito "$1"`, "enclii-browser", target}, cmd.Args)
+}
+
+func TestBrowserCommand_EncliiBrowserRunsWithURL(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ENCLII_BROWSER is not used on Windows")
+	}
+	dir := t.TempDir()
+	t.Setenv("ENCLII_BROWSER", "printf '%s'")
+	target := "https://auth.example.com/authorize?x=1&y=$(touch pwned)"
+
+	cmd, err := browserCommand(target)
+	require.NoError(t, err)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Dir = dir
+	require.NoError(t, cmd.Run())
+	assert.Equal(t, target, out.String(), "the URL reaches the opener verbatim")
+	_, statErr := os.Stat(filepath.Join(dir, "pwned"))
+	assert.True(t, os.IsNotExist(statErr), "the URL is never shell-expanded")
 }
