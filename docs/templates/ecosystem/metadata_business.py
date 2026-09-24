@@ -77,7 +77,13 @@ REPOS = {
             '`WORKER_HEALTH_PORT` — worker health endpoint, default `3001`',
         ],
         'service_name_for_ops': 'phynd-crm-api',
-        'production_truth': 'Latest repository and production evidence is recorded in\n[`docs/CODEBASE_AND_PROD_EVIDENCE_2026-05-27.md`](docs/CODEBASE_AND_PROD_EVIDENCE_2026-05-27.md).\n\n**Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md) · **Remediation plan:**\n[`docs/MADFAM_TRUTH_LAYER_REMEDIATION.md`](docs/MADFAM_TRUTH_LAYER_REMEDIATION.md)',
+        'production_truth': (
+            'Latest repository and production evidence is recorded in\n'
+            '[`docs/CODEBASE_AND_PROD_EVIDENCE_2026-05-27.md`](docs/CODEBASE_AND_PROD_EVIDENCE_2026-05-27.md).\n'
+            '\n'
+            '**Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md) · **Remediation plan:**\n'
+            '[`docs/MADFAM_TRUTH_LAYER_REMEDIATION.md`](docs/MADFAM_TRUTH_LAYER_REMEDIATION.md)'
+        ),
     },
     'symbiosis-hcm': {
         'tagline': 'Hybrid human-AI Human Capital Management platform — Mexican payroll + multi-agent systems.',

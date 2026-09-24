@@ -4,6 +4,9 @@ Consumed by the ECOSYSTEM.md generator. See `metadata/__init__.py` for
 the aggregated `REPOS_FULL` dict and `generator.py` for render logic.
 """
 
+# The shared Auth convention line that per-repo overrides extend.
+_AUTH_TAIL = "  an app's own session cookie needs its own secret."  # pragma: allowlist secret
+
 REPOS = {
     'selva-office': {
         'tagline': 'Selva — gamified multi-agent business orchestration + OpenAI-compatible LLM inference routing.',
@@ -43,8 +46,45 @@ REPOS = {
             'ENCLII_API_URL — HITL budget gate callback',
         ],
         'service_name_for_ops': 'selva-nexus-api',
-        'production_truth': '> See [docs/PORTS.md](docs/PORTS.md) for canonical port assignments.\n\nNamespaces: `selva` (production) / `selva-staging` (staging) in source. Live cutover from the prior operational namespaces is sequenced through ArgoCD to avoid pruning healthy workloads.',
-        'boilerplate_overrides': [{'find': "  an app's own session cookie needs its own secret.", 'replace': "  an app's own session cookie needs its own secret.\n  `https://auth.madfam.io`\n  is the single canonical Janua URL and OIDC issuer for **all** Selva\n  surfaces (office-ui, admin, nexus-api) across prod and staging. Janua is\n  single-issuer per deployment (`JANUA_CUSTOM_DOMAIN=auth.madfam.io`; its\n  `/.well-known/openid-configuration` returns `issuer: https://auth.madfam.io`\n  and is not Host-aware), so every `JANUA_ISSUER_URL` /\n  `NEXT_PUBLIC_JANUA_ISSUER_URL` value MUST be `https://auth.madfam.io` for\n  discovery + token `iss` validation to pass. Do NOT introduce a\n  `auth.selva.town` alias — it has no DNS/tunnel and would break OIDC issuer\n  matching even if it did.", 'why': 'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Single-issuer Janua contract for every Selva surface.'}, {'find': '  (`selva-office`) at `/v1` (OpenAI-compatible). Do not talk directly\n  to OpenAI / Anthropic from service code.', 'replace': '  (`selva-office`, served at `api.selva.town/v1`, OpenAI-compatible). Do not\n  talk directly to OpenAI / Anthropic from service code.', 'why': 'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Names the public inference host.'}],
+        'production_truth': (
+            '> See [docs/PORTS.md](docs/PORTS.md) for canonical port assignments.\n'
+            '\n'
+            'Namespaces: `selva` (production) / `selva-staging` (staging) in source. Live cutover from the prior operational namespaces is sequenced through ArgoCD to avoid pruning healthy workloads.'
+        ),
+        'boilerplate_overrides': [
+            {
+                'find': _AUTH_TAIL,
+                'replace': (
+                    "  an app's own session cookie needs its own secret.\n"
+                    '  `https://auth.madfam.io`\n'
+                    '  is the single canonical Janua URL and OIDC issuer for **all** Selva\n'
+                    '  surfaces (office-ui, admin, nexus-api) across prod and staging. Janua is\n'
+                    '  single-issuer per deployment (`JANUA_CUSTOM_DOMAIN=auth.madfam.io`; its\n'
+                    '  `/.well-known/openid-configuration` returns `issuer: https://auth.madfam.io`\n'
+                    '  and is not Host-aware), so every `JANUA_ISSUER_URL` /\n'
+                    '  `NEXT_PUBLIC_JANUA_ISSUER_URL` value MUST be `https://auth.madfam.io` for\n'
+                    '  discovery + token `iss` validation to pass. Do NOT introduce a\n'
+                    '  `auth.selva.town` alias — it has no DNS/tunnel and would break OIDC issuer\n'
+                    '  matching even if it did.'
+                ),
+                'why': (
+                    'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Single-issuer Janua contract for every Selva surface.'
+                ),
+            },
+            {
+                'find': (
+                    '  (`selva-office`) at `/v1` (OpenAI-compatible). Do not talk directly\n'
+                    '  to OpenAI / Anthropic from service code.'
+                ),
+                'replace': (
+                    '  (`selva-office`, served at `api.selva.town/v1`, OpenAI-compatible). Do not\n'
+                    '  talk directly to OpenAI / Anthropic from service code.'
+                ),
+                'why': (
+                    'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Names the public inference host.'
+                ),
+            },
+        ],
     },
     'fortuna': {
         'tagline': 'Problem intelligence + zeitgeist engine — evidence-linked discovery of real customer problems.',

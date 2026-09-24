@@ -4,6 +4,9 @@ Consumed by the ECOSYSTEM.md generator. See `metadata/__init__.py` for
 the aggregated `REPOS_FULL` dict and `generator.py` for render logic.
 """
 
+# The shared Auth convention line that per-repo overrides extend.
+_AUTH_TAIL = "  an app's own session cookie needs its own secret."  # pragma: allowlist secret
+
 REPOS = {
     'madfam-site': {
         'tagline': 'Official MADFAM corporate website — madfam.io + cms.madfam.io.',
@@ -131,8 +134,34 @@ REPOS = {
             'CORS_ALLOWED_ORIGINS — explicit allowlist',
         ],
         'service_name_for_ops': 'bloom-scroll-web',
-        'production_truth': '### Production observations — 2026-05-28\n\nEvidence-backed current state is maintained in `docs/CURRENT_STATE.md`.\n\n- `https://almanac.solar` returned HTTP 200.\n- `https://api.almanac.solar/health` returned HTTP 200 with database OK, 8 embeddings indexed, and 8 cards.\n- `scripts/prod-smoke.sh` passed against production after the `argocd-6aa4ae5` rollout, including hidden `/docs` and `/openapi.json` checks on `api.almanac.solar`.\n- `https://almanac.solar/main.dart.js` contains the correct baked API base, `https://api.almanac.solar/api/v1`.\n- The same JS bundle also contains `localhost:8000` inside connection-help text, so the repo narrows the status assertion to the exact leaked default API base (`http://localhost:8000/api/v1`).\n- Enclii-first production observation requires explicit project context from this checkout, for example `ENCLII_PROJECT=bloom-scroll enclii ps --env production`.\n- `ENCLII_PROJECT=bloom-scroll enclii ops apps status bloom-scroll-services --json` reported Argo health `Healthy` and sync `Synced` at revision `6aa4ae551fe9287d2d49210791fc69068266b67c`; `enclii ops apps diff` reported drift count `0`.\n- `ENCLII_PROJECT=bloom-scroll enclii observe health --service ... --json` reported both `bloom-scroll-api` and `bloom-scroll-web` healthy. The released Enclii CLI `v1.0.0-alpha.1` reported both services running, healthy, `2/2`, on `argocd-6aa4ae5`.\n- The shared Enclii build/publish workflow was patched in `madfam-org/enclii@0a72ed7`, and the in-repo Enclii CI digest verifier in `madfam-org/enclii@f919192`, to authenticate to GHCR during digest-pin cosign verification for private packages. `madfam-org/enclii@b763d92` added GitHub Release artifacts for CLI distribution.',
-        'boilerplate_overrides': [{'find': "  an app's own session cookie needs its own secret.", 'replace': "  an app's own session cookie needs its own secret.\n  Bloom Scroll keeps HS algorithms only as an explicit local development\n  fallback when configured; RS256 is the production contract.", 'why': 'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Bloom Scroll documents its local-development HS fallback here.'}],
+        'production_truth': (
+            '### Production observations — 2026-05-28\n'
+            '\n'
+            'Evidence-backed current state is maintained in `docs/CURRENT_STATE.md`.\n'
+            '\n'
+            '- `https://almanac.solar` returned HTTP 200.\n'
+            '- `https://api.almanac.solar/health` returned HTTP 200 with database OK, 8 embeddings indexed, and 8 cards.\n'
+            '- `scripts/prod-smoke.sh` passed against production after the `argocd-6aa4ae5` rollout, including hidden `/docs` and `/openapi.json` checks on `api.almanac.solar`.\n'
+            '- `https://almanac.solar/main.dart.js` contains the correct baked API base, `https://api.almanac.solar/api/v1`.\n'
+            '- The same JS bundle also contains `localhost:8000` inside connection-help text, so the repo narrows the status assertion to the exact leaked default API base (`http://localhost:8000/api/v1`).\n'
+            '- Enclii-first production observation requires explicit project context from this checkout, for example `ENCLII_PROJECT=bloom-scroll enclii ps --env production`.\n'
+            '- `ENCLII_PROJECT=bloom-scroll enclii ops apps status bloom-scroll-services --json` reported Argo health `Healthy` and sync `Synced` at revision `6aa4ae551fe9287d2d49210791fc69068266b67c`; `enclii ops apps diff` reported drift count `0`.\n'
+            '- `ENCLII_PROJECT=bloom-scroll enclii observe health --service ... --json` reported both `bloom-scroll-api` and `bloom-scroll-web` healthy. The released Enclii CLI `v1.0.0-alpha.1` reported both services running, healthy, `2/2`, on `argocd-6aa4ae5`.\n'
+            '- The shared Enclii build/publish workflow was patched in `madfam-org/enclii@0a72ed7`, and the in-repo Enclii CI digest verifier in `madfam-org/enclii@f919192`, to authenticate to GHCR during digest-pin cosign verification for private packages. `madfam-org/enclii@b763d92` added GitHub Release artifacts for CLI distribution.'
+        ),
+        'boilerplate_overrides': [
+            {
+                'find': _AUTH_TAIL,
+                'replace': (
+                    "  an app's own session cookie needs its own secret.\n"
+                    '  Bloom Scroll keeps HS algorithms only as an explicit local development\n'
+                    '  fallback when configured; RS256 is the production contract.'
+                ),
+                'why': (
+                    'Carried over from the hand-curated fleet copy (2026-09-23 re-render, R39). Bloom Scroll documents its local-development HS fallback here.'
+                ),
+            },
+        ],
     },
     'coforma-studio': {
         'tagline': 'Multi-tenant Customer Advisory Board (CAB) platform — "Advisory-as-a-Service".',
@@ -164,7 +193,11 @@ REPOS = {
             'SELVA_BASE_URL — LLM routing',
         ],
         'service_name_for_ops': 'coforma-studio-api',
-        'sensitivity_banner': '> [!IMPORTANT]\n> Coforma is a customer-advisory and sentiment surface that can feed Tulana PMF and ecosystem go-to-market decisions. Treat tenant/customer records, CAB feedback, integration payloads, billing state, and exported artifacts as sensitive customer/business data.\n> Live deploys, DB changes, exports/imports, webhook delivery, integration sync, package publishing, and billing operations require explicit operator intent plus `LOCAL_SERVICES`, `LOCAL_DB`, `LOCAL_DESTRUCTIVE`, `LOCAL_CUSTOMER_DATA_OPS`, or `LOCAL_PRODUCTION_OPS` as applicable.',
+        'sensitivity_banner': (
+            '> [!IMPORTANT]\n'
+            '> Coforma is a customer-advisory and sentiment surface that can feed Tulana PMF and ecosystem go-to-market decisions. Treat tenant/customer records, CAB feedback, integration payloads, billing state, and exported artifacts as sensitive customer/business data.\n'
+            '> Live deploys, DB changes, exports/imports, webhook delivery, integration sync, package publishing, and billing operations require explicit operator intent plus `LOCAL_SERVICES`, `LOCAL_DB`, `LOCAL_DESTRUCTIVE`, `LOCAL_CUSTOMER_DATA_OPS`, or `LOCAL_PRODUCTION_OPS` as applicable.'
+        ),
     },
     'stratum-tcg': {
         'tagline': 'STRATUM: The Fab Wars — hybrid TCG / Eurogame simulating the fabrication economy.',
