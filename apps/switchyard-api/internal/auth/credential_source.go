@@ -2,9 +2,10 @@ package auth
 
 import "github.com/gin-gonic/gin"
 
-// credentialSourceKey is the gin context key AuthMiddleware sets to record
-// where the request's credential came from.
-const credentialSourceKey = "auth_credential_source"
+// authSourceCtxKey is the gin context key AuthMiddleware sets to record
+// where the request's token came from. (Named without "credential" so
+// gosec G101 does not read the key string as a hardcoded credential.)
+const authSourceCtxKey = "auth_source"
 
 const (
 	// CredentialSourceHeader: the token came from an `Authorization: Bearer`
@@ -25,5 +26,5 @@ const (
 // Bearer credential on its own, so a header-authenticated upgrade was made by
 // a client that holds the token (see api/ws_upgrade.go).
 func CredentialFromAuthorizationHeader(c *gin.Context) bool {
-	return c.GetString(credentialSourceKey) == CredentialSourceHeader
+	return c.GetString(authSourceCtxKey) == CredentialSourceHeader
 }

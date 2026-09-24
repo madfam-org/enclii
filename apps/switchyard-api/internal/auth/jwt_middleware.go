@@ -22,7 +22,7 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 			bearerToken := strings.Split(authHeader, " ")
 			if len(bearerToken) == 2 && bearerToken[0] == "Bearer" {
 				tokenString = bearerToken[1]
-				c.Set(credentialSourceKey, CredentialSourceHeader)
+				c.Set(authSourceCtxKey, CredentialSourceHeader)
 			}
 		}
 
@@ -30,7 +30,7 @@ func (j *JWTManager) AuthMiddleware() gin.HandlerFunc {
 		// WebSocket API doesn't support custom headers, so token is passed via query param
 		if tokenString == "" {
 			tokenString = c.Query("token")
-			c.Set(credentialSourceKey, CredentialSourceQuery)
+			c.Set(authSourceCtxKey, CredentialSourceQuery)
 		}
 
 		if tokenString == "" {
