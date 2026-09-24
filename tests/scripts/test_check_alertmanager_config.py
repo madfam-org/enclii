@@ -362,8 +362,10 @@ def _route_for(cfg: dict, alertname: str) -> tuple[int, dict]:
 def _first_severity_route_index(cfg: dict) -> int:
     routes = (cfg.get("route") or {}).get("routes") or []
     for i, route in enumerate(routes):
-        if "severity" in (route.get("match") or {}) or any(
-            "severity" in str(m) for m in route.get("matchers") or []
+        sev = (route.get("match") or {}).get("severity")
+        if sev in ("critical", "warning") or any(
+            str(m).startswith(("severity=\"critical", "severity=\"warning"))
+            for m in route.get("matchers") or []
         ):
             return i
     return len(routes)
@@ -395,6 +397,41 @@ def test_email_failure_is_routed_to_courier_only():
     assert len(hooks) == 1 and hooks[0]["url"] == COURIER_WEBHOOK_URL
     auth = hooks[0]["http_config"]["authorization"]
     assert auth["credentials_file"] == COURIER_CREDENTIALS_FILE
+
+
+def test_critical_route_keeps_paging_within_the_email_budget():
+    """Every critical still pages, and the timings stay inside Gmail's cap.
+
+    The route timings were set by replaying real ALERTS against the ~500/day
+    consumer cap (see the note above `route:`). Loosening them silently puts
+    the fallback back over the cap; dropping the critical route stops paging.
+    """
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    crit = [r for r in routes if (r.get("match") or {}).get("severity") == "critical"]
+    assert len(crit) == 1, "exactly one severity=critical route expected"
+    crit = crit[0]
+    assert crit["receiver"] == "critical-receiver"
+    assert crit.get("group_by") == ["alertname"]
+    assert crit.get("repeat_interval") == "4h"
+    assert crit.get("group_interval") == "15m"
+    warn = [r for r in routes if (r.get("match") or {}).get("severity") == "warning"]
+    assert len(warn) == 1 and warn[0].get("group_by") == ["severity"], (
+        "warnings are one digest group; per-alertname warning groups churn"
+    )
+
+
+def test_informational_severities_go_to_a_sink():
+    cfg = _live_alertmanager_config()
+    routes = (cfg.get("route") or {}).get("routes") or []
+    idx = next(
+        i for i, r in enumerate(routes)
+        if any('severity=~"info|none"' in str(m) for m in r.get("matchers") or [])
+    )
+    assert idx < _first_severity_route_index(cfg)
+    by_name = {r.get("name"): r for r in (cfg.get("receivers") or [])}
+    recv = by_name[routes[idx]["receiver"]]
+    assert [k for k in recv if k.endswith("_configs")] == []
 
 
 def test_watchdog_is_routed_to_a_sink_above_the_severity_routes():

@@ -1808,6 +1808,14 @@ data:
           - alert: MainCIFailingForTooLong
             expr: repo_main_blocked_seconds > 1800
             for: 0m
+            # The metric drops to 0 while a new main run is in flight and
+            # jumps back when it fails again. On 2026-09-24 that made 12
+            # series fire 173 separate times in 18.6h (enclii's alone dropped
+            # below threshold 43 times), and each re-fire re-paged: about 234
+            # emails a day from this rule by itself. Holding the alert 1h past
+            # a drop absorbs an in-flight run without hiding a real fix: a
+            # repo that stays green resolves 1h later.
+            keep_firing_for: 1h
             labels:
               severity: critical
               category: deploy-pipeline
