@@ -36,7 +36,7 @@ The command calls Vault's `/v1/sys/health` endpoint and reports:
 - Standby state (for HA Vault)
 - Server version
 
-If Vault is not yet initialized, the command prints a hint pointing at the bootstrap runbook and exits non-zero.
+It then prints a next-step hint: the bootstrap runbook when Vault is not initialized, the unseal procedure when it is sealed, or "Vault is initialized and unsealed". If Vault cannot be reached, it prints `Vault: unreachable at <addr>` with a port-forward hint. All of these states exit `0`: `vault status` reports state, it does not gate on it. Check `Initialized`/`Sealed` (or the `--json` fields) in scripts.
 
 ## Examples
 
@@ -46,14 +46,18 @@ If Vault is not yet initialized, the command prints a hint pointing at the boots
 enclii vault status
 ```
 
-**Output:**
+**Output** (field layout; values depend on your cluster):
 ```
-Vault status
-  Initialized: true
-  Sealed:      false
-  Standby:     false
-  Version:     1.16.2
+Vault address:  <addr>
+Version:        <vault version>
+Initialized:    true
+Sealed:         false
+Standby:        false
+
+Status: Vault is initialized and unsealed.
 ```
+
+A `Cluster name:` line is added when Vault reports one.
 
 ### JSON output for monitoring
 
@@ -79,9 +83,8 @@ The `--addr` flag is also honoured via the `ENCLII_VAULT_ADDR` and `VAULT_ADDR` 
 
 | Code | Meaning |
 |------|---------|
-| `0` | Vault is initialized and reachable |
-| `2` | Vault is unreachable or not yet initialized |
-| `50` | Authentication error against the Enclii API (when running through `--api-endpoint`) |
+| `0` | Status reported, whatever the state: initialized, not initialized, sealed, or unreachable |
+| `1` | The health response could not be read, or an invalid flag was passed |
 
 ## See Also
 

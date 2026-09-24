@@ -163,8 +163,8 @@ enclii billing budgets delete bdg_abc123 --project my-api --force
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing project/amount, invalid period) |
-| `50` | Authentication error |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
+| `10` | Validation error (missing `--project`, non-positive `--amount`, nothing to update, missing `--force`) |
 
 ## See Also
 

@@ -84,8 +84,9 @@ enclii canary rollback rol_abc123 --service my-api --reason "error rate spiked >
 ### Start a canary deploy and watch it
 
 ```bash
-enclii deploy --service my-api --env production --canary 10
-# (rollout id is printed on stdout)
+# run from the service's directory: deploy reads ./service.yaml (or --file)
+enclii deploy --env prod --canary 10 --change-ticket https://tracker.example.com/CHG-1234
+# prints "Canary rollout started: <rollout_id> ..." and tails the rollout
 enclii canary status <rollout_id> --service my-api -f
 ```
 
@@ -101,9 +102,8 @@ enclii canary status <rollout_id> --service my-api -f
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing service or rollout ID) |
-| `30` | Rollout terminal state reached with failure (only when `--follow` is used) |
-| `50` | Authentication error |
+| `1` | Any other error, including a missing `--service`, an unknown rollout, API errors, or an expired/invalid API token |
+| `30` | The promote or rollback request was rejected by the API |
 
 ## See Also
 

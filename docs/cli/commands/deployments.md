@@ -158,8 +158,8 @@ enclii deployments list --json --limit 200 | \
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing `--service`, non-positive `--version`) |
-| `50` | Authentication error |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
+| `10` | Validation error (missing `--service` for `latest`/`by-version`, non-positive `--version`) |
 
 ## See Also
 

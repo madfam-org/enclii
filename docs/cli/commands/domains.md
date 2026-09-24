@@ -228,9 +228,7 @@ enclii domains status
 | Code | Meaning |
 |------|---------|
 | `0` | Command successful |
-| `10` | Validation error (invalid domain, missing service) |
-| `30` | Operation failed (API error, domain not found) |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags, API errors (for example domain not found, or `403 Forbidden`), or an expired/invalid API token |
 
 ## `domains reconcile`
 
@@ -245,6 +243,8 @@ enclii domains reconcile nauta-web --domain crea-erp.madfam.io \
 ```
 
 Use this when a hostname was added to `enclii.yaml` and never became live.
+
+It takes the same flags as the `ops` form: `--apply`, `--reason` (required with `--apply`), `--domain`, `--ref`, `--idempotency-key`, `--json`, `--namespace`/`-n`, `--project`, and `--service`. Without `--apply` it only requests a dry-run plan.
 
 ## See Also
 

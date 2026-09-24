@@ -20,6 +20,7 @@ not get stuck on stale deployment-row values.
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--env`, `-e` | string | `dev` | Environment label shown in output |
+| `--project`, `-p` | string | | Project slug. Defaults to `ENCLII_PROJECT`, then the local `service.yaml`/`.enclii.yml`, then your only project. |
 
 ## Examples
 
@@ -35,10 +36,12 @@ api               running      healthy      2/2          argocd-abc1234 (abc1234
 web               running      healthy      2/2          argocd-def5678 (def5678)      5d 2h
 ```
 
-### Filter by Environment
+### List Services in Another Project
 ```bash
-enclii ps --env production
+enclii ps --project my-project
 ```
+
+`--env` only changes the environment label in the heading; the service list and health are not filtered by environment.
 
 ## Status Values
 

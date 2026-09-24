@@ -49,6 +49,8 @@ Add or update a single volume by name.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--service`, `-s` | string | | Service name |
+| `--file`, `-f` | string | `service.yaml` | Path to service.yaml |
 | `--name` | string | | Volume name (required) |
 | `--mount-path` | string | | Container mount path (required) |
 | `--size` | string | `10Gi` | Size (e.g. `10Gi`) |
@@ -57,7 +59,7 @@ Add or update a single volume by name.
 
 ### `volumes clear`
 
-Remove all volumes from the service (does not delete existing PVCs until next reconcile; use Enclii ops for break-glass PVC cleanup).
+Remove all volumes from the service (does not delete existing PVCs until next reconcile; use Enclii ops for break-glass PVC cleanup). Takes `--service`/`-s` and `--file`/`-f` like the other subcommands.
 
 ## Examples
 

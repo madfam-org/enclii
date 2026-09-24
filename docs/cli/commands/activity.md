@@ -118,8 +118,7 @@ enclii activity list --action deploy.failed --json --limit 100 | \
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
 
 ## See Also
 

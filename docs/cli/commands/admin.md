@@ -10,7 +10,7 @@ enclii admin <subcommand> [flags]
 
 ## Description
 
-The `admin` subtree exposes operator-only commands that mirror the **admin-console** web portal at `admin.enclii.dev`. **Most subcommands require admin role on the calling identity**; non-admin callers receive `403 Forbidden`.
+The `admin` subtree exposes operator-only commands that mirror the **admin-console** web portal at `admin.enclii.dev`. **These subcommands require the `platform_admin` rank (ADR-003), not the `admin` role.** The rank is held by principals an operator has named in the API's `ENCLII_PLATFORM_ADMIN_EMAILS` allow-list; it cannot be granted by a role claim or an API-token scope. A tenant administrator is scoped to its own tenant and is refused here with `403 Forbidden`.
 
 Subcommands are read-only by default; mutations require `--force` so they cannot be executed by accident in CI scripts that pass through every flag. Read subcommands accept `--json` for stable machine-readable output.
 
@@ -27,6 +27,9 @@ The tree:
 | `costs` | Inspect platform-level cost allocations and summaries |
 | `vclusters` | Manage virtual clusters (storage/infrastructure tab) |
 | `tenants` | Master-admin "acting as <tenant>" sessions (white-glove) |
+| `ga-verify` | GA Wave 0 verification (security and schema checks) |
+| `provision` | Provision operator-managed infrastructure (`provision secrets`) |
+| `status` | Operate the public status page source of truth (`status regenerate`) |
 
 ## Fleet
 
@@ -238,10 +241,34 @@ DB schema/migration 030, Longhorn CPU settings dry-run, detached volume prune
 plan, and `node-maintenance` CronJob presence. With `--stability`, adds Wave 1
 read-only checks (Argo drift, Vault readiness, policy violations). Requires admin API token.
 
+### `admin provision secrets`
+
+```bash
+enclii admin provision secrets --namespace <ns> --secrets-file <file> [--secret-name <name>] [--json] [--force]
+```
+
+Creates or updates a Kubernetes Secret through Enclii's audited provisioning API. The input file uses `KEY=VALUE` lines; values are sent to the API and are not printed by the CLI.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--namespace` | string | | Kubernetes namespace |
+| `--secret-name` | string | `<namespace>-credentials` | Kubernetes Secret name |
+| `--secrets-file` | string | | Path to a `KEY=VALUE` env file |
+| `--json` | bool | `false` | Emit machine-readable JSON |
+| `--force` | bool | `false` | Skip the confirmation prompt |
+
+### `admin status regenerate`
+
+```bash
+enclii admin status regenerate --force
+```
+
+Regenerates the public status page configmaps from the Enclii source of truth: core platform services plus every onboarded project's `enclii.yaml` `status.entries[]`. The Switchyard API commits any resulting diff to the Enclii repository for ArgoCD reconciliation. `--force` confirms the regeneration.
+
 ## Tenants (master-admin acting-as)
 
 These commands mirror the scope switcher in the web app. They let an
-operator with the `admin` role list every tenant on the platform, open
+operator holding the `platform_admin` rank list every tenant on the platform, open
 an "acting as <tenant>" session for a bounded window (default 4h, hard
 cap 24h), inspect the active session, and end it. Sessions are recorded
 in the `admin_acting_sessions` table and surfaced on `/audit` via
@@ -291,7 +318,7 @@ the cookie.
 
 ## Notes
 
-- The whole subtree assumes admin role; without it, every call fails fast with `403`.
+- The whole subtree assumes the `platform_admin` rank; without it, every call fails fast with `403`.
 - Mutating commands intentionally require `--force` even in interactive use, so a single command line shows the operator's full intent. `wipe` and `deregister`-class commands additionally prompt without `--force`.
 - For day-to-day non-admin work, prefer the consumer commands: [`enclii projects`](./projects.md), [`enclii teams`](./teams.md), [`enclii deployments`](./deployments.md).
 
@@ -300,8 +327,8 @@ the cookie.
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing required flag, missing `--force`, invalid state) |
-| `50` | Authentication error (including `403 Forbidden` for non-admin callers) |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden` for non-admin callers), or an expired/invalid API token |
+| `10` | Validation error (missing required flag, missing `--force`, invalid `--state`) |
 
 ## See Also
 

@@ -211,8 +211,7 @@ enclii teams members-remove platform usr_a3b4c5 --force
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing required flag, invalid role) |
-| `50` | Authentication error |
+| `1` | Any error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
 
 ## See Also
 

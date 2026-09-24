@@ -2,353 +2,171 @@
 title: Authentication
 description: Authentication patterns for the Enclii TypeScript SDK
 sidebar_position: 2
-tags: [sdk, typescript, authentication, api-key, oauth]
+tags: [sdk, typescript, authentication, api-token, oauth]
 ---
 
 # SDK Authentication
 
-The Enclii TypeScript SDK supports multiple authentication methods for different use cases.
+The Enclii TypeScript SDK (`@madfam/enclii-sdk`) authenticates every request with a bearer token. There is one option, `token`, and it sends `Authorization: Bearer <token>`. The SDK has no separate "API key" concept, no `apiKey`/`accessToken`/`tokenProvider` options, and no `apiKeys` resource. It also does not read credentials from environment variables on its own: pass the token explicitly.
 
-## Authentication Methods
+## What the `token` option accepts
 
-| Method | Use Case | Security Level |
-|--------|----------|----------------|
-| API Key | CI/CD, automation | High |
-| Access Token | User sessions | High |
-| Token Provider | Custom auth flows | High |
+| Value | Behaviour |
+|-------|-----------|
+| A string | Static token, sent on every request |
+| An async function `() => Promise<string \| null \| undefined>` | Called before **every** request; return `null`/`undefined` to send no header. The SDK does not cache the value, so the function owns any caching. |
+| An `AuthStrategy` object (`{ getToken(): Promise<string \| null \| undefined> }`) | Used as is |
+| `null` or omitted | Anonymous: no `Authorization` header (health endpoints only) |
 
-## API Key Authentication
+`baseUrl` is required and must include the `/v1` prefix; the client does not append it.
 
-Best for server-side applications and CI/CD pipelines.
+## Which tokens the API accepts
 
-### Creating an API Key
+The Enclii API accepts two kinds of bearer token, and the SDK sends both the same way:
+
+| Token | Where it comes from | Typical use |
+|-------|---------------------|-------------|
+| Personal API token (`enclii_…`) | [`enclii tokens create`](../../cli/commands/tokens.md) | CI/CD, scripts, server-side automation |
+| OIDC access token (a JWT) | Janua SSO, for example the token `enclii login` stores | User-facing apps acting as the signed-in user |
+
+## Personal API tokens (CI/CD and automation)
+
+Create a token with the CLI. The plaintext value is printed once, to stderr, and cannot be retrieved later.
 
 ```bash
-# Via CLI
-enclii api-keys create --name "CI/CD Pipeline" --scopes "deploy,read"
-
-# Output:
-# API Key: ek_live_abc123xyz...
-# Store this securely - it won't be shown again!
+enclii tokens create --name "ci-deploy" --expires-in 30d
 ```
 
-### Using API Keys
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Human-readable token name (required) |
+| `--expires-in` | `90d` | Lifetime: Go duration syntax extended with `d` for days (`24h`, `30d`, `90d`) |
+| `--scopes` | full account access | Comma-separated scope list |
+| `--json` | `false` | Emit machine-readable JSON to stdout |
+
+Manage tokens with `enclii tokens list`, `enclii tokens get <id>`, and `enclii tokens revoke <id>`. There is no `enclii api-keys` command, and no rotate operation: to rotate, create a new token, switch your secret to it, then revoke the old one.
+
+About scopes: the API currently acts on one scope value, `admin`, which gives the token the admin role. Any other scope string is stored with the token but not enforced, so a token without `admin` has the developer role on the account that created it. Limit exposure with short `--expires-in` values and prompt revocation rather than relying on scope strings.
+
+Use the token with the SDK:
 
 ```typescript
-import { EncliiClient } from '@enclii/sdk';
-
-// Direct initialization
-const enclii = new EncliiClient({
-  apiKey: 'ek_live_abc123xyz...',
-});
-
-// From environment variable (recommended)
-const enclii = new EncliiClient({
-  apiKey: process.env.ENCLII_API_KEY,
-});
-
-// Auto-detect from environment
-const enclii = new EncliiClient();
-// Automatically uses ENCLII_API_KEY
-```
-
-### API Key Scopes
-
-| Scope | Permissions |
-|-------|------------|
-| `read` | List and view resources |
-| `write` | Create and update resources |
-| `deploy` | Trigger deployments |
-| `delete` | Delete resources |
-| `admin` | Full access including secrets |
-
-```typescript
-// Create scoped API key via SDK
-const apiKey = await enclii.apiKeys.create({
-  name: 'Read-Only Dashboard',
-  scopes: ['read'],
-  expiresIn: '90d', // Optional expiration
-});
-```
-
-## Access Token Authentication
-
-For user-facing applications with OAuth/OIDC authentication.
-
-### Token from Janua SSO
-
-```typescript
-import { EncliiClient } from '@enclii/sdk';
-
-// After OAuth flow, you have an access token
-const accessToken = 'eyJhbGciOiJSUzI1NiIs...';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
 const enclii = new EncliiClient({
-  accessToken,
+  baseUrl: 'https://api.enclii.dev/v1',
+  token: process.env.ENCLII_API_TOKEN,
 });
 
-// Make authenticated requests
-const user = await enclii.users.me();
-console.log(`Logged in as: ${user.email}`);
-```
-
-### Token Refresh
-
-```typescript
-import { EncliiClient } from '@enclii/sdk';
-
-// With refresh token handling
-const enclii = new EncliiClient({
-  accessToken: initialToken,
-  refreshToken: refreshToken,
-  onTokenRefresh: async (newTokens) => {
-    // Store new tokens
-    await saveTokens(newTokens);
-  },
-});
-
-// SDK automatically refreshes expired tokens
 const projects = await enclii.projects.list();
 ```
 
-## Custom Token Provider
+`ENCLII_API_TOKEN` in this example is your own variable name (it matches what the CLI reads); the SDK itself only sees the value you pass.
 
-For advanced authentication flows or token management.
+## OIDC access tokens (user sessions)
+
+When your application already holds a Janua access token for the signed-in user, pass it as `token`. The SDK does not refresh tokens; supply a function if the token can change during the client's lifetime:
 
 ```typescript
-import { EncliiClient } from '@enclii/sdk';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-// Dynamic token provider
 const enclii = new EncliiClient({
-  tokenProvider: async () => {
-    // Fetch token from your auth service
-    const response = await fetch('/api/auth/token');
-    const { accessToken } = await response.json();
-    return accessToken;
-  },
+  baseUrl: 'https://api.enclii.dev/v1',
+  // Called before every request; return a current access token.
+  token: async () => getAccessTokenFromYourSession(),
 });
-
-// Token provider is called before each request if token is expired
 ```
 
-### With Caching
+### Caching inside the provider
 
 ```typescript
-let cachedToken: { token: string; expiresAt: number } | null = null;
+let cached: { token: string; expiresAt: number } | null = null;
 
 const enclii = new EncliiClient({
-  tokenProvider: async () => {
-    // Return cached token if still valid
-    if (cachedToken && cachedToken.expiresAt > Date.now()) {
-      return cachedToken.token;
-    }
+  baseUrl: 'https://api.enclii.dev/v1',
+  token: async () => {
+    if (cached && cached.expiresAt > Date.now()) return cached.token;
 
-    // Fetch new token
-    const response = await fetch('/api/auth/token');
-    const { accessToken, expiresIn } = await response.json();
-
-    // Cache the new token
-    cachedToken = {
-      token: accessToken,
-      expiresAt: Date.now() + (expiresIn * 1000) - 60000, // 1 min buffer
-    };
-
+    const res = await fetch('/api/auth/token');
+    const { accessToken, expiresIn } = await res.json();
+    cached = { token: accessToken, expiresAt: Date.now() + expiresIn * 1000 - 60_000 };
     return accessToken;
   },
 });
 ```
 
-## Authentication in Different Environments
+## Environments
 
-### Browser (SPA)
+### Browser
 
-```typescript
-// Don't expose API keys in browser code!
-// Use access tokens from your backend
+Never ship a personal API token to a browser. Use the signed-in user's access token, obtained through your own backend or auth flow, with a token function as shown above.
 
-import { EncliiClient } from '@enclii/sdk';
-
-// Get token from your auth flow
-const accessToken = await getAccessToken();
-
-const enclii = new EncliiClient({
-  accessToken,
-});
-```
-
-### Node.js Server
+### Node.js server, per-request identity
 
 ```typescript
-import { EncliiClient } from '@enclii/sdk';
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-// API key from environment (secure)
-const enclii = new EncliiClient({
-  apiKey: process.env.ENCLII_API_KEY,
-});
-
-// Or per-request authentication
-app.post('/deploy', async (req, res) => {
+app.get('/projects', async (req, res) => {
   const userToken = req.headers.authorization?.split(' ')[1];
-
   const userEnclii = new EncliiClient({
-    accessToken: userToken,
+    baseUrl: 'https://api.enclii.dev/v1',
+    token: userToken,
   });
-
-  const deployment = await userEnclii.services.deploy(req.body.serviceId);
-  res.json(deployment);
+  res.json(await userEnclii.projects.list());
 });
-```
-
-### Edge Functions (Vercel, Cloudflare)
-
-```typescript
-// Works in edge runtime
-import { EncliiClient } from '@enclii/sdk';
-
-export default async function handler(request: Request) {
-  const enclii = new EncliiClient({
-    apiKey: process.env.ENCLII_API_KEY,
-  });
-
-  const services = await enclii.services.list();
-  return new Response(JSON.stringify(services));
-}
 ```
 
 ### CI/CD (GitHub Actions)
 
 ```yaml
-# .github/workflows/deploy.yml
-name: Deploy
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Enclii
-        env:
-          ENCLII_API_KEY: ${{ secrets.ENCLII_API_KEY }}
-        run: |
-          npm install @enclii/sdk
-          node deploy.js
+- name: Call Enclii
+  env:
+    ENCLII_API_TOKEN: ${{ secrets.ENCLII_API_TOKEN }}
+  run: node deploy.mjs
 ```
 
 ```javascript
-// deploy.js
-import { EncliiClient } from '@enclii/sdk';
+// deploy.mjs
+import { EncliiClient } from '@madfam/enclii-sdk';
 
-const enclii = new EncliiClient();
-
-const deployment = await enclii.services.deploy('my-service-id', {
-  environment: 'production',
+const enclii = new EncliiClient({
+  baseUrl: 'https://api.enclii.dev/v1',
+  token: process.env.ENCLII_API_TOKEN,
 });
 
-console.log(`Deployed: ${deployment.url}`);
+const dep = await enclii.deployments.deploy('svc_123', {
+  release_id: 'rel_1',
+  environment_name: 'prod',
+});
+await enclii.deployments.wait(dep.id, { timeoutMs: 10 * 60_000 });
 ```
 
-## Security Best Practices
+## Handling auth errors
 
-### Never Expose API Keys
+Failed requests throw typed errors; check them with `instanceof`:
 
 ```typescript
-// ❌ BAD: API key in client-side code
-const enclii = new EncliiClient({
-  apiKey: 'ek_live_abc123', // Exposed to users!
-});
+import { AuthenticationError, AuthorizationError } from '@madfam/enclii-sdk';
 
-// ✅ GOOD: Use access tokens or server-side proxy
-const enclii = new EncliiClient({
-  accessToken: userAccessToken,
-});
-```
-
-### Use Environment Variables
-
-```typescript
-// ❌ BAD: Hardcoded credentials
-const enclii = new EncliiClient({
-  apiKey: 'ek_live_abc123xyz',
-});
-
-// ✅ GOOD: Environment variables
-const enclii = new EncliiClient({
-  apiKey: process.env.ENCLII_API_KEY,
-});
-```
-
-### Scope API Keys Appropriately
-
-```bash
-# ❌ BAD: Full access key for read-only use
-enclii api-keys create --name "Dashboard" --scopes "admin"
-
-# ✅ GOOD: Minimal required scopes
-enclii api-keys create --name "Dashboard" --scopes "read"
-enclii api-keys create --name "Deploy Bot" --scopes "read,deploy"
-```
-
-### Rotate Keys Regularly
-
-```typescript
-// Rotate API keys periodically
-const newKey = await enclii.apiKeys.rotate('key-id');
-
-// Update your secrets
-await updateSecret('ENCLII_API_KEY', newKey.value);
-
-// Old key is invalidated immediately
-```
-
-## Troubleshooting
-
-### "Unauthorized" Error
-
-```typescript
 try {
   await enclii.projects.list();
-} catch (error) {
-  if (error.code === 'UNAUTHORIZED') {
-    // Check: Is your API key valid?
-    // Check: Has the token expired?
-    // Check: Is the key/token for the correct environment?
+} catch (err) {
+  if (err instanceof AuthenticationError) {
+    // HTTP 401: the token is missing, expired, revoked, or malformed.
+  } else if (err instanceof AuthorizationError) {
+    // HTTP 403: the identity lacks permission for this resource.
+  } else {
+    throw err;
   }
 }
 ```
 
-### "Forbidden" Error
-
-```typescript
-try {
-  await enclii.services.delete('service-id');
-} catch (error) {
-  if (error.code === 'FORBIDDEN') {
-    // Check: Does your API key have 'delete' scope?
-    // Check: Do you have permission for this resource?
-  }
-}
-```
-
-### Token Expiration
-
-```typescript
-// Handle token expiration gracefully
-const enclii = new EncliiClient({
-  accessToken,
-  onTokenExpired: async () => {
-    // Redirect to login or refresh token
-    window.location.href = '/login';
-  },
-});
-```
+Every SDK error carries `method`, `path`, `status`, and (when the API returns one) `requestId`.
 
 ## Related Documentation
 
 - **SDK Overview**: [TypeScript SDK](/sdk/typescript/)
+- **CLI tokens**: [`enclii tokens`](/cli/commands/tokens)
 - **CLI Auth**: [CLI Authentication](/guides/cli-auth-setup)
 - **Auth Troubleshooting**: [Auth Problems](/troubleshooting/auth-problems)
 - **API Reference**: [API Docs](/api-reference/)

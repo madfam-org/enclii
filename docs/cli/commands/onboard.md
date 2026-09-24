@@ -8,6 +8,7 @@ For apps that require authentication, run Janua OAuth bootstrap from the product
 
 ```bash
 enclii onboard --repo <org/repo> [flags]
+enclii onboard ensure --repo <org/repo> [flags]
 ```
 
 ## Flags
@@ -145,9 +146,28 @@ SENTRY_DSN=https://abc@sentry.io/123
 
 The secret is created as `<project>-credentials` in the project's namespace (or the name specified by `--secret-name`).
 
+## `onboard ensure`
+
+Re-runs the high-value onboarding reconciliation for an existing project, to repair partial runtime state without raw `kubectl`: namespace ensure, GHCR credential copy into the project namespace, ArgoCD application registration refresh, and a domain provisioning kick from `enclii.yaml`.
+
+```bash
+enclii onboard ensure --repo madfam-org/my-app \
+  --project my-app \
+  --manifest-path k8s/overlays/production \
+  --namespace my-app
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--repo` | string | | GitHub repo in `org/name` format (required) |
+| `--project` | string | repo name | Project name |
+| `--manifest-path` | string | `k8s/overlays/production` | K8s manifest path in the repo |
+| `--branch` | string | `main` | Branch to track |
+| `--namespace` | string | project name | Kubernetes namespace |
+
 ## Standalone Provisioning
 
-For already-onboarded projects, use the standalone endpoints:
+For already-onboarded projects, use the standalone endpoints. Secrets also have a CLI path: [`enclii admin provision secrets`](./admin.md#admin-provision-secrets).
 
 ```bash
 # Provision just a database

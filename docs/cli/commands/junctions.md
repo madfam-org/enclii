@@ -176,9 +176,7 @@ enclii junctions delete 9a1b2c3d-4e5f-6789-abcd-ef0123456789 --force
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing required flags, invalid domain) |
-| `30` | API request failed (junction not found, permission denied) |
-| `50` | Authentication error (missing or invalid token) |
+| `1` | Any error: invalid arguments or flags, API errors (junction not found, permission denied), or an expired/invalid API token |
 
 ## See Also
 

@@ -156,8 +156,8 @@ enclii observe alerts --service svc_storefront
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
 | `10` | Validation error (missing `--service`) |
-| `50` | Authentication error |
 
 ## See Also
 

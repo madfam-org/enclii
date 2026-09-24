@@ -118,8 +118,8 @@ enclii audit export --from 2026-04-01 --to 2026-05-01 | \
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (export forbidden, malformed timestamp) |
-| `50` | Authentication error |
+| `1` | Any other error: invalid arguments or flags, API errors, or an expired/invalid API token |
+| `10` | Audit export refused because the caller lacks admin permission |
 
 ## See Also
 

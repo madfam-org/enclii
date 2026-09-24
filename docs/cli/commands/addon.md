@@ -80,6 +80,45 @@ enclii addon destroy <addon_id> [flags]
 |------|------|---------|-------------|
 | `--yes` | bool | `false` | Skip confirmation prompt |
 
+### `api`
+
+Manage the auto-generated REST API (PostgREST) over a Postgres addon. Enabling it serves the database schema as a REST API; authorization is enforced by row-level security in your database. Enclii creates deny-by-default `anon`/`authenticated` roles and wires the JWT signing secret; you own the RLS policies.
+
+```bash
+enclii addon api enable <addon_id> [flags]
+enclii addon api info <addon_id> [flags]
+enclii addon api token <addon_id> [flags]
+enclii addon api disable <addon_id> [flags]
+```
+
+| Subcommand | Flag | Type | Default | Description |
+|------------|------|------|---------|-------------|
+| `enable` | `--schemas` | string | `public` | Comma-separated schemas to expose |
+| `enable` | `--anon-role` | string | `anon` | Role for unauthenticated requests |
+| `enable`, `info` | `--json` | bool | `false` | JSON output |
+| `token` | `--role` | string | `authenticated` | JWT role claim |
+| `token` | `--ttl` | int | `3600` | Token lifetime in seconds (max `86400`) |
+| `token` | `--claim` | stringArray | | Extra JWT claim `key=value` (repeatable) |
+| `token` | `--json` | bool | `false` | JSON output |
+| `disable` | `--yes` | bool | `false` | Skip the confirmation prompt |
+
+`token` mints a JWT signed with the addon's secret, for calling the data API.
+
+### `realtime`
+
+Enable, disable, and list realtime row-change streaming for tables in a Postgres addon. Enabling a table installs an opt-in trigger that publishes `INSERT`/`UPDATE`/`DELETE` events; clients subscribe over a WebSocket at `/v1/projects/<slug>/addons/<addon>/realtime`.
+
+```bash
+enclii addon realtime enable <addon_id> --table public.orders
+enclii addon realtime list <addon_id> [--json]
+enclii addon realtime disable <addon_id> --table public.orders
+```
+
+| Subcommand | Flag | Type | Default | Description |
+|------------|------|------|---------|-------------|
+| `enable`, `disable` | `--table` | string | | Table as `schema.table` (required) |
+| `list` | `--json` | bool | `false` | JSON output |
+
 ## Examples
 
 ### List available plans
@@ -126,8 +165,8 @@ enclii addon destroy 123e4567-e89b-12d3-a456-426614174000 --yes
 | Code | Meaning |
 |------|---------|
 | `0` | Operation successful |
-| `10` | Validation error (missing plan/project, invalid engine) |
-| `50` | Authentication error |
+| `1` | Any other error: invalid arguments or flags, API errors (including `403 Forbidden`), or an expired/invalid API token |
+| `10` | Validation error (missing `--plan`, `--project`, or `--table`; destructive action without confirmation) |
 
 ## See Also
 
