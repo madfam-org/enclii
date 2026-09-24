@@ -258,7 +258,7 @@ From [PRODUCTION_CHECKLIST.md](./docs/production/PRODUCTION_CHECKLIST.md):
 If you just want to ship an app to Enclii, the fastest path is:
 
 ```bash
-VERSION=v1.0.0-alpha.12
+VERSION=v1.0.0-alpha.13
 OS=linux   # use darwin for macOS
 ARCH=amd64 # use arm64 on Apple Silicon or ARM Linux
 curl -LO "https://github.com/madfam-org/enclii/releases/download/${VERSION}/enclii_${VERSION}_${OS}_${ARCH}.tar.gz"

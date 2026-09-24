@@ -26,7 +26,7 @@ This is the fastest path from zero to a live URL. You will install the CLI, sign
 
 **Linux/macOS release archive:**
 ```bash
-VERSION=v1.0.0-alpha.12
+VERSION=v1.0.0-alpha.13
 OS=linux   # use darwin for macOS
 ARCH=amd64 # use arm64 on Apple Silicon or ARM Linux
 curl -LO "https://github.com/madfam-org/enclii/releases/download/${VERSION}/enclii_${VERSION}_${OS}_${ARCH}.tar.gz"
