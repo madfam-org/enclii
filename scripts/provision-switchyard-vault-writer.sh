@@ -11,7 +11,7 @@
 # Policy-only (add paths without rotating writer token):
 #   POLICY_ONLY=1 VAULT_TOKEN_FILE=... ./scripts/provision-switchyard-vault-writer.sh
 #
-# Last Updated: 2026-09-04 (kalya data+metadata paths for `secrets provision kalya-feed`)
+# Last Updated: 2026-09-24 (creator-census data+metadata paths for the census web OIDC + session intake)
 set -euo pipefail
 
 VAULT_NS="${VAULT_NS:-vault}"
@@ -202,6 +202,19 @@ path "secret/data/angelia" {
 path "secret/data/angelia/*" {
   capabilities = ["create", "update", "patch", "read"]
 }
+# creator-census — added 2026-09-24 with the intake targets
+# creator-census/web-oidc (written by `enclii secrets provision oidc --platform
+# creator-census-web`) and creator-census/web-session (`--generate
+# session_secret`). Merged in git is not applied in Vault: until an operator
+# re-applies this policy (ASSERT_PATH=creator-census
+# scripts/apply-switchyard-vault-policy-remote.sh), the first provision run
+# reconciles the Janua client and then 403s on the Vault merge.
+path "secret/data/creator-census" {
+  capabilities = ["create", "update", "patch", "read"]
+}
+path "secret/data/creator-census/*" {
+  capabilities = ["create", "update", "patch", "read"]
+}
 path "secret/metadata/ceq" {
   capabilities = ["read", "list"]
 }
@@ -302,6 +315,12 @@ path "secret/metadata/angelia" {
   capabilities = ["read", "list"]
 }
 path "secret/metadata/angelia/*" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/creator-census" {
+  capabilities = ["read", "list"]
+}
+path "secret/metadata/creator-census/*" {
   capabilities = ["read", "list"]
 }
 EOF

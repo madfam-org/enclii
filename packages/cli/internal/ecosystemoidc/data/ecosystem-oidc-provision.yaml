@@ -1,6 +1,6 @@
 # MADFAM ecosystem OIDC auto-provision registry
 # Consumed by: enclii secrets provision oidc
-# Last Updated: 2026-09-17
+# Last Updated: 2026-09-24
 #
 # TWO COPIES, ONE CONTENT. The CLI embeds
 # packages/cli/internal/ecosystemoidc/data/ecosystem-oidc-provision.yaml (go:embed
@@ -392,6 +392,58 @@ platforms:
         - openid
         - profile
         - email
+      grant_types:
+        - authorization_code
+        - refresh_token
+
+  # ---------------------------------------------------------------------------
+  # creator-census-web — the Creator Census web at cc-app.madfam.io (landing
+  # cc.madfam.io, API cc-api.madfam.io). A CONFIDENTIAL login client: the
+  # Next.js BFF runs authorization_code + PKCE (S256) server-side and holds the
+  # secret, so browsers never see it. PKCE is a per-request property of the
+  # flow, not a client field, so nothing here declares it.
+  #
+  # The redirect URI is exact, byte for byte: Janua compares scheme, host, PORT
+  # and path, so the BFF's /auth/callback on the production origin and on
+  # localhost:3000 are the only two that will ever match.
+  #
+  # audience `creator-census-api` is what cc-api.madfam.io validates bearers
+  # against, so the session the web holds is directly usable at the API.
+  #
+  # Only the SECRET goes to Vault (target creator-census/web-oidc, lowercase to
+  # match what Vault stores; the census ExternalSecret maps
+  # `property: janua_client_secret` -> JANUA_CLIENT_SECRET). The client_id is
+  # plain config in the census Deployment: copy it from the provision output
+  # (`client_id=jnc_…`). SESSION_SECRET is NOT minted here: it has its own
+  # target, creator-census/web-session, filled with
+  # `--generate session_secret` so the value is created inside Switchyard and
+  # never touches a laptop. session_intake_target is deliberately unset — it
+  # would re-mint the session secret on every provision re-run and sign every
+  # user out.
+  #
+  # NOT pinned with a client_id: the client does not exist yet, so the first
+  # run CREATES it. Pin the jnc_… id here after that run so later runs
+  # reconcile instead of risking a duplicate.
+  # ---------------------------------------------------------------------------
+  creator-census-web:
+    intake_target: creator-census/web-oidc
+    intake_key_map:
+      janua_client_secret: client_secret  # pragma: allowlist secret
+    janua_client:
+      name: MADFAM Creator Census
+      client_key: creator-census-web  # pragma: allowlist secret
+      audience: creator-census-api
+      description: Creator Census web (cc-app.madfam.io) — confidential OIDC authorization-code + PKCE client for the Next.js BFF
+      is_confidential: true
+      website_url: https://cc.madfam.io
+      redirect_uris:
+        - https://cc-app.madfam.io/auth/callback
+        - http://localhost:3000/auth/callback
+      allowed_scopes:
+        - openid
+        - email
+        - profile
+        - offline_access
       grant_types:
         - authorization_code
         - refresh_token

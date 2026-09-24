@@ -301,3 +301,37 @@ func TestLoadRegistry_yantra4dStudioPublicLoginClient(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadRegistry_creatorCensusWebLoginClient(t *testing.T) {
+	reg, err := LoadRegistry("")
+	require.NoError(t, err)
+
+	p, ok := reg.Platforms["creator-census-web"]
+	require.True(t, ok, "creator-census-web platform missing")
+
+	assert.Equal(t, "creator-census/web-oidc", p.IntakeTarget)
+	// The session secret is minted server-side through its own intake target
+	// (--generate), never re-minted by every provision run.
+	assert.Empty(t, p.SessionIntakeTarget)
+	require.Equal(t, map[string]string{"janua_client_secret": "client_secret"}, p.IntakeKeyMap,
+		"only the secret goes to Vault; the client_id is plain Deployment config")
+
+	jc := p.JanuaClient
+	assert.Equal(t, "MADFAM Creator Census", jc.Name)
+	assert.Equal(t, "creator-census-web", jc.ClientKey)
+	assert.Equal(t, "creator-census-api", jc.Audience)
+	assert.Equal(t, "https://cc.madfam.io", jc.WebsiteURL)
+	assert.True(t, jc.confidential(), "the BFF holds the secret; the client must be confidential")
+	assert.False(t, p.publicLogin())
+	assert.Empty(t, jc.OrganizationID)
+	// Janua matches redirect URIs exactly (scheme, host, port, path).
+	assert.Equal(t, []string{
+		"https://cc-app.madfam.io/auth/callback",
+		"http://localhost:3000/auth/callback",
+	}, jc.RedirectURIs)
+	assert.ElementsMatch(t, []string{"openid", "email", "profile", "offline_access"}, jc.AllowedScopes)
+	assert.ElementsMatch(t, []string{"authorization_code", "refresh_token"}, jc.GrantTypes)
+
+	assert.Equal(t, map[string]string{"janua_client_secret": "s3cr3t"},
+		buildIntakeValues(reg.Issuer, "jnc_census", "s3cr3t", p))
+}

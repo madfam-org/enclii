@@ -1,6 +1,6 @@
 # Secret Intake (chat-safe credential handoff)
 
-**Last Updated:** 2026-09-05
+**Last Updated:** 2026-09-24
 
 > **Boundary checkpoint (2026-09-05, platform on-call):** Public-safe runbook —
 > target ids, Vault paths and key NAMES are routing contracts, never values. No
@@ -12,6 +12,11 @@
 > `decisions/2026-09-05-third-party-messaging-via-angelia-courier.md` there. No
 > recipient id, chat id or channel id appears here or anywhere in this repo.
 > Policy: `docs/PUBLIC_REPO_BOUNDARY.md` (repo-boundary contract).
+>
+> **Boundary checkpoint (2026-09-24, platform on-call):** The creator-census
+> section adds target ids, key NAMES, a public redirect URI and a Janua client
+> NAME only. No client id, secret or session value appears here; the client id
+> is read from the operator's own `provision oidc` output.
 
 Operators supply production credentials through Enclii without pasting values into
 agent chat or git. Switchyard merges keys into Vault once; agents poll `intake_id`
@@ -78,6 +83,8 @@ ESO sources: `enclii-secrets`, `janua-secrets`, `madfam-site-secrets`, `phynd-cr
 | `angelia/courier-alertmanager` | `secret/angelia` | `courier_alertmanager_secret` |
 | `angelia/courier-database-url` | `secret/angelia` | `courier_database_url` |
 | `angelia/courier-webhook-signing-keys` | `secret/angelia` | `courier_webhook_signing_key_alarms`, `courier_webhook_signing_key_enclii_ops`, `courier_webhook_signing_key_tulana`, `courier_webhook_signing_key_madfam_site` |
+| `creator-census/web-oidc` | `secret/creator-census` | `janua_client_secret` |
+| `creator-census/web-session` | `secret/creator-census` | `session_secret` |
 
 **Angelia OWNS all five Courier targets** (verifier-owns): Angelia verifies every
 one of these credentials, so `secret/angelia` is their single writable home, and
@@ -107,6 +114,57 @@ until angelia-api runs with `COURIER_LEDGER=postgres`. With that env set and the
 value absent, the api refuses to start. Apply angelia's ledger migrations
 0001–0004 before setting the env (angelia `docs/runbooks/courier-provisioning.md`,
 Step 0).
+
+### creator-census web (2026-09-24)
+
+The census web (`cc-app.madfam.io`) signs in through Janua with a confidential
+client. Its Deployment mounts Secret `creator-census-web` (`optional: true`) for
+`JANUA_CLIENT_SECRET` and `SESSION_SECRET` and refuses sign-in until both exist.
+`JANUA_CLIENT_ID` is plain Deployment config, not a secret.
+
+The two secrets are **two targets on one path and one ExternalSecret**. The CLI
+prompts for every key of a target that is not in `--generate`, so one target
+holding both keys would make `--generate session_secret` ask for the Janua
+client secret, which no human holds. Each property has exactly one write route:
+
+| Property in `secret/creator-census` | Written by | Census env var |
+|---|---|---|
+| `janua_client_secret` | `enclii secrets provision oidc --platform creator-census-web` | `JANUA_CLIENT_SECRET` |
+| `session_secret` | `enclii secrets intake submit creator-census/web-session --generate session_secret` | `SESSION_SECRET` |
+
+The intake API lowercases every key before the Vault merge, so the census
+ExternalSecret must reference the **lowercase** `property:` names above. An
+upper-case `property:` syncs zero keys (ESO is all-or-nothing per
+ExternalSecret).
+
+Owner sequence, after the registry change is deployed and the Vault policy
+re-applied (`ASSERT_PATH=creator-census bash
+scripts/apply-switchyard-vault-policy-remote.sh`):
+
+```bash
+export ENCLII_API_ENDPOINT=https://api.enclii.dev
+enclii login   # admin@madfam.io
+# Until a CLI release embeds creator-census-web, pass the registry from a main checkout:
+enclii secrets provision oidc --platform creator-census-web \
+  --registry config/ecosystem-oidc-provision.yaml \
+  --reason "creator-census web sign-in" --dry-run
+enclii secrets provision oidc --platform creator-census-web \
+  --registry config/ecosystem-oidc-provision.yaml \
+  --reason "creator-census web sign-in"
+# prints: ✓ creator-census-web client_id=jnc_… created=true intake=int_…
+enclii secrets intake submit creator-census/web-session \
+  --generate session_secret --reason "creator-census web session secret"
+enclii secrets intake status int_<id>
+```
+
+Janua generates the client id (`jnc_` plus a random suffix) on the first run.
+Nothing derives it from `client_key`. Copy it from the `client_id=` field of the
+provision output into the census Deployment's `JANUA_CLIENT_ID`. Then pin it as
+`janua_client.client_id` in `config/ecosystem-oidc-provision.yaml` (both copies)
+so that later runs reconcile the client and never create a second one.
+`external_secret_refreshed: false` is expected on both intakes until the census
+repo creates the `creator-census-web` ExternalSecret. ESO syncs the ExternalSecret
+when it is created, so create it only after both properties are in Vault.
 
 `symbiosis-hcm` is the **producer** of the absence feed; `crea-map` cross-reads
 `map_absence_feed_key` and consumes it as `HCM_FEED_API_KEY`. One copy at the
