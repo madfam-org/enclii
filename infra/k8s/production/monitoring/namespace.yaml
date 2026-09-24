@@ -19,5 +19,8 @@ spec:
     requests.cpu: "2"
     requests.memory: 4Gi
     limits.cpu: "4"
-    limits.memory: 8Gi
-    persistentvolumeclaims: "6"
+    # 2026-09-24: +2Gi limits for Prometheus (2Gi→4Gi, it was OOM-looping
+    # ~7.4k restarts) and +2 PVC slots so the operator-managed rules-eval
+    # (0/1 for 28 d, blocked ONLY by the PVC count) can claim its volume.
+    limits.memory: 10Gi
+    persistentvolumeclaims: "8"

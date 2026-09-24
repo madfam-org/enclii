@@ -2070,15 +2070,21 @@ spec:
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
             - "--web.enable-lifecycle"
+          env:
+            # Soft Go heap limit under the 4Gi container limit, so GC works
+            # harder before the kernel OOM-kills us (2026-09-24 incident:
+            # killed ~7 s after each 61 s WAL replay at the old 2Gi limit).
+            - name: GOMEMLIMIT
+              value: "3600MiB"
           ports:
             - containerPort: 9090
               name: http
           resources:
             requests:
-              memory: "768Mi"
+              memory: "1536Mi"
               cpu: "200m"
             limits:
-              memory: "2Gi"
+              memory: "4Gi"
               cpu: "500m"
           volumeMounts:
             - name: config
@@ -2093,7 +2099,8 @@ spec:
               port: 9090
             initialDelaySeconds: 15
             periodSeconds: 10
-            failureThreshold: 30
+            # 15 min for WAL replay after a long crash loop (was 5 min).
+            failureThreshold: 90
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
